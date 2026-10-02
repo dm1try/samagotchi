@@ -185,6 +185,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
           2. Deny
         allowing it is up to your user: deny it, and tell your user
         deny: chi answer #{@started.id} --question q1 --option Deny --text WHY
+        or leave it open: tell your user it waits in chi web (session #{@started.id[0, 8]}); chi send --wait --format json #{@started.id} waits until they answer
     TEXT
   end
 

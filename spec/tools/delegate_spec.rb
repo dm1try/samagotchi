@@ -276,6 +276,8 @@ RSpec.describe "delegate tools" do
       expect(wait).to eq("session: #{child.id}\nstatus: question\nChild #{child.id} is waiting for an answer (approval): Run rm?\n" \
                          "  allowing it is up to your user: deny it, and tell your user\n" \
                          "  deny: chi answer #{child.id} --question q1 --option Deny --text WHY\n" \
+                         "  or leave it open: tell your user it waits in chi web (session #{child.id[0, 8]}); " \
+                         "chi send --wait --format json #{child.id} waits until they answer\n" \
                          "delegate_result #{child.id} waits again once it is answered.")
 
       set_status(child, "running", pending_question: { id: "q2", question: "Which one?", options: %w[A B] })

@@ -113,8 +113,10 @@ Start a task: `chi send --new --wait --format json --timeout 500 -m "<task>"`
 - `question.kind: approval`: chi wants to run something its user's guardrails
   flagged, and allowing it is up to your user. Deny it (the `answer_with`
   command: `--option Deny --text "why"`), and tell your user what it wanted to
-  run and why. Never allow it yourself, through `chi answer`, a piped
-  `chi --attach` or chi's web API.
+  run and why. Or leave it open: tell your user it waits in chi web (the
+  session's short id), then `chi send --wait --format json --timeout 500 <session_id>`
+  waits until they answer it there. Never allow it yourself, through
+  `chi answer`, a piped `chi --attach` or chi's web API.
 - `status: running` (exit 4): still working. Wait again:
   `chi send --wait --format json --timeout 500 <session_id>`.
 - Anything else (exit 1): report `detail` to your user. `chi --attach <session_id>`

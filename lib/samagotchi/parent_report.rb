@@ -145,6 +145,13 @@ module Samagotchi
     # What a parent does with an approval.
     DENY_AND_TELL = "deny it, and tell your user"
 
+    # The other way: the user answers it in chi (the web's bell and badge
+    # say it waits), and a wait with no message waits past it.
+    def leave_open(session_id)
+      "or leave it open: tell your user it waits in chi web (session #{session_id[0, 8]}); " \
+        "chi send --wait --format json #{session_id} waits until they answer"
+    end
+
     def approval?(question)
       question.is_a?(Hash) && (question[:kind] || question["kind"]).to_s == "approval"
     end
@@ -180,6 +187,7 @@ module Samagotchi
       if approval?(q)
         lines << "  allowing it is up to your user: #{DENY_AND_TELL}"
         lines << "  deny: #{answer_with(session_id, q)}"
+        lines << "  #{leave_open(session_id)}"
       else
         lines << "  more than one allowed: repeat --option" if q[:multi_select]
         lines << "  free text allowed: --text" if q[:allow_freeform]
