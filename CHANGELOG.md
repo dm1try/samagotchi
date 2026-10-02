@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-02
+
 ### Added
 
 - The hidden session strip's pill counts the sessions that wait for you (`▾ 5 sessions · 1 live · 1 waiting`, in the
@@ -29,6 +31,8 @@ and commands may change between minor versions. How releases are made:
 - The web pairs each prompt with its own turn's timing: a failed turn (its prompt went back to you) no longer shifts
   the timing lines and turn numbers of the turns after it. chi saves a turn id on each prompt; prompts saved before
   this still pair by their place.
+
+Update with `chi update` (no bundle changes).
 
 ## [0.14.0] - 2026-10-02
 
@@ -804,7 +808,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/dm1try/samagotchi/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/dm1try/samagotchi/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/dm1try/samagotchi/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/dm1try/samagotchi/compare/v0.11.0...v0.12.0
