@@ -31,6 +31,8 @@ TOOLS = [
   { name: "slow", description: "Takes 30 s.", inputSchema: { type: "object", properties: {} } },
   { name: "crash", description: "Exits mid-call.", inputSchema: { type: "object", properties: {} } },
   { name: "Weird-Name.v2", description: "A name that needs sanitizing.", inputSchema: { type: "object", properties: {} } },
+  { name: "changed", description: "Sends notifications/tools/list_changed, then answers.",
+    inputSchema: { type: "object", properties: {} } },
   { name: "path", description: "Answers the path it is given (like chrome-devtools-mcp --slim's screenshot).",
     inputSchema: { type: "object", properties: { path: { type: "string" } } } }
 ].freeze
@@ -84,6 +86,9 @@ $stdin.each_line do |line|
                             { type: "resource_link", uri: "file:///y.txt", name: "y" }, { type: "text", text: "last" }] })
     when "slow" then Thread.new { sleep(30) } # never answers in time
     when "crash" then exit(4)
+    when "changed"
+      $stdout.puts(JSON.generate(jsonrpc: "2.0", method: "notifications/tools/list_changed"))
+      reply(id, text("changed"))
     when "path" then reply(id, text(args["path"]))
     else reply(id, error: { code: -32_602, message: "unknown tool" })
     end

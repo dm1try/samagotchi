@@ -200,7 +200,7 @@ RSpec.describe "The mcp bundle" do
   it "registers each tool as mcp_<server>_<tool>, sanitized, with its inputSchema, label and preview" do
     names = tools.entries.map(&:name).grep(/\Amcp_/)
     expect(names).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_fail mcp_fake_mixed mcp_fake_slow mcp_fake_crash
-                           mcp_fake_weird_name_v2 mcp_fake_path])
+                           mcp_fake_weird_name_v2 mcp_fake_changed mcp_fake_path])
     echo = tools["mcp_fake_echo"]
     expect(echo.schema).to include(name: "mcp_fake_echo", description: "Echo the text back.")
     expect(echo.schema[:parameters]).to include(properties: { text: { type: "string", description: "what to echo" } },
@@ -341,7 +341,7 @@ RSpec.describe "The mcp bundle" do
       )
       finished = @init_events.select { |e| e[:type] == :plugin_init_finished }
       expect(finished.map { |e| [e[:label], e[:ok], e[:summary]] }).to include(
-        ["Starting MCP server fake (first run, saving its tools)", true, "fake ready, 8 tools"]
+        ["Starting MCP server fake (first run, saving its tools)", true, "fake ready, 9 tools"]
       )
       expect(tools.entries.map(&:name).grep(/\Amcp_/)).to all(start_with("mcp_fake_"))
       expect(call_tool("mcp_fake_echo", { "text" => "ok" })).to eq("echo: ok")
@@ -374,7 +374,7 @@ RSpec.describe "The mcp bundle" do
     expect(engine.command_registry.lookup("/mcp").anytime).to be(true)
     engine.running_anytime { commands.run("/mcp") }
     expect(cards.last).to include(title: "MCP servers", id: "mcp-servers", source: "mcp")
-    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 8 tools\n- `mcp_fake_echo`\n")
+    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 9 tools\n- `mcp_fake_echo`\n")
   end
 
   describe "the tools/list cache (start: lazy)" do
@@ -443,6 +443,20 @@ RSpec.describe "The mcp bundle" do
       expect(engine.apply_staged_tools!).to be(true)
       expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_fail])
       expect(call_tool("mcp_fake_fail")).to eq("Error: it broke")
+    end
+
+    it "lists the tools again on notifications/tools/list_changed: the cache and the next turn's tools" do
+      File.write(tools_file, "echo\nadd\nslow\nchanged\n")
+      next_engine
+      expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("echo: x")
+      expect(engine.apply_staged_tools!).to be(true)
+      File.write(tools_file, "echo\nchanged\n")
+      expect(call_tool("mcp_fake_changed")).to eq("changed")
+      Timeout.timeout(5) { sleep(0.05) until cache["tools"].map { |t| t["name"] } == %w[echo changed] }
+      Timeout.timeout(5) { sleep(0.05) until engine.apply_staged_tools! }
+      expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_changed])
+      expect(call_tool("mcp_fake_echo", { "text" => "still" })).to eq("echo: still")
+      expect(spawned).to eq(2)
     end
 
     context "when the config changes" do

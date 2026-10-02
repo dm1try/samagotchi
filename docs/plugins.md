@@ -690,6 +690,9 @@ bundles:
   background task lists the tools again with a server of its own (then
   stops it), saves them, and replaces the tools if they changed. One worker
   does it at a time.
+- **A server that says its tools changed** (`notifications/tools/list_changed`)
+  is asked for its `tools/list` again; the saved list and the tools are
+  replaced from the next turn on.
 - **A cached server that doesn't start** (the command is gone, it crashes)
   fails that call with `Error: MCP server x didn't start: …` and one notice;
   later calls answer the same at once, and its tools are left out from the

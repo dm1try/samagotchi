@@ -61,9 +61,13 @@ class Plugin
     # @param log [#call] (event, fields) for stderr lines and protocol noise
     # @param on_exit [#call, nil] called once, with the reason, when the
     #   process ends while the client is open
-    def initialize(command, env: {}, cwd: Dir.pwd, log: ->(*) {}, on_exit: nil)
+    # @param on_notification [#call, nil] (method, params) for each
+    #   notification from the server, on the reader thread: it must not
+    #   wait for an answer there
+    def initialize(command, env: {}, cwd: Dir.pwd, log: ->(*) {}, on_exit: nil, on_notification: nil)
       @log = log
       @on_exit = on_exit
+      @on_notification = on_notification
       @mutex = Mutex.new
       @write_mutex = Mutex.new
       @pending = {}
@@ -180,8 +184,11 @@ class Plugin
     def dispatch(message)
       if message.key?("method")
         # A request from the server (ping, roots/list, …): ping is answered,
-        # the rest aren't supported. A notification is logged.
-        return @log.call("server_notification", method: message["method"]) unless message.key?("id")
+        # the rest aren't supported. A notification is logged and handed on.
+        unless message.key?("id")
+          @log.call("server_notification", method: message["method"])
+          return @on_notification&.call(message["method"], message["params"])
+        end
 
         answer = if message["method"] == "ping"
                    { jsonrpc: "2.0", id: message["id"], result: {} }
@@ -229,7 +236,7 @@ class Plugin
   # tools/list as the server answers it (what the cache keeps), +tools+
   # the ones chi offers (the tools: filter applied, each with chi_name).
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
-                      :digest, :cached_at, keyword_init: true)
+                      :digest, :cached_at, :relist, :relisting, keyword_init: true)
 
   def initialize(settings = {})
     @settings = settings
@@ -237,6 +244,7 @@ class Plugin
     @startup_timeout = positive(settings["startup_timeout"]) || STARTUP_TIMEOUT
     @servers = []
     @publish = Mutex.new
+    @relist = Mutex.new
     # The tools left out so far (a name clash): said once, not at each
     # publish.
     @left_out = []
@@ -315,7 +323,10 @@ class Plugin
     cancelled = -> { ctx.cancelled? }
     client = Client.new(server.command, env: server.env, cwd: server.cwd,
                                         log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
-                                        on_exit: ->(reason) { exited(server, reason, ctx) })
+                                        on_exit: ->(reason) { exited(server, reason, ctx) },
+                                        on_notification: lambda { |method, _params|
+                                          tools_changed(server, ctx) if method == "notifications/tools/list_changed"
+                                        })
     svc.on_stop { client.close }
     client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
                                    clientInfo: { name: "chi", version: Samagotchi::VERSION } },
@@ -379,6 +390,45 @@ class Plugin
       publish(ctx) if changed
     end
     nil
+  end
+
+  # notifications/tools/list_changed from a running server: list its tools
+  # again (on a thread of its own: the answer comes on the reader thread
+  # that told us), save them and replace the tools for the next turn.
+  # Notices that come together list once more after the one running.
+  def tools_changed(server, ctx)
+    @relist.synchronize do
+      server.relist = true
+      return if server.relisting
+
+      server.relisting = true
+    end
+    Thread.new do
+      relist(server, ctx) while relist_pending?(server)
+    end
+  end
+
+  # Takes the server's pending relist: true once per notice; false (and
+  # the relisting thread ends) when none is left.
+  def relist_pending?(server)
+    @relist.synchronize do
+      pending = server.relist
+      server.relist = false
+      server.relisting = false unless pending
+      pending
+    end
+  end
+
+  def relist(server, ctx)
+    listed = list_tools(server.service.value, nil)
+    return if listed == server.listed
+
+    server.listed = listed
+    save_cache(server, ctx)
+    ctx.log.info("mcp_tools_changed", server: server.name, tools: listed.size)
+    publish(ctx)
+  rescue StandardError => e
+    ctx.log.warn("mcp_tools_not_relisted", server: server.name, error: e.class.name, msg: e.message)
   end
 
   # tools/list, every page.
