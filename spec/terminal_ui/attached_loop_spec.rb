@@ -1832,3 +1832,41 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
     expect(screen.lines).to include("could not send the prompt (409 busy)")
   end
 end
+
+# `printf '3\n' | chi --attach ID` on a session that already waits on a
+# question: the pipe's lines are read at once, before the joining snapshot
+# brings the question. They wait for the snapshot, so "3" answers it rather
+# than going in as a new prompt.
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "piped answer to a pending question" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", wait_at_eof: true) }
+  let(:events) { Queue.new }
+  let(:answers) { [] }
+
+  before do
+    allow(client).to receive(:follow) do |&block|
+      events << block
+      double("stream", close: nil)
+    end
+    allow(client).to receive(:post_turn) { raise "the answer went in as a prompt" }
+    allow(client).to receive(:answer) do |**options|
+      answers << options
+      Samagotchi::BridgeClient::Response.new(status: 200)
+    end
+  end
+
+  it "answers the snapshot's question with a line read before the snapshot came" do
+    lines = ["3", nil]
+    read = Queue.new
+    thread = Thread.new { attached.run(input: ->(_prompt, _prefill) { lines.shift.tap { read << true } }) }
+    push = events.pop(timeout: 2)
+    2.times { read.pop(timeout: 2) } # "3" and the end of the input, both before the snapshot
+    turn = { "prompt" => "go", "origin" => nil, "parts" => [],
+             "pending_question" => { "id" => "q1", "question" => "Which?", "options" => %w[a b c] } }
+    push.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => turn, "queued" => [], "event_seq" => 1 })
+
+    expect(thread.join(2)&.value).to eq(:detached)
+    expect(answers).to eq([{ id: "q1", selected: ["c"], freeform: nil }])
+  end
+end

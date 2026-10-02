@@ -105,6 +105,7 @@ module Samagotchi
         @running = false
         @joined_mid_turn = false
         @attached = false
+        @early_lines = []
         @question = nil
         @answered_ids = Set.new
         @reader = nil
@@ -162,16 +163,17 @@ module Samagotchi
           when :event
             ended = safely_handle(payload)
             return ended if %i[closed failed unanswered].include?(ended)
+
+            ended = take_early_lines
+            return ended if ended
             return end_of_input if @input_ended && !own_turns_pending?
           when :line
-            if payload.nil? && @wait_at_eof && own_turns_pending?
-              # The pipe's end: this run's turns first. An open question
-              # has nothing left to answer it.
-              return unanswered_question(@question_pending) if @question
+            # A pipe is read at once: its lines wait for the joining
+            # snapshot, which may bring the question they answer.
+            next @early_lines << payload if @wait_at_eof && !@attached
 
-              next @input_ended = true
-            end
-            return end_of_input if submit(payload) == :detach
+            ended = take_line(payload)
+            return ended if ended
           when :interrupt then return :detached if interrupt(payload) == :detach
           end
         end
@@ -185,6 +187,30 @@ module Samagotchi
         @view.stop
         @screen.clear_slot(:editor)
         stream&.close
+      end
+
+      # One input line (nil: the input ended).
+      # @return [Symbol, nil] how the run ends, or nil to go on
+      def take_line(line)
+        if line.nil? && @wait_at_eof && own_turns_pending?
+          # The pipe's end: this run's turns first. An open question
+          # has nothing left to answer it.
+          return unanswered_question(@question_pending) if @question
+
+          @input_ended = true
+          return nil
+        end
+        end_of_input if submit(line) == :detach
+      end
+
+      # The lines read before the snapshot came, once it has.
+      # @return [Symbol, nil] how the run ends, or nil to go on
+      def take_early_lines
+        until !@attached || @early_lines.empty?
+          ended = take_line(@early_lines.shift)
+          return ended if ended
+        end
+        nil
       end
 
       # Render one Bridge event (string keys).

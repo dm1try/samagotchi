@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `printf '2\n' | chi --attach ID` on a session already waiting on a question answers it: the piped line could be read
+  before the question arrived and go in as a new prompt, and the attach then hung.
+
 ### Changed
 
 - Codex CLI counts as a parent agent: an answer typed into `chi --attach` or the REPL from a command Codex runs
