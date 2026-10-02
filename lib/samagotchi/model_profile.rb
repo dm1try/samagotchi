@@ -229,10 +229,6 @@ module Samagotchi
       DEFAULT_NAME
     end
 
-    def self.from_env
-      from_model_name(required_model_name(nil))
-    end
-
     # ── Resolution: which profile a model gets ───────────────────────────
 
     NAMES = %w[qwen36 gemma4].freeze

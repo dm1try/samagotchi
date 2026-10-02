@@ -207,7 +207,7 @@ RSpec.describe Samagotchi::ModelProfile do
     end
   end
 
-  describe ".from_env" do
+  describe ".from_model_name of the configured model" do
     around do |example|
       original = ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)
       example.run
@@ -221,13 +221,13 @@ RSpec.describe Samagotchi::ModelProfile do
 
     it "infers qwen36 from SAMAGOTCHI_DEFAULT_MODEL" do
       ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Qwen3-14B-Instruct"
-      profile = described_class.from_env
+      profile = described_class.from_model_name(described_class.required_model_name)
       expect(profile.name).to eq("qwen36")
     end
 
     it "infers gemma4 from a gemma SAMAGOTCHI_DEFAULT_MODEL" do
       ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-      profile = described_class.from_env
+      profile = described_class.from_model_name(described_class.required_model_name)
       expect(profile.name).to eq("gemma4")
     end
   end

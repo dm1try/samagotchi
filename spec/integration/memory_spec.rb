@@ -38,7 +38,7 @@ RSpec.describe "memory_read tool - reading existing memory integration", :integr
 
   def run_with_prompt(prompt)
     messages = [
-      { role: "system", content: Samagotchi::Engine.system_prompt_for(Samagotchi::ModelProfile.from_env) },
+      { role: "system", content: Samagotchi::Engine.system_prompt_for(Samagotchi::ModelProfile.from_model_name(Samagotchi::ModelProfile.required_model_name)) },
       { role: "user",   content: prompt }
     ]
     kernel.run(messages)

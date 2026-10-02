@@ -116,7 +116,7 @@ RSpec.describe Samagotchi::ConfigFile do
         ENV["SAMAGOTCHI_SERVER_PORT"] = "9090"
 
         expect(described_class.load!).to be(true)
-        expect(Samagotchi::ModelProfile.from_env.name).to eq("qwen36")
+        expect(Samagotchi::ModelProfile.from_model_name(Samagotchi::ModelProfile.required_model_name).name).to eq("qwen36")
         expect(ENV).not_to have_key("SAMAGOTCHI_DEFAULT_MODEL")
         expect(ENV).not_to have_key("SAMAGOTCHI_SERVER_HOST")
         expect(Samagotchi::Config.get_with_origin("default.model")).to eq(["Qwen3-14B-Instruct", :file])

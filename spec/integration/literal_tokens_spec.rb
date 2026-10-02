@@ -23,7 +23,7 @@ require "fileutils"
 #   SAMAGOTCHI_SERVER_HOST=myhost SAMAGOTCHI_SERVER_PORT=9090 SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/literal_tokens_spec.rb -v
 RSpec.describe "read tool - literal control token integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new(profile: profile) }
-  let(:profile) { Samagotchi::ModelProfile.from_env }
+  let(:profile) { Samagotchi::ModelProfile.from_model_name(Samagotchi::ModelProfile.required_model_name) }
 
   around(:each) do |example|
     Dir.mktmpdir do |dir|
