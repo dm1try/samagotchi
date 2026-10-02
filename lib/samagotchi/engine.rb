@@ -1241,8 +1241,9 @@ module Samagotchi
 
     # Answer the pending question (called from UI thread; QuestionDesk#answer).
     # @return [Hash] normalized answer
-    def answer_question(id:, selected:, freeform: nil, client_id: nil)
-      @question_desk.answer(id: id, selected: selected, freeform: freeform, client_id: client_id)
+    def answer_question(id:, selected:, freeform: nil, client_id: nil, parent_agent: nil)
+      @question_desk.answer(id: id, selected: selected, freeform: freeform, client_id: client_id,
+                            parent_agent: parent_agent)
     end
 
     def set_question_sync_handler(&block)

@@ -81,6 +81,8 @@ module Samagotchi
       # Dismissed (the card's dismiss, Esc): an answer of its own, not a
       # tool failure the model learns to avoid the tool from.
       result = { dismissed: true, id: result[:id], note: DISMISSED_NOTE } if result.is_a?(Hash) && result[:error] == "no answer"
+      # Who answered is for the relay, not the model's tool result.
+      result = result.except(:by) if result.is_a?(Hash)
       result.is_a?(String) ? result : JSON.generate(result)
     end
 
@@ -187,16 +189,19 @@ module Samagotchi
     # @param id [String] pending id
     # @param selected [Array<String>] values/labels
     # @param freeform [String, nil]
-    # @param client_id [String, nil] who answers; chi answer's (a parent
-    #   agent) is held to guardrails.parent_approvals on an approval
-    # @return [Hash] normalized answer
+    # @param client_id [String, nil] who answers
+    # @param parent_agent [Boolean, nil] the answer is a parent agent's, so
+    #   it is held to guardrails.parent_approvals on an approval and doesn't
+    #   bring the session back to the lists; nil: chi answer's client id says so
+    # @return [Hash] normalized answer; a parent agent's carries by: "parent_agent"
     # @raise [NotPending, ArgumentError, Refused]
-    def answer(id:, selected:, freeform: nil, client_id: nil)
+    def answer(id:, selected:, freeform: nil, client_id: nil, parent_agent: nil)
       sel = Array(selected).map { |v| v.to_s.strip }.reject(&:empty?)
       fm = freeform.to_s.strip
       fm = nil if fm.empty?
+      parent_agent = client_id.to_s == Guardrails::ParentApprovals::CLIENT_ID if parent_agent.nil?
       # Read before the lock (config may touch the disk); this worker's own.
-      parent_setting = Guardrails::ParentApprovals.setting if client_id.to_s == Guardrails::ParentApprovals::CLIENT_ID
+      parent_setting = Guardrails::ParentApprovals.setting if parent_agent
       @lock.synchronize do
         pending = @pending
         raise NotPending, "no pending question" unless pending
@@ -230,12 +235,13 @@ module Samagotchi
         answer = { id: id.to_s, selected: sel, freeform: fm }
         # Derive indices for convenience
         answer[:selected_indices] = indices.compact
+        answer[:by] = "parent_agent" if parent_agent
         @answer = answer
         @cv.broadcast
         answer
       end.tap do
         # A human answered: the session is back in the lists (ArchiveStore).
-        @user_input.call(session&.id)
+        @user_input.call(session&.id) unless parent_agent
       end
     end
 

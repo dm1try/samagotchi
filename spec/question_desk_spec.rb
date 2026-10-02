@@ -94,4 +94,39 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(box[:answer]).to eq(error: "cancelled", reason: "user", id: id)
     end
   end
+
+  describe "#answer parent_agent:" do
+    let(:fields) do
+      { question: "execute: x", options: ["Allow once", "Deny"], multi_select: false, allow_freeform: true,
+        kind: "approval", approval: { tool: "execute", scopes: ["once"] } }
+    end
+
+    before do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("off")
+    end
+
+    it "holds an answer marked parent_agent to the setting, whatever its client id" do
+      thread, box, id = open_in_background
+      expect { desk.answer(id: id, selected: ["Allow once"], client_id: "relay:ab12cd34", parent_agent: true) }
+        .to raise_error(Samagotchi::QuestionDesk::Refused)
+
+      desk.answer(id: id, selected: ["Deny"], client_id: "relay:ab12cd34", parent_agent: true)
+      thread.join(2)
+      expect(box[:answer]).to include(selected: ["Deny"], by: "parent_agent")
+      # A parent agent's answer doesn't bring the session back to the lists.
+      expect(inputs).to be_empty
+    end
+
+    it "takes chi answer's client id as a parent agent by default, and a user's answer as before" do
+      thread, _box, id = open_in_background
+      expect { desk.answer(id: id, selected: ["Allow once"], client_id: "cli:answer") }
+        .to raise_error(Samagotchi::QuestionDesk::Refused)
+
+      answer = desk.answer(id: id, selected: ["Allow once"], client_id: "relay:ab12cd34", parent_agent: false)
+      thread.join(2)
+      expect(answer).to eq(id: id, selected: ["Allow once"], freeform: nil, selected_indices: [0])
+      expect(inputs).to eq([session.id])
+    end
+  end
 end
