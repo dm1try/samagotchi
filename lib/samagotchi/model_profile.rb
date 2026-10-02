@@ -352,16 +352,6 @@ module Samagotchi
     end
     private_class_method :probe?
 
-    # ── Thought channel support ──────────────────────────────────────────
-
-    def thought_channel_open
-      nil
-    end
-
-    def uses_channel_thoughts?
-      false
-    end
-
     def uses_role_prefixes?
       !system_prefix.empty? && !user_prefix.empty?
     end

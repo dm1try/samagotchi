@@ -25,9 +25,8 @@ RSpec.describe Samagotchi::ModelProfile do
       expect(profile.stop_sequences).to eq(["<end_of_turn>", "<|tool_response>"])
     end
 
-    it "uses channel-based thoughts" do
+    it "uses no role prefixes" do
       profile = described_class.gemma4
-      expect(profile.uses_channel_thoughts?).to be false
       expect(profile.uses_role_prefixes?).to be false
     end
   end
@@ -48,7 +47,6 @@ RSpec.describe Samagotchi::ModelProfile do
     it "uses role prefixes and simple think tags" do
       profile = described_class.qwen36
       expect(profile.uses_role_prefixes?).to be true
-      expect(profile.uses_channel_thoughts?).to be false
       expect(profile.thought_open).to eq("<think>")
       expect(profile.thought_close).to eq("</think>")
     end
