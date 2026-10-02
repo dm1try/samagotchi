@@ -48,7 +48,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 
 | Event | When it fires | Event payload |
 |-------|--------------|---------------|
-| `:session_start` | First turn of the session | `{ type: :session_start, session_id: "..." }` |
+| `:session_start` | The first turn this chi process runs for the session (so again after `--resume`, a worker that idle-exited and woke, or a restart) | `{ type: :session_start, session_id: "..." }` |
 | `:before_turn` | Before each turn starts | `{ type: :before_turn, session_id: "...", prompt: "..." (nil on a continue), messages: [...] (the history before this turn) }` |
 | `:after_turn` | After a turn completed or was stopped once the model was asked (not after one that failed, was cut short by an interrupt signal (SIGINT), or was stopped before its `:before_turn` hooks) | `{ type: :after_turn, status: "completed" \| "canceled", present: (see [Presenting the answer](#presenting-the-answer-display-only)), messages: [...] (the conversation the turn stored; a cancelled or empty turn ends it with a `kind: turn_note` system message, and a context line is `kind: context`, see [sessions.md](sessions.md#notes-a-turn-leaves-for-the-model)) }` |
 | `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
@@ -268,7 +268,7 @@ You can also register hooks programmatically during a turn (they are cleared
 automatically after each `run_turn`):
 
 ```ruby
-engine = Samagotchi::Engine.new(mode: :assist)
+engine = Samagotchi::Engine.new
 engine.register_hook(:before_turn) do |event|
   puts "Turn starting..."
 end
@@ -461,8 +461,8 @@ Notes:
 
 Lifecycle:
 
-- `chi bundle install <source>` copies `hooks/*.rb` to `~/.config/samagotchi/memories/.bundles/<name>/hooks/` and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance.
-- `Engine.new` loads `config.yml` hooks first, then bundle hooks via `Provenance.each_installed_holding_hooks` → `Hooks::BundleLoader.load`. Bundle hooks are process-scoped (they survive the per-turn `clear_hooks`; only plain hooks are cleared). Experimental bundles emit a one-line startup warning.
+- `chi bundle install <source>` copies the hook files its manifest's `hooks:` map lists (only those; with no `hooks:` map, every `hooks/*.rb`) to `~/.config/samagotchi/memories/.bundles/<name>/hooks/` and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance.
+- `Engine.new` loads `config.yml` hooks first, then bundle hooks via `MemoryBundle::Provenance.each_installed(holding: :hooks)` → `Hooks::BundleLoader.load`. Bundle hooks are process-scoped (they survive the per-turn `clear_hooks`; only plain hooks are cleared). Experimental bundles emit a one-line startup warning.
 - `chi bundle status`, `diff`, `uninstall`, `build` are hook-aware (counts, metadata, removal).
 
 ## The source-links bundle

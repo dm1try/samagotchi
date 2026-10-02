@@ -156,7 +156,7 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
 #### Using the core
 
 ```ruby
-engine = Samagotchi::Engine.new(mode: :assist, model_name: "gemma4", memories: [])
+engine = Samagotchi::Engine.new(model_name: "gemma4", memories: [])
 session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
 
 engine.run_turn(session, "hello", on_event: nil)   # => LLM::ModelResult (`.output`)
