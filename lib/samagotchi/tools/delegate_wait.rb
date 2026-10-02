@@ -55,6 +55,16 @@ module Samagotchi
         wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: timeout.to_i,
                                         poll_interval: poll_interval, cancelled: cancelled, baseline: baselines[key],
                                         owner_grace: owner_grace)
+        finish(wait, child_id, key: key, timeout: timeout)
+      rescue ArgumentError => e
+        "Error: #{e.message}"
+      end
+
+      # The tool result for how the wait ended.
+      # @param wait [ReplyWait::Result]
+      # @param key [Array(String, String)] [parent id, child id]
+      # @return [String]
+      def finish(wait, child_id, key:, timeout:)
         # The turn sent to is handed over: a later wait looks for a later one.
         baselines.delete(key) if %i[done no_reply].include?(wait.status)
         status = ParentReport.status(wait)
@@ -78,8 +88,6 @@ module Samagotchi
         else
           timeout_result(child_id, timeout)
         end
-      rescue ArgumentError => e
-        "Error: #{e.message}"
       end
 
       # Point the cursor at the newest reply now, so only a later one counts
