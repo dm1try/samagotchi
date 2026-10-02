@@ -14,6 +14,7 @@ require_relative "llm/errors"
 require_relative "host_registry"
 require_relative "session"
 require_relative "owner_lock"
+require_relative "bridge/card_store"
 require_relative "engine"
 require_relative "guardrails/parent_approvals"
 require_relative "tools/memory"
@@ -223,6 +224,7 @@ module Samagotchi
         scratch: @scratch
       ))
       claim_session!(session.id) unless @owner_lock
+      keep_cards(session)
       # Saved at once, so a process killed before its first turn leaves a
       # file the sweep knows to delete.
       session.save if @scratch
@@ -343,6 +345,15 @@ module Samagotchi
       @surface.commit("Archived session #{session.id}. chi sessions list --archived finds it.")
     rescue SessionManager::ArchiveRefused, SessionManager::OwnedByTUI, ArgumentError, SystemCallError => e
       @surface.commit("Session #{session.id} was not archived (#{e.message}): chi sessions archive #{session.id}")
+    end
+
+    # The session's cards.json, kept as a worker's Bridge keeps it (it owns
+    # the session as a worker would): this REPL's kept turns count on from
+    # the saved count, so a card an earlier worker showed stays that many
+    # turns back, and its own cards and notices are saved for the next.
+    def keep_cards(session)
+      path = File.join(Session.session_dir(session.id), Bridge::CardStore::FILE)
+      @cards_handle ||= @engine.subscribe(observer: Bridge::CardStore.new(path: path))
     end
 
     # Take the session's OwnerLock for this process's lifetime: the TUI runs

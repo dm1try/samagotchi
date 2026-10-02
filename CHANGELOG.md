@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A `--no-shared` REPL keeps the session's `cards.json` as a worker does: its turns count, so the cards and notices an
+  earlier worker showed stay where they were in the web, and the REPL's own are saved too.
+
 - A deleted, discarded or retention-pruned session takes its plugins' state with it: a bundle's
   `plugins/<bundle>/sessions/<id>.json` (or `<id>/`) under the state dir, such as check-in's `/checkin` settings, no
   longer stays behind.
