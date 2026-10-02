@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-02
+
 ### Added
 
 - `chi send --wait --format json` prints one JSON object on stdout however the wait ends: the reply, a question with its
@@ -63,6 +65,8 @@ and commands may change between minor versions. How releases are made:
 - A model named with a disabled host's prefix (`box:model` where `hosts.box` has `enabled: false`) is refused with "host 'box' is disabled" instead of going to the default host as a model id.
 - A Stop while a turn is still starting no longer uses up the warning about guardrails or plugins that failed to load: the next turn shows it.
 - A plugin or MCP tool call reads the same in logs, rows and hooks' `content` whatever the model format or Ruby version: its arguments as JSON (Qwen calls showed Ruby's Hash#inspect, which changed in Ruby 3.4). A plugin tool returning a Hash or Array gives the model JSON too.
+
+Update with `chi update` (bundles: guardrails 0.3.0).
 
 ## [0.12.0] - 2026-10-02
 
@@ -725,7 +729,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/dm1try/samagotchi/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/dm1try/samagotchi/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/dm1try/samagotchi/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/dm1try/samagotchi/compare/v0.10.0...v0.10.1
