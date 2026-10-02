@@ -51,6 +51,14 @@ module Samagotchi
       File.basename(common) == ".git" ? File.dirname(common) : common
     end
 
+    # The top of the git work tree holding +cwd+: the directory with the
+    # nearest .git (a linked worktree's own checkout, unlike #project_root);
+    # nil outside any repository.
+    def work_tree_root(cwd = Dir.pwd)
+      dot_git = find_dot_git(cwd)
+      dot_git && File.dirname(dot_git)
+    end
+
     # Is +cwd+ inside a git repository (a .git somewhere above it)?
     def in_repo?(cwd = Dir.pwd)
       !find_dot_git(cwd).nil?

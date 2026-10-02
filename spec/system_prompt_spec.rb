@@ -33,4 +33,52 @@ RSpec.describe Samagotchi::SystemPrompt do
     ENV["PATH"] = @bin
     expect(rg_available?).to be(false)
   end
+
+  describe "AGENT.md" do
+    def description(cwd)
+      saved = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      Dir.chdir(cwd) { prompt.send(:project_specific_description) }
+    ensure
+      saved.nil? ? ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD") : ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = saved
+    end
+
+    def write(path, text)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, text)
+    end
+
+    let(:repo) { File.join(File.realpath(@bin), "repo") }
+
+    before { FileUtils.mkdir_p(File.join(repo, ".git")) }
+
+    it "is read from the work tree root when chi runs in a subdirectory" do
+      write(File.join(repo, "AGENT.md"), "root notes")
+      FileUtils.mkdir_p(File.join(repo, "lib", "deep"))
+      expect(description(File.join(repo, "lib", "deep"))).to eq("Project specific description:\nroot notes")
+    end
+
+    it "prefers the current directory's AGENT.md over the root's" do
+      write(File.join(repo, "AGENT.md"), "root notes")
+      write(File.join(repo, "sub", "AGENT.md"), "sub notes")
+      expect(description(File.join(repo, "sub"))).to eq("Project specific description:\nsub notes")
+    end
+
+    it "is read from a linked worktree's own checkout, not the main one" do
+      write(File.join(repo, "AGENT.md"), "main checkout notes")
+      FileUtils.mkdir_p(File.join(repo, ".git", "worktrees", "wt"))
+      wt = File.join(File.dirname(repo), "wt")
+      write(File.join(wt, ".git"), "gitdir: #{File.join(repo, ".git", "worktrees", "wt")}\n")
+      write(File.join(wt, "AGENT.md"), "worktree notes")
+      FileUtils.mkdir_p(File.join(wt, "src"))
+      expect(description(File.join(wt, "src"))).to eq("Project specific description:\nworktree notes")
+    end
+
+    it "is only the current directory's outside a git repository" do
+      outside = File.join(File.realpath(@bin), "plain", "sub")
+      FileUtils.mkdir_p(outside)
+      write(File.join(File.realpath(@bin), "plain", "AGENT.md"), "parent notes")
+      expect(description(outside)).to be_nil
+    end
+  end
 end

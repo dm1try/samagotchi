@@ -742,6 +742,10 @@ The helper reads these from its launch file: after editing them run
 
 If an AGENT.md file is present in the project root, samagotchi injects its
 contents into the system prompt under a "Project specific description:" section.
+The project root is the top of the git work tree chi runs in (a linked
+worktree's own checkout), or the current directory outside a repository. An
+AGENT.md in the current directory is read instead when there is one; only one
+file is read.
 
 To skip loading AGENT.md, set `skip_agent_md: true` at the top level of
 `config.yml` (env `SAMAGOTCHI_SKIP_AGENT_MD=true`).

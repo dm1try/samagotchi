@@ -328,11 +328,12 @@ module Samagotchi
 
     # ── Project / rg helpers ───────────────────────────────────────────────────
 
+    # AGENT.md in the cwd, else at the top of its git work tree.
     def project_specific_description
       return nil if skip_agent_description?
 
-      path = File.join(Dir.pwd, AGENT_DESCRIPTION_FILE)
-      return nil unless File.file?(path)
+      path = agent_description_path
+      return nil unless path
 
       content = File.read(path).strip
       return nil if content.empty?
@@ -340,6 +341,13 @@ module Samagotchi
       "Project specific description:\n#{content}"
     rescue StandardError
       nil
+    end
+
+    def agent_description_path
+      cwd = Dir.pwd
+      [cwd, MemoryPaths.work_tree_root(cwd)].compact.uniq
+        .map { |dir| File.join(dir, AGENT_DESCRIPTION_FILE) }
+        .find { |path| File.file?(path) }
     end
 
     # Where the session runs and which project memory folder it uses. The root
