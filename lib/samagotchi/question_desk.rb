@@ -36,6 +36,9 @@ module Samagotchi
       end
     end
 
+    # Seconds between two looks of an open question's watch (#open_question).
+    WATCH_INTERVAL = 0.5
+
     DISMISSED_NOTE = "The user dismissed the question without answering. Don't do what you asked about, " \
                      "or anything else that changes files or state. Finish your reply with what you found " \
                      "and what you would do, and wait."
@@ -73,8 +76,8 @@ module Samagotchi
     # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
     # @return [String] normalized answer JSON
     def request(payload)
-      result = open_question(**payload.slice(:question, :options, :header),
-                             multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform])
+      result = open_question({ **payload.slice(:question, :options, :header),
+                               multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform] })
       # Dismissed (the card's dismiss, Esc): an answer of its own, not a
       # tool failure the model learns to avoid the tool from.
       result = { dismissed: true, id: result[:id], note: DISMISSED_NOTE } if result.is_a?(Hash) && result[:error] == "no answer"
@@ -87,9 +90,13 @@ module Samagotchi
     # The fields go to pending as given (no cleaning), extra keys
     # included, so a caller can add its own (kind:, approval:).
     # @param fields [Hash] question:, options:, header:, multi_select:, allow_freeform:, …
+    # @param watch [#call, nil] asked every WATCH_INTERVAL seconds while the
+    #   question waits (outside the lock): a String closes the question with
+    #   that reason, announced and returned as a cancel; nil keeps waiting.
+    #   An answer recorded first wins. Not on the sync-handler path.
     # @return [Hash, String] the answer {id:, selected:, freeform:, selected_indices:},
     #   or {error:, …}; a String when a sync handler returned text itself
-    def open_question(fields)
+    def open_question(fields, watch: nil)
       id = SecureRandom.uuid
       pending = { id: id, **fields, status: "pending", created_at: Time.now.iso8601(3) }.compact
 
@@ -150,20 +157,15 @@ module Samagotchi
       end
 
       # Block until answered/cancelled (cross-thread path: WEB/Bridge/background worker)
+      closed_reason = wait_for_answer(watch)
       answer = nil
       cancelled_reason = nil
       @lock.synchronize do
-        loop do
-          break if @answer
-          break if cancel_controller&.cancelled?
-          break if @pending.nil? || @pending[:status] != "pending"
-
-          # Wait with timeout to check cancel; 0.2s matches reminder poll
-          @cv.wait(0.2)
-        end
         answer = @answer
         controller = cancel_controller
-        cancelled_reason = controller.reason.to_s if answer.nil? && controller&.cancelled?
+        if answer.nil?
+          cancelled_reason = closed_reason || (controller.reason.to_s if controller&.cancelled?)
+        end
         @pending = nil
       end
       # Saved and announced outside the question lock (see the sync path).
@@ -291,6 +293,47 @@ module Samagotchi
     end
 
     private
+
+    # Wait until the question is answered, cancelled or closed by +watch+.
+    # @return [String, nil] the watch's close reason
+    def wait_for_answer(watch)
+      next_watch = monotonic + WATCH_INTERVAL
+      loop do
+        done = @lock.synchronize do
+          next true if @answer || cancel_controller&.cancelled?
+          next true if @pending.nil? || @pending[:status] != "pending"
+
+          # Wait with timeout to check cancel; 0.2s matches reminder poll
+          @cv.wait([0.2, watch ? next_watch - monotonic : 0.2].min.clamp(0.0, 0.2))
+          false
+        end
+        return nil if done
+        next unless watch && monotonic >= next_watch
+
+        next_watch = monotonic + WATCH_INTERVAL
+        reason = run_watch(watch)
+        next unless reason
+
+        closed = @lock.synchronize do
+          next false if @answer || @pending.nil? || @pending[:status] != "pending"
+
+          @pending[:status] = "cancelled"
+          true
+        end
+        return reason if closed
+      end
+    end
+
+    # The watch's close reason; one that raises closes nothing.
+    def run_watch(watch)
+      reason = watch.call
+      reason&.to_s
+    rescue StandardError => e
+      Log.warn(:turn, "question_watch_failed", error: e.class.name, message: e.message)
+      nil
+    end
+
+    def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     def session = @session_lookup.call
     def state_dir = @state_dir_lookup.call

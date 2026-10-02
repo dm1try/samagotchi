@@ -1232,9 +1232,11 @@ module Samagotchi
     # Open a question for the UIs and wait for its answer
     # (QuestionDesk#open_question: BLOCKS until answered or cancelled).
     # @param fields [Hash] question:, options:, header:, multi_select:, allow_freeform:, …
+    #   (as a Hash or as keywords)
+    # @param watch [#call, nil] closes the question with the reason it returns
     # @return [Hash, String] the answer, or {error:, …}
-    def open_question(fields)
-      @question_desk.open_question(fields)
+    def open_question(fields = nil, watch: nil, **more)
+      @question_desk.open_question({ **fields.to_h, **more }, watch: watch)
     end
 
     # Answer the pending question (called from UI thread; QuestionDesk#answer).
