@@ -430,6 +430,7 @@ module Samagotchi
       %w[POST exit] => :handle_exit_request,
       %w[POST recap] => :handle_recap,
       %w[POST relay] => :handle_relay,
+      %w[POST relay/status] => :handle_relay_status,
       %w[GET state] => :handle_state,
       %w[GET stats] => :handle_stats,
       %w[GET snapshot] => :handle_snapshot
@@ -898,6 +899,19 @@ module Samagotchi
 
     def close_after_request?(headers)
       headers["connection"].to_s.downcase == "close"
+    end
+
+    # POST /session/:id/relay/status {relay_id}: what this (the parent's)
+    # worker's relay holds, for the child that verifies an answer
+    # (RelayVerifier). Read-only and no secret; 404 for an unknown id.
+    def handle_relay_status(_session_id, body)
+      parsed = parse_json(body)
+      return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
+
+      relay = @engine.relay_desk.status(fetched(parsed, "relay_id").to_s)
+      return [{}, 404, { error: "unknown_relay" }] unless relay
+
+      [{}, 200, relay]
     end
 
     # A parent's relay card for +qid+ opened: the question says so (the

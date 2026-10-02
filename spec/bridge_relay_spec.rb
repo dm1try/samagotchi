@@ -117,4 +117,20 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       expect(client_for(orphan).relay(action: "opened", relay_id: "r", question_id: "q").status).to eq(422)
     end
   end
+
+  describe "relay/status (the parent's)" do
+    before { serve(parent_engine, parent) }
+
+    it "reports what the parent's relay holds, 404 for one it doesn't know" do
+      id = parent_engine.relay_desk.open(child_id: child.id, child_question_id: "q-1")
+      parent_engine.relay_desk.record(id, selected_indices: [0], freeform: nil, by: "user")
+
+      response = client_for(parent).relay_status(id)
+      expect(response.status).to eq(200)
+      expect(response.json).to eq("child_id" => child.id, "child_question_id" => "q-1", "state" => "answered",
+                                  "answer" => { "selected_indices" => [0], "freeform" => nil, "dismissed" => false },
+                                  "by" => "user")
+      expect(client_for(parent).relay_status("nope").status).to eq(404)
+    end
+  end
 end
