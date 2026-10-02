@@ -223,8 +223,6 @@ module Samagotchi
       # memory_read guard reads the same list for every turn.
       @muted_memory_names = MutedMemories.normalize_list(muted_memories)
       @kernel.muted_memory_names = @muted_memory_names
-      # Keep kernel client in sync with active host via setter
-      @kernel_client_synced = false
       # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
       @kernel.question_handler = proc { |payload| request_question(payload) }
       # Every tool call asks this gate first. The kernel is never rebuilt, so
@@ -965,10 +963,6 @@ module Samagotchi
     #   #activated_memory_names
     def preloaded_memory_names
       @prompt_builder.preloaded_memory_names
-    end
-
-    def memory_muted?(name)
-      MutedMemories.muted?(name, @muted_memory_names)
     end
 
     # ── Guardrails ─────────────────────────────────────────────────────────────

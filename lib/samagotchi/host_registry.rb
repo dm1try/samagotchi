@@ -21,7 +21,6 @@ module Samagotchi
   class HostRegistry
     CACHE_TTL_SECONDS = 60
     REMOTE_CACHE_TTL_SECONDS = 600
-    LIST_TIMEOUT_SECONDS = 3
     # Seconds a remote host's stream may take to show something (a queued
     # free model on OpenRouter can send only keep-alives for minutes).
     REMOTE_FIRST_TOKEN_TIMEOUT = 120
