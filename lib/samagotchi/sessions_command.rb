@@ -203,7 +203,7 @@ module Samagotchi
           Samagotchi::SessionMetrics.saved_context_pct(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
         )
         # A question waits for an answer (chi answer, the web, chi --attach).
-        live = s.pending_question && Samagotchi::SessionManager.session_owner(s.id, state_dir: state_dir)&.kind == "worker"
+        live = s.pending_question && Samagotchi::SessionManager.worker_live?(s.id, state_dir: state_dir)
         status = s.waiting_question(live: !!live) ? "waiting" : s.status
         "#{s.id}  #{status.ljust(8)}  #{ctx.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
       end

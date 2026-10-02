@@ -1511,6 +1511,18 @@ RSpec.describe Samagotchi::SessionManager do
       expect(summary[:preview]).to eq("answer: the build failed nested same bug?")
     end
 
+    it ".worker_live? is true only while a worker holds the session, not a REPL" do
+      worker = make
+      repl = make
+      none = make
+      own(worker)
+      own(repl, kind: "tui")
+
+      expect(described_class.worker_live?(worker.id, state_dir: tmpdir)).to be(true)
+      expect(described_class.worker_live?(repl.id, state_dir: tmpdir)).to be(false)
+      expect(described_class.worker_live?(none.id, state_dir: tmpdir)).to be(false)
+    end
+
     it "live: only sessions a worker owns now, not a REPL's and not a stale running status" do
       worker = make(updated: "2026-09-24T10:00:00Z")
       repl = make(updated: "2026-09-24T11:00:00Z")

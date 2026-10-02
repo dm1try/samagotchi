@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 - `chi send --wait` exits 4 (not 1) when `--timeout` passes with the turn still running.
 - Attached `chi -p` from a script exits 3 (not 1) when it leaves a question or an approval waiting for an answer.
 - `chi send --wait`'s exit 3 prints the whole question on stderr: its text, numbered options and how to answer it.
+- `delegate` / `delegate_result` on a child waiting for an answer give the whole question: its text, numbered options
+  and the `chi answer` command for it.
 
 ### Fixed
 

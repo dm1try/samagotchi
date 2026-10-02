@@ -240,13 +240,13 @@ module Samagotchi
                          .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
                          .select { |s| root.nil? || in_folder?(s.working_directory, root) }
                          .filter_map do |s|
-        owner = session_owner(s.id, state_dir: sd)&.kind
-        owned = owner == "worker"
+        owner = session_owner(s.id, state_dir: sd)
+        owned = !!owner&.worker?
         next if live && !owned
 
         { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
           project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
-          owner: owner, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
+          owner: owner&.kind, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
           ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd))&.round(1),
           parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), archived: s.archived,
           scratch: s.scratch, test_run: s.test_run, waiting: s.waiting_question(live: owned)&.dig(:kind) }
@@ -830,6 +830,15 @@ module Samagotchi
     # @return [OwnerLock::Owner, nil]
     def self.session_owner(session_id, state_dir: nil)
       OwnerLock.owner(Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir))
+    end
+
+    # A worker owns the session now: the one rule for whether a saved
+    # pending question waits for anyone (Session#waiting_question's live:).
+    # A chi REPL's question is its own (nothing else can answer it), and one
+    # a dead worker saved waits for no one.
+    # @return [Boolean]
+    def self.worker_live?(session_id, state_dir: nil)
+      !!session_owner(session_id, state_dir: state_dir)&.worker?
     end
 
     # The session's owner (#session_owner), unless it is the interactive

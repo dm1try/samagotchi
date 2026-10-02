@@ -271,13 +271,16 @@ RSpec.describe "delegate tools" do
       expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet after 0 s")
     end
 
-    it "returns early while the child waits for an approval or a question, and says which" do
+    it "returns early while the child waits for an approval or a question, with the whole question" do
       set_status(child, "running", pending_question: { id: "q1", kind: "approval", question: "Run rm?" })
-      expect(wait).to eq("session: #{child.id}\nstatus: waiting_for_answer\nChild #{child.id} is waiting for an answer (an approval); " \
-                         "attach with chi --attach #{child.id} or answer it in the web. delegate_result #{child.id} waits again once it is answered.")
+      expect(wait).to eq("session: #{child.id}\nstatus: waiting_for_answer\nChild #{child.id} is waiting for an answer (approval): Run rm?\n" \
+                         "  answer: chi answer #{child.id} --question q1 --option N\n" \
+                         "  or open it: chi --attach #{child.id} or the web\n" \
+                         "delegate_result #{child.id} waits again once it is answered.")
 
-      set_status(child, "running", pending_question: { id: "q2", question: "Which one?" })
-      expect(wait).to include("status: waiting_for_answer\nChild #{child.id} is waiting for an answer (a question)")
+      set_status(child, "running", pending_question: { id: "q2", question: "Which one?", options: %w[A B] })
+      expect(wait).to include("status: waiting_for_answer\nChild #{child.id} is waiting for an answer (question): Which one?\n" \
+                              "    1. A\n    2. B\n  answer: chi answer #{child.id} --question q2 --option N\n")
     end
 
     it "returns when the parent's turn is canceled; the child keeps running" do

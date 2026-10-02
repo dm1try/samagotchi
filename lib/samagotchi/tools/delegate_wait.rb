@@ -2,6 +2,7 @@
 
 require_relative "../session"
 require_relative "../reply_wait"
+require_relative "../parent_report"
 require_relative "output_guardrails"
 require_relative "peers"
 
@@ -98,9 +99,10 @@ module Samagotchi
                "chi --attach #{child_id} shows it.")
       end
 
+      # The whole question, as `chi send --wait` prints it (ParentReport):
+      # its text, options and the commands that answer it.
       def waiting_text(child_id, pending)
-        what = pending[:kind].to_s == "approval" ? "an approval" : "a question"
-        "Child #{child_id} is waiting for an answer (#{what}); attach with chi --attach #{child_id} or answer it in the web. " \
+        "Child #{child_id} is #{ParentReport.question_text(pending, session_id: child_id)}" \
           "delegate_result #{child_id} waits again once it is answered."
       end
 
