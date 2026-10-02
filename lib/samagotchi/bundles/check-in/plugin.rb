@@ -15,12 +15,19 @@
 # (a card's actions run while the turn goes on), so the state is behind a
 # Mutex.
 #
+# What /checkin changes (on/off, mode, the threshold) is the session's: it
+# is saved in the bundle's data dir (sessions/<id>.json) and read back
+# when the session comes back (a worker's restart), before its first turn
+# or command. Another session starts from the settings.
+#
 # Settings (config.yml, bundles: check-in:):
 #   after: 50          tool calls in one turn before the first check-in
 #   every: 50          then again every this many more
 #   mode: ask          ask | nudge | notify
 #   message: "..."     what a nudge says; {calls} is the count
 #   ignore_tools: [task_wait, task_get, delegate_result]
+require "fileutils"
+require "json"
 require "securerandom"
 
 class Plugin
@@ -39,6 +46,8 @@ class Plugin
     @message = message.empty? ? DEFAULT_MESSAGE : message
     @ignore = settings.key?("ignore_tools") ? Array(settings["ignore_tools"]).map(&:to_s) : DEFAULT_IGNORE
     @enabled = true
+    @defaults = { "enabled" => @enabled, "mode" => @mode, "after" => @after, "every" => @every }
+    @session = :none # the session whose /checkin state is loaded
     @mutex = Mutex.new
     reset
   end
@@ -69,7 +78,10 @@ class Plugin
 
   def before_turn(ctx)
     close_card(ctx, "The turn ended after #{calls} tool calls.")
-    @mutex.synchronize { reset }
+    @mutex.synchronize do
+      load_session(ctx)
+      reset
+    end
   end
 
   def after_tool_call(event, ctx)
@@ -77,6 +89,7 @@ class Plugin
     return if @ignore.include?(tool)
 
     due = @mutex.synchronize do
+      load_session(ctx)
       @count += 1
       @tools = (@tools + [tool]).last(LAST_TOOLS)
       next nil unless @enabled && @count >= @next_at
@@ -159,18 +172,25 @@ class Plugin
   # --- /checkin --------------------------------------------------------------
 
   def command(args, ctx)
+    @mutex.synchronize { load_session(ctx) }
     case args
     when "" then status
     when "on", "off"
-      @mutex.synchronize { @enabled = args == "on" }
+      @mutex.synchronize do
+        @enabled = args == "on"
+        save_session(ctx)
+      end
       "check-in is #{args} for this session"
     when /\A\d+\z/
-      threshold(Integer(args))
+      threshold(Integer(args), ctx)
     when /\Amode\s+(\S+)\z/
       mode = Regexp.last_match(1)
       return "check-in: unknown mode #{mode} (ask, nudge or notify)" unless MODES.include?(mode)
 
-      @mutex.synchronize { @mode = mode }
+      @mutex.synchronize do
+        @mode = mode
+        save_session(ctx)
+      end
       "check-in mode is #{mode} for this session"
     when "nudge" then nudge(ctx)
     when "later" then later(ctx)
@@ -189,12 +209,13 @@ class Plugin
 
   # For this session: check in at +n+ calls and every +n+ after; a turn
   # already past it is checked on +n+ calls from now.
-  def threshold(n)
+  def threshold(n, ctx)
     return "check-in: the threshold must be at least 1" unless n.positive?
 
     @mutex.synchronize do
       @after = @every = n
       @next_at = n > @count ? n : @count + n
+      save_session(ctx)
     end
     "check-in after #{n} tool calls, then every #{n}, for this session"
   end
@@ -222,6 +243,48 @@ class Plugin
     close_card(ctx, "Stopped the turn at #{calls} tool calls.")
     nil
   end
+
+  # --- the session's /checkin state (under @mutex) ---------------------------
+
+  # The current session's state, when the session isn't the one loaded:
+  # its saved file over the settings.
+  def load_session(ctx)
+    id = ctx.session_id
+    return if id == @session
+
+    @session = id
+    state = @defaults.merge(read_state(ctx, id))
+    @enabled = state["enabled"] == true
+    @mode = MODES.include?(state["mode"]) ? state["mode"] : @defaults["mode"]
+    @after = positive(state["after"]) || @defaults["after"]
+    @every = positive(state["every"]) || @defaults["every"]
+    @next_at = @after if @count.zero?
+  end
+
+  def read_state(ctx, id)
+    return {} unless id
+
+    data = JSON.parse(File.read(state_path(ctx, id)))
+    data.is_a?(Hash) ? data : {}
+  rescue SystemCallError, JSON::ParserError
+    {}
+  end
+
+  # Written aside and renamed: a reader never sees half a file.
+  def save_session(ctx)
+    id = ctx.session_id
+    return unless id
+
+    path = state_path(ctx, id)
+    FileUtils.mkdir_p(File.dirname(path))
+    temp = "#{path}.#{Process.pid}.tmp"
+    File.write(temp, JSON.generate({ "enabled" => @enabled, "mode" => @mode, "after" => @after, "every" => @every }))
+    File.rename(temp, path)
+  rescue SystemCallError => e
+    ctx.log.warn("check_in_state_not_saved", msg: e.message) if ctx.respond_to?(:log)
+  end
+
+  def state_path(ctx, id) = File.join(ctx.data_dir, "sessions", "#{id.to_s.gsub(/[^A-Za-z0-9_.-]+/, "_")}.json")
 
   # --- helpers ---------------------------------------------------------------
 

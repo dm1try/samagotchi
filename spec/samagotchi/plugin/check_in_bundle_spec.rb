@@ -21,9 +21,11 @@ RSpec.describe "The check-in plugin" do
       prepend PluginHandlerCtx
 
       attr_reader :notices, :cards, :steers, :stops
-      attr_accessor :running
+      attr_accessor :running, :session_id, :data_dir
 
       def initialize
+        @session_id = "s1"
+        @data_dir = Dir.mktmpdir("check-in-data-")
         @notices = []
         @cards = []
         @steers = []
@@ -38,6 +40,8 @@ RSpec.describe "The check-in plugin" do
     end.new
   end
   let(:steered) { [] }
+
+  after { FileUtils.rm_rf(ctx.data_dir) }
 
   # The plugin as the loader builds it: its file in a module of its own,
   # register(chi) collecting the chi.on blocks and the command.
@@ -232,6 +236,30 @@ RSpec.describe "The check-in plugin" do
       expect(checkin(p, "0")).to eq("check-in: the threshold must be at least 1")
       expect(checkin(p)).to eq("check-in is off: mode nudge, after 30 tool calls, then every 30; this turn: 0 tool calls")
       expect(checkin(p, "what")).to start_with("usage: /checkin")
+    end
+
+    it "keeps the session's changes across a restart (a new plugin), and only that session's" do
+      checkin(p, "off")
+      checkin(p, "mode nudge")
+      checkin(p, "30")
+      restarted = plugin
+      expect(checkin(restarted)).to eq("check-in is off: mode nudge, after 30 tool calls, then every 30; this turn: 0 tool calls")
+
+      ctx.session_id = "s2"
+      expect(checkin(restarted)).to eq("check-in is on: mode ask, after 50 tool calls, then every 50; this turn: 0 tool calls")
+      turn(restarted)
+      ctx.session_id = "s1"
+      turn(restarted)
+      expect(checkin(restarted)).to start_with("check-in is off: mode nudge, after 30 tool calls")
+      expect(Dir.children(File.join(ctx.data_dir, "sessions"))).to eq(["s1.json"])
+    end
+
+    it "a restored threshold counts from the session's next turn" do
+      checkin(p, "2")
+      restarted = plugin
+      turn(restarted)
+      tools(restarted, "a", "b")
+      expect(ctx.cards.last[:title]).to eq("2 tool calls, no answer yet")
     end
 
     it "off stops the check-ins; on brings them back" do

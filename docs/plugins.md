@@ -930,7 +930,10 @@ bundles:
 and what is left, not "how's it going?": a small model tends to answer that
 with a line and carry on unchanged.
 
-`/checkin` (anytime) for this session, until its worker restarts:
+`/checkin` (anytime) for this session. What it changes (on/off, the mode,
+the threshold) is saved with the session, in the bundle's data dir
+(`plugins/check-in/sessions/<id>.json`), so it outlasts a worker's restart;
+another session starts from config.yml:
 
 | | |
 |---|---|
