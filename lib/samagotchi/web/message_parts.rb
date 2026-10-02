@@ -46,7 +46,8 @@ module Samagotchi
 
       QWEN_THINK = %r{<think>(.*?)</think>}m
       QWEN_OPEN_THINK = %r{\A(.*?)</think>}m # the template opened the block
-      GEMMA_THOUGHT = /<\|channel>thought(.*?)(?:<channel\|>|\z)/m
+      GEMMA_THOUGHT = Regexp.new("#{Regexp.escape(ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN)}(.*?)" \
+                                 "(?:#{Regexp.escape(ModelProfile::GEMMA_THOUGHT_CHANNEL_CLOSE)}|\\z)", Regexp::MULTILINE)
 
       CallRef = Struct.new(:name, :arguments)
 

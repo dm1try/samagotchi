@@ -25,15 +25,15 @@ module Samagotchi
   # not a block and stays in `:text` (the model doesn't emit it; the system
   # prompt carries it).
   class ThoughtStreamSplitter
-    # Gemma 4's thought channel (ToolCallParser::Gemma strips the same pair).
-    GEMMA_THOUGHT_CHANNEL = { open: "<|channel>thought", close: "<channel|>" }.freeze
-
     # @return [Array<Hash>] each entry { open: String, close: String, lane: :thinking|:drop }
     def self.for_profile(profile)
       blocks = []
       # A thinking block needs a close marker to be bounded.
       blocks << { open: profile.thought_open, close: profile.thought_close, lane: :thinking } if profile.thought_close
-      blocks << GEMMA_THOUGHT_CHANNEL.merge(lane: :thinking) if profile.name == "gemma4"
+      # Gemma 4's thought channel (ToolCallParser::Gemma strips the same pair).
+      if profile.thought_channel_open
+        blocks << { open: profile.thought_channel_open, close: profile.thought_channel_close, lane: :thinking }
+      end
       blocks << { open: profile.tool_call_open, close: profile.tool_call_close, lane: :drop }
       new(blocks)
     end

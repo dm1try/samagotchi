@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "model_profile"
+
 module Samagotchi
   # Escapes literal control-token text when arbitrary source/output is embedded
   # inside prompts, then restores those placeholders when model text is used.
@@ -13,8 +15,8 @@ module Samagotchi
       ["[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_CLOSE]]", "<tool_response|>"],
       ["[[SAMAGOTCHI_LITERAL_GEMMA_STRING_DELIM]]", '<|"|>'],
       ["[[SAMAGOTCHI_LITERAL_THINK_OPEN]]", "<|think|>"],
-      ["[[SAMAGOTCHI_LITERAL_THOUGHT_CHANNEL_OPEN]]", "<|channel>thought"],
-      ["[[SAMAGOTCHI_LITERAL_THOUGHT_CHANNEL_CLOSE]]", "<channel|>"]
+      ["[[SAMAGOTCHI_LITERAL_THOUGHT_CHANNEL_OPEN]]", ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN],
+      ["[[SAMAGOTCHI_LITERAL_THOUGHT_CHANNEL_CLOSE]]", ModelProfile::GEMMA_THOUGHT_CHANNEL_CLOSE]
     ].freeze
 
     QWEN_TOKEN_PAIRS = [

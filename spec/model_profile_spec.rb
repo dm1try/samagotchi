@@ -25,9 +25,11 @@ RSpec.describe Samagotchi::ModelProfile do
       expect(profile.stop_sequences).to eq(["<end_of_turn>", "<|tool_response>"])
     end
 
-    it "uses no role prefixes" do
+    it "uses no role prefixes and thinks in a channel" do
       profile = described_class.gemma4
       expect(profile.uses_role_prefixes?).to be false
+      expect([profile.thought_channel_open, profile.thought_channel_close]).to eq(["<|channel>thought", "<channel|>"])
+      expect(described_class.qwen36.thought_channel_open).to be_nil
     end
   end
 

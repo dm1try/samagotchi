@@ -18,11 +18,18 @@ module Samagotchi
     # so every surface that reports a missing model reports it the same way).
     UnknownHost = Class.new(MissingModel)
 
+    # Gemma 4 thinks in a channel: `<|channel>thought` … `<channel|>`. The
+    # one source for the parser, the stream splitter, the literal guard and
+    # the web's saved-message reader.
+    GEMMA_THOUGHT_CHANNEL_OPEN = "<|channel>thought"
+    GEMMA_THOUGHT_CHANNEL_CLOSE = "<channel|>"
+
     attr_reader :name, :turn_start, :turn_end,
                 :tool_call_open, :tool_call_close,
                 :tool_response_open, :tool_response_close,
                 :string_delim,
                 :thought_open, :thought_close,
+                :thought_channel_open, :thought_channel_close,
                 :system_prefix, :user_prefix, :assistant_prefix,
                 :model_prefix,
                 :stop_sequences, :tool_decl_format,
@@ -39,6 +46,9 @@ module Samagotchi
       @string_delim = config[:string_delim]
       @thought_open = config[:thought_open]
       @thought_close = config[:thought_close]
+      # A thinking block besides thought_open's (Gemma's channel), or nil.
+      @thought_channel_open = config[:thought_channel_open]
+      @thought_channel_close = config[:thought_channel_close]
       @system_prefix = config[:system_prefix]
       @user_prefix = config[:user_prefix]
       @assistant_prefix = config[:assistant_prefix]
@@ -68,6 +78,8 @@ module Samagotchi
         string_delim: '<|"|>',
         thought_open: "<|think|>",
         thought_close: nil,
+        thought_channel_open: GEMMA_THOUGHT_CHANNEL_OPEN,
+        thought_channel_close: GEMMA_THOUGHT_CHANNEL_CLOSE,
         system_prefix: "",
         user_prefix: "",
         assistant_prefix: "",
