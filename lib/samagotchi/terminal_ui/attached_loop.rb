@@ -21,6 +21,8 @@ require_relative "../output_formatter"
 require_relative "../session_commands"
 require_relative "../session_manager"
 require_relative "../guardrails/parent_approvals"
+require_relative "../tool_activity"
+require_relative "../web/message_parts"
 
 module Samagotchi
   class TerminalUI
@@ -937,9 +939,7 @@ module Samagotchi
 
         @screen.commit(prompt_line(nil, exchange[last_user][:content]))
         Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
-        exchange[(last_user + 1)..].select { |m| Steer.steer?(m) }.each do |m|
-          @screen.commit(format_steer_line(source: m[:source], text: m[:content]))
-        end
+        render_join_steps(messages, messages.index { |m| m.equal?(exchange[last_user]) })
         # The saved answer is raw: the latest keeps its thinking, and one may
         # be only a tool call.
         answer = exchange[(last_user + 1)..].reverse_each
@@ -947,6 +947,31 @@ module Samagotchi
                                            .find { |text| !text.empty? }
         @screen.commit(last_lines(answer)) if answer
         render_join_notes(messages, after_exchange: true)
+      end
+
+      # What the last exchange did, as the live turn drew it: each saved
+      # call's tool row (action, params, status from its result; no
+      # duration, which the session doesn't keep) and a plugin's steer
+      # where it came. The step texts stay out, as live (the ticker's).
+      def render_join_steps(messages, from)
+        messages.each_with_index.drop(from + 1).each do |m, i|
+          if Steer.steer?(m)
+            @screen.commit(format_steer_line(source: m[:source], text: m[:content]))
+          elsif %w[model assistant].include?(m[:role].to_s)
+            responses = messages.drop(i + 1).take_while { |r| r[:role].to_s == "tool_response" }
+            Array(Web::MessageParts.for_message(m, responses)&.dig(:tools)).each { |part| @screen.commit(join_tool_line(part)) }
+          end
+        end
+      end
+
+      # A saved call's row; "no result" for a call the turn never answered
+      # (it ended first).
+      def join_tool_line(part)
+        output = part[:output]
+        status = output.nil? ? "no result" : ToolActivity.tool_activity_status(output, part[:tool])
+        activity = { action: part[:label] || ToolActivity.tool_activity_action(part[:tool]), tool: part[:tool],
+                     params: part[:params], status: status }
+        "#{format_tool_activity_line(activity)}#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
       end
 
       # The context notes that came since the last prompt (all of them in a

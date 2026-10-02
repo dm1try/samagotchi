@@ -95,12 +95,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(screen.lines).to eq(["user> code", "Here:\n```\ndef a\n    b = 1\nend\n```"])
     end
 
-    it "shows the last model message with text when the latest is only a tool call" do
+    it "shows the last model message with text when the latest is only a tool call (one never answered)" do
       feed(snapshot(messages: [{ role: "user", content: "go" }, { role: "model", content: "<think>a</think>Looking." },
                                { role: "tool_response", content: "r" },
                                { role: "model", content: "<think>b</think>\n<tool_call>\n<function=read>\n</function>\n</tool_call>" }]))
 
-      expect(screen.lines).to eq(["user> go", "Looking."])
+      expect(screen.lines).to eq(["user> go", 'tool> reading file (read path=""): no result', "Looking."])
+    end
+
+    it "shows the last exchange's tool calls as the live tool rows, between the prompt and the answer" do
+      feed(snapshot(messages: [{ role: "user", content: "find it" },
+                               { role: "model", content: "Searching.", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "true" } }] },
+                               { role: "tool_response", tool_call_id: "c1", content: "exit: 0" },
+                               { role: "model", content: "Searching.", tool_calls: [{ id: "c2", name: "read", arguments: { path: "NOPE.md" } }] },
+                               { role: "tool_response", tool_call_id: "c2", content: "Error: no such file" },
+                               { role: "model", content: "Done." }]))
+
+      expect(screen.lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                  'tool> reading file (read path="NOPE.md"): error', "Done."])
     end
 
     it "shows only the end of an answer made of long lines" do
