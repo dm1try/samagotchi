@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, heldOrder, listedSessions, sortedByUpdated, waitingBadge, waitingFirst, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, heldOrder, listedSessions, sortedByUpdated, waitingBadge, waitingFirst, waitingSearchText, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -99,4 +99,11 @@ test("waitingFirst moves a delegated family together, whichever member waits", (
 test("heldOrder keeps an order shown before; new sessions go after, gone ones drop", () => {
   const list = [asks("b"), { id: "a" }, { id: "n" }, { id: "c" }];
   assert.deepEqual(ids(heldOrder(["a", "b", "c", "gone"], list)), ["a", "b", "c", "n"]);
+});
+
+test("waitingSearchText: what the all view's search matches for a waiting session (its badge, its kind, waiting)", () => {
+  assert.equal(waitingSearchText({ pending_question: { id: "q1", kind: "question" } }), "waiting question");
+  assert.equal(waitingSearchText({ pending_question: { id: "q1", kind: "approval" } }), "waiting approval");
+  assert.equal(waitingSearchText({ pending_card: { id: "c1" } }), "waiting needs you");
+  assert.equal(waitingSearchText({ status: "idle" }), "");
 });

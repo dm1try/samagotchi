@@ -12,6 +12,7 @@ and commands may change between minor versions. How releases are made:
 
 - The hidden session strip's pill counts the sessions that wait for you (`▾ 5 sessions · 1 live · 1 waiting`, in the
   warn colour).
+- The all-sessions search finds the sessions that wait for you: `waiting`, `question`, `approval` or `needs you`.
 
 ### Fixed
 
