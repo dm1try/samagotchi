@@ -285,7 +285,7 @@ RSpec.describe Samagotchi::Web::App do
       raw = +""
       collected = Thread.new { body.each { |chunk| raw << chunk } }
       hub.touch(saved_session.id)
-      sleep 0.05
+      wait_until { raw.include?(": ping\r\n\r\n") }
       hub.stop
       collected.join(2)
 
