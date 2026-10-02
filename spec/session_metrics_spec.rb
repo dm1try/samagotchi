@@ -515,6 +515,33 @@ RSpec.describe Samagotchi::TokenUsage do
     end
   end
 
+  describe "SessionMetrics.saved_tool_records" do
+    let(:dir) { Dir.mktmpdir }
+
+    def save(data) = File.write(File.join(dir, "analytics.json"), JSON.generate(data))
+
+    it "reads one turn's saved tool records in call order" do
+      save("tool_records" => [
+             { "turn_id" => "t1", "iteration" => 2, "call_index" => 1, "tool" => "read", "duration_ms" => 30 },
+             { "turn_id" => "t0", "iteration" => 1, "call_index" => 1, "tool" => "read", "duration_ms" => 99 },
+             { "turn_id" => "t1", "iteration" => 1, "call_index" => 2, "tool" => "grep", "duration_ms" => 20 },
+             { "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "execute", "duration_ms" => 10 }
+           ])
+      records = Samagotchi::SessionMetrics.saved_tool_records(dir, "t1")
+      expect(records.map { |r| [r["tool"], r["duration_ms"]] }).to eq([["execute", 10], ["grep", 20], ["read", 30]])
+    end
+
+    it "is empty without a turn id, a file, records, or with a broken file" do
+      expect(Samagotchi::SessionMetrics.saved_tool_records(dir, "t1")).to eq([])
+      save("tool_records" => [{ "turn_id" => "t1", "tool" => "read", "duration_ms" => 1 }])
+      expect(Samagotchi::SessionMetrics.saved_tool_records(dir, nil)).to eq([])
+      save("turns" => 3)
+      expect(Samagotchi::SessionMetrics.saved_tool_records(dir, "t1")).to eq([])
+      File.write(File.join(dir, "analytics.json"), "{")
+      expect(Samagotchi::SessionMetrics.saved_tool_records(dir, "t1")).to eq([])
+    end
+  end
+
   describe ".from_payload" do
     it "extracts llama.cpp timings" do
       result = described_class.from_payload("timings" => { "prompt_n" => 50, "predicted_n" => 12 })

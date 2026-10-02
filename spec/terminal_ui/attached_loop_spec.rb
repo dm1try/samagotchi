@@ -133,6 +133,53 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(screen.lines).to eq(["user> go", "[No response]"])
     end
 
+    context "with the session's saved tool records" do
+      def save_records(records)
+        dir = Samagotchi::Session.session_dir("s-1234")
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "analytics.json"), JSON.generate("tool_records" => records))
+      end
+
+      let(:messages) do
+        [{ role: "user", content: "find it", turn_id: "t1" },
+         { role: "model", content: "Searching.", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "true" } }] },
+         { role: "tool_response", tool_call_id: "c1", content: "exit: 0" },
+         { role: "model", content: "Searching.", tool_calls: [{ id: "c2", name: "read", arguments: { path: "NOPE.md" } }] },
+         { role: "tool_response", tool_call_id: "c2", content: "Error: no such file" },
+         { role: "model", content: "Done." }]
+      end
+
+      after { FileUtils.rm_rf(Samagotchi::Session.session_dir("s-1234")) }
+
+      it "gives each replayed tool row its duration from the turn's records, as the live rows show it" do
+        save_records([{ turn_id: "t0", iteration: 1, call_index: 1, tool: "execute", duration_ms: 9000 },
+                      { turn_id: "t1", iteration: 1, call_index: 1, tool: "execute", duration_ms: 1234 },
+                      { turn_id: "t1", iteration: 2, call_index: 1, tool: "read", duration_ms: 42 }])
+        feed(snapshot(messages: messages))
+
+        expect(screen.lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok (1.2s)',
+                                    'tool> reading file (read path="NOPE.md"): error (42ms)', "Done."])
+      end
+
+      it "pairs the rows with the records in call order by tool, leaving a row without one bare" do
+        # The first call left no record (an older worker's turn, say): the
+        # read's record is not the execute's.
+        save_records([{ turn_id: "t1", iteration: 2, call_index: 1, tool: "read", duration_ms: 42 }])
+        feed(snapshot(messages: messages))
+
+        expect(screen.lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                    'tool> reading file (read path="NOPE.md"): error (42ms)', "Done."])
+      end
+
+      it "shows no durations for a prompt without a turn id (an older session)" do
+        save_records([{ turn_id: "t1", iteration: 1, call_index: 1, tool: "execute", duration_ms: 1234 }])
+        feed(snapshot(messages: [messages.first.except(:turn_id), *messages.drop(1)]))
+
+        expect(screen.lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                    'tool> reading file (read path="NOPE.md"): error', "Done."])
+      end
+    end
+
     it "shows only the end of an answer made of long lines" do
       feed(snapshot(messages: [{ role: "user", content: "essay" }, { role: "model", content: "#{"x" * 2000}END" }]))
 

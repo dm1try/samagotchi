@@ -20,6 +20,7 @@ require_relative "../model_profile"
 require_relative "../output_formatter"
 require_relative "../session_commands"
 require_relative "../session_manager"
+require_relative "../session_metrics"
 require_relative "../guardrails/parent_approvals"
 require_relative "../tool_activity"
 require_relative "../web/message_parts"
@@ -944,7 +945,7 @@ module Samagotchi
         @screen.commit(prompt_line(nil, exchange[last_user][:content]))
         Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         from = messages.index { |m| m.equal?(exchange[last_user]) }
-        render_join_steps(messages, from)
+        render_join_steps(messages, from, durations: join_tool_records(exchange[last_user]))
         # A turn that ended with no answer: its notice, as live.
         empty = messages.drop(from + 1).filter_map { |m| TurnNote.empty_answer(m) }.last
         if empty
@@ -961,28 +962,58 @@ module Samagotchi
       end
 
       # What the last exchange did, as the live turn drew it: each saved
-      # call's tool row (action, params, status from its result; no
-      # duration, which the session doesn't keep) and a plugin's steer
-      # where it came. The step texts stay out, as live (the ticker's).
-      def render_join_steps(messages, from)
+      # call's tool row (action, params, status from its result, and its
+      # duration from +durations+, the turn's saved tool records) and a
+      # plugin's steer where it came. The step texts stay out, as live (the
+      # ticker's).
+      def render_join_steps(messages, from, durations: [])
+        records = durations.dup
         messages.each_with_index.drop(from + 1).each do |m, i|
           if Steer.steer?(m)
             @screen.commit(format_steer_line(source: m[:source], text: m[:content]))
           elsif %w[model assistant].include?(m[:role].to_s)
             responses = messages.drop(i + 1).take_while { |r| r[:role].to_s == "tool_response" }
-            Array(Web::MessageParts.for_message(m, responses)&.dig(:tools)).each { |part| @screen.commit(join_tool_line(part)) }
+            Array(Web::MessageParts.for_message(m, responses)&.dig(:tools)).each do |part|
+              @screen.commit(join_tool_line(part, duration_ms: join_duration(records, part)))
+            end
           end
         end
       end
 
+      # The prompt's turn's saved tool records (SessionMetrics, in this
+      # machine's state dir, as #attach_images): none for a prompt with no
+      # turn id (an older session) or a session with no analytics.
+      def join_tool_records(prompt)
+        SessionMetrics.saved_tool_records(Session.session_dir(@client.session_id), prompt[:turn_id] || prompt["turn_id"])
+      rescue Session::InvalidId
+        []
+      end
+
+      # The duration of +part+'s call: the next record of its tool, in call
+      # order, consumed with the ones it skipped. By tool and order, not by
+      # iteration: an empty retry spends an iteration that left no message.
+      # nil (no duration shown) for a call that left none: it never
+      # finished, or a worker before turn ids saved it.
+      def join_duration(records, part)
+        return nil if part[:output].nil?
+
+        at = records.index { |r| r["tool"].to_s == part[:tool].to_s }
+        return nil unless at
+
+        duration = records[at]["duration_ms"]
+        records.shift(at + 1)
+        duration.is_a?(Numeric) ? duration : nil
+      end
+
       # A saved call's row; "no result" for a call the turn never answered
       # (it ended first).
-      def join_tool_line(part)
+      def join_tool_line(part, duration_ms: nil)
         output = part[:output]
         status = output.nil? ? "no result" : ToolActivity.tool_activity_status(output, part[:tool])
         activity = { action: part[:label] || ToolActivity.tool_activity_action(part[:tool]), tool: part[:tool],
                      params: part[:params], status: status }
-        "#{format_tool_activity_line(activity)}#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
+        "#{format_tool_activity_line(activity, duration_ms: duration_ms)}" \
+          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
       end
 
       # The context notes that came since the last prompt (all of them in a

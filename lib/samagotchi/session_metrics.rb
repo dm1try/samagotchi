@@ -83,6 +83,23 @@ module Samagotchi
       nil
     end
 
+    # One turn's tool records from the session's saved analytics.json, in
+    # call order (iteration, then call_index), string-keyed as saved: what a
+    # join replays the turn's tool rows' durations from. Empty without a turn
+    # id (an older session's prompt), the file, or records.
+    # @param session_dir [String]
+    # @param turn_id [String, nil]
+    # @return [Array<Hash>]
+    def self.saved_tool_records(session_dir, turn_id)
+      return [] if turn_id.to_s.empty?
+
+      records = JSON.parse(File.read(File.join(session_dir, "analytics.json")))["tool_records"]
+      Array(records).select { |r| r.is_a?(Hash) && r["turn_id"] == turn_id }
+                    .sort_by { |r| [r["iteration"].to_i, r["call_index"].to_i] }
+    rescue JSON::ParserError, SystemCallError, TypeError
+      []
+    end
+
     # "ctx 12%" for the session lists, "" when unknown.
     # @param pct [Float, nil]
     # @return [String]
