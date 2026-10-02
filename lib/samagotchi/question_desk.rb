@@ -245,6 +245,33 @@ module Samagotchi
       end
     end
 
+    # Mark the pending question as relayed to a parent session's user, or
+    # clear the mark (relayed_to: nil): saved with it and announced as
+    # :question_relay, so every UI shows where else it can be answered. Under
+    # the question lock, so the save never lands after the turn thread
+    # cleared the question.
+    # @param relayed_to [Hash, nil] {parent_id:, parent_short:, relay_id:}
+    # @param reason [String, nil] why a mark was cleared (parent_gone, …)
+    # @return [Boolean] false when +id+ isn't the question pending now
+    def annotate(id, relayed_to:, reason: nil)
+      marked = @lock.synchronize do
+        pending = @pending
+        next nil unless pending && pending[:id].to_s == id.to_s
+        next nil if @answer || pending[:status].to_s != "pending"
+
+        relayed_to ? pending[:relayed_to] = relayed_to : pending.delete(:relayed_to)
+        if session
+          session.pending_question = pending.dup
+          begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+        end
+        pending[:id]
+      end
+      return false unless marked
+
+      emit({ type: :question_relay, id: marked, relayed_to: relayed_to, reason: reason }.compact.merge(relayed_to: relayed_to))
+      true
+    end
+
     def sync_handler=(block)
       @sync_handler = block
     end

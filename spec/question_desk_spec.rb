@@ -129,4 +129,34 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(inputs).to eq([session.id])
     end
   end
+
+  describe "#annotate" do
+    it "sets and clears the pending question's relay marker, saved and announced" do
+      thread, _box, id = open_in_background
+      marker = { parent_id: "p-1", parent_short: "p-1", relay_id: "r-1" }
+
+      expect(desk.annotate(id, relayed_to: marker)).to be(true)
+      expect(desk.pending[:relayed_to]).to eq(marker)
+      # Session.load leaves nested keys as strings.
+      expect(saved[:relayed_to]).to eq(marker.transform_keys(&:to_s))
+      expect(events.last).to eq(type: :question_relay, id: id, relayed_to: marker)
+
+      expect(desk.annotate(id, relayed_to: nil, reason: "parent_gone")).to be(true)
+      expect(desk.pending).not_to have_key(:relayed_to)
+      expect(saved).not_to have_key(:relayed_to)
+      expect(events.last).to eq(type: :question_relay, id: id, relayed_to: nil, reason: "parent_gone")
+
+      desk.answer(id: id, selected: ["Yes"])
+      thread.join(2)
+    end
+
+    it "does nothing for a question that isn't the one pending, or is answered" do
+      thread, _box, id = open_in_background
+      expect(desk.annotate("other", relayed_to: { relay_id: "r" })).to be(false)
+      desk.answer(id: id, selected: ["Yes"])
+      expect(desk.annotate(id, relayed_to: { relay_id: "r" })).to be(false)
+      thread.join(2)
+      expect(events.map { |e| e[:type] }).not_to include(:question_relay)
+    end
+  end
 end

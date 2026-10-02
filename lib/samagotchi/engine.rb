@@ -1246,6 +1246,13 @@ module Samagotchi
                             parent_agent: parent_agent)
     end
 
+    # Mark the pending question as relayed, or clear the mark
+    # (QuestionDesk#annotate).
+    # @return [Boolean]
+    def annotate_question(id, relayed_to:, reason: nil)
+      @question_desk.annotate(id, relayed_to: relayed_to, reason: reason)
+    end
+
     def set_question_sync_handler(&block)
       @question_desk.sync_handler = block
     end
