@@ -8,8 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-02
+
 ### Added
 
+- The web marks a session that waits for you: its card gets a warn border, a pulsing dot and a `question`,
+  `approval` or `needs you` badge, and it moves to the top of the strip and the all-sessions view until answered
+  (the order holds while the pointer is over the list).
 - `models.<key>.window_tokens` and `hosts.<name>.window_tokens` in config.yml set a model's or a host's context window
   for when the server and its model list report none (the model's wins over the host's, and both over
   `context.window_tokens`); the server's `n_ctx` still wins over all of them.
@@ -53,6 +58,8 @@ and commands may change between minor versions. How releases are made:
 - `delegate` and `delegate_result` report a child's wait with the status words of `chi send --wait --format json`:
   `answered` (was `done`), `question` (was `waiting_for_answer`), `failed`, `canceled` or `no_answer` (was `no_reply`),
   and `running` when the parent's turn is canceled (was `canceled`).
+
+Update with `chi update` (bundles: mcp 0.4.0, check-in 0.2.0).
 
 ## [0.13.0] - 2026-10-02
 
@@ -775,7 +782,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/dm1try/samagotchi/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/dm1try/samagotchi/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/dm1try/samagotchi/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/dm1try/samagotchi/compare/v0.10.1...v0.11.0
