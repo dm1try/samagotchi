@@ -464,7 +464,18 @@ module Samagotchi
             entry.is_a?(Hash) ? entry.each_with_object({}) { |(k, v), h| h[k.to_sym] = v } : entry
           end
         end
-        message
+        symbolize_empty_answer(message)
+      end
+
+      # An empty-answer note's marker (TurnNote.empty) and its steps, as
+      # they were saved.
+      def symbolize_empty_answer(message)
+        marker = message[:empty_answer]
+        return message unless marker.is_a?(Hash)
+
+        marker = marker.transform_keys(&:to_sym)
+        marker[:steps] = marker[:steps].map { |step| step.is_a?(Hash) ? step.transform_keys(&:to_sym) : step } if marker[:steps].is_a?(Array)
+        message.merge(empty_answer: marker)
       end
 
       def session_path(session_id, state_dir:)

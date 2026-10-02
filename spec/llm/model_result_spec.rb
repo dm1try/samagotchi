@@ -42,11 +42,9 @@ RSpec.describe Samagotchi::LLM::ModelResult, "#empty_answer?" do
     ["done", {}] => false,
     ["", {}] => true,
     ["  \n", {}] => true,
-    ["(placeholder)", { empty_answer: true }] => true,
+    ["", { empty_retries: 1, empty_steps: [{ role: "model", content: "" }] }] => true,
     ["", { canceled: true }] => false,
-    ["", { exhausted: true }] => false,
-    ["(placeholder)", { empty_answer: true, canceled: true }] => false,
-    ["(placeholder)", { empty_answer: true, exhausted: true }] => false
+    ["", { exhausted: true }] => false
   }.each do |(text, fields), expected|
     it "is #{expected} for text #{text.inspect} with #{fields}" do
       expect(described_class.new(text: text, **fields).empty_answer?).to be(expected)

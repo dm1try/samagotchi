@@ -1692,17 +1692,15 @@ module Samagotchi
     # continue resumes from them rather than after a made-up reply.
     def kept_messages(turn, result, seconds)
       conversation = result.conversation if result.conversation.is_a?(Array)
-      # Nothing visible (the native loop: no text; the chat loop: its
-      # placeholder text) is a turn the model should know ended that way.
+      # Nothing visible (no text) is a turn the model should know ended
+      # that way: the note, and nothing made up as its answer. The note's
+      # marker is for the UIs (the notice, and the empty steps after a
+      # reload); it goes on the result's conversation too (the REPL keeps it).
+      # A retry's nudge at the tail goes: this note says it all.
       if result.empty_answer?
-        # The placeholder is for the UIs (a new array: it must not leak
-        # into the result); the note is for the model, so it goes on the
-        # result's conversation too.
-        # A retry's nudge at the tail goes: this note says it all.
-        note = TurnNote.empty
+        note = TurnNote.empty(retries: result.empty_retries, steps: result.empty_steps)
         conversation&.replace(TurnNote.without_trailing(conversation))
         saved = TurnNote.without_trailing(conversation || turn.session.messages)
-        saved << { role: "model", content: "[No response]" } if result.output.to_s.strip.empty?
         conversation << note if conversation
         saved + [note]
       elsif result.canceled? && conversation
@@ -1901,7 +1899,7 @@ module Samagotchi
     # @param result [LLM::ModelResult]
     # @return [Hash]
     def turn_summary(result)
-      {
+      summary = {
         output: result.output.to_s,
         exhausted: result.exhausted?,
         resumable: result.resumable?,
@@ -1909,6 +1907,9 @@ module Samagotchi
         tool_activity: Array(result.tool_activity).map(&:dup),
         context_status: result.context_status&.dup
       }
+      # No answer: every UI shows its notice (TurnNote.empty_answer_line).
+      summary[:empty_answer] = { retries: result.empty_retries.to_i } if result.empty_answer?
+      summary
     end
 
     # ── Session messages API ───────────────────────────────────────────────

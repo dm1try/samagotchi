@@ -143,22 +143,24 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(completed[:turn_summary]).to include(output: "done", resumable: false)
   end
 
-  it "2. native empty: [No response] and TurnNote.empty, the nudge dropped" do
-    native { |messages, **| kernel_result(messages + [nudge], text: "") }
+  it "2. native empty: TurnNote.empty with its marker, the nudge dropped, no made-up answer" do
+    native { |messages, **| kernel_result(messages + [nudge], text: "", empty_retries: 1) }
+    summary = nil
+    engine.subscribe(observer: ->(e) { summary = e[:turn_summary] if e[:type] == :turn_completed })
 
     result = run
 
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected used_memories_updated
                               replace! turn_completed persist hook:after_turn=completed answer_display hook:session_end])
-    expect(tail).to eq(["user:hi", "model:[No response]", "system:[SYSTEM: the previous turn ended with no vis"])
-    expect(result.conversation.last).to eq(Samagotchi::TurnNote.empty)
+    expect(tail(2)).to eq(["user:hi", "system:[SYSTEM: the previous turn ended with no vis"])
+    expect(result.conversation.last).to eq(Samagotchi::TurnNote.empty(retries: 1))
+    expect(summary).to include(output: "", empty_answer: { retries: 1 })
     expect(result.conversation).not_to include(nudge)
     expect(at_end).to eq(status: "idle", outcome: "completed")
     expect_released
   end
 
-  it "3. chat empty: no placeholder message, turn_summary.output is the placeholder" do
-    placeholder = "(the model returned an empty answer)"
+  it "3. chat empty: no placeholder anywhere, the summary says it was empty" do
     chat(FakeChatAdapter.text(""))
     summary = nil
     engine.subscribe(observer: ->(e) { summary = e[:turn_summary] if e[:type] == :turn_completed })
@@ -171,8 +173,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
                               used_memories_updated replace! turn_completed persist hook:after_turn=completed answer_display
                               hook:session_end])
     expect(tail(2)).to eq(["user:hi", "system:[SYSTEM: the previous turn ended with no vis"])
-    expect(summary[:output]).to eq(placeholder)
-    expect(result.output).to eq(placeholder)
+    expect(summary).to include(output: "", empty_answer: { retries: 1 })
+    expect(result.output).to eq("")
+    expect(session.messages.last).to include(kind: "turn_note", empty_answer: { retries: 1, steps: [{ role: "model", content: "" }] * 2 })
     expect(at_end).to eq(status: "idle", outcome: "completed")
     expect_released
   end

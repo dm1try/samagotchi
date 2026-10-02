@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A turn that ends with no answer (the empty-answer retries used up) saves the same shape from both loops: the hidden
+  turn note alone. The native loop no longer saves the empty thinking-only reply and a literal `[No response]` (the
+  next prompt had two assistant turns in a row), and the chat loop's `(the model returned an empty answer)` is no
+  longer the answer text (`chi send --wait` saw it as an answer). The note carries a marker the UIs draw from, never
+  sent to the model. Older sessions keep their `[No response]`.
+
 ## [0.15.0] - 2026-10-02
 
 ### Added

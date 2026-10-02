@@ -23,10 +23,14 @@ module Samagotchi
 
     # A message as a model-facing reader may see it: without `display`.
     # The same object when it has none.
-    def self.strip(message)
-      return message unless message.is_a?(Hash) && (message.key?(KEY) || message.key?(KEY.to_s))
+    # An empty-answer note's marker (TurnNote::EMPTY_ANSWER) is display
+    # only too: it goes the same way.
+    DISPLAY_ONLY = [KEY.to_s, "empty_answer"].freeze
 
-      message.reject { |key, _| key.to_s == KEY.to_s }
+    def self.strip(message)
+      return message unless message.is_a?(Hash) && DISPLAY_ONLY.any? { |key| message.key?(key.to_sym) || message.key?(key) }
+
+      message.reject { |key, _| DISPLAY_ONLY.include?(key.to_s) }
     end
 
     def self.strip_all(messages)

@@ -52,9 +52,10 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
 
   it "ends with TurnNote.empty in place of the nudge when the retry is empty too" do
     result = chat_turn(FakeChatAdapter.text(""))
+    note = Samagotchi::TurnNote.empty(retries: 1, steps: [{ role: "model", content: "" }] * 2)
 
-    expect(session.messages.last(2)).to match([a_hash_including(role: "user", content: "hi"), Samagotchi::TurnNote.empty])
-    expect(result.conversation.last).to eq(Samagotchi::TurnNote.empty)
+    expect(session.messages.last(2)).to match([a_hash_including(role: "user", content: "hi"), note])
+    expect(result.conversation.last).to eq(note)
     expect(result.conversation).not_to include(nudge)
   end
 

@@ -60,6 +60,13 @@ RSpec.describe Samagotchi::AnswerDisplay do
       .to eq([user, answer, { "role" => "model" }])
     expect(described_class.strip(user)).to be(user)
   end
+
+  it ".strip drops an empty-answer note's marker too: the recap and plugins get the note's text only" do
+    note = Samagotchi::TurnNote.empty(retries: 1, steps: [{ role: "model", content: "<think>x</think>" }])
+
+    expect(described_class.strip(note)).to eq(note.except(:empty_answer))
+    expect(described_class.strip(note.transform_keys(&:to_s))).not_to have_key("empty_answer")
+  end
 end
 
 RSpec.describe "Presenting the answer from after_turn" do

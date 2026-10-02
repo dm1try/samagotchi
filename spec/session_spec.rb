@@ -4,6 +4,7 @@ require "tmpdir"
 require "json"
 require "spec_helper"
 require "samagotchi/session"
+require "samagotchi/turn_note"
 
 RSpec.describe Samagotchi::Session do
   let(:tmpdir) { Dir.mktmpdir("session-spec") }
@@ -79,6 +80,16 @@ RSpec.describe Samagotchi::Session do
         { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "ls" } }] },
         { role: "tool_response", content: "[execute]\nok", tool_call_id: "c1" }
       ]
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.messages).to eq(session.messages)
+    end
+
+    it "restores an empty-answer note's marker and steps with symbol keys" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages = [{ role: "user", content: "hi" },
+                          Samagotchi::TurnNote.empty(retries: 1, steps: [{ role: "model", content: "", thinking: "t" }])]
       session.save(state_dir: tmpdir)
 
       loaded = described_class.load(session.id, state_dir: tmpdir)

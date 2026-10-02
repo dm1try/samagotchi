@@ -195,8 +195,9 @@ module Samagotchi
       # reasoning, never sent back), a result's tool_call_id, the image
       # refs of a user message or a tool result, a prompt's turn_id (Engine,
       # never sent), and a plugin tool result's tool_params and tool_labels
-      # (the live row's params line and label, never sent back), and an
-      # edit/write result's tool_diffs (never sent).
+      # (the live row's params line and label, never sent back), an
+      # edit/write result's tool_diffs (never sent), and an empty-answer
+      # note's marker (TurnNote.empty, never sent).
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -208,6 +209,8 @@ module Samagotchi
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
           ToolResponse::SAVED_KEYS.each { |key| message[key] = entry[key] if entry[key] }
           message[TurnNote::RETRY_NUDGE] = true if TurnNote.retry_nudge?(entry)
+          marker = TurnNote.empty_answer(entry)
+          message[TurnNote::EMPTY_ANSWER] = marker if marker
           message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           message
@@ -302,10 +305,11 @@ module Samagotchi
           @pending_input = pending_input
           @tool_activity = []
           @empty_retry = EmptyAnswerRetry.new
+          # The empty generations, never saved: the UIs draw the turn's
+          # steps from them (ModelResult#empty_steps).
+          @empty_steps = []
           @context = ContextStatus.new(conversation: conversation)
         end
-
-        EMPTY_ANSWER = "(the model returned an empty answer)"
 
         def call(max_iterations:, cap:)
           last_text = ""
@@ -340,11 +344,13 @@ module Samagotchi
               # plugin's steer joins the retry instead of being dropped, and
               # queued input (a user's line, a steer) goes in place of the nudge.
               next if inject_pending_input(iteration, answer: retry_empty ? nil : last_text)
+
+              # An empty answer (content "" + stop, seen from a remote host)
+              # ends the turn with no text: the UIs show their notice.
+              @empty_steps << with_thinking({ role: "model", content: "" }, response) if empty
               next if retry_empty && nudge_empty_answer(iteration, response)
 
-              # Shown, not saved: an empty answer (content "" + stop, seen from
-              # a remote host) would otherwise end the turn with nothing.
-              last_text = EMPTY_ANSWER if empty
+              last_text = "" if empty
               exhausted = false
               break
             end
@@ -573,7 +579,7 @@ module Samagotchi
 
         def result(text, exhausted:)
           ModelResult.new(text: text, conversation: @loop.plain(@conversation), exhausted: exhausted,
-                          tool_activity: @tool_activity, empty_answer: text == EMPTY_ANSWER,
+                          tool_activity: @tool_activity, empty_steps: @empty_steps, empty_retries: @empty_retry.attempts,
                           context_status: @context.display)
         end
 

@@ -47,21 +47,30 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
     expect(calls.map { |c| c[:sampling] }).to eq([{ temperature: 0.2 }, { temperature: 0.2 }])
   end
 
-  it "ends as today after the retry is used up, without the spent nudge" do
-    script("<think>loop</think>")
+  it "ends with no answer after the retry is used up: no empty generation, no spent nudge" do
+    script("<think>first</think>", "<think>second</think>")
 
     result = run
 
     expect(result.output).to eq("")
-    expect(result.conversation.map { |m| m[:role] }).to eq(%w[user model])
-    expect(result.conversation).not_to include(nudge)
+    expect(result).to be_empty_answer
+    # An empty model message would go to the next prompt as an empty
+    # assistant turn (earlier thinking is stripped there).
+    expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+    # What the UIs draw the turn's steps from.
+    expect(result.empty_steps).to eq([{ role: "model", content: "<think>first</think>" },
+                                      { role: "model", content: "<think>second</think>" }])
+    expect(result.empty_retries).to eq(1)
   end
 
   it "does nothing with retry.empty_answer 0" do
     ENV["SAMAGOTCHI_RETRY_EMPTY_ANSWER"] = "0"
     calls = script("", "late")
 
-    expect(run.output).to eq("")
+    result = run
+    expect(result.output).to eq("")
+    expect(result.empty_retries).to eq(0)
+    expect(result.empty_steps).to eq([{ role: "model", content: "" }])
     expect(calls.length).to eq(1)
   ensure
     ENV.delete("SAMAGOTCHI_RETRY_EMPTY_ANSWER")

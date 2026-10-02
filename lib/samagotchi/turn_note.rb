@@ -4,7 +4,7 @@ module Samagotchi
   # The one-line system note a turn leaves in the conversation when it ends
   # without an answer: failed before the model replied, cancelled, or over
   # with nothing visible. The UIs show these ends live (`turn failed …`, a
-  # cancel line, `(the model returned an empty answer)`), but the model saw
+  # cancel line, `no answer: …`), but the model saw
   # none of that on its next turn: the session held an unanswered user
   # message and no reason. A tail system message, like a reminder or a
   # context note, keeps the prompt cache and is hidden by the UIs (they
@@ -18,6 +18,7 @@ module Samagotchi
     TASKS_LISTED = 5
     TASK_COMMAND_CHARS = 60
     RETRY_NUDGE = :retry_nudge
+    EMPTY_ANSWER = :empty_answer
 
     module_function
 
@@ -69,8 +70,35 @@ module Samagotchi
       " Still running: #{listed.join(", ")}. Continue with task_wait <id> or stop with task_stop <id>."
     end
 
-    def empty
+    # The model reads the text only. The marker (EMPTY_ANSWER) is for the
+    # UIs, which draw the turn's notice and steps from it after a reload:
+    # +retries+ the empty-answer retries spent, +steps+ the empty
+    # generations as model messages (their thinking; the loops keep them out
+    # of the conversation, where they'd be empty assistant turns). Never
+    # sent: the payload builders send a system message's content, and the
+    # copies for hooks, plugins and the recap drop it (AnswerDisplay.strip).
+    def empty(retries: 0, steps: [])
+      marker = { retries: retries.to_i }
+      marker[:steps] = steps.map { |step| step.slice(:role, :content, :thinking) } unless steps.empty?
       message("the previous turn ended with no visible answer (thinking only, or nothing). The user's last message is still unanswered.")
+        .merge(EMPTY_ANSWER => marker)
+    end
+
+    # The empty-answer marker of +entry+ (either key type), or nil.
+    def empty_answer(entry)
+      return nil unless note?(entry)
+
+      marker = entry[EMPTY_ANSWER] || entry[EMPTY_ANSWER.to_s]
+      marker.is_a?(Hash) ? marker : nil
+    end
+
+    # The notice every UI shows for a turn that ended with no answer:
+    # "no answer: the model returned nothing (after 1 retry)" (turn_events.js
+    # emptyAnswerLine words it the same).
+    def empty_answer_line(retries)
+      count = retries.to_i
+      after = count.positive? ? " (after #{count} #{count == 1 ? "retry" : "retries"})" : ""
+      "no answer: the model returned nothing#{after}"
     end
 
     # The hidden nudge before a retry of an empty answer (EmptyAnswerRetry):

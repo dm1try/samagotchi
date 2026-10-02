@@ -41,7 +41,8 @@ module Samagotchi
       used_tokens.to_f / window_tokens >= CONTEXT_FULL_RATIO
     end
 
-    attr_reader :limit
+    # @return [Integer] the budget, and the attempts spent this turn
+    attr_reader :limit, :attempts
 
     def initialize(limit: self.class.limit)
       @limit = limit

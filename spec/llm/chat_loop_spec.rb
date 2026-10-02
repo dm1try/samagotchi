@@ -255,18 +255,33 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       result = run([{ role: "user", content: "hi" }])
 
-      expect(result.text).to eq("(the model returned an empty answer)")
+      # No placeholder text: the UIs draw their own notice from the turn's end.
+      expect(result.text).to eq("")
       expect(result).to be_empty_answer
+      expect(result.empty_retries).to eq(1)
+      expect(result.empty_steps).to eq([{ role: "model", content: "" }, { role: "model", content: "" }])
       expect(result).not_to be_exhausted
       # The nudge stays at the tail: the Engine's TurnNote.empty replaces it.
       expect(result.conversation).to eq([{ role: "user", content: "hi" }, Samagotchi::TurnNote.empty_retry])
       expect(backend.adapter.requests.length).to eq(2)
     end
 
+    it "keeps each empty generation's reasoning for the UIs, never in the conversation" do
+      backend.adapter = FakeChatAdapter.new(text("", reasoning: "first"), text("", reasoning: "second"))
+
+      result = run([{ role: "user", content: "hi" }])
+
+      expect(result.empty_steps).to eq([{ role: "model", content: "", thinking: "first" },
+                                        { role: "model", content: "", thinking: "second" }])
+      expect(result.conversation.map { |m| m[:role] }).to eq(%w[user system])
+    end
+
     it "calls an answer that was only thinking empty too" do
       backend.adapter = FakeChatAdapter.new(text("<|think|>hm<|think|>"))
 
-      expect(run.text).to eq("(the model returned an empty answer)")
+      result = run
+      expect(result.text).to eq("")
+      expect(result).to be_empty_answer
     end
 
     it "strips thought blocks from the answer" do
@@ -987,6 +1002,18 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     it "sends it as a plain system message" do
+      expect(backend.send(:wire_messages, [note])).to eq([{ role: "system", content: note[:content] }])
+    end
+  end
+
+  describe "an empty-answer turn note" do
+    let(:note) { Samagotchi::TurnNote.empty(retries: 1, steps: [{ role: "model", content: "", thinking: "secret plan" }]) }
+
+    it "keeps its marker in the conversation it hands back" do
+      expect(backend.plain([note])).to eq([note])
+    end
+
+    it "sends only its text: the marker (and the steps' thinking) never reach the model" do
       expect(backend.send(:wire_messages, [note])).to eq([{ role: "system", content: note[:content] }])
     end
   end

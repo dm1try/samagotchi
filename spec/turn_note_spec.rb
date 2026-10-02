@@ -14,6 +14,29 @@ RSpec.describe Samagotchi::TurnNote do
     expect(described_class.note?(nil)).to be(false)
   end
 
+  describe ".empty" do
+    it "carries a marker the UIs draw the notice from: the retries, and the empty steps when any" do
+      steps = [{ role: "model", content: "<think>a</think>" }]
+      expect(described_class.empty).to include(kind: "turn_note", empty_answer: { retries: 0 })
+      expect(described_class.empty(retries: 2, steps: steps)).to include(empty_answer: { retries: 2, steps: steps })
+      expect(described_class.empty(retries: 1)[:content]).to eq(described_class.empty[:content])
+    end
+
+    it "finds the marker with either key type, and nil on other messages" do
+      expect(described_class.empty_answer(described_class.empty(retries: 1))).to eq({ retries: 1 })
+      expect(described_class.empty_answer({ "role" => "system", "kind" => "turn_note", "empty_answer" => { "retries" => 2 } }))
+        .to eq({ "retries" => 2 })
+      expect(described_class.empty_answer(described_class.failed("x"))).to be_nil
+      expect(described_class.empty_answer(nil)).to be_nil
+    end
+
+    it "words the notice the UIs show, with the retries when there were any" do
+      expect(described_class.empty_answer_line(0)).to eq("no answer: the model returned nothing")
+      expect(described_class.empty_answer_line(1)).to eq("no answer: the model returned nothing (after 1 retry)")
+      expect(described_class.empty_answer_line("2")).to eq("no answer: the model returned nothing (after 2 retries)")
+    end
+  end
+
   it "names the failure on one line and says the message went unanswered" do
     note = described_class.failed("network error after 2 attempts\n(host main: ECONNREFUSED)")
     expect(note[:content]).to eq("[SYSTEM: the previous turn failed before any answer: network error after 2 attempts (host main: ECONNREFUSED). The user's last message was not answered.]")

@@ -175,7 +175,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
   end
 
   describe "when the turn's end is announced" do
-    it "has the session's messages already updated, placeholder included" do
+    it "has the session's messages already updated, the note included" do
       allow(kernel).to receive(:run).and_return(
         kernel_result(text: "", conversation: [{ role: "user", content: "hi" }])
       )
@@ -184,7 +184,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
       engine.run_turn(session, "hi")
 
-      expect(seen.first(2)).to eq([{ role: "user", content: "hi" }, { role: "model", content: "[No response]" }])
+      expect(seen.first(2)).to eq([{ role: "user", content: "hi" }, seen.last])
       expect(seen.last).to include(role: "system", kind: "turn_note")
       expect(seen.last[:content]).to include("no visible answer")
     end
@@ -285,15 +285,17 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect(session.messages).to eq([{ role: "tool_response", content: "r" }])
   end
 
-  it "keeps the [No response] placeholder for an ordinary empty reply, out of result.conversation" do
-    allow(kernel).to receive(:run).and_return(kernel_result(text: "", conversation: [{ role: "user", content: "hi" }]))
+  it "saves an ordinary empty reply as the note alone, with the marker the UIs draw from" do
+    steps = [{ role: "model", content: "<think>a</think>" }, { role: "model", content: "", thinking: "b" }]
+    allow(kernel).to receive(:run).and_return(kernel_result(text: "", conversation: [{ role: "user", content: "hi" }],
+                                                            empty_steps: steps, empty_retries: 1))
 
     result = engine.run_turn(session, "hi")
 
     expect(result.conversation.first).to eq({ role: "user", content: "hi" })
-    expect(result.conversation.last).to include(kind: "turn_note")
+    expect(result.conversation.last).to include(kind: "turn_note", empty_answer: { retries: 1, steps: steps })
     expect(result.conversation.length).to eq(2)
-    expect(session.messages[-2]).to eq({ role: "model", content: "[No response]" })
+    expect(session.messages.map { |m| m[:content] }).not_to include("[No response]")
     expect(session.messages.last).to eq(result.conversation.last)
   end
 

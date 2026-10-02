@@ -9,13 +9,19 @@ module Samagotchi
     # .canceled?, .cancellation_reason, .exhausted?, .resumable?,
     # .empty_answer?, plus the native loop's .tool_activity, .context_status
     # and .pending_tool_calls, which the interactive renderer needs.
+    #
+    # A turn with no answer also carries .empty_steps (its empty
+    # generations as model messages, which the loops keep out of the
+    # conversation) and .empty_retries (the retries spent): the Engine saves
+    # them on the turn's note for the UIs (TurnNote.empty).
     class ModelResult
       attr_reader :text, :conversation, :canceled, :cancellation_reason, :exhausted,
-                  :tool_activity, :context_status, :pending_tool_calls
+                  :tool_activity, :context_status, :pending_tool_calls, :empty_steps, :empty_retries
 
       def initialize(text:, conversation: nil, canceled: false, cancellation_reason: nil, exhausted: false,
-                     tool_activity: [], context_status: nil, pending_tool_calls: false, empty_answer: false)
-        @empty_answer = empty_answer
+                     tool_activity: [], context_status: nil, pending_tool_calls: false, empty_steps: [], empty_retries: 0)
+        @empty_steps = Array(empty_steps)
+        @empty_retries = empty_retries.to_i
         @text = text
         @conversation = conversation
         @canceled = canceled
@@ -35,13 +41,12 @@ module Samagotchi
         !!canceled
       end
 
-      # The turn ended with nothing visible: no text, or the chat loop's
-      # placeholder (empty_answer:). A cancelled turn or one that can be
-      # continued is not an empty answer.
+      # The turn ended with nothing visible (no text). A cancelled turn or
+      # one that can be continued is not an empty answer.
       def empty_answer?
         return false if canceled? || resumable?
 
-        !!@empty_answer || text.to_s.strip.empty?
+        text.to_s.strip.empty?
       end
 
       def exhausted?

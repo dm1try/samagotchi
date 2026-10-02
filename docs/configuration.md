@@ -625,7 +625,9 @@ asks again in the same turn with a hidden note ("your last reply had no visible 
 unless `sampling:` sets one; the REPL prints `↻ empty answer, asking again (1/1)` and the web shows it as a row of
 the step. `retry.empty_answer` (default `1`, at most `3`, env `SAMAGOTCHI_RETRY_EMPTY_ANSWER`, no CLI flag) is how
 many times per turn; `0` ends the turn at the empty answer as before. An answer cut because the context is full
-(90 % or more) is not retried. When the retries run out the turn ends with "(the model returned an empty answer)".
+(90 % or more) is not retried. When the retries run out the turn ends with no answer: every UI shows one muted line,
+`no answer: the model returned nothing (after 1 retry)`, and the model is told on its next turn with a hidden note;
+no made-up answer is saved.
 A generation a plugin cuts while it streams (loop-guard's thinking watch, or any `stop_generation`,
 [hooks.md](hooks.md#watching-the-stream)) uses the same budget: `↻ cut by loop-guard, asking again (1/1)`, and with
 none left the turn ends as cancelled (hook).

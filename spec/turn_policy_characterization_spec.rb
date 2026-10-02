@@ -277,7 +277,6 @@ RSpec.describe "Turn policy characterization" do
   res = ->(text, empty: false, canceled: false, reason: nil, exhausted: false) do
     { text: text, empty: empty, canceled: canceled, reason: reason, exhausted: exhausted }
   end
-  empty_answer = "(the model returned an empty answer)"
   answered = ["gen", "done", "retry 1/1", "gen", "done"]
   merged = ->(answer, count: 1, steers: nil) do
     ["gen", "done", "merged(count=#{count} answer=#{answer.inspect}#{" steers=#{steers}" if steers})", "gen", "done"]
@@ -289,32 +288,32 @@ RSpec.describe "Turn policy characterization" do
     { name: "empty answer, then an answer", steps: [[:thought], [:text, "PONG"]],
       expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
                   temps: [nil, 0.6], activity: [] } },
-    # The native loop keeps the last empty generation and drops the last
-    # nudge; the chat loop saves no empty answer and leaves its nudges for
-    # the Engine (TurnNote.without_trailing). Either way the first spent
-    # nudge stays (found, not B2's).
+    # Neither loop keeps an empty generation (result.empty_steps has them,
+    # for the UIs); the native loop drops the last nudge, the chat loop
+    # leaves its nudges for the Engine (TurnNote.without_trailing). Either
+    # way the first spent nudge stays (found, not B2's).
     { name: "empty answer past the budget", env: { "SAMAGOTCHI_RETRY_EMPTY_ANSWER" => "2" }, steps: [[:thought]],
       expected: { events: ["gen", "done", "retry 1/2", "gen", "done", "retry 2/2", "gen", "done"],
                   temps: [nil, 0.6, 0.6], activity: [] },
-      native: { conversation: ["user:hi", "system:nudge", "model:"], result: res.("", empty: true) },
-      chat: { conversation: ["user:hi", "system:nudge", "system:nudge"], result: res.(empty_answer, empty: true) } },
+      native: { conversation: ["user:hi", "system:nudge"], result: res.("", empty: true) },
+      chat: { conversation: ["user:hi", "system:nudge", "system:nudge"], result: res.("", empty: true) } },
     { name: "retry.empty_answer 0", env: { "SAMAGOTCHI_RETRY_EMPTY_ANSWER" => "0" }, steps: [[:thought], [:text, "late"]],
       expected: { events: ["gen", "done"], temps: [nil], activity: [] },
-      native: { conversation: ["user:hi", "model:"], result: res.("", empty: true) },
-      chat: { conversation: ["user:hi"], result: res.(empty_answer, empty: true) } },
+      native: { conversation: ["user:hi"], result: res.("", empty: true) },
+      chat: { conversation: ["user:hi"], result: res.("", empty: true) } },
     { name: "whitespace-only answer", steps: [[:blank], [:text, "PONG"]],
       expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
                   temps: [nil, 0.6], activity: [] } },
     { name: "whitespace-only answer with a line queued", steps: [[:blank], [:text, "PONG"]], queue: line_at_first,
       expected: { events: merged.(nil), conversation: ["user:hi", "user:input", "model:PONG"], result: res.("PONG"),
                   temps: [nil, nil], activity: [] } },
-    # Not retried: the window is full (≥ 90 %), not a thinking loop. The
-    # native loop keeps the empty generation; chat saves none.
+    # Not retried: the window is full (≥ 90 %), not a thinking loop. Neither
+    # loop keeps the empty generation.
     { name: "length stop with the context full", env: window, also: %i[finish],
       steps: [[:length, { usage: [950, 10] }], [:text, "late"]],
       expected: { events: ["gen", "done"], temps: [nil], activity: [], finish: ["generation_completed=\"length\""] },
-      native: { conversation: ["user:hi", "model:"], result: res.("", empty: true) },
-      chat: { conversation: ["user:hi"], result: res.(empty_answer, empty: true) } },
+      native: { conversation: ["user:hi"], result: res.("", empty: true) },
+      chat: { conversation: ["user:hi"], result: res.("", empty: true) } },
     { name: "length stop with room left", env: window, steps: [[:length, { usage: [100, 10] }], [:text, "PONG"]],
       expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
                   temps: [nil, 0.6], activity: [] } },

@@ -219,7 +219,7 @@ module Samagotchi
     # the prefill, and what the caller gave.
     Turn = Struct.new(:conversation, :context, :empty_retry, :tool_activity, :buffer, :qwen_attempts, :qwen_partial,
                       :prefill, :pending_tool_calls, :model_name, :pending_input, :on_stream_event,
-                      :cancel_controller, :cap, :emit, :iteration, keyword_init: true)
+                      :cancel_controller, :cap, :emit, :iteration, :empty_steps, :ended_empty, keyword_init: true)
     # One request: the prompt and its images as sent, the images' token
     # estimate, and the window it was measured against.
     Request = Struct.new(:prompt, :images, :image_tokens, :window, keyword_init: true)
@@ -234,7 +234,7 @@ module Samagotchi
       conversation = prepare_conversation(messages)
       Turn.new(
         conversation: conversation, context: ContextStatus.new(conversation: conversation),
-        empty_retry: EmptyAnswerRetry.new, tool_activity: [], buffer: +"", qwen_attempts: 0, qwen_partial: nil,
+        empty_retry: EmptyAnswerRetry.new, empty_steps: [], tool_activity: [], buffer: +"", qwen_attempts: 0, qwen_partial: nil,
         # Qwen with thinking off: an empty thought after the cue, so the model
         # answers at once. Kept in the turn's model messages, so each tool-loop
         # prompt starts with what the server already has cached.
@@ -418,11 +418,18 @@ module Samagotchi
       # The empty generation goes (its thinking would be sent again and
       # prime the same loop); an empty answer that will be retried is no
       # answer site, so a plugin's steer joins the retry.
-      turn.conversation.pop if retry_empty
+      turn.empty_steps << turn.conversation.pop if retry_empty
       # Queued steering keeps the turn going: the model answers the
       # injected message instead of stopping here.
       return :next if inject_pending_input!(turn, answer: retry_empty ? nil : answer)
 
+      # The last one goes too: earlier thinking is stripped from the prompt,
+      # so it would be an empty assistant turn there. The UIs draw it from
+      # the result's empty_steps.
+      if empty && !retry_empty
+        turn.empty_steps << turn.conversation.pop
+        turn.ended_empty = true
+      end
       if retry_empty
         turn.empty_retry.nudge!(turn.conversation, TurnNote.empty_retry,
                                 emit: turn.emit, iteration: turn.iteration, finish_reason: generation.finish_reason,
@@ -452,7 +459,9 @@ module Samagotchi
     # then the answer shows only its text.
     def finish(turn)
       exhausted = turn.pending_tool_calls && tool_response_turn?(turn.conversation.last)
-      output = strip_thought_blocks(last_model_content(turn.conversation))
+      # An empty answer left the conversation: an earlier model message
+      # isn't this turn's answer.
+      output = turn.ended_empty ? "" : strip_thought_blocks(last_model_content(turn.conversation))
       output = parser.strip_tool_calls(output) if exhausted
       LLM::ModelResult.new(
         text: PromptLiteralGuard.restore(output, profile: @profile).to_s,
@@ -460,7 +469,9 @@ module Samagotchi
         exhausted: exhausted,
         pending_tool_calls: turn.pending_tool_calls,
         tool_activity: turn.tool_activity,
-        context_status: turn.context.display
+        context_status: turn.context.display,
+        empty_steps: turn.empty_steps,
+        empty_retries: turn.empty_retry.attempts
       )
     end
 

@@ -52,7 +52,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
       expect(events.find { |e| e[:type] == :turn_canceled }[:cancellation_reason]).to eq(:user_interrupt)
     end
 
-    it "appends the [No response] placeholder for an empty output" do
+    it "ends an empty output with the turn note alone (no made-up model message)" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(kernel).to receive(:run).and_return(
         Samagotchi::LLM::ModelResult.new(text: "", conversation: [], tool_activity: [])
@@ -60,8 +60,8 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
       session = make_session
       build_engine(profile: "gemma4").run_turn(session, "hi")
 
-      expect(session.messages[-2]).to eq({ role: "model", content: "[No response]" })
-      expect(session.messages.last).to include(role: "system", kind: "turn_note")
+      expect(session.messages.map { |m| m[:role] }).not_to include("model")
+      expect(session.messages.last).to include(role: "system", kind: "turn_note", empty_answer: { retries: 0 })
     end
 
     it "passes max_iterations through to KernelLoop#run" do
