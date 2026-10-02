@@ -33,9 +33,11 @@ module Samagotchi
     # vision: the configured true/false (VisionSupport), nil when unset;
     # sampling: the configured request parameters (SamplingSettings), nil when unset;
     # thinking: the configured level (Thinking), nil when unset;
-    # remote: the configured true/false (#remote?), nil when unset.
+    # remote: the configured true/false (#remote?), nil when unset;
+    # window_tokens: the configured context window (ContextWindow.setting), nil when unset.
     HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :profile,
-                           :first_token_timeout, :vision, :sampling, :thinking, :remote, keyword_init: true) do
+                           :first_token_timeout, :vision, :sampling, :thinking, :remote, :window_tokens,
+                           keyword_init: true) do
       # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
       # raw-prompt loop.
       def chat? = api == :openai
@@ -95,7 +97,7 @@ module Samagotchi
                               api: cfg[:api]&.to_sym, scheme: cfg[:scheme], url: cfg[:url], api_key_env: cfg[:api_key_env],
                               profile: cfg[:profile], first_token_timeout: cfg[:first_token_timeout],
                               vision: cfg[:vision], sampling: cfg[:sampling], thinking: cfg[:thinking],
-                              remote: cfg[:remote])
+                              remote: cfg[:remote], window_tokens: cfg[:window_tokens])
         entry.client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme],
                                   first_token_timeout: entry.first_token_limit, name: entry.name,
                                   api_key_env: entry.api_key_env, env: env)

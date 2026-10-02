@@ -137,3 +137,27 @@ RSpec.describe "hosts: url and api_key_env" do
     end
   end
 end
+
+RSpec.describe "window_tokens on hosts: and models: entries" do
+  it "reads a positive integer and ignores anything else with a warning; hosts pass it to workers" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "config.yml")
+      File.write(path, { "hosts" => { "box" => { "host" => "box", "window_tokens" => 65_536 },
+                                      "bad" => { "host" => "h", "window_tokens" => "big" } },
+                         "models" => { "Qwen3" => { "window_tokens" => 32_768 }, "odd" => { "window_tokens" => -1 } } }.to_yaml)
+      hosts = models = nil
+      expect do
+        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+        models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
+      end.to output(/'bad'.*window_tokens must be a positive number of tokens.*\n.*odd.*window_tokens/m).to_stderr
+      expect(hosts.transform_values { |v| v[:window_tokens] }).to eq("box" => 65_536, "bad" => nil)
+      expect(models["qwen3"][:window_tokens]).to eq(32_768)
+      expect(models["odd"]).not_to have_key(:window_tokens)
+      expect(Samagotchi::HostRegistry.new(hosts_config: hosts).entries["box"].window_tokens).to eq(65_536)
+
+      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
+      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
+      expect(worker["box"][:window_tokens]).to eq(65_536)
+    end
+  end
+end

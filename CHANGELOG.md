@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `models.<key>.window_tokens` and `hosts.<name>.window_tokens` in config.yml set a model's or a host's context window
+  for when the server and its model list report none (the model's wins over the host's, and both over
+  `context.window_tokens`); the server's `n_ctx` still wins over all of them.
+
 ### Fixed
 
 - The `mcp` bundle (0.4.0, `chi update`) attaches an image an MCP tool names inside its text

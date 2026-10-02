@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/context_window"
+require "samagotchi/host_registry"
 
 RSpec.describe Samagotchi::ContextWindow do
   let(:client) { double("client") }
@@ -88,5 +89,36 @@ RSpec.describe Samagotchi::ContextWindow, ".resolve with a host's model list" do
 
   it "falls back to config and the default when the list has nothing" do
     expect(described_class.resolve(client: nil, adapter: double(context_window: nil), model: "m").source).to eq(:default)
+  end
+end
+
+RSpec.describe Samagotchi::ContextWindow, "per model and per host (models.<key>.window_tokens, hosts.<name>.window_tokens)" do
+  def target(window_tokens: nil)
+    entry = Samagotchi::HostRegistry::HostEntry.new(name: "box", host: "box", port: 8080, window_tokens: window_tokens)
+    Samagotchi::HostRegistry::ModelTarget.new(model: "box:m", entry: entry, bare_model: "m", client: nil)
+  end
+
+  before { described_class.reset! }
+  after { described_class.reset! }
+
+  it "takes the model's setting over the host's, by the model's lookup names" do
+    models = { "m" => { window_tokens: 32_768 } }
+    expect(described_class.setting(target(window_tokens: 65_536), names: %w[box:m m], models: models).to_h)
+      .to eq(tokens: 32_768, source: :model_setting)
+    expect(described_class.setting(target(window_tokens: 65_536), names: %w[box:m m], models: {}).to_h)
+      .to eq(tokens: 65_536, source: :host_setting)
+    expect(described_class.setting(target, names: %w[m], models: {})).to be_nil
+  end
+
+  it "fills in after the server and the model list, before context.window_tokens" do
+    setting = described_class::Resolved.new(tokens: 32_768, source: :model_setting)
+    allow(Samagotchi::Config).to receive(:get_with_origin).with("context.window_tokens").and_return([200_000, :config])
+    expect(described_class.resolve(client: double(context_window: 128_000), model: "m", setting: setting).tokens).to eq(128_000)
+    expect(described_class.resolve(client: nil, adapter: double(context_window: 131_072), model: "m", setting: setting).tokens)
+      .to eq(131_072)
+    expect(described_class.resolve(client: nil, adapter: double(context_window: nil), model: "m", setting: setting).to_h)
+      .to eq(tokens: 32_768, source: :model_setting)
+    expect(described_class.current.tokens).to eq(32_768)
+    expect(described_class.resolve(client: nil, model: "m").to_h).to eq(tokens: 200_000, source: :config)
   end
 end

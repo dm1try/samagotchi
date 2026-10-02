@@ -9,11 +9,16 @@ module Samagotchi
   #   1. the running server (Client#context_window, e.g. llama.cpp's n_ctx)
   #   2. the host's model list (a chat adapter's #context_window, e.g. a
   #      provider's context_length)
-  #   3. context.window_tokens (CLI, SAMAGOTCHI_CONTEXT_WINDOW_TOKENS or the
-  #      config file); it only fills in when the server reports nothing
-  #   4. DEFAULT_TOKENS
+  #   3. models.<key>.window_tokens, else hosts.<name>.window_tokens
+  #      (#setting: the most specific wins)
+  #   4. context.window_tokens (CLI, SAMAGOTCHI_CONTEXT_WINDOW_TOKENS or the
+  #      config file)
+  #   5. DEFAULT_TOKENS
+  # Settings (3 and 4) only fill in when the server and its list report
+  # nothing.
   #
-  # Sources: :server, :model_list, :config (CLI or file), :env, :default.
+  # Sources: :server, :model_list, :model_setting, :host_setting, :config
+  # (CLI or file), :env, :default.
   module ContextWindow
     DEFAULT_TOKENS = 256_000
 
@@ -22,7 +27,8 @@ module Samagotchi
     module_function
 
     # @param adapter [#context_window, nil] the host's chat adapter
-    def resolve(client: nil, model: nil, adapter: nil)
+    # @param setting [Resolved, nil] the model's or host's window (#setting)
+    def resolve(client: nil, model: nil, adapter: nil, setting: nil)
       server_tokens = client.context_window(model: model) if client.respond_to?(:context_window)
       if positive_integer?(server_tokens)
         @last_server = Resolved.new(tokens: server_tokens, source: :server)
@@ -34,8 +40,27 @@ module Samagotchi
         @last_server = Resolved.new(tokens: listed, source: :model_list)
         return @last_server
       end
+      return @last_server = setting if setting
 
       configured
+    end
+
+    # The window config.yml gives this model or its host:
+    # models.<key>.window_tokens (by the model's lookup names, as sampling
+    # and vision look a model up), else hosts.<name>.window_tokens.
+    # @param target [HostRegistry::ModelTarget]
+    # @param names [Array<String>] HostRegistry#lookup_names
+    # @param models [Hash, nil] ConfigFile.model_settings (specs)
+    # @return [Resolved, nil]
+    def setting(target, names:, models: nil)
+      models ||= ConfigFile.model_settings
+      _key, tokens = ConfigFile.model_setting(names, :window_tokens, models: models)
+      return Resolved.new(tokens: tokens, source: :model_setting) if positive_integer?(tokens)
+
+      tokens = target&.entry&.window_tokens
+      positive_integer?(tokens) ? Resolved.new(tokens: tokens, source: :host_setting) : nil
+    rescue StandardError
+      nil
     end
 
     # The window without asking a server: config, env, then the default.

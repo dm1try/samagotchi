@@ -316,6 +316,18 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         .to include(context_window_tokens: 131_072, context_window_source: :model_list)
     end
 
+    it "takes the turn's models:/hosts: window_tokens when the server and the list report none" do
+      backend.adapter = FakeChatAdapter.new(text("ok"))
+      allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+      setting = Samagotchi::ContextWindow::Resolved.new(tokens: 40_000, source: :host_setting)
+      allow(fake_kernel).to receive(:turn_settings).and_return(Samagotchi::LLM::TurnSettings.none.with(window_setting: setting))
+
+      run
+
+      expect(events.find { |e| e[:type] == :generation_started })
+        .to include(context_window_tokens: 40_000, context_window_source: :host_setting)
+    end
+
     it "reports retries as generation_retrying" do
       backend.adapter = FakeChatAdapter.new(lambda { |on_retry:, **|
         on_retry.call(attempt: 1, max_retries: 5, next_delay: 0.5, error_class: "Errno::ECONNREFUSED", error_message: "refused")

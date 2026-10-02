@@ -271,7 +271,7 @@ module Samagotchi
     def prepare_request(turn)
       prompt, images = format_prompt(turn)
       image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(turn.conversation)
-      window = ContextWindow.resolve(client: @client, model: turn.model_name)
+      window = ContextWindow.resolve(client: @client, model: turn.model_name, setting: @turn_settings.window_setting)
       emit_context_status_event(turn.on_stream_event, turn.context, prompt, iteration_index: turn.iteration - 1,
                                                                              window: window, image_tokens: image_tokens)
       if (line = turn.context.take_guidance)

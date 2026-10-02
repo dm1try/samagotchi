@@ -527,10 +527,32 @@ a box that lists `gemma-3-12b` needs `box:gemma` or the exact id. The lists are
 known only after `/models` ran (nothing is fetched before the first turn), so
 until then an unqualified name goes to the default host; use `host:model` to pin
 one. A **remote** host (an `https` url or a public address; see "Remote or local") keeps its model
-list for 10 minutes (60s for local hosts). For a chat host the context window comes from
-the running server (llama.cpp's `/props`), else the window the host's model list
-gives (`context_length`, `context_window`, `max_model_len` or llama.cpp's
-`meta.n_ctx`), else `context.window_tokens`.
+list for 10 minutes (60s for local hosts).
+
+**The context window** (what the context status and `ctx=` count against) comes from,
+first to last:
+
+1. the running server (llama.cpp's `/props` `n_ctx`; a remote host isn't asked),
+2. the window the host's model list gives (`context_length`, `context_window`,
+   `max_model_len` or llama.cpp's `meta.n_ctx`),
+3. `models.<key>.window_tokens` (the key as `sampling:` looks a model up), else
+   `hosts.<name>.window_tokens`,
+4. `context.window_tokens`, else 256000.
+
+The settings only fill in when the server and its list report nothing: what the
+server runs with is the window that counts. Set one for a provider whose list has
+no window:
+
+```yaml
+hosts:
+  work:
+    url: https://llm.work.example/v1
+    api: openai
+    window_tokens: 131072
+models:
+  qwen3-8b:
+    window_tokens: 32768
+```
 
 Only `:` names a host: `/` is part of a model id (`openai/gpt-4o` is an
 OpenRouter id and goes to the default host as written, even with a host named
@@ -831,7 +853,8 @@ described in their own sections.
 | `log.level` | `info` | yes | `debug`, `info`, `warn`, `error`. |
 | `status.line` | `on` | yes | The status row under the prompt (the REPL's and attached mode's), `on` or `off`. |
 | `context.status` | `true` | yes | Context-usage telemetry for the model. See [context telemetry](internals/context-telemetry.md). |
-| `context.window_tokens` | server's, else 256000 | yes | Context window when the server doesn't report one. |
+| `context.window_tokens` | server's, else 256000 | yes | Context window when the server doesn't report one. `models.<key>.window_tokens` and `hosts.<name>.window_tokens` come first; see "The context window". |
+| `models.<key>.window_tokens`, `hosts.<name>.window_tokens` | none | | A model's or host's context window when the server and its model list report none. |
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |
 | `context.status_thresholds` | `20,40,60,80` | yes | Percentages that trigger a status. |
 | `context.status_cadence` | `0` | yes | Also every N rounds; `0` = thresholds only. |

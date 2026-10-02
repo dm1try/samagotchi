@@ -172,11 +172,13 @@ module Samagotchi
 
       # The window for +model+: the kernel's client probes the server it
       # points at (Engine keeps it on the effective model's host; a local
-      # llama.cpp answers /props), then the host's model list, config, env
-      # and the default. A remote provider has no /props to probe.
+      # llama.cpp answers /props), then the host's model list, the model's
+      # or host's window_tokens, config, env and the default. A remote
+      # provider has no /props to probe.
       def context_window(model)
         client = @adapter.remote? ? nil : @kernel.client
-        ContextWindow.resolve(client: client, model: model, adapter: @adapter)
+        ContextWindow.resolve(client: client, model: model, adapter: @adapter,
+                              setting: (@kernel.turn_settings&.window_setting if @kernel.respond_to?(:turn_settings)))
       rescue StandardError
         nil
       end
