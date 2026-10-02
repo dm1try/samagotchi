@@ -107,3 +107,10 @@ test("waitingSearchText: what the all view's search matches for a waiting sessio
   assert.equal(waitingSearchText({ pending_card: { id: "c1" } }), "waiting needs you");
   assert.equal(waitingSearchText({ status: "idle" }), "");
 });
+
+test("waitingBadge: a delegate's question relayed to its parent says where it waits", () => {
+  const badge = waitingBadge({ id: "c", parent_id: "p", pending_question: { id: "q", kind: "approval", relayed_to: "pppp1111" } });
+  assert.deepEqual(badge, { kind: "approval", text: "in parent pppp1111",
+    title: "Waiting for your approval in parent session pppp1111 (answering here works too)" });
+  assert.equal(waitingSearchText({ id: "c", pending_question: { id: "q", kind: "approval", relayed_to: "pppp1111" } }), "waiting in parent pppp1111");
+});

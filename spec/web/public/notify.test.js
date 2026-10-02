@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { attentionFor, attentionText, createNotifyGate, initialAttentionState, notifyState, trackAttention, waitingOn } from "../../../lib/samagotchi/web/public/notify.js";
+import { RELAY_HOLD_MS, attentionFor, attentionText, createNotifyGate, initialAttentionState, notifyState, trackAttention, waitingOn } from "../../../lib/samagotchi/web/public/notify.js";
 
 // What in a session's summary change needs the user: an open question,
 // a failed turn, a long turn done. The first snapshot only seeds.
@@ -248,4 +248,36 @@ test("waitingOn: a question wins over a card (the question blocks the turn)", ()
 test("attentionFor still sees a new card while an old question stays open", () => {
   const prev = { ...base, pending_question: { id: "q1" } };
   assert.equal(attentionFor(prev, { ...prev, pending_card: { id: "c1" } }).reason, "card");
+});
+
+// The approval relay: one bell, the parent's.
+test("a delegated child's approval is held; one already relayed to the parent never notifies", () => {
+  const child = { ...base, parent_id: "p1" };
+  assert.deepEqual(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "approval" } }),
+    { reason: "approval", sessionId: "s1", key: "s1:q1", holdMs: RELAY_HOLD_MS });
+  assert.equal(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "approval", relayed_to: "p1aaaaaa" } }), null);
+  // A question (the model's) isn't relayed: at once, as before.
+  assert.equal(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "question" } }).holdMs, undefined);
+});
+
+test("an approval relayed to the parent closes the child's key (its hold and its badge drop)", () => {
+  const child = { ...base, parent_id: "p1", pending_question: { id: "q1", kind: "approval" } };
+  const seeded = trackAttention(initialAttentionState(), "snapshot", { sessions: [{ ...base, parent_id: "p1" }] }).state;
+  const opened = trackAttention(seeded, "session", { session: child });
+  assert.equal(opened.attentions[0].holdMs, RELAY_HOLD_MS);
+  const relayed = trackAttention(opened.state, "session", { session: { ...child, pending_question: { id: "q1", kind: "approval", relayed_to: "p1aaaaaa" } } });
+  assert.deepEqual(relayed.attentions, []);
+  assert.deepEqual(relayed.closed, ["s1:q1"]);
+});
+
+test("an attention with its own hold waits for it, also without BroadcastChannel, and drops when closed", () => {
+  const timers = [];
+  const gate = createNotifyGate({ schedule: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, cancel: (id) => { timers[id - 1].fn = null; } });
+  const delivered = [];
+  gate.offer({ key: "s1:q1", holdMs: 1500 }, () => delivered.push("q1"));
+  gate.offer({ key: "s1:q2" }, () => delivered.push("q2"));
+  assert.deepEqual(delivered, ["q2"]);
+  assert.equal(timers[0].ms, 1500);
+  gate.drop(["s1:q1"]);
+  assert.equal(timers[0].fn, null);
 });

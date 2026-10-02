@@ -157,3 +157,8 @@ test("a relayed card closed without an answer here says where the question went,
   assert.equal(resultText(relayed, { cancelled: true, reason: "dismissed" }), "Denied (dismissed)");
   assert.equal(resultText(relayed, { answer: { selected: ["Allow once"] } }), "Allowed: Allow once");
 });
+
+test("a resolved relayed card's summary names the delegate first", () => {
+  assert.equal(summaryText(relayed, { answer: { selected: ["Allow once"] } }), "ab12cd34: execute: git push → Allowed: Allow once");
+  assert.equal(summaryText(relayed), "Approve delegate ab12cd34's tool call?");
+});

@@ -111,7 +111,9 @@ module Samagotchi
       return nil unless live && pending.is_a?(Hash) && pending[:id]
 
       kind = pending[:kind].to_s
-      { id: pending[:id], kind: %w[approval hook].include?(kind) ? kind : "question" }
+      relayed = pending[:relayed_to]
+      relayed_to = relayed.is_a?(Hash) ? (relayed[:parent_short] || relayed["parent_short"]) : nil
+      { id: pending[:id], kind: %w[approval hook].include?(kind) ? kind : "question", relayed_to: relayed_to }.compact
     end
 
     # The stored project root, else (a file from before the field) the

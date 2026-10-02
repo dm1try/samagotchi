@@ -40,6 +40,11 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(json[:last_turn]).to eq(s.last_turn)
       s.pending_question = { id: "q2", kind: "approval" }
       expect(described_class.build(s, owner: owner, session_dir: session_dir(s))[:pending_question]).to eq(id: "q2", kind: "approval")
+
+      # Relayed to the parent's card (the approval relay): which parent, for one bell and the badge.
+      s.pending_question = { id: "q3", kind: "approval", relayed_to: { "parent_id" => "p" * 36, "parent_short" => "pppppppp", "relay_id" => "r" } }
+      expect(described_class.build(s, owner: owner, session_dir: session_dir(s))[:pending_question])
+        .to eq(id: "q3", kind: "approval", relayed_to: "pppppppp")
     end
 
     it "has no question without a live owner: one a dead worker saved can't be answered" do

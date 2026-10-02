@@ -33,6 +33,12 @@ class FakeEl {
     this.parent = null;
     this.isConnected = false;
   }
+  replaceWith(other) {
+    const siblings = this.parent.children;
+    siblings[siblings.indexOf(this)] = other;
+    other.parent = this.parent;
+    this.parent = null;
+  }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   click() { (this.listeners.click || []).forEach((fn) => fn({})); }
   focus() { this.focused = true; }
@@ -259,4 +265,48 @@ test("forgetContinue: a later offer draws a new card", () => {
   cards.forgetContinue();
   cards.renderContinue({});
   assert.equal(history.children.length, 2);
+});
+
+const RELAYED_TO = { parent_id: "pppp1111-0000", parent_short: "pppp1111", relay_id: "r1" };
+const APPROVAL = {
+  id: "a1", kind: "approval", question: "execute: git push", options: ["Allow once", "Deny"], allow_freeform: true,
+  approval: { tool: "execute", command: "git push", cwd: "/r", reason: "pushes", scopes: ["once"] },
+};
+
+test("a delegate's own card says it waits in the parent too, live, and drops the line once closed or resolved", () => {
+  const { cards } = setup();
+  cards.renderQuestion(APPROVAL);
+  const line = () => cards.questionCard().querySelector(".question-relayed");
+  assert.equal(line().classList.contains("hidden"), true);
+
+  cards.markRelayed("other", RELAYED_TO);
+  assert.equal(line().classList.contains("hidden"), true);
+  cards.markRelayed("a1", RELAYED_TO);
+  assert.equal(line().classList.contains("hidden"), false);
+  assert.deepEqual(line().children.map((c) => c.textContent), ["Waiting for approval in parent ", "pppp1111", ": answering here works too"]);
+  assert.equal(line().querySelector("a").href, "#/s/pppp1111-0000");
+  // Still answerable here.
+  assert.equal(cards.questionCard().querySelector(".question-submit").disabled, false);
+
+  cards.markRelayed("a1", null);
+  assert.equal(line().classList.contains("hidden"), true);
+  cards.markRelayed("a1", RELAYED_TO);
+  cards.resolveQuestion("a1", { answer: { selected: ["Allow once"] } });
+  assert.equal(line().classList.contains("hidden"), true);
+});
+
+test("a card drawn from a snapshot shows the relay line at once", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ ...APPROVAL, relayed_to: RELAYED_TO });
+  assert.equal(cards.questionCard().querySelector(".question-relayed").classList.contains("hidden"), false);
+});
+
+test("a relayed approval on the parent links its delegate's session", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ ...APPROVAL, relay: { id: "r1", child_id: "cccc2222-0000", chain: ["cccc2222"], task: "push it" } });
+  const row = cards.questionCard().querySelector(".approval-delegate");
+  const link = row.querySelector("a");
+  assert.equal(link.href, "#/s/cccc2222-0000");
+  assert.equal(link.textContent, "cccc2222");
+  assert.equal(row.children[2].textContent, " · push it");
 });
