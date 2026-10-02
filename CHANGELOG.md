@@ -17,7 +17,7 @@ and commands may change between minor versions. How releases are made:
   questions itself. `chi send --wait -m` to a session waiting for an answer is refused with the `chi answer` command
   for it.
 - An approval answered with `chi answer` can be denied, not allowed: allowing is the user's (the web, `chi --attach`).
-  `guardrails.parent_approvals: once` in config.yml (no environment variable, so a parent can't set it) lets "Allow
+  `guardrails.parent_approvals: once` in config.yml (no environment variable) lets "Allow
   once" through, never a wider scope; an approval whose offered scopes are missing lets only Deny through. The worker
   checks it again with its own config (`chi answer` marks its answers); the web and `chi --attach` keep every scope.
 - `chi sessions list` shows a session waiting for an answer as `waiting`; `--format json` has `waiting` (`question`,
@@ -27,6 +27,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `guardrails.enabled` and `guardrails.small_models` are config.yml only: `SAMAGOTCHI_GUARDRAILS_ENABLED=false` no
+  longer switches guardrails off, and a worker unsets every `SAMAGOTCHI_GUARDRAILS_*` it inherits, so a parent agent
+  starting or waking a session can't switch its guardrails off. `XDG_CONFIG_HOME` still picks the config dir.
 - `chi send --wait` exits 4 (not 1) when `--timeout` passes with the turn still running.
 - Attached `chi -p` from a script exits 3 (not 1) when it leaves a question or an approval waiting for an answer,
   and prints the whole question on stderr with the `chi answer` command for it, as `chi send --wait` does.

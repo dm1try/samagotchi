@@ -91,4 +91,13 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
     file = { "guardrails" => { "parent_approvals" => "once" } }
     expect(Samagotchi::Config.resolve("guardrails.parent_approvals", file_data: file, env: {})).to eq("once")
   end
+
+  it "takes guardrails.enabled and small_models from config.yml only, never the environment" do
+    env = { "SAMAGOTCHI_GUARDRAILS_ENABLED" => "false", "SAMAGOTCHI_GUARDRAILS_SMALL_MODELS" => "" }
+    expect(Samagotchi::Config.resolve("guardrails.enabled", file_data: {}, env: env)).to be(true)
+    expect(Samagotchi::Config.resolve("guardrails.small_models", file_data: {}, env: env)).to eq("auto")
+    file = { "guardrails" => { "enabled" => false, "small_models" => "x*" } }
+    expect(Samagotchi::Config.resolve("guardrails.enabled", file_data: file, env: {})).to be(false)
+    expect(Samagotchi::Config.resolve("guardrails.small_models", file_data: file, env: {})).to eq("x*")
+  end
 end

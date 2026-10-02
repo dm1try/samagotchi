@@ -576,6 +576,23 @@ RSpec.describe Samagotchi::SessionManager do
       end
     end
 
+    # The spawner's environment must not switch the worker's guardrails off
+    # (a parent agent starting or waking a session).
+    it "unsets every SAMAGOTCHI_GUARDRAILS_* variable for the worker" do
+      spawned_env = nil
+      allow(Process).to receive(:spawn) do |*args, **_opts|
+        spawned_env = args.first if args.first.is_a?(Hash)
+        12_345
+      end
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_GUARDRAILS_ENABLED" => "false",
+                                       "SAMAGOTCHI_GUARDRAILS_SMALL_MODELS" => "", "SAMAGOTCHI_GUARDRAILS_X" => "1"))
+
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(spawned_env).to include("SAMAGOTCHI_GUARDRAILS_ENABLED" => nil, "SAMAGOTCHI_GUARDRAILS_SMALL_MODELS" => nil,
+                                     "SAMAGOTCHI_GUARDRAILS_X" => nil)
+    end
+
     it "spawns worker with explicit require for session manager" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       allow(Samagotchi::Session).to receive(:new_session).and_return(session)

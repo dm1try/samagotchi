@@ -61,8 +61,10 @@ ID`. With `guardrails.parent_approvals: once` in chi's config.yml (it has no
 environment variable), "Allow once" goes through; the wider scopes never do. See
 [Guardrails](guardrails.md#approvals-from-a-parent-agent).
 
-The worker checks it again with its own config, whatever the parent's
-environment says. Still, this guards a parent that follows its instructions,
+The worker checks it again with its own config.yml. The guardrails settings
+have no environment variables, and a worker drops any `SAMAGOTCHI_GUARDRAILS_*`
+it inherits; but a parent that sets `XDG_CONFIG_HOME` picks which config.yml a
+worker it starts or wakes reads. Still, this guards a parent that follows its instructions,
 not a security boundary: the worker's Bridge and `chi web` on localhost take
 answers from any local process.
 

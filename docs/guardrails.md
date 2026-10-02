@@ -101,9 +101,15 @@ guardrails:
 option's scope, not its label; the wider scopes (this session, this repo or
 directory, the rule) stay with the web and the terminal. An approval that
 doesn't offer "once" can't be allowed from a parent, and neither can one whose
-offered scopes are missing or don't fit its options: then only Deny goes. The
-setting is read from config.yml only, with no environment variable, so the
-parent's environment can't change it.
+offered scopes are missing or don't fit its options: then only Deny goes.
+
+The guardrails settings (`enabled`, `small_models`, `parent_approvals`) are
+read from config.yml only: they have no environment variable, and a worker
+chi starts unsets every `SAMAGOTCHI_GUARDRAILS_*` it would inherit. What a
+parent's environment does choose is the config dir: `XDG_CONFIG_HOME` picks
+which config.yml chi reads, and a worker the parent starts or wakes (`chi
+send` to a stopped session) reads the one the parent's `XDG_CONFIG_HOME`
+points at. chi doesn't record the config dir per session.
 
 The worker checks it too. `chi answer` marks its answers as a parent's
 (`client_id: "cli:answer"`), and the worker's Bridge refuses such an allow
@@ -132,7 +138,7 @@ commands that name them.
 
 ```yaml
 guardrails:
-  enabled: true              # false: no rules, and hooks' asks are dropped (a deny still applies)
+  enabled: true              # false: no rules, and hooks' asks are dropped (a deny still applies); config.yml only
   rules:
     - id: git-push
       tool: shell            # execute + task_create; or a tool name, a glob, or a list

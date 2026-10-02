@@ -162,7 +162,9 @@ module Samagotchi
     # child inherits this process's ENV and reads config.yml itself (as it
     # is when the worker starts); opts[:env] adds to it (merged, not
     # replaced) what it can't read there: this `chi`'s CLI settings
-    # (Config.cli_env), the hosts and the absolute log file.
+    # (Config.cli_env), the hosts and the absolute log file. It unsets
+    # SAMAGOTCHI_GUARDRAILS_*. XDG_CONFIG_HOME passes: whoever starts or
+    # wakes the worker picks which config.yml it reads (docs/guardrails.md).
     private_class_method def self.spawn_options(session)
       # Own process group: workers outlive `chi web`, and a Ctrl-C in its
       # terminal must not reach them.
@@ -195,9 +197,16 @@ module Samagotchi
       else
         child_env["SAMAGOTCHI_LOG_DISABLE"] = "true"
       end
+      # The spawner's environment must not reach the worker's guardrails (a
+      # parent agent starting or waking a session): Process.spawn unsets a
+      # key mapped to nil. config.yml no longer reads them; this keeps an
+      # older or future env-exposed one out as well.
+      ENV.each_key { |key| child_env[key] = nil if key.start_with?(GUARDRAILS_ENV_PREFIX) }
       opts[:env] = child_env unless child_env.empty?
       opts
     end
+
+    GUARDRAILS_ENV_PREFIX = "SAMAGOTCHI_GUARDRAILS_"
 
     # List all sessions, reading status from persisted session.json files.
     # +project_root+: only that project's sessions (nil: every session).
