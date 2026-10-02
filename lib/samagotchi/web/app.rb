@@ -1252,6 +1252,13 @@ module Samagotchi
             filtered << { role: "steer", content: content, source: (m[:source] || m["source"]).to_s, step: steer_step(list, index) }
             next
           end
+          # A turn that ended with no answer (TurnNote.empty's marker): its
+          # empty steps (with ?parts=1) and the item the page draws its
+          # notice from; the note itself stays hidden.
+          if (marker = Samagotchi::TurnNote.empty_answer(m))
+            filtered.concat(empty_answer_items(marker, parts: parts, cwd: cwd))
+            next
+          end
           next if role == "system"
           next if role == "tool_response"
 
@@ -1291,6 +1298,19 @@ module Samagotchi
         filtered
       rescue StandardError
         []
+      end
+
+      # A no-answer turn's marker as display items: each empty step that
+      # has something to show (its thinking) as a text-less assistant step
+      # (only with +parts+, as other text-less steps), then
+      # { role: "empty_answer", retries: }.
+      def empty_answer_items(marker, parts:, cwd:)
+        steps = parts ? Array(marker[:steps] || marker["steps"]) : []
+        items = steps.filter_map do |step|
+          did = step.is_a?(Hash) ? MessageParts.for_message(step, [], cwd: cwd) : nil
+          { role: "assistant", content: "", parts: did } if did
+        end
+        items << { role: "empty_answer", content: "", retries: (marker[:retries] || marker["retries"]).to_i }
       end
 
       # The last turn failed and its prompt went back to the user: the

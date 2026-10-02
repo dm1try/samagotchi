@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
-import { clientLabel, emptyRetryLine, hookNoticeLabel, reminderText, retryStatusLine } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { clientLabel, emptyAnswerLine, emptyRetryLine, hookNoticeLabel, reminderText, retryStatusLine } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { servedModelDiffers } from "../../../lib/samagotchi/web/public/format.js";
 
 // Shared contract: spec/shared/labels_matrix.json, the words the web and the
@@ -40,6 +40,12 @@ test("hook notice labels per the shared labels matrix", () => {
 test("empty-answer retry lines per the shared labels matrix", () => {
   for (const entry of cases("empty_retry_lines")) {
     assert.equal(emptyRetryLine(entry.event), expected(entry));
+  }
+});
+
+test("no-answer notices per the shared labels matrix", () => {
+  for (const entry of cases("empty_answer_lines")) {
+    assert.equal(emptyAnswerLine({ retries: entry.retries }), expected(entry));
   }
 });
 

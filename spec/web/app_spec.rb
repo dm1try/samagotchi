@@ -1040,6 +1040,25 @@ RSpec.describe Samagotchi::Web::App do
         ])
       end
 
+      it "draws a turn with no answer from its note's marker: the empty steps, then the notice; never the note" do
+        note = JSON.parse(JSON.generate(Samagotchi::TurnNote.empty(retries: 1, steps: [
+          { role: "model", content: "<think>first</think>" }, { role: "model", content: "", thinking: "second" }
+        ])))
+        empty = { "snapshot" => { "messages" => [{ "role" => "user", "content" => "hi" }, note] },
+                  "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
+        app = build_app(state_dir: Dir.mktmpdir)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(empty)
+
+        turn = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)["messages"]
+        chat = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"]
+
+        expect(turn).to eq([{ "role" => "user", "content" => "hi" },
+                            { "role" => "assistant", "content" => "", "parts" => { "thinking" => "first" } },
+                            { "role" => "assistant", "content" => "", "parts" => { "thinking" => "second" } },
+                            { "role" => "empty_answer", "content" => "", "retries" => 1 }])
+        expect(chat).to eq([{ "role" => "user", "content" => "hi" }, { "role" => "empty_answer", "content" => "", "retries" => 1 }])
+      end
+
       it "hands out the thinking an api: openai step saved; the chat view's messages don't carry it" do
         openai = { "snapshot" => { "messages" => [
           { "role" => "user", "content" => "check" },

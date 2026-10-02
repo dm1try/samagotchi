@@ -112,6 +112,26 @@ test("an empty answer is asked again in the same turn, and a reload shows one tu
   await expect(page.locator("#history .hook-notice")).toHaveText(["↻ empty answer, asking again (1/1)"]);
 });
 
+// The retry is empty too: the turn ends with no answer. One muted notice
+// where the answer goes (no answer bubble), live and after a reload, which
+// keeps both empty steps and the retry row in them.
+test("a turn with no answer shows one notice, live and after a reload, with its steps", { tag: "@turn" }, async ({ page, script }) => {
+  script("empty_answer");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  const notice = page.locator("#history .empty-answer");
+  await expect(notice).toHaveText("no answer: the model returned nothing (after 1 retry)");
+  await expect(page.locator("#history .bubble.output")).toHaveCount(0);
+  await page.reload();
+  await turnEnded(page, 1);
+  await expect(notice).toHaveText("no answer: the model returned nothing (after 1 retry)");
+  await expect(page.locator("#history .bubble.output")).toHaveCount(0);
+  await expect(page.locator("#history .turn-work > summary")).toHaveText("2 steps");
+  await expect(page.locator("#history .turn-work .hook-notice")).toHaveText("↻ empty answer, asking again (1/1)");
+  // Where the answer goes: after the steps, before the timing line.
+  await expect(page.locator("#history .turn-work + .empty-answer + .turn-timing")).toHaveCount(1);
+});
+
 // A turn's own rows come back where they were, on a mid-turn join and after
 // the turn: the empty answer's retry row, the answered question card, and
 // a line sent while the turn ran (the steered bubble, not a turn of its own).

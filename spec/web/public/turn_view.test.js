@@ -215,3 +215,51 @@ test("turnHistoryHtml: the timing line numbers a turn by its record, after a fai
   assert.match(html, /turn 1 · 1\.0s/);
   assert.match(html, /turn 3 · 3\.0s/);
 });
+
+test("turnHistoryHtml: a turn with no answer keeps its empty steps, then the muted notice before its timing", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "", parts: { thinking: "first" } },
+    { role: "assistant", content: "", parts: { thinking: "second" } },
+    { role: "empty_answer", content: "", retries: 1 },
+  ];
+  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 3700 }] }), { thumbs });
+  assert.equal(html,
+    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
+    '<details class="turn-work done"><summary>2 steps</summary>' +
+    '<details class="gen"><summary>thinking</summary><div class="thinking-body">first</div></details>' +
+    '<details class="gen"><summary>thinking</summary><div class="thinking-body">second</div></details>' +
+    '</details>' +
+    '<div class="bubble hook-notice empty-answer">no answer: the model returned nothing (after 1 retry)</div>' +
+    '<div class="turn-timing">turn 1 · 3.7s</div>');
+});
+
+test("turnHistoryHtml: a one-step turn with no answer is its collapsed thinking and the notice, as live", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "", parts: { thinking: "hm" } },
+    { role: "empty_answer", content: "", retries: 0 },
+  ];
+  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] }), { thumbs });
+  assert.equal(html,
+    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
+    '<details class="bubble thinking"><summary>thinking</summary><div class="thinking-body">hm</div></details>' +
+    '<div class="bubble hook-notice empty-answer">no answer: the model returned nothing</div>' +
+    '<div class="turn-timing">turn 1 · 0.5s</div>');
+});
+
+test("turnHistoryHtml: a turn with no answer after tool steps shows no step's text as its answer", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Looking." },
+    { role: "empty_answer", content: "", retries: 1 },
+  ];
+  const tools = normalizeTiming({
+    turn_records: [{ id: "T1", duration_ms: 900 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
+  });
+  const html = turnHistoryHtml(items, tools, { thumbs });
+  assert.doesNotMatch(html, /bubble output/);
+  assert.match(html, /<div class="gen-text">Looking\.<\/div>/);
+  assert.match(html, /<div class="bubble hook-notice empty-answer">no answer: the model returned nothing \(after 1 retry\)<\/div><div class="turn-timing">/);
+});
