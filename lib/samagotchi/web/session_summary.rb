@@ -61,8 +61,9 @@ module Samagotchi
           bridge_up: up,
           # For the tab's notifications (notify.js): an open question, the
           # running turn's open card with actions, and how the last turn
-          # ended. A question saved by a worker that died is not open.
-          pending_question: session.waiting_question(live: !owner.nil?),
+          # ended. A question saved by a worker that died is not open, nor a
+          # chi REPL's (SessionManager.worker_live?'s rule: only a worker shares it).
+          pending_question: session.waiting_question(live: !!owner&.worker?),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.last_turn
         }

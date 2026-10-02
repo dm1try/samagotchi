@@ -634,7 +634,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["messages"].map { |m| m["content"] }).to eq(%w[hello hi\ there])
     end
 
-    it "draws the file's pending question only while the session has a live owner (a dead worker's can't be answered)" do
+    it "draws the file's pending question only while a worker owns the session (a dead worker's or a REPL's can't be answered)" do
       loader = Class.new(StubSessionLoader) do
         def self.load(id, state_dir: nil)
           super.tap { |s| s.pending_question = { id: "q1", question: "Which?", status: "pending" } }
@@ -647,6 +647,10 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)["pending_question"]).to be_nil
 
       manager.define_singleton_method(:session_owner) { |*, **| Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1) }
+      _status, _headers, body = app.call(env_for("/api/sessions/s1"))
+      expect(JSON.parse(body.first)["pending_question"]).to be_nil
+
+      manager.define_singleton_method(:session_owner) { |*, **| Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1) }
       _status, _headers, body = app.call(env_for("/api/sessions/s1"))
       expect(JSON.parse(body.first)["pending_question"]).to include("id" => "q1")
     end

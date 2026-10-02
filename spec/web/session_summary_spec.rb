@@ -5,6 +5,7 @@ require "tmpdir"
 require "fileutils"
 require "json"
 
+require "samagotchi/owner_lock"
 require "samagotchi/web/session_summary"
 require "samagotchi/session"
 
@@ -46,6 +47,14 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       s.pending_question = { id: "q1", question: "Which?" }
 
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))[:pending_question]).to be_nil
+    end
+
+    it "has no question while a chi REPL owns the session: the web can't answer it there" do
+      s = session(status: "running")
+      s.pending_question = { id: "q1", question: "Which?" }
+      repl = Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1)
+
+      expect(described_class.build(s, owner: repl, session_dir: session_dir(s))[:pending_question]).to be_nil
     end
 
     it "is nil for a session with neither" do

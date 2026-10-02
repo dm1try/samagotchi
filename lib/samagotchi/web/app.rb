@@ -539,11 +539,12 @@ module Samagotchi
         last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
         current_turn = turn_snapshot && turn_snapshot["current_turn"]
         owner = session_owner(id)
-        # The file's question only with a live owner: one a dead worker
-        # saved can't be answered (its turn is gone).
+        # The file's question only while a worker owns the session: one a
+        # dead worker saved can't be answered (its turn is gone), nor a chi
+        # REPL's (it shares nothing with the web).
         pending = if turn_snapshot
                     current_turn && current_turn["pending_question"]
-                  elsif owner
+                  elsif owner&.worker?
                     session.pending_question
                   end
         # A /model in the worker changes it before the file catches up.

@@ -32,6 +32,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- The web no longer notifies about, or draws, a question a chi REPL is asking: the web can't answer it there.
 - `delegate_result` on a child whose worker died says `worker_gone` instead of waiting for, or reporting, a question
   nobody can answer; `chi send --wait` and `chi answer` no longer report such a question as waiting either.
 - Answers from Splash no longer start with two blank lines (a workaround until Splash drops them itself).
