@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 - AGENT.md is found at the top of the git work tree when chi runs in a subdirectory (one in the current directory still wins).
 - `execute.timeout_sec` in config.yml (or `--execute-timeout-sec`) sets how long an `execute` command may run, like `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC`; it no longer warns as an unknown key.
 - A bundle's `requires_chi` now applies to its hooks too, not only its plugin: on a too-old chi they don't load, with a notice.
+- `chi bundle install` and `chi bundle status` say when a bundle's hooks won't load because chi is older than its `requires_chi`, also for a bundle without a plugin.
 
 ## [0.12.0] - 2026-10-02
 

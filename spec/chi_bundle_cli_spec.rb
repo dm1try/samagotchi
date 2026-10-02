@@ -389,4 +389,30 @@ RSpec.describe "chi bundle (CLI)" do
       expect(out).to match(/\A=== plugin\/plugin\.rb ===\n--- base \(provenance\) ---\n#{Regexp.escape(plugin)}--- current \(on-disk\) ---\n#{Regexp.escape(plugin)}--- metadata: sha256=\S+ requires_chi=>= 0\.1\.28\n\n\z/)
     end
   end
+  context "with a hooks bundle this chi is too old for" do
+    before(:context) do
+      @root = self.class.sandbox
+      src = File.join(@root, "src")
+      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"), src)
+      File.write(File.join(src, "manifest.yml"), "#{File.read(File.join(src, "manifest.yml"))}requires_chi: \">= 99.0\"\n")
+      @install = self.class.run_in(@root, "install", src)
+    end
+
+    after(:context) { FileUtils.rm_rf(@root) }
+
+    let(:failure) { "it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})" }
+
+    it "install warns that its hooks won't load" do
+      expect(@install[0]).to include("Bundle sample-hooks-bundle: its hooks won't load: #{failure}")
+    end
+
+    it "status NAME says the hooks aren't loaded, and the list counts it as an issue" do
+      out, err, code = chi("status", "sample-hooks-bundle")
+
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("    guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]\n" \
+                             "    requires_chi: >= 99.0\n    not loaded: #{failure}\n")
+      expect(chi("status")[0]).to eq("  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n")
+    end
+  end
 end

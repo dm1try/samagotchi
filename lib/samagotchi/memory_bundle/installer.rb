@@ -265,6 +265,7 @@ module Samagotchi
         # ── Plugin: <file> into <bundle_dir>/plugin/ (docs/plugins.md) ────
         # Like the rules, the bundle's plugin replaces an earlier one.
         plugin_file_for_provenance = install_plugin(manifest, normalized_dir, provenance)
+        warn_hooks_requires_chi(manifest, all_hooks_in_bundle)
 
         # Files the previous version shipped and this one doesn't.
         if @upgrade && existing_provenance && existing_provenance[:files]
@@ -464,6 +465,17 @@ module Samagotchi
         BundleNeeds.missing(manifest.needs).each do |need|
           hint = need[:hint] ? " (#{need[:hint]})" : ""
           @warnings << "needs #{need[:command]}: not found on PATH#{hint}; #{@dry_run ? "would install" : "installed"} anyway"
+        end
+      end
+
+      # The hook loader skips every hook of a bundle whose requires_chi this
+      # chi doesn't meet (Hooks::BundleLoader); say so at install, as
+      # install_plugin does for the plugin.
+      def warn_hooks_requires_chi(manifest, hook_files)
+        return if manifest.nil? || hook_files.empty?
+
+        if (failure = Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION))
+          @warnings << "Bundle #{@name}: its hooks won't load: #{failure}"
         end
       end
 

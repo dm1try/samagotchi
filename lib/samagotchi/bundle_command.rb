@@ -355,6 +355,8 @@ module Samagotchi
             exists = File.exist?(hook_path) ? "ok" : "missing"
             @stdout.puts "    #{hk}: event=#{event} on_error=#{on_error} priority=#{prio} [#{exists}]"
           end
+          @stdout.puts "    requires_chi: #{st[:provenance][:requires_chi]}" if st[:hooks_requires_failure]
+          @stdout.puts "    not loaded: #{st[:hooks_requires_failure]}" if st[:hooks_requires_failure]
         end
         if (plugin = st[:plugin])
           note = plugin[:state] == "modified" ? " (edited after install: not loaded; reinstall the bundle)" : ""
@@ -379,6 +381,7 @@ module Samagotchi
           hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
           plugin = st[:plugin]
           mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
+          mods += 1 if st[:hooks_requires_failure]
           plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
           includes = st[:provenance][:includes]
           includes_info = includes ? " includes=#{includes.join(",")}" : ""

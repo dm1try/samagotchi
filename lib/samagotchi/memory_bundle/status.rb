@@ -43,7 +43,15 @@ module Samagotchi
           }
         end
         { provenance: data, scope: scope, target_dir: target_dir, files: details, plugin: plugin_status(provenance, data),
-          needs: needs_status(data) }
+          hooks_requires_failure: hooks_requires_failure(data), needs: needs_status(data) }
+      end
+
+      # Why none of the bundle's hooks load (this chi doesn't meet its
+      # requires_chi, Hooks::BundleLoader), or nil: it has no hooks or meets it.
+      def self.hooks_requires_failure(data)
+        return nil if (data[:hooks] || {}).empty?
+
+        Manifest.requires_chi_failure(data[:requires_chi], Samagotchi::VERSION)
       end
 
       # The stored needs, each with found: from this process's PATH (the
