@@ -38,7 +38,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     expect(result).to be(true)
     expect(out).to eq("Fruit\n? Which one?\n  1) Apple\n  2) Banana\n  3) Cherry\n" \
-                      "  [Select one (e.g. 2); Enter alone cancels]\n? ? Which one? → Banana\n")
+                      "  [Select one (e.g. 2); Enter alone cancels]\n? 2\n? Which one? → Banana\n")
     expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
 
@@ -47,6 +47,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     _, out = answer_with("9\n1,2\nkiwi\nche\n")
 
+    expect(out).not_to include("? ? 9", "? ? kiwi")
     expect(out).to include("? 9\nInvalid choice '9': pick 1-3\n", "? kiwi\n", "This is single-select (pick one). Try again.\n",
                            "Unknown option 'kiwi'. Use numbers 1-3 or exact labels.\n")
     expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Cherry"], freeform: nil)
@@ -84,6 +85,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       [:set_slot, :notes, ["Fruit", "? Which one?", "  1) Apple", "  2) Banana", "  3) Cherry",
                            "  [Select one (e.g. 2); Enter alone cancels]"]],
       [:set_slot, :editor, ["? "]],
+      [:commit, "2"], # off a terminal the piped line completes the ? prompt
       [:clear_slot, :notes],
       [:commit, "? Which one? → Banana"],
       [:clear_slot, :notes]
@@ -273,6 +275,9 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     it "refuses an allow from piped input, says why, and denies at the end of the input" do
       answer, out = open_with("2\n")
       expect(out).to include("allowing a tool call is up to the user")
+      # The piped line completes the prompt once; it isn't echoed again.
+      expect(out).not_to match(/^\S+ \S+ 2$/)
+      expect(out.lines.grep(/\b2$/).size).to eq(1), out
       expect(answer).not_to include(selected_indices: [1])
       expect(answer).to include(error: "no answer")
     end

@@ -1112,6 +1112,7 @@ module Samagotchi
     # was cancelled).
     def answer_question_widget(prompt)
       loop do
+        @choice_echoed = false
         raw = begin
           yield
         rescue Interrupt
@@ -1133,7 +1134,7 @@ module Samagotchi
         @surface.commit(answer.note) if answer.note
         unless answer.ok?
           # The read left no echo: the line shows above its error.
-          @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{raw}")
+          echo_choice(raw)
           @surface.commit(answer.error)
           next
         end
@@ -1146,7 +1147,7 @@ module Samagotchi
         rescue QuestionDesk::Refused => e
           # A parent's allow guardrails.parent_approvals doesn't let through:
           # the question stays open for a deny (or the end of the input).
-          @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{raw}")
+          echo_choice(raw)
           @surface.commit(Guardrails::ParentApprovals.message(e.reason, typed: true))
           next
         rescue ArgumentError => e
@@ -1173,7 +1174,19 @@ module Samagotchi
     # A ? read of its own, off a terminal (specs, pipes): $stdin.gets.
     def read_choice_line(question_prompt)
       @surface.set_slot(:editor, [question_prompt])
-      $stdin.gets
+      line = $stdin.gets
+      # A pipe doesn't echo: the line completes the ? prompt here, once,
+      # and the widget doesn't echo it again (#echo_choice).
+      unless $stdin.tty?
+        @surface.commit(line.to_s.chomp)
+        @choice_echoed = true
+      end
+      line
+    end
+
+    # The answer line above its error, unless its read echoed it already.
+    def echo_choice(raw)
+      @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{raw}") unless @choice_echoed
     end
 
     # The next line submitted at the open prompt (?), nil for Ctrl-D

@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - `printf '2\n' | chi --attach ID` on a session already waiting on a question answers it: the piped line could be read
   before the question arrived and go in as a new prompt, and the attach then hung.
+- A REPL reading its answers from a pipe shows each answer line once (`? 2`), not `? ? 2`, above why it was refused
+  or invalid.
 
 ### Changed
 
