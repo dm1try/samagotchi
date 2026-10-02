@@ -22,14 +22,14 @@
 - `chi models [--format text|json] [--timeout S] [TEXT]` — list the models every configured host offers, as the names `--model` takes (see [Listing the models](#listing-the-models))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles; `chi self --model` prints only the model a new session starts on, an alias resolved to its target (the desktop helper's hint)
 - `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
-- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle)). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for every other command
+- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle)). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for the other subcommands. Plain `chi` and `chi web` exit 1 on an unknown flag, a flag missing its value or a stray argument
 
 ### First setup
 
 `chi bootstrap TARGET` names the model server and writes the config for it:
 
 ```sh
-chi bootstrap 192.168.1.29:8081          # host:port (port 8080 when none)
+chi bootstrap 192.168.1.29:8081          # host:port (an IP or localhost: port 8080 when none; a domain: https 443, then http 80)
 chi bootstrap https://openrouter.ai/api/v1 --key-env OPENROUTER_API_KEY
 chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
 ```
@@ -179,7 +179,8 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 
 Every setting in the config registry (`lib/samagotchi/config.rb`) that exposes a CLI
 flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,
-`--read-truncate-at-bytes`. `chi --help` lists them all.
+`--read-truncate-at-bytes`; an on/off setting is `--[no-]kebab-case` with no value
+(`--context-status`, `--no-context-status`). `chi --help` lists them all.
 
 **Which loop runs.** There is no backend flag: the model's host decides. A host with
 `api: openai` in config.yml is driven through the OpenAI chat API (streamed; a remote
@@ -207,8 +208,10 @@ Notes:
 - `-p` always feeds **and** runs the prompt; there is no feed-and-edit variant. To
   prefill (edit, not execute) the first REPL line, use the
   `SAMAGOTCHI_DEFAULT_INPUT` environment variable instead.
-- Prompt history is persisted per session; `--resume` preserves prior messages as
-  turn context (a `-p` run on a resumed session never clobbers existing history).
+- Prompt history (↑) is one file shared by every session (see [Persistent Prompt
+  History](#persistent-prompt-history)); `--resume` preserves the session's prior
+  messages as turn context (a `-p` run on a resumed session never clobbers its
+  conversation).
 - Non-interactive runs (`-p` with `--non-interactive`, or bare `--non-interactive`)
   print only the final result output — no spinner, status line, or REPL.
 
@@ -357,6 +360,16 @@ file and index line stay as they are; only this session doesn't see it.
 - The `read` tool on `memories/<name>.md` is not refused (a guardrails rule
   can protect the path if wanted).
 
+### Session commands
+
+`/help` lists the commands this session takes, the installed bundles' too, each
+with a line on what it does. `/stats` shows the session's numbers: turns, tool
+calls (by tool, with errors), iterations, tokens in/out summed over every
+request, generation latency, cancellations, retries, context used and window,
+the prompt profile and the model the server says it ran. `/recap` is in
+[Session recap](#session-recap), `/model` and `/models` in [Runtime Model
+Switch](#runtime-model-switch-assist-mode).
+
 ### Typing during a turn
 
 The prompt stays open while a turn runs, in an attached terminal and in the plain
@@ -368,7 +381,8 @@ REPL alike:
   A line that comes after the turn's last step runs as the next turn, and so
   does one sent after Ctrl-C: it doesn't merge into the turn being cancelled.
   Reminder turns take merged lines too.
-- `/stats` and `/recap` answer at once. Other commands (`!cmd`, `/model`,
+- `/stats` and `/recap` answer at once, and in an attached terminal so do `/help`
+  and a plugin's anytime command (`/btw`). Other commands (`!cmd`, `/model`, `/models`,
   `!rollback`, `/continue`, `/guardrails`) say `busy: wait for the turn to end`
   and go back into the prompt, so Enter runs them once the turn ends.
 - A question (`ask_user_question`, a guardrails approval) turns the prompt into
@@ -601,7 +615,7 @@ In interactive assist mode, you can switch the request model without restarting:
 
 - `/model <name>`: set a session-scoped model override.
 - `/model host:model` or `/model host:alias`: qualified host routing (only `:` names a host; `openai/gpt-4o` is a model id). `host:alias` applies the alias; an alias whose target names another host is refused (`alias 'tiny' names host 'box', not 'openrouter'`). Aliases apply once: an alias pointing to another alias sends that name as written.
-- `/model --default <name>`: set session model and persist as new default in `config.yml` (also updates `SAMAGOTCHI_DEFAULT_MODEL` for future sessions; supports `host:model` full ref).
+- `/model --default <name>`: set session model and persist as new default (`default.model`) in `config.yml` for future sessions (supports `host:model` full ref). It writes only the file: an exported `SAMAGOTCHI_DEFAULT_MODEL` (or `--model`) still wins over it.
 - `/model <name> --alias <alias>`: create alias for current effective model (alias value may be bare or `host:model`).
 - `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=<name>, <source>)`, e.g. `profile=qwen36, server (chat_template)`).
 - `/model clear` (or `default`/`none`/`off`): clear the session override, reverting to the configured default.
@@ -724,7 +738,7 @@ A long, tool-heavy turn says what it has been doing. From the turn's 3rd tool ca
 a dim row under the activity row tallies its calls, with no model call:
 
 ```
-12 tool calls (2 failed) · execute ×7 · read_file ×3 · edit_file ×2 · last: execute command=bundle exec rspec
+12 tool calls (2 failed) · execute ×7 · read ×3 · edit ×2 · last: execute command=bundle exec rspec
 ```
 
 It lists the top 3 tools by count (ties go to the tool used first), the failed calls
