@@ -180,6 +180,33 @@ module Samagotchi
       post("cancel", { reason: reason }, read_body: true)
     end
 
+    # How long the approval relay's calls wait for a reply: a parent's Stop
+    # isn't held for READ_TIMEOUT by a child that doesn't answer.
+    RELAY_TIMEOUT = 5
+    # How long a child waits for its parent's word on a relay (#relay_status).
+    RELAY_STATUS_TIMEOUT = 2
+
+    # POST /session/:id/relay on a child's worker: a parent's relay of the
+    # child's approval opened, closed or was answered (the child asks the
+    # parent which answer, #relay_status). 200 answered, 409 no longer
+    # pending, 403 refused (a parent agent's allow), 422 relay_unverified.
+    # @param action [String] "opened", "closed" or "answered"
+    # @return [Response]
+    # @raise [SystemCallError] the worker is gone or didn't answer in time
+    def relay(action:, relay_id:, question_id:, read_timeout: RELAY_TIMEOUT, **extra)
+      post("relay", { action: action, relay_id: relay_id, question_id: question_id, **extra },
+           read_body: true, read_timeout: read_timeout)
+    end
+
+    # POST /session/:id/relay/status on a parent's worker: what its relay
+    # +relay_id+ holds (child_id, child_question_id, state, answer, by); 404
+    # for one it doesn't know. A POST with a body: routes match exact paths.
+    # @return [Response]
+    # @raise [SystemCallError]
+    def relay_status(relay_id, read_timeout: RELAY_STATUS_TIMEOUT)
+      post("relay/status", { relay_id: relay_id }, read_body: true, read_timeout: read_timeout)
+    end
+
     # GET /session/:id/<path> as JSON.
     # @return [Hash, nil] the parsed body, or nil unless the Bridge answered 200
     def get_json(path)
@@ -283,11 +310,11 @@ module Samagotchi
     # the same one.
     def deadline = (Time.now.to_f + (@read_timeout * DEADLINE_SHARE)).round(3)
 
-    def post(path, payload, read_body:)
+    def post(path, payload, read_body:, read_timeout: @read_timeout)
       sock = TCPSocket.new(@host, @port)
       json_body = JSON.generate(payload)
       sock.write("POST /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
-      reply = read_reply(sock, path, whole: read_body)
+      reply = read_reply(sock, path, whole: read_body, timeout: read_timeout)
       body = read_body ? reply.split("\r\n\r\n", 2)[1] : nil
       Response.new(status: reply[STATUS_LINE, 1].to_i, body: body)
     ensure
@@ -295,17 +322,17 @@ module Samagotchi
     end
 
     # The reply up to the Bridge's close (or its first line only), within
-    # @read_timeout in all.
+    # +timeout+ seconds in all (@read_timeout by default).
     # @raise [Errno::ETIMEDOUT]
-    def read_reply(sock, path, whole: true)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @read_timeout
+    def read_reply(sock, path, whole: true, timeout: @read_timeout)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       reply = +""
       loop do
         break if !whole && reply.include?("\n")
 
         left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
         unless left.positive? && sock.wait_readable(left)
-          raise Errno::ETIMEDOUT, "bridge #{path}: no reply within #{@read_timeout}s"
+          raise Errno::ETIMEDOUT, "bridge #{path}: no reply within #{timeout}s"
         end
 
         reply << sock.readpartial(16_384)

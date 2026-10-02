@@ -305,4 +305,50 @@ RSpec.describe Samagotchi::BridgeClient do
     peer&.kill
     server&.close
   end
+  describe "#relay / #relay_status (the approval relay)" do
+    it "posts a relay action and keeps the reply's status and body" do
+      port, received = serve_once(json_reply("409 Conflict", '{"error":"question_not_pending"}'))
+      client = described_class.new(session_id: "c1", port: port)
+
+      response = client.relay(action: "answered", relay_id: "r-1", question_id: "q-1")
+
+      expect(response.status).to eq(409)
+      expect(response.json).to eq("error" => "question_not_pending")
+      request = received.call
+      expect(request).to start_with("POST /session/c1/relay HTTP/1.1")
+      expect(JSON.parse(request.split("\r\n\r\n", 2)[1])).to eq("action" => "answered", "relay_id" => "r-1", "question_id" => "q-1")
+    end
+
+    it "asks a relay's state with a JSON body (routes match exact paths), a 404 kept as a 404" do
+      port, received = serve_once(json_reply("404 Not Found", '{"error":"unknown_relay"}'))
+      response = described_class.new(session_id: "p1", port: port).relay_status("r-9")
+
+      expect(response.status).to eq(404)
+      request = received.call
+      expect(request).to start_with("POST /session/p1/relay/status HTTP/1.1")
+      expect(JSON.parse(request.split("\r\n\r\n", 2)[1])).to eq("relay_id" => "r-9")
+    end
+
+    it "gives up after its own short read timeout, not the 30 s default" do
+      server = TCPServer.new("127.0.0.1", 0)
+      hold = Thread.new { server.accept.tap { sleep 2 } }
+      client = described_class.new(session_id: "c1", port: server.local_address.ip_port)
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect { client.relay(action: "closed", relay_id: "r", question_id: "q", read_timeout: 0.2) }
+        .to raise_error(Errno::ETIMEDOUT)
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+    ensure
+      hold&.kill
+      server&.close
+    end
+
+    it "raises when the worker is gone (the caller says not delivered)" do
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.local_address.ip_port
+      server.close
+      expect { described_class.new(session_id: "c1", port: port).relay(action: "opened", relay_id: "r", question_id: "q") }
+        .to raise_error(SystemCallError)
+    end
+  end
 end
