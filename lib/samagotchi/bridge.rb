@@ -95,7 +95,9 @@ module Samagotchi
       @port = port
       @ring = RingBuffer.new(capacity: ring_capacity)
       @accumulator = TurnAccumulator.new
-      @cards = CardStore.new
+      # Saved in the session's folder: a later worker, and the web without
+      # one, show the cards where they were.
+      @cards = CardStore.new(path: File.join(session_dir, CardStore::FILE))
       @pending_card = PendingCard.new(session_dir)
       @heartbeat_interval = heartbeat_interval
       @epoch = SecureRandom.hex(4)

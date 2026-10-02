@@ -709,7 +709,7 @@ test("thinking loop: loop-guard cuts it, asks again, answers", { tag: "@turn" },
 // A warn card in a step (here the e2e-warn-card test bundle's, at the first
 // step's read) stays in sight when that step closes mid-turn: it leaves the
 // collapsing step for the block, and after the turn ends it is under the
-// block, where a reload puts it.
+// block, where a reload puts it, also once the session is stopped.
 test("a warn card stays in sight when its step closes mid-turn", { tag: "@turn" }, async ({ page, script }) => {
   script("warn_card");
   await send(page, "Read the flagged file");
@@ -733,6 +733,14 @@ test("a warn card stays in sight when its step closes mid-turn", { tag: "@turn" 
   await turnEnded(page, 1);
   await expect(card).toBeVisible();
   await expect(page.locator("#history > .plugin-card.warn")).toHaveCount(1);
+  // The worker saved it with the session: stopped, a reload still shows it.
+  page.once("dialog", (dialog) => dialog.accept());
+  const stopped = page.waitForResponse((res) => /\/stop$/.test(res.url()) && res.request().method() === "POST");
+  await page.locator("#infoStopBtn").click();
+  expect((await stopped).ok()).toBe(true);
+  await page.reload();
+  await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  await expect(page.locator("#history > .plugin-card.warn").filter({ hasText: "e2e warn card" })).toHaveCount(1);
 });
 
 // A check-in card asks the user as a question does: a tab behind shows one

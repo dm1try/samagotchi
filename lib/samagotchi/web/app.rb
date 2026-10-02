@@ -11,6 +11,7 @@ require "rack/request"
 
 require_relative "../bridge_client"
 require_relative "../bridge/bounded_queue"
+require_relative "../bridge/card_store"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../session_commands"
@@ -533,7 +534,7 @@ module Samagotchi
         # ?cards=1: the page's re-read when a card arrives, for its rendered
         # body (the stream carries the card's plain text only).
         if req.params["cards"] == "1"
-          return json_response(200, { cards: cards_for_display(turn_snapshot) })
+          return json_response(200, { cards: cards_for_display(turn_snapshot, id) })
         end
         snapshot = live && live["session_state_snapshot"]
         last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
@@ -584,7 +585,7 @@ module Samagotchi
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           # Plugins' slow setup still running (chi.init): the page's init row.
           init_tasks: turn_snapshot ? Array(turn_snapshot["init_tasks"]) : [],
-          cards: cards_for_display(turn_snapshot),
+          cards: cards_for_display(turn_snapshot, id),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
@@ -601,16 +602,26 @@ module Samagotchi
       end
 
       # The worker's last cards and between-turns notices (Bridge
-      # snapshot[:cards]), a card's body as body_html: rendered markdown
-      # when the renderer is on, else the escaped text in a <pre>.
-      # @return [Array<Hash>] [] without a live worker
-      def cards_for_display(turn_snapshot)
-        Array(turn_snapshot && turn_snapshot["cards"]).filter_map do |card|
+      # snapshot[:cards]), else (no live worker) the ones the last worker
+      # saved in the session's folder (CardStore.saved), a card's body as
+      # body_html: rendered markdown when the renderer is on, else the
+      # escaped text in a <pre>.
+      # @return [Array<Hash>]
+      def cards_for_display(turn_snapshot, id)
+        cards = turn_snapshot ? turn_snapshot["cards"] : saved_cards(id)
+        Array(cards).filter_map do |card|
           next unless card.is_a?(Hash)
           next card unless card["type"].to_s == "card"
 
           card.merge("body_html" => card_body_html(card["body"].to_s))
         end
+      end
+
+      # As JSON has them (string keys and values), like a snapshot's.
+      def saved_cards(id)
+        JSON.parse(JSON.generate(Samagotchi::Bridge::CardStore.saved(Session.session_dir(id, state_dir: default_state_dir))))
+      rescue StandardError
+        []
       end
 
       def card_body_html(body)

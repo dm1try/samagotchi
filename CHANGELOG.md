@@ -35,6 +35,10 @@ and commands may change between minor versions. How releases are made:
   before the question arrived and go in as a new prompt, and the attach then hung.
 - A REPL reading its answers from a pipe shows each answer line once (`? 2`), not `? ? 2`, above why it was refused
   or invalid.
+- A plugin's cards and a turn's hook notices (loop-guard's "stopped the turn" card and its `loop: … denied` rows,
+  check-in's, any bundle's) stay after the worker goes: the worker saves them in the session's folder
+  (`cards.json`, the same last-20 caps), the web shows them in place for a stopped session, and a later worker starts
+  from them. They used to vanish with an idle exit, a restart or `chi sessions stop`.
 - The web marks a tool call a guardrail denied (loop-guard, the `guardrails` bundle, a parent's or the user's Deny)
   `blocked` in red, as the TUI does, live and after a reload; it showed a green `done`.
 

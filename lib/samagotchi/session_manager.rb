@@ -553,6 +553,9 @@ module Samagotchi
           File.directory?(path) && (!EMPTY_DIRS.include?(name) || Dir.children(path).empty?)
         elsif name == "analytics.json"
           Array(JSON.parse(File.read(path))["turn_records"]).empty?
+        # Cards and notices from before any turn (Bridge::CardStore).
+        elsif name == "cards.json"
+          JSON.parse(File.read(path))["turns"].to_i.zero?
         else
           EMPTY_SKELETON_FILES.include?(name)
         end

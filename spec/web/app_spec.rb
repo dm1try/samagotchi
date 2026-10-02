@@ -946,9 +946,31 @@ RSpec.describe Samagotchi::Web::App do
         expect(payload["cards"].size).to eq(3)
       end
 
-      it "is empty without a live worker" do
+      it "is empty without a live worker that saved none" do
         app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
         expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"]).to eq([])
+      end
+
+      it "without a live worker, hands out the ones the last worker saved in the session's folder, rendered the same" do
+        state_dir = Dir.mktmpdir
+        store = Samagotchi::Bridge::CardStore.new(path: File.join(state_dir, "s1", Samagotchi::Bridge::CardStore::FILE))
+        store.call({ type: :turn_started })
+        store.call({ type: :generation_started, iteration: 3 })
+        store.call({ type: :hook_notice, hook: "loop-guard", text: "loop: repeated, denied", level: :warn })
+        store.call({ type: :card, id: "stop", source: "loop-guard", title: "Stopped", body: "some **bold**", level: :warn,
+                    actions: [], in_turn: true })
+        store.call({ type: :turn_canceled })
+        app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, markdown: true)
+
+        cards = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"]
+
+        expect(cards.map { |c| c["type"] }).to eq(%w[hook_notice card])
+        expect(cards[0]).to include("text" => "loop: repeated, denied", "in_turn" => true, "iteration" => 3,
+                                    "turns_since" => 0, "current" => false)
+        expect(cards[1]).to include("id" => "stop", "turns_since" => 0, "current" => false)
+        expect(cards[1]["body_html"]).to include("<strong>bold</strong>")
+      ensure
+        FileUtils.rm_rf(state_dir) if state_dir
       end
     end
 

@@ -97,6 +97,12 @@ RSpec.describe "discarding an empty session" do
     { name: "a recorded turn",
       change: ->(_, d) { File.write(File.join(d, "analytics.json"), JSON.generate("turn_records" => [{ "id" => "t" }])) },
       worker: false, repl: false, sweep: false },
+    { name: "cards shown before any turn (a plugin's notice at start)",
+      change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => 0, "entries" => [{ "type" => "hook_notice" }])) },
+      worker: true, repl: true, sweep: true },
+    { name: "a turn's saved cards",
+      change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => 1, "entries" => [{ "type" => "card" }])) },
+      worker: false, repl: false, sweep: false },
     { name: "archived", change: ->(_, d) { File.write(File.join(d, Samagotchi::ArchiveStore::FILE), "{}") },
       worker: false, repl: false, sweep: false },
     # The REPL deletes a scratch session before it asks; the sweep takes

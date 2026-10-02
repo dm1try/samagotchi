@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "json"
+require "fileutils"
+require_relative "../atomic_file"
 require_relative "../events"
 
 module Samagotchi
@@ -20,8 +23,7 @@ module Samagotchi
     # A card with an earlier card's id replaces it where it was. Each entry
     # says where it belongs as the recap does: +turns_since+, the turns
     # completed after it (after its own turn for a card shown during one),
-    # and +current+ for a card of the turn running now. Turns count from
-    # this worker's start; the ones before it are in no entry. A card that
+    # and +current+ for a card of the turn running now. A card that
     # isn't the turn's but comes while one runs (an anytime command's, such
     # as /btw) goes after that turn: its prompt is already in the history.
     # A failed turn leaves no prompt, so its cards stay before the next one.
@@ -30,28 +32,61 @@ module Samagotchi
     # (with questions) are capped apart, +capacity+ each, so a burst of
     # notices can't push out a card. An open question (an approval too) is
     # never pushed out: the oldest other card or answered question goes.
+    #
+    # With a +path+ (the Bridge's: FILE in the session's folder) the store
+    # saves its entries and turn count there on each change, and a later
+    # worker's store starts from them, so a turn's cards and notices outlive
+    # the worker that showed them; the web reads the file (.saved) for a
+    # session no worker runs. Turns count on from the saved count: the
+    # placement is relative (turns since), so only the turns after an entry
+    # matter. The load warnings stay the worker's own (each start announces
+    # its own), and a question still open when the worker went waits for no
+    # one: neither is saved or seeded. Same caps as in memory. An entry from
+    # an earlier worker lists with +earlier+: true (an attached TUI's resync
+    # onto a new worker doesn't print those again).
     class CardStore
       CAPACITY = 20
       NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry].freeze
+      FILE = "cards.json"
+      # The events after which the file is written again: the ones that
+      # change an entry or the turn count.
+      SAVED_ON = (%i[card hook_notice empty_answer_retry question_requested question_answered question_cancelled
+                     turn_failed] + Events::TURN_KEPT).freeze
 
-      def initialize(capacity: CAPACITY)
+      # What a session's saved file lists, as a store started from it lists
+      # (no turn running): the web's cards for a session no worker runs.
+      # @param session_dir [String]
+      # @return [Array<Hash>] [] without a readable file
+      def self.saved(session_dir)
+        new(path: File.join(session_dir, FILE)).list
+      end
+
+      # @param path [String, nil] the file the entries are saved in and
+      #   started from; nil keeps them in memory only
+      def initialize(capacity: CAPACITY, path: nil)
         @capacity = capacity
+        @path = path
         @mutex = Mutex.new
         @entries = []
         @turns_done = 0
         @running = false
         @iteration = nil
         @calls = 0
+        seed
       end
 
       def call(event)
-        @mutex.synchronize { fold(event) }
+        @mutex.synchronize do
+          fold(event)
+          save if SAVED_ON.include?(event[:type])
+        end
       rescue StandardError
         nil # never break the running turn
       end
 
       # @return [Array<Hash>] oldest first: the card's (or notice's) fields
-      #   plus turns_since: and current:, and during: true for a card that
+      #   plus turns_since: and current:, earlier: true for one an earlier
+      #   worker saved, and during: true for a card that
       #   came while the running turn runs but isn't that turn's (it goes
       #   after the running turn's prompt)
       def list
@@ -68,6 +103,42 @@ module Samagotchi
       end
 
       private
+
+      def save
+        return unless @path
+
+        entries = @entries.reject { |entry| entry[:type] == :guardrail_warning }
+        # A session that never showed one gets no file (the turn count
+        # only places entries relative to each other).
+        return if entries.empty? && !File.exist?(@path)
+
+        FileUtils.mkdir_p(File.dirname(@path))
+        AtomicFile.write(@path, JSON.generate({ "version" => 1, "turns" => @turns_done, "entries" => entries }))
+      rescue StandardError
+        nil # a card that can't be saved still shows live
+      end
+
+      # The entries an earlier worker saved (a missing or broken file:
+      # none), their types as symbols again; a card that came during that
+      # worker's last turn stays where it was, as after a failed turn.
+      def seed
+        return unless @path && File.file?(@path)
+
+        data = JSON.parse(File.read(@path), symbolize_names: true)
+        return unless data.is_a?(Hash) && data[:turns].is_a?(Integer) && data[:entries].is_a?(Array)
+
+        @turns_done = data[:turns]
+        @entries = data[:entries].filter_map do |entry|
+          next unless entry.is_a?(Hash) && entry[:type].is_a?(String) && entry[:turns].is_a?(Integer)
+
+          entry = entry.merge(type: entry[:type].to_sym, earlier: true)
+          entry unless entry[:type] == :guardrail_warning || open_question?(entry)
+        end
+        settle_during(after_turn: false)
+      rescue StandardError
+        @turns_done = 0
+        @entries = []
+      end
 
       def fold(event)
         case event[:type]

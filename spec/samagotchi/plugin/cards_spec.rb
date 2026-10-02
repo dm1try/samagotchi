@@ -289,12 +289,96 @@ RSpec.describe "Cards" do
     end
   end
 
+  describe "a CardStore saved in the session's folder" do
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, Samagotchi::Bridge::CardStore::FILE) }
+
+    after { FileUtils.rm_rf(dir) }
+
+    def card(id) = { type: :card, id: id, source: "loop-guard", title: id, body: "**why**", level: :warn, actions: [], in_turn: true }
+
+    # One turn of loop-guard's: a notice in step 3, its card, the turn
+    # canceled by the hook.
+    def loop_turn(store)
+      store.call({ type: :turn_started })
+      store.call({ type: :generation_started, iteration: 3 })
+      store.call({ type: :tool_call_started, iteration: 3, call_index: 1 })
+      store.call({ type: :hook_notice, hook: "loop-guard", text: "loop: execute repeated, denied", level: :warn })
+      store.call(card("stop"))
+      store.call({ type: :turn_canceled })
+    end
+
+    it "lets a later store (a new worker) list a turn's card and notices where they were, and count on" do
+      loop_turn(Samagotchi::Bridge::CardStore.new(path: path))
+      later = Samagotchi::Bridge::CardStore.new(path: path)
+      expect(later.list).to eq([
+        { type: :hook_notice, hook: "loop-guard", text: "loop: execute repeated, denied", level: "warn", in_turn: true,
+          iteration: 3, calls: 1, earlier: true, turns_since: 0, current: false },
+        { type: :card, id: "stop", source: "loop-guard", title: "stop", body: "**why**", level: "warn", actions: [],
+          in_turn: true, earlier: true, turns_since: 0, current: false }
+      ])
+      later.call({ type: :turn_started })
+      later.call({ type: :turn_completed })
+      expect(later.list.map { |entry| entry[:turns_since] }).to eq([1, 1])
+      expect(Samagotchi::Bridge::CardStore.saved(dir).map { |entry| entry[:turns_since] }).to eq([1, 1])
+    end
+
+    it "lists them for a session no worker runs (.saved), as a store with no turn running" do
+      store = Samagotchi::Bridge::CardStore.new(path: path)
+      store.call({ type: :turn_started })
+      store.call(card("mid"))
+      expect(Samagotchi::Bridge::CardStore.saved(dir)).to contain_exactly(include(id: "mid", turns_since: 0, current: false))
+    end
+
+    it "saves neither the load warnings (each worker announces its own) nor a question still open" do
+      store = Samagotchi::Bridge::CardStore.new(path: path)
+      store.call({ type: :guardrail_warning, message: "bad rule", label: "guardrails" })
+      store.call({ type: :turn_started })
+      store.call({ type: :question_requested, pending_question: { id: "q1", question: "Which?", status: "pending" } })
+      store.call({ type: :question_requested, pending_question: { id: "q2", question: "Allow?", status: "pending" } })
+      store.call({ type: :question_answered, id: "q2", answer: { selected: ["yes"] } })
+      expect(Samagotchi::Bridge::CardStore.saved(dir)).to contain_exactly(
+        include(type: :question, pending_question: include(id: "q2"), answer: { selected: ["yes"] })
+      )
+    end
+
+    it "keeps the caps across workers: a seeded store evicts its oldest like an in-memory one" do
+      Samagotchi::Bridge::CardStore.new(capacity: 2, path: path).tap { |store| %w[a b].each { |id| store.call(card(id)) } }
+      later = Samagotchi::Bridge::CardStore.new(capacity: 2, path: path)
+      later.call(card("c"))
+      expect(later.list.map { |entry| entry[:id] }).to eq(%w[b c])
+      expect(JSON.parse(File.read(path))["entries"].size).to eq(2)
+    end
+
+    it "starts empty from a missing, broken or foreign file" do
+      expect(Samagotchi::Bridge::CardStore.saved(dir)).to eq([])
+      File.write(path, "{not json")
+      expect(Samagotchi::Bridge::CardStore.saved(dir)).to eq([])
+      File.write(path, JSON.generate({ "entries" => "x" }))
+      expect(Samagotchi::Bridge::CardStore.saved(dir)).to eq([])
+    end
+  end
+
   describe "the Bridge's snapshot" do
     it "carries the cards" do
       bridge = Samagotchi::Bridge.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1")
       engine.subscribe(observer: bridge.instance_variable_get(:@cards))
       engine.show_card(source: "b", title: "one", id: "c1")
       expect(bridge.snapshot[:cards].map { |c| c[:id] }).to eq(["c1"])
+    end
+
+    it "saves them in the session's folder, and a later worker's Bridge starts from them" do
+      state_dir = Dir.mktmpdir
+      bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
+      engine.subscribe(observer: bridge.instance_variable_get(:@cards))
+      engine.show_card(source: "b", title: "one", id: "c1")
+      expect(Samagotchi::Bridge::CardStore.saved(File.join(state_dir, "s1")).map { |c| c[:id] }).to eq(["c1"])
+
+      later = Samagotchi::Bridge.new(engine: Samagotchi::Engine.new(client: client, kernel: kernel), state_dir: state_dir,
+                                     session_id: "s1")
+      expect(later.snapshot[:cards].map { |c| c[:id] }).to eq(["c1"])
+    ensure
+      FileUtils.rm_rf(state_dir) if state_dir
     end
   end
 end

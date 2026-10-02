@@ -549,8 +549,11 @@ last 20 hook notices, for a UI that joins later; a question still waiting
 for its answer is always kept. The web shows them where they arrived after a reload (a turn's
 notice as a row of its step, above the call it came before); the attached
 TUI shows the cards and between-turns notices since the last turn when it
-joins. They live as long as the worker: an idle exit or a restart forgets
-them, and they are not saved with the session.
+joins. The worker saves them in the session's folder (`cards.json`, the same
+caps), so they outlive it: the web shows them in place for a stopped
+session, and the next worker (an idle exit, a restart, `chi sessions stop`
+then a new turn) starts from them. Load warnings and a question still
+waiting when the worker went are not saved.
 
 The event is `{type: :card, id:, source:, title:, body:, level:, actions:,
 in_turn:}` (`source` is the bundle), logged as `card` with its source, id and

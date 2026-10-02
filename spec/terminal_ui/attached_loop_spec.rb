@@ -325,6 +325,14 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       feed(resync)
       expect(lines.grep(/\A┌/)).to eq(["┌ Hello · sample-plugin", "┌ Other · sample-plugin"])
     end
+
+    it "on a resync onto a new worker leaves out the cards an earlier worker saved (earlier turns' cards)" do
+      feed(snapshot)
+      resync = snapshot(type: :reset)
+      resync[:snapshot][:cards] = [card("old", "Old", turns_since: 2).merge(earlier: true), card("new", "New", turns_since: 0)]
+      feed(resync)
+      expect(lines.grep(/\A┌/)).to eq(["┌ New · sample-plugin"])
+    end
   end
 
   it "shows a guardrail load warning" do
