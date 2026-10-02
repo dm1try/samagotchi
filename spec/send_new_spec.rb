@@ -183,9 +183,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
           why: deletes files
           1. Allow once
           2. Deny
-        free text allowed: --text
-        answer: chi answer #{@started.id} --question q1 --option N
-        or open it: chi --attach #{@started.id} or the web
+        allowing it is up to your user: deny it, and tell your user
+        deny: chi answer #{@started.id} --question q1 --option Deny --text WHY
     TEXT
   end
 
@@ -222,6 +221,14 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(err.string).to eq("#{waiting.id[0, 8]}  waiting for an answer: chi answer #{waiting.id} --question q1 --option N " \
                              "(or --text); chi --attach #{waiting.id} shows it\n")
     expect(delivered).to be_empty
+  end
+
+  it "tells a parent to deny a waiting approval and tell its user, not how to allow it" do
+    waiting = make(status: "running", pending_question: { id: "a1", kind: "approval", question: "execute: rm x" })
+
+    expect(run("--wait", "-m", "go on", waiting.id)).to eq(1)
+    expect(err.string).to eq("#{waiting.id[0, 8]}  waiting for an approval: deny it, and tell your user " \
+                             "(chi answer #{waiting.id} --question a1 --option Deny --text WHY)\n")
   end
 
   it "ends without a reply when the turn fails before the first look" do

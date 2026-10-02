@@ -517,7 +517,7 @@ module Samagotchi
       rescue QuestionDesk::Refused => e
         Log.info(:bridge, "parent_approval_refused", sid: session_id, id: qid, reason: e.reason)
         [{}, 403, { error: "parent_approval_refused",
-                    detail: Guardrails::ParentApprovals.message(e.reason, session_id) }]
+                    detail: Guardrails::ParentApprovals.message(e.reason) }]
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]
       end

@@ -134,8 +134,19 @@ module Samagotchi
     end
 
     # The command that answers +question+; N is the parent's to fill in.
+    # An approval's is a deny: allowing it is the user's
+    # (Guardrails::ParentApprovals).
     def answer_with(session_id, question)
+      return "chi answer #{session_id} --question #{question[:id]} --option Deny --text WHY" if approval?(question)
+
       "chi answer #{session_id} --question #{question[:id]} --option N"
+    end
+
+    # What a parent does with an approval.
+    DENY_AND_TELL = "deny it, and tell your user"
+
+    def approval?(question)
+      question.is_a?(Hash) && (question[:kind] || question["kind"]).to_s == "approval"
     end
 
     # What a wait that ended without an answer says, one line.
@@ -143,7 +154,11 @@ module Samagotchi
       attach = "chi --attach #{session_id}"
       case result.status
       when :waiting_for_answer
-        "waiting for an answer: #{first_line(result.question&.dig(:question))}; open it: #{attach} or the web"
+        if approval?(result.question)
+          "waiting for an approval: #{first_line(result.question[:question])}; #{DENY_AND_TELL}"
+        else
+          "waiting for an answer: #{first_line(result.question&.dig(:question))}; open it: #{attach} or the web"
+        end
       when :no_reply then "#{no_reply_line(result)}; #{attach} shows it"
       when :error then "the worker failed: #{result.text}; #{attach} shows what happened"
       when :worker_gone then "the worker is gone; #{attach} shows what happened"
@@ -162,10 +177,15 @@ module Samagotchi
       text_lines = text_lines.drop(1) unless q[:header]
       lines.concat(text_lines.map { |line| "  #{line}" })
       q[:options].each_with_index { |option, i| lines << "    #{i + 1}. #{option}" }
-      lines << "  more than one allowed: repeat --option" if q[:multi_select]
-      lines << "  free text allowed: --text" if q[:allow_freeform]
-      lines << "  answer: #{answer_with(session_id, q)}"
-      lines << "  or open it: chi --attach #{session_id} or the web"
+      if approval?(q)
+        lines << "  allowing it is up to your user: #{DENY_AND_TELL}"
+        lines << "  deny: #{answer_with(session_id, q)}"
+      else
+        lines << "  more than one allowed: repeat --option" if q[:multi_select]
+        lines << "  free text allowed: --text" if q[:allow_freeform]
+        lines << "  answer: #{answer_with(session_id, q)}"
+        lines << "  or open it: chi --attach #{session_id} or the web"
+      end
       lines.map { |line| "#{line}\n" }.join
     end
 

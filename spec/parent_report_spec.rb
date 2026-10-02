@@ -62,6 +62,7 @@ RSpec.describe Samagotchi::ParentReport do
 
   it "reports an approval with what it would run and its scopes, not the card's preview" do
     report = json(Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: approval))
+    expect(report["answer_with"]).to eq("chi answer #{id} --question a1 --option Deny --text WHY")
     expect(report["question"]).to include("kind" => "approval", "header" => "Approve tool call?")
     expect(report["question"]["approval"]).to eq(
       "tool" => "execute", "command" => "echo SPIKE_APPROVED", "cwd" => "/w", "rule" => "spike-ask",
@@ -86,6 +87,15 @@ RSpec.describe Samagotchi::ParentReport do
     end
   end
 
+  it "says a waiting approval is the user's to allow, a question where to open it" do
+    approval_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: approval)
+    expect(described_class.detail(approval_wait, session_id: id))
+      .to eq("waiting for an approval: execute: echo SPIKE_APPROVED; deny it, and tell your user")
+    question_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: question)
+    expect(described_class.detail(question_wait, session_id: id))
+      .to eq("waiting for an answer: Which file should I read?; open it: chi --attach #{id} or the web")
+  end
+
   describe ".question_text" do
     it "lists the question, its numbered options and the commands that answer it" do
       expect(described_class.question_text(question, session_id: id)).to eq(<<~TEXT)
@@ -108,9 +118,8 @@ RSpec.describe Samagotchi::ParentReport do
             3. Allow this call in this directory
             4. Allow rule spike-ask in this directory
             5. Deny
-          free text allowed: --text
-          answer: chi answer #{id} --question a1 --option N
-          or open it: chi --attach #{id} or the web
+          allowing it is up to your user: deny it, and tell your user
+          deny: chi answer #{id} --question a1 --option Deny --text WHY
       TEXT
     end
 

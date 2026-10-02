@@ -281,8 +281,13 @@ module Samagotchi
         # The turn waits on a question: the message would only queue
         # behind it, and the answer goes in with chi answer.
         if (waiting = session.waiting_question(live: owner.worker?))
-          error_line("#{id[0, 8]}  waiting for an answer: #{ParentReport.answer_with(id, waiting)} (or --text); " \
-                     "chi --attach #{id} shows it")
+          if ParentReport.approval?(waiting)
+            error_line("#{id[0, 8]}  waiting for an approval: #{ParentReport::DENY_AND_TELL} " \
+                       "(#{ParentReport.answer_with(id, waiting)})")
+          else
+            error_line("#{id[0, 8]}  waiting for an answer: #{ParentReport.answer_with(id, waiting)} (or --text); " \
+                       "chi --attach #{id} shows it")
+          end
         else
           error_line("#{id[0, 8]}  busy: a turn is running; wait or attach")
         end

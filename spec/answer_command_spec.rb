@@ -248,15 +248,16 @@ RSpec.describe Samagotchi::AnswerCommand do
       expect(posted).to eq([[:dismiss, "a1"]])
     end
 
-    it "refuses every Allow by default: that is the user's, in the web or chi --attach" do
+    it "refuses every Allow by default: that is the user's, so deny and tell the user" do
       s = asking(approval)
       # A --timeout, so an Allow that slips through fails rather than hangs.
       ["1", "Allow once", "2", "3"].each do |option|
         expect(run(s.id, "--question", "a1", "--option", option, "--timeout", "0.3")).to eq(1)
       end
       expect(posted).to be_empty
-      expect(err.string).to include("chi answer: allowing a tool call is up to the user: approve it in the web or " \
-                                    "chi --attach #{s.id}; deny it with --option Deny --text WHY")
+      expect(err.string).to include("chi answer: allowing a tool call is up to the user: deny it (--option Deny " \
+                                    "--text WHY), and tell your user")
+      expect(err.string).not_to include("--attach")
     end
 
     it "with parent_approvals: once lets Allow once through, picked by its scope, never a wider one" do

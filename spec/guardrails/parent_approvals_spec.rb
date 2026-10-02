@@ -75,14 +75,17 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
     expect(refusal(question.except(:kind), [0], "off")).to be_nil
   end
 
-  it "says how to get it allowed" do
-    expect(described_class.message(:off, "abc")).to eq(
-      "allowing a tool call is up to the user: approve it in the web or chi --attach abc; " \
-      "deny it with --option Deny --text WHY"
+  it "tells the parent to deny and tell its user, never how to allow it" do
+    expect(described_class.message(:off)).to eq(
+      "allowing a tool call is up to the user: deny it (--option Deny --text WHY), and tell your user"
     )
-    expect(described_class.message(:once_only, "abc")).to start_with(
-      "only Allow once (guardrails.parent_approvals: once) can be given here: approve it in the web"
+    expect(described_class.message(:once_only)).to eq(
+      "only Allow once (guardrails.parent_approvals: once) can be given here: " \
+      "deny it (--option Deny --text WHY), and tell your user"
     )
+    expect(described_class.message(:protected)).to start_with("this call changes chi's own config")
+    expect(described_class.message(:off, typed: true)).to end_with("deny it (n; WHY), and tell your user")
+    %i[off once_only protected].each { |reason| expect(described_class.message(reason)).not_to include("--attach", "web") }
   end
 
   it "is a config.yml setting only: the parent's environment can't change it" do
@@ -150,7 +153,7 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
     end
 
     it "says only the user can allow it" do
-      expect(described_class.message(:protected, "abc")).to include("only the user can allow")
+      expect(described_class.message(:protected)).to include("only the user can allow")
     end
   end
 

@@ -1147,7 +1147,7 @@ module Samagotchi
           # A parent's allow guardrails.parent_approvals doesn't let through:
           # the question stays open for a deny (or the end of the input).
           @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{raw}")
-          @surface.commit(Guardrails::ParentApprovals.message(e.reason, @engine.session&.id))
+          @surface.commit(Guardrails::ParentApprovals.message(e.reason, typed: true))
           next
         rescue ArgumentError => e
           @surface.commit("Invalid: #{e.message}. Try again.")

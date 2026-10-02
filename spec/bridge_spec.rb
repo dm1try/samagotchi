@@ -1281,7 +1281,7 @@ RSpec.describe Samagotchi::Bridge do
                                                        client_id: "cli:answer"))
       expect([status, reason, resp["error"]]).to eq([403, "Forbidden", "parent_approval_refused"])
       expect(resp["detail"]).to start_with("only Allow once (guardrails.parent_approvals: once) can be given here")
-      expect(resp["detail"]).to include("chi --attach #{@session.id}")
+      expect(resp["detail"]).to end_with("deny it (--option Deny --text WHY), and tell your user")
       expect(@engine.pending_question).to include(id: qid, status: "pending")
 
       status, = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"]))

@@ -56,9 +56,11 @@ command, folder, rule and reason.
 An approval is a guardrail rule with `verdict: ask`: its user said "ask me". So
 a parent may deny it (`--option Deny --text "why"`, `--text` alone, or
 `--dismiss`) but not allow it: `chi answer` refuses an Allow with exit 1 and
-`allowing a tool call is up to the user: approve it in the web or chi --attach
-ID`. With `guardrails.parent_approvals: once` in chi's config.yml (it has no
-environment variable), "Allow once" goes through; the wider scopes never do,
+`allowing a tool call is up to the user: deny it (--option Deny --text WHY),
+and tell your user`. For an approval, the question block and `answer_with` give
+the deny command, not `--option N` or `chi --attach`. With
+`guardrails.parent_approvals: once` in chi's config.yml (it has no environment
+variable), "Allow once" goes through; the wider scopes never do,
 and neither does any allow on chi's own config, hooks or guardrail rules. See
 [Guardrails](guardrails.md#approvals-from-a-parent-agent).
 
@@ -109,9 +111,10 @@ Start a task: `chi send --new --wait --format json --timeout 500 -m "<task>"`
   answer, add `--dismiss` instead: chi does nothing it asked about, finishes
   with what it found, and the reply comes back (exit 0).
 - `question.kind: approval`: chi wants to run something its user's guardrails
-  flagged. Ask your user. You may deny it: `--option Deny --text "why"`.
-  Allowing is up to the user: tell them to approve it in the web or with
-  `chi --attach <session_id>`, then wait again (below).
+  flagged, and allowing it is up to your user. Deny it (the `answer_with`
+  command: `--option Deny --text "why"`), and tell your user what it wanted to
+  run and why. Never allow it yourself, through `chi answer`, a piped
+  `chi --attach` or chi's web API.
 - `status: running` (exit 4): still working. Wait again:
   `chi send --wait --format json --timeout 500 <session_id>`.
 - Anything else (exit 1): report `detail` to your user. `chi --attach <session_id>`

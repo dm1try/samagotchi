@@ -104,17 +104,18 @@ module Samagotchi
           .compact.map { |dir| dir.to_s.chomp("/") }.reject(&:empty?).uniq
       end
 
-      # The refusal as a line for the parent.
+      # The refusal as a line for the parent: deny, and tell the user.
+      # Never how to allow it (the web, chi --attach): that is the user's.
       # @param reason [Symbol] what #refusal returned
-      def message(reason, session_id)
-        how = "approve it in the web or chi --attach #{session_id}; deny it with --option Deny --text WHY"
-        if reason == :protected
-          return "this call changes chi's own config, hooks or guardrails, and only the user can allow it: " \
-                 "deny it with --option Deny --text WHY, and tell your user"
+      # @param typed [Boolean] the answer was typed at a ? prompt (the
+      #   REPL), not given to chi answer
+      def message(reason, typed: false)
+        deny = typed ? "deny it (n; WHY), and tell your user" : "deny it (--option Deny --text WHY), and tell your user"
+        case reason
+        when :protected then "this call changes chi's own config, hooks or guardrails, and only the user can allow it: #{deny}"
+        when :off then "allowing a tool call is up to the user: #{deny}"
+        else "only Allow once (#{KEY}: once) can be given here: #{deny}"
         end
-        return "allowing a tool call is up to the user: #{how}" if reason == :off
-
-        "only Allow once (#{KEY}: once) can be given here: #{how}"
       end
 
       # An approval: its kind says so, or it carries approval facts.

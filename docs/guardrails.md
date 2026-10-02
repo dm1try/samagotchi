@@ -89,8 +89,9 @@ When another agent (Claude Code, Codex, a script) runs chi with
 approval`, and `chi answer` answers it. A rule with `verdict: ask` means "ask
 me", so by default a parent may only deny: `--option Deny --text "why"`,
 `--text` alone, or `--dismiss`. An Allow is refused (exit 1, `allowing a tool
-call is up to the user: approve it in the web or chi --attach ID`); the
-parent tells its user, who approves in the web or an attached terminal.
+call is up to the user: deny it (--option Deny --text WHY), and tell your
+user`). The question block chi prints for an approval says the same: its
+command is a deny, with no `--option N` and no `chi --attach`.
 
 ```yaml
 guardrails:

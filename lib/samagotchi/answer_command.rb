@@ -43,8 +43,8 @@ module Samagotchi
                         about and finishes its reply
         --timeout S     give up waiting after S seconds (exit 4)
         --format json   one JSON object on stdout (see chi send --help)
-        An approval (a guardrail's ask) can be denied here. Allowing it is
-        the user's: in the web or chi --attach ID. With
+        An approval (a guardrail's ask) can be denied here: deny it, and
+        tell your user; allowing it is the user's. With
         guardrails.parent_approvals: once, "Allow once" is let through.
         Exit: 0 answered, 1 failed, refused or the worker is gone, 2
         usage or an option the question doesn't offer, 3 a question waits,
@@ -151,7 +151,7 @@ module Samagotchi
       offered = Array(pending[:options]).map(&:to_s)
       indices = selected.map { |label| offered.index(label) }
       reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: Guardrails::ParentApprovals.setting)
-      reason && Guardrails::ParentApprovals.message(reason, id)
+      reason && Guardrails::ParentApprovals.message(reason)
     end
 
     # Post the answer (or the dismissal) to the live worker's Bridge.
@@ -177,7 +177,7 @@ module Samagotchi
       when 409 then not_open(qid)
       when 400 then usage_failure(reply.json&.dig("detail") || "the worker refused the answer")
       # The worker's own guardrails.parent_approvals refused the allow.
-      when 403 then failure(reply.json&.dig("detail") || "the worker refused the allow: approve it in the web or chi --attach #{id}")
+      when 403 then failure(reply.json&.dig("detail") || "the worker refused the allow: deny it, and tell your user")
       when 408 then failure("the worker did not take the answer in time; the question is still open: try again")
       when 404
         return failure(worker_gone(id)) if reply.json&.dig("error") == "unknown_session"

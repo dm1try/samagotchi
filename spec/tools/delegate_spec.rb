@@ -274,8 +274,8 @@ RSpec.describe "delegate tools" do
     it "returns early while the child waits for an approval or a question, with the whole question" do
       set_status(child, "running", pending_question: { id: "q1", kind: "approval", question: "Run rm?" })
       expect(wait).to eq("session: #{child.id}\nstatus: waiting_for_answer\nChild #{child.id} is waiting for an answer (approval): Run rm?\n" \
-                         "  answer: chi answer #{child.id} --question q1 --option N\n" \
-                         "  or open it: chi --attach #{child.id} or the web\n" \
+                         "  allowing it is up to your user: deny it, and tell your user\n" \
+                         "  deny: chi answer #{child.id} --question q1 --option Deny --text WHY\n" \
                          "delegate_result #{child.id} waits again once it is answered.")
 
       set_status(child, "running", pending_question: { id: "q2", question: "Which one?", options: %w[A B] })
