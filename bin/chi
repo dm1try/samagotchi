@@ -314,7 +314,7 @@ if launch == :attached
     warn "Error: #{e.message}"
     exit 1
   end
-  exit(ended == :detached ? 0 : 1)
+  exit Samagotchi::TerminalUI::AttachLauncher.exit_status(ended)
 end
 
 begin

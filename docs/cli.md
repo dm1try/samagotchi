@@ -206,6 +206,13 @@ as an unknown key).
 
 Notes:
 
+- Attached `chi -p …` with stdin not a terminal (a script, an agent's shell)
+  leaves when its input ends and the turn is done. Exit status: 0 the turn
+  ended, 3 a question or an approval waits for an answer (`A question waits
+  for an answer: chi --attach ID`; the worker keeps it open, and `chi answer`
+  or the web answers it), 1 the turn failed or the worker went away. For a
+  script, `chi send --new --wait` is the better entry point: stdout holds the
+  answer alone (see [Starting a session](sessions.md#starting-a-session)).
 - `-p` always feeds **and** runs the prompt; there is no feed-and-edit variant. To
   prefill (edit, not execute) the first REPL line, use the
   `SAMAGOTCHI_DEFAULT_INPUT` environment variable instead.

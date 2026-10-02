@@ -257,3 +257,13 @@ RSpec.describe "bin/chi --attach / --shared flags" do
     expect(err).not_to include("session.shared:")
   end
 end
+
+# bin/chi exits with this after an attached run: a script (or a parent
+# agent) tells a question left waiting from a failed turn.
+RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".exit_status" do
+  it "is 0 detached, 3 for a question left waiting (input from a pipe), 1 otherwise" do
+    expect(described_class.exit_status(:detached)).to eq(0)
+    expect(described_class.exit_status(:unanswered)).to eq(3)
+    %i[closed failed turn_failed].each { |ended| expect(described_class.exit_status(ended)).to eq(1) }
+  end
+end

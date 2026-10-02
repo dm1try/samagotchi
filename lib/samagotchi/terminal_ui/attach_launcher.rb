@@ -53,6 +53,19 @@ module Samagotchi
         end
       end
 
+      # chi's exit status after #run: 0 detached, 3 a question left waiting
+      # for an answer (input from a pipe ran out; chi --attach or chi answer
+      # answers it), 1 anything else (a failed turn, the worker gone).
+      # @param ended [Symbol] what #run returned
+      # @return [Integer]
+      def exit_status(ended)
+        case ended
+        when :detached then 0
+        when :unanswered then 3
+        else 1
+        end
+      end
+
       # A live region (Screen, with Reline drawing into it) on a terminal
       # that can show one, else plain append-only output.
       # @return [Screen, PlainSurface]
