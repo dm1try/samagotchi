@@ -46,7 +46,7 @@ RSpec.describe "list_sessions and send_note in the loops" do
     child_id = started[:output][/session: (\S+)/, 1]
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child_id, state_dir: tmpdir), "42")
     waited = kernel.dispatch_tool_call(name: "delegate_result", content: "", session: child_id[0, 8], timeout: "5")
-    expect(waited[:output]).to eq("[delegate_result]\nsession: #{child_id}\nstatus: done\n---\n42")
+    expect(waited[:output]).to eq("[delegate_result]\nsession: #{child_id}\nstatus: answered\n---\n42")
     expect(waited[:activity]).to include(action: "waiting for a delegate", params: "session=#{child_id[0, 8].inspect}")
   end
 

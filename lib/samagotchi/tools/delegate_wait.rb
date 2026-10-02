@@ -9,7 +9,8 @@ require_relative "peers"
 module Samagotchi
   module Tools
     # Waiting for a delegated session's next reply, shared by delegate and
-    # delegate_result: ReplyWait in the tools' words, with a cursor per
+    # delegate_result: ReplyWait in the tools' words, with the status words
+    # `chi send --wait` and `chi answer` use (ParentReport.status), with a cursor per
     # child (the newest reply this parent was already given) and the child
     # as it was before the message went in (ReplyWait's baseline), so a turn
     # that ends before the wait's first look (a fast failure) still ends it.
@@ -56,22 +57,23 @@ module Samagotchi
                                         owner_grace: owner_grace)
         # The turn sent to is handed over: a later wait looks for a later one.
         baselines.delete(key) if %i[done no_reply].include?(wait.status)
+        status = ParentReport.status(wait)
         case wait.status
         when :done
           seen[key] = wait.file
-          reply_result(child_id, wait.text)
+          reply_result(child_id, status, wait.text)
         when :error
-          result(child_id, "error", "the child's worker failed: #{wait.text}; its session shows what happened")
+          result(child_id, status, "the child's worker failed: #{wait.text}; its session shows what happened")
         when :stopped
-          result(child_id, "stopped", "the child was stopped (chi sessions stop); delegate with session: #{child_id} starts it again with a message")
+          result(child_id, status, "the child was stopped (chi sessions stop); delegate with session: #{child_id} starts it again with a message")
         when :waiting_for_answer
-          result(child_id, "waiting_for_answer", waiting_text(child_id, wait.question))
+          result(child_id, status, waiting_text(child_id, wait.question))
         when :canceled
-          result(child_id, "canceled", "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
+          result(child_id, status, "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
         when :no_reply
-          result(child_id, "no_reply", "the child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
+          result(child_id, status, "#{no_reply_text(wait)}; its session shows what happened")
         when :worker_gone
-          result(child_id, "worker_gone",
+          result(child_id, status,
                  "the child's worker is gone (it stopped or crashed); delegate with session: #{child_id} starts it again with a message")
         else
           timeout_result(child_id, timeout)
@@ -95,8 +97,13 @@ module Samagotchi
         baselines[[parent_id, child.id]] = ReplyWait.baseline_of(child, question_id: nil)
       end
 
-      def reply_result(child_id, text)
-        "session: #{child_id}\nstatus: done\n---\n#{cut(text)}"
+      def reply_result(child_id, status, text)
+        "session: #{child_id}\nstatus: #{status}\n---\n#{cut(text)}"
+      end
+
+      # ParentReport's line for a turn that left no reply, about the child.
+      def no_reply_text(wait)
+        ParentReport.no_reply_line(wait).sub(/\Athe turn/, "the child's turn")
       end
 
       def result(child_id, status, text)

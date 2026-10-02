@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - Codex CLI counts as a parent agent: an answer typed into `chi --attach` or the REPL from a command Codex runs
   (`CODEX_THREAD_ID` set) is held to `guardrails.parent_approvals`, as one from Claude Code is.
+- `delegate` and `delegate_result` report a child's wait with the status words of `chi send --wait --format json`:
+  `answered` (was `done`), `question` (was `waiting_for_answer`), `failed`, `canceled` or `no_answer` (was `no_reply`),
+  and `running` when the parent's turn is canceled (was `canceled`).
 
 ## [0.13.0] - 2026-10-02
 

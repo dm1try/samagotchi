@@ -167,7 +167,7 @@ RSpec.describe "delegate tools" do
       out = described_class.call("count the specs", peers: peers)
 
       child_id = (session_files - [parent.id]).first
-      expect(out).to eq("session: #{child_id}\nstatus: done\n---\n42 specs\n")
+      expect(out).to eq("session: #{child_id}\nstatus: answered\n---\n42 specs\n")
     end
 
     it "reports a turn that ended with no reply once the child was seen running and is idle again" do
@@ -179,7 +179,7 @@ RSpec.describe "delegate tools" do
 
       out = described_class.call("count the specs", peers: peers)
 
-      expect(out).to end_with("status: no_reply\nthe child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
+      expect(out).to end_with("status: no_answer\nthe child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
     end
 
     it "reports a first turn that failed before the wait's first look, not a timeout" do
@@ -190,7 +190,7 @@ RSpec.describe "delegate tools" do
 
       out = described_class.call("count the specs", timeout: 2, peers: peers)
 
-      expect(out).to end_with("status: no_reply\nthe child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
+      expect(out).to end_with("status: failed\nthe child's turn failed; its session shows what happened")
     end
 
     describe "a follow-up (session:)" do
@@ -219,7 +219,7 @@ RSpec.describe "delegate tools" do
 
         out = described_class.call("and the second?", session: child.id[0, 8], peers: peers)
 
-        expect(out).to eq("session: #{child.id}\nstatus: done\n---\nthe second answer")
+        expect(out).to eq("session: #{child.id}\nstatus: answered\n---\nthe second answer")
       end
 
       it "reports a follow-up that failed fast after an earlier failure, not a timeout" do
@@ -231,7 +231,7 @@ RSpec.describe "delegate tools" do
 
         out = described_class.call("try again", session: child.id, timeout: 2, peers: peers)
 
-        expect(out).to end_with("status: no_reply\nthe child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
+        expect(out).to end_with("status: failed\nthe child's turn failed; its session shows what happened")
         # Handed over once: the next wait looks for a later turn.
         expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 1, peers: peers)).to include("status: running")
       end
@@ -266,20 +266,20 @@ RSpec.describe "delegate tools" do
       idle = make(parent_id: parent.id, prompt: "done long ago", status: "idle")
       write_reply(idle, "saved reply")
 
-      expect(described_class.call(idle.id, peers: peers, timeout: 5)).to eq("session: #{idle.id}\nstatus: done\n---\nsaved reply")
+      expect(described_class.call(idle.id, peers: peers, timeout: 5)).to eq("session: #{idle.id}\nstatus: answered\n---\nsaved reply")
       # Given once: the next wait does not repeat it.
       expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet after 0 s")
     end
 
     it "returns early while the child waits for an approval or a question, with the whole question" do
       set_status(child, "running", pending_question: { id: "q1", kind: "approval", question: "Run rm?" })
-      expect(wait).to eq("session: #{child.id}\nstatus: waiting_for_answer\nChild #{child.id} is waiting for an answer (approval): Run rm?\n" \
+      expect(wait).to eq("session: #{child.id}\nstatus: question\nChild #{child.id} is waiting for an answer (approval): Run rm?\n" \
                          "  allowing it is up to your user: deny it, and tell your user\n" \
                          "  deny: chi answer #{child.id} --question q1 --option Deny --text WHY\n" \
                          "delegate_result #{child.id} waits again once it is answered.")
 
       set_status(child, "running", pending_question: { id: "q2", question: "Which one?", options: %w[A B] })
-      expect(wait).to include("status: waiting_for_answer\nChild #{child.id} is waiting for an answer (question): Which one?\n" \
+      expect(wait).to include("status: question\nChild #{child.id} is waiting for an answer (question): Which one?\n" \
                               "    1. A\n    2. B\n  answer: chi answer #{child.id} --question q2 --option N\n")
     end
 
@@ -296,7 +296,7 @@ RSpec.describe "delegate tools" do
       child
       later { cancelled[0] = true }
 
-      expect(wait).to eq("session: #{child.id}\nstatus: canceled\nwait canceled; the child keeps running; delegate_result #{child.id} waits again")
+      expect(wait).to eq("session: #{child.id}\nstatus: running\nwait canceled; the child keeps running; delegate_result #{child.id} waits again")
       expect(Samagotchi::Session.load(child.id, state_dir: tmpdir).status).to eq("running")
     end
 
@@ -326,14 +326,14 @@ RSpec.describe "delegate tools" do
         set_status(child, "idle")
       end
 
-      expect(wait).to end_with("status: done\n---\nlate reply")
+      expect(wait).to end_with("status: answered\n---\nlate reply")
     end
 
     it "cuts a long reply head and tail, like an execute result" do
       write_reply(child, ("a" * 40_000) + "MIDDLE" + ("z" * 40_000))
 
       out = wait
-      expect(out).to include("status: done\n---\ntruncated=true\npreview_strategy=head_tail\nreply_bytes=80006")
+      expect(out).to include("status: answered\n---\ntruncated=true\npreview_strategy=head_tail\nreply_bytes=80006")
       expect(out).to include("[TRUNCATED_PREVIEW_HEAD]\n" + ("a" * 100))
       expect(out).to include("[TRUNCATED_PREVIEW_TAIL]")
       expect(out).not_to include("MIDDLE")
@@ -351,7 +351,7 @@ RSpec.describe "delegate tools" do
       newest = make(parent_id: parent.id, prompt: "newest", status: "running", owner: "worker")
       write_reply(newest, "newest reply")
 
-      expect(described_class.call(peers: peers, timeout: 1)).to eq("session: #{newest.id}\nstatus: done\n---\nnewest reply")
+      expect(described_class.call(peers: peers, timeout: 1)).to eq("session: #{newest.id}\nstatus: answered\n---\nnewest reply")
     end
 
     it "says when no child runs" do
@@ -365,7 +365,7 @@ RSpec.describe "delegate tools" do
       write_reply(child, "its reply")
       stranger = make(prompt: "other")
 
-      expect(described_class.call(session: child.id[0, 8], peers: peers, timeout: 1)).to eq("session: #{child.id}\nstatus: done\n---\nits reply")
+      expect(described_class.call(session: child.id[0, 8], peers: peers, timeout: 1)).to eq("session: #{child.id}\nstatus: answered\n---\nits reply")
       expect(described_class.call(session: stranger.id, peers: peers))
         .to eq("Error: #{stranger.id[0, 8]} is not a delegate of this session (list_sessions marks them child)")
       expect(described_class.call(session: "zzz", peers: peers)).to eq("Error: no session zzz (list_sessions shows them)")
@@ -381,7 +381,7 @@ RSpec.describe "delegate tools" do
         expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
       end
       write_reply(child, "its reply")
-      expect(described_class.call(session: child.id, peers: peers, timeout: 0)).to eq("session: #{child.id}\nstatus: done\n---\nits reply")
+      expect(described_class.call(session: child.id, peers: peers, timeout: 0)).to eq("session: #{child.id}\nstatus: answered\n---\nits reply")
     end
   end
 
