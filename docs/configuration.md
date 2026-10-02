@@ -115,8 +115,9 @@ any per-run `--memory` values (config baseline first, deduped). A per-run
 
 ### Environment variables
 
-Every setting has an environment variable: `SAMAGOTCHI_` plus its dotted
-name in upper case, with `_` for each dot. `default.model` is
+Every setting has an environment variable (except the ones the table marks
+config.yml only): `SAMAGOTCHI_` plus its dotted name in upper case, with `_`
+for each dot. `default.model` is
 `SAMAGOTCHI_DEFAULT_MODEL`, `server.read_timeout` is
 `SAMAGOTCHI_SERVER_READ_TIMEOUT`. Use them to override the file for one run or
 one shell (`SAMAGOTCHI_LOG_LEVEL=debug chi`); keep lasting choices in the file.
@@ -766,7 +767,8 @@ To skip loading AGENT.md, set `skip_agent_md: true` at the top level of
 
 Every setting below takes the three forms described in
 [Environment variables](#environment-variables): a nested key in
-`config.yml`, `SAMAGOTCHI_<DOTTED_NAME>` in the environment and, where the CLI
+`config.yml`, `SAMAGOTCHI_<DOTTED_NAME>` in the environment (not for one
+marked config.yml only) and, where the CLI
 column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 `model_aliases:`, `hooks:`, `guardrails:` rules, `bundles:`, `memories:`) are
 described in their own sections.
@@ -804,7 +806,7 @@ described in their own sections.
 | `image.max_per_request` | `20` | | See "Images". |
 | `guardrails.enabled` | `true` | | See [Guardrails](guardrails.md). |
 | `guardrails.small_models` | `auto` | | Which models get the `models: small` rules: `auto` (32B or less by the size in the name, an MoE's active size), a list of globs, or `[]`. See [Guardrails](guardrails.md#rules-for-some-models). |
-| `guardrails.parent_approvals` | `off` | | What `chi answer` lets a parent agent allow on an approval: `off` (deny only) or `once` ("Allow once", never a wider scope). See [Guardrails](guardrails.md#approvals-from-a-parent-agent). |
+| `guardrails.parent_approvals` | `off` | | What `chi answer` lets a parent agent allow on an approval: `off` (deny only) or `once` ("Allow once", never a wider scope). config.yml only: no environment variable, so a parent can't lift it from its own environment. See [Guardrails](guardrails.md#approvals-from-a-parent-agent). |
 | `log.file` | state dir | yes | See "Debug Log File". |
 | `log.disable` | `false` | yes | No file logging. |
 | `log.level` | `info` | yes | `debug`, `info`, `warn`, `error`. |

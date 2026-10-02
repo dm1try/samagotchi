@@ -100,8 +100,10 @@ guardrails:
 `once` lets `chi answer --option "Allow once"` through, picked by the
 option's scope, not its label; the wider scopes (this session, this repo or
 directory, the rule) stay with the web and the terminal. An approval that
-doesn't offer "once" can't be allowed from a parent. Env:
-`SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS`.
+doesn't offer "once" can't be allowed from a parent, and neither can one whose
+offered scopes are missing or don't fit its options: then only Deny goes. The
+setting is read from config.yml only, with no environment variable, so the
+parent's environment can't change it.
 
 This is a convention for a well-behaved parent, not a security boundary: the
 worker's Bridge and the web's answer route on localhost take an answer from

@@ -78,6 +78,18 @@ RSpec.describe "docs/configuration.md YAML examples and settings table" do
     expect(problems).to eq([])
   end
 
+  # The table says every setting has an environment variable; the few
+  # without one (a parent's environment must not change them) say so.
+  it "marks a config.yml-only setting (no environment variable) in its row" do
+    table = File.read(doc_path).split(/^## All settings$/, 2).last[/(?:^\|.*\n)+/]
+    config_only = entries.values.select { |entry| entry.config_exposed? && !entry.env_exposed? }.map(&:key)
+    expect(config_only).not_to be_empty
+    unmarked = config_only.reject do |key|
+      table.lines.find { |line| line.start_with?("| `#{key}` |") }.to_s.include?("config.yml only")
+    end
+    expect(unmarked).to eq([])
+  end
+
   it "flags a flat env-named key, an unknown key and an unknown host key" do
     data = YAML.safe_load(<<~YAML)
       SAMAGOTCHI_DEFAULT_MODEL: m

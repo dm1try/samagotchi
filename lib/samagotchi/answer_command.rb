@@ -5,7 +5,7 @@ require_relative "session_manager"
 require_relative "bridge_client"
 require_relative "reply_wait"
 require_relative "parent_report"
-require_relative "config"
+require_relative "guardrails/parent_approvals"
 require_relative "cli/command"
 require_relative "cli/flags"
 require_relative "cli/parent_wait"
@@ -24,9 +24,6 @@ module Samagotchi
   class AnswerCommand
     include CLI::Command
     include CLI::ParentWait
-
-    # guardrails.parent_approvals: what a parent may allow.
-    PARENT_APPROVALS = %w[off once].freeze
 
     USAGE = <<~TEXT
       Usage: chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]
@@ -145,26 +142,15 @@ module Samagotchi
       labels.uniq
     end
 
-    # Why a parent may not give this answer to an approval, or nil. A
-    # Deny, text alone or a dismissal always passes: each one denies
-    # (Guardrails::Approval.settle allows only an index below the scopes).
-    # The scope is checked by index, never by label: labels vary, and
-    # "once" may not be offered at all.
+    # Why a parent may not give this answer to an approval, or nil
+    # (Guardrails::ParentApprovals, with this process's config.yml). A
+    # Deny, text alone or a dismissal always passes: each one denies. The
+    # worker checks it again with its own config.
     def approval_refusal(pending, selected, id)
-      return nil unless pending[:kind].to_s == "approval"
-
-      scopes = Array((pending[:approval] || {})[:scopes] || (pending[:approval] || {})["scopes"]).map(&:to_s)
       offered = Array(pending[:options]).map(&:to_s)
-      allows = selected.map { |label| offered.index(label) }.compact.select { |index| index < scopes.size }
-      return nil if allows.empty?
-
-      setting = Config.get("guardrails.parent_approvals").to_s
-      return nil if setting == "once" && allows.all? { |index| scopes[index] == "once" }
-
-      how = "approve it in the web or chi --attach #{id}; deny it with --option Deny --text WHY"
-      return "allowing a tool call is up to the user: #{how}" unless setting == "once"
-
-      "only Allow once (guardrails.parent_approvals: once) can be given here: #{how}"
+      indices = selected.map { |label| offered.index(label) }
+      reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: Guardrails::ParentApprovals.setting)
+      reason && Guardrails::ParentApprovals.message(reason, id)
     end
 
     # Post the answer (or the dismissal) to the live worker's Bridge.

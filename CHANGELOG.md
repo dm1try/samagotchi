@@ -17,7 +17,8 @@ and commands may change between minor versions. How releases are made:
   questions itself. `chi send --wait -m` to a session waiting for an answer is refused with the `chi answer` command
   for it.
 - An approval answered with `chi answer` can be denied, not allowed: allowing is the user's (the web, `chi --attach`).
-  `guardrails.parent_approvals: once` lets "Allow once" through, never a wider scope.
+  `guardrails.parent_approvals: once` in config.yml (no environment variable, so a parent can't set it) lets "Allow
+  once" through, never a wider scope; an approval whose offered scopes are missing lets only Deny through.
 - `chi sessions list` shows a session waiting for an answer as `waiting`; `--format json` has `waiting` (`question`,
   `approval` or `hook`) and `waiting_id`, the question's id for `chi answer --question`.
 - docs/sub-agent.md: running chi as another agent's sub-agent, with instructions to paste into its `CLAUDE.md` /

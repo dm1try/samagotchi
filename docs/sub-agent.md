@@ -57,8 +57,8 @@ An approval is a guardrail rule with `verdict: ask`: its user said "ask me". So
 a parent may deny it (`--option Deny --text "why"`, `--text` alone, or
 `--dismiss`) but not allow it: `chi answer` refuses an Allow with exit 1 and
 `allowing a tool call is up to the user: approve it in the web or chi --attach
-ID`. With `guardrails.parent_approvals: once` in chi's config, "Allow once" goes
-through; the wider scopes never do. See
+ID`. With `guardrails.parent_approvals: once` in chi's config.yml (it has no
+environment variable), "Allow once" goes through; the wider scopes never do. See
 [Guardrails](guardrails.md#approvals-from-a-parent-agent).
 
 This is a convention for a parent that follows its instructions, not a security

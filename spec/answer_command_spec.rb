@@ -269,6 +269,44 @@ RSpec.describe Samagotchi::AnswerCommand do
       expect(posted).to eq([[:answer, "a1", ["Allow once"], nil]])
     end
 
+    it "fails closed on an approval whose scopes are missing, empty or malformed: only Deny goes" do
+      @parent_approvals = "once"
+      [nil, [], "once", [nil]].each do |scopes|
+        s = asking(approval.merge(approval: approval[:approval].merge(scopes: scopes)))
+        %w[1 2 3].each do |option|
+          expect(run(s.id, "--question", "a1", "--option", option, "--timeout", "0.3")).to eq(1), "#{scopes.inspect} #{option}"
+        end
+      end
+      s = asking(approval.except(:approval))
+      expect(run(s.id, "--question", "a1", "--option", "Allow once", "--timeout", "0.3")).to eq(1)
+      expect(posted).to be_empty
+      expect(err.string).to include("only Allow once (guardrails.parent_approvals: once)")
+
+      replies_after_answer(s, "ok")
+      expect(run(s.id, "--question", "a1", "--option", "Deny", "--text", "no")).to eq(0), err.string
+      expect(posted).to eq([[:answer, "a1", ["Deny"], "no"]])
+    end
+
+    it "refuses an allow with --text (the text doesn't make it a deny)" do
+      s = asking(approval)
+      expect(run(s.id, "--question", "a1", "--option", "1", "--text", "fine", "--timeout", "0.3")).to eq(1)
+      expect(posted).to be_empty
+    end
+
+    it "takes guardrails.parent_approvals from config.yml only, never the parent's environment" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_call_original
+      original = ENV["SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS"]
+      ENV["SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS"] = "once"
+      Samagotchi::Config.reload!
+      s = asking(approval)
+      expect(run(s.id, "--question", "a1", "--option", "Allow once", "--timeout", "0.3")).to eq(1)
+      expect(posted).to be_empty
+      expect(err.string).to include("allowing a tool call is up to the user")
+    ensure
+      original ? ENV["SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS"] = original : ENV.delete("SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS")
+      Samagotchi::Config.reload!
+    end
+
     it "with parent_approvals: once refuses an approval that doesn't offer once" do
       @parent_approvals = "once"
       s = asking(approval.merge(options: ["Allow this call for the session", "Deny"],
