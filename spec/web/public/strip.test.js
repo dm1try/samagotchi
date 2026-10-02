@@ -18,14 +18,25 @@ test("stripColumns: a hidden strip (0 px) or a bad width still gets 3", () => {
 });
 
 test("stripShowParts: the count of the list, singular for one, bare label for none", () => {
-  assert.deepEqual(stripShowParts([]), { count: "sessions", live: "" });
-  assert.deepEqual(stripShowParts(undefined), { count: "sessions", live: "" });
-  assert.deepEqual(stripShowParts([{ owner: null }]), { count: "1 session", live: "" });
-  assert.deepEqual(stripShowParts([{}, {}, {}, {}, {}]), { count: "5 sessions", live: "" });
+  assert.deepEqual(stripShowParts([]), { count: "sessions", live: "", waiting: "" });
+  assert.deepEqual(stripShowParts(undefined), { count: "sessions", live: "", waiting: "" });
+  assert.deepEqual(stripShowParts([{ owner: null }]), { count: "1 session", live: "", waiting: "" });
+  assert.deepEqual(stripShowParts([{}, {}, {}, {}, {}]), { count: "5 sessions", live: "", waiting: "" });
 });
 
 test("stripShowParts: counts the sessions a worker runs as live, not terminal ones", () => {
   const list = [{ owner: "worker" }, { owner: "tui" }, {}, { owner: "worker" }];
-  assert.deepEqual(stripShowParts(list), { count: "4 sessions", live: "2 live" });
+  assert.deepEqual(stripShowParts(list), { count: "4 sessions", live: "2 live", waiting: "" });
   assert.equal(stripShowParts([{ owner: "worker" }]).live, "1 live");
+});
+
+test("stripShowParts: counts the sessions that wait on the user (a question, an approval, a card)", () => {
+  const list = [
+    { owner: "worker", pending_question: { id: "q1", kind: "question" } },
+    { owner: "worker", pending_card: { id: "c1" } },
+    { owner: "worker" },
+    { pending_question: { id: null } },
+  ];
+  assert.deepEqual(stripShowParts(list), { count: "4 sessions", live: "3 live", waiting: "2 waiting" });
+  assert.equal(stripShowParts([{ pending_card: { id: "c" } }]).waiting, "1 waiting");
 });
