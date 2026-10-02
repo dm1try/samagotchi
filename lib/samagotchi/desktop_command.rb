@@ -6,7 +6,8 @@ require_relative "desktop"
 
 module Samagotchi
   # `chi desktop install|upgrade|uninstall|status`: the native helper that
-  # sends selected text to live sessions as a context note (macOS for now).
+  # sends selected text (or images) to sessions, live, stopped or new, as a
+  # message or a context note (macOS for now).
   class DesktopCommand
     include CLI::Command
 
@@ -15,8 +16,9 @@ module Samagotchi
         install [--force] [--login]
                            build "Chi Helper" into ~/Applications (needs the Command Line Tools)
                            and start it: Services > "Send to chi", or ⌃⌥⌘N with the clipboard,
-                           sends text to a live session as a context note. --login: start it
-                           at login too (else it runs until you log out)
+                           sends text or images to a session (live, stopped or new) as a
+                           message (⏎) or a context note (⌘⏎). --login: start it at login
+                           too (else it runs until you log out)
         upgrade            rebuild it for this chi and restart it (chi update does this only
                            when its sources changed)
         uninstall          remove it, its settings and its launch file

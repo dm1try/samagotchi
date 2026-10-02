@@ -105,8 +105,9 @@ off until you set it up:
    `kitty.agents` picks the programs listed (default `claude|codex|gemini|aider|opencode|cursor-agent|amp|goose`, a
    YAML list works too; `"*"` lists every window, shells too), `kitty.binary` the kitty to run (default
    `/Applications/kitty.app/Contents/MacOS/kitty`). See [Configuration](configuration.md#desktop-helper-agents-in-kitty).
-3. Run `chi desktop upgrade` (or `chi update`): the helper reads these from its launch file, so **after every edit of
-   `kitty:`** run it again. No rebuild when only the settings changed.
+3. Run `chi update` (or `chi desktop upgrade`): the helper reads these from its launch file, so **after every edit of
+   `kitty:`** run it again. `chi update` only rewrites the launch file when only the settings changed (no rebuild);
+   `chi desktop upgrade` always rebuilds.
 
 The helper finds the sockets itself: kitty adds `-<pid>` to a `listen_on` path from kitty.conf (and fills in
 `{kitty_pid}`), `~` and variables the helper knows are expanded, others (`${KITTY_PID}`) stay as written, as kitty
@@ -188,12 +189,15 @@ using it. `status` prints the baked dirs.
 The helper uses only these commands, so it could ship on its own later:
 
 - `chi sessions list --live --scope=all --format json` and `chi sessions list --limit 20 --scope=all --format json` →
-  `[{id, short_id, desc, cwd, project, updated_at, live, busy, owner, recap}]` (it uses `id`, `desc`, `cwd`, `busy`, `updated_at`;
+  `[{id, short_id, desc, cwd, project, updated_at, live, busy, owner, recap, parent_id, archived, scratch, ctx_pct}]` (it uses `id`, `desc`, `cwd`, `busy`, `updated_at`;
   "recent" = rows of the second call that aren't live and have `owner: null`; only UUID-shaped ids go on to chi).
-- `chi send [-m LINE] ID...` with the text on stdin (or none) and `chi note --source NAME ID...` with the text on
-  stdin → one line per session on stdout; exit 0 means all sent or queued, 1 means some were refused or failed.
+- `chi send [-m LINE] [--image PATH]... ID...` and `chi send --new --dir DIR [--model NAME] [-m LINE] [--image PATH]...`
+  with the text on stdin (or none), and `chi note [--source NAME] ID...` with the text on stdin → one line per session
+  on stdout; exit 0 means all sent or queued, 1 means some were refused or failed.
+- `chi self --model` → the model a new session starts on (the panel's hint).
+- `chi models --format json` → the models the hosts offer (the new-session model picker).
 
-Each call is stopped after 10 s. A stopped `chi note` says the note may be partly delivered.
+Each call is stopped after 10 s, a send with images after 30 s. A stopped `chi note` says the note may be partly delivered.
 
 ## Troubleshooting
 
