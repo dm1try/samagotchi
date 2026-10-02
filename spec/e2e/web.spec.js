@@ -213,9 +213,12 @@ test("a question card: the answer lets the turn go on", { tag: "@turn" }, async 
   await send(page, "Read a file of my choice");
   const card = page.locator(`${H()} .bubble.question`);
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
+  // Its session card says it waits on the user (the hub's pending_question) until answered.
+  await expect(page.locator("#topStrip .card.waiting .attn")).toHaveText("question");
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(card.locator(".question-result")).toContainText("README.md");
+  await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0);
   await expect(answer(page)).toHaveText("Read the file you picked. Done.");
   await turnEnded(page, 1);
   await expect(page.locator("#history .activity-tool")).toHaveText(["ask_user_question", "read"]);
