@@ -261,7 +261,9 @@ module Samagotchi
           ask(event[:pending_question])
         when :question_answered then question_answered(event)
         when :question_cancelled
-          close_question("(question cancelled)") if @question
+          close_question(@question.closed_text(event[:reason])) if @question
+        # Relayed to the parent's card, or no longer: the widget says so.
+        when :question_relay then question_relayed(event)
         # Written while the session sat idle: shown at the open prompt. One
         # collected just as a turn started describes the chat before it.
         when :recap_ready then @screen.commit(recap_block(event[:recap])) unless @running || event[:recap].to_s.strip.empty?
@@ -760,6 +762,13 @@ module Samagotchi
         else
           @screen.commit(turn_end_hint("the failed prompt is in the input history (↑)"))
         end
+      end
+
+      def question_relayed(event)
+        return unless @question && @question.id == event[:id].to_s
+
+        @question.relayed_to = event[:relayed_to]
+        @screen.set_slot(:notes, @question.slot(paint: method(:paint)))
       end
 
       def question_answered(event)

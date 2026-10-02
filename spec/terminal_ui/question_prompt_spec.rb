@@ -95,4 +95,47 @@ RSpec.describe Samagotchi::TerminalUI::QuestionPrompt, "approval" do
       expect(prompt.preview_lines).to eq([])
     end
   end
+
+  describe "a relayed approval (the approval relay)" do
+    let(:relayed) do
+      { "id" => "pq", "kind" => "approval", "header" => "Approve delegate ab12cd34's tool call?",
+        "question" => "delegate ab12cd34 (\"push it\") asks:\n  execute: git push\n    why: publishes",
+        "options" => ["Allow once", "Allow this call for delegate ab12cd34's session", "Deny"], "allow_freeform" => true,
+        "approval" => { "tool" => "execute", "command" => "git push", "scopes" => %w[once session] },
+        "relay" => { "id" => "r1", "child_id" => "ab12cd34-0000", "chain" => ["ab12cd34"], "task" => "push it",
+                     "asked" => "execute: git push\n  why: publishes" } }
+    end
+
+    it "shows the delegate's own text as the question, who asks as a dim line under the header" do
+      prompt = described_class.new(relayed)
+      rows = prompt.slot.fit(width: 80, height: nil)
+      expect(rows.first(4)).to eq(["Approve delegate ab12cd34's tool call?", "  delegate ab12cd34 · push it",
+                                   "! execute: git push", "  why: publishes"])
+      expect(rows).to include("  2) Allow this call for delegate ab12cd34's session")
+      expect(prompt.summary("Allow once")).to eq("! ab12cd34: execute: git push → Allow once")
+    end
+
+    it "names a grandchild's chain" do
+      chained = relayed.merge("relay" => relayed["relay"].merge("chain" => %w[cd34cd34 ab12cd34]))
+      expect(described_class.new(chained).note).to eq("  delegate ab12cd34 → cd34cd34 · push it")
+    end
+
+    it "says where it went when it closed with no answer here, never a deny unless dismissed" do
+      prompt = described_class.new(relayed)
+      expect(prompt.closed_text("answered_on_child")).to eq("(answered in ab12cd34)")
+      expect(prompt.closed_text("child_gone")).to eq("(ab12cd34's worker is gone)")
+      expect(prompt.closed_text("user")).to eq("(left open in ab12cd34)")
+      expect(prompt.closed_text("dismissed")).to eq("(denied)")
+      expect(described_class.new("id" => "q1", "question" => "Which one?", "options" => %w[A B]).closed_text("user"))
+        .to eq("(question cancelled)")
+    end
+
+    it "on the delegate's own side says it waits in the parent too, until the mark clears" do
+      prompt = described_class.new("id" => "q1", "question" => "Which one?", "options" => %w[A B],
+                                   "relayed_to" => { "parent_id" => "p" * 36, "parent_short" => "pppppppp" })
+      expect(prompt.slot.fit(width: 80, height: nil)[0]).to eq("  waiting in parent pppppppp too (answering here works)")
+      prompt.relayed_to = nil
+      expect(prompt.note).to be_nil
+    end
+  end
 end

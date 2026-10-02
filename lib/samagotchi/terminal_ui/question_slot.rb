@@ -38,9 +38,12 @@ module Samagotchi
       # @param mark [String] its prefix ("? ", "! ")
       # @param options [Array<Option>] key ("1", "yes") and label
       # @param paint [#call] (text, code) -> coloured text
+      # @param note [String, nil] a dim row under the header (a relayed
+      #   approval's delegate, or where else it waits); gives way with it
       def initialize(question:, mark:, options:, header: nil, details: [], hint: nil, question_code: 94,
-                     paint: ->(text, _code) { text })
+                     paint: ->(text, _code) { text }, note: nil)
         @header = header
+        @note = note
         @question = question.to_s
         @mark = mark
         @details = details
@@ -75,6 +78,7 @@ module Samagotchi
       def layout(width, hint:, details:, header:, folded:)
         rows = []
         rows << @paint.(@header, 1) if header && @header
+        rows << @paint.(@note, 2) if header && @note
         question_rows = wrap(@question, width, first: @mark, indent: " " * @mark.size)
         question_rows = question_rows.first(1) unless details
         rows.concat(question_rows.map { |row| @paint.(row, @question_code) })

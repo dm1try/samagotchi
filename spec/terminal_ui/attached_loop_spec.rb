@@ -812,6 +812,27 @@ end
       expect(screen.lines.count("@@ -1 +1 @@\n-a\n+b")).to eq(1)
     end
 
+    it "shows that the question waits in the parent too, live, and a relayed card's close in its own words" do
+      start
+      push("type" => "question_requested", "pending_question" => approval)
+      wait_for { screen.slots[:notes] }
+      push("type" => "question_relay", "id" => "a1", "relayed_to" => { "parent_id" => "p" * 36, "parent_short" => "pppppppp" })
+      wait_for { screen.slots[:notes]&.include?("  waiting in parent pppppppp too (answering here works)") }
+      push("type" => "question_relay", "id" => "a1", "relayed_to" => nil, "reason" => "parent_gone")
+      wait_for { !screen.slots[:notes].to_s.include?("waiting in parent") }
+      push("type" => "question_cancelled", "id" => "a1", "reason" => "user")
+
+      relayed = approval.merge("id" => "a2", "relay" => { "child_id" => "cccc1111-0", "chain" => ["cccc1111"], "task" => "push it",
+                                                          "asked" => "execute: git push" })
+      push("type" => "question_requested", "pending_question" => relayed)
+      wait_for { screen.slots[:notes]&.include?("  delegate cccc1111 · push it") }
+      push("type" => "question_cancelled", "id" => "a2", "reason" => "answered_on_child")
+      wait_for { prompts.last == "> " }
+      finish
+      expect(screen.lines).to include("! execute: git push → (question cancelled)",
+                                      "! cccc1111: execute: git push → (answered in cccc1111)")
+    end
+
     it "sends n with a reason, and says denied on an empty answer" do
       allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
       allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))

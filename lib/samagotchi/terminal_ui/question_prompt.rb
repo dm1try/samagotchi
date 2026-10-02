@@ -22,6 +22,9 @@ module Samagotchi
       end
 
       attr_reader :id, :question, :options, :header
+      # @return [String, nil] the parent's short id while this question waits
+      #   in its card too (the approval relay)
+      attr_reader :relayed_to
 
       # @param pending [Hash] Engine#pending_question (symbol or string keys)
       def initialize(pending)
@@ -30,6 +33,18 @@ module Samagotchi
         @preview = approval.is_a?(Hash) ? (approval[:preview] || approval["preview"]) : nil
         @id = field.(:id).to_s
         @question = field.(:question).to_s
+        # A delegate's approval relayed here: the delegate's own text is the
+        # question, who asks a dim line (#note).
+        relay = field.(:relay)
+        if relay.is_a?(Hash)
+          get = ->(key) { relay[key] || relay[key.to_s] }
+          chain = Array(get.(:chain)).map(&:to_s)
+          chain = [get.(:child_id).to_s[0, 8]] if chain.empty?
+          @delegate = chain.reverse.join(" → ")
+          @delegate_task = get.(:task).to_s
+          @question = get.(:asked).to_s unless get.(:asked).to_s.strip.empty?
+        end
+        self.relayed_to = field.(:relayed_to)
         @options = Array(field.(:options)).map { |v| v.to_s.strip }.reject(&:empty?)
         header = field.(:header).to_s.strip
         @header = header.empty? ? nil : header
@@ -42,6 +57,36 @@ module Samagotchi
       def free? = @free
       def approval? = @approval
 
+      # The relay mark (QuestionDesk#annotate's relayed_to: a Hash, or the
+      # short id), or nil when cleared.
+      def relayed_to=(value)
+        short = value.is_a?(Hash) ? (value[:parent_short] || value["parent_short"]) : value
+        @relayed_to = short.to_s.strip.empty? ? nil : short.to_s
+      end
+
+      # The dim line under the header: which delegate asks (and its task),
+      # or that this question waits in a parent too.
+      def note
+        if @delegate
+          task = @delegate_task.empty? ? "" : " · #{@delegate_task}"
+          return "  delegate #{@delegate}#{task}"
+        end
+        "  waiting in parent #{@relayed_to} too (answering here works)" if @relayed_to
+      end
+
+      # What a question closed with no answer here says: a relayed approval
+      # names where it went; else "(question cancelled)".
+      def closed_text(reason)
+        return "(question cancelled)" unless @delegate
+
+        case reason.to_s
+        when "answered_on_child" then "(answered in #{@delegate})"
+        when "child_gone" then "(#{@delegate}'s worker is gone)"
+        when "dismissed" then "(denied)"
+        else "(left open in #{@delegate})"
+        end
+      end
+
       # The widget as slot content, fitted to the rows it gets (QuestionSlot).
       # @return [QuestionSlot]
       def slot(paint: ->(text, _code) { text })
@@ -50,7 +95,7 @@ module Samagotchi
         QuestionSlot.new(header: approval? ? (header || "Approve tool call?") : header,
                          question: first.to_s, mark: mark, details: rest,
                          options: keys.zip(options).map { |key, label| QuestionSlot::Option.new(key, label) },
-                         hint: slot_hint, question_code: approval? ? 33 : 94, paint: paint)
+                         hint: slot_hint, question_code: approval? ? 33 : 94, paint: paint, note: note)
       end
 
       # The most diff lines #preview_lines prints; the web shows them all.
@@ -85,7 +130,8 @@ module Samagotchi
       # the question and what became of it.
       # @param outcome [String] the answer (#answer_text) or what closed it
       def summary(outcome, paint: ->(text, _code) { text })
-        "#{paint.("#{mark}#{question.lines.first.to_s.chomp}", approval? ? 33 : 94)} → #{outcome}"
+        who = @delegate ? "#{@delegate}: " : ""
+        "#{paint.("#{mark}#{who}#{question.lines.first.to_s.chomp}", approval? ? 33 : 94)} → #{outcome}"
       end
 
       # @param answer [Answer] an accepted one
