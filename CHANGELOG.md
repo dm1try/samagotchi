@@ -19,14 +19,15 @@ and commands may change between minor versions. How releases are made:
 - An approval answered with `chi answer` can be denied, not allowed: allowing is the user's (the web, `chi --attach`).
   `guardrails.parent_approvals: once` lets "Allow once" through, never a wider scope.
 - `chi sessions list` shows a session waiting for an answer as `waiting`; `--format json` has `waiting` (`question`,
-  `approval` or `hook`).
+  `approval` or `hook`) and `waiting_id`, the question's id for `chi answer --question`.
 - docs/sub-agent.md: running chi as another agent's sub-agent, with instructions to paste into its `CLAUDE.md` /
   `AGENTS.md`.
 
 ### Changed
 
 - `chi send --wait` exits 4 (not 1) when `--timeout` passes with the turn still running.
-- Attached `chi -p` from a script exits 3 (not 1) when it leaves a question or an approval waiting for an answer.
+- Attached `chi -p` from a script exits 3 (not 1) when it leaves a question or an approval waiting for an answer,
+  and prints the whole question on stderr with the `chi answer` command for it, as `chi send --wait` does.
 - `chi send --wait`'s exit 3 prints the whole question on stderr: its text, numbered options and how to answer it.
 - `delegate` / `delegate_result` on a child waiting for an answer give the whole question: its text, numbered options
   and the `chi answer` command for it.

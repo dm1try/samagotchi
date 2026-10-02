@@ -147,8 +147,10 @@ module Samagotchi
         # leftover one at the next sweep)
         # ctx_pct: how full the context was after the last turn, or nil
         # waiting: the kind of question it waits on (question, approval,
-        # hook: chi answer or the web answers it), or nil
-        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived scratch ctx_pct waiting]
+        # hook: chi answer or the web answers it), or nil; waiting_id: its
+        # id, for chi answer --question
+        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived scratch ctx_pct waiting
+                  waiting_id]
         @stdout.puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| @stdout.puts "#{summary[:id]}\t#{summary[:desc]}" }

@@ -267,3 +267,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".exit_status" do
     %i[closed failed turn_failed].each { |ended| expect(described_class.exit_status(ended)).to eq(1) }
   end
 end
+
+# Attached `chi -p` from a script, exit 3: the question in full on stderr,
+# as `chi send --wait` prints it, so a parent agent can answer it.
+RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".report_unanswered" do
+  it "prints the question, its options and the chi answer command" do
+    err = StringIO.new
+    described_class.report_unanswered({ id: "q1", question: "Which file?", options: %w[A B] }, session_id: "s-1", err: err)
+
+    expect(err.string).to eq(<<~TEXT)
+      chi: waiting for an answer (question): Which file?
+          1. A
+          2. B
+        answer: chi answer s-1 --question q1 --option N
+        or open it: chi --attach s-1 or the web
+    TEXT
+  end
+end

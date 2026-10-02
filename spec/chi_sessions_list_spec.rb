@@ -163,8 +163,8 @@ RSpec.describe "chi sessions list" do
     expect(out).to match(/^#{asking.id}  waiting  /)
 
     out, _err, _status = run_chi("--format", "json")
-    by_id = JSON.parse(out).to_h { |row| [row["id"], row["waiting"]] }
-    expect(by_id).to eq(asking.id => "question", approving.id => "approval", orphaned.id => nil)
+    by_id = JSON.parse(out).to_h { |row| [row["id"], row.values_at("waiting", "waiting_id")] }
+    expect(by_id).to eq(asking.id => %w[question q1], approving.id => %w[approval a1], orphaned.id => [nil, nil])
   end
 
   it "shows a quoted message without its quote markers" do
@@ -246,7 +246,8 @@ RSpec.describe "chi sessions list" do
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
-                                     "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil }])
+                                     "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
+                                     "waiting_id" => nil }])
   end
 
   it "--format json: each session's recap, its first sentence; the tsv lines don't change" do

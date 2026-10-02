@@ -1800,6 +1800,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
 
     expect(result).to eq(:unanswered)
     expect(screen.lines.last).to eq("A question waits for an answer: chi --attach s-1234")
+    # The launcher prints it in full (AttachLauncher.report_unanswered).
+    expect(attached.unanswered).to include(id: "q1", question: "Which?")
   end
 
   it "ends with :turn_failed when the worker refuses the prompt" do

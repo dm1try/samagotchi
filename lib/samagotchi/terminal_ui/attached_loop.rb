@@ -62,6 +62,10 @@ module Samagotchi
       # @return [QuestionPrompt, nil] the question waiting for an answer
       attr_reader :question
 
+      # @return [Hash, nil] the pending question (symbol keys) #run left
+      #   waiting when it ended :unanswered
+      attr_reader :unanswered
+
       # @param client [BridgeClient]
       # @param screen [Surface] with #synchronize and #columns (a Screen, or a
       #   PlainSurface when the terminal can't show a live region)
@@ -158,7 +162,7 @@ module Samagotchi
             if payload.nil? && @wait_at_eof && own_turns_pending?
               # The pipe's end: this run's turns first. An open question
               # has nothing left to answer it.
-              return unanswered_question if @question
+              return unanswered_question(@question_pending) if @question
 
               next @input_ended = true
             end
@@ -217,7 +221,7 @@ module Samagotchi
         when :input_merged then merged_own_prompts(event)
         when :question_requested
           # Nothing is left to answer it with.
-          return unanswered_question if @input_ended
+          return unanswered_question(event[:pending_question]) if @input_ended
 
           ask(event[:pending_question])
         when :question_answered then question_answered(event)
@@ -557,7 +561,8 @@ module Samagotchi
         @own_failed ? :turn_failed : :detached
       end
 
-      def unanswered_question
+      def unanswered_question(pending)
+        @unanswered = pending
         detach("A question waits for an answer: chi --attach #{@client.session_id}")
         :unanswered
       end
@@ -634,6 +639,7 @@ module Samagotchi
         # What was typed at the prompt waits for the question to close.
         @set_aside = @reader&.typed_text unless @question
         @question = QuestionPrompt.new(pending)
+        @question_pending = pending
         # An edit's diff goes above, into the scrollback, once per question
         # (a join gets it from the snapshot and may get the event too).
         unless @previewed_id == @question.id

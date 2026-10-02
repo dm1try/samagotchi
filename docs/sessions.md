@@ -40,7 +40,7 @@ chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...]
 chi sessions clean [--dry-run] [--days N]             # test sessions: all, or older than N days
 ```
 
-A session whose worker waits for an answer (a question, a hook's question or a guardrail approval) reads `waiting` in the status column, and json has `waiting: "question"|"approval"|"hook"` (null otherwise). Only while a worker runs it: a question a dead worker left in the file shows the saved status. Answer it with `chi answer`, the web or `chi --attach ID`; `chi sessions stop ID` frees the worker instead.
+A session whose worker waits for an answer (a question, a hook's question or a guardrail approval) reads `waiting` in the status column, and json has `waiting: "question"|"approval"|"hook"` and `waiting_id`, the question's id for `chi answer --question` (both null otherwise). Only while a worker runs it: a question a dead worker left in the file shows the saved status. Answer it with `chi answer`, the web or `chi --attach ID`; `chi sessions stop ID` frees the worker instead.
 
 Examples:
 

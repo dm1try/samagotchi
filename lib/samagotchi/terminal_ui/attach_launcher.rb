@@ -5,6 +5,7 @@ require_relative "../config"
 require_relative "../model_profile"
 require_relative "../session_manager"
 require_relative "../bridge_client"
+require_relative "../parent_report"
 require_relative "live_region"
 require_relative "plain_surface"
 require_relative "attached_loop"
@@ -43,14 +44,26 @@ module Samagotchi
                          memories: memories, muted_memories: muted_memories)
         first_command = model && (attach || resume) ? "/model #{model}" : nil
         surface = open_surface
-        begin
-          AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
-                           first_command: first_command, no_interrupt: no_interrupt,
-                           default_input: default_input && !prompt && !attach && !resume,
-                           wait_at_eof: !$stdin.tty?).run
+        attached = AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
+                                first_command: first_command, no_interrupt: no_interrupt,
+                                default_input: default_input && !prompt && !attach && !resume,
+                                wait_at_eof: !$stdin.tty?)
+        ended = begin
+          attached.run
         ensure
           close_surface(surface)
         end
+        report_unanswered(attached.unanswered, session_id: client.session_id) if ended == :unanswered && attached.unanswered
+        ended
+      end
+
+      # A question left waiting (exit 3), in full on stderr as `chi send
+      # --wait` prints it (ParentReport), so a script or a parent agent
+      # can answer it with chi answer.
+      # @param pending [Hash] the pending question (symbol keys)
+      def report_unanswered(pending, session_id:, err: $stderr)
+        err.print("chi: #{ParentReport.question_text(pending, session_id: session_id)}")
+        err.flush
       end
 
       # chi's exit status after #run: 0 detached, 3 a question left waiting

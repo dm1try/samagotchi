@@ -68,7 +68,8 @@ local process.
 ## Things to know
 
 - A question waits for as long as it takes: the worker doesn't idle-exit while
-  one is open. `chi sessions list` shows such sessions as `waiting`;
+  one is open. `chi sessions list` shows such sessions as `waiting`
+  (`--format json`: `waiting_id` is the question's id);
   `chi sessions stop ID` ends one.
 - If the worker dies while a question waits, the question goes with it.
   `chi answer` then exits 1 and says to send the task again
