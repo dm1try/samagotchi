@@ -40,6 +40,8 @@ chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...]
 chi sessions clean [--dry-run] [--days N]             # test sessions: all, or older than N days
 ```
 
+A session whose worker waits for an answer (a question, a hook's question or a guardrail approval) reads `waiting` in the status column, and json has `waiting: "question"|"approval"|"hook"` (null otherwise). Only while a worker runs it: a question a dead worker left in the file shows the saved status. Answer it with `chi answer`, the web or `chi --attach ID`; `chi sessions stop ID` frees the worker instead.
+
 Examples:
 
 ```sh
@@ -170,7 +172,7 @@ chi send --wait 3fa2                                   # sends nothing: waits fo
 - `--format json` (with `--wait`) prints one JSON object on stdout however the wait ends, for a script or a parent agent: `{"status":"answered","session_id":…,"text":…}`; `{"status":"question",…,"question":{"id","kind","header","text","options","multi_select","allow_freeform","approval"},"answer_with":"chi answer ID --question QID --option N"}`, where `kind` is `question` (the model's), `hook` or `approval` (with the tool, command, cwd, rule, reason and offered scopes); `{"status":"running",…,"detail":…}` (exit 4, and on Ctrl-C); and `failed`, `canceled`, `no_answer`, `error`, `worker_gone` or `stopped` with a `detail` line (exit 1). A failure before the wait (no such session, a busy one) is `error` too. A usage error (exit 2) prints no JSON.
 - `--wait ID` with no message (no `-m`, nothing piped) sends nothing: it waits for the session's next reply and prints and exits as above. A running session is fine (that is the point), so after exit 3, 4 or 130 an agent waits again this way while the user answers in the web or `chi --attach`; the question pending when it starts doesn't count again. An idle session with no worker waits until something wakes one. With `--new`, or two ids, it is a usage error (exit 2).
 - The 16 KiB cap applies: `git diff | chi send --new …` on a big diff is refused; name the branch in the message instead and let the session read it.
-- A session nobody attaches to stalls at its first guardrail ask until someone opens it; left alone it idle-exits after `session.idle_exit_minutes` like any worker. These are ordinary sessions: delete them like any other.
+- A session nobody attaches to stalls at its first question or guardrail ask until someone answers it (`chi answer`, the web, `chi --attach`), and its worker stays up meanwhile: it doesn't idle-exit while a question waits (`chi sessions list` shows it as `waiting`; `chi sessions stop ID` frees it). Otherwise it idle-exits after `session.idle_exit_minutes` like any worker. These are ordinary sessions: delete them like any other.
 
 ## Delegating
 

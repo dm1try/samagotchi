@@ -139,6 +139,34 @@ RSpec.describe "chi sessions list" do
     expect(by_id).to eq(parent.id => nil, child.id => parent.id)
   end
 
+  it "marks a session waiting for an answer, in the plain and the --live listings; json has waiting" do
+    asking = make("which file?", live: true)
+    approving = make("run it", live: true)
+    orphaned = make("crashed while asking")
+    { asking => { "id" => "q1", "question" => "Which?" },
+      approving => { "id" => "a1", "question" => "execute: x", "kind" => "approval" },
+      orphaned => { "id" => "q9", "question" => "Gone?" } }.each do |session, pending|
+      s = Samagotchi::Session.load(session.id, state_dir: state_dir)
+      s.status = "running"
+      s.pending_question = pending
+      s.save(state_dir: state_dir)
+    end
+
+    out, err, status = run_chi
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to match(/^#{asking.id}  waiting  .* which file\?\n/)
+    expect(out).to match(/^#{approving.id}  waiting  .* run it\n/)
+    # A question a dead worker left in the file waits for no one.
+    expect(out).to match(/^#{orphaned.id}  running  .* crashed while asking\n/)
+
+    out, _err, _status = run_chi("--live")
+    expect(out).to match(/^#{asking.id}  waiting  /)
+
+    out, _err, _status = run_chi("--format", "json")
+    by_id = JSON.parse(out).to_h { |row| [row["id"], row["waiting"]] }
+    expect(by_id).to eq(asking.id => "question", approving.id => "approval", orphaned.id => nil)
+  end
+
   it "shows a quoted message without its quote markers" do
     make("> answer:\n> the build failed\n\nsame bug?")
 
@@ -218,7 +246,7 @@ RSpec.describe "chi sessions list" do
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
-                                     "archived" => false, "scratch" => false, "ctx_pct" => nil }])
+                                     "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil }])
   end
 
   it "--format json: each session's recap, its first sentence; the tsv lines don't change" do

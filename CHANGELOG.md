@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
   questions itself.
 - An approval answered with `chi answer` can be denied, not allowed: allowing is the user's (the web, `chi --attach`).
   `guardrails.parent_approvals: once` lets "Allow once" through, never a wider scope.
+- `chi sessions list` shows a session waiting for an answer as `waiting`; `--format json` has `waiting` (`question`,
+  `approval` or `hook`).
 
 ### Changed
 

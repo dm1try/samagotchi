@@ -99,6 +99,21 @@ module Samagotchi
       @archived = false
     end
 
+    # The question this session waits on, as the lists show it: {id:, kind:}
+    # with kind "question" (the model's), "approval" or "hook"; nil with
+    # none. Only while a worker runs it (+live+): a question saved by a
+    # worker that died waits for no one (the next worker drops it). The
+    # web's summaries and `chi sessions list` both ask this.
+    # @param live [Boolean] a worker owns the session now
+    # @return [Hash, nil]
+    def waiting_question(live:)
+      pending = pending_question
+      return nil unless live && pending.is_a?(Hash) && pending[:id]
+
+      kind = pending[:kind].to_s
+      { id: pending[:id], kind: %w[approval hook].include?(kind) ? kind : "question" }
+    end
+
     # The stored project root, else (a file from before the field) the
     # project of the working directory now: nil when that is in no repo or
     # gone. +cache+ is ProjectScope.root_for's, shared across one listing.

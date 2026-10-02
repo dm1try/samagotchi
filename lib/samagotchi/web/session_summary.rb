@@ -62,19 +62,10 @@ module Samagotchi
           # For the tab's notifications (notify.js): an open question, the
           # running turn's open card with actions, and how the last turn
           # ended. A question saved by a worker that died is not open.
-          pending_question: owner ? pending_question_for(session) : nil,
+          pending_question: session.waiting_question(live: !owner.nil?),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.last_turn
         }
-      end
-
-      # The open question as {id:, kind:} ("approval" for a guardrail's,
-      # else "question"); nil when there is none. The text stays out.
-      def pending_question_for(session)
-        pending = session.pending_question
-        return nil unless pending.is_a?(Hash) && pending[:id]
-
-        { id: pending[:id], kind: pending[:kind].to_s == "approval" ? "approval" : "question" }
       end
 
       # status is turn state (idle/running). The live worker's snapshot is the

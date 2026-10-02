@@ -226,9 +226,10 @@ module Samagotchi
     # @param include_archived [Boolean] archived sessions too
     # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:, project:,
     #   updated_at:, status:, live:, busy:, owner:, recap:, parent_id:,
-    #   parent_short_id:, archived:, scratch:, test_run:}; busy = live with
+    #   parent_short_id:, archived:, scratch:, test_run:, waiting:}; busy = live with
     #   a turn running, recap = the saved recap's first sentence, project =
-    #   Session#project_root
+    #   Session#project_root, waiting = the kind of question it waits on
+    #   ("question", "approval", "hook"; Session#waiting_question) or nil
     def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil,
                                project_root: nil, include_archived: false, sort: nil, order: nil)
       sd = state_dir || Session.default_state_dir
@@ -248,7 +249,7 @@ module Samagotchi
           owner: owner, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
           ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd))&.round(1),
           parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), archived: s.archived,
-          scratch: s.scratch, test_run: s.test_run }
+          scratch: s.scratch, test_run: s.test_run, waiting: s.waiting_question(live: owned)&.dig(:kind) }
       end
       (limit ? summaries.first(limit) : summaries.to_a)
     end

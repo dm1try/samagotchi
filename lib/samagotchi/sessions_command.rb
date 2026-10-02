@@ -146,13 +146,18 @@ module Samagotchi
         # scratch: a `chi scratch` session (deleted when its REPL ends, a
         # leftover one at the next sweep)
         # ctx_pct: how full the context was after the last turn, or nil
-        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived scratch ctx_pct]
+        # waiting: the kind of question it waits on (question, approval,
+        # hook: chi answer or the web answers it), or nil
+        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived scratch ctx_pct waiting]
         @stdout.puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| @stdout.puts "#{summary[:id]}\t#{summary[:desc]}" }
       else
         summaries.each do |summary|
-          state = summary[:busy] ? "running" : (summary[:live] ? "live" : summary[:status].to_s)
+          state = if summary[:waiting] then "waiting"
+                  elsif summary[:busy] then "running"
+                  else summary[:live] ? "live" : summary[:status].to_s
+                  end
           # The saved recap's first sentence says more than the last prompt
           # (text only: tsv and json keep desc for pickers).
           desc = summary[:desc]
@@ -197,7 +202,10 @@ module Samagotchi
         ctx = Samagotchi::SessionMetrics.context_label(
           Samagotchi::SessionMetrics.saved_context_pct(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
         )
-        "#{s.id}  #{s.status.ljust(8)}  #{ctx.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
+        # A question waits for an answer (chi answer, the web, chi --attach).
+        live = s.pending_question && Samagotchi::SessionManager.session_owner(s.id, state_dir: state_dir)&.kind == "worker"
+        status = s.waiting_question(live: !!live) ? "waiting" : s.status
+        "#{s.id}  #{status.ljust(8)}  #{ctx.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
       end
       if project
         sessions.each { |s| @stdout.puts row.call(s) }
