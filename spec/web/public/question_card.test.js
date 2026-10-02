@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isApproval, approvalView, resultText, approvalAllowed, nextCardAction, summaryText, truncate } from "../../../lib/samagotchi/web/public/question_card.js";
+import { isApproval, approvalView, relayView, resultText, approvalAllowed, nextCardAction, summaryText, truncate } from "../../../lib/samagotchi/web/public/question_card.js";
 
 const approval = {
   id: "a1",
@@ -132,4 +132,28 @@ test("approvalView passes an edit's dry-run diff on as preview, and adds nothing
   assert.deepEqual(approvalView(edit).preview, preview);
   assert.equal(approvalView(edit).what, "/x/kitty.conf");
   assert.equal("preview" in approvalView(approval), false);
+});
+
+const relayed = {
+  ...approval,
+  id: "a2",
+  header: "Approve delegate ab12cd34's tool call?",
+  question: "delegate ab12cd34 (\"fix it\") asks:\n  execute: git push",
+  relay: { id: "r1", child_id: "ab12cd34-0000", child_short: "ab12cd34", child_question_id: "q1", task: "fix it", chain: ["ab12cd34"], more: 0 },
+};
+
+test("a delegate's approval shows who asks and its task; a grandchild's names the chain", () => {
+  assert.deepEqual(approvalView(relayed).delegate, { who: "ab12cd34", childId: "ab12cd34-0000", childShort: "ab12cd34", task: "fix it", more: 0 });
+  assert.equal(relayView({ ...relayed, relay: { ...relayed.relay, chain: ["cd34", "ab12cd34"] } }).who, "ab12cd34 → cd34");
+  assert.equal(relayView(approval), null);
+  assert.equal(approvalView(approval).delegate, undefined);
+});
+
+test("a relayed card closed without an answer here says where the question went, never a deny", () => {
+  assert.equal(resultText(relayed, { cancelled: true, reason: "answered_on_child" }), "Answered in ab12cd34");
+  assert.equal(resultText(relayed, { cancelled: true, reason: "child_gone" }), "ab12cd34's worker is gone");
+  assert.equal(resultText(relayed, { cancelled: true, reason: "user" }), "Left open in ab12cd34 (user)");
+  // A dismiss here denied it, as for the session's own approvals.
+  assert.equal(resultText(relayed, { cancelled: true, reason: "dismissed" }), "Denied (dismissed)");
+  assert.equal(resultText(relayed, { answer: { selected: ["Allow once"] } }), "Allowed: Allow once");
 });
