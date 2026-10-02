@@ -27,6 +27,21 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(File.exist?(File.join(tmpdir, "#{other.id}.json"))).to be true
     end
 
+    it "removes a pruned session's plugin state (plugins/<bundle>/sessions/<id>.json)" do
+      s = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: true)
+      s.save(state_dir: tmpdir)
+      state = File.join(Samagotchi::Paths.state_dir, "plugins", "check-in", "sessions", "#{s.id}.json")
+      FileUtils.mkdir_p(File.dirname(state))
+      File.write(state, "{}")
+
+      result = described_class.apply(state_dir: tmpdir, days: 0, max_count: 0, test_only: true, any_age: true)
+
+      expect(result[:deleted]).to eq([s.id])
+      expect(File.exist?(state)).to be false
+    ensure
+      FileUtils.rm_rf(File.join(Samagotchi::Paths.state_dir, "plugins"))
+    end
+
     it "deletes sessions older than days" do
       s_old = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       s_old.save(state_dir: tmpdir)

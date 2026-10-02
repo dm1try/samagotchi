@@ -8,6 +8,7 @@ require_relative "config"
 require_relative "log"
 require_relative "model_profile"
 require_relative "session_manager"
+require_relative "plugin_session_state"
 
 module Samagotchi
   # Which sessions go: `chi sessions prune` / `clean` (.prune) and the lazy
@@ -79,7 +80,10 @@ module Samagotchi
         next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && SessionManager.empty_session_dir?(dir)
         next if SessionManager.session_owner(name, state_dir: state_dir)
 
-        FileUtils.rm_rf(dir) unless dry_run
+        unless dry_run
+          FileUtils.rm_rf(dir)
+          PluginSessionState.remove(name)
+        end
         name
       rescue SystemCallError
         nil
@@ -246,6 +250,7 @@ module Samagotchi
             FileUtils.rm_f(path)
             sidecar = File.join(state_dir, session.id)
             FileUtils.rm_rf(sidecar) if File.exist?(sidecar)
+            PluginSessionState.remove(session.id)
             deleted << session.id
           rescue StandardError
             skipped << session.id

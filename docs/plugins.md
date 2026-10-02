@@ -479,7 +479,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.cwd` | the session's working directory |
 | `ctx.repo_root` | the git checkout holding `cwd`, or nil |
 | `ctx.settings` | the bundle's settings, frozen |
-| `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use |
+| `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use. A session's own state goes in `sessions/<id>.json` or `sessions/<id>/` there: chi removes it when the session is deleted, discarded or pruned |
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
 | `ctx.messages` | the conversation, as a frozen copy, without the system prompt. While a turn runs, a session worker's (attached, web) adds that turn so far: its prompt, the model's text and the lines merged into it (no tool calls or thinking); the REPL's is the conversation before that turn |
 | `ctx.messages_partial?` | whether `ctx.messages` leaves out a running turn (the REPL mid-turn), so a plugin can say what its answer is about |
@@ -937,8 +937,8 @@ with a line and carry on unchanged.
 
 `/checkin` (anytime) for this session. What it changes (on/off, the mode,
 the threshold) is saved with the session, in the bundle's data dir
-(`plugins/check-in/sessions/<id>.json`), so it outlasts a worker's restart;
-another session starts from config.yml:
+(`plugins/check-in/sessions/<id>.json`), so it outlasts a worker's restart
+and goes with the session; another session starts from config.yml:
 
 | | |
 |---|---|

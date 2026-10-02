@@ -16,6 +16,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A deleted, discarded or retention-pruned session takes its plugins' state with it: a bundle's
+  `plugins/<bundle>/sessions/<id>.json` (or `<id>/`) under the state dir, such as check-in's `/checkin` settings, no
+  longer stays behind.
+
 - `chi self`'s context window row shows the current model's configured window: its `models.<key>.window_tokens`, else
   its host's `hosts.<name>.window_tokens`, else `context.window_tokens` or the default, and says which.
 

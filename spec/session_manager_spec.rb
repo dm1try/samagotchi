@@ -297,6 +297,21 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Dir.exist?(session_dir)).to be false
     end
 
+    it "removes the plugins' state for the session (plugins/<bundle>/sessions/<id>.json or <id>/), not another's" do
+      plugins = File.join(Samagotchi::Paths.state_dir, "plugins")
+      own = File.join(plugins, "check-in", "sessions", "#{session.id}.json")
+      own_dir = File.join(plugins, "other", "sessions", session.id)
+      kept = File.join(plugins, "check-in", "sessions", "someone-else.json")
+      [own, kept].each { |f| FileUtils.mkdir_p(File.dirname(f)) && File.write(f, "{}") }
+      FileUtils.mkdir_p(own_dir)
+
+      described_class.delete_session(session.id, state_dir: tmpdir)
+
+      expect([File.exist?(own), Dir.exist?(own_dir), File.exist?(kept)]).to eq([false, false, true])
+    ensure
+      FileUtils.rm_rf(plugins)
+    end
+
     it "takes a unique id prefix" do
       result = described_class.delete_session(session.id[0, 6], state_dir: tmpdir)
 

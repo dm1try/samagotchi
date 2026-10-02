@@ -23,6 +23,7 @@ require_relative "installed_gem"
 require_relative "recap_store"
 require_relative "archive_store"
 require_relative "image_store"
+require_relative "plugin_session_state"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -598,6 +599,7 @@ module Samagotchi
         FileUtils.rm_rf(dir)
         removed << dir
       end
+      PluginSessionState.remove(id)
       { id: id, removed: removed, stopped: !owner.nil? }
     end
 
