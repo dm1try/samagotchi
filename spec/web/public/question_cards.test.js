@@ -77,7 +77,7 @@ function setup({ near = true, fail = null } = {}) {
     sessionId: () => "s1",
     clientId: "web-me",
     place: (card) => { history.appendChild(card); card.isConnected = true; },
-    isNearBottom: () => near,
+    isNearBottom: () => (typeof near === "function" ? near(history) : near),
     scrollToEnd: () => { scrolled += 1; },
     removeHintIfEmpty: () => { hintDrops += 1; },
     api: { sendAnswer: call("sendAnswer"), dismissQuestion: call("dismissQuestion"), sendCommand: call("sendCommand") },
@@ -106,6 +106,20 @@ test("a question: an open card with its options, a freeform box, Submit and Dism
   assert.equal(cards.pendingQuestion(), PQ);
   assert.equal(scrolled(), 1);
   assert.equal(hintDrops(), 1);
+});
+
+// Placing the card makes the history taller: whether to follow is read
+// before (a reader at the end stays there, the card in view).
+test("a question follows a history that was at its end before the card went in", () => {
+  const { cards, scrolled } = setup({ near: (history) => history.children.length === 0 });
+  cards.renderQuestion(PQ);
+  assert.equal(scrolled(), 1);
+});
+
+test("a question leaves a history scrolled up where it is", () => {
+  const { cards, scrolled } = setup({ near: false });
+  cards.renderQuestion(PQ);
+  assert.equal(scrolled(), 0);
 });
 
 test("the same question again is one card", () => {
