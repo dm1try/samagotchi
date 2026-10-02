@@ -105,6 +105,17 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       expect(card[:pending_question][:relayed_to]).to include(relay_id: "r-1")
     end
 
+    it "clears the mark (parent_gone) when the parent's worker isn't up, the question still open" do
+      stub_const("Samagotchi::RelayWatcher::INTERVAL", 0.05)
+      _box, qid = ask_child
+      relay("opened", "r-1", qid)
+
+      wait_until(timeout: 2) { !child_engine.pending_question.key?(:relayed_to) }
+      expect(child_engine.pending_question).to include(id: qid, status: "pending")
+      expect(child_engine.pending_question).not_to have_key(:relayed_to)
+      expect(events.last).to include(type: :question_relay, id: qid, relayed_to: nil, reason: "parent_gone")
+    end
+
     it "answers 409 for a question not pending, 422 in a session with no parent, 400 for a bad request" do
       _box, qid = ask_child
       expect(relay("opened", "r-1", "other").status).to eq(409)

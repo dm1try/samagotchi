@@ -25,6 +25,7 @@ require_relative "log"
 require_relative "version"
 require_relative "worker_sidecar"
 require_relative "relay_verifier"
+require_relative "relay_watcher"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -193,6 +194,7 @@ module Samagotchi
       await_answers(REQUEST_GRACE_SECONDS)
       @connection_threads.each { |t| t.kill rescue nil }
       @connection_threads.clear
+      @mutex.synchronize { @relay_watchers&.each { |t| t.kill rescue nil } }
       @accept_thread&.join(2)
       remove_sidecar
       nil
@@ -934,6 +936,9 @@ module Samagotchi
       return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @engine.annotate_question(qid, relayed_to: marker)
 
       Log.info(:bridge, "relay_opened", sid: @session_id, id: qid, parent: parent_id[0, 8])
+      watch = RelayWatcher.start(engine: @engine, question_id: qid, relay_id: relay_id,
+                                 parent_dir: Session.session_dir(parent_id, state_dir: @state_dir))
+      @mutex.synchronize { @relay_watchers = (@relay_watchers || []).select(&:alive?) << watch }
       [{}, 200, { status: "opened", question_id: qid }]
     end
 
