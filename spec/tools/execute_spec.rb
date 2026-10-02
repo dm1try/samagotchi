@@ -28,6 +28,17 @@ RSpec.describe Samagotchi::Tools::Execute do
   end
 
   describe ".call" do
+    # A chi run by the command answers as a parent agent (ParentApprovals).
+    it "exports SAMAGOTCHI_PARENT_SESSION, the session's id, from the builtin handler" do
+      require "samagotchi/tools/builtins"
+      kctx = Struct.new(:peers).new(Struct.new(:cancelled?, :session_id).new(false, "sess-1"))
+      result = Samagotchi::Tools::Builtins::HANDLERS.fetch("execute").call({ content: "printenv SAMAGOTCHI_PARENT_SESSION" }, kctx)
+      expect(result).to start_with("[stdout]\nsess-1").or include("sess-1")
+      bare = Samagotchi::Tools::Builtins::HANDLERS.fetch("execute")
+                                                  .call({ content: "printenv SAMAGOTCHI_PARENT_SESSION" }, Struct.new(:peers).new(nil))
+      expect(bare).to include("chi")
+    end
+
     it "captures stdout and reports exit 0" do
       result = described_class.call("ruby -e 'puts \"hello world\"'")
       expect(result).to include("hello world")

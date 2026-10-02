@@ -27,6 +27,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- An answer typed into `chi --attach` or the REPL counts as a parent agent's, held to `guardrails.parent_approvals`,
+  when stdin isn't a terminal or `CLAUDECODE`, `AI_AGENT` or `SAMAGOTCHI_PARENT_SESSION` is set: a piped `y` no
+  longer allows an approval at any scope. chi's `execute` and `task_create` export `SAMAGOTCHI_PARENT_SESSION` (the
+  session's id) into the commands they run, and the model's `task_create` env can't set it.
 - `guardrails.enabled` and `guardrails.small_models` are config.yml only: `SAMAGOTCHI_GUARDRAILS_ENABLED=false` no
   longer switches guardrails off, and a worker unsets every `SAMAGOTCHI_GUARDRAILS_*` it inherits, so a parent agent
   starting or waking a session can't switch its guardrails off. `XDG_CONFIG_HOME` still picks the config dir.

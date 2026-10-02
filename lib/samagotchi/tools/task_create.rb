@@ -9,8 +9,9 @@ module Samagotchi
 
       def self.name = NAME
 
-      def self.call(command, cwd: nil, env: nil)
-        record, error = TaskRuntime.create_task(command, cwd: cwd, env: env)
+      # @param marker_env [Hash] set after the model's env (Builtins.parent_env)
+      def self.call(command, cwd: nil, env: nil, marker_env: {})
+        record, error = TaskRuntime.create_task(command, cwd: cwd, env: env, marker_env: marker_env)
         return error if error
 
         [

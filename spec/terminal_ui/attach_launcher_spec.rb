@@ -135,6 +135,7 @@ end
 RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
   it "hands -p to the attached loop as its first prompt" do
     allow($stdin).to receive(:tty?).and_return(true)
+    allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(false)
     client = instance_double(Samagotchi::BridgeClient)
     surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
@@ -148,8 +149,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
 
     expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
       .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi",
-            first_command: nil, no_interrupt: false, default_input: false, wait_at_eof: false)
+            first_command: nil, no_interrupt: false, default_input: false, wait_at_eof: false,
+            parent_answers: false)
     expect(described_class).to have_received(:close_surface).with(surface)
+  end
+
+  it "tells the attached loop when a parent agent drives it (piped stdin, an agent marker)" do
+    allow(Samagotchi::Guardrails::ParentApprovals).to receive(:parent_process?).and_return(true)
+    attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
+    allow(described_class).to receive(:connect).and_return(instance_double(Samagotchi::BridgeClient))
+    allow(described_class).to receive(:open_surface).and_return(instance_double(Samagotchi::TerminalUI::PlainSurface))
+    allow(described_class).to receive(:close_surface)
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
+
+    described_class.run(attach: "s1")
+
+    expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new).with(hash_including(parent_answers: true))
   end
 
   it "has the loop wait for the -p turn when the input is a pipe" do

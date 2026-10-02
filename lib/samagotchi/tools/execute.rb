@@ -25,7 +25,8 @@ module Samagotchi
 
       # @param cancelled [#call] true once the user stopped the turn: the
       #   command is killed (or not started) and its output so far returned
-      def self.call(command, cwd: nil, cancelled: -> { false })
+      # @param env [Hash, nil] added to the command's environment
+      def self.call(command, cwd: nil, cancelled: -> { false }, env: nil)
         return NOT_RUN_ON_STOP if cancelled.call
 
         command = command.strip
@@ -33,7 +34,8 @@ module Samagotchi
         return "Error: cwd not found: #{resolved_cwd}" unless resolved_cwd
 
         timeout_sec = timeout_seconds
-        stdout, stderr, status = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd, cancelled: cancelled)
+        stdout, stderr, status = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd, cancelled: cancelled,
+                                                      env: env)
 
         stdout_block = output_block("stdout", stdout)
         stderr_block = output_block("stderr", stderr)
@@ -66,7 +68,7 @@ module Samagotchi
       end
       private_class_method :stopped_result
 
-      def self.run_command(command, timeout_sec:, cwd:, cancelled: -> { false })
+      def self.run_command(command, timeout_sec:, cwd:, cancelled: -> { false }, env: nil)
         stdout_text = ""
         stderr_text = ""
         status = nil
@@ -75,7 +77,7 @@ module Samagotchi
         started = monotonic_time
         deadline = started + timeout_sec
 
-        Open3.popen3(command, chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
+        Open3.popen3(env || {}, command, chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
           stdin.close
           stdout_reader = reader_thread_for(stdout)
           stderr_reader = reader_thread_for(stderr)

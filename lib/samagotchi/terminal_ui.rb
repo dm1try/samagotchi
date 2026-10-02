@@ -15,6 +15,7 @@ require_relative "host_registry"
 require_relative "session"
 require_relative "owner_lock"
 require_relative "engine"
+require_relative "guardrails/parent_approvals"
 require_relative "tools/memory"
 require_relative "output_formatter"
 require_relative "turn_flow"
@@ -1138,9 +1139,16 @@ module Samagotchi
         end
 
         begin
-          @engine.answer_question(id: prompt.id, selected: answer.selected, freeform: answer.freeform)
+          parent = parent_answers? ? { client_id: Guardrails::ParentApprovals::CLIENT_ID } : {}
+          @engine.answer_question(id: prompt.id, selected: answer.selected, freeform: answer.freeform, **parent)
           close_question_widget(prompt, prompt.answer_text(answer))
           return true
+        rescue QuestionDesk::Refused => e
+          # A parent's allow guardrails.parent_approvals doesn't let through:
+          # the question stays open for a deny (or the end of the input).
+          @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{raw}")
+          @surface.commit(Guardrails::ParentApprovals.message(e.reason, @engine.session&.id))
+          next
         rescue ArgumentError => e
           @surface.commit("Invalid: #{e.message}. Try again.")
           next
@@ -1149,6 +1157,12 @@ module Samagotchi
           return false
         end
       end
+    end
+
+    # Whether the answers typed here are a parent agent's (piped stdin, an
+    # agent marker): QuestionDesk holds them to guardrails.parent_approvals.
+    def parent_answers?
+      Guardrails::ParentApprovals.parent_process?
     end
 
     def close_question_widget(prompt, outcome)

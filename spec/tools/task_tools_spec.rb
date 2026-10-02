@@ -85,6 +85,18 @@ RSpec.describe "task tools" do
       expect(Samagotchi::Tools::TaskList.call).to eq("No tasks found.")
     end
 
+    # A chi run by the task answers as a parent agent (ParentApprovals).
+    it "exports SAMAGOTCHI_PARENT_SESSION from the builtin handler, which the model's env can't set" do
+      kctx = Struct.new(:peers).new(Struct.new(:cancelled?, :session_id).new(false, "sess-1"))
+      created = Samagotchi::Tools::Builtins::HANDLERS.fetch("task_create")
+                                                     .call({ content: "printenv SAMAGOTCHI_PARENT_SESSION" }, kctx)
+      result = wait_for_task(extract_field(created, "task_id"))
+      expect(File.read(extract_field(result, "output_path"))).to eq("sess-1\n")
+
+      expect(described_class.call("true", env: { "SAMAGOTCHI_PARENT_SESSION" => "" }))
+        .to eq("Error: env key is reserved: SAMAGOTCHI_PARENT_SESSION")
+    end
+
     it "spawns a non-login shell so profile files can't clobber inherited PATH" do
       expect(Process).to receive(:spawn) do |*args, **_kwargs|
         expect(args[1..2]).to eq(["/bin/sh", "-c"])

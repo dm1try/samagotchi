@@ -62,6 +62,10 @@ environment variable), "Allow once" goes through; the wider scopes never do,
 and neither does any allow on chi's own config, hooks or guardrail rules. See
 [Guardrails](guardrails.md#approvals-from-a-parent-agent).
 
+An answer typed into `chi --attach` or the REPL counts as a parent's too when
+stdin isn't a terminal or an agent marker (`CLAUDECODE`, `AI_AGENT`,
+`SAMAGOTCHI_PARENT_SESSION`) is set.
+
 The worker checks it again with its own config.yml. The guardrails settings
 have no environment variables, and a worker drops any `SAMAGOTCHI_GUARDRAILS_*`
 it inherits; but a parent that sets `XDG_CONFIG_HOME` picks which config.yml a

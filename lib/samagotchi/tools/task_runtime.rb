@@ -19,10 +19,13 @@ module Samagotchi
       METADATA_VERSION = 1
       OUTPUT_TAIL_READ_BYTES = 16 * 1024
       SANITIZED_ENV_KEYS = %w[RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION].freeze
+      # Set by chi (Builtins.parent_env); the model's env can't change it.
+      MARKER_ENV_KEYS = %w[SAMAGOTCHI_PARENT_SESSION].freeze
 
       module_function
 
-      def create_task(command, cwd: nil, env: nil)
+      # @param marker_env [Hash] chi's own variables, set over the model's +env+
+      def create_task(command, cwd: nil, env: nil, marker_env: {})
         normalized_command = command.to_s.strip
         return [nil, "Error: command is required"] if normalized_command.empty?
 
@@ -31,6 +34,8 @@ module Samagotchi
 
         spawn_env, env_error = spawn_env_for(env)
         return [nil, env_error] if env_error
+
+        spawn_env = spawn_env.merge(marker_env || {})
 
         task_id = generate_task_id
         task_dir = task_dir_for(task_id)
@@ -258,7 +263,7 @@ module Samagotchi
         overrides.each do |key, value|
           return [nil, "Error: env keys and values must be strings"] unless key.is_a?(String) && value.is_a?(String)
           return [nil, "Error: env keys and values cannot contain NUL bytes"] if key.include?("\0") || value.include?("\0")
-          return [nil, "Error: env key is reserved: #{key}"] if SANITIZED_ENV_KEYS.include?(key)
+          return [nil, "Error: env key is reserved: #{key}"] if SANITIZED_ENV_KEYS.include?(key) || MARKER_ENV_KEYS.include?(key)
 
           normalized[key] = value
         end

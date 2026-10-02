@@ -21,6 +21,7 @@ require_relative "send_note"
 require_relative "delegate"
 require_relative "delegate_result"
 require_relative "ask_user_question"
+require_relative "../guardrails/parent_approvals"
 
 module Samagotchi
   module Tools
@@ -72,13 +73,15 @@ module Samagotchi
         TaskCreate::NAME => lambda do |call, kctx|
           next Execute::NOT_RUN_ON_STOP if cancelled_proc(kctx).call
 
-          TaskCreate.call(call[:content], cwd: call[:cwd], env: call[:env])
+          TaskCreate.call(call[:content], cwd: call[:cwd], env: call[:env], marker_env: parent_env(kctx))
         end,
         TaskWait::NAME => lambda do |call, kctx|
           TaskWait.call(call[:content], timeout: call[:timeout], tail_lines: call[:tail_lines],
                                         done_pattern: call[:done_pattern], cancelled: cancelled_proc(kctx))
         end,
-        Execute::NAME => ->(call, kctx) { Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx)) },
+        Execute::NAME => lambda do |call, kctx|
+          Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx), env: parent_env(kctx))
+        end,
         RegisterReminder::NAME => lambda do |call, kctx|
           RegisterReminder.call(call[:content], reminder_store: kctx.reminder_store, description: call[:description],
                                                 interval_minutes: call[:interval_minutes])
@@ -98,6 +101,15 @@ module Samagotchi
       }.freeze
 
       module_function
+
+      # What execute and task_create export into the commands they run: a
+      # chi started there answers as a parent agent
+      # (Guardrails::ParentApprovals.parent_process?), even under a PTY
+      # wrapper. The session's id, "chi" without one.
+      def parent_env(kctx)
+        id = kctx.peers.respond_to?(:session_id) ? kctx.peers.session_id.to_s : ""
+        { Guardrails::ParentApprovals::PARENT_SESSION_ENV => id.empty? ? "chi" : id }
+      end
 
       # Stop flips the turn's controller, seen through the Engine's PeerView
       # (as DelegateWait does); a bare kernel has no peers: never cancelled.

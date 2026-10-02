@@ -153,4 +153,21 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
       expect(described_class.message(:protected, "abc")).to include("only the user can allow")
     end
   end
+
+  describe ".parent_process?" do
+    let(:tty) { instance_double(IO, tty?: true) }
+    let(:pipe) { instance_double(IO, tty?: false) }
+
+    it "is a parent when stdin isn't a terminal" do
+      expect(described_class.parent_process?(env: {}, stdin: pipe)).to be(true)
+      expect(described_class.parent_process?(env: {}, stdin: tty)).to be(false)
+    end
+
+    it "is a parent on a terminal when an agent marker is set (a PTY wrapper keeps the environment)" do
+      %w[CLAUDECODE AI_AGENT SAMAGOTCHI_PARENT_SESSION].each do |marker|
+        expect(described_class.parent_process?(env: { marker => "1" }, stdin: tty)).to be(true), marker
+      end
+      expect(described_class.parent_process?(env: { "CLAUDECODE" => "" }, stdin: tty)).to be(false)
+    end
+  end
 end

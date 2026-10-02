@@ -29,6 +29,12 @@ module Samagotchi
       KEY = "guardrails.parent_approvals"
       # The client id chi answer posts its answers with.
       CLIENT_ID = "cli:answer"
+      # Set by chi's execute and task_create for the commands they run: a
+      # chi started there answers as a parent (#parent_process?).
+      PARENT_SESSION_ENV = "SAMAGOTCHI_PARENT_SESSION"
+      # Environment variables that say an agent runs this process: Claude
+      # Code's, and chi's own. They survive a PTY wrapper (script, expect).
+      AGENT_MARKERS = ["CLAUDECODE", "AI_AGENT", PARENT_SESSION_ENV].freeze
       # Rules that ask about chi's own config and hooks: the core
       # ProtectedPaths asks and the guardrails bundle's shell rule.
       PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi].freeze
@@ -37,6 +43,16 @@ module Samagotchi
       CHI_TEXT = %r{\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|memories/\.bundles}
 
       module_function
+
+      # Whether an answer typed into this process is a parent agent's (so
+      # this setting applies to it): stdin isn't a terminal (a pipe, a file,
+      # /dev/null), or an agent marker is set. A person at chi --attach or
+      # the REPL has a terminal and no marker.
+      def parent_process?(env: ENV, stdin: $stdin)
+        return true if AGENT_MARKERS.any? { |key| !env.fetch(key, "").to_s.strip.empty? }
+
+        !(stdin.respond_to?(:tty?) && stdin.tty?)
+      end
 
       # This process's setting: "once" or "off" (anything else is off).
       def setting

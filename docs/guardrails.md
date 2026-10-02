@@ -126,6 +126,14 @@ beyond what the *worker's* config.yml permits (`403 parent_approval_refused`;
 at that moment. Answers from the web and an attached terminal keep every
 scope.
 
+A parent may also type its answer into chi itself: a piped `chi --attach ID`
+or `printf '2\n' | chi --no-shared -p …`. So chi treats an answer as a
+parent's, held to the same setting, when its input isn't a terminal or an
+agent marker is set: `CLAUDECODE`, `AI_AGENT`, or `SAMAGOTCHI_PARENT_SESSION`,
+which chi's own `execute` and `task_create` export (the session's id) into the
+commands they run. The markers survive a PTY wrapper (`script`, `expect`). A
+person at a terminal with no marker keeps every scope.
+
 This guards an honest but eager parent, not a hostile one: it is not a
 security boundary. The worker's Bridge and the web's answer route on localhost
 take an answer from any local process, which can leave the marker out (or

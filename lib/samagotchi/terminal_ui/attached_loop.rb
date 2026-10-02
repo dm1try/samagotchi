@@ -20,6 +20,7 @@ require_relative "../model_profile"
 require_relative "../output_formatter"
 require_relative "../session_commands"
 require_relative "../session_manager"
+require_relative "../guardrails/parent_approvals"
 
 module Samagotchi
   class TerminalUI
@@ -85,7 +86,7 @@ module Samagotchi
       #   X </dev/null`): at their end, detach only once this run's prompts
       #   (the -p one too) have had their turns; if one failed, #run says so
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
-                     default_input: false, wait_at_eof: false,
+                     default_input: false, wait_at_eof: false, parent_answers: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) })
@@ -94,6 +95,10 @@ module Samagotchi
         @archive_session = archive_session
         @screen = screen
         @client_id = client_id
+        # A parent agent drives this attach (AttachLauncher:
+        # ParentApprovals.parent_process?): its answers go as chi answer's,
+        # so the worker holds them to guardrails.parent_approvals.
+        @parent_answers = parent_answers
         @view = AttachedView.new(screen)
         @renderer = EventRenderer.new(@view)
         @shown_enqueued = Set.new
@@ -662,7 +667,8 @@ module Samagotchi
           return @screen.commit(answer.error)
         end
 
-        reply = @client.answer(id: @question.id, selected: answer.selected, freeform: answer.freeform)
+        parent = @parent_answers ? { client_id: Guardrails::ParentApprovals::CLIENT_ID } : {}
+        reply = @client.answer(id: @question.id, selected: answer.selected, freeform: answer.freeform, **parent)
         case reply.status
         when 200
           @answered_ids << @question.id

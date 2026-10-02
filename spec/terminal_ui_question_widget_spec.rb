@@ -16,6 +16,9 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
   end
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
+  # A person at the widget; a parent agent's answers (piped stdin, an agent
+  # marker) have their own examples below.
+  before { allow(agent).to receive(:parent_answers?).and_return(false) }
 
   def answer_with(input, question = pending)
     out = StringIO.new
@@ -239,6 +242,44 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       expect(result).to be(false)
       expect(out).to end_with("! execute: git push → (denied)\n")
       expect(engine).to have_received(:cancel_question)
+    end
+  end
+
+  # printf '3\n' | chi --no-shared -p …: a piped answer is a parent's, held to
+  # guardrails.parent_approvals by the engine's own QuestionDesk.
+  describe "an approval answered by a parent agent" do
+    let(:fields) do
+      { question: "execute: echo hi", options: ["Allow once", "Allow this call in this directory", "Deny"],
+        header: "Approve tool call?", multi_select: false, allow_freeform: true, kind: "approval",
+        approval: { tool: "execute", scopes: %w[once repo] } }
+    end
+
+    before do
+      allow(agent).to receive(:parent_answers?).and_call_original
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("off")
+    end
+
+    def open_with(input)
+      out = StringIO.new
+      old_stdin, old_stdout = $stdin, $stdout
+      $stdin = StringIO.new(input)
+      $stdout = out
+      [engine.open_question(fields), out.string]
+    ensure
+      $stdin, $stdout = old_stdin, old_stdout
+    end
+
+    it "refuses an allow from piped input, says why, and denies at the end of the input" do
+      answer, out = open_with("2\n")
+      expect(out).to include("allowing a tool call is up to the user")
+      expect(answer).not_to include(selected_indices: [1])
+      expect(answer).to include(error: "no answer")
+    end
+
+    it "takes a deny from piped input" do
+      answer, = open_with("n; no thanks\n")
+      expect(answer).to include(selected_indices: [2], freeform: "no thanks")
     end
   end
 end

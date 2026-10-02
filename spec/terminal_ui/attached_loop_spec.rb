@@ -692,6 +692,26 @@ end
       expect(screen.lines).to include("! execute: git push → Allow once")
     end
 
+    # A parent agent driving chi --attach (piped stdin, an agent marker):
+    # its answers are a parent's, held to guardrails.parent_approvals.
+    context "answered by a parent agent" do
+      let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", parent_answers: true) }
+
+      it "marks the answer as chi answer's and shows the worker's refusal, the question still open" do
+        refusal = { "error" => "parent_approval_refused", "detail" => "allowing a tool call is up to the user" }
+        allow(client).to receive(:answer)
+          .and_return(Samagotchi::BridgeClient::Response.new(status: 403, body: JSON.generate(refusal)))
+        start(first: snapshot(pending_question: approval))
+        wait_for { prompts.last == "? " }
+        typed << "2"
+        wait_for { screen.lines.any? { |line| line.include?("allowing a tool call is up to the user") } }
+        expect(prompts.last).to eq("? ")
+        finish
+        expect(client).to have_received(:answer).with(id: "a1", selected: ["Allow this call in this repo"], freeform: nil,
+                                                      client_id: Samagotchi::Guardrails::ParentApprovals::CLIENT_ID)
+      end
+    end
+
     it "prints an edit's diff above the slot once, when the snapshot and the event both bring it" do
       allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
       edit = approval.merge("question" => "edit: /k.conf\n  change: +1 \u22121",
