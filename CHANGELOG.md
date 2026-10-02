@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-03
+
 ### Added
 
 - A delegated child's guardrail approvals go to the parent session's user (the approval relay): while the parent
@@ -51,6 +53,8 @@ and commands may change between minor versions. How releases are made:
   them (`ok (1.3s)`), from the session's saved tool records; a session from before turn ids keeps them bare.
 - The web stage's status row reads `∅ no answer` (muted, with a warn edge) for a turn that ended with no answer; it
   said `✓ answered`.
+
+Update with `chi update` (no bundle changes).
 
 ## [0.15.0] - 2026-10-02
 
@@ -852,7 +856,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/dm1try/samagotchi/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/dm1try/samagotchi/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/dm1try/samagotchi/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/dm1try/samagotchi/compare/v0.12.0...v0.13.0
