@@ -1851,6 +1851,17 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
     expect(screen.lines.last).to start_with("Detached; the session keeps running.")
   end
 
+  it "ends with :empty_answer when its turn ends with no answer" do
+    start
+    @push.call("type" => "turn_started", "prompt" => "hello", "origin" => origin)
+    @push.call("type" => "turn_completed", "turn_summary" => { "output" => "", "tool_activity" => [], "empty_answer" => { "retries" => 1 } },
+               "origin" => origin)
+
+    expect(result).to eq(:empty_answer)
+    expect(screen.lines).not_to include("")
+    expect(screen.lines).to include("no answer: the model returned nothing (after 1 retry)")
+  end
+
   it "ends with :unanswered when the turn asks a question nobody can answer" do
     start
     @push.call("type" => "turn_started", "prompt" => "hello", "origin" => origin)

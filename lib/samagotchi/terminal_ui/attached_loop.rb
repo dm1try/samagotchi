@@ -143,8 +143,9 @@ module Samagotchi
       # asks it to exit too, and it does unless something still needs it.
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the first command (--model) didn't go through, or
-      #   (wait_at_eof) :turn_failed when one of this run's prompts failed and
-      #   :unanswered when a question came after the input ended
+      #   (wait_at_eof) :turn_failed when one of this run's prompts failed,
+      #   :empty_answer when one ended with no answer, and :unanswered when
+      #   a question came after the input ended
       # @param input [#call, nil] prompt -> line (nil = Ctrl-D, raising
       #   Interrupt = Ctrl-C); defaults to Reline
       def run(input: nil)
@@ -569,6 +570,7 @@ module Samagotchi
         id = (event[:origin] || {})[:enqueued_id]
         ours = @open_ids.include?(id) || !@merged_ids.empty?
         @own_failed = true if ours && event[:type] == :turn_failed
+        @own_empty = true if ours && event[:type] == :turn_completed && event.dig(:turn_summary, :empty_answer)
         @open_ids.delete(id)
         @open_ids.subtract(@merged_ids)
         @merged_ids.clear
@@ -591,7 +593,9 @@ module Samagotchi
       # The input ended and nothing of ours is left to wait for.
       def end_of_input
         detach("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}") if @input_ended
-        @own_failed ? :turn_failed : :detached
+        return :turn_failed if @own_failed
+
+        @own_empty ? :empty_answer : :detached
       end
 
       def unanswered_question(pending)

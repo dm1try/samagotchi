@@ -279,7 +279,19 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".exit_status" do
   it "is 0 detached, 3 for a question left waiting (input from a pipe), 1 otherwise" do
     expect(described_class.exit_status(:detached)).to eq(0)
     expect(described_class.exit_status(:unanswered)).to eq(3)
-    %i[closed failed turn_failed].each { |ended| expect(described_class.exit_status(ended)).to eq(1) }
+    %i[closed failed turn_failed empty_answer].each { |ended| expect(described_class.exit_status(ended)).to eq(1) }
+  end
+end
+
+# Attached `chi -p` from a script whose turn ended with no answer: exit 1
+# and one line on stderr, as the in-process `chi -p --non-interactive`.
+RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".report_ended" do
+  it "says an empty answer on stderr, and nothing for other endings" do
+    err = StringIO.new
+    described_class.report_ended(:empty_answer, err: err)
+    described_class.report_ended(:detached, err: err)
+
+    expect(err.string).to eq("chi: the model gave an empty answer\n")
   end
 end
 

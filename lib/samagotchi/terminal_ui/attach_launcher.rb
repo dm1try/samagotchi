@@ -38,7 +38,7 @@ module Samagotchi
       # @param muted_memories [Array<String>] --mute: hidden from a new session
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the --model switch didn't go through, or (input from a
-      #   pipe) :turn_failed / :unanswered (AttachedLoop#run)
+      #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
               memories: [], muted_memories: [])
         client = connect(attach: attach, shared: shared, resume: resume, model: model,
@@ -56,6 +56,7 @@ module Samagotchi
           close_surface(surface)
         end
         report_unanswered(attached.unanswered, session_id: client.session_id) if ended == :unanswered && attached.unanswered
+        report_ended(ended)
         ended
       end
 
@@ -68,9 +69,17 @@ module Samagotchi
         err.flush
       end
 
+      # A turn of ours that ended with no answer (input from a pipe): one
+      # line on stderr, as the in-process `chi -p --non-interactive` says
+      # it, so a script doesn't take the silence for an answer (exit 1).
+      def report_ended(ended, err: $stderr)
+        err.puts(TerminalUI::EMPTY_ANSWER_ERROR) if ended == :empty_answer
+      end
+
       # chi's exit status after #run: 0 detached, 3 a question left waiting
       # for an answer (input from a pipe ran out; chi --attach or chi answer
-      # answers it), 1 anything else (a failed turn, the worker gone).
+      # answers it), 1 anything else (a failed turn, an empty answer, the
+      # worker gone).
       # @param ended [Symbol] what #run returned
       # @return [Integer]
       def exit_status(ended)

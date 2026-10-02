@@ -211,8 +211,9 @@ Notes:
   ended, 3 a question or an approval waits for an answer (stderr gets the
   whole question as `chi send --wait` prints it, with the
   `chi answer ID --question QID --option N` command; the worker keeps it
-  open, and `chi answer` or the web answers it), 1 the turn failed or the
-  worker went away. For a
+  open, and `chi answer` or the web answers it), 1 the turn failed, ended
+  with no answer (stderr: `chi: the model gave an empty answer`, as with
+  `--non-interactive`) or the worker went away. For a
   script, `chi send --new --wait` is the better entry point: stdout holds the
   answer alone (see [Starting a session](sessions.md#starting-a-session)).
 - `-p` always feeds **and** runs the prompt; there is no feed-and-edit variant. To

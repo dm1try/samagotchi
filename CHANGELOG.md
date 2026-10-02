@@ -21,6 +21,10 @@ and commands may change between minor versions. How releases are made:
 - A turn with no answer shows one muted line in the attached TUI and the REPL,
   `no answer: the model returned nothing (after 1 retry)`, like the retry row, and so does `chi --resume` when it was
   the last turn (it showed `[No response]` or an earlier step's text as the answer, or nothing).
+- Attached `chi -p` from a script exits 1 with `chi: the model gave an empty answer` on stderr when its turn ends with
+  no answer, as `chi -p --non-interactive` does; it exited 0 with a blank line (native hosts) or the placeholder text
+  (`api: openai`) as the answer. `chi send --wait` reports such a turn as `no_answer` from both kinds of host (an
+  `api: openai` host's placeholder was reported as the answer).
 
 ## [0.15.0] - 2026-10-02
 
