@@ -355,4 +355,26 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(session.last_turn["outcome"]).to eq("completed")
     expect_released
   end
+
+  # A Stop while the turn probes the server (/props): the turn ends there,
+  # before the hooks run or a reminder is used up; the model is not asked.
+  it "14. Stop during the turn-start probe: canceled before the hooks, the reminder still due" do
+    controller = Samagotchi::CancellationController.new
+    allow(engine).to receive(:refresh_profile!) { controller.cancel! }
+    native { |_messages, **| raise "the model must not be asked" }
+    session.messages = [{ role: "user", content: "old" }]
+    timeline.clear
+    canceled = nil
+    engine.subscribe(observer: ->(e) { canceled = e if e[:type] == :turn_canceled })
+
+    result = run(cancel_controller: controller)
+
+    expect(result).to be_a(Samagotchi::LLM::ModelResult).and have_attributes(canceled?: true, conversation: nil)
+    expect(timeline).to eq(%w[turn_started turn_canceled persist])
+    expect(canceled).to include(cancellation_reason: :manual, duration_ms: be_a(Integer))
+    expect(session.messages).to eq([{ role: "user", content: "old" }])
+    expect(engine.reminder_store.due_reminders.map { |r| r[:name] }).to eq(["tea"])
+    expect(at_end).to eq(status: "idle", outcome: "canceled")
+    expect_released
+  end
 end

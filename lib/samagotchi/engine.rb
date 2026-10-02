@@ -1424,7 +1424,8 @@ module Samagotchi
         # A Stop cuts the /props probes this thread makes for the turn
         # (window, served model, vision) instead of waiting their timeout.
         probe_cancel_before = Client.swap_probe_cancel(turn.controller)
-        prepare_turn(turn, continue ? [] : images)
+        return stopped_before_model(turn) unless prepare_turn(turn, continue ? [] : images)
+
         result = generate(turn, max_iterations: max_iterations, max_tool_output_chars: max_tool_output_chars,
                                 pending_input: pending_input)
         publish_used_memories(session, on_event)
@@ -1489,7 +1490,8 @@ module Samagotchi
 
     # Everything before the model is asked: :turn_started, the kernel's
     # per-turn settings, the plugins' setup, the session_start/before_turn
-    # hooks, then the messages to send (#turn_messages).
+    # hooks, then the messages to send (#turn_messages). False when a Stop
+    # came before the hooks (the turn ends canceled there), else true.
     def prepare_turn(turn, images)
       session = turn.session
       image_refs, image_error = turn_image_refs(session, images)
@@ -1522,6 +1524,9 @@ module Samagotchi
       await_init_tasks(turn.controller, turn.on_event)
       # Plugins' tool sets that changed since the last turn.
       apply_staged_tools!
+      # A Stop during the probes or the wait above: the turn ends here,
+      # before the hooks run or a reminder is used up.
+      return false if turn.controller.cancelled?
 
       # Fire :session_start on the very first turn
       if @first_turn
@@ -1535,8 +1540,21 @@ module Samagotchi
                                   messages: hook_messages(session.messages) })
 
       turn_messages(turn, image_refs)
+      true
     end
     private :prepare_turn
+
+    # A turn stopped before the model was asked (#prepare_turn returned
+    # false): canceled with nothing kept, like a Ctrl-C there; the result
+    # has no conversation, so a UI's checkpoint stands.
+    def stopped_before_model(turn)
+      reason = turn.controller.reason
+      end_turn(turn, "canceled") do |seconds|
+        [nil, { type: :turn_canceled, cancellation_reason: reason, duration_ms: (seconds * 1000).round }]
+      end
+      LLM::ModelResult.new(text: "", canceled: true, cancellation_reason: reason)
+    end
+    private :stopped_before_model
 
     # The turn's settings for the kernel (LLM::TurnSettings): vision,
     # sampling and thinking, the thinking resolved before the hooks run.
