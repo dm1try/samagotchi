@@ -148,15 +148,17 @@ module Samagotchi
         # ctx_pct: how full the context was after the last turn, or nil
         # waiting: the kind of question it waits on (question, approval,
         # hook: chi answer or the web answers it), or nil; waiting_id: its
-        # id, for chi answer --question
+        # id, for chi answer --question; relayed_to: the parent session (short
+        # id) whose card it also waits in (the approval relay), or nil
         keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived scratch ctx_pct waiting
-                  waiting_id]
+                  waiting_id relayed_to]
         @stdout.puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| @stdout.puts "#{summary[:id]}\t#{summary[:desc]}" }
       else
         summaries.each do |summary|
-          state = if summary[:waiting] then "waiting"
+          state = if summary[:relayed_to] then "waiting (in parent #{summary[:relayed_to]})"
+                  elsif summary[:waiting] then "waiting"
                   elsif summary[:busy] then "running"
                   else summary[:live] ? "live" : summary[:status].to_s
                   end
@@ -206,7 +208,11 @@ module Samagotchi
         )
         # A question waits for an answer (chi answer, the web, chi --attach).
         live = s.pending_question && Samagotchi::SessionManager.worker_live?(s.id, state_dir: state_dir)
-        status = s.waiting_question(live: !!live) ? "waiting" : s.status
+        waiting = s.waiting_question(live: !!live)
+        status = if waiting&.dig(:relayed_to) then "waiting (in parent #{waiting[:relayed_to]})"
+                 elsif waiting then "waiting"
+                 else s.status
+                 end
         "#{s.id}  #{status.ljust(8)}  #{ctx.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
       end
       if project

@@ -167,6 +167,23 @@ RSpec.describe "chi sessions list" do
     expect(by_id).to eq(asking.id => %w[question q1], approving.id => %w[approval a1], orphaned.id => [nil, nil])
   end
 
+  it "says a delegate's approval waits in its parent's card too (the approval relay), plain and json" do
+    child = make("push it", live: true)
+    s = Samagotchi::Session.load(child.id, state_dir: state_dir)
+    s.status = "running"
+    s.pending_question = { "id" => "a1", "kind" => "approval", "question" => "execute: git push",
+                           "relayed_to" => { "parent_id" => "p" * 36, "parent_short" => "pppppppp", "relay_id" => "r" } }
+    s.save(state_dir: state_dir)
+
+    out, err, status = run_chi
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to match(/^#{child.id}  waiting \(in parent pppppppp\)  .* push it\n/)
+    out, _err, _status = run_chi("--live")
+    expect(out).to match(/^#{child.id}  waiting \(in parent pppppppp\)  /)
+    out, _err, _status = run_chi("--format", "json")
+    expect(JSON.parse(out).first.values_at("waiting", "waiting_id", "relayed_to")).to eq(%w[approval a1 pppppppp])
+  end
+
   it "shows a quoted message without its quote markers" do
     make("> answer:\n> the build failed\n\nsame bug?")
 
@@ -247,7 +264,7 @@ RSpec.describe "chi sessions list" do
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
                                      "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
-                                     "waiting_id" => nil }])
+                                     "waiting_id" => nil, "relayed_to" => nil }])
   end
 
   it "--format json: each session's recap, its first sentence; the tsv lines don't change" do

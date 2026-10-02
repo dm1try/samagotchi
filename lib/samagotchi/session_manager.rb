@@ -241,7 +241,8 @@ module Samagotchi
     #   a turn running, recap = the saved recap's first sentence, project =
     #   Session#project_root, waiting = the kind of question it waits on
     #   ("question", "approval", "hook"; Session#waiting_question) or nil,
-    #   waiting_id = that question's id or nil
+    #   waiting_id = that question's id or nil, relayed_to = the parent
+    #   whose card it waits in too (the approval relay), its short id, or nil
     def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil,
                                project_root: nil, include_archived: false, sort: nil, order: nil)
       sd = state_dir || Session.default_state_dir
@@ -269,7 +270,7 @@ module Samagotchi
     # waiting: the question's kind, waiting_id: its id (what chi answer
     # --question takes); both nil with none.
     def self.waiting_fields(waiting)
-      { waiting: waiting&.dig(:kind), waiting_id: waiting&.dig(:id) }
+      { waiting: waiting&.dig(:kind), waiting_id: waiting&.dig(:id), relayed_to: waiting&.dig(:relayed_to) }
     end
     private_class_method :waiting_fields
 
