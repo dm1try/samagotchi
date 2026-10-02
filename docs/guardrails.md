@@ -51,8 +51,8 @@ sees these diffs.
 
 Who answers:
 
-- REPL (`chi --no-shared`, `-p` without `--non-interactive`): at the `? ` prompt.
-- A shared session's worker: any attached TUI or web page. With none attached,
+- REPL (`chi --no-shared`, with or without `-p`): at the `? ` prompt.
+- A shared session's worker (plain `chi` and `chi -p …` while `session.shared` is on, the default): any attached TUI or web page. With none attached,
   the approval waits (in the session file) and shows on attach.
 - `-p … --non-interactive`: nobody; the call is denied ("No one to approve it
   (non-interactive run)").
@@ -134,7 +134,7 @@ the rest of chi's config folder still count as outside.
 
 To switch off single rules (a bundle's, say) without editing its files, list
 them under `disable:`. A plain id switches off every rule with that id; `bundle:id`
-only that bundle's:
+only that bundle's. A single id works without the list (`disable: git-rebase`):
 
 ```yaml
 guardrails:
@@ -178,7 +178,7 @@ vote for the current model `off for this model`.
 Rules are read again on the next tool call after `config.yml` or an installed
 bundle's rules change, so a long-running worker follows edits without a
 restart. A rule that doesn't parse (an unknown key, a bad regex, no
-verdict, a `disable:` that isn't a list of ids) makes chi **deny every tool call** and say why, rather than run
+verdict, a `disable:` that isn't an id or a list of ids) makes chi **deny every tool call** and say why, rather than run
 without it.
 
 ## The guardrails bundle
