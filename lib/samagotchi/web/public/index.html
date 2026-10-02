@@ -14,6 +14,9 @@ body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
 #dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 #topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:rgba(255,255,255,.14)}
 #topStrip .card.active,#allList .card.active{background:color-mix(in srgb,var(--accent-bg) 75%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+/* A session that waits on the user (a question, an approval, a card with actions): the warning colour of its question card, also when active or hovered. */
+#topStrip .card.waiting,#allList .card.waiting{border-color:color-mix(in srgb,var(--warn) 75%,transparent)}
+#topStrip .card.waiting:hover,#allList .card.waiting:hover{border-color:var(--warn)}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel)}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}}
 @media (prefers-reduced-transparency:reduce){#dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}}
 body.no-glass #dock,body.no-glass .turn-stage,body.no-glass .dock-card,body.no-glass #topStrip .card,body.no-glass #allList .card,body.no-glass #allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
@@ -687,7 +690,10 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card .dot.completed{background:var(--accent)}
 .card .dot.error{background:var(--danger)}
 @keyframes dot-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 0%,transparent)}}
-@media (prefers-reduced-motion:reduce){.card .dot.running{animation:none}}
+.card .dot.waiting{background:var(--warn);animation:attn-pulse 1.6s ease-in-out infinite}
+@keyframes attn-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 60%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 0%,transparent)}}
+@media (prefers-reduced-motion:reduce){.card .dot.running,.card .dot.waiting{animation:none}}
+.card .attn{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
 .status.running{background:var(--ok-bg);color:var(--ok-text)}
 .status.idle{background:var(--bg-raised)}
 .status.completed{background:var(--accent-bg);color:var(--accent)}

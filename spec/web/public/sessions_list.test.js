@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, listedSessions, sortedByUpdated, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, listedSessions, sortedByUpdated, waitingBadge, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -64,4 +64,12 @@ test("listedSessions leaves archived sessions out unless asked, and keeps the li
   assert.deepEqual(listedSessions(list), [a, b]);
   assert.deepEqual(listedSessions(list, true), [a, hidden, b]);
   assert.deepEqual(listedSessions([]), []);
+});
+
+// A card's "needs you" badge follows notify.js's waitingOn.
+test("waitingBadge says what the session waits on the user for", () => {
+  assert.deepEqual(waitingBadge({ id: "s", pending_question: { id: "q", kind: "question" } }), { kind: "question", text: "question", title: "Waiting for your answer" });
+  assert.equal(waitingBadge({ id: "s", pending_question: { id: "q", kind: "approval" } }).text, "approval");
+  assert.equal(waitingBadge({ id: "s", pending_card: { id: "c" } }).text, "needs you");
+  assert.equal(waitingBadge({ id: "s", pending_question: null, pending_card: null }), null);
 });
