@@ -337,4 +337,22 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(session.last_turn["outcome"]).to eq("completed")
     expect_released
   end
+
+  # The same for a StandardError after turn_completed (post-turn work, here
+  # storing the answer's display): re-raised, no turn_failed, nothing saved
+  # over the answer.
+  it "13. StandardError after turn_completed: re-raised, no second ending, the answer kept" do
+    record_hooks
+    native { |messages, **| kernel_result(messages + [reply("done")]) }
+    allow(engine).to receive(:store_answer_display).and_raise(RuntimeError, "post-turn boom")
+
+    error = run
+
+    expect(error).to be_a(RuntimeError).and have_attributes(message: "post-turn boom")
+    expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected used_memories_updated
+                              replace! turn_completed persist hook:after_turn=completed])
+    expect(tail(2)).to eq(["user:hi", "model:done"])
+    expect(session.last_turn["outcome"]).to eq("completed")
+    expect_released
+  end
 end

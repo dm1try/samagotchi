@@ -1412,7 +1412,7 @@ module Samagotchi
     # the prompt is kept in the session and :turn_canceled is emitted, then the
     # Interrupt is re-raised so the caller still decides whether to exit. One
     # after the turn's end event (in its after_turn/session_end hooks) is
-    # only re-raised: the turn already ended. Any
+    # only re-raised: the turn already ended; so is any error there. Any
     # other error (e.g. an LLM::ProviderError) emits :turn_failed and
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
@@ -1441,6 +1441,13 @@ module Samagotchi
         end
         raise
       rescue StandardError => e
+        # After the end event (post-turn work) likewise: logged and
+        # re-raised, no turn_failed over the turn that ended.
+        if turn.ended
+          Log.warn(:turn, "post_turn_error", error: "#{e.class}: #{e.message}")
+          raise
+        end
+
         # Keep what the turn got to (the prompt plus the loop's completed
         # tool iterations) like a cancel does, and save it: a worker exits
         # after a failed turn. The REPL still rolls back to its checkpoint.

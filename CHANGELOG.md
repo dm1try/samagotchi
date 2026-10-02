@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Answers from Splash no longer start with two blank lines (a workaround until Splash drops them itself).
+- An error in chi's work after a turn's answer no longer also reports the answered turn as failed.
 
 ## [0.12.0] - 2026-10-02
 
