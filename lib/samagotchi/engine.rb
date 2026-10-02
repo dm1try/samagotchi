@@ -1665,7 +1665,8 @@ module Samagotchi
         end
       end
 
-      # Fire :after_turn hook (runs even on cancel/success), with a read-only
+      # Fire :after_turn hook (an answer or a Stop; an Interrupt or a failure
+      # ends the turn in #run_turn without it), with a read-only
       # copy of the conversation the turn stored, and event[:present] for
       # a display version of the answer (AnswerDisplay).
       session = turn.session
@@ -1676,7 +1677,7 @@ module Samagotchi
       @hooks.fire(:after_turn, after_turn)
       store_answer_display(session, display, pending: display_pending)
 
-      # Fire :session_end after every turn (turn-level lifecycle)
+      # Fire :session_end after the turn (turn-level lifecycle), as :after_turn
       @hooks.fire(:session_end, { type: :session_end, session_id: session.id })
     end
     private :complete_turn
