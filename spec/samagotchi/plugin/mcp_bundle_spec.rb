@@ -308,13 +308,47 @@ RSpec.describe "The mcp bundle" do
     expect(call_tool("mcp_fake_slow")).to eq("Error: tools/call was cancelled")
   end
 
-  it "says a dead server's calls fail, with one notice" do
-    notices = []
-    engine.subscribe(observer: ->(e) { notices << e if e[:type] == :hook_notice })
-    expect(call_tool("mcp_fake_crash")).to eq("Error: MCP server fake is not running (the server exited (status 4))")
-    expect(call_tool("mcp_fake_echo", { "text" => "x" })).to start_with("Error: MCP server fake is not running")
-    Timeout.timeout(2) { sleep(0.05) until notices.any? }
-    expect(notices.map { |n| n[:text] }).to eq(["MCP server fake stopped: the server exited (status 4); its tools fail until chi restarts"])
+  describe "a server that exits" do
+    let(:pids_file) { File.join(tmpdir, "pids") }
+    let(:fake) { { "command" => [RbConfig.ruby, MCP_FAKE], "env" => { "FAKE_MCP_PIDS" => pids_file } } }
+    let(:notices) { [] }
+
+    def pids = File.readlines(pids_file).map(&:to_i)
+
+    before { engine.subscribe(observer: ->(e) { notices << e[:text] if e[:type] == :hook_notice }) }
+
+    it "restarts on its next call, with one notice" do
+      expect(call_tool("mcp_fake_crash")).to eq("Error: MCP server fake is not running (the server exited (status 4))")
+      Timeout.timeout(2) { sleep(0.05) until notices.any? }
+      expect(notices).to eq(["MCP server fake stopped: the server exited (status 4); it restarts on its next call"])
+      expect(call_tool("mcp_fake_echo", { "text" => "back" })).to eq("echo: back")
+      expect(call_tool("mcp_fake_add", { "a" => 1, "b" => 2 })).to eq("3")
+      expect(pids.size).to eq(2)
+      expect(alive?(pids.first)).to be(false)
+      expect(engine.apply_staged_tools!).to be(false)
+    end
+
+    it "restarts at most 3 times a session; then its calls fail at once, and the notice says so" do
+      4.times do |i|
+        expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("echo: x") if i.positive? # the restart
+        expect(call_tool("mcp_fake_crash")).to start_with("Error: MCP server fake is not running")
+        Timeout.timeout(2) { sleep(0.05) until notices.size == i + 1 }
+      end
+      expect(notices.last)
+        .to eq("MCP server fake stopped: the server exited (status 4); it was restarted 3 times, its tools fail until chi restarts")
+      expect(call_tool("mcp_fake_echo", { "text" => "x" }))
+        .to eq("Error: MCP server fake is not running (the server exited (status 4); restarted 3 times this session)")
+      expect(pids.size).to eq(4)
+    end
+
+    it "stops the restarted process when the Engine shuts down" do
+      call_tool("mcp_fake_crash")
+      expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("echo: x")
+      expect(alive?(pids.last)).to be(true)
+      engine.shutdown
+      expect(alive?(pids.last)).to be(false)
+      expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("Error: service mcp:fake is stopped")
+    end
   end
 
   context "with a broken server beside a working one" do

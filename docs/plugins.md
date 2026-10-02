@@ -735,9 +735,11 @@ bundles:
   pull in any image on disk. `chrome-devtools-mcp --slim` answers
   `screenshot` that way; without `--slim`, `take_screenshot` returns an image
   block. `attach_image_paths: false` on a server leaves such paths as text.
-- **A server that exits** fails its calls with `Error: MCP server x is not
-  running (…)`, and there is one notice. It is not restarted until chi
-  restarts (a new session, or the worker's next start).
+- **A server that exits** fails the call it was on with `Error: MCP server
+  x is not running (…)`, and there is one notice. Its next call starts it
+  again (its tools stay), up to 3 times a session; after the third restart
+  the notice says so, and its calls fail at once until chi restarts (a new
+  session, or the worker's next start).
 - **Stop.** The servers stop with chi ([Shutdown](#shutdown)): stdin is
   closed, then TERM and KILL go to the server's process group.
 - **`/mcp`** (anytime) shows a card with the servers, their state (cached

@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   its bytes, under the temp dir or the server's `cwd`).
 - An MCP server that sends `notifications/tools/list_changed` has its tools listed again (`mcp` 0.4.0): its saved list
   and the model's tools are replaced from the next turn on. They were only logged.
+- An MCP server that exits mid-session starts again on its next call (`mcp` 0.4.0), up to 3 times a session; its tools
+  failed until chi restarted.
 - A burst of plugin notices no longer pushes cards and questions out of what a reloaded web page or a joining
   `chi --attach` shows: the worker keeps the last 20 of each apart, and never drops a question still waiting for its
   answer.

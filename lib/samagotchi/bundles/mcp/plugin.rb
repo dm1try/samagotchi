@@ -22,7 +22,9 @@
 # absolute path (chrome-devtools-mcp --slim answers a screenshot that way),
 # or it says one ending in an image extension ("Saved it to /tmp/a.png.").
 # A server that doesn't start, answer or list its tools is skipped with a
-# notice; the rest of chi works. /mcp lists the servers and their tools.
+# notice; the rest of chi works. One that exits mid-session starts again on
+# its next call, at most MAX_RESTARTS times a session. /mcp lists the
+# servers and their tools.
 require "digest"
 require "json"
 require "open3"
@@ -39,6 +41,8 @@ class Plugin
   NAME_CHARS = 48
   # A cached tool list older than this is refreshed in the background.
   CACHE_TTL = 24 * 60 * 60
+  # Restarts of a server that exited, per session.
+  MAX_RESTARTS = 3
   IMAGE_EXT = { "image/png" => "png", "image/jpeg" => "jpg", "image/gif" => "gif", "image/webp" => "webp" }.freeze
 
   # A JSON-RPC client for one MCP server over stdio: newline-delimited JSON
@@ -235,8 +239,10 @@ class Plugin
   # One configured server: its service, state and tools. +listed+ is its
   # tools/list as the server answers it (what the cache keeps), +tools+
   # the ones chi offers (the tools: filter applied, each with chi_name).
+  # +client+ is the running process's (a restart replaces it; the
+  # service's stop closes the current one), +restarts+ how many it had.
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
-                      :digest, :cached_at, :relist, :relisting, keyword_init: true)
+                      :digest, :cached_at, :relist, :relisting, :client, :restarts, keyword_init: true)
 
   def initialize(settings = {})
     @settings = settings
@@ -245,6 +251,7 @@ class Plugin
     @servers = []
     @publish = Mutex.new
     @relist = Mutex.new
+    @restart = Mutex.new
     # The tools left out so far (a name clash): said once, not at each
     # publish.
     @left_out = []
@@ -264,7 +271,8 @@ class Plugin
     configs = @settings["servers"]
     configs = {} unless configs.is_a?(Hash)
     @servers = configs.map do |name, config|
-      server = Server.new(name: name.to_s, config: config.is_a?(Hash) ? config : {}, state: :starting, tools: [])
+      server = Server.new(name: name.to_s, config: config.is_a?(Hash) ? config : {}, state: :starting, tools: [],
+                          restarts: 0)
       server.timeout = positive(server.config["timeout"]) || @timeout
       resolve(server, ctx)
       server.service = chi.service(name) { |svc| start(server, svc, ctx) }
@@ -315,19 +323,29 @@ class Plugin
     server.digest = Digest::SHA256.hexdigest(JSON.generate([server.command, server.env.sort, server.cwd]))
   end
 
-  # The service's start: spawn, initialize, list the tools (cancelled with
-  # the turn that waits for it), then cache the list.
+  # The service's start: spawn (#spawn). Its stop closes the server's
+  # current process, a restarted one too.
   def start(server, svc, ctx)
     raise Client::Error, "no command (bundles: mcp: servers: #{server.name}: command: [...])" if server.command.empty?
 
+    svc.on_stop { server.client&.close }
+    spawn(server, ctx)
+  end
+
+  # Spawn the server's process (it is server.client from then on),
+  # initialize, list the tools (cancelled with the turn that waits for
+  # it), then cache the list.
+  # @return [Client]
+  def spawn(server, ctx)
     cancelled = -> { ctx.cancelled? }
-    client = Client.new(server.command, env: server.env, cwd: server.cwd,
-                                        log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
-                                        on_exit: ->(reason) { exited(server, reason, ctx) },
-                                        on_notification: lambda { |method, _params|
-                                          tools_changed(server, ctx) if method == "notifications/tools/list_changed"
-                                        })
-    svc.on_stop { client.close }
+    client = server.client = Client.new(
+      server.command, env: server.env, cwd: server.cwd,
+                      log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
+                      on_exit: ->(reason) { exited(server, reason, ctx) },
+                      on_notification: lambda { |method, _params|
+                        tools_changed(server, ctx) if method == "notifications/tools/list_changed"
+                      }
+    )
     client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
                                    clientInfo: { name: "chi", version: Samagotchi::VERSION } },
                    timeout: @startup_timeout, cancelled: cancelled)
@@ -420,7 +438,8 @@ class Plugin
   end
 
   def relist(server, ctx)
-    listed = list_tools(server.service.value, nil)
+    server.service.value # raises once stopped
+    listed = list_tools(server.client, nil)
     return if listed == server.listed
 
     server.listed = listed
@@ -507,7 +526,7 @@ class Plugin
   def publish(ctx)
     @publish.synchronize do
       @chi.replace_tools do |set|
-        @servers.each { |server| declare(set, server, ctx) if %i[running cached].include?(server.state) }
+        @servers.each { |server| declare(set, server, ctx) if %i[running cached exited].include?(server.state) }
       end
     end
   end
@@ -534,7 +553,13 @@ class Plugin
   def call(server, tool, args, ctx)
     return "Error: MCP server #{server.name} didn't start: #{server.error}" if server.state == :failed
 
-    client = server.state == :cached ? lazy_start(server, ctx) : server.service.value
+    client = case server.state
+             when :cached then lazy_start(server, ctx)
+             when :exited then restart(server, ctx)
+             else
+               server.service.value # raises once stopped
+               server.client
+             end
     return client if client.is_a?(String)
 
     result = client.request("tools/call", { name: tool, arguments: args }, timeout: server.timeout,
@@ -578,6 +603,36 @@ class Plugin
                level: :warn)
     publish(ctx)
     "Error: MCP server #{server.name} didn't start: #{e.message}"
+  end
+
+  # Start a server that exited again, for a call: at most MAX_RESTARTS
+  # times a session. A start that fails or is cancelled leaves it exited
+  # (the next call tries again, while restarts are left).
+  # @return [Client, String] the client, or the call's error text
+  def restart(server, ctx)
+    @restart.synchronize do
+      server.service.value # raises once stopped
+      return server.client if server.state == :running # another call restarted it
+
+      if server.restarts >= MAX_RESTARTS
+        return "Error: MCP server #{server.name} is not running (#{server.error}; restarted #{MAX_RESTARTS} times this session)"
+      end
+
+      server.restarts += 1
+      cached = server.listed
+      server.client&.close
+      begin
+        client = spawn(server, ctx)
+      rescue StandardError => e
+        server.client&.close
+        ctx.log.warn("mcp_server_not_restarted", server: server.name, error: e.class.name, msg: e.message)
+        return "Error: MCP server #{server.name} didn't restart: #{e.message}"
+      end
+      server.state = :running
+      ctx.log.info("mcp_server_restarted", server: server.name, pid: client.pid, restarts: server.restarts)
+      publish(ctx) if server.listed != cached
+      client
+    end
   end
 
   # The answer's text, and the images to attach: its image blocks, and a
@@ -660,14 +715,20 @@ class Plugin
       (head.start_with?("RIFF") && head[8, 4] == "WEBP")
   end
 
-  # The process ended while chi runs: one notice; the calls say so.
+  # The process ended while chi runs: one notice; its next call starts it
+  # again (#restart) while restarts are left.
   def exited(server, reason, ctx)
     return unless server.state == :running
 
     server.state = :exited
     server.error = reason
-    ctx.log.warn("mcp_server_exited", server: server.name, msg: reason)
-    ctx.notify("MCP server #{server.name} stopped: #{reason}; its tools fail until chi restarts", level: :warn)
+    ctx.log.warn("mcp_server_exited", server: server.name, msg: reason, restarts: server.restarts)
+    after = if server.restarts < MAX_RESTARTS
+              "it restarts on its next call"
+            else
+              "it was restarted #{MAX_RESTARTS} times, its tools fail until chi restarts"
+            end
+    ctx.notify("MCP server #{server.name} stopped: #{reason}; #{after}", level: :warn)
   end
 
   def listing
@@ -685,7 +746,7 @@ class Plugin
     when :cached then "cached (not started), #{server.tools.size} tool#{"s" unless server.tools.size == 1}"
     when :running
       count = server.tools.count { |tool| tool["chi_name"] }
-      "running (pid #{server.service.value.pid}), #{count} tool#{"s" unless count == 1}"
+      "running (pid #{server.client.pid}), #{count} tool#{"s" unless count == 1}"
     when :starting then "starting"
     else "#{server.state == :failed ? "failed" : "stopped"}: #{server.error}"
     end
