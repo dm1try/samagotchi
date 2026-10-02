@@ -335,7 +335,7 @@ module Samagotchi
       path = agent_description_path
       return nil unless path
 
-      content = File.read(path).strip
+      content = File.read(path, encoding: "UTF-8").strip
       return nil if content.empty?
 
       "Project specific description:\n#{content}"

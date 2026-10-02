@@ -59,13 +59,13 @@ module Samagotchi
           resolved_scopes.each do |resolved_scope|
             path = memory_path(name, resolved_scope)
             if File.exist?(path)
-              body = File.read(path)
+              body = File.read(path, encoding: "UTF-8")
               # Append model-specific overlay if key is provided and overlay exists.
               [model_key, fallback_model_key].compact.each do |key|
                 overlay_path = ModelOverlay.overlay_path_for(name, key, resolved_scope)
                 next unless overlay_path && File.exist?(overlay_path)
 
-                body += SEPARATOR + "Model-specific guidance (#{key}):\n" + File.read(overlay_path)
+                body += SEPARATOR + "Model-specific guidance (#{key}):\n" + File.read(overlay_path, encoding: "UTF-8")
                 break
               end
               results << body
@@ -114,7 +114,7 @@ module Samagotchi
       def self.scoped_index(scope)
         dir = memories_dir(scope)
         index_path = File.join(dir, "#{MEMORY_INDEX}.md")
-        return File.read(index_path) if File.exist?(index_path)
+        return File.read(index_path, encoding: "UTF-8") if File.exist?(index_path)
 
         files = Dir.glob(File.join(dir, "*.md")).sort
         return "No memories stored yet." if files.empty?

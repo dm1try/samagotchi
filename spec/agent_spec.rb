@@ -418,7 +418,7 @@ file2.rb")
       allow(File).to receive(:file?).and_call_original
       allow(File).to receive(:read).and_call_original
       allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENT.md")).and_return(true)
-      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md")).and_return("Use project conventions")
+      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md"), encoding: "UTF-8").and_return("Use project conventions")
 
       agent = described_class.new(prompt: "hi", client: client)
       agent.run
@@ -476,7 +476,7 @@ file2.rb")
       allow(File).to receive(:file?).and_call_original
       allow(File).to receive(:read).and_call_original
       allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENT.md")).and_return(true)
-      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md")).and_return("Use project conventions")
+      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md"), encoding: "UTF-8").and_return("Use project conventions")
 
       agent = described_class.new(prompt: "hi", client: client)
       agent.run

@@ -12,6 +12,7 @@ require_relative "config"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "session_metrics"
+require_relative "utf8_default"
 require_relative "turn_note"
 require_relative "owner_lock"
 require_relative "bridge_client"
@@ -631,6 +632,8 @@ module Samagotchi
     # @return [Symbol] :idle_exit or :exit_requested
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
                               idle_exit_minutes: nil, poll_interval: nil)
+      # A worker inherits chi's locale (LC_ALL=C too): read files as UTF-8.
+      Utf8Default.apply!
       sd = state_dir || Session.default_state_dir
       # The spawner passed the file and level through ENV; a worker's stderr
       # is /dev/null, so warnings only reach the file.

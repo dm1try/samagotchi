@@ -3,13 +3,10 @@
 
 $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
-# No locale at all (an app started from Finder or launchd, `env -i`): files
-# would read as US-ASCII, and chi's session JSON is UTF-8. Workers this
-# process spawns inherit the LANG.
-if Encoding.default_external == Encoding::US_ASCII && %w[LC_ALL LC_CTYPE LANG].none? { |key| ENV[key] }
-  ENV["LANG"] = "en_US.UTF-8"
-  Encoding.default_external = Encoding::UTF_8
-end
+# LC_ALL=C or no locale at all: files would read as US-ASCII, and chi's
+# memories and sessions are UTF-8 (Utf8Default).
+require "samagotchi/utf8_default"
+Samagotchi::Utf8Default.apply!
 
 require "optparse"
 require "samagotchi/config"

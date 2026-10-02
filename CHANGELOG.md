@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- chi starts under `LC_ALL=C` (or another US-ASCII locale): `chi -p` crashed with `Encoding::CompatibilityError` while
+  building the system prompt from a memory index with non-ASCII text. chi and its workers read their files as UTF-8
+  whatever the locale.
 - The `mcp` bundle (0.4.0, `chi update`) attaches an image an MCP tool names inside its text
   (`Saved screenshot to /tmp/shot.png.`), not only a text that is the bare path; the same checks apply (an image by
   its bytes, under the temp dir or the server's `cwd`).
