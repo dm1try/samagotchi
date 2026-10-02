@@ -338,17 +338,28 @@ RSpec.describe Samagotchi::SendCommand do
       expect(out.string).to eq("#{short(a)}  sent with 1 image (runs after the current turn)\n")
     end
 
-    it "refuses a missing file, a non-image or too many images before sending anything" do
+    it "refuses a missing file or a non-image (exit 1) and too many images (usage, 2) before sending anything" do
       a = make(owner: "worker")
       serve(a)
 
-      expect(run("--image", "/nope/shot.png", "-m", "x", a.id)).to eq(2)
+      expect(run("--image", "/nope/shot.png", "-m", "x", a.id)).to eq(1)
       expect(err.string).to include("chi send: /nope/shot.png: no such file")
       # A text file named .png.
-      expect(run("--image", File.join(fixtures, "text.png"), "-m", "x", a.id)).to eq(2)
+      expect(run("--image", File.join(fixtures, "text.png"), "-m", "x", a.id)).to eq(1)
       expect(err.string).to include("chi send: text.png is not an image chi can send")
       expect(run(*(["--image", png] * 21), "-m", "x", a.id)).to eq(2)
       expect(err.string).to include("at most 20 images")
+      expect(inputs_of(a)).to be_empty
+    end
+
+    it "reports a missing image as a --format json error line (a run-time failure, not usage)" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("--wait", "--format", "json", "--image", "/nope/shot.png", "-m", "x", a.id)).to eq(1)
+      line = JSON.parse(out.string)
+      expect(line).to include("status" => "error", "session_id" => nil)
+      expect(line["detail"]).to include("/nope/shot.png: no such file")
       expect(inputs_of(a)).to be_empty
     end
 

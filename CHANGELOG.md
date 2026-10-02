@@ -31,6 +31,8 @@ and commands may change between minor versions. How releases are made:
 - `chi send --wait`'s exit 3 prints the whole question on stderr: its text, numbered options and how to answer it.
 - `delegate` / `delegate_result` on a child waiting for an answer give the whole question: its text, numbered options
   and the `chi answer` command for it.
+- `chi send --image` with a missing file or one that isn't an image exits 1 (not 2, which is for usage errors), and
+  with `--wait --format json` prints the JSON error line.
 
 ### Fixed
 

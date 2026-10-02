@@ -150,7 +150,9 @@ module Samagotchi
         @stderr.puts("chi send: #{e.message}")
         return 1
       end
-      return 2 unless ingest_images(options[:images])
+      # A file that is not there or not an image: a run-time failure (1),
+      # reported in the --format json line too; --image itself was fine.
+      return CLI::Exit::FAILED unless ingest_images(options[:images])
 
       return run_new(prompt, options) if options[:new]
       return run_wait(prompt, options) if options[:wait]
