@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-02
+
 ### Added
 
 - `chi models [--format json] [--timeout S] [TEXT]` lists the names `--model` takes from every host (default first,
@@ -30,6 +32,8 @@ and commands may change between minor versions. How releases are made:
   the turn as failed instead of leaving the session marked running.
 - Reminders keep firing on their own while a session is idle. A reminder that a prompt's turn delivered just as the
   idle check found it due, or a reminder turn that failed before it started, could stop them until the next prompt.
+
+Update with `chi update` (no bundle changes); run `chi desktop upgrade` for the desktop helper's model chooser.
 
 ## [0.11.0] - 2026-10-01
 
@@ -665,7 +669,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/dm1try/samagotchi/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/dm1try/samagotchi/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/dm1try/samagotchi/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/dm1try/samagotchi/compare/v0.9.0...v0.10.0
