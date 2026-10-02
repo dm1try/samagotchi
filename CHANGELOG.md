@@ -14,7 +14,8 @@ and commands may change between minor versions. How releases are made:
   options and the `chi answer` command for it, or the status and a detail line, for scripts and parent agents.
 - `chi answer ID --question QID --option N` (or `--text`, `--dismiss`) answers the question a session waits on and
   waits for what comes next, as `chi send --wait` does, so an agent running chi as a sub-agent can answer chi's
-  questions itself.
+  questions itself. `chi send --wait -m` to a session waiting for an answer is refused with the `chi answer` command
+  for it.
 - An approval answered with `chi answer` can be denied, not allowed: allowing is the user's (the web, `chi --attach`).
   `guardrails.parent_approvals: once` lets "Allow once" through, never a wider scope.
 - `chi sessions list` shows a session waiting for an answer as `waiting`; `--format json` has `waiting` (`question`,

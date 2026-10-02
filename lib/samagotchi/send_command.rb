@@ -305,8 +305,15 @@ module Samagotchi
     def run_wait(prompt, options)
       id = resolve(options[:ids].first) or return 1
       session = Session.load(id, state_dir: @state_dir)
-      if session.status == Session::STATUS_RUNNING && SessionManager.session_owner(id, state_dir: @state_dir)
-        error_line("#{id[0, 8]}  busy: a turn is running; wait or attach")
+      if session.status == Session::STATUS_RUNNING && (owner = SessionManager.session_owner(id, state_dir: @state_dir))
+        # The turn waits on a question: the message would only queue
+        # behind it, and the answer goes in with chi answer.
+        if (waiting = session.waiting_question(live: owner.worker?))
+          error_line("#{id[0, 8]}  waiting for an answer: #{ParentReport.answer_with(id, waiting)} (or --text); " \
+                     "chi --attach #{id} shows it")
+        else
+          error_line("#{id[0, 8]}  busy: a turn is running; wait or attach")
+        end
         return 1
       end
 

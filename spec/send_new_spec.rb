@@ -215,6 +215,15 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(delivered).to be_empty
   end
 
+  it "points a session waiting for an answer to chi answer, not busy" do
+    waiting = make(status: "running", pending_question: { id: "q1", question: "Which?" })
+
+    expect(run("--wait", "-m", "the first one", waiting.id)).to eq(1)
+    expect(err.string).to eq("#{waiting.id[0, 8]}  waiting for an answer: chi answer #{waiting.id} --question q1 --option N " \
+                             "(or --text); chi --attach #{waiting.id} shows it\n")
+    expect(delivered).to be_empty
+  end
+
   it "ends without a reply when the turn fails before the first look" do
     idle = make(status: "idle")
     # The whole turn, failed and noted, inside the send.
@@ -391,6 +400,14 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       expect(run("--wait", "--format", "json", "-m", "and?", busy.id)).to eq(1)
       expect(json_out).to eq("status" => "error", "session_id" => busy.id,
                              "detail" => "#{busy.id[0, 8]}  busy: a turn is running; wait or attach")
+
+      out.truncate(0)
+      out.rewind
+      waiting = make(status: "running", pending_question: { id: "q1", question: "Which?" })
+      expect(run("--wait", "--format", "json", "-m", "and?", waiting.id)).to eq(1)
+      expect(json_out).to eq("status" => "error", "session_id" => waiting.id,
+                             "detail" => "#{waiting.id[0, 8]}  waiting for an answer: chi answer #{waiting.id} --question q1 " \
+                                         "--option N (or --text); chi --attach #{waiting.id} shows it")
 
       out.truncate(0)
       out.rewind

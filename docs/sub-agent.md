@@ -72,7 +72,9 @@ local process.
   `chi sessions stop ID` ends one.
 - If the worker dies while a question waits, the question goes with it.
   `chi answer` then exits 1 and says to send the task again
-  (`chi send --wait -m "…" ID`).
+  (`chi send --wait -m "…" ID`); a wait ends with `worker_gone` (exit 1).
+- A follow-up (`chi send --wait -m "…" ID`) to a session waiting for an answer
+  isn't sent: it exits 1 with the `chi answer` command for the question.
 - An answer to a question that is no longer open (you answered it in the web
   first) isn't sent; `chi answer` says so and waits for what comes next.
 - `chi send --wait` and `chi answer` don't read stdin unless it's a pipe or a
