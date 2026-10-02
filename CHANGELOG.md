@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Answers from Splash no longer start with two blank lines (a workaround until Splash drops them itself).
+
 ## [0.12.0] - 2026-10-02
 
 ### Added

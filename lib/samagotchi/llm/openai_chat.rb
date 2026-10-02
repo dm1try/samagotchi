@@ -245,11 +245,18 @@ module Samagotchi
           function = call["function"] || {}
           ToolCall.new(id: call["id"], name: function["name"].to_s, arguments: self.class.parse_arguments(function["arguments"]))
         end
-        ChatResponse.new(text: message["content"].to_s,
+        ChatResponse.new(text: OpenAIChat.drop_leading_newlines(message["content"].to_s),
                          reasoning: (message["reasoning_content"] || message["reasoning"]).to_s,
                          tool_calls: calls, usage: Usage.from_payload(body) || Usage.none,
                          finish_reason: body.dig("choices", 0, "finish_reason"), model: served_model(body))
       end
+
+      # Workaround for Splash 1.0.2/1.1.0, which keeps the "\n\n" the model
+      # writes after </think> at the start of the answer
+      # (https://github.com/incoai/splash/issues/254). Remove once Splash
+      # strips it; llama.cpp already does. Streamed, it applies to the chunks
+      # until the first text.
+      def self.drop_leading_newlines(text) = text.sub(/\A[\r\n]+/, "")
 
       def self.served_model(payload)
         model = payload.is_a?(Hash) ? payload["model"] : nil
@@ -372,6 +379,7 @@ module Samagotchi
           @finish_reason = choice["finish_reason"] if choice["finish_reason"]
           delta = choice["delta"].is_a?(Hash) ? choice["delta"] : {}
           content = delta["content"].to_s
+          content = OpenAIChat.drop_leading_newlines(content) if @text.empty?
           reasoning = (delta["reasoning_content"] || delta["reasoning"]).to_s
           @text << content
           @reasoning << reasoning
