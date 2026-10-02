@@ -52,7 +52,8 @@ module Samagotchi
       #
       # A child's approval, when this session can host a relay (Peers#relay),
       # goes to this session's user as its own approval (DelegateRelay); the
-      # wait goes on after it settles, and the result gets one outcome line per relayed
+      # wait goes on after it settles, with the time it was open not counted
+      # against +timeout+, and the result gets one outcome line per relayed
       # approval. Without a relay, and for the model's and hooks' questions,
       # the question comes back to the model as before.
       def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL, owner_grace: OWNER_GRACE)
@@ -61,11 +62,14 @@ module Samagotchi
         cancelled = -> { peers.cancelled? }
         relay = peers.respond_to?(:relay) ? peers.relay : nil
         baseline = baselines[key]
+        left = timeout.to_i
         outcomes = []
         loop do
-          wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: timeout.to_i,
+          started = monotonic
+          wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: [left, 0].max,
                                           poll_interval: poll_interval, cancelled: cancelled, baseline: baseline,
                                           owner_grace: owner_grace)
+          left -= monotonic - started
           unless wait.status == :waiting_for_answer && DelegateRelay.relayable?(relay, wait.question)
             return with_outcomes(finish(wait, child_id, key: key, timeout: timeout), outcomes)
           end
@@ -93,6 +97,8 @@ module Samagotchi
       def canceled_result(child_id)
         result(child_id, "running", "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
       end
+
+      def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       # The tool result for how the wait ended.
       # @param wait [ReplyWait::Result]

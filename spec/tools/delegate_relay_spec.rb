@@ -205,6 +205,26 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
   end
 
+  it "doesn't count the time the card was open against the timeout" do
+    update(child, pending_question: approval)
+    relay.answer = lambda do |_f, _w|
+      sleep(1.3)
+      { id: "pq", selected: ["Allow once"], selected_indices: [0] }
+    end
+    client.on_answered = -> { finish_child }
+    expect(wait(timeout: 1)).to include("status: answered\napproval relayed to your user: execute: git push → allowed once\n---\npushed")
+  end
+
+  it "pauses the timeout during the relay, never starts it over" do
+    Thread.new do
+      sleep(0.7)
+      update(child, pending_question: approval)
+    end
+    user_answers("Allow once", 0)
+    client.on_answered = -> { finish_child(after: 0.6) }
+    expect(wait(timeout: 1)).to include("status: running\napproval relayed to your user: execute: git push → allowed once\nno reply yet after 1 s")
+  end
+
   it "keeps today's path for the model's own questions, and without a relay" do
     update(child, pending_question: { id: "q1", question: "Which one?", options: %w[A B] })
     expect(wait).to include("status: question\nChild #{child.id} is waiting for an answer (question): Which one?")
