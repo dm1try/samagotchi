@@ -268,6 +268,28 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
         .to eq("its sha256 #{edited[0, 12]}… differs from the installed #{sha[0, 12]}… (edited after install? reinstall the bundle)")
     end
 
+    it "doesn't load a bundle's hooks when this chi doesn't meet its requires_chi; a required one fails" do
+      expect do
+        described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures, requires_chi: ">= 99.0",
+                             metadata: { "guard.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed", "sha256" => "sha256:#{sha}" } })
+      end.to output(/bundle 'g' hook 'guard.rb' not loaded: it requires chi >= 99.0 \(this is chi #{Regexp.escape(Samagotchi::VERSION)}\)/).to_stderr
+      expect(registry.size).to eq(0)
+      expect(failures.required.map(&:what)).to eq(["hook guard.rb (bundle g)"])
+
+      failures2 = Samagotchi::Guardrails::LoadFailures.new
+      expect do
+        described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures2, requires_chi: ">= 99.0",
+                             metadata: { "guard.rb" => { "event" => "after_turn" } })
+      end.to output(/not loaded/).to_stderr
+      expect([registry.size, failures2.list.size, failures2.required]).to eq([0, 1, []])
+    end
+
+    it "loads a bundle's hooks when this chi meets its requires_chi" do
+      expect(described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures,
+                                  requires_chi: ">= 0.1", metadata: { "guard.rb" => { "event" => "after_turn" } })).to eq(1)
+      expect(failures).not_to be_any
+    end
+
     it "reports a changed non-required hook without failing closed" do
       expect { load_with("event" => "after_turn", "sha256" => "0" * 64) }.to output(/not loaded/).to_stderr
       expect(failures.list.size).to eq(1)

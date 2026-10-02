@@ -1993,7 +1993,8 @@ module Samagotchi
         end
         begin
           Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: data[:hooks], registry: @hooks,
-                                   failures: @guardrail_failures, settings: settings[bundle_name.to_s] || {})
+                                   failures: @guardrail_failures, settings: settings[bundle_name.to_s] || {},
+                                   requires_chi: data[:requires_chi])
         rescue Exception => e
           Log.error(:hooks, "bundle_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}", bundle: bundle_name, error: e.class.name)
         end

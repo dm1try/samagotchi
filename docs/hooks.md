@@ -439,6 +439,7 @@ hooks:
     on_error: log
     priority: 100
 trust_level: reviewed        # reviewed | experimental (default)
+requires_chi: ">= 0.12.0"    # optional: a gem-style requirement, as for plugins
 needs: [gh]                  # optional: outside commands the memories use (docs/memory.md#bundles-that-need-outside-commands)
 ```
 
@@ -449,7 +450,8 @@ Notes:
 - `sha256` is integrity (not authenticity). No signing in v1. Install records the sha256 of the copied file; at `Engine.new` a hook whose file differs is not loaded (reinstall the bundle after editing one by hand).
 - Hook code is the bundle author's source of truth: on upgrade, hooks are overwritten; if the installed file was locally modified, a warning is emitted (`was locally modified; overwriting`).
 - `on_error` defaults to `skip` for every event, `:before_tool_call` included: a raising hook is silent and the call goes ahead. `log` warns. `fail_closed` (only on `:before_tool_call`; on any other event it acts as `skip`) denies the call the hook raised on. Choose `fail_closed` for a hook that is a guardrail, whose failure should stop tool calls rather than let them through.
-- A `fail_closed` `:before_tool_call` hook is required: if it is missing, fails to load or its sha256 differs, chi denies every tool call until it is fixed.
+- `requires_chi`: when this chi doesn't meet it, none of the bundle's hooks load (each is reported, `not loaded: it requires chi …`), as for a [plugin](plugins.md#loading-and-when-it-fails).
+- A `fail_closed` `:before_tool_call` hook is required: if it is missing, fails to load, its sha256 differs or chi doesn't meet the bundle's `requires_chi`, chi denies every tool call until it is fixed.
 - A bundle can also ship YAML rules in `guardrails/*.yml`; see [Guardrails](guardrails.md#the-guardrails-bundle).
 - Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
 - Settings: a hook class with `initialize(settings = {})` gets the bundle's section of `config.yml` `bundles:` (see [Settings](#settings)).

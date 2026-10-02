@@ -35,6 +35,15 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
     described_class.new(client: client)
   end
 
+  it "passes the bundle's requires_chi to BundleLoader.load" do
+    stub_config({})
+    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).and_call_original
+    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks)
+      .and_yield("k", { hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed", requires_chi: ">= 99.0" })
+    expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(bundle_name: "k", requires_chi: ">= 99.0")).and_return(0)
+    described_class.new(client: client)
+  end
+
   it "ignores a bundles: section that is not a mapping, with one warning" do
     stub_config({ "bundles" => ["known-names"] })
     installed("known-names")

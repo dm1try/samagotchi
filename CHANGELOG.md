@@ -16,6 +16,7 @@ and commands may change between minor versions. How releases are made:
 - `recap.model` set to a model id without a host no longer turns the recap off: it asks the host a bare `--model` goes to.
 - AGENT.md is found at the top of the git work tree when chi runs in a subdirectory (one in the current directory still wins).
 - `execute.timeout_sec` in config.yml (or `--execute-timeout-sec`) sets how long an `execute` command may run, like `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC`; it no longer warns as an unknown key.
+- A bundle's `requires_chi` now applies to its hooks too, not only its plugin: on a too-old chi they don't load, with a notice.
 
 ## [0.12.0] - 2026-10-02
 

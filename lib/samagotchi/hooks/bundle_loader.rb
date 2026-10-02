@@ -4,6 +4,8 @@ require_relative "registry"
 require "digest"
 require_relative "../log"
 require_relative "../memory_bundle/provenance"
+require_relative "../memory_bundle/manifest"
+require_relative "../version"
 
 module Samagotchi
   # Namespace that wraps hook plugin classes per-bundle. Each bundle's hooks are
@@ -28,7 +30,8 @@ module Samagotchi
     # fails to load, or its file's sha256 differs from the one recorded at
     # install, the failure is reported and the gate denies every tool call.
     # Any hook whose sha256 differs is not loaded (reinstall the bundle
-    # after editing a hook by hand).
+    # after editing a hook by hand), nor any of a bundle whose requires_chi
+    # this chi doesn't meet.
     #
     # The +on_error+ policy is applied per hook at fire time (Hooks.wrap):
     #   - "fail_closed" (on :before_tool_call): a raising guardrail denies
@@ -48,10 +51,14 @@ module Samagotchi
         # @param settings [Hash] the bundle's section of config.yml
         #   `bundles:` (string keys); a hook class whose initialize takes an
         #   argument gets it
+        # @param requires_chi [String, nil] the bundle's requirement; when
+        #   this chi doesn't meet it no hook loads (each is reported, as the
+        #   plugin loader does)
         # @return [Integer] number of hooks successfully registered
-        def load(bundle_name:, hooks_dir:, metadata:, registry:, failures: nil, settings: {})
+        def load(bundle_name:, hooks_dir:, metadata:, registry:, failures: nil, settings: {}, requires_chi: nil)
           return 0 unless metadata.is_a?(Hash)
 
+          too_old = MemoryBundle::Manifest.requires_chi_failure(requires_chi, Samagotchi::VERSION)
           loaded = 0
           metadata.each do |raw_basename, raw_meta|
             basename = raw_basename.to_s
@@ -72,7 +79,7 @@ module Samagotchi
               failures&.add(what, "the file is missing", required: true) if fail_closed
               next
             end
-            if (mismatch = sha_mismatch(file, meta.(:sha256), required: fail_closed))
+            if (mismatch = too_old || sha_mismatch(file, meta.(:sha256), required: fail_closed))
               Log.warn(:hooks, "bundle_hook_mismatch", echo: "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' not loaded: #{mismatch}", bundle: bundle_name, hook: basename.to_s)
               failures&.add(what, mismatch, required: fail_closed)
               next
