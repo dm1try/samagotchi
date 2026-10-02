@@ -283,6 +283,15 @@ RSpec.describe "delegate tools" do
                               "    1. A\n    2. B\n  answer: chi answer #{child.id} --question q2 --option N\n")
     end
 
+    it "says the child's worker is gone, not that its question waits, when the worker died asking" do
+      dead = make(parent_id: parent.id, prompt: "task", status: "running")
+      set_status(dead, "running", pending_question: { id: "q1", question: "Which one?" })
+
+      out = described_class.call(dead.id, peers: peers, timeout: 5, owner_grace: 0.1)
+      expect(out).to eq("session: #{dead.id}\nstatus: worker_gone\nthe child's worker is gone (it stopped or crashed); " \
+                        "delegate with session: #{dead.id} starts it again with a message")
+    end
+
     it "returns when the parent's turn is canceled; the child keeps running" do
       child
       later { cancelled[0] = true }

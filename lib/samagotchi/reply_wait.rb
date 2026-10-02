@@ -72,8 +72,12 @@ module Samagotchi
           return Result.new(status: :stopped)
         end
 
+        # Only a question a live worker holds waits for an answer (the
+        # lists' rule): one a dead worker left waits for no one, and a chi
+        # REPL's is answered there.
         pending = session.pending_question
-        if pending && !(baseline && pending[:id] == baseline[:question_id])
+        if pending && !(baseline && pending[:id] == baseline[:question_id]) &&
+           session.waiting_question(live: SessionManager.worker_live?(id, state_dir: state_dir))
           return Result.new(status: :waiting_for_answer, question: pending)
         end
 

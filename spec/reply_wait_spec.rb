@@ -14,6 +14,7 @@ RSpec.describe Samagotchi::ReplyWait do
 
   after do
     threads.each(&:join)
+    locks.each(&:release)
     FileUtils.rm_rf(tmpdir)
   end
 
@@ -31,6 +32,14 @@ RSpec.describe Samagotchi::ReplyWait do
     s.last_prompt = last_prompt if last_prompt
     s.save(state_dir: tmpdir)
   end
+
+  # A live worker holds the session (the owner lock), so its question waits for an answer.
+  def own_by_worker
+    lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), kind: "worker")
+    locks << lock
+  end
+
+  let(:locks) { [] }
 
   def write_reply(text)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
@@ -81,10 +90,25 @@ RSpec.describe Samagotchi::ReplyWait do
   end
 
   it "returns a pending question" do
+    own_by_worker
     set(pending_question: { id: "q1", kind: "approval", question: "Run rm?" })
     result = wait
     expect(result.status).to eq(:waiting_for_answer)
     expect(result.question).to include(id: "q1", kind: "approval")
+  end
+
+  it "does not report a question a dead worker left: it waits for no one, and the worker is gone" do
+    set(pending_question: { id: "q1", question: "Which?" })
+
+    expect(wait(timeout: 0.2).status).to eq(:timeout)
+    expect(wait(owner_grace: 0.1).status).to eq(:worker_gone)
+  end
+
+  it "does not report a question a chi REPL holds" do
+    locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), kind: "tui")
+    set(pending_question: { id: "q1", question: "Which?" })
+
+    expect(wait(timeout: 0.2).status).to eq(:timeout)
   end
 
   it "returns a failed or stopped worker" do
@@ -120,6 +144,7 @@ RSpec.describe Samagotchi::ReplyWait do
     end
 
     it "ignores the question pending at the baseline, not a new one" do
+      own_by_worker
       set(pending_question: { id: "old", question: "Old?" })
       later { set(pending_question: { id: "new", question: "New?" }) }
 

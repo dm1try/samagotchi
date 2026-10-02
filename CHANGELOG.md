@@ -32,6 +32,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `delegate_result` on a child whose worker died says `worker_gone` instead of waiting for, or reporting, a question
+  nobody can answer; `chi send --wait` and `chi answer` no longer report such a question as waiting either.
 - Answers from Splash no longer start with two blank lines (a workaround until Splash drops them itself).
 - An error in chi's work after a turn's answer no longer also reports the answered turn as failed.
 - A Stop while a turn is still starting (chi asking the model server about the model) now ends the turn there: no before-turn hooks run and a due reminder stays due.

@@ -19,6 +19,10 @@ module Samagotchi
     module DelegateWait
       TIMEOUT_DEFAULT = 600
       POLL_INTERVAL = 0.5
+      # Seconds with no worker before the child counts as gone: as long as
+      # Delegate gives a starting child (its worker takes the owner lock
+      # only once it has booted).
+      OWNER_GRACE = 15
       # Cut like an execute result: full up to TRUNCATE_AT bytes, else a
       # head-and-tail preview of PREVIEW bytes.
       TRUNCATE_AT_BYTES = OutputGuardrails::DEFAULT_TRUNCATE_AT_BYTES
@@ -40,13 +44,16 @@ module Samagotchi
       # @param peers [Peers] the parent (session_id, state_dir, cancelled?)
       # @param timeout [Integer] seconds
       # @param poll_interval [Float]
+      # @param owner_grace [Numeric] seconds with no live worker before
+      #   the child's worker counts as gone
       # @return [String] the tool result
-      def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL)
+      def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL, owner_grace: OWNER_GRACE)
         sd = peers.state_dir || Session.default_state_dir
         key = [peers.session_id, child_id]
         cancelled = -> { peers.cancelled? }
         wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: timeout.to_i,
-                                        poll_interval: poll_interval, cancelled: cancelled, baseline: baselines[key])
+                                        poll_interval: poll_interval, cancelled: cancelled, baseline: baselines[key],
+                                        owner_grace: owner_grace)
         # The turn sent to is handed over: a later wait looks for a later one.
         baselines.delete(key) if %i[done no_reply].include?(wait.status)
         case wait.status
@@ -63,6 +70,9 @@ module Samagotchi
           result(child_id, "canceled", "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
         when :no_reply
           result(child_id, "no_reply", "the child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
+        when :worker_gone
+          result(child_id, "worker_gone",
+                 "the child's worker is gone (it stopped or crashed); delegate with session: #{child_id} starts it again with a message")
         else
           timeout_result(child_id, timeout)
         end
