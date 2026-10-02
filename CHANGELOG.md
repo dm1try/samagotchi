@@ -30,6 +30,8 @@ and commands may change between minor versions. How releases are made:
   no answer, as `chi -p --non-interactive` does; it exited 0 with a blank line (native hosts) or the placeholder text
   (`api: openai`) as the answer. `chi send --wait` reports such a turn as `no_answer` from both kinds of host (an
   `api: openai` host's placeholder was reported as the answer).
+- The web stage's status row reads `∅ no answer` (muted, with a warn edge) for a turn that ended with no answer; it
+  said `✓ answered`.
 
 ## [0.15.0] - 2026-10-02
 

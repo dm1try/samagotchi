@@ -90,6 +90,18 @@ test("liveSlots: at the end an answer-only step is no step (as the block summary
   assert.equal(liveSlots(turn, { ended: "completed" }).step, 1);
 });
 
+test("liveSlots: a completed turn with no answer (turn_summary.empty_answer) reads no answer, not answered", () => {
+  const turn = turnOf({ type: "generation_chunk", iteration: 1, thinking: "Hmm." });
+  applyEvent(turn, { type: "turn_completed" });
+  assert.equal(liveSlots(turn, { ended: "completed", emptyAnswer: true }).phase, "no answer");
+  assert.equal(liveSlots(turn, { ended: "completed" }).phase, "answered");
+  // Only a completed turn: a canceled or failed one keeps its own word.
+  assert.equal(liveSlots(turn, { ended: "canceled", emptyAnswer: true }).phase, "canceled");
+  assert.equal(liveSlots(turn, { ended: "failed", emptyAnswer: true }).phase, "failed");
+  // Not over yet: the flag means nothing.
+  assert.equal(liveSlots(turn, { emptyAnswer: true }).phase, "thinking");
+});
+
 test("isPlain: one step, no thinking, no tool rows, not over", () => {
   assert.equal(isPlain(turnOf({ type: "generation_chunk", iteration: 1, text: "Hi" })), true);
   assert.equal(isPlain(turnOf()), true);

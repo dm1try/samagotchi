@@ -88,6 +88,19 @@ test("the hand-off waits while the pointer is over the stage, runs about 1.5 s a
   await handedOff(page, 3);
 });
 
+// The retry is empty too (empty_answer): the stage's status row reads "no
+// answer", not "answered", and the notice hands off with the turn.
+test("a turn with no answer ends in the stage as no answer", async ({ page, script }) => {
+  script("empty_answer");
+  await send(page, "Say pong");
+  await stageEl(page).hover();
+  await expect(stageEl(page)).toHaveAttribute("data-phase", "no answer");
+  await expect(stageEl(page).locator(".ts-phase")).toHaveText("no answer");
+  await page.mouse.move(0, 0);
+  await handedOff(page, 1);
+  await expect(page.locator("#history .empty-answer")).toHaveText("no answer: the model returned nothing (after 1 retry)");
+});
+
 test("a question card sits in the stage (also after a reload mid-turn), and the answer comes after it", async ({ page, script }) => {
   script("question");
   await send(page, "Read a file of my choice");
