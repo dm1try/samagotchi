@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
+require "delegate"
+
 require_relative "session"
 require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "context_quote"
 require_relative "reply_wait"
+require_relative "parent_report"
 require_relative "image_store"
 require_relative "host_registry"
 require_relative "model_profile"
@@ -34,8 +37,8 @@ module Samagotchi
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...
              chi send --new [--dir DIR] [--model M] [-m TEXT] [--image PATH]...
-             chi send --wait [--timeout S] [-m TEXT] [--image PATH]... (--new | ID)
-             chi send --wait [--timeout S] ID
+             chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
+             chi send --wait [--timeout S] [--format json] ID
         Sends a message to each session, as if typed in it: a turn starts,
         or a running one picks it up. A stopped session's worker starts.
         -m TEXT     the message; stdin, when piped too, goes above it as a
@@ -53,11 +56,21 @@ module Samagotchi
         --model M   (--new) its model; default the configured one
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
-                    answer from you (chi --attach ID or the web). With
-                    no message (no -m, nothing piped) nothing is sent: it
-                    waits for the session's next reply, a running turn's
-                    too (after exit 3 or 130, wait again this way)
-        --timeout S (--wait) give up after S seconds; default no limit
+                    answer from you: the question, its options and the
+                    chi answer command go to stderr (or chi --attach ID,
+                    the web). With no message (no -m, nothing piped)
+                    nothing is sent: it waits for the session's next
+                    reply, a running turn's too (after exit 3, 4 or 130,
+                    wait again this way)
+        --timeout S (--wait) give up after S seconds, exit 4 (the turn
+                    goes on); default no limit
+        --format json
+                    (--wait) one JSON object on stdout, whatever the end:
+                    status answered (text), question (question,
+                    answer_with), running, or failed, canceled,
+                    no_answer, error, worker_gone, stopped (detail)
+        Exit with --wait: 0 answered, 1 failed or gone, 2 usage, 3 a
+        question waits, 4 still running (--timeout), 130 Ctrl-C.
         Only sessions on this machine. Answers show in the attached TUI
         or web page, not here.
         Find ids with: chi sessions list --live [--scope=all] [--format tsv]
@@ -71,6 +84,7 @@ module Samagotchi
       f.value "--image", key: :images, repeat: true
       f.switch "--wait"
       f.value "--timeout"
+      f.value "--format"
       # Starting a turn in every live session at once is too easy to do
       # by accident.
       f.refuse "--all", "there is no --all: name the sessions"
@@ -119,13 +133,41 @@ module Samagotchi
       @state_dir = state_dir || Session.default_state_dir
     end
 
+    FORMATS = %w[text json].freeze
+
     # @return [Integer] exit status: 0 all sent, 1 any refused or failed,
-    #   2 usage; with --wait 0 answered, 3 waiting for an answer, 130
-    #   Ctrl-C (the turn goes on)
+    #   2 usage; with --wait 0 answered, 3 waiting for an answer, 4 still
+    #   running after --timeout, 130 Ctrl-C (the turn goes on)
     def run
       options = parse
       return options if options.is_a?(Integer)
 
+      @json = options[:format] == "json"
+      # With --format json stdout is one JSON object, whatever the end: a
+      # failure before the wait is reported from stderr's last line.
+      @stderr = LastLine.new(@stderr) if @json
+      status = run_parsed(options)
+      if @json && !@reported && status == 1
+        detail = @stderr.last.to_s.delete_prefix("#{command_name}: ")
+        @stdout.puts(ParentReport.error_line(detail, session_id: @session_id))
+        @stdout.flush
+      end
+      status
+    end
+
+    # stderr that keeps its last line.
+    class LastLine < SimpleDelegator
+      attr_reader :last
+
+      def puts(*lines)
+        @last = lines.last.to_s.chomp unless lines.empty?
+        __getobj__.puts(*lines)
+      end
+    end
+
+    private
+
+    def run_parsed(options)
       # With --wait stdout is the answer alone.
       @info = options[:wait] ? @stderr : @stdout
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
@@ -160,8 +202,6 @@ module Samagotchi
       FileUtils.rm_rf(@image_dir) if @image_dir
     end
 
-    private
-
     def command_name = "chi send"
 
     # @return [Hash, Integer] the options, or the exit status after the
@@ -171,6 +211,10 @@ module Samagotchi
       return parsed if parsed.is_a?(Integer)
 
       options = parsed.options.merge(ids: parsed.args)
+      if options[:format]
+        return usage_error("--format needs --wait") unless options[:wait]
+        return usage_error("--format takes text or json") unless FORMATS.include?(options[:format])
+      end
       if options[:timeout]
         return usage_error("--timeout needs --wait") unless options[:wait]
 
@@ -223,7 +267,7 @@ module Samagotchi
     def resolve(given)
       id = Session.resolve_id(given, state_dir: @state_dir)
       Session.load(id, state_dir: @state_dir)
-      id
+      @session_id = id
     rescue ArgumentError => e
       message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
       error_line("chi send: #{message}")
@@ -257,6 +301,7 @@ module Samagotchi
       else
         @info.puts("#{session.id}  started")
       end
+      @session_id = session.id
       return 0 unless options[:wait]
 
       wait_for_reply(session.id, cursor: nil, baseline: baseline_of(session, question_id: nil),
@@ -311,42 +356,21 @@ module Samagotchi
     def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: WORKER_GONE_AFTER)
       result = ReplyWait.call(id, state_dir: @state_dir, cursor: cursor, timeout: timeout, baseline: baseline,
                                   owner_grace: owner_grace, poll_interval: POLL_INTERVAL)
-      return reply(result.text) if result.status == :done
-
-      attach = "chi --attach #{id}"
-      line, status = case result.status
-                     when :waiting_for_answer
-                       question = result.question[:question].to_s.strip.lines.first.to_s.strip
-                       ["waiting for an answer: #{question}; open it: #{attach} or the web", 3]
-                     when :no_reply then ["#{no_reply_line(result)}; #{attach} shows it", 1]
-                     when :error then ["the worker failed: #{result.text}; #{attach} shows what happened", 1]
-                     when :worker_gone then ["the worker is gone; #{attach} shows what happened", 1]
-                     when :stopped then ["the session was stopped (chi sessions stop)", 1]
-                     else ["still running after #{format("%g", timeout)} s: #{attach}", 1]
-                     end
-      error_line("chi send: #{line}")
-      status
+      result.text = utf8(result.text)
+      @reported = true
+      ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,
+                                  json: @json, timeout: timeout)
     rescue Interrupt
+      if @json
+        @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled), session_id: id))
+        @stdout.flush
+        @reported = true
+      end
       error_line("chi send: still running: chi --attach #{id}")
       130
     rescue ArgumentError
       error_line("chi send: the session is gone (deleted while waiting)")
       1
-    end
-
-    def no_reply_line(result)
-      case result.outcome
-      when "failed" then result.text.to_s.strip.empty? ? "the turn failed" : "the turn failed: #{result.text.strip}"
-      when "canceled" then "the turn was canceled"
-      when "completed" then "the turn ended with no visible answer"
-      else "the turn ended without a reply (canceled, failed or empty)"
-      end
-    end
-
-    def reply(text)
-      @stdout.puts(utf8(text))
-      @stdout.flush
-      0
     end
 
     # A new idle session's first turn, with the images. Its worker's Bridge

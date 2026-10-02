@@ -8,6 +8,16 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi send --wait --format json` prints one JSON object on stdout however the wait ends: the reply, a question with its
+  options and the `chi answer` command for it, or the status and a detail line, for scripts and parent agents.
+
+### Changed
+
+- `chi send --wait` exits 4 (not 1) when `--timeout` passes with the turn still running.
+- `chi send --wait`'s exit 3 prints the whole question on stderr: its text, numbered options and how to answer it.
+
 ### Fixed
 
 - Answers from Splash no longer start with two blank lines (a workaround until Splash drops them itself).

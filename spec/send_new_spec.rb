@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "stringio"
 require "tmpdir"
 require "spec_helper"
@@ -167,13 +168,25 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(err.string).to eq("#{@started.id}  started with 1 image\n")
   end
 
-  it "exits 3 with the attach hint when the turn waits for an answer" do
-    later { update(@started, pending_question: { id: "q1", kind: "approval", question: "Run rm -rf build?" }) }
+  it "exits 3 with the whole question, its options and how to answer it, when the turn waits for an answer" do
+    later do
+      update(@started, pending_question: { id: "q1", kind: "approval", header: "Approve tool call?",
+                                           question: "execute: rm -rf build\n  why: deletes files",
+                                           options: ["Allow once", "Deny"], allow_freeform: true })
+    end
 
     expect(run("--new", "--wait", "-m", "clean")).to eq(3)
     expect(out.string).to be_empty
-    expect(err.string).to end_with("chi send: waiting for an answer: Run rm -rf build?; " \
-                                   "open it: chi --attach #{@started.id} or the web\n")
+    expect(err.string).to end_with(<<~TEXT)
+      chi send: waiting for an answer (approval): Approve tool call?
+        execute: rm -rf build
+          why: deletes files
+          1. Allow once
+          2. Deny
+        free text allowed: --text
+        answer: chi answer #{@started.id} --question q1 --option N
+        or open it: chi --attach #{@started.id} or the web
+    TEXT
   end
 
   it "returns only a reply newer than the ones before, and ignores a question pending before the send" do
@@ -269,8 +282,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(err.string).to include("chi send: the session was stopped")
   end
 
-  it "gives up after --timeout, the session still running" do
-    expect(run("--new", "--wait", "--timeout", "0.1", "-m", "x")).to eq(1)
+  it "gives up after --timeout with exit 4, the session still running" do
+    expect(run("--new", "--wait", "--timeout", "0.1", "-m", "x")).to eq(4)
     expect(err.string).to end_with("chi send: still running after 0.1 s: chi --attach #{@started.id}\n")
   end
 
@@ -316,9 +329,10 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       busy = make(status: "running")
       later { update(busy, pending_question: { id: "q2", question: "Delete it?" }) }
       expect(run("--wait", busy.id)).to eq(3)
-      expect(err.string).to end_with("chi send: waiting for an answer: Delete it?; open it: chi --attach #{busy.id} or the web\n")
+      expect(err.string).to include("chi send: waiting for an answer (question): Delete it?\n",
+                                    "answer: chi answer #{busy.id} --question q2 --option N")
 
-      expect(run("--wait", "--timeout", "0.1", busy.id)).to eq(1)
+      expect(run("--wait", "--timeout", "0.1", busy.id)).to eq(4)
       expect(err.string).to end_with("chi send: still running after 0.1 s: chi --attach #{busy.id}\n")
       expect(delivered).to be_empty
     end
@@ -330,6 +344,74 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       expect(err.string).to include("no message")
       expect(run("--wait", a.id, b.id)).to eq(2)
       expect(err.string).to include("--wait takes one session")
+    end
+  end
+
+  describe "--format json" do
+    def json_out
+      lines = out.string.lines
+      expect(lines.size).to eq(1), out.string
+      JSON.parse(lines.first)
+    end
+
+    it "prints the reply as one JSON object, the id line still on stderr" do
+      later { write_reply(@started, "done\nsecond line") }
+
+      expect(run("--new", "--wait", "--format", "json", "-m", "go")).to eq(0), err.string
+      expect(json_out).to eq("status" => "answered", "session_id" => @started.id, "text" => "done\nsecond line")
+      expect(err.string).to eq("#{@started.id}  started\n")
+    end
+
+    it "prints a question with its options and the command that answers it, exit 3" do
+      later { update(@started, pending_question: { id: "q1", question: "Which file?", options: %w[README.md Gemfile] }) }
+
+      expect(run("--new", "--wait", "--format=json", "-m", "go")).to eq(3)
+      expect(json_out).to eq(
+        "status" => "question", "session_id" => @started.id,
+        "question" => { "id" => "q1", "kind" => "question", "text" => "Which file?", "options" => %w[README.md Gemfile],
+                        "multi_select" => false, "allow_freeform" => false },
+        "answer_with" => "chi answer #{@started.id} --question q1 --option N"
+      )
+    end
+
+    it "prints running on a timeout (exit 4) and the other ends with a detail (exit 1)" do
+      expect(run("--new", "--wait", "--format", "json", "--timeout", "0.1", "-m", "x")).to eq(4)
+      expect(json_out).to eq("status" => "running", "session_id" => @started.id,
+                             "detail" => "still running after 0.1 s: chi --attach #{@started.id}")
+
+      out.truncate(0)
+      out.rewind
+      later { update(@started, status: "stopped") }
+      expect(run("--new", "--wait", "--format", "json", "-m", "x")).to eq(1)
+      expect(json_out).to include("status" => "stopped", "detail" => "the session was stopped (chi sessions stop)")
+    end
+
+    it "prints a failure before the wait as status error" do
+      busy = make(status: "running")
+      expect(run("--wait", "--format", "json", "-m", "and?", busy.id)).to eq(1)
+      expect(json_out).to eq("status" => "error", "session_id" => busy.id,
+                             "detail" => "#{busy.id[0, 8]}  busy: a turn is running; wait or attach")
+
+      out.truncate(0)
+      out.rewind
+      expect(run("--wait", "--format", "json", "-m", "x", "nope")).to eq(1)
+      expect(json_out).to eq("status" => "error", "session_id" => nil, "detail" => "no session nope")
+    end
+
+    it "leaves the turn running on Ctrl-C with status running, exit 130" do
+      allow(Samagotchi::ReplyWait).to receive(:call).and_raise(Interrupt)
+      expect(run("--new", "--wait", "--format", "json", "-m", "x")).to eq(130)
+      expect(json_out).to include("status" => "running")
+    end
+
+    it "is a usage error without --wait or with another format, and prints no JSON then" do
+      a = make(status: "idle")
+      expect(run("--format", "json", "-m", "x", a.id)).to eq(2)
+      expect(err.string).to include("--format needs --wait")
+      expect(run("--wait", "--format", "yaml", "-m", "x", a.id)).to eq(2)
+      expect(err.string).to include("--format takes text or json")
+      expect(out.string).to be_empty
+      expect(delivered).to be_empty
     end
   end
 

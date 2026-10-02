@@ -75,6 +75,36 @@ module Samagotchi
       JSON.generate(json(result, session_id: session_id, timeout: timeout))
     end
 
+    # Print a wait's end the way the commands do: the JSON object on
+    # stdout, or the reply on stdout and anything else on stderr (a
+    # question in full) after "chi send: ".
+    # @param command [String] "chi send", "chi answer"
+    # @return [Integer] the exit status
+    def report(result, session_id:, stdout:, stderr:, command:, json: false, timeout: nil)
+      if json
+        stdout.puts(json_line(result, session_id: session_id, timeout: timeout))
+      elsif result.status == :done
+        stdout.puts(result.text)
+      else
+        stdout.flush
+        text = if result.status == :waiting_for_answer
+                 question_text(result.question, session_id: session_id)
+               else
+                 "#{detail(result, session_id: session_id, timeout: timeout)}\n"
+               end
+        stderr.print("#{command}: #{text}")
+      end
+      stdout.flush
+      exit_status(result)
+    end
+
+    # A failure before any wait (no such session, a busy one, a message
+    # that didn't go in) as the JSON object.
+    # @param session_id [String, nil]
+    def error_line(detail, session_id: nil)
+      JSON.generate({ status: "error", session_id: session_id, detail: detail.to_s })
+    end
+
     # A pending question (Session#pending_question) as a parent sees it.
     # kind is "question" for the model's own (the desk stores none),
     # "hook" or "approval".
