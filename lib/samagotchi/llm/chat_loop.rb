@@ -193,9 +193,10 @@ module Samagotchi
       # The shape the engine persists: role and content (parts stay an
       # Array), plus a model turn's tool_calls and thinking (the host's
       # reasoning, never sent back), a result's tool_call_id, the image
-      # refs of a user message or a tool result, and a plugin tool result's
-      # tool_params and tool_labels (the live row's params line and label,
-      # never sent back), and an edit/write result's tool_diffs (never sent).
+      # refs of a user message or a tool result, a prompt's turn_id (Engine,
+      # never sent), and a plugin tool result's tool_params and tool_labels
+      # (the live row's params line and label, never sent back), and an
+      # edit/write result's tool_diffs (never sent).
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -203,6 +204,7 @@ module Samagotchi
           message[:tool_calls] = entry[:tool_calls] if entry[:tool_calls].is_a?(Array) && !entry[:tool_calls].empty?
           message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
           message[:images] = entry[:images] if entry[:images].is_a?(Array) && !entry[:images].empty?
+          message[:turn_id] = entry[:turn_id] if entry[:turn_id]
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
           ToolResponse::SAVED_KEYS.each { |key| message[key] = entry[key] if entry[key] }
           message[TurnNote::RETRY_NUDGE] = true if TurnNote.retry_nudge?(entry)

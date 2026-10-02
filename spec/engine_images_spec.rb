@@ -55,7 +55,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
     ref = started[:images].first
     expect(ref).to include(name: "tiny.png", width: 3, height: 2, mime: "image/png", source: "user")
     expect(File.binread(File.join(@state_dir, session.id, ref[:file]))).to eq(File.binread(shot))
-    expect(sent.last).to eq({ role: "user", content: "what's this?", images: [ref] })
+    expect(sent.last.except(:turn_id)).to eq({ role: "user", content: "what's this?", images: [ref] })
     expect(session.messages[-2]).to include(images: [ref])
     expect(kernel.turn_settings.vision.session_dir).to eq(File.join(@state_dir, session.id))
   end
@@ -107,6 +107,6 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
     turn
 
     expect(events.first).not_to have_key(:images)
-    expect(session.messages[-2]).to eq({ role: "user", content: "what's this?" })
+    expect(session.messages[-2].except(:turn_id)).to eq({ role: "user", content: "what's this?" })
   end
 end

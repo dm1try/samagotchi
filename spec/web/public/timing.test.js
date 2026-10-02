@@ -263,3 +263,23 @@ test("turnGroups: a line merged into the running turn stays in that turn (merged
   const groups = turnGroups(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 1 }, { id: "T2", duration_ms: 2 }] }));
   assert.deepEqual(groups.map((g) => [g.turnIndex, g.user, g.merged, g.answer, g.record?.id]), [[0, 0, [2], 3, "T1"], [1, 4, undefined, 5, "T2"]]);
 });
+
+test("turnGroups: a prompt with its turn_id pairs with that record, so a failed turn's record (its prompt went back) shifts nothing", () => {
+  const timing = normalizeTiming({ turn_records: [
+    { id: "A", status: "completed", duration_ms: 1000 },
+    { id: "B", status: "failed", duration_ms: 50 },
+    { id: "C", status: "completed", duration_ms: 3000 },
+  ] });
+  const items = [
+    { role: "user", content: "one", turn_id: "A" },
+    { role: "assistant", content: "1" },
+    { role: "user", content: "three", turn_id: "C" },
+    { role: "assistant", content: "3" },
+  ];
+  assert.deepEqual(turnGroups(items, timing).map((g) => g.record?.id), ["A", "C"]);
+  // A prompt saved before turn ids (none) still pairs by its place.
+  const old = items.map(({ turn_id, ...m }) => m);
+  assert.deepEqual(turnGroups(old, timing).map((g) => g.record?.id), ["A", "B"]);
+  // An id with no record yet (the running turn): no record, not another turn's.
+  assert.equal(turnGroups([{ role: "user", content: "x", turn_id: "Z" }], timing)[0].record, null);
+});

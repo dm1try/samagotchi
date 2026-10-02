@@ -86,7 +86,20 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     it "keeps :turn_started unchanged for a normal turn" do
       allow(kernel).to receive(:run).and_return(kernel_result)
 
-      expect(events_of.first).to eq(type: :turn_started, session_id: session.id, prompt: "hi")
+      expect(events_of.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", turn_id: a_string_matching(/\A\h{8}-/))
+    end
+  end
+
+  describe "turn id" do
+    it "is on :turn_started and on the turn's saved prompt, so a UI pairs the prompt with its turn record" do
+      sent = nil
+      allow(kernel).to receive(:run) { |messages, **| sent = messages; kernel_result }
+
+      started = events_of.first
+      prompt = sent.find { |m| m[:role] == "user" }
+
+      expect(started[:turn_id]).to match(/\A\h{8}-/)
+      expect(prompt).to include(content: "hi", turn_id: started[:turn_id])
     end
   end
 
@@ -208,7 +221,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
       events = events_of(origin: origin)
 
-      expect(events.first).to eq(type: :turn_started, session_id: session.id, prompt: "hi", origin: origin)
+      expect(events.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", origin: origin,
+                                 turn_id: a_string_matching(/\A\h{8}-/))
       expect(events.find { |e| e[:type] == :turn_completed }).to include(origin: origin)
     end
 

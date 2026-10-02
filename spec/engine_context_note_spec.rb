@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::Engine, "context notes" do
       expect(sent.map { |m| m[:role] }).to eq(%w[system user model system user])
       expect(sent[0][:content]).not_to eq("old")
       expect(sent[3]).to include(kind: "note", note_id: note[:note_id])
-      expect(sent[4]).to eq(role: "user", content: "hi")
+      expect(sent[4]).to include(role: "user", content: "hi")
     end
 
     it "is not replaced by the system prompt in an empty session" do

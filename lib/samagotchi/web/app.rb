@@ -1269,6 +1269,10 @@ module Samagotchi
           # Merged into the running turn (Steer::INPUT_KIND): part of it,
           # read by step +step+.
           message.merge!(merged: true, step: steer_step(list, index)) if norm_role == "user" && Samagotchi::Steer.input?(m)
+          # The turn it started (Engine): the page pairs it with that turn's
+          # record by this, not by its place.
+          turn_id = m[:turn_id] || m["turn_id"]
+          message[:turn_id] = turn_id.to_s if norm_role == "user" && turn_id
           images = m[:images] || m["images"]
           message[:images] = Array(images).map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } if norm_role == "user" && images.is_a?(Array) && !images.empty?
           if norm_role == "assistant"

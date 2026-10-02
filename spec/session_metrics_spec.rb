@@ -12,6 +12,15 @@ RSpec.describe Samagotchi::SessionMetrics do
     events.each { |e| metrics.call(e) }
   end
 
+  it "names a turn's record by the engine's turn id (the one on the turn's prompt)" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi", turn_id: "turn-abc" },
+      { type: :turn_failed }
+    ])
+
+    expect(metrics.snapshot[:turn_records].map { |r| r[:id] }).to eq(["turn-abc"])
+  end
+
   it "starts empty" do
     snap = metrics.snapshot
     expect(snap[:turns]).to eq(0)

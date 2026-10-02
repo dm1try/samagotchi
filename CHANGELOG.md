@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- The web pairs each prompt with its own turn's timing: a failed turn (its prompt went back to you) no longer shifts
+  the timing lines and turn numbers of the turns after it. chi saves a turn id on each prompt; prompts saved before
+  this still pair by their place.
+
 ## [0.14.0] - 2026-10-02
 
 ### Added

@@ -967,6 +967,15 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  describe "a prompt's turn id" do
+    it "is kept on the prompt it hands back, and never sent" do
+      prompt = { role: "user", content: "hi", turn_id: "t-1" }
+
+      expect(backend.plain([prompt])).to eq([prompt])
+      expect(backend.send(:wire_messages, [prompt])).to eq([{ role: "user", content: [{ type: "text", text: "hi" }] }])
+    end
+  end
+
   describe "a context note" do
     let(:note) do
       { role: "system", kind: "note", note_id: "n1", source: "session", from_session: "abc", from_cwd: "/w",

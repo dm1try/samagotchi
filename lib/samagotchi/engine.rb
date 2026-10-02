@@ -1362,8 +1362,10 @@ module Samagotchi
     # +ended+: the end event is out (what follows is post-turn work).
     # +settings+: the kernel's LLM::TurnSettings, made in #prepare_turn and
     # set on the kernel in #generate.
+    # +id+: names the turn on :turn_started (its metrics record's id) and on
+    # its saved prompt, so a UI pairs the two whatever left the conversation.
     Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                      :settings) do
+                      :settings, :id) do
       # The turn's boundary events carry the origin only when there is one,
       # so payloads stay unchanged for callers that don't pass it.
       def tag(event) = origin ? event.merge(origin: origin) : event
@@ -1478,7 +1480,8 @@ module Samagotchi
       @guardrail_wiring.begin_turn(origin)
 
       Turn.new(session: session, prompt: continue ? nil : prompt, continue: continue, on_event: on_event,
-               controller: effective_controller, origin: origin, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC))
+               controller: effective_controller, origin: origin, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
+               id: SecureRandom.uuid)
     end
     private :begin_turn
 
@@ -1492,7 +1495,7 @@ module Samagotchi
       image_refs, image_error = turn_image_refs(session, images)
       # Emit turn_started event
       bind_metrics(session)
-      turn_started = { type: :turn_started, session_id: session.id, prompt: turn.prompt }
+      turn_started = { type: :turn_started, session_id: session.id, prompt: turn.prompt, turn_id: turn.id }
       turn_started[:continue] = true if turn.continue
       turn_started[:images] = image_refs unless image_refs.empty?
       emit_event(turn.on_event, turn.tag(turn_started))
@@ -1595,7 +1598,7 @@ module Samagotchi
 
       return if turn.continue
 
-      user_message = { role: "user", content: turn.prompt }
+      user_message = { role: "user", content: turn.prompt, turn_id: turn.id }
       user_message[:images] = image_refs unless image_refs.empty?
       turn.messages << user_message
       session.last_prompt = turn.prompt

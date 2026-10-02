@@ -200,3 +200,18 @@ test("turnHistoryHtml with parts: an edit's row keeps its collapsed diff after a
   const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] }), { thumbs });
   assert.match(html, /<div class="activity-output"[^>]*>Edited<\/div><details class="activity-diff"><summary>diff \+1 \u22121<\/summary><pre class="diff">/);
 });
+
+test("turnHistoryHtml: the timing line numbers a turn by its record, after a failed turn as live", () => {
+  const timing = normalizeTiming({ turn_records: [
+    { id: "A", status: "completed", duration_ms: 1000 },
+    { id: "B", status: "failed", duration_ms: 50 },
+    { id: "C", status: "completed", duration_ms: 3000 },
+  ] });
+  const items = [
+    { role: "user", content: "one", turn_id: "A" }, { role: "assistant", content: "1" },
+    { role: "user", content: "three", turn_id: "C" }, { role: "assistant", content: "3" },
+  ];
+  const html = turnHistoryHtml(items, timing, { thumbs: () => "" });
+  assert.match(html, /turn 1 · 1\.0s/);
+  assert.match(html, /turn 3 · 3\.0s/);
+});

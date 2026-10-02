@@ -607,6 +607,14 @@ RSpec.describe Samagotchi::Web::App do
                            { role: "assistant", content: "found it" }])
     end
 
+    it "keeps a prompt's turn id, which pairs it with its turn record" do
+      messages = [{ role: "user", content: "look", turn_id: "T1" }, { "role" => "user", "content" => "again", "turn_id" => "T2" }]
+
+      shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
+
+      expect(shown).to eq([{ role: "user", content: "look", turn_id: "T1" }, { role: "user", content: "again", turn_id: "T2" }])
+    end
+
     it "marks the user's lines merged into a running turn, and a steer after them still counts its step from the turn's prompt" do
       messages = [{ role: "user", content: "look" },
                   { role: "model", content: "reading", tool_calls: [{ id: "c1", name: "read" }] },

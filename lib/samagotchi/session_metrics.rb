@@ -284,7 +284,7 @@ module Samagotchi
           token_sources: [],
           retries: 0,
           model: nil,
-          id: SecureRandom.uuid,
+          id: event[:turn_id] || SecureRandom.uuid,
           started_at: now.iso8601(3),
           started_monotonic: monotonic_time,
           tool_calls_by_id: {}
