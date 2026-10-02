@@ -11,6 +11,7 @@
 # an answer. An iteration's "thinking_file" (a path relative to scripts/, its leading "#" header lines dropped)
 # streams in place of "thinking", "repeat" times over (default 1), and "chunk_chars" streams N chars per chunk
 # instead of word by word (the script's "delay" still applies): a long looping thinking (loop-guard's watch).
+# "branches" pick another iteration list by the first user message (a delegated child's task; see _script).
 # /v1/models lists "fake-script" (or serves <dir>/models.json when there is one, e.g. with
 # "architecture": {"input_modalities": ["text"]} for a text-only model);
 # no upstream needed.
@@ -106,6 +107,13 @@ class H(http.server.BaseHTTPRequestHandler):
             elif msg.get("role") == "system" and nudges and seen_user: done += 1
             prev = msg.get("role")
         its = script["iterations"]
+        # "branches": [{"when": TEXT, "iterations": [...]}]: a session whose first user message holds TEXT (a
+        # delegated child's task) runs its own iterations, so a parent and its child share one script.
+        first_user = next((str(msg.get("content") or "") for msg in messages if msg.get("role") == "user"), "")
+        for branch in script.get("branches") or []:
+            if branch.get("when") and branch["when"] in first_user:
+                its = branch["iterations"]
+                break
         it = its[min(done, len(its) - 1)]
         delay = float(script.get("delay", 0.12))
         time.sleep(float(it.get("hold", 0)))

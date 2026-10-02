@@ -260,6 +260,33 @@ test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ p
   await expect(row.locator(".activity-output")).toContainText("E2E_APPROVED");
 });
 
+// The approval relay: a delegate's approval opens on the parent's page as
+// the parent's own card; allowing it there runs the child's command, and the
+// parent's model gets the outcome line with the reply.
+test("a delegate's approval is answered on the parent's page", async ({ page, script }) => {
+  script("delegate_relay");
+  await send(page, "Delegate the command that needs approval");
+  const card = page.locator(`${H()} .bubble.question.approval`);
+  await expect(card.locator(".approval-delegate")).toContainText("E2E_CHILD_TASK");
+  await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
+  await expect(card.locator("summary")).toContainText("Approve delegate");
+  await card.locator(".question-option").first().click();
+  await card.locator(".question-submit").click();
+  await expect(card.locator(".question-result")).toContainText("Allowed: Allow once");
+  await expect(answer(page)).toHaveText("The delegate is done.");
+  await turnEnded(page, 1);
+  const row = page.locator("#history .activity-row").filter({ hasText: "delegate" });
+  await expect(row.locator(".activity-output")).toContainText(`approval relayed to your user: execute: ${APPROVAL_COMMAND} → allowed once`);
+  await expect(row.locator(".activity-output")).toContainText("The child ran the approved command.");
+
+  // The child's own page: the command ran there.
+  await card.locator("summary").click();
+  await card.locator(".approval-delegate a").click();
+  await expect(page.locator("#history .bubble.user").first()).toContainText("E2E_CHILD_TASK");
+  const childRow = page.locator("#history .activity-row").filter({ hasText: "execute" });
+  await expect(childRow.locator(".activity-output")).toContainText("E2E_APPROVED");
+});
+
 test("an edit's approval card shows its diff; the row keeps the change after a reload", { tag: "@turn" }, async ({ page, script }) => {
   script("edit");
   await send(page, "Make the font bigger");
