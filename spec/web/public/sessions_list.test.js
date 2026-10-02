@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, listedSessions, sortedByUpdated, waitingBadge, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, heldOrder, listedSessions, sortedByUpdated, waitingBadge, waitingFirst, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -72,4 +72,31 @@ test("waitingBadge says what the session waits on the user for", () => {
   assert.equal(waitingBadge({ id: "s", pending_question: { id: "q", kind: "approval" } }).text, "approval");
   assert.equal(waitingBadge({ id: "s", pending_card: { id: "c" } }).text, "needs you");
   assert.equal(waitingBadge({ id: "s", pending_question: null, pending_card: null }), null);
+});
+
+const ids = (list) => list.map((s) => s.id);
+const asks = (id, extra = {}) => ({ id, pending_question: { id: `q-${id}` }, ...extra });
+
+test("waitingFirst lifts the sessions that wait on the user, each part in the list's order", () => {
+  const list = [{ id: "a" }, asks("b"), { id: "c" }, { id: "d", pending_card: { id: "k" } }];
+  assert.deepEqual(ids(waitingFirst(list)), ["b", "d", "a", "c"]);
+});
+
+test("waitingFirst: nobody waiting returns the same list; answered goes back to its place", () => {
+  const list = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  assert.equal(waitingFirst(list), list);
+  const answered = [{ id: "a" }, { id: "b", pending_question: null }, { id: "c" }];
+  assert.deepEqual(ids(waitingFirst(answered)), ["a", "b", "c"]);
+});
+
+test("waitingFirst moves a delegated family together, whichever member waits", () => {
+  const list = [{ id: "x" }, { id: "p" }, asks("ch", { parent_id: "p" }), { id: "y" }];
+  assert.deepEqual(ids(waitingFirst(list)), ["p", "ch", "x", "y"]);
+  // A child whose parent is not listed is its own family.
+  assert.deepEqual(ids(waitingFirst([{ id: "x" }, asks("ch", { parent_id: "gone" })])), ["ch", "x"]);
+});
+
+test("heldOrder keeps an order shown before; new sessions go after, gone ones drop", () => {
+  const list = [asks("b"), { id: "a" }, { id: "n" }, { id: "c" }];
+  assert.deepEqual(ids(heldOrder(["a", "b", "c", "gone"], list)), ["a", "b", "c", "n"]);
 });
