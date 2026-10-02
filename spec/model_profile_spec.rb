@@ -175,6 +175,30 @@ RSpec.describe Samagotchi::ModelProfile do
           .to raise_error(described_class::UnknownHost, /unknown host 'openrouter'.*the configured hosts are main\z/)
       end
 
+      it "refuses a disabled host's prefix instead of sending the whole ref to the default host" do
+        write_config(<<~YAML)
+          hosts:
+            main: {host: localhost, port: 8080}
+            box: {host: box.local, port: 8080, enabled: false}
+          model_aliases:
+            boxed: box:gemma
+        YAML
+        %w[box:gemma Box:gemma box:org/model boxed].each do |name|
+          expect { described_class.check_host!(name) }
+            .to raise_error(described_class::UnknownHost, "host 'box' is disabled (enabled: false in config.yml)")
+        end
+        expect(described_class.check_host!("qwen3:8b")).to eq("qwen3:8b")
+        expect(described_class.check_host!("main:gemma")).to eq("main:gemma")
+      end
+
+      it "takes a disabled host that the hosts given include as enabled" do
+        write_config(<<~YAML)
+          hosts:
+            box: {host: box.local, port: 8080, enabled: false}
+        YAML
+        expect(described_class.check_host!("box:gemma", hosts: { "box" => {} })).to eq("box:gemma")
+      end
+
       it "checks against the hosts it is given (a HostRegistry's entries)" do
         expect(described_class.check_host!("alpha:org/model", hosts: { "alpha" => {} })).to eq("alpha:org/model")
         expect { described_class.check_host!("main:org/model", hosts: { "alpha" => {} }) }

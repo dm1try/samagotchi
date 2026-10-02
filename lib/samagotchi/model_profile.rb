@@ -131,8 +131,9 @@ module Samagotchi
     # qualified with a host that isn't configured, instead of sending the
     # whole ref to the default host as a model id, and when an alias after
     # a host prefix names another host ("openrouter:tiny" with tiny:
-    # box:…). Where a model comes in (an Engine starting or switching, a
-    # spawned session) calls it.
+    # box:…), or with a host config.yml has with enabled: false. Where a
+    # model comes in (an Engine starting or switching, a spawned session)
+    # calls it.
     # @param hosts [Hash, nil] the hosts a prefix may name (a HostRegistry's
     #   entries); config.yml's by default
     # @return [String] +model_name+
@@ -145,6 +146,9 @@ module Samagotchi
                            "use #{parsed.alias_name} or #{other}:#{parsed.alias_name}"
       end
       ref = parsed.ref
+      if !parsed.host_name && (disabled = disabled_host_prefix(ref, hosts, env))
+        raise UnknownHost, "host '#{disabled}' is disabled (enabled: false in config.yml)"
+      end
       warn_host_slash(ref, hosts) unless parsed.host_name
       host = Samagotchi::ConfigFile.unknown_host_prefix(ref, hosts: hosts)
       return model_name unless host
@@ -153,6 +157,26 @@ module Samagotchi
       near = Samagotchi::Config.near_names(host, names).first(3)
       hint = near.empty? ? "" : " (did you mean #{near.map { |n| "'#{n}'" }.join(' or ')}?)"
       raise UnknownHost, "unknown host '#{host}' in model '#{ref}'#{hint}; the configured hosts are #{names.join(', ')}"
+    end
+
+    # The prefix of "box:x" when box is a host config.yml has with
+    # enabled: false (left out of +hosts+), else nil.
+    def self.disabled_host_prefix(ref, hosts, env)
+      prefix, rest = ref.to_s.split(":", 2)
+      return nil if rest.to_s.strip.empty?
+
+      prefix = prefix.strip.downcase
+      return nil if hosts.keys.any? { |k| k.to_s.downcase == prefix }
+
+      raw = Samagotchi::ConfigFile.read_yaml(env: env)
+      raw = raw[Samagotchi::ConfigFile::HOSTS_KEY] if raw.is_a?(Hash)
+      return nil unless raw.is_a?(Hash)
+
+      cfg = raw.find { |name, _| name.to_s.strip.downcase == prefix }&.last
+      return nil unless cfg.is_a?(Hash)
+
+      enabled = cfg.key?("enabled") ? cfg["enabled"] : cfg[:enabled]
+      enabled == false || enabled.to_s.strip.downcase == "false" ? prefix : nil
     end
 
     # "box/x" named host box until '/' stopped naming a host: a saved
