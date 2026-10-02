@@ -13,7 +13,8 @@ module Samagotchi
     # host or model configured it asks the session's current model on its
     # host, resolved at each attempt the way a turn does (a /model switch
     # counts). An explicit `recap: {host_ref:, model:}` or `{base_url:,
-    # model:}` pins it; an incomplete one warns and leaves recap off.
+    # model:}` pins it; a model alone goes to its host, or where a bare
+    # --model goes; an incomplete one warns and leaves recap off.
     #
     # Single precedence path: explicit `recap:` kwarg > Config registry
     # (CLI > ENV > file > default). An explicit disable (`recap: false` as
@@ -42,14 +43,23 @@ module Samagotchi
       model = string_config(kwarg_config, :model) || registry_string("recap.model")
       label = model
 
+      # The model as any model ref (ModelRef): its alias applied once, and
+      # its host (own or the alias's) picks the recap host when host_ref
+      # doesn't.
+      parsed = model && host_registry.model_ref(model)
       target = nil
       if base_url.nil? && host_ref.nil? && model.nil?
         target = -> { session_target.call }
+      elsif base_url.nil? && host_ref.nil? && !parsed.host_name
+        # A model naming no host goes where a bare --model goes
+        # (HostRegistry#host_for_model: the default host unless another's
+        # list has it), resolved at each attempt.
+        target = lambda do
+          resolved = host_registry.resolve(model)
+          { base_url: resolved.openai_base_url, api_key_env: resolved.entry.api_key_env,
+            model: resolved.bare_model, label: label.to_s.strip }
+        end
       else
-        # The model as any model ref (ModelRef): its alias applied once, and
-        # its host (own or the alias's) picks the recap host when host_ref
-        # doesn't.
-        parsed = model && host_registry.model_ref(model)
         host_ref ||= parsed.host_name if parsed && base_url.nil?
         # If host_ref given, derive base_url (the host's OpenAI base) and its
         # API key variable from the host_registry entry

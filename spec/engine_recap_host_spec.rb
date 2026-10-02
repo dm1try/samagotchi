@@ -102,9 +102,28 @@ RSpec.describe "Engine recap on a configured host", :recap do
 
     it "still warns and stays off for an incomplete explicit config" do
       expect {
-        engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m", recap: { model: "small" })
+        engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m", recap: { host_ref: "box" })
         expect(engine.recap).to be_nil
       }.to output(/base_url\/model are missing/).to_stderr
+    end
+  end
+
+  describe "with a bare recap model id (no host)" do
+    it "sends it to the host a bare --model goes to (the default host)" do
+      engine = nil
+      expect {
+        engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big", recap: { model: "small" })
+      }.not_to output.to_stderr
+      expect(engine.recap.target).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "small")
+    end
+
+    it "takes recap.model from the environment the same way" do
+      old = ENV["SAMAGOTCHI_RECAP_MODEL"]
+      ENV["SAMAGOTCHI_RECAP_MODEL"] = "small"
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")
+      expect(engine.recap.target).to include(base_url: "http://box.test:8081/v1", model: "small")
+    ensure
+      old.nil? ? ENV.delete("SAMAGOTCHI_RECAP_MODEL") : ENV["SAMAGOTCHI_RECAP_MODEL"] = old
     end
   end
 

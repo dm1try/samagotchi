@@ -49,8 +49,9 @@ hosts:
 # url:, else http://host:port/v1) with its api_key_env; base_url is an OpenAI API
 # base as given (e.g. http://h:8081/v1). model is a model ref like any other: an
 # alias is applied, and its host:/the alias's host picks the host when host_ref
-# is left out (a model naming another host than host_ref turns recap off with a
-# warning). recap: false turns it off.
+# is left out; a model naming no host goes where a bare --model goes (the
+# default host). A model naming another host than host_ref turns recap off with
+# a warning. recap: false turns it off.
 recap:
   # host_ref: small-box
   # model: your-small-model-id
@@ -767,7 +768,7 @@ described in their own sections.
 | `server.read_timeout` | `600` | yes | Read timeout, seconds. |
 | `server.first_token_timeout` | 120 remote, off local | | Seconds to the first token; `0` = off. `hosts.<name>.first_token_timeout` wins. |
 | `recap.enabled` | on | | `false` (or `recap: false`) turns the idle recap off. |
-| `recap.model` | session's | yes | Model that writes the recap: an id, alias or `host:model` (the host then picks where to ask). |
+| `recap.model` | session's | yes | Model that writes the recap: an id, alias or `host:model` (the host then picks where to ask; a bare id goes where a bare `--model` goes). |
 | `recap.host_ref` | session's | yes | A `hosts:` name to ask (`host:` is accepted too, also a host name, not a model ref). |
 | `recap.base_url` | none | yes | An OpenAI API base to ask instead (`http://h:8081/v1`). |
 | `recap.inactivity` | `180` | yes | Idle seconds before a recap. |
