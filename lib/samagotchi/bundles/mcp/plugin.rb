@@ -13,13 +13,14 @@
 #           cwd: ~/scratch      # default: where chi runs
 #           tools: [echo, add]  # optional: only these (globs work)
 #           timeout: 120        # optional: this server's per-call timeout
-#           attach_image_paths: true  # default: a result that is only the path of an
-#                                     # image in the temp dir or cwd attaches it
+#           attach_image_paths: true  # default: an image path in the text, in the
+#                                     # temp dir or cwd, attaches it
 #
 # Image blocks in a result go to the model as images (text: "[image 1:
-# image/png, attached]"); so does a text block that is only the absolute
-# path of an image file under the system temp dir or the server's cwd
-# (chrome-devtools-mcp --slim answers a screenshot that way).
+# image/png, attached]"); so does an image file named in a text block,
+# under the system temp dir or the server's cwd: the block is only its
+# absolute path (chrome-devtools-mcp --slim answers a screenshot that way),
+# or it says one ending in an image extension ("Saved it to /tmp/a.png.").
 # A server that doesn't start, answer or list its tools is skipped with a
 # notice; the rest of chi works. /mcp lists the servers and their tools.
 require "digest"
@@ -541,11 +542,14 @@ class Plugin
       case block["type"]
       when "text"
         line = block["text"].to_s
-        path = image_path(line, server)
-        next line unless path
+        paths = image_paths(line, server).reject { |path| images.any? { |image| image[:path] == path } }
+        next line if paths.empty?
 
-        images << { path: path, name: File.basename(path) }
-        "#{line}\n[image #{images.size}: #{File.basename(path)}, attached]"
+        notes = paths.map do |path|
+          images << { path: path, name: File.basename(path) }
+          "[image #{images.size}: #{File.basename(path)}, attached]"
+        end
+        [line, *notes].join("\n")
       when "image"
         mime = block["mimeType"] || "unknown type"
         bytes = block["data"].to_s.unpack1("m")
@@ -564,14 +568,31 @@ class Plugin
     [text, images]
   end
 
-  # The path when +text+ is only the absolute path of an image file under
-  # the system temp dir or the server's cwd (a server's text can't pull
-  # in any image on disk), and the server's attach_image_paths isn't off.
-  def image_path(text, server)
-    return nil if server.config["attach_image_paths"] == false
+  # An absolute path ending in an image extension, inside a sentence
+  # ("Saved screenshot to /tmp/shot.png."): no spaces, quotes or brackets.
+  IMAGE_PATH_IN_TEXT = %r{(?<![\w/.~-])/[^\s"'`<>()\[\]{},;]+?\.(?:png|jpe?g|gif|webp)(?![\w/-])}i
 
-    path = text.strip
-    return nil unless path.start_with?("/") && !path.include?("\n") && File.file?(path)
+  # The images +text+ names, when the server's attach_image_paths isn't
+  # off: the whole text when it is one absolute path (any name), else each
+  # absolute path in it that ends in an image extension. Each must be an
+  # image file (by its bytes) under the system temp dir or the server's
+  # cwd: a server's text can't pull in any image on disk.
+  # @return [Array<String>] real paths, each once
+  def image_paths(text, server)
+    return [] if server.config["attach_image_paths"] == false
+
+    whole = text.strip
+    candidates = if whole.start_with?("/") && !whole.include?("\n") && File.file?(whole)
+                   [whole]
+                 else
+                   text.scan(IMAGE_PATH_IN_TEXT)
+                 end
+    candidates.filter_map { |path| image_path(path, server) }.uniq
+  end
+
+  # +path+'s real path when it is an image file under a root, else nil.
+  def image_path(path, server)
+    return nil unless File.file?(path)
 
     real = File.realpath(path)
     roots = [Dir.tmpdir, server.cwd].compact.map { |dir| File.realpath(dir) rescue nil }.compact

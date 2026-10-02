@@ -255,6 +255,27 @@ RSpec.describe "The mcp bundle" do
           expect(result).not_to have_key(:images)
         end
       end
+
+      it "checks a path inside a sentence as a whole-text one: under a root, an image by its bytes" do
+        notes = File.join(tmpdir, "notes.png")
+        File.write(notes, "not really a png")
+        text = "Saved to #{notes} and #{tiny_png}; see /nowhere/x.gif"
+        result = run_tool("mcp_fake_path", { "path" => text })
+        expect(result[:output]).to eq("[mcp_fake_path]\n#{text}")
+        expect(result).not_to have_key(:images)
+      end
+    end
+
+    it "attaches image paths inside a sentence, each once, past the sentence's full stop" do
+      shot = File.join(tmpdir, "screenshot.png")
+      second = File.join(tmpdir, "b.JPEG")
+      spaced = File.join(tmpdir, "page 2.jpg") # a space: only a whole-text path can have one
+      [shot, second, spaced].each { |path| FileUtils.cp(tiny_png, path) }
+      text = "Saved screenshot to #{shot}. Also (#{shot}), \"#{second}\" and #{spaced}."
+      result = run_tool("mcp_fake_path", { "path" => text })
+      expect(result[:output])
+        .to eq("[mcp_fake_path]\n#{text}\n[image 1: screenshot.png, attached]\n[image 2: b.JPEG, attached]")
+      expect(result[:images].map { |ref| ref[:name] }).to eq(%w[screenshot.png b.JPEG])
     end
 
     context "when the image is in the server's cwd" do

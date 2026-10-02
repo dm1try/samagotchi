@@ -10,6 +10,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- The `mcp` bundle (0.4.0, `chi update`) attaches an image an MCP tool names inside its text
+  (`Saved screenshot to /tmp/shot.png.`), not only a text that is the bare path; the same checks apply (an image by
+  its bytes, under the temp dir or the server's `cwd`).
 - `printf '2\n' | chi --attach ID` on a session already waiting on a question answers it: the piped line could be read
   before the question arrived and go in as a new prompt, and the attach then hung.
 - A REPL reading its answers from a pipe shows each answer line once (`? 2`), not `? ? 2`, above why it was refused

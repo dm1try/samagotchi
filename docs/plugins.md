@@ -722,10 +722,13 @@ bundles:
   ([Returning images](#returning-images): at most 4 per call, a line
   instead when the model can't see images). Its place in the text is a line,
   `[image 1: image/png, attached]`, so the model knows the order. A text
-  block that is **only the absolute path of an image file** is attached too
-  (`[image 1: screenshot.png, attached]` after the path), but only when the
-  file is under the system temp dir or the server's `cwd`: a server's text
-  can't pull in any image on disk. `chrome-devtools-mcp --slim` answers
+  block that is **the absolute path of an image file** is attached too
+  (`[image 1: screenshot.png, attached]` after the text), and so is an
+  absolute path ending in `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp` inside
+  a sentence (`Saved screenshot to /tmp/shot.png.`; such a path can't hold a
+  space). Either way only when the file is an image by its bytes and is
+  under the system temp dir or the server's `cwd`: a server's text can't
+  pull in any image on disk. `chrome-devtools-mcp --slim` answers
   `screenshot` that way; without `--slim`, `take_screenshot` returns an image
   block. `attach_image_paths: false` on a server leaves such paths as text.
 - **A server that exits** fails its calls with `Error: MCP server x is not
