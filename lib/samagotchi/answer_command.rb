@@ -8,6 +8,7 @@ require_relative "parent_report"
 require_relative "config"
 require_relative "cli/command"
 require_relative "cli/flags"
+require_relative "cli/parent_wait"
 
 module Samagotchi
   # `chi answer`: answer the question a session's worker waits on (exit 3
@@ -22,10 +23,8 @@ module Samagotchi
   # localhost web take answers from any local process.
   class AnswerCommand
     include CLI::Command
+    include CLI::ParentWait
 
-    POLL_INTERVAL = ReplyWait::POLL_INTERVAL
-    WORKER_GONE_AFTER = 5
-    FORMATS = %w[text json].freeze
     # guardrails.parent_approvals: what a parent may allow.
     PARENT_APPROVALS = %w[off once].freeze
 
@@ -70,22 +69,6 @@ module Samagotchi
       @state_dir = state_dir || Session.default_state_dir
     end
 
-    # @return [Integer] the exit status
-    def run
-      options = parse
-      return options if options.is_a?(Integer)
-
-      @json = options[:format] == "json"
-      @stderr = ParentReport::LastLine.new(@stderr) if @json
-      status = answer_and_wait(options)
-      if @json && !@reported && status == 1
-        detail = @stderr.last.to_s.delete_prefix("#{command_name}: ")
-        @stdout.puts(ParentReport.error_line(detail, session_id: @session_id))
-        @stdout.flush
-      end
-      status
-    end
-
     private
 
     def command_name = "chi answer"
@@ -110,8 +93,9 @@ module Samagotchi
       options.merge(id: parsed.args.first)
     end
 
+    # Answer, then wait for what comes next.
     # @return [Integer] the exit status
-    def answer_and_wait(options)
+    def run_parsed(options)
       id = resolve(options[:id]) or return 1
       qid = options[:question].strip
       session = Session.load(id, state_dir: @state_dir)
@@ -136,16 +120,7 @@ module Samagotchi
       end
       # Answered here, or no longer open (answered elsewhere, or a newer
       # question): what comes next either way.
-      wait(id, cursor: cursor, baseline: baseline, timeout: options[:timeout])
-    end
-
-    def resolve(given)
-      id = Session.resolve_id(given, state_dir: @state_dir)
-      Session.load(id, state_dir: @state_dir)
-      @session_id = id
-    rescue ArgumentError => e
-      failure(e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}")
-      nil
+      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout])
     end
 
     # The labels to send. A number is an option's place (1-based); an
@@ -237,26 +212,6 @@ module Samagotchi
 
     def worker_gone(id)
       "the worker is gone and the question with it; send the task again: chi send --wait -m \"…\" #{id}"
-    end
-
-    # @return [Integer] the exit status
-    def wait(id, cursor:, baseline:, timeout:)
-      result = ReplyWait.call(id, state_dir: @state_dir, cursor: cursor, timeout: timeout, baseline: baseline,
-                                  owner_grace: WORKER_GONE_AFTER, poll_interval: POLL_INTERVAL)
-      result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
-      @reported = true
-      ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,
-                                  json: @json, timeout: timeout)
-    rescue Interrupt
-      if @json
-        @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled), session_id: id))
-        @stdout.flush
-        @reported = true
-      end
-      error_line("chi answer: still running: chi --attach #{id}")
-      130
-    rescue ArgumentError
-      failure("the session is gone (deleted while waiting)")
     end
 
     # @return [Integer] 1, after the line

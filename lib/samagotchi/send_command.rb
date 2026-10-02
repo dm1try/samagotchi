@@ -12,6 +12,7 @@ require_relative "model_profile"
 require_relative "vision_support"
 require_relative "cli/command"
 require_relative "cli/flags"
+require_relative "cli/parent_wait"
 
 module Samagotchi
   # `chi send`: put text into sessions as the user's message, the same as
@@ -23,12 +24,9 @@ module Samagotchi
   # prints it: an agent's one-shot the user can watch in the web.
   class SendCommand
     include CLI::Command
+    include CLI::ParentWait
 
     CLIENT_ID = "cli:send"
-    POLL_INTERVAL = ReplyWait::POLL_INTERVAL
-    # No live worker this long while waiting: it died before it could mark
-    # the session (a worker takes well under a second to start).
-    WORKER_GONE_AFTER = 5
     # The cap on one turn's images the Bridge checks.
     MAX_IMAGES = ImageStore::MAX_TURN_REFS
 
@@ -131,30 +129,12 @@ module Samagotchi
       @state_dir = state_dir || Session.default_state_dir
     end
 
-    FORMATS = %w[text json].freeze
+    private
 
+    # Under #run (CLI::ParentWait).
     # @return [Integer] exit status: 0 all sent, 1 any refused or failed,
     #   2 usage; with --wait 0 answered, 3 waiting for an answer, 4 still
     #   running after --timeout, 130 Ctrl-C (the turn goes on)
-    def run
-      options = parse
-      return options if options.is_a?(Integer)
-
-      @json = options[:format] == "json"
-      # With --format json stdout is one JSON object, whatever the end: a
-      # failure before the wait is reported from stderr's last line.
-      @stderr = ParentReport::LastLine.new(@stderr) if @json
-      status = run_parsed(options)
-      if @json && !@reported && status == 1
-        detail = @stderr.last.to_s.delete_prefix("#{command_name}: ")
-        @stdout.puts(ParentReport.error_line(detail, session_id: @session_id))
-        @stdout.flush
-      end
-      status
-    end
-
-    private
-
     def run_parsed(options)
       # With --wait stdout is the answer alone.
       @info = options[:wait] ? @stderr : @stdout
@@ -252,16 +232,6 @@ module Samagotchi
       @stdin.read
     end
 
-    def resolve(given)
-      id = Session.resolve_id(given, state_dir: @state_dir)
-      Session.load(id, state_dir: @state_dir)
-      @session_id = id
-    rescue ArgumentError => e
-      message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
-      error_line("chi send: #{message}")
-      nil
-    end
-
     # A worker session like the web start page's: saved as running with the
     # message before its worker spawns, so lists and the web show it at
     # once. The full id, so a script can pass it on. Only the model's host
@@ -338,34 +308,13 @@ module Samagotchi
       live = session.status == Session::STATUS_RUNNING || SessionManager.session_owner(id, state_dir: @state_dir)
       wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
                          baseline: baseline_of(session).merge(messages: nil),
-                         timeout: options[:timeout], owner_grace: live ? WORKER_GONE_AFTER : nil)
+                         timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil)
     end
 
     # The session as it was before the message went in (ReplyWait's
     # baseline).
     def baseline_of(session, **options)
       ReplyWait.baseline_of(session, **options)
-    end
-
-    # @return [Integer] the exit status
-    def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: WORKER_GONE_AFTER)
-      result = ReplyWait.call(id, state_dir: @state_dir, cursor: cursor, timeout: timeout, baseline: baseline,
-                                  owner_grace: owner_grace, poll_interval: POLL_INTERVAL)
-      result.text = utf8(result.text)
-      @reported = true
-      ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,
-                                  json: @json, timeout: timeout)
-    rescue Interrupt
-      if @json
-        @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled), session_id: id))
-        @stdout.flush
-        @reported = true
-      end
-      error_line("chi send: still running: chi --attach #{id}")
-      130
-    rescue ArgumentError
-      error_line("chi send: the session is gone (deleted while waiting)")
-      1
     end
 
     # A new idle session's first turn, with the images. Its worker's Bridge
