@@ -25,8 +25,14 @@ module Samagotchi
     # isn't the turn's but comes while one runs (an anytime command's, such
     # as /btw) goes after that turn: its prompt is already in the history.
     # A failed turn leaves no prompt, so its cards stay before the next one.
+    #
+    # Notices (hook notices, load warnings, "asking again" rows) and cards
+    # (with questions) are capped apart, +capacity+ each, so a burst of
+    # notices can't push out a card. An open question (an approval too) is
+    # never pushed out: the oldest other card or answered question goes.
     class CardStore
       CAPACITY = 20
+      NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry].freeze
 
       def initialize(capacity: CAPACITY)
         @capacity = capacity
@@ -144,7 +150,18 @@ module Samagotchi
 
       def push(entry)
         @entries << entry
-        @entries.shift while @entries.size > @capacity
+        notice = notice?(entry)
+        kind = @entries.select { |e| notice?(e) == notice }
+        return if kind.size <= @capacity
+
+        evict = kind.find { |e| !open_question?(e) }
+        @entries.delete_at(@entries.index { |e| e.equal?(evict) }) if evict
+      end
+
+      def notice?(entry) = NOTICE_TYPES.include?(entry[:type])
+
+      def open_question?(entry)
+        entry[:type] == :question && !entry.key?(:answer) && !entry[:cancelled]
       end
     end
   end

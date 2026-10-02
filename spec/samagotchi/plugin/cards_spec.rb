@@ -131,6 +131,29 @@ RSpec.describe "Cards" do
                                       in_turn: false, turns_since: 0, current: false)
     end
 
+    it "caps notices apart from cards and questions, so a burst of notices evicts only older notices" do
+      store.call(card("a"))
+      turn(:turn_started)
+      store.call({ type: :question_requested, pending_question: { id: "q1", question: "Allow?", kind: "approval" } })
+      %w[n1 n2 n3 n4 n5].each { |text| store.call({ type: :hook_notice, hook: "h", text: text, level: :info }) }
+      store.call({ type: :empty_answer_retry, attempt: 1, of: 2 })
+      expect(store.list.map { |e| e[:id] || e[:text] || e.dig(:pending_question, :id) || e[:type] })
+        .to eq(["a", "q1", "n4", "n5", :empty_answer_retry])
+    end
+
+    it "never evicts an open question: the oldest other card or answered question goes" do
+      turn(:turn_started)
+      store.call({ type: :question_requested, pending_question: { id: "q1", question: "Which?" } })
+      store.call({ type: :question_requested, pending_question: { id: "q2", question: "Which?" } })
+      store.call({ type: :question_answered, id: "q2", answer: { selected: ["A"] } })
+      %w[a b c].each { |id| store.call(card(id, in_turn: true)) }
+      expect(store.list.map { |e| e[:id] || e.dig(:pending_question, :id) }).to eq(%w[q1 b c])
+      store.call({ type: :question_requested, pending_question: { id: "q3", question: "Which?" } })
+      store.call({ type: :question_requested, pending_question: { id: "q4", question: "Which?" } })
+      store.call({ type: :question_requested, pending_question: { id: "q5", question: "Which?" } })
+      expect(store.list.map { |e| e[:id] || e.dig(:pending_question, :id) }).to eq(%w[q1 q3 q4 q5])
+    end
+
     it "replaces a card with the same id where it was, marked updated" do
       store.call(card("a"))
       store.call(card("b"))

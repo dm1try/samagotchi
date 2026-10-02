@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
   its bytes, under the temp dir or the server's `cwd`).
 - An MCP server that sends `notifications/tools/list_changed` has its tools listed again (`mcp` 0.4.0): its saved list
   and the model's tools are replaced from the next turn on. They were only logged.
+- A burst of plugin notices no longer pushes cards and questions out of what a reloaded web page or a joining
+  `chi --attach` shows: the worker keeps the last 20 of each apart, and never drops a question still waiting for its
+  answer.
 - `printf '2\n' | chi --attach ID` on a session already waiting on a question answers it: the piped line could be read
   before the question arrived and go in as a new prompt, and the attach then hung.
 - A REPL reading its answers from a pipe shows each answer line once (`? 2`), not `? ? 2`, above why it was refused
