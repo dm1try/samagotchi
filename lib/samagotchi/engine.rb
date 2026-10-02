@@ -56,6 +56,7 @@ require_relative "thinking"
 require_relative "answer_display"
 require_relative "edit_preview"
 require_relative "question_desk"
+require_relative "relay_desk"
 require_relative "guardrail_wiring"
 require_relative "plugin_tasks"
 
@@ -161,6 +162,8 @@ module Samagotchi
         interface: -> { interface },
         user_input: ->(sid) { ArchiveStore.user_input(sid, state_dir: session_state_dir) }
       )
+      # Built here, not on first use: the turn thread and the Bridge's read it.
+      @relay_desk = RelayDesk.new
       @hooks = load_hooks_from_config
       load_hooks_from_bundles
       # The tools this session offers (the prompts' declarations and the
@@ -1311,7 +1314,12 @@ module Samagotchi
     RelayPeer = Struct.new(:engine) do
       def open_question(fields, watch: nil) = engine.open_question(fields, watch: watch)
       def interface = engine.interface
+      def relay_desk = engine.relay_desk
     end
+
+    # This worker's relays of its delegates' approvals (memory only).
+    # @return [RelayDesk]
+    attr_reader :relay_desk
 
     # The relay's view of this Engine, or nil when it can't host a relay: a
     # worker's Engine only (its Bridge is what a child verifies against;
