@@ -18,7 +18,7 @@ and commands may change between minor versions. How releases are made:
   for it.
 - An approval answered with `chi answer` can be denied, not allowed: allowing is the user's (the web, `chi --attach`).
   `guardrails.parent_approvals: once` in config.yml (no environment variable) lets "Allow
-  once" through, never a wider scope; an approval whose offered scopes are missing lets only Deny through. The worker
+  once" through, never a wider scope, and never on a call that changes chi's own config, hooks or guardrail rules; an approval whose offered scopes are missing lets only Deny through. The worker
   checks it again with its own config (`chi answer` marks its answers); the web and `chi --attach` keep every scope.
 - `chi sessions list` shows a session waiting for an answer as `waiting`; `--format json` has `waiting` (`question`,
   `approval` or `hook`) and `waiting_id`, the question's id for `chi answer --question`.

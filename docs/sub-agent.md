@@ -58,7 +58,8 @@ a parent may deny it (`--option Deny --text "why"`, `--text` alone, or
 `--dismiss`) but not allow it: `chi answer` refuses an Allow with exit 1 and
 `allowing a tool call is up to the user: approve it in the web or chi --attach
 ID`. With `guardrails.parent_approvals: once` in chi's config.yml (it has no
-environment variable), "Allow once" goes through; the wider scopes never do. See
+environment variable), "Allow once" goes through; the wider scopes never do,
+and neither does any allow on chi's own config, hooks or guardrail rules. See
 [Guardrails](guardrails.md#approvals-from-a-parent-agent).
 
 The worker checks it again with its own config.yml. The guardrails settings

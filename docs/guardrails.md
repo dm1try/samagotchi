@@ -103,6 +103,14 @@ directory, the rule) stay with the web and the terminal. An approval that
 doesn't offer "once" can't be allowed from a parent, and neither can one whose
 offered scopes are missing or don't fit its options: then only Deny goes.
 
+Whatever the setting, a parent can't allow a call on chi's own files: a
+`write`, `edit` or `execute` on the config dir (config.yml, installed bundles'
+rules), the hooks dir or the approval store, by its rule (`chi-config`,
+`chi-hooks`, `shell-touches-chi`), its paths or its command. "Allow once" on a
+config.yml rewrite would allow everything from then on, so those stay with the
+user: `chi answer` and the worker refuse the allow with `only the user can
+allow it`.
+
 The guardrails settings (`enabled`, `small_models`, `parent_approvals`) are
 read from config.yml only: they have no environment variable, and a worker
 chi starts unsets every `SAMAGOTCHI_GUARDRAILS_*` it would inherit. What a

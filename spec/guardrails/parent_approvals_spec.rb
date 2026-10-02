@@ -100,4 +100,57 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
     expect(Samagotchi::Config.resolve("guardrails.enabled", file_data: file, env: {})).to be(false)
     expect(Samagotchi::Config.resolve("guardrails.small_models", file_data: file, env: {})).to eq("x*")
   end
+
+  # chi's own config, hooks and guardrail rules stay with the user, whatever
+  # parent_approvals says: an "Allow once" there would turn once into always.
+  describe "an approval that touches chi's own config, hooks or guardrails" do
+    let(:config_home) { Dir.mktmpdir("pa-config") }
+    let(:once_only) { approval.merge(options: ["Allow once", "Allow this call for the session", "Deny"]) }
+
+    around do |example|
+      with_env("XDG_CONFIG_HOME" => config_home) { example.run }
+    ensure
+      FileUtils.rm_rf(config_home)
+    end
+
+    def facts(fields) = once_only.merge(approval: { tool: "write", scopes: %w[once session] }.merge(fields))
+
+    it "is refused as protected for any allow, with once or off; a deny still goes" do
+      [
+        facts(source: "core", rule: "chi-config", paths: ["/elsewhere/config.yml"]),
+        facts(source: "core", rule: "chi-hooks"),
+        facts(tool: "execute", source: "bundle guardrails", rule: "shell-touches-chi", command: "ls"),
+        facts(rule: "write-outside-repo", paths: [File.join(config_home, "samagotchi", "config.yml")]),
+        facts(rule: "write-outside-repo", paths: [File.join(config_home, "samagotchi", "memories", ".bundles", "x", "r.yml")]),
+        facts(tool: "edit", rule: "write-outside-repo", paths: [File.join(config_home, "samagotchi", "hooks", "h.rb")]),
+        facts(tool: "execute", rule: "my-ask", command: "sed -i s/a/b/ #{config_home}/samagotchi/config.yml"),
+        facts(tool: "execute", rule: "my-ask", command: "cat > ~/.config/samagotchi/hooks/x.rb")
+      ].each do |pending|
+        %w[off once].each do |setting|
+          expect(refusal(pending, [0], setting)).to eq(:protected), pending[:approval].inspect
+        end
+        expect(refusal(pending, [2], "once")).to be_nil
+        expect(refusal(pending, [], "once")).to be_nil
+      end
+    end
+
+    it "covers a hooks_dir set in config.yml" do
+      hooks = Dir.mktmpdir("pa-hooks")
+      FileUtils.mkdir_p(File.join(config_home, "samagotchi"))
+      File.write(File.join(config_home, "samagotchi", "config.yml"), "hooks:\n  hooks_dir: #{hooks}\n")
+      expect(refusal(facts(rule: "x", paths: [File.join(hooks, "a.rb")]), [0], "once")).to eq(:protected)
+    ensure
+      FileUtils.rm_rf(hooks)
+    end
+
+    it "leaves other approvals to the setting" do
+      pending = facts(tool: "execute", rule: "git-push", command: "git push", paths: nil)
+      expect(refusal(pending, [0], "once")).to be_nil
+      expect(refusal(facts(rule: "write-outside-repo", paths: ["/tmp/x.txt"]), [0], "once")).to be_nil
+    end
+
+    it "says only the user can allow it" do
+      expect(described_class.message(:protected, "abc")).to include("only the user can allow")
+    end
+  end
 end

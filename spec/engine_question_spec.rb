@@ -377,6 +377,18 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(result[:answer]).to include(selected_indices: [0])
     end
 
+    it "refuses even Allow once with once on chi's own config (the user's alone)" do
+      setting("once")
+      engine = build_engine
+      fields = approval_fields.merge(approval: { tool: "write", rule: "chi-config", source: "core", scopes: %w[once session] })
+      thread, result, qid = open_approval(engine, fields)
+      expect { engine.answer_question(id: qid, selected: ["Allow once"], client_id: parent) }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:protected) }
+      engine.answer_question(id: qid, selected: ["Allow once"])
+      thread.join(2)
+      expect(result[:answer]).to include(selected_indices: [0])
+    end
+
     it "fails closed on an approval without scopes: only Deny" do
       setting("once")
       engine = build_engine
