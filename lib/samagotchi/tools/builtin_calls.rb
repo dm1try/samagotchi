@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "../tool_declarations"
 require_relative "ask_user_question"
 
@@ -18,7 +19,7 @@ module Samagotchi
     # and the handler reading it.
     #
     # A tool that is not built in keeps its arguments whole on args: (typed
-    # by its schema at dispatch, Tools::Args) with +raw+ as its content.
+    # by its schema at dispatch, Tools::Args) with their JSON as its content.
     module BuiltinCalls
       # Per tool, what the schema alone doesn't say:
       #   content:  the property (or ordered list of keys to try) that fills
@@ -103,7 +104,7 @@ module Samagotchi
       # @param name [String]
       # @param args [Hash] string keys, as the model gave them
       # @param raw [String, nil] the call's text, the content of a tool
-      #   that isn't built in
+      #   that isn't built in when no argument could be read from it
       # @return [Hash]
       def build(name, args, raw: nil)
         name = name.to_s
@@ -139,7 +140,17 @@ module Samagotchi
       end
 
       def passthrough(name, args, raw)
-        { name: name, content: raw.nil? ? args.values.join(" ") : raw.to_s, path: nil, scope: nil, args: args }
+        { name: name, content: passthrough_content(args, raw), path: nil, scope: nil, args: args }
+      end
+
+      # The arguments as JSON, one form for every model format and Ruby
+      # version; the raw text when none could be read from it.
+      def passthrough_content(args, raw)
+        return raw.to_s if args.empty? && !raw.to_s.empty?
+
+        JSON.generate(args)
+      rescue JSON::GeneratorError
+        args.values.join(" ")
       end
     end
   end

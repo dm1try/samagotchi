@@ -305,10 +305,10 @@ module Samagotchi
       end
 
       def parse(text)
-        read(text).map { |call| Tools::BuiltinCalls.build(call[:name], call[:args], raw: call[:raw]) }
+        read(text).map { |call| Tools::BuiltinCalls.build(call[:name], call[:args]) }
       end
 
-      # Each <tool_call> block as {name:, args:, raw:}: its <parameter=…>
+      # Each <tool_call> block as {name:, args:}: its <parameter=…>
       # (or <arg_key>/<arg_value>) text by lowercased key, unbuilt.
       def read(text)
         results = []
@@ -324,8 +324,7 @@ module Samagotchi
 
           body = text[body_start...close_pos]
           if (name = qwen_function_name(body))
-            params = qwen_params(body)
-            results << { name: name, args: params, raw: params.to_s }
+            results << { name: name, args: qwen_params(body) }
           end
           pos = close_pos + tool_close.length
         end

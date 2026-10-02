@@ -405,7 +405,8 @@ stripped of surrounding whitespace, except file text, an edit's
 
 A `write`'s `content:` is the file text; an `edit` carries `old_text:` and
 `new_text:` (its `content:` is `""`). A plugin or MCP tool's call has its
-arguments whole on `args:` (string keys) instead.
+arguments whole on `args:` (string keys) instead, and its `content:` is those
+arguments as JSON.
 
 ## Bundle Hooks (unified workflow bundle)
 

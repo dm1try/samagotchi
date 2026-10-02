@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "../log"
 require_relative "../hooks/registry"
 require_relative "../tools/args"
@@ -298,12 +299,24 @@ module Samagotchi
           schema: spec[:schema], label: spec[:label],
           handler: lambda { |call, _kctx|
             result = block.call(Api.args_of(call, parameters), context)
-            # A String (a ToolResult too, with its images) as it is.
-            result.is_a?(String) ? result : result.to_s
+            Api.result_text(result)
           },
           preview: preview && ->(call) { preview.call(Api.args_of(call, parameters))&.to_s },
           targets: targets && ->(call) { targets.call(Api.args_of(call, parameters)) }
         }
+      end
+
+      # A tool's result as the model reads it: a String (a ToolResult too,
+      # with its images) as it is, a Hash or Array as JSON (its #to_s is
+      # Hash#inspect, which changes with the Ruby version), else #to_s.
+      def self.result_text(result)
+        case result
+        when String then result
+        when Hash, Array then JSON.generate(result)
+        else result.to_s
+        end
+      rescue JSON::GeneratorError
+        result.to_s
       end
 
       # A tool call's arguments as a plugin sees them: the parsers' args:

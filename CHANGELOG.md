@@ -40,6 +40,7 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle install` and `chi bundle status` say when a bundle's hooks won't load because chi is older than its `requires_chi`, also for a bundle without a plugin.
 - A model named with a disabled host's prefix (`box:model` where `hosts.box` has `enabled: false`) is refused with "host 'box' is disabled" instead of going to the default host as a model id.
 - A Stop while a turn is still starting no longer uses up the warning about guardrails or plugins that failed to load: the next turn shows it.
+- A plugin or MCP tool call reads the same in logs, rows and hooks' `content` whatever the model format or Ruby version: its arguments as JSON (Qwen calls showed Ruby's Hash#inspect, which changed in Ruby 3.4). A plugin tool returning a Hash or Array gives the model JSON too.
 
 ## [0.12.0] - 2026-10-02
 

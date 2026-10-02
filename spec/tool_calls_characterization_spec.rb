@@ -504,14 +504,14 @@ RSpec.describe "Tool call characterization" do
      {name: "ask_user_question", content: "Pick?", path: nil, scope: nil, question: "Pick?", options: nil, header: nil, multi_select: nil, allow_freeform: nil}],
     ["echo_args plugin", :gemma, "echo_args",
      "text:<|\"|>hi<|\"|>,times:<|\"|>3<|\"|>",
-     {name: "echo_args", content: "text:hi,times:3", path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
+     {name: "echo_args", content: '{"text":"hi","times":"3"}', path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
     ["echo_args plugin", :qwen, "echo_args",
      "<tool_call>\n<function=echo_args>\n<parameter=text>\nhi\n</parameter>\n<parameter=times>\n3\n</parameter>\n</function>\n</tool_call>",
      # content is the params Hash's #to_s, whose spacing changed in Ruby 3.4 ("a" => 1 vs "a"=>1).
-     {name: "echo_args", content: {"text" => "hi", "times" => "3"}.to_s, path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
+     {name: "echo_args", content: '{"text":"hi","times":"3"}', path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
     ["echo_args plugin", :chat, "echo_args",
      {"text" => "hi", "times" => "3"},
-     {name: "echo_args", content: "hi 3", path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
+     {name: "echo_args", content: '{"text":"hi","times":"3"}', path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
     ["gemma: execute double-quoted escapes", :gemma, "execute",
      "command:\"grep \\\"\\d\\\" x\\n\"",
      {name: "execute", content: "grep \"\\d\" x", path: nil, scope: nil, cwd: nil}],
@@ -571,7 +571,7 @@ RSpec.describe "Tool call characterization" do
      {name: "send_note", content: "hi", path: nil, scope: nil, session: "<|"}],
     ["gemma: plugin nested values", :gemma, "echo_args",
      "text:<|\"|>hi<|\"|>,times:3,loud:true,tags:[<|\"|>a<|\"|>],opt:{k:<|\"|>v<|\"|>}",
-     {name: "echo_args", content: "text:hi,times:3,loud:true,tags:[a],opt:{k:v}", path: nil, scope: nil, args: {"text" => "hi", "times" => 3, "loud" => true, "tags" => ["a"], "opt" => {"k" => "v"}}}],
+     {name: "echo_args", content: '{"text":"hi","times":3,"loud":true,"tags":["a"],"opt":{"k":"v"}}', path: nil, scope: nil, args: {"text" => "hi", "times" => 3, "loud" => true, "tags" => ["a"], "opt" => {"k" => "v"}}}],
     ["gemma: plugin unparsable body", :gemma, "echo_args",
      "text:<|\"|>hi",
      {name: "echo_args", content: "text:hi", path: nil, scope: nil, args: {}}],
@@ -622,7 +622,7 @@ RSpec.describe "Tool call characterization" do
      {name: "execute", content: "ls", path: nil, scope: nil, cwd: nil}],
     ["chat: plugin typed args", :chat, "echo_args",
      {"text" => "hi", "times" => 3},
-     {name: "echo_args", content: "hi 3", path: nil, scope: nil, args: {"text" => "hi", "times" => 3}}],
+     {name: "echo_args", content: '{"text":"hi","times":3}', path: nil, scope: nil, args: {"text" => "hi", "times" => 3}}],
   ].freeze
 
   rows.each do |label, format, tool, input, expected|

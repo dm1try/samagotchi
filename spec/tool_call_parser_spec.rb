@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 require "samagotchi/tool_call_parser"
 require "samagotchi/model_profile"
+require "samagotchi/llm/native_tool_normalizer"
 RSpec.describe Samagotchi::ToolCallParser do
   describe "gemma4: current_model_only in memory_write" do
     let(:profile) { Samagotchi::ModelProfile.normalize(:gemma4) }
@@ -121,6 +122,23 @@ RSpec.describe Samagotchi::ToolCallParser do
       call = parser.parse("<tool_call>\n<function=save_note>\n<parameter=path>\nn.md\n</parameter>\n" \
                           "<parameter=meta>\n{\"priority\": 2}\n</parameter>\n</function>\n</tool_call>").first
       expect(call).to include(name: "save_note", args: { "path" => "n.md", "meta" => '{"priority": 2}' })
+    end
+
+    # Was Hash#inspect for Qwen ({"a"=>"1"} on Ruby 3.3, {"a" => "1"} on 3.4),
+    # the body text for Gemma and the values joined for native calls.
+    it "content: the arguments as JSON, the same in every format and Ruby version" do
+      json = '{"path":"n.md","priority":2}'
+      gemma = described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4))
+      qwen = described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36))
+      native = Samagotchi::LLM::NativeToolNormalizer.normalize(
+        Struct.new(:name, :arguments).new("save_note", { "path" => "n.md", "priority" => 2 })
+      )
+
+      expect(gemma.parse('<|tool_call>call:save_note{path:<|"|>n.md<|"|>,priority:2}<tool_call|>').first[:content]).to eq(json)
+      expect(qwen.parse("<tool_call>\n<function=save_note>\n<parameter=path>\nn.md\n</parameter>\n" \
+                        "<parameter=priority>\n2\n</parameter>\n</function>\n</tool_call>").first[:content])
+        .to eq('{"path":"n.md","priority":"2"}')
+      expect(native[:content]).to eq(json)
     end
   end
 

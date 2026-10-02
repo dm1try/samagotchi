@@ -49,10 +49,17 @@ RSpec.describe Samagotchi::Tools::BuiltinCalls do
     expect(described_class.build("ask_user_question", { "question" => "Q?", "options" => "]" })[:options]).to eq("]")
   end
 
-  it "gives a tool that isn't built in its arguments whole, with the raw text as content" do
-    expect(described_class.build("echo_args", { "text" => "hi", "times" => 3 }, raw: "text:hi,times:3"))
-      .to eq(name: "echo_args", content: "text:hi,times:3", path: nil, scope: nil, args: { "text" => "hi", "times" => 3 })
-    expect(described_class.build("echo_args", { "text" => "hi", "times" => 3 })[:content]).to eq("hi 3")
+  it "gives a tool that isn't built in its arguments whole, with their JSON as content whatever the format" do
+    args = { "text" => "hi", "times" => 3 }
+    json = '{"text":"hi","times":3}'
+    expect(described_class.build("echo_args", args, raw: "text:hi,times:3"))
+      .to eq(name: "echo_args", content: json, path: nil, scope: nil, args: args)
+    expect(described_class.build("echo_args", args)[:content]).to eq(json)
+  end
+
+  it "keeps the raw text as content when no argument could be read from it" do
+    expect(described_class.build("echo_args", {}, raw: "garbled body")[:content]).to eq("garbled body")
+    expect(described_class.build("echo_args", {})[:content]).to eq("{}")
   end
 
   it "says which are built in and how Gemma's fallback finds the main argument" do
