@@ -396,6 +396,19 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:active_tools]).to be_empty
   end
 
+  it "saves a guardrail-denied call's record as blocked, not as an error (the web's reload reads it)" do
+    metrics = described_class.new
+    metrics.call(type: :turn_started, session_id: "denied", prompt: "x")
+    metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute")
+    metrics.call(type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute",
+                 activity: { status: "blocked" })
+    metrics.call(type: :turn_canceled, reason: "hook")
+
+    snap = metrics.snapshot
+    expect(snap[:tool_records]).to contain_exactly(hash_including(tool: "execute", status: "blocked"))
+    expect(snap[:turn_records].last).to include(tool_errors: 0)
+  end
+
   it "leaves a guardrail approval wait out of a tool record's duration" do
     monotonic = 10.0
     metrics = described_class.new(clock: -> { monotonic })

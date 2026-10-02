@@ -85,6 +85,19 @@ test("addCompleted marks a task_wait the user's Stop ended as stopped, not ok", 
   assert.equal(row.status, "stopped");
 });
 
+test("addCompleted marks a guardrail-denied call as blocked, not ok", () => {
+  const m = newActivity();
+  addStarted(m, { iteration: 3, call_index: 1, tool: "execute", params: "echo hi" });
+  const row = addCompleted(m, {
+    iteration: 3,
+    call_index: 1,
+    tool: "execute",
+    output: "[execute] Error: denied by guardrail (bundle loop-guard): repeated call.",
+    activity: { action: "running command", status: "blocked", tool: "execute" },
+  });
+  assert.equal(row.status, "blocked");
+});
+
 test("addCompleted synthesizes a row when no start was seen (replay gap)", () => {
   const m = newActivity();
   const row = addCompleted(m, {

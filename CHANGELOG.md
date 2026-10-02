@@ -35,6 +35,8 @@ and commands may change between minor versions. How releases are made:
   before the question arrived and go in as a new prompt, and the attach then hung.
 - A REPL reading its answers from a pipe shows each answer line once (`? 2`), not `? ? 2`, above why it was refused
   or invalid.
+- The web marks a tool call a guardrail denied (loop-guard, the `guardrails` bundle, a parent's or the user's Deny)
+  `blocked` in red, as the TUI does, live and after a reload; it showed a green `done`.
 
 ### Changed
 

@@ -180,6 +180,16 @@ test("turnHistoryHtml: a saved task_wait record the user's Stop ended reloads as
   assert.match(html, /<span class="activity-status stopped">stopped<\/span><span class="activity-tool">task_wait<\/span>/);
 });
 
+test("turnHistoryHtml: a saved guardrail-denied record reloads as blocked, not done", () => {
+  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Searching." }];
+  const denied = normalizeTiming({
+    turn_records: [{ id: "T1", status: "canceled", duration_ms: 900 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "blocked", duration_ms: 0 }],
+  });
+  const html = turnHistoryHtml(items, denied, { thumbs });
+  assert.match(html, /<span class="activity-status blocked">blocked<\/span><span class="activity-tool">execute<\/span>/);
+});
+
 test("turnHistoryHtml with parts: an edit's row keeps its collapsed diff after a reload", () => {
   const diff = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1, new_file: false };
   const items = [
