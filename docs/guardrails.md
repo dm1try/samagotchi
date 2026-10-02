@@ -130,7 +130,8 @@ scope.
 A parent may also type its answer into chi itself: a piped `chi --attach ID`
 or `printf '2\n' | chi --no-shared -p …`. So chi treats an answer as a
 parent's, held to the same setting, when its input isn't a terminal or an
-agent marker is set: `CLAUDECODE`, `AI_AGENT`, or `SAMAGOTCHI_PARENT_SESSION`,
+agent marker is set: `CLAUDECODE` (Claude Code), `AI_AGENT`, `CODEX_THREAD_ID`
+(Codex CLI), or `SAMAGOTCHI_PARENT_SESSION`,
 which chi's own `execute` and `task_create` export (the session's id) into the
 commands they run. The markers survive a PTY wrapper (`script`, `expect`). A
 person at a terminal with no marker keeps every scope.

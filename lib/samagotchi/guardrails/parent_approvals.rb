@@ -33,8 +33,11 @@ module Samagotchi
       # chi started there answers as a parent (#parent_process?).
       PARENT_SESSION_ENV = "SAMAGOTCHI_PARENT_SESSION"
       # Environment variables that say an agent runs this process: Claude
-      # Code's, and chi's own. They survive a PTY wrapper (script, expect).
-      AGENT_MARKERS = ["CLAUDECODE", "AI_AGENT", PARENT_SESSION_ENV].freeze
+      # Code's, the AI_AGENT convention, Codex CLI's (CODEX_THREAD_ID, which
+      # Codex sets on every command its shell tool runs), and chi's own.
+      # They survive a PTY wrapper (script, expect). The docs list them too
+      # (guardrails.md, sub-agent.md).
+      AGENT_MARKERS = ["CLAUDECODE", "AI_AGENT", "CODEX_THREAD_ID", PARENT_SESSION_ENV].freeze
       # Rules that ask about chi's own config and hooks: the core
       # ProtectedPaths asks and the guardrails bundle's shell rule.
       PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi].freeze

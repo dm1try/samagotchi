@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Codex CLI counts as a parent agent: an answer typed into `chi --attach` or the REPL from a command Codex runs
+  (`CODEX_THREAD_ID` set) is held to `guardrails.parent_approvals`, as one from Claude Code is.
+
 ## [0.13.0] - 2026-10-02
 
 ### Added

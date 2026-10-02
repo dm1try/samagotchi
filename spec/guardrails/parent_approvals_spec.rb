@@ -167,7 +167,7 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
     end
 
     it "is a parent on a terminal when an agent marker is set (a PTY wrapper keeps the environment)" do
-      %w[CLAUDECODE AI_AGENT SAMAGOTCHI_PARENT_SESSION].each do |marker|
+      %w[CLAUDECODE AI_AGENT CODEX_THREAD_ID SAMAGOTCHI_PARENT_SESSION].each do |marker|
         expect(described_class.parent_process?(env: { marker => "1" }, stdin: tty)).to be(true), marker
       end
       expect(described_class.parent_process?(env: { "CLAUDECODE" => "" }, stdin: tty)).to be(false)

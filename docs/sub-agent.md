@@ -66,7 +66,7 @@ and neither does any allow on chi's own config, hooks or guardrail rules. See
 
 An answer typed into `chi --attach` or the REPL counts as a parent's too when
 stdin isn't a terminal or an agent marker (`CLAUDECODE`, `AI_AGENT`,
-`SAMAGOTCHI_PARENT_SESSION`) is set.
+`CODEX_THREAD_ID`, `SAMAGOTCHI_PARENT_SESSION`) is set.
 
 The worker checks it again with its own config.yml. The guardrails settings
 have no environment variables, and a worker drops any `SAMAGOTCHI_GUARDRAILS_*`
