@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
   `guardrails.parent_approvals: once` lets "Allow once" through, never a wider scope.
 - `chi sessions list` shows a session waiting for an answer as `waiting`; `--format json` has `waiting` (`question`,
   `approval` or `hook`).
+- docs/sub-agent.md: running chi as another agent's sub-agent, with instructions to paste into its `CLAUDE.md` /
+  `AGENTS.md`.
 
 ### Changed
 

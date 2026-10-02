@@ -151,6 +151,12 @@ stdin plus `-m` puts the stdin above the message as a `>` quote. `chi send --new
 starts a session with the message instead (it shows in the web at once), and
 `--wait` blocks and prints the answer.
 
+Another agent (Claude Code, Codex) can run chi as a sub-agent the same way:
+`chi send --new --wait --format json` returns chi's reply, or the question chi
+stopped on, which the agent answers with `chi answer`. See
+[chi as a sub-agent](docs/sub-agent.md) for a snippet to paste into its
+`CLAUDE.md` / `AGENTS.md`.
+
 ### Send to chi (macOS)
 
 `chi desktop install` builds a small native helper: select text in any app →
@@ -179,6 +185,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Configuration](docs/configuration.md): `config.yml`, hosts, model server transports, timeouts, retries, logs
 - [Memory](docs/memory.md): scopes and model-specific overlays
 - [Sessions](docs/sessions.md): storage, retention, `chi sessions`
+- [chi as a sub-agent](docs/sub-agent.md): `chi send --wait --format json`, `chi answer`, instructions for a parent agent
 - [Desktop helper](docs/desktop.md): `chi desktop`, the macOS "Send to chi" Service and hotkey
 - [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals
 - [Hooks](docs/hooks.md): plugin hooks and bundle hooks
