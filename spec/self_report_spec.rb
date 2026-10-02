@@ -169,6 +169,19 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("context window")).to eq("32000 (env; the server's n_ctx wins at runtime)")
   end
 
+  it "reports the current model's own window, else its host's, over the global one, and says which" do
+    allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model")
+    write_config("hosts:\n  main:\n    host: 10.0.0.5\n    window_tokens: 48000\n" \
+                 "models:\n  spec-model:\n    window_tokens: 96000\ncontext:\n  window_tokens: 64000\n")
+    expect(field("context window")).to eq("96000 (models: spec-model; the server's n_ctx wins at runtime)")
+
+    write_config("hosts:\n  main:\n    host: 10.0.0.5\n    window_tokens: 48000\ncontext:\n  window_tokens: 64000\n")
+    expect(field("context window")).to eq("48000 (hosts.main; the server's n_ctx wins at runtime)")
+
+    write_config("hosts:\n  main:\n    host: 10.0.0.5\ncontext:\n  window_tokens: 64000\n")
+    expect(field("context window")).to eq("64000 (config; the server's n_ctx wins at runtime)")
+  end
+
   it "reports the configured model with its host" do
     write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
     allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model")

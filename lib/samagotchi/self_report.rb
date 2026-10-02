@@ -56,7 +56,7 @@ module Samagotchi
         ["profile", model ? profile_for(model, env) : "-"],
         ["thinking", model ? thinking_for(model, env) : "-"],
         ["served model", model ? served_model_for(model, env) : "-"],
-        ["context window", context_window(env)],
+        ["context window", context_window(env, model)],
         ["bundles", bundles_summary],
         ["desktop", desktop_summary(env)],
         ["chi web", web_summary]
@@ -100,9 +100,29 @@ module Samagotchi
     def hooks_dir(env) = Hooks::Loader.hooks_dir(env)
 
     # Offline, so only the fallback: the running server's n_ctx wins at runtime.
-    def context_window(env)
-      window = ContextWindow.configured(env: env)
-      "#{window.tokens} (#{window.source}; the server's n_ctx wins at runtime)"
+    # The window config gives the current model (ContextWindow: its
+    # models.<key>.window_tokens, its host's, then context.window_tokens or
+    # the default) and which of them, as a turn resolves it offline.
+    def context_window(env, model = nil)
+      tokens, where = model_window(env, model) || ContextWindow.configured(env: env).to_h.values_at(:tokens, :source)
+      "#{tokens} (#{where}; the server's n_ctx wins at runtime)"
+    end
+
+    # [tokens, "models: KEY" | "hosts.NAME"], or nil when neither is set.
+    def model_window(env, model)
+      return nil unless model
+
+      registry = HostRegistry.new(env: env)
+      target = registry.resolve(model)
+      names = registry.lookup_names(model, target: target)
+      models = ConfigFile.model_settings(env: env)
+      window = ContextWindow.setting(target, names: names, models: models)
+      return nil unless window
+      return [window.tokens, "hosts.#{target.entry.name}"] if window.source == :host_setting
+
+      [window.tokens, "models: #{ConfigFile.model_setting(names, :window_tokens, models: models).first}"]
+    rescue StandardError
+      nil
     end
 
     def model_name

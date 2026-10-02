@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi self`'s context window row shows the current model's configured window: its `models.<key>.window_tokens`, else
+  its host's `hosts.<name>.window_tokens`, else `context.window_tokens` or the default, and says which.
+
 - The web pairs each prompt with its own turn's timing: a failed turn (its prompt went back to you) no longer shifts
   the timing lines and turn numbers of the turns after it. chi saves a turn id on each prompt; prompts saved before
   this still pair by their place.
