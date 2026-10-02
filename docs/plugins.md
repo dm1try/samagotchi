@@ -638,8 +638,8 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
   0.1.0 shipped `btw.md` as one, and `chi bundle upgrade btw` leaves that file
   (and its index line) behind. Drop it with `chi bundle uninstall btw`, then
   `chi bundle install btw`. After an upgrade already ran, delete
-  `~/.config/samagotchi/memories/btw.md` and its `**btw**` line in `index.md`
-  there by hand.
+  `$XDG_CONFIG_HOME/samagotchi/memories/btw.md` (`$XDG_CONFIG_HOME` defaults to
+  `~/.config`) and its `**btw**` line in `index.md` there by hand.
 
 ## The mcp bundle
 

@@ -9,7 +9,8 @@ hooks. See [Plugins](plugins.md).
 
 ## Configuration
 
-Add a `hooks:` section to your global config file (`~/.config/samagotchi/config.yml`):
+Add a `hooks:` section to your global config file (`$XDG_CONFIG_HOME/samagotchi/config.yml`, `$XDG_CONFIG_HOME`
+defaulting to `~/.config`):
 
 ```yaml
 hooks:
@@ -461,7 +462,7 @@ Notes:
 
 Lifecycle:
 
-- `chi bundle install <source>` copies the hook files its manifest's `hooks:` map lists (only those; with no `hooks:` map, every `hooks/*.rb`) to `~/.config/samagotchi/memories/.bundles/<name>/hooks/` and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance.
+- `chi bundle install <source>` copies the hook files its manifest's `hooks:` map lists (only those; with no `hooks:` map, every `hooks/*.rb`) to `$XDG_CONFIG_HOME/samagotchi/memories/.bundles/<name>/hooks/` (`$XDG_CONFIG_HOME` defaults to `~/.config`) and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance.
 - `Engine.new` loads `config.yml` hooks first, then bundle hooks via `MemoryBundle::Provenance.each_installed(holding: :hooks)` → `Hooks::BundleLoader.load`. Bundle hooks are process-scoped (they survive the per-turn `clear_hooks`; only plain hooks are cleared). Experimental bundles emit a one-line startup warning.
 - `chi bundle status`, `diff`, `uninstall`, `build` are hook-aware (counts, metadata, removal).
 
