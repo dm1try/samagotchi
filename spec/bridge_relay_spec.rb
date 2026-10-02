@@ -1,0 +1,120 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+require "tmpdir"
+require "json"
+require "support/test_kernel"
+
+require "samagotchi/engine"
+require "samagotchi/session"
+require "samagotchi/bridge"
+require "samagotchi/bridge_client"
+
+# The approval relay's Bridge routes, between two real workers' Bridges in
+# one state dir: the child's POST relay (opened, closed, answered) and the
+# parent's POST relay/status, which the child asks before it believes an
+# answer.
+RSpec.describe Samagotchi::Bridge, "approval relay" do
+  let(:state_dir) { Dir.mktmpdir("bridge-relay") }
+  let(:parent) { new_session }
+  let(:child) { new_session(parent_id: parent.id) }
+  let(:parent_engine) { Samagotchi::Engine.new(client: test_client, kernel: test_kernel) }
+  let(:child_engine) do
+    Samagotchi::Engine.new(client: test_client, kernel: test_kernel).tap do |engine|
+      engine.session_state_dir = state_dir
+      engine.session = child
+    end
+  end
+  let(:events) { [] }
+  let(:approval) do
+    { question: "execute: git push", options: ["Allow once", "Allow this call for the session", "Deny"],
+      header: "Approve tool call?", multi_select: false, allow_freeform: true, kind: "approval",
+      approval: { tool: "execute", command: "git push", scopes: %w[once session] } }
+  end
+
+  before do
+    WebMock.allow_net_connect! if defined?(WebMock)
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("off")
+    @bridges = []
+  end
+
+  after do
+    @bridges.each(&:stop)
+    @threads&.each { |t| t.kill if t.alive? }
+    WebMock.disable_net_connect! if defined?(WebMock)
+    FileUtils.rm_rf(state_dir)
+  end
+
+  def new_session(parent_id: nil)
+    Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd, parent_id: parent_id)
+                       .tap { |s| s.save(state_dir: state_dir) }
+  end
+
+  def serve(engine, session)
+    bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
+    @bridges << bridge
+    bridge
+  end
+
+  def client_for(session)
+    Samagotchi::BridgeClient.discover(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
+  end
+
+  # The child's approval, waiting on its turn thread.
+  def ask_child(fields = approval)
+    box = {}
+    child_engine.subscribe(observer: ->(e) { events << e })
+    (@threads ||= []) << Thread.new { box[:answer] = child_engine.open_question(fields) }
+    wait_until(timeout: 2) { child_engine.pending_question }
+    [box, child_engine.pending_question[:id]]
+  end
+
+  def saved_question = Samagotchi::Session.load(child.id, state_dir: state_dir).pending_question
+
+  def relay(action, relay_id, qid, **extra)
+    client_for(child).relay(action: action, relay_id: relay_id, question_id: qid, **extra)
+  end
+
+  describe "opened / closed" do
+    before { serve(child_engine, child) }
+
+    it "marks the child's question as waiting in the parent, saved and announced, and clears it on closed" do
+      _box, qid = ask_child
+
+      expect(relay("opened", "r-1", qid).status).to eq(200)
+      marker = { parent_id: parent.id, parent_short: parent.id[0, 8], relay_id: "r-1" }
+      expect(child_engine.pending_question[:relayed_to]).to eq(marker)
+      expect(saved_question[:relayed_to]).to eq(marker.transform_keys(&:to_s))
+      expect(events.last).to include(type: :question_relay, id: qid, relayed_to: marker)
+
+      # Another relay's close, or a reason it doesn't know, changes nothing / is "closed".
+      expect(relay("closed", "r-other", qid).status).to eq(409)
+      expect(relay("closed", "r-1", qid, reason: "made up").status).to eq(200)
+      expect(child_engine.pending_question).not_to have_key(:relayed_to)
+      expect(events.last).to include(type: :question_relay, id: qid, relayed_to: nil, reason: "closed")
+    end
+
+    it "keeps the marker on the cards' open question (a joining UI's)" do
+      cards = @bridges.first.instance_variable_get(:@cards)
+      # A question is a row of a running turn.
+      cards.call({ type: :turn_started })
+      _box, qid = ask_child
+      relay("opened", "r-1", qid)
+      card = wait_until(timeout: 2) { cards.list.find { |e| e[:type] == :question && e[:pending_question][:relayed_to] } }
+      expect(card[:pending_question][:relayed_to]).to include(relay_id: "r-1")
+    end
+
+    it "answers 409 for a question not pending, 422 in a session with no parent, 400 for a bad request" do
+      _box, qid = ask_child
+      expect(relay("opened", "r-1", "other").status).to eq(409)
+      expect(client_for(child).relay(action: "nope", relay_id: "r", question_id: qid).status).to eq(400)
+      expect(client_for(child).relay(action: "opened", relay_id: "", question_id: qid).status).to eq(400)
+
+      orphan = new_session
+      orphan_engine = Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
+      serve(orphan_engine, orphan)
+      expect(client_for(orphan).relay(action: "opened", relay_id: "r", question_id: "q").status).to eq(422)
+    end
+  end
+end

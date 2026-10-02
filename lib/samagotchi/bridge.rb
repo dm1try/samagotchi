@@ -429,6 +429,7 @@ module Samagotchi
       %w[POST command] => :handle_command,
       %w[POST exit] => :handle_exit_request,
       %w[POST recap] => :handle_recap,
+      %w[POST relay] => :handle_relay,
       %w[GET state] => :handle_state,
       %w[GET stats] => :handle_stats,
       %w[GET snapshot] => :handle_snapshot
@@ -522,6 +523,33 @@ module Samagotchi
                     detail: Guardrails::ParentApprovals.message(e.reason) }]
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]
+      end
+    end
+
+    # What a parent's relay may say about this session's approval
+    # (BridgeClient#relay): opened and closed only change how the question
+    # shows (QuestionDesk#annotate). No auth: a poke can at most show a
+    # wrong banner.
+    RELAY_ACTIONS = %w[opened closed].freeze
+    # Why a relay closed, as a parent says it; anything else is "closed".
+    RELAY_CLOSE_REASONS = %w[stopped closed child_gone answered_on_child].freeze
+
+    # POST /session/:id/relay {action, relay_id, question_id}. 200, 409 (no
+    # longer pending, or another relay's), 422 (no parent), 400 a bad request.
+    def handle_relay(_session_id, body)
+      parsed = parse_json(body)
+      return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
+
+      action, relay_id, qid = %w[action relay_id question_id].map { |key| fetched(parsed, key).to_s }
+      unless RELAY_ACTIONS.include?(action) && !relay_id.empty? && !qid.empty?
+        return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "action (opened, closed), relay_id and question_id required" }]
+      end
+
+      case action
+      when "opened" then relay_opened(qid, relay_id)
+      else
+        reason = fetched(parsed, "reason").to_s
+        relay_closed(qid, relay_id, RELAY_CLOSE_REASONS.include?(reason) ? reason : "closed")
       end
     end
 
@@ -870,6 +898,37 @@ module Samagotchi
 
     def close_after_request?(headers)
       headers["connection"].to_s.downcase == "close"
+    end
+
+    # A parent's relay card for +qid+ opened: the question says so (the
+    # child's card and lists show where else it can be answered).
+    def relay_opened(qid, relay_id)
+      parent_id = begin
+        Session.load(@session_id, state_dir: @state_dir).parent_id
+      rescue ArgumentError
+        nil
+      end
+      return [{}, 422, { error: "relay_unverified", detail: "this session has no parent" }] unless parent_id
+
+      marker = { parent_id: parent_id, parent_short: parent_id[0, 8], relay_id: relay_id }
+      return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @engine.annotate_question(qid, relayed_to: marker)
+
+      Log.info(:bridge, "relay_opened", sid: @session_id, id: qid, parent: parent_id[0, 8])
+      [{}, 200, { status: "opened", question_id: qid }]
+    end
+
+    # The parent's relay card closed unanswered: the mark goes, if it is
+    # still that relay's.
+    def relay_closed(qid, relay_id, reason)
+      pending = @engine.pending_question
+      relay = pending && pending[:relayed_to]
+      unless pending && pending[:id].to_s == qid && relay && (relay[:relay_id] || relay["relay_id"]).to_s == relay_id
+        return [{}, 409, { error: "question_not_pending", detail: "no question #{qid} relayed by #{relay_id}" }]
+      end
+      return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless @engine.annotate_question(qid, relayed_to: nil, reason: reason)
+
+      Log.info(:bridge, "relay_closed", sid: @session_id, id: qid, reason: reason)
+      [{}, 200, { status: "closed", question_id: qid }]
     end
 
     def write_sidecar

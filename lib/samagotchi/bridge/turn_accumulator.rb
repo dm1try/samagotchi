@@ -268,6 +268,12 @@ module Samagotchi
           @turn[:pending_question] = event[:pending_question]&.dup
         when :question_answered, :question_cancelled
           @turn[:pending_question] = nil
+        when :question_relay
+          pending = @turn[:pending_question]
+          if pending && pending[:id].to_s == event[:id].to_s
+            relayed_to = event[:relayed_to]
+            @turn[:pending_question] = relayed_to ? pending.merge(relayed_to: relayed_to) : pending.except(:relayed_to)
+          end
         end
         parts << { kind: "notice", event: TurnNotice.slice(event) } if TurnNotice.notice?(event)
       end

@@ -27,6 +27,7 @@ module Samagotchi
       question_requested: [],
       question_answered: %i[id],
       question_cancelled: %i[id reason],
+      question_relay: %i[id reason],
       generation_cancelled: %i[iteration],
       empty_answer_retry: %i[iteration attempt of finish_reason thinking_chars stopped_by]
     }.freeze

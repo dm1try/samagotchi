@@ -51,7 +51,7 @@ module Samagotchi
       # The events after which the file is written again: the ones that
       # change an entry or the turn count.
       SAVED_ON = (%i[card hook_notice empty_answer_retry question_requested question_answered question_cancelled
-                     turn_failed] + Events::TURN_KEPT).freeze
+                     question_relay turn_failed] + Events::TURN_KEPT).freeze
 
       # What a session's saved file lists, as a store started from it lists
       # (no turn running): the web's cards for a session no worker runs.
@@ -171,6 +171,7 @@ module Samagotchi
           add_turn_row({ type: :question, pending_question: Marshal.load(Marshal.dump(event[:pending_question])) }) if @running
         when :question_answered then resolve_question(event[:id], answer: event[:answer])
         when :question_cancelled then resolve_question(event[:id], cancelled: true, reason: event[:reason])
+        when :question_relay then mark_relay(event[:id], event[:relayed_to])
         end
       end
 
@@ -217,6 +218,20 @@ module Samagotchi
           e[:type] == :question && e.dig(:pending_question, :id).to_s == id.to_s
         end
         entry&.merge!(Marshal.load(Marshal.dump(outcome.compact)))
+      end
+
+      # The open question was relayed to a parent's user, or no longer is.
+      def mark_relay(id, relayed_to)
+        entry = @entries.reverse_each.find do |e|
+          e[:type] == :question && e.dig(:pending_question, :id).to_s == id.to_s
+        end
+        return unless entry
+
+        if relayed_to
+          entry[:pending_question][:relayed_to] = Marshal.load(Marshal.dump(relayed_to))
+        else
+          entry[:pending_question].delete(:relayed_to)
+        end
       end
 
       def push(entry)

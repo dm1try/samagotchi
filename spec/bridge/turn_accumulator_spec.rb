@@ -131,6 +131,18 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:pending_question]).to be_nil
   end
 
+  it "keeps a relay marker on the pending question, and drops it when cleared" do
+    question = { id: "q1", question: "Run?", options: %w[A B], status: "pending" }
+    feed({ type: :turn_started, prompt: "hi" }, { type: :question_requested, pending_question: question },
+         { type: :question_relay, id: "other", relayed_to: { relay_id: "r0" } })
+    expect(acc.current_turn[:pending_question]).to eq(question)
+
+    feed({ type: :question_relay, id: "q1", relayed_to: { relay_id: "r1" } })
+    expect(acc.current_turn[:pending_question]).to eq(question.merge(relayed_to: { relay_id: "r1" }))
+    feed({ type: :question_relay, id: "q1", relayed_to: nil, reason: "parent_gone" })
+    expect(acc.current_turn[:pending_question]).to eq(question)
+  end
+
   it "records steering input with its senders" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :input_merged, count: 1, origins: [{ client_id: "tui:1", enqueued_id: "e2" }] },
