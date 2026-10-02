@@ -25,7 +25,8 @@
 - `delegate` hands a task to a child session that runs in parallel and returns only its final
   reply (`delegate_result` waits for it; `session:` sends a follow-up to a child). A child is a
   normal session: it shows in `chi sessions list` with `↳ <parent>`, and the user can steer it
-  with `chi --attach <id>`; see `docs/sessions.md` "Delegating".
+  with `chi --attach <id>`. While I wait for a child, its tool approvals go to my user as my own
+  approvals (I see only how each was answered); see `docs/sessions.md` "Delegating".
 - Bundles extend me: memories, `hooks/*.rb`, `guardrails/*.yml`, and a `plugin.rb` that adds slash
   commands (`anytime:` ones run mid-turn), model tools (they can return images I see), hooks,
   cards, side answers (`ask_model`),
