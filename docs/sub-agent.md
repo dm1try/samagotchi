@@ -61,9 +61,10 @@ ID`. With `guardrails.parent_approvals: once` in chi's config.yml (it has no
 environment variable), "Allow once" goes through; the wider scopes never do. See
 [Guardrails](guardrails.md#approvals-from-a-parent-agent).
 
-This is a convention for a parent that follows its instructions, not a security
-boundary: the worker's Bridge and `chi web` on localhost take answers from any
-local process.
+The worker checks it again with its own config, whatever the parent's
+environment says. Still, this guards a parent that follows its instructions,
+not a security boundary: the worker's Bridge and `chi web` on localhost take
+answers from any local process.
 
 ## Things to know
 

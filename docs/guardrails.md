@@ -105,9 +105,17 @@ offered scopes are missing or don't fit its options: then only Deny goes. The
 setting is read from config.yml only, with no environment variable, so the
 parent's environment can't change it.
 
-This is a convention for a well-behaved parent, not a security boundary: the
-worker's Bridge and the web's answer route on localhost take an answer from
-any local process. chi's instructions for parents ([chi as a
+The worker checks it too. `chi answer` marks its answers as a parent's
+(`client_id: "cli:answer"`), and the worker's Bridge refuses such an allow
+beyond what the *worker's* config.yml permits (`403 parent_approval_refused`;
+`chi answer` exits 1 with the reason), checked against the question pending
+at that moment. Answers from the web and an attached terminal keep every
+scope.
+
+This guards an honest but eager parent, not a hostile one: it is not a
+security boundary. The worker's Bridge and the web's answer route on localhost
+take an answer from any local process, which can leave the marker out (or
+post through the web) and get every scope. chi's instructions for parents ([chi as a
 sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
 ## Protected paths

@@ -223,7 +223,9 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   refused connection is `503 not_live`.
 - `POST /session/:id/cancel` — cancel the running turn; `202`, or `409` when none runs.
 - `POST /session/:id/answer` — answer the pending question; `200`, `409` when another client
-  answered first or it is gone, `400` for an invalid selection.
+  answered first or it is gone, `400` for an invalid selection. With `client_id: "cli:answer"`
+  (`chi answer`, a parent agent) an allow on an approval beyond the worker's
+  `guardrails.parent_approvals` is `403 parent_approval_refused`, the question still open.
 - `POST /session/:id/question/dismiss` — leave the question unanswered (an approval: denied);
   `200`, or `409` when it is no longer pending.
 - `POST /session/:id/command` — a session command (`/model`, `/models`, `!rollback`, `!cmd`,

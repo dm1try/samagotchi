@@ -7,6 +7,7 @@ require "time"
 
 require_relative "log"
 require_relative "tools/ask_user_question"
+require_relative "guardrails/parent_approvals"
 
 module Samagotchi
   # An Engine's question flow: the one open question (ask_user_question, a
@@ -20,6 +21,20 @@ module Samagotchi
     # (never asked, superseded, already answered or cancelled). A subclass
     # of ArgumentError for existing callers; transports map it to 409 Conflict.
     class NotPending < ArgumentError; end
+
+    # Raised by #answer when a parent agent's answer (chi answer's client
+    # id) allows an approval further than this worker's
+    # guardrails.parent_approvals lets it (Guardrails::ParentApprovals).
+    # The question stays open; transports map it to 403.
+    class Refused < StandardError
+      # @return [Symbol] :off or :once_only
+      attr_reader :reason
+
+      def initialize(reason)
+        @reason = reason
+        super("a parent may not allow this approval (#{reason})")
+      end
+    end
 
     DISMISSED_NOTE = "The user dismissed the question without answering. Don't do what you asked about, " \
                      "or anything else that changes files or state. Finish your reply with what you found " \
@@ -170,11 +185,16 @@ module Samagotchi
     # @param id [String] pending id
     # @param selected [Array<String>] values/labels
     # @param freeform [String, nil]
+    # @param client_id [String, nil] who answers; chi answer's (a parent
+    #   agent) is held to guardrails.parent_approvals on an approval
     # @return [Hash] normalized answer
-    def answer(id:, selected:, freeform: nil)
+    # @raise [NotPending, ArgumentError, Refused]
+    def answer(id:, selected:, freeform: nil, client_id: nil)
       sel = Array(selected).map { |v| v.to_s.strip }.reject(&:empty?)
       fm = freeform.to_s.strip
       fm = nil if fm.empty?
+      # Read before the lock (config may touch the disk); this worker's own.
+      parent_setting = Guardrails::ParentApprovals.setting if client_id.to_s == Guardrails::ParentApprovals::CLIENT_ID
       @lock.synchronize do
         pending = @pending
         raise NotPending, "no pending question" unless pending
@@ -197,10 +217,17 @@ module Samagotchi
         if pending[:multi_select] == false && sel.empty? && fm.nil?
           raise ArgumentError, "selection required"
         end
+        indices = sel.map { |v| opts.index(v) }
+        # Checked against the question pending now, under the lock: the one
+        # whose answer settles the approval (Approval.settle, by index).
+        if parent_setting
+          reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: parent_setting)
+          raise Refused, reason if reason
+        end
         # Persist pending cleared elsewhere; just set answer
         answer = { id: id.to_s, selected: sel, freeform: fm }
         # Derive indices for convenience
-        answer[:selected_indices] = sel.map { |v| opts.index(v) }.compact
+        answer[:selected_indices] = indices.compact
         @answer = answer
         @cv.broadcast
         answer

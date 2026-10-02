@@ -108,10 +108,15 @@ module Samagotchi
 
     # POST /session/:id/answer. 200 = recorded, 409 = another client answered
     # first (or the question is gone), 400 = invalid selection, 408
-    # deadline_passed = read too late and dropped (see DEADLINE_SHARE).
+    # deadline_passed = read too late and dropped (see DEADLINE_SHARE), 403
+    # parent_approval_refused = a parent's allow (client_id cli:answer)
+    # beyond the worker's guardrails.parent_approvals.
+    # @param client_id [String, nil] who answers (chi answer marks its own)
     # @return [Response]
-    def answer(id:, selected:, freeform: nil)
-      post("answer", { id: id, selected: selected, freeform: freeform, deadline: deadline }, read_body: true)
+    def answer(id:, selected:, freeform: nil, client_id: nil)
+      body = { id: id, selected: selected, freeform: freeform, deadline: deadline }
+      body[:client_id] = client_id if client_id
+      post("answer", body, read_body: true)
     end
 
     # POST /session/:id/question/dismiss: leave the question unanswered.

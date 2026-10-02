@@ -1263,6 +1263,33 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp["error"]).to eq("question_not_pending")
     end
 
+    # The worker's own check of guardrails.parent_approvals for an answer
+    # marked as chi answer's: a direct POST with the marker is held to it too.
+    it "refuses (403) a parent's allow beyond the worker's guardrails.parent_approvals; the web's goes" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("once")
+      start_bridge
+      result = {}
+      fields = { question: "execute: echo hi", options: ["Allow once", "Allow this call for the session", "Deny"],
+                 multi_select: false, allow_freeform: true, kind: "approval",
+                 approval: { tool: "execute", scopes: %w[once session] } }
+      thread = Thread.new { result[:answer] = @engine.open_question(fields) }
+      wait_until { @engine.pending_question }
+      qid = @engine.pending_question[:id]
+
+      status, resp, reason = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"],
+                                                       client_id: "cli:answer"))
+      expect([status, reason, resp["error"]]).to eq([403, "Forbidden", "parent_approval_refused"])
+      expect(resp["detail"]).to start_with("only Allow once (guardrails.parent_approvals: once) can be given here")
+      expect(resp["detail"]).to include("chi --attach #{@session.id}")
+      expect(@engine.pending_question).to include(id: qid, status: "pending")
+
+      status, = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"]))
+      expect(status).to eq(200)
+      thread.join(2)
+      expect(result[:answer]).to include(selected_indices: [1])
+    end
+
     it "reads only id, selected and freeform (no question_id, selection or nested answer alias)" do
       start_bridge
       allow(@engine).to receive(:answer_question)

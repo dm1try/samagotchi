@@ -18,9 +18,10 @@ module Samagotchi
   # chi --attach answer the same question. See docs/sub-agent.md.
   #
   # An approval is the user's to allow: a parent may deny it, and allow it
-  # only "once" when guardrails.parent_approvals says so. That is a
-  # convention for a well-behaved parent, not a boundary: the Bridge and the
-  # localhost web take answers from any local process.
+  # only "once" when guardrails.parent_approvals (config.yml) says so. It is
+  # checked here and again by the worker, which sees the answer marked as
+  # chi answer's. That guards an honest but eager parent, not a boundary:
+  # the Bridge and the localhost web take answers from any local process.
   class AnswerCommand
     include CLI::Command
     include CLI::ParentWait
@@ -165,7 +166,8 @@ module Samagotchi
         reply = if options[:dismiss]
                   client.dismiss_question(id: qid)
                 else
-                  client.answer(id: qid, selected: selected, freeform: options[:text])
+                  client.answer(id: qid, selected: selected, freeform: options[:text],
+                                client_id: Guardrails::ParentApprovals::CLIENT_ID)
                 end
         break unless reply.status == 408
       end
@@ -174,6 +176,8 @@ module Samagotchi
       when 200 then nil
       when 409 then not_open(qid)
       when 400 then usage_failure(reply.json&.dig("detail") || "the worker refused the answer")
+      # The worker's own guardrails.parent_approvals refused the allow.
+      when 403 then failure(reply.json&.dig("detail") || "the worker refused the allow: approve it in the web or chi --attach #{id}")
       when 408 then failure("the worker did not take the answer in time; the question is still open: try again")
       when 404
         return failure(worker_gone(id)) if reply.json&.dig("error") == "unknown_session"

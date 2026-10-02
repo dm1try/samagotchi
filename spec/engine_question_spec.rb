@@ -7,6 +7,7 @@ require "json"
 require "tmpdir"
 require "samagotchi/engine"
 require "samagotchi/session"
+require "samagotchi/guardrails/parent_approvals"
 require "support/thinking_off"
 
 # Covers the cross-thread ask_user_question path used by the Web UI / Bridge:
@@ -310,6 +311,109 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       engine.subscribe(observer: ->(e) { seen = e[:pending_question] if e[:type] == :question_requested })
       engine.open_question(question: "echo '<|x|>'", options: %w[Yes No])
       expect(seen[:question]).to eq("echo '<|x|>'")
+    end
+  end
+
+  # A parent agent's answer (chi answer, marked cli:answer) to an approval
+  # gets no more than guardrails.parent_approvals allows, by the WORKER's
+  # config: the check runs again here, against the question pending now.
+  describe "a parent's answer to an approval (client_id cli:answer)" do
+    let(:approval_fields) do
+      { question: "execute: echo hi", options: ["Allow once", "Allow this call for the session", "Deny"],
+        header: "Approve tool call?", multi_select: false, allow_freeform: true, kind: "approval",
+        approval: { tool: "execute", scopes: %w[once session] } }
+    end
+    let(:parent) { Samagotchi::Guardrails::ParentApprovals::CLIENT_ID }
+
+    def open_approval(engine, fields = approval_fields)
+      result = {}
+      thread = Thread.new { result[:answer] = engine.open_question(fields) }
+      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
+      [thread, result, engine.pending_question[:id]]
+    end
+
+    def setting(value)
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return(value)
+    end
+
+    it "refuses every allow with off, leaves the question open, and the user can still allow it" do
+      setting("off")
+      engine = build_engine
+      thread, result, qid = open_approval(engine)
+      ["Allow once", "Allow this call for the session"].each do |label|
+        expect { engine.answer_question(id: qid, selected: [label], freeform: "go", client_id: parent) }
+          .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:off) }
+      end
+      expect(engine.pending_question).to include(id: qid, status: "pending")
+
+      engine.answer_question(id: qid, selected: ["Allow this call for the session"])
+      thread.join(2)
+      expect(result[:answer]).to include(selected_indices: [1])
+    end
+
+    it "takes a deny from a parent: the Deny option, text alone" do
+      setting("off")
+      engine = build_engine
+      thread, result, qid = open_approval(engine)
+      engine.answer_question(id: qid, selected: [], freeform: "no", client_id: parent)
+      thread.join(2)
+      expect(result[:answer]).to include(selected_indices: [], freeform: "no")
+
+      thread, result, qid = open_approval(engine)
+      engine.answer_question(id: qid, selected: ["Deny"], client_id: parent)
+      thread.join(2)
+      expect(result[:answer]).to include(selected_indices: [2])
+    end
+
+    it "with once takes Allow once by its scope, never a wider one" do
+      setting("once")
+      engine = build_engine
+      thread, result, qid = open_approval(engine)
+      expect { engine.answer_question(id: qid, selected: ["Allow this call for the session"], client_id: parent) }
+        .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:once_only) }
+      engine.answer_question(id: qid, selected: ["Allow once"], client_id: parent)
+      thread.join(2)
+      expect(result[:answer]).to include(selected_indices: [0])
+    end
+
+    it "fails closed on an approval without scopes: only Deny" do
+      setting("once")
+      engine = build_engine
+      thread, result, qid = open_approval(engine, approval_fields.merge(approval: { tool: "execute" }))
+      expect { engine.answer_question(id: qid, selected: ["Allow once"], client_id: parent) }
+        .to raise_error(Samagotchi::QuestionDesk::Refused)
+      engine.answer_question(id: qid, selected: ["Deny"], client_id: parent)
+      thread.join(2)
+      expect(result[:answer]).to include(selected_indices: [2])
+    end
+
+    it "leaves the model's and hooks' questions, and other clients, alone" do
+      setting("off")
+      engine = build_engine
+      thread, result, qid = open_approval(engine, payload.merge(kind: "hook"))
+      engine.answer_question(id: qid, selected: ["Cats"], client_id: parent)
+      thread.join(2)
+      expect(result[:answer]).to include(selected: ["Cats"])
+
+      thread, result, qid = open_approval(engine)
+      engine.answer_question(id: qid, selected: ["Allow this call for the session"], client_id: "web:tab1")
+      thread.join(2)
+      expect(result[:answer]).to include(selected_indices: [1])
+    end
+
+    it "checks the question pending now: a stale id is not pending, whatever it asked" do
+      setting("once")
+      engine = build_engine
+      thread, result, qid = open_approval(engine)
+      engine.answer_question(id: qid, selected: ["Deny"])
+      thread.join(2)
+      thread, result, = open_approval(engine)
+      expect { engine.answer_question(id: qid, selected: ["Allow once"], client_id: parent) }
+        .to raise_error(Samagotchi::Engine::QuestionNotPending)
+      engine.cancel_question("user")
+      thread.join(2)
+      expect(result[:answer]).to include(error: "no answer")
     end
   end
 

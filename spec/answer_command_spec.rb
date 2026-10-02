@@ -15,12 +15,14 @@ RSpec.describe Samagotchi::AnswerCommand do
   let(:threads) { [] }
   let(:owner) { [Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker")] }
   let(:posted) { [] }
+  let(:clients) { [] }
   # What the fake Bridge answers, in turn; the last one repeats.
   let(:replies) { [[200, { status: "answered" }]] }
   let(:bridge) do
     double("BridgeClient").tap do |client|
-      allow(client).to receive(:answer) do |id:, selected:, freeform: nil|
+      allow(client).to receive(:answer) do |id:, selected:, freeform: nil, client_id: nil|
         posted << [:answer, id, selected, freeform]
+        clients << client_id
         respond
       end
       allow(client).to receive(:dismiss_question) do |id:|
@@ -305,6 +307,30 @@ RSpec.describe Samagotchi::AnswerCommand do
     ensure
       original ? ENV["SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS"] = original : ENV.delete("SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS")
       Samagotchi::Config.reload!
+    end
+
+    it "marks its answers as chi answer's, so the worker checks them again with its own config" do
+      s = asking(question)
+      replies_after_answer(s, "ok")
+      expect(run(s.id, "--question", "q1", "--option", "1")).to eq(0), err.string
+      expect(clients).to eq(["cli:answer"])
+    end
+
+    context "when the worker refuses the allow (its config is stricter)" do
+      let(:replies) do
+        [[403, { error: "parent_approval_refused",
+                 detail: "allowing a tool call is up to the user: approve it in the web or chi --attach x" }]]
+      end
+
+      it "exits 1 with the worker's reason, in the JSON line too" do
+        @parent_approvals = "once"
+        s = asking(approval)
+        expect(run(s.id, "--question", "a1", "--option", "1", "--format", "json")).to eq(1)
+        expect(posted.size).to eq(1)
+        expect(json_out).to include("status" => "error",
+                                    "detail" => "allowing a tool call is up to the user: approve it in the web or " \
+                                                "chi --attach x")
+      end
     end
 
     it "with parent_approvals: once refuses an approval that doesn't offer once" do

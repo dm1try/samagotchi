@@ -18,6 +18,7 @@ require_relative "bridge/sse_writer"
 require_relative "bridge/turn_accumulator"
 require_relative "session"
 require_relative "engine"
+require_relative "guardrails/parent_approvals"
 require_relative "session_commands"
 require_relative "image_store"
 require_relative "log"
@@ -496,6 +497,10 @@ module Samagotchi
       qid = fetched(parsed, "id")
       selected = fetched(parsed, "selected")
       freeform = fetched(parsed, "freeform")
+      # chi answer's marker: a parent agent, held to this worker's
+      # guardrails.parent_approvals (QuestionDesk::Refused). Not a boundary:
+      # any local process may post here, with or without it.
+      client_id = fetched(parsed, "client_id")
       if qid.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }]
       end
@@ -504,11 +509,15 @@ module Samagotchi
       return deadline_passed("answer") if expired?("answer_expired", deadline, sid: session_id, id: qid)
 
       begin
-        result = @engine.answer_question(id: qid, selected: selected, freeform: freeform)
+        result = @engine.answer_question(id: qid, selected: selected, freeform: freeform, client_id: client_id)
         [{}, 200, { status: "answered", session_id: session_id, answer: result }]
       rescue Engine::QuestionNotPending => e
         # Another client answered first, or the question was cancelled.
         [{}, 409, { error: "question_not_pending", detail: e.message }]
+      rescue QuestionDesk::Refused => e
+        Log.info(:bridge, "parent_approval_refused", sid: session_id, id: qid, reason: e.reason)
+        [{}, 403, { error: "parent_approval_refused",
+                    detail: Guardrails::ParentApprovals.message(e.reason, session_id) }]
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]
       end
@@ -888,6 +897,7 @@ module Samagotchi
       202 => "Accepted",
       204 => "No Content",
       400 => "Bad Request",
+      403 => "Forbidden",
       404 => "Not Found",
       409 => "Conflict",
       500 => "Internal Server Error",
