@@ -377,4 +377,21 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(at_end).to eq(status: "idle", outcome: "canceled")
     expect_released
   end
+  # The load-failure warnings show once per Engine; a turn stopped before
+  # the model is asked leaves them for the next turn.
+  it "15. Stop during the turn-start probe keeps the guardrail warning for the next turn" do
+    engine.guardrail_failures.add("hook g.rb (config)", "LoadError: x", required: false)
+    controller = Samagotchi::CancellationController.new
+    allow(engine).to receive(:refresh_profile!) { controller.cancel! }
+    native { |messages, **| kernel_result(messages + [reply("done")]) }
+    timeline.clear
+
+    run(cancel_controller: controller)
+    expect(timeline).to eq(%w[turn_started turn_canceled persist])
+
+    allow(engine).to receive(:refresh_profile!)
+    timeline.clear
+    run
+    expect(timeline.first(2)).to eq(%w[turn_started guardrail_warning])
+  end
 end

@@ -1485,7 +1485,8 @@ module Samagotchi
     # Everything before the model is asked: :turn_started, the kernel's
     # per-turn settings, the plugins' setup, the session_start/before_turn
     # hooks, then the messages to send (#turn_messages). False when a Stop
-    # came before the hooks (the turn ends canceled there), else true.
+    # came before the hooks (the turn ends canceled there; before the
+    # load-failure warnings when it came during the probes), else true.
     def prepare_turn(turn, images)
       session = turn.session
       image_refs, image_error = turn_image_refs(session, images)
@@ -1509,6 +1510,10 @@ module Samagotchi
       # Before anything of the turn is kept or a reminder is used up.
       turn.settings = turn_settings(session)
       refuse_images!(turn.settings.vision) unless image_refs.empty?
+      # A Stop during the probes: the turn ends before the load-failure
+      # warnings, which show once, so the next turn still shows them.
+      return false if turn.controller.cancelled?
+
       announce_guardrail_failures(turn.on_event)
       # Plugins' slow setup that brings tools (an MCP server's first
       # start): the turn waits for it here, before the system prompt
@@ -1518,7 +1523,7 @@ module Samagotchi
       await_init_tasks(turn.controller, turn.on_event)
       # Plugins' tool sets that changed since the last turn.
       apply_staged_tools!
-      # A Stop during the probes or the wait above: the turn ends here,
+      # A Stop during the wait above: the turn ends here,
       # before the hooks run or a reminder is used up.
       return false if turn.controller.cancelled?
 
