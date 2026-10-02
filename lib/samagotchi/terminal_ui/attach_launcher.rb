@@ -6,6 +6,7 @@ require_relative "../model_profile"
 require_relative "../session_manager"
 require_relative "../bridge_client"
 require_relative "../parent_report"
+require_relative "../cli/exit"
 require_relative "live_region"
 require_relative "plain_surface"
 require_relative "attached_loop"
@@ -73,9 +74,9 @@ module Samagotchi
       # @return [Integer]
       def exit_status(ended)
         case ended
-        when :detached then 0
-        when :unanswered then 3
-        else 1
+        when :detached then CLI::Exit::OK
+        when :unanswered then CLI::Exit::QUESTION
+        else CLI::Exit::FAILED
         end
       end
 

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "exit"
+
 module Samagotchi
   module CLI
     # The usage side of a subcommand: its error lines, usage errors (exit 2)
@@ -7,7 +9,6 @@ module Samagotchi
     # #command_name ("chi send"); its usage text is USAGE unless it
     # overrides #usage_text.
     module Command
-      USAGE_EXIT = 2
       HELP_WORDS = %w[-h --help help].freeze
 
       private
@@ -30,7 +31,7 @@ module Samagotchi
         usage = usage_on_error
         error_line("#{command_name}: #{message}#{usage ? "" : " (see #{command_name} --help)"}")
         @stderr.puts(usage) if usage
-        USAGE_EXIT
+        Exit::USAGE
       end
 
       # +argv+ through +flags+ (a Flags), help and usage errors done.

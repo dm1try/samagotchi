@@ -224,7 +224,7 @@ module Samagotchi
     # single-select question): a usage error, the question still open.
     def usage_failure(line)
       error_line("#{command_name}: #{line}")
-      CLI::Command::USAGE_EXIT
+      CLI::Exit::USAGE
     end
   end
 end

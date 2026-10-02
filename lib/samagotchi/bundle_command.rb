@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "cli/flags"
+require_relative "cli/exit"
 require_relative "memory_bundle"
 
 module Samagotchi
@@ -109,7 +110,7 @@ module Samagotchi
       when "build" then build(@argv[1..])
       else
         @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build"
-        return 2
+        return CLI::Exit::USAGE
       end
     end
 
@@ -124,7 +125,7 @@ module Samagotchi
       force = opts.fetch(:force, false)
       if source.nil? || source.empty?
         @stderr.puts "Usage: chi bundle install <source> [--scope system|project] [--force]"
-        return 2
+        return CLI::Exit::USAGE
       end
       expanded_source = expand_source(source)
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
@@ -148,7 +149,7 @@ module Samagotchi
       agent = opts[:agent]
       if source.nil? || source.empty?
         @stderr.puts "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]"
-        return 2
+        return CLI::Exit::USAGE
       end
       expanded_source = expand_source(source)
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
@@ -217,7 +218,11 @@ module Samagotchi
 
     # An upgrade that kept edited files: launch an agent to merge them
     # (--agent, or yes on a terminal), or say how to take the bundle's.
-    # @return [Integer] 0 resolved, 2 kept the edits
+    # An upgrade that kept edited files exits 2, as a usage error does
+    # (scripts already read it so): not CLI::Exit::USAGE by meaning.
+    CONFLICTS_KEPT = 2
+
+    # @return [Integer] 0 resolved, CONFLICTS_KEPT kept the edits
     def upgrade_conflicts(installer, bundle_name, expanded_source, agent)
       @stdout.puts "\n#{installer.conflicts.size} conflict(s) need resolution."
       installer.conflicts.each { |k, _| @stdout.puts "  conflict: #{k}" }
@@ -227,13 +232,13 @@ module Samagotchi
                  ans && ans.strip.downcase.start_with?("y")
                elsif agent.nil?
                  @stdout.puts "Non-interactive terminal: kept your edits in the file(s) above; the rest is upgraded. Re-run with --force to take the bundle's version, or --agent in a TTY to merge."
-                 return 2
+                 return CONFLICTS_KEPT
                else
                  agent
                end
       unless launch
         @stdout.puts "Kept your edits in the file(s) above; the rest is upgraded. chi bundle diff #{bundle_name} FILE shows the base; re-run with --force to take the bundle's version."
-        return 2
+        return CONFLICTS_KEPT
       end
 
       prompt = build_conflict_prompt(bundle_name, installer.conflicts, expanded_source)
@@ -258,7 +263,7 @@ module Samagotchi
       force = opts.fetch(:force, false)
       if bundle_name.nil? || bundle_name.empty?
         @stderr.puts "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
-        return 2
+        return CLI::Exit::USAGE
       end
       data = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).read
       return uninstall_profile(bundle_name, force: force) if Samagotchi::MemoryBundle::Profile.installed_meta?(bundle_name, data)
@@ -396,7 +401,7 @@ module Samagotchi
       bname = args[0]
       file_arg = args[1]
       if bname.nil? || bname.empty?
-        @stderr.puts "Usage: chi bundle diff <bundle> [file]"; return 2
+        @stderr.puts "Usage: chi bundle diff <bundle> [file]"; return CLI::Exit::USAGE
       end
       prov = Samagotchi::MemoryBundle::Provenance.new(name: bname)
       data = prov.read
@@ -537,7 +542,7 @@ module Samagotchi
       # Validate scope if given
       if scope && !%w[system project].include?(scope.to_s.strip.downcase)
         @stderr.puts "Invalid scope '#{scope}', expected system or project"
-        return 2
+        return CLI::Exit::USAGE
       end
       begin
         builder = Samagotchi::MemoryBundle::Builder.new(
@@ -576,7 +581,7 @@ module Samagotchi
       end
       if parsed.error
         @stderr.puts "Unknown bundle #{sub} flag: #{parsed.error.arg}"
-        return 2
+        return CLI::Exit::USAGE
       end
       parsed
     end

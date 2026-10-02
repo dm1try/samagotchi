@@ -3,6 +3,7 @@
 require_relative "../session"
 require_relative "../reply_wait"
 require_relative "../parent_report"
+require_relative "exit"
 
 module Samagotchi
   module CLI
@@ -71,10 +72,10 @@ module Samagotchi
           @reported = true
         end
         error_line("#{command_name}: still running: chi --attach #{id}")
-        130
+        Exit::INTERRUPTED
       rescue ArgumentError
         error_line("#{command_name}: the session is gone (deleted while waiting)")
-        1
+        Exit::FAILED
       end
     end
   end

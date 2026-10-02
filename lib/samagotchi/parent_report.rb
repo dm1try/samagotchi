@@ -3,6 +3,8 @@
 require "delegate"
 require "json"
 
+require_relative "cli/exit"
+
 module Samagotchi
   # How a wait's end (ReplyWait::Result) reads to whoever runs chi as a
   # sub-agent: `chi send --wait` and `chi answer`. One JSON object for
@@ -11,11 +13,6 @@ module Samagotchi
   # parent agent can answer from the output alone. Kept apart from the
   # commands so a later delegate_answer tool reports the same shape.
   module ParentReport
-    EXIT_ANSWERED = 0
-    EXIT_FAILED = 1
-    EXIT_QUESTION = 3
-    EXIT_RUNNING = 4
-
     # The approval facts a parent needs; the rest (preview, branch) is the
     # card's.
     APPROVAL_KEYS = %i[tool label command paths args cwd rule source reason scopes].freeze
@@ -59,10 +56,10 @@ module Samagotchi
     #   1 anything else
     def exit_status(result)
       case status(result)
-      when "answered" then EXIT_ANSWERED
-      when "question" then EXIT_QUESTION
-      when "running" then EXIT_RUNNING
-      else EXIT_FAILED
+      when "answered" then CLI::Exit::OK
+      when "question" then CLI::Exit::QUESTION
+      when "running" then CLI::Exit::RUNNING
+      else CLI::Exit::FAILED
       end
     end
 

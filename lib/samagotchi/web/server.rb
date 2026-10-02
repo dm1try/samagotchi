@@ -16,6 +16,7 @@ require_relative "../config"
 require_relative "../project_scope"
 require_relative "../log"
 require_relative "../version"
+require_relative "../cli/exit"
 
 module Samagotchi
   module Web
@@ -99,7 +100,7 @@ module Samagotchi
         # Ctrl-C: the server has stopped (start's ensure); one line, and the
         # status a shell gives a command it interrupted.
         puts "#{"\n" if $stdout.tty?}Chi Web stopped."
-        130
+        CLI::Exit::INTERRUPTED
       end
 
       # @param hub [SessionHub, nil] the session projection the page streams
