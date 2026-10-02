@@ -314,6 +314,30 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
   end
 
+  describe "the relay peer (Peers#relay)" do
+    it "is there for a worker's Engine and opens questions on its own desk, watch included" do
+      engine = build_engine
+      engine.interface = :worker
+      relay = engine.instance_variable_get(:@kernel).peers.relay
+      expect(relay.interface).to eq(:worker)
+
+      result = nil
+      thread = Thread.new { result = relay.open_question({ question: "Allow?", options: %w[Yes No] }, watch: -> { "child_gone" }) }
+      thread.join(3)
+      expect(result).to include(error: "cancelled", reason: "child_gone")
+    end
+
+    it "is nil for an Engine that isn't a worker's, or answers through a REPL's sync handler" do
+      engine = build_engine
+      engine.interface = :non_interactive
+      expect(engine.relay_peer).to be_nil
+      engine.interface = :worker
+      engine.set_question_sync_handler { |_| nil }
+      expect(engine.relay_peer).to be_nil
+      expect(Samagotchi::Tools::Peers.new(session_id: "s").relay).to be_nil
+    end
+  end
+
   # A parent agent's answer (chi answer, marked cli:answer) to an approval
   # gets no more than guardrails.parent_approvals allows, by the WORKER's
   # config: the check runs again here, against the question pending now.

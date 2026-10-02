@@ -276,6 +276,9 @@ module Samagotchi
       @sync_handler = block
     end
 
+    # @return [Boolean] a REPL answers inline (no wait loop)
+    def sync_handler? = !@sync_handler.nil?
+
     # Cancel the pending question (e.g. /cancel, a dismiss). Announces which
     # one, so every UI closes it; with none pending there is nothing to
     # announce. A question already answered (the turn thread hasn't taken the

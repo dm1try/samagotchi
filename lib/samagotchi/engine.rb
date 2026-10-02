@@ -1303,6 +1303,25 @@ module Samagotchi
       def cwd = engine.session&.working_directory
       def state_dir = engine.peer_state_dir
       def cancelled? = !!engine.active_cancel_controller&.cancelled?
+      def relay = engine.relay_peer
+    end
+
+    # What the approval relay needs from the parent's Engine (Peers#relay):
+    # its own question flow, which every UI attached to it answers.
+    RelayPeer = Struct.new(:engine) do
+      def open_question(fields, watch: nil) = engine.open_question(fields, watch: watch)
+      def interface = engine.interface
+    end
+
+    # The relay's view of this Engine, or nil when it can't host a relay: a
+    # worker's Engine only (its Bridge is what a child verifies against;
+    # --non-interactive has no one to ask), never with a REPL's sync
+    # handler (no wait loop, no watch).
+    # @return [RelayPeer, nil]
+    def relay_peer
+      return nil unless interface == :worker && !@question_desk.sync_handler?
+
+      RelayPeer.new(self)
     end
 
     # @return [String] the state dir holding this Engine's sessions
