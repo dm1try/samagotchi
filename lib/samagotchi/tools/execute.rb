@@ -173,11 +173,9 @@ module Samagotchi
       end
       private_class_method :monotonic_time
 
+      # execute.timeout_sec (SAMAGOTCHI_EXECUTE_TIMEOUT_SEC); 0 or less = the default.
       def self.timeout_seconds
-        value = Integer(ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"].to_s, exception: false)
-        return TIMEOUT_SEC if value.nil? || value <= 0
-
-        value
+        OutputGuardrails.config_positive_int("execute.timeout_sec", TIMEOUT_SEC)
       end
       private_class_method :timeout_seconds
 

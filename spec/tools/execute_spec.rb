@@ -152,6 +152,18 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(result).to eq("Error: command timed out after 1s")
     end
 
+    it "takes the timeout from config.yml's execute.timeout_sec" do
+      ENV.delete("SAMAGOTCHI_EXECUTE_TIMEOUT_SEC")
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+        File.write(File.join(dir, "samagotchi", "config.yml"), "default:\n  model: m\nexecute:\n  timeout_sec: 1\n")
+        with_env("XDG_CONFIG_HOME" => dir) do
+          expect(Samagotchi::Config.validate_yaml_sections(Samagotchi::ConfigFile.read_yaml)).to eq([])
+          expect(described_class.call("ruby -e 'sleep 5'")).to eq("Error: command timed out after 1s")
+        end
+      end
+    end
+
     # A shell's echo, not a ruby child, and a few seconds: under a parallel
     # run's load a ruby took over a second to print "before".
     it "returns the output captured before the timeout along with the error" do

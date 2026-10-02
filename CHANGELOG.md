@@ -15,6 +15,7 @@ and commands may change between minor versions. How releases are made:
 - A Stop while a turn is still starting (chi asking the model server about the model) now ends the turn there: no before-turn hooks run and a due reminder stays due.
 - `recap.model` set to a model id without a host no longer turns the recap off: it asks the host a bare `--model` goes to.
 - AGENT.md is found at the top of the git work tree when chi runs in a subdirectory (one in the current directory still wins).
+- `execute.timeout_sec` in config.yml (or `--execute-timeout-sec`) sets how long an `execute` command may run, like `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC`; it no longer warns as an unknown key.
 
 ## [0.12.0] - 2026-10-02
 
