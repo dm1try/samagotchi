@@ -133,15 +133,17 @@ RSpec.describe Samagotchi::ReplyWait do
   end
 
   it "calls interject once a poll, and doesn't count its time against the timeout" do
+    # The first interject outlasts the timeout; the reply comes from the
+    # second, so the wait has to poll again after it (no thread timing).
     calls = 0
-    later(0.6) { write_reply("after the interject") }
     interject = lambda do
       calls += 1
       sleep(0.5) if calls == 1
+      write_reply("after the interject") if calls == 2
     end
     result = wait(timeout: 0.3, interject: interject)
     expect(result.text).to eq("after the interject")
-    expect(calls).to be > 1
+    expect(calls).to eq(2)
   end
 
   it "stops right after an interject during which the wait was cancelled" do

@@ -113,6 +113,8 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       wait_until(timeout: 2) { !child_engine.pending_question.key?(:relayed_to) }
       expect(child_engine.pending_question).to include(id: qid, status: "pending")
       expect(child_engine.pending_question).not_to have_key(:relayed_to)
+      # The event follows the mark's clearing: wait for it too.
+      wait_until(timeout: 2) { events.last&.dig(:reason) == "parent_gone" }
       expect(events.last).to include(type: :question_relay, id: qid, relayed_to: nil, reason: "parent_gone")
     end
 
