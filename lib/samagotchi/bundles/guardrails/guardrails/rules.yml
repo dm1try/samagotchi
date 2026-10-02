@@ -80,3 +80,22 @@ rules:
     command: '(\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|memories/\.bundles|\.git/hooks)'
     verdict: ask
     reason: the command names chi's config, hooks, guardrails or git hooks
+
+  # ── answering chi's own questions around chi answer ───────────────────
+  # A parent agent answers a child's approval with chi answer, which holds it
+  # to guardrails.parent_approvals. These shapes go around that: chi --attach
+  # or chi -p with stdin from a pipe, a here-string or a file (a chi after 0.12 treats
+  # those as a parent too, but an older child doesn't), and a POST to the
+  # Bridge's or the web's answer route.
+  - id: chi-answer-piped
+    tool: shell
+    command: '(\|[^;&|\n]*\bchi\s([^;&|\n]*\s)?(--attach|--prompt|-p)\b|\bchi\s([^;&|\n]*\s)?(--attach|--prompt|-p)\b[^;&|\n]*<)'
+    verdict: ask
+    scopes: [once, session]
+    reason: answers chi's questions from a pipe or a file, around chi answer
+  - id: chi-answer-http
+    tool: shell
+    command: '\b(curl|wget|http|xh)\b[^;&|\n]*/answer\b'
+    verdict: ask
+    scopes: [once, session]
+    reason: posts an answer to a chi session's question directly, around chi answer

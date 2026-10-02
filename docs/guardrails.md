@@ -253,8 +253,12 @@ installs a default rule set plus a short memory telling the model not to
 route around a deny. It asks before `git push`, `reset --hard`, `clean -f`,
 `branch -D`, `rebase`, `filter-branch`/`filter-repo`; `rm -rf` on `/`, `~`,
 `$HOME` or `..` paths; `curl … | sh` and `base64 -d … | sh`; writes outside the
-repo; and shell commands that name chi's config, hooks or guardrails or
-`.git/hooks`. It denies writes into `.git/hooks`. The rules are in
+repo; shell commands that name chi's config, hooks or guardrails or
+`.git/hooks`; and answering chi's questions around `chi answer`: `chi --attach`
+or `chi -p` with stdin from a pipe, a here-string or a file
+(`chi-answer-piped`), and `curl`/`wget` to a session's `/answer` route
+(`chi-answer-http`), both once or for the session. `chi answer` itself isn't
+asked about. It denies writes into `.git/hooks`. The rules are in
 `lib/samagotchi/bundles/guardrails/guardrails/rules.yml`.
 
 Small models (`models: small`, see above) get two more asks, in

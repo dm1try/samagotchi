@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- The `guardrails` bundle (0.3.0) asks before answering chi's questions around `chi answer`: `chi --attach` / `chi -p`
+  with stdin from a pipe, a here-string or a file, and `curl`/`wget` to a session's `/answer` route.
 - An answer typed into `chi --attach` or the REPL counts as a parent agent's, held to `guardrails.parent_approvals`,
   when stdin isn't a terminal or `CLAUDECODE`, `AI_AGENT` or `SAMAGOTCHI_PARENT_SESSION` is set: a piped `y` no
   longer allows an approval at any scope. chi's `execute` and `task_create` export `SAMAGOTCHI_PARENT_SESSION` (the
