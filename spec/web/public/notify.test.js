@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { attentionFor, attentionText, createNotifyGate, initialAttentionState, notifyState, trackAttention } from "../../../lib/samagotchi/web/public/notify.js";
+import { attentionFor, attentionText, createNotifyGate, initialAttentionState, notifyState, trackAttention, waitingOn } from "../../../lib/samagotchi/web/public/notify.js";
 
 // What in a session's summary change needs the user: an open question,
 // a failed turn, a long turn done. The first snapshot only seeds.
@@ -229,4 +229,23 @@ test("the bell is denied, on or off on a secure origin", () => {
   assert.equal(notifyState({ ...secure, permission: "granted", wanted: true }), "on");
   assert.equal(notifyState({ ...secure, permission: "granted", wanted: false }), "off");
   assert.equal(notifyState({ ...secure, permission: "default", wanted: true }), "off");
+});
+
+// The session cards' "needs you" (app.js cardHtml): what the session waits on now.
+test("waitingOn names an open question, an approval or a card with actions; else null", () => {
+  assert.deepEqual(waitingOn({ ...base, pending_question: { id: "q1", kind: "question" } }), { reason: "question", id: "q1" });
+  assert.deepEqual(waitingOn({ ...base, pending_question: { id: "q1", kind: "approval" } }), { reason: "approval", id: "q1" });
+  assert.deepEqual(waitingOn({ ...base, pending_card: { id: "c1" } }), { reason: "card", id: "c1" });
+  assert.equal(waitingOn(base), null);
+  assert.equal(waitingOn({ ...base, pending_question: {} }), null);
+  assert.equal(waitingOn(null), null);
+});
+
+test("waitingOn: a question wins over a card (the question blocks the turn)", () => {
+  assert.equal(waitingOn({ ...base, pending_question: { id: "q1" }, pending_card: { id: "c1" } }).reason, "question");
+});
+
+test("attentionFor still sees a new card while an old question stays open", () => {
+  const prev = { ...base, pending_question: { id: "q1" } };
+  assert.equal(attentionFor(prev, { ...prev, pending_card: { id: "c1" } }).reason, "card");
 });
