@@ -2,10 +2,12 @@
 
 Samagotchi stores memories in two scopes:
 
-- Project scope: `~/.config/samagotchi/memories/projects/<name>_<hash>/`, one folder per
+- Project scope: `$XDG_CONFIG_HOME/samagotchi/memories/projects/<name>_<hash>/`, one folder per
   git repository (named and hashed by its root), shared by all its worktrees and
   subdirectories; outside a repository, one per working directory
-- System scope: `~/.config/samagotchi/memories`
+- System scope: `$XDG_CONFIG_HOME/samagotchi/memories`
+
+`$XDG_CONFIG_HOME` falls back to `~/.config` when unset.
 
 Tool behavior:
 
@@ -19,7 +21,7 @@ Tool behavior:
 
 Each memory entry may have a companion file named `<name>.<model-key>.md` in the same scope directory. When the entry is read under a matching model, the overlay body is appended automatically, separated by the standard `---` separator with a `Model-specific guidance (<key>):` header.
 
-- **Key derivation**: The harness normalizes the full model name (lowercase, replace non-alphanumeric with `-`, squeeze dashes) to derive the file key. For example, `qwen3.6-35b-a3b` → `qwen3-6-35b-a3b`.
+- **Key derivation**: The harness normalizes the model name sent to the server, without its host prefix (`box:qwen3.6-35b-a3b` keys as `qwen3.6-35b-a3b`; an alias keys as its target, and the alias's own key is read when the target has no overlay) (lowercase, replace non-alphanumeric with `-`, squeeze dashes) to derive the file key. For example, `qwen3.6-35b-a3b` → `qwen3-6-35b-a3b`.
 - **Saving overlays**: Pass `current_model_only: true` to `memory_write` (the harness resolves the model key automatically). This writes the content as `<name>.<model-key>.md` and skips index maintenance.
 - **Dormancy**: Overlays are only active under the matching model key; other models see the base entry only.
 - **Invariant**: The base entry is the contract. Overlays only add model-specific guidance and never contradict the base protocol.

@@ -231,6 +231,18 @@ hosts:
     api_key_env: BOX_LLAMA_KEY
 ```
 
+A host without `port:` (and without `url:`) uses port 8080. `enabled: false`
+turns an entry off without deleting it: chi skips it as if it weren't there
+(not in `chi models`, never the default host; `box:model` then counts as an
+unknown host prefix, see [Llama Model Routing](#llama-model-routing)):
+
+```yaml
+hosts:
+  box:
+    host: 192.0.2.20
+    enabled: false
+```
+
 For models on that host, chi uses the chat loop (its own OpenAI chat adapter): it
 takes the OpenAI base (`url:`, else `http://HOST:PORT/v1`) and streams messages plus
 function schemas from `/v1/chat/completions`; the model's reasoning (`reasoning_content`)
