@@ -50,10 +50,13 @@ module Samagotchi
     #   a failure replaces the note and leaves the count as it was.
     # @param owner_grace [Numeric, nil] seconds with no live worker before
     #   :worker_gone (one that died before its rescue leaves it running)
+    # @param interject [#call, nil] called once a poll, before the sleep
+    #   (the delegate wait relays other children's approvals there); the
+    #   time it takes doesn't count against +timeout+
     # @return [Result]
     # @raise [ArgumentError] no such session
     def call(id, state_dir:, cursor:, timeout: nil, poll_interval: POLL_INTERVAL, cancelled: -> { false },
-             baseline: nil, owner_grace: nil)
+             baseline: nil, owner_grace: nil, interject: nil)
       deadline = timeout && (monotonic + timeout.to_f)
       seen_running = false
       gone_since = nil
@@ -104,6 +107,12 @@ module Samagotchi
 
         return Result.new(status: :timeout) if deadline && monotonic > deadline
 
+        if interject
+          started = monotonic
+          interject.call
+          deadline += monotonic - started if deadline
+          next if cancelled.call
+        end
         sleep(poll_interval)
       end
     end

@@ -132,6 +132,23 @@ RSpec.describe Samagotchi::ReplyWait do
     expect(wait(timeout: nil).text).to eq("eventually")
   end
 
+  it "calls interject once a poll, and doesn't count its time against the timeout" do
+    calls = 0
+    later(0.6) { write_reply("after the interject") }
+    interject = lambda do
+      calls += 1
+      sleep(0.5) if calls == 1
+    end
+    result = wait(timeout: 0.3, interject: interject)
+    expect(result.text).to eq("after the interject")
+    expect(calls).to be > 1
+  end
+
+  it "stops right after an interject during which the wait was cancelled" do
+    flag = [false]
+    expect(wait(interject: -> { flag[0] = true }, cancelled: -> { flag[0] }).status).to eq(:canceled)
+  end
+
   describe "with a baseline" do
     let(:session) { make(status: "idle") }
 

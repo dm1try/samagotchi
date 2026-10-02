@@ -23,6 +23,10 @@ module Samagotchi
       # How often the card's watch looks at the child.
       WATCH_EVERY = 0.5
 
+      # How often a wait looks at the parent's other children (a full
+      # session listing) for approvals to relay.
+      OTHERS_EVERY = 2.0
+
       # What happened to one relayed approval.
       # @!attribute line [String] the outcome line for the tool result
       # @!attribute stopped [Boolean] the parent's turn was stopped
@@ -134,6 +138,67 @@ module Samagotchi
         what = facts[:command] || Array(facts[:paths]).join(", ")
         what = facts[:args].to_s if what.to_s.empty?
         what.to_s.empty? ? tool.to_s : "#{tool}: #{what}"
+      end
+
+      # The parent's other running children, while it waits on one (D2):
+      # their approvals are relayed too, oldest first, one card at a time.
+      # Each outcome is kept for that child's next DelegateWait result
+      # (DelegateWait.relayed_outcomes). Every question is relayed once per
+      # wait.
+      class Others
+        # @param parent_id [String]
+        # @param except [String] the child waited on (its own approvals come
+        #   through ReplyWait)
+        # @param on_outcome [#call] (child_id, Outcome)
+        def initialize(parent_id:, except:, relay:, state_dir:, on_outcome:, every: OTHERS_EVERY)
+          @parent_id = parent_id
+          @except = except
+          @relay = relay
+          @state_dir = state_dir
+          @on_outcome = on_outcome
+          @every = every
+          @done = {}
+          @next_at = 0.0
+        end
+
+        # Relay the oldest waiting approval of another child, if any (a
+        # ReplyWait interject). Throttled to one look every +every+ s.
+        def poll
+          return if monotonic < @next_at
+
+          @next_at = monotonic + @every
+          waiting = self.waiting
+          return if waiting.empty?
+
+          child_id, question = waiting.first
+          @done[question[:id].to_s] = true
+          outcome = DelegateRelay.call(child_id, question, relay: @relay, state_dir: @state_dir, more: waiting.size - 1)
+          @on_outcome.call(child_id, outcome)
+          # The next one, if any, right after.
+          @next_at = 0.0
+        end
+
+        # Other children's approvals not yet relayed in this wait.
+        # @return [Integer]
+        def count = waiting.size
+
+        # @return [Array<Array(String, Hash)>] [child id, pending question],
+        #   oldest question first
+        def waiting
+          rows = SessionManager.children_of(@parent_id, state_dir: @state_dir).select do |row|
+            row[:id] != @except && row[:waiting] == Guardrails::Approval::KIND && !@done[row[:waiting_id].to_s]
+          end
+          rows.filter_map do |row|
+            pending = Session.load(row[:id], state_dir: @state_dir).pending_question
+            [row[:id], pending] if pending && pending[:id].to_s == row[:waiting_id].to_s
+          rescue ArgumentError
+            nil
+          end.sort_by { |_, pending| pending[:created_at].to_s }
+        end
+
+        private
+
+        def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
       # @return [BridgeClient::Response, nil] nil when the child's worker

@@ -225,6 +225,54 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     expect(wait(timeout: 1)).to include("status: running\napproval relayed to your user: execute: git push → allowed once\nno reply yet after 1 s")
   end
 
+  describe "other running children's approvals while the parent waits (D2)" do
+    let(:other) { make(parent_id: parent.id, prompt: "lint it", status: "running", owner: true) }
+
+    before { stub_const("Samagotchi::Tools::DelegateRelay::OTHERS_EVERY", 0.05) }
+
+    it "relays them too, and gives each outcome in that child's own next result" do
+      update(other, pending_question: approval.merge(id: "o1", approval: approval[:approval].merge(command: "rm -rf tmp")))
+      user_answers("Allow once", 0)
+      client.on_answered = lambda do
+        next unless client.posts.last[:question_id] == "o1"
+
+        update(other, pending_question: nil)
+        Thread.new do
+          sleep(0.2)
+          Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), "child done")
+          update(child, status: "idle")
+        end
+      end
+
+      expect(wait).to eq("session: #{child.id}\nstatus: answered\n---\nchild done")
+      expect(relay.cards.map { |c| c[:relay][:child_id] }).to eq([other.id])
+
+      Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(other.id, state_dir: tmpdir), "linted")
+      update(other, status: "idle")
+      expect(described_class.call(other.id, peers: peers, timeout: 5)).to eq(
+        "session: #{other.id}\nstatus: answered\napproval relayed to your user: execute: rm -rf tmp → allowed once\n---\nlinted"
+      )
+    end
+
+    it "says on the card how many more delegates wait, one card at a time" do
+      update(other, pending_question: approval.merge(id: "o1", created_at: "2026-01-01T00:00:01Z"))
+      update(child, pending_question: approval.merge(created_at: "2026-01-01T00:00:02Z"))
+      user_answers("Deny", 2)
+      client.on_answered = lambda do
+        posted = client.posts.last[:question_id]
+        if posted == "q1"
+          finish_child
+        else
+          update(other, pending_question: nil)
+        end
+      end
+
+      expect(wait).to include("approval relayed to your user: execute: git push → denied\n---\npushed")
+      expect(relay.cards.first[:header]).to end_with("(+1 more delegate waiting)")
+      expect(relay.cards.first[:relay][:child_id]).to eq(child.id)
+    end
+  end
+
   it "keeps today's path for the model's own questions, and without a relay" do
     update(child, pending_question: { id: "q1", question: "Which one?", options: %w[A B] })
     expect(wait).to include("status: question\nChild #{child.id} is waiting for an answer (question): Which one?")

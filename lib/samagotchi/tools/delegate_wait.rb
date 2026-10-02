@@ -42,6 +42,13 @@ module Samagotchi
         @baselines ||= {}
       end
 
+      # @return [Hash{Array(String, String) => Array<String>}] [parent id,
+      #   child id] → outcome lines of that child's approvals relayed while
+      #   the parent waited on another child, for its next result
+      def relayed_outcomes
+        @relayed_outcomes ||= {}
+      end
+
       # @param child_id [String] the child's full id
       # @param peers [Peers] the parent (session_id, state_dir, cancelled?)
       # @param timeout [Integer] seconds
@@ -61,20 +68,22 @@ module Samagotchi
         key = [peers.session_id, child_id]
         cancelled = -> { peers.cancelled? }
         relay = peers.respond_to?(:relay) ? peers.relay : nil
+        others = relay && others_for(peers.session_id, child_id, relay, sd)
         baseline = baselines[key]
         left = timeout.to_i
-        outcomes = []
+        outcomes = relayed_outcomes.delete(key) || []
         loop do
           started = monotonic
           wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: [left, 0].max,
                                           poll_interval: poll_interval, cancelled: cancelled, baseline: baseline,
-                                          owner_grace: owner_grace)
+                                          owner_grace: owner_grace, interject: others && -> { others.poll })
           left -= monotonic - started
           unless wait.status == :waiting_for_answer && DelegateRelay.relayable?(relay, wait.question)
+            outcomes.concat(relayed_outcomes.delete(key) || [])
             return with_outcomes(finish(wait, child_id, key: key, timeout: timeout), outcomes)
           end
 
-          outcome = DelegateRelay.call(child_id, wait.question, relay: relay, state_dir: sd)
+          outcome = DelegateRelay.call(child_id, wait.question, relay: relay, state_dir: sd, more: others&.count.to_i)
           outcomes << outcome.line
           return with_outcomes(canceled_result(child_id), outcomes) if outcome.stopped
 
@@ -85,6 +94,15 @@ module Samagotchi
         end
       rescue ArgumentError => e
         "Error: #{e.message}"
+      end
+
+      # The parent's other children whose approvals a wait relays too, their
+      # outcomes kept for their own next result.
+      def others_for(parent_id, child_id, relay, state_dir)
+        DelegateRelay::Others.new(parent_id: parent_id, except: child_id, relay: relay, state_dir: state_dir,
+                                  on_outcome: lambda { |other, outcome|
+                                    (relayed_outcomes[[parent_id, other]] ||= []) << outcome.line
+                                  })
       end
 
       # The relayed approvals' outcome lines, after the status line.
