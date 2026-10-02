@@ -5,6 +5,7 @@ require_relative "../reply_wait"
 require_relative "../parent_report"
 require_relative "output_guardrails"
 require_relative "peers"
+require_relative "delegate_relay"
 
 module Samagotchi
   module Tools
@@ -48,16 +49,49 @@ module Samagotchi
       # @param owner_grace [Numeric] seconds with no live worker before
       #   the child's worker counts as gone
       # @return [String] the tool result
+      #
+      # A child's approval, when this session can host a relay (Peers#relay),
+      # goes to this session's user as its own approval (DelegateRelay); the
+      # wait goes on after it settles, and the result gets one outcome line per relayed
+      # approval. Without a relay, and for the model's and hooks' questions,
+      # the question comes back to the model as before.
       def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL, owner_grace: OWNER_GRACE)
         sd = peers.state_dir || Session.default_state_dir
         key = [peers.session_id, child_id]
         cancelled = -> { peers.cancelled? }
-        wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: timeout.to_i,
-                                        poll_interval: poll_interval, cancelled: cancelled, baseline: baselines[key],
-                                        owner_grace: owner_grace)
-        finish(wait, child_id, key: key, timeout: timeout)
+        relay = peers.respond_to?(:relay) ? peers.relay : nil
+        baseline = baselines[key]
+        outcomes = []
+        loop do
+          wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: timeout.to_i,
+                                          poll_interval: poll_interval, cancelled: cancelled, baseline: baseline,
+                                          owner_grace: owner_grace)
+          unless wait.status == :waiting_for_answer && DelegateRelay.relayable?(relay, wait.question)
+            return with_outcomes(finish(wait, child_id, key: key, timeout: timeout), outcomes)
+          end
+
+          outcome = DelegateRelay.call(child_id, wait.question, relay: relay, state_dir: sd)
+          outcomes << outcome.line
+          return with_outcomes(canceled_result(child_id), outcomes) if outcome.stopped
+
+          # Wait on with the child as it is now: a turn that ends with no
+          # reply after the relay still ends the wait, and the relayed
+          # question isn't reported again.
+          baseline = ReplyWait.baseline_of(Session.load(child_id, state_dir: sd), question_id: wait.question[:id])
+        end
       rescue ArgumentError => e
         "Error: #{e.message}"
+      end
+
+      # The relayed approvals' outcome lines, after the status line.
+      def with_outcomes(text, outcomes)
+        return text if outcomes.empty?
+
+        text.sub(/\A(session: [^\n]*\nstatus: [^\n]*\n)/) { "#{::Regexp.last_match(1)}#{outcomes.join("\n")}\n" }
+      end
+
+      def canceled_result(child_id)
+        result(child_id, "running", "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
       end
 
       # The tool result for how the wait ended.
@@ -79,7 +113,7 @@ module Samagotchi
         when :waiting_for_answer
           result(child_id, status, waiting_text(child_id, wait.question))
         when :canceled
-          result(child_id, status, "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
+          canceled_result(child_id)
         when :no_reply
           result(child_id, status, "#{no_reply_text(wait)}; its session shows what happened")
         when :worker_gone
