@@ -24,6 +24,7 @@ require_relative "image_store"
 require_relative "log"
 require_relative "version"
 require_relative "worker_sidecar"
+require_relative "relay_verifier"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -529,28 +530,33 @@ module Samagotchi
 
     # What a parent's relay may say about this session's approval
     # (BridgeClient#relay): opened and closed only change how the question
-    # shows (QuestionDesk#annotate). No auth: a poke can at most show a
-    # wrong banner.
-    RELAY_ACTIONS = %w[opened closed].freeze
+    # shows (QuestionDesk#annotate); answered makes this worker ask the
+    # parent for the answer (RelayVerifier). No auth: a poke at opened or
+    # closed can at most show a wrong banner.
+    RELAY_ACTIONS = %w[opened closed answered].freeze
     # Why a relay closed, as a parent says it; anything else is "closed".
     RELAY_CLOSE_REASONS = %w[stopped closed child_gone answered_on_child].freeze
 
     # POST /session/:id/relay {action, relay_id, question_id}. 200, 409 (no
-    # longer pending, or another relay's), 422 (no parent), 400 a bad request.
-    def handle_relay(_session_id, body)
+    # longer pending, or another relay's), 403 refused (a parent agent's
+    # allow), 422 relay_unverified, 400 a bad request.
+    def handle_relay(session_id, body)
       parsed = parse_json(body)
       return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
 
       action, relay_id, qid = %w[action relay_id question_id].map { |key| fetched(parsed, key).to_s }
       unless RELAY_ACTIONS.include?(action) && !relay_id.empty? && !qid.empty?
-        return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "action (opened, closed), relay_id and question_id required" }]
+        return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "action (opened, closed, answered), relay_id and question_id required" }]
       end
 
       case action
       when "opened" then relay_opened(qid, relay_id)
-      else
+      when "closed"
         reason = fetched(parsed, "reason").to_s
         relay_closed(qid, relay_id, RELAY_CLOSE_REASONS.include?(reason) ? reason : "closed")
+      else
+        RelayVerifier.new(engine: @engine, state_dir: @state_dir, session_id: session_id)
+                     .answer(relay_id: relay_id, question_id: qid)
       end
     end
 

@@ -133,4 +133,90 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       expect(client_for(parent).relay_status("nope").status).to eq(404)
     end
   end
+
+  describe "answered: the child asks its parent" do
+    before do
+      serve(parent_engine, parent)
+      serve(child_engine, child)
+    end
+
+    def parent_relay(qid, child_id: child.id, indices: [0], by: "user", freeform: nil, dismissed: false, record: true)
+      id = parent_engine.relay_desk.open(child_id: child_id, child_question_id: qid)
+      parent_engine.relay_desk.record(id, selected_indices: indices, freeform: freeform, dismissed: dismissed, by: by) if record
+      id
+    end
+
+    it "takes the user's answer by index, as the child's own option, recorded as the relay's" do
+      box, qid = ask_child
+      relay_id = parent_relay(qid, indices: [1])
+
+      response = relay("answered", relay_id, qid)
+      expect(response.status).to eq(200)
+      @threads.last.join(2)
+      expect(box[:answer]).to include(selected: ["Allow this call for the session"], selected_indices: [1])
+      expect(box[:answer]).not_to have_key(:by)
+    end
+
+    it "takes a deny with the user's reason, and a dismiss as a cancel (the approval denied)" do
+      box, qid = ask_child
+      expect(relay("answered", parent_relay(qid, indices: [2], freeform: "not on main"), qid).status).to eq(200)
+      @threads.last.join(2)
+      expect(box[:answer]).to include(selected: ["Deny"], freeform: "not on main")
+
+      box, qid = ask_child
+      expect(relay("answered", parent_relay(qid, indices: [], dismissed: true), qid).status).to eq(200)
+      @threads.last.join(2)
+      expect(box[:answer]).to include(error: "no answer")
+    end
+
+    it "holds a parent agent's answer to the child's own guardrails.parent_approvals (403, still open)" do
+      _box, qid = ask_child
+      response = relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid)
+      expect(response.status).to eq(403)
+      expect(response.json).to include("error" => "parent_approval_refused", "reason" => "off")
+      expect(child_engine.pending_question[:id]).to eq(qid)
+
+      expect(relay("answered", parent_relay(qid, indices: [2], by: "parent_agent"), qid).status).to eq(200)
+    end
+
+    it "refuses even Allow once from a parent agent on chi's own config, whatever the setting" do
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_approvals").and_return("once")
+      _box, qid = ask_child(approval.merge(approval: approval[:approval].merge(rule: "chi-config")))
+      response = relay("answered", parent_relay(qid, indices: [0], by: "parent_agent"), qid)
+      expect([response.status, response.json["reason"]]).to eq([403, "protected"])
+    end
+
+    it "believes nothing the parent doesn't hold for this child, this question, answered (422, still open)" do
+      _box, qid = ask_child
+      unanswered = parent_relay(qid, record: false)
+      stranger = parent_relay(qid, child_id: "someone-else")
+      other_question = parent_relay("q-old")
+      out_of_range = parent_relay(qid, indices: [7])
+
+      [unanswered, stranger, "no-such-relay", out_of_range].each do |relay_id|
+        expect(relay("answered", relay_id, qid).status).to eq(422), relay_id
+      end
+      expect(relay("answered", other_question, qid).status).to eq(422)
+      expect(child_engine.pending_question[:id]).to eq(qid)
+    end
+
+    it "answers 409 for a replayed relay of an earlier question, or one answered on the child first" do
+      box, qid = ask_child
+      relay_id = parent_relay(qid)
+      child_engine.answer_question(id: qid, selected: ["Deny"])
+      @threads.last.join(2)
+      expect(box[:answer]).to include(selected: ["Deny"])
+
+      _box, _next_qid = ask_child
+      expect(relay("answered", relay_id, qid).status).to eq(409)
+    end
+
+    it "believes nothing once the parent's worker is gone (422, still open)" do
+      _box, qid = ask_child
+      relay_id = parent_relay(qid)
+      @bridges.first.stop
+      expect(relay("answered", relay_id, qid).status).to eq(422)
+      expect(child_engine.pending_question[:id]).to eq(qid)
+    end
+  end
 end
