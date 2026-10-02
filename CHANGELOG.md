@@ -27,6 +27,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- A host is remote by its address, not by its API key: an `https` url or a public IP address. A llama.cpp on the LAN
+  started with `--api-key` (`api_key_env:`) is now local again: chi asks its `/props` for the context window and the
+  served model, keeps its model list for 60 s, and gives it no first-token limit. `hosts.<name>.remote: true|false`
+  decides it for a host chi gets wrong (an http host named by a public DNS name counts as local).
 - Codex CLI counts as a parent agent: an answer typed into `chi --attach` or the REPL from a command Codex runs
   (`CODEX_THREAD_ID` set) is held to `guardrails.parent_approvals`, as one from Claude Code is.
 - `delegate` and `delegate_result` report a child's wait with the status words of `chi send --wait --format json`:

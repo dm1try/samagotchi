@@ -232,6 +232,25 @@ hosts:
     api_key_env: BOX_LLAMA_KEY
 ```
 
+**Remote or local.** chi treats a host as a remote provider by its address, not
+by its key: an `https` url, or an `http` IP address outside the loopback,
+private (`10.*`, `172.16–31.*`, `192.168.*`, IPv6 `fc00::/7`), link-local and
+CGNAT/Tailscale (`100.64.0.0/10`) nets. An `http` host given by a name
+(`localhost`, `box`, `mac.local`) is local: chi doesn't look names up. A remote
+host keeps its model list for 10 minutes, gets a 120-second first-token limit,
+and isn't asked for llama.cpp's `/props` (its context window and served model
+come from its model list and each turn). `remote: true` or `remote: false` on a
+host decides it instead, e.g. for a llama.cpp behind an https proxy on the LAN:
+
+```yaml
+hosts:
+  lab:
+    url: https://llm.lab.example/v1
+    api: openai
+    api_key_env: LAB_KEY
+    remote: false
+```
+
 A host without `port:` (and without `url:`) uses port 8080. `enabled: false`
 turns an entry off without deleting it: chi skips it as if it weren't there
 (not in `chi models`, never the default host; `box:model` then counts as an
@@ -481,7 +500,7 @@ hosts:
 ```
 
 `hosts.<name>.first_token_timeout` wins over `server.first_token_timeout` (`SAMAGOTCHI_SERVER_FIRST_TOKEN_TIMEOUT`),
-which applies to every host. With neither set, remote hosts (an API key or an https url) get 120 seconds and local
+which applies to every host. With neither set, remote hosts (see "Remote or local" above) get 120 seconds and local
 servers no limit: a long prompt evaluation is normal there, and the read timeout catches a dead server.
 
 Every chat request carries the session's id as a `Session-Id` header (next to `User-Agent: chi/<version>`). A
@@ -507,7 +526,7 @@ to the default host. Only exact ids count, never a substring: `/model gemma` on
 a box that lists `gemma-3-12b` needs `box:gemma` or the exact id. The lists are
 known only after `/models` ran (nothing is fetched before the first turn), so
 until then an unqualified name goes to the default host; use `host:model` to pin
-one. A **remote** host (one with `api_key_env:` or an `https` url) keeps its model
+one. A **remote** host (an `https` url or a public address; see "Remote or local") keeps its model
 list for 10 minutes (60s for local hosts). For a chat host the context window comes from
 the running server (llama.cpp's `/props`), else the window the host's model list
 gives (`context_length`, `context_window`, `max_model_len` or llama.cpp's
@@ -819,6 +838,7 @@ described in their own sections.
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
+| `hosts.<name>.remote` | by address | | `true`/`false`: treat the host as a remote provider or a local server. See "Remote or local". |
 | `max_tool_output_chars` | `10000` | yes | Tool output kept in the conversation; a top-level key (see below). |
 | `retry.max` | `5` | yes | See "Llama Network Retry Behavior". |
 | `retry.base_delay` | `0.5` | yes | |

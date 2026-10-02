@@ -187,7 +187,8 @@ module Samagotchi
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
-      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking enabled].freeze,
+      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking enabled
+                    remote].freeze,
       "models" => %w[profile vision sampling thinking].freeze
     }.freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
@@ -603,7 +604,11 @@ module Samagotchi
 
     # A `vision:` setting (hosts entry or models: entry): true, false, or nil
     # when unset. Anything else warns once and counts as unset.
-    def vision_flag(value, where)
+    def vision_flag(value, where) = bool_flag(value, where, "vision")
+
+    # A true/false setting +key+ of a map entry, nil when unset; anything
+    # else warns once and counts as unset.
+    def bool_flag(value, where, key)
       return nil if value.nil?
       return value if value == true || value == false
 
@@ -611,7 +616,7 @@ module Samagotchi
       return true if text == "true"
       return false if text == "false"
 
-      warn_once "Warning: #{where}: vision must be true or false; ignored"
+      warn_once "Warning: #{where}: #{key} must be true or false; ignored"
       nil
     end
 
@@ -729,6 +734,8 @@ module Samagotchi
           profile = (raw_cfg["profile"] || raw_cfg[:profile]).to_s.strip.downcase
           first_token_timeout = raw_cfg.key?("first_token_timeout") ? raw_cfg["first_token_timeout"] : raw_cfg[:first_token_timeout]
           vision = ConfigFile.vision_flag(raw_cfg.key?("vision") ? raw_cfg["vision"] : raw_cfg[:vision], "hosts entry '#{name}'")
+          remote = ConfigFile.bool_flag(raw_cfg.key?("remote") ? raw_cfg["remote"] : raw_cfg[:remote], "hosts entry '#{name}'",
+                                        "remote")
           sampling = ConfigFile.sampling_map(raw_cfg.key?("sampling") ? raw_cfg["sampling"] : raw_cfg[:sampling], "hosts entry '#{name}'")
           thinking = Thinking.level(raw_cfg.key?("thinking") ? raw_cfg["thinking"] : raw_cfg[:thinking], "hosts entry '#{name}'")
           unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
@@ -794,7 +801,7 @@ module Samagotchi
                                   api: api_val&.to_sym, original_name: name, scheme: scheme,
                                   url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env,
                                   profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout,
-                                  vision: vision, sampling: sampling, thinking: thinking }
+                                  vision: vision, sampling: sampling, thinking: thinking, remote: remote }
         end
       end
 
@@ -935,7 +942,8 @@ module Samagotchi
         location = v[:url] ? { "url" => v[:url] } : { "host" => v[:host], "port" => v[:port] }
         location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env],
                        "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout],
-                       "vision" => v[:vision], "sampling" => v[:sampling], "thinking" => v[:thinking]&.to_s).compact
+                       "vision" => v[:vision], "sampling" => v[:sampling], "thinking" => v[:thinking]&.to_s,
+                       "remote" => v[:remote]).compact
       end
       # Disabled hosts travel as just that, so a worker refuses "box:x"
       # the way its parent does instead of sending it to the default host.

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "ipaddr"
 require_relative "config"
 require_relative "model_ref"
 require_relative "client"
@@ -31,9 +32,10 @@ module Samagotchi
     # first_token_timeout: the configured first-token limit (see #first_token_limit);
     # vision: the configured true/false (VisionSupport), nil when unset;
     # sampling: the configured request parameters (SamplingSettings), nil when unset;
-    # thinking: the configured level (Thinking), nil when unset.
+    # thinking: the configured level (Thinking), nil when unset;
+    # remote: the configured true/false (#remote?), nil when unset.
     HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :profile,
-                           :first_token_timeout, :vision, :sampling, :thinking, keyword_init: true) do
+                           :first_token_timeout, :vision, :sampling, :thinking, :remote, keyword_init: true) do
       # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
       # raw-prompt loop.
       def chat? = api == :openai
@@ -45,9 +47,12 @@ module Samagotchi
       # configured, else the root's /v1.
       def openai_base_url = url || "#{root_url}/v1"
 
-      # A provider on the network rather than a local server: it needs a key
-      # or speaks https. Its model list is cached longer.
-      def remote? = !api_key_env.to_s.empty? || scheme == "https"
+      # A provider on the network rather than a local server: hosts.<name>.remote
+      # when set, else by its address (HostRegistry.remote_address?). An API
+      # key doesn't decide: a llama.cpp on the LAN can have one. A remote
+      # host's model list is cached longer, it gets a first-token limit, and
+      # it isn't asked for llama.cpp's /props.
+      def remote? = remote.nil? ? HostRegistry.remote_address?(scheme, host) : remote
 
       def models_ttl = remote? ? REMOTE_CACHE_TTL_SECONDS : CACHE_TTL_SECONDS
 
@@ -89,7 +94,8 @@ module Samagotchi
         entry = HostEntry.new(name: key.to_s.downcase, host: cfg[:host], port: cfg[:port].to_i, transport: transport,
                               api: cfg[:api]&.to_sym, scheme: cfg[:scheme], url: cfg[:url], api_key_env: cfg[:api_key_env],
                               profile: cfg[:profile], first_token_timeout: cfg[:first_token_timeout],
-                              vision: cfg[:vision], sampling: cfg[:sampling], thinking: cfg[:thinking])
+                              vision: cfg[:vision], sampling: cfg[:sampling], thinking: cfg[:thinking],
+                              remote: cfg[:remote])
         entry.client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme],
                                   first_token_timeout: entry.first_token_limit, name: entry.name,
                                   api_key_env: entry.api_key_env, env: env)
@@ -111,6 +117,23 @@ module Samagotchi
 
     def entries
       @entries
+    end
+
+    # Loopback, private (RFC 1918, IPv6 unique local) and link-local nets.
+    LOCAL_NETS = %w[127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10
+                    ::1/128 fc00::/7 fe80::/10].map { |net| IPAddr.new(net) }.freeze
+
+    # Whether an address is remote: https, or an http IP address outside
+    # the local nets (LOCAL_NETS). An http host named by a name (localhost,
+    # box, mac.local, gpu.lan) counts as local: chi doesn't look names up.
+    def self.remote_address?(scheme, host)
+      return true if scheme.to_s == "https"
+
+      address = IPAddr.new(host.to_s.delete_prefix("[").delete_suffix("]"))
+      address = address.native if address.ipv4_mapped?
+      LOCAL_NETS.none? { |net| net.family == address.family && net.include?(address) }
+    rescue IPAddr::Error
+      false
     end
 
     # server.first_token_timeout, or nil when unset or unreadable.

@@ -55,6 +55,23 @@ RSpec.describe "hosts: url and api_key_env" do
     expect(result["bad"][:first_token_timeout]).to be_nil
   end
 
+  it "reads remote: true/false, ignores anything else with a warning, and passes it to workers" do
+    result = nil
+    expect do
+      result = hosts("lan" => { "url" => "https://lan.example/v1", "remote" => false },
+                     "far" => { "host" => "box", "remote" => true },
+                     "bad" => { "host" => "h", "remote" => "maybe" })
+    end.to output(/'bad'.*remote must be true or false/).to_stderr
+    expect(result.transform_values { |v| v[:remote] }).to eq("lan" => false, "far" => true, "bad" => nil)
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "config.yml")
+      File.write(path, { "hosts" => { "lan" => { "url" => "https://lan.example/v1", "remote" => false } } }.to_yaml)
+      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
+      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
+      expect(worker["lan"][:remote]).to be(false)
+    end
+  end
+
   it "passes url and api_key_env to workers, never the key" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
@@ -88,6 +105,29 @@ RSpec.describe "hosts: url and api_key_env" do
 
       expect(local.openai_base_url).to eq("http://box:8081/v1")
       expect(local.root_url).to eq("http://box:8081")
+    end
+
+    describe "#remote?" do
+      it "is decided by the address: https, or an http IP address that isn't loopback, private or link-local" do
+        expect(entry(name: "x", host: "openrouter.ai", port: 443, scheme: "https", api_key_env: "K")).to be_remote
+        expect(entry(name: "x", host: "203.0.113.7", port: 8080, scheme: "http")).to be_remote
+        expect(entry(name: "x", host: "2001:db8::1", port: 8080, scheme: "http")).to be_remote
+        %w[localhost 127.0.0.1 ::1 10.1.2.3 172.20.0.5 192.168.1.29 169.254.1.1 fd00::5 fe80::1 box mac.local].each do |host|
+          expect(entry(name: "x", host: host, port: 8080, scheme: "http")).not_to be_remote, host
+        end
+      end
+
+      it "doesn't count an API key: a keyed llama.cpp on the LAN stays local (/props, its timeouts and list cache)" do
+        lan = entry(name: "x", host: "192.168.1.29", port: 8080, scheme: "http", api_key_env: "BOX_KEY")
+        expect(lan).not_to be_remote
+        expect(lan.models_ttl).to eq(Samagotchi::HostRegistry::CACHE_TTL_SECONDS)
+        expect(lan.first_token_limit).to be_nil
+      end
+
+      it "follows hosts.<name>.remote when it is set" do
+        expect(entry(name: "x", host: "192.168.1.29", port: 8080, remote: true)).to be_remote
+        expect(entry(name: "x", host: "lan.example", port: 443, scheme: "https", remote: false)).not_to be_remote
+      end
     end
 
     it "gives the raw client the entry's scheme" do
