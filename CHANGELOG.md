@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A new or woken session worker runs the newest chi installed, whoever starts it: a `chi web`, `chi send` or
+  terminal left on an older chi no longer starts workers on its own version. A worker already running keeps its
+  version until it is restarted.
+
 ### Fixed
 
 - source-links (0.3.2): a `case_insensitive: true` source no longer lists a ref in its `sources:` note when the ref

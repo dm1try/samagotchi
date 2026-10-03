@@ -20,6 +20,7 @@ require_relative "worker_sidecar"
 require_relative "log"
 require_relative "log_path"
 require_relative "installed_gem"
+require_relative "installed_versions"
 require_relative "recap_store"
 require_relative "archive_store"
 require_relative "image_store"
@@ -204,8 +205,23 @@ module Samagotchi
       # key mapped to nil. config.yml no longer reads them; this keeps an
       # older or future env-exposed one out as well.
       ENV.each_key { |key| child_env[key] = nil if key.start_with?(GUARDRAILS_ENV_PREFIX) }
+      # A smoke's fake "newest installed" is for this process's notices only.
+      child_env[InstalledVersions::ENV_KEY] = nil
+      # A gem-mode worker activates the newest installed chi itself: under
+      # `bundle exec` (a Gemfile that has samagotchi) Bundler's RUBYOPT would
+      # hold it to the bundle's version, and its badge would never clear.
+      child_env.merge!(unbundled_env_changes) if InstalledGem.spec
       opts[:env] = child_env unless child_env.empty?
       opts
+    end
+
+    # What Bundler changed in ENV (RUBYOPT, BUNDLE_*), mapped back to the
+    # values from before it (nil: unset); {} outside Bundler.
+    private_class_method def self.unbundled_env_changes(env = ENV.to_h)
+      return {} unless defined?(::Bundler) && ::Bundler.respond_to?(:unbundled_env)
+
+      clean = ::Bundler.unbundled_env
+      (env.keys | clean.keys).each_with_object({}) { |key, changes| changes[key] = clean[key] unless clean[key] == env[key] }
     end
 
     GUARDRAILS_ENV_PREFIX = "SAMAGOTCHI_GUARDRAILS_"
@@ -652,7 +668,10 @@ module Samagotchi
       # Kept in a class ivar so the lock's File lives as long as the worker.
       @owner_lock = OwnerLock.acquire(session_dir, kind: "worker", wait: owner_wait)
       exit(0) unless @owner_lock
-      Log.info(:worker, "start", cwd: Dir.pwd)
+      # Set by the boot string when the newest installed chi didn't load.
+      fallback = ENV.delete(BOOT_FALLBACK_ENV)
+      Log.info(:worker, "start", cwd: Dir.pwd, version: VERSION)
+      Log.warn(:worker, "boot_fallback", version: VERSION, error: fallback) if fallback
       worker = Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
                           idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
       result = begin
@@ -707,16 +726,31 @@ module Samagotchi
       session.save(state_dir: state_dir)
     end
 
-    # The worker's command line: this chi's lib/ and ruby. Run from an
-    # installed gem, the worker activates that gem first, so its dependencies
-    # resolve as the gemspec pins them (reline ~> 0.6.3) rather than to the
-    # newest installed version. A source checkout (bin/chi, bundle exec)
-    # keeps the plain -I lib.
+    # The worker's command line. Run from an installed gem, the worker
+    # activates the newest installed samagotchi (`>= 0.a`, prereleases
+    # count), whoever spawns it: an old chi web, chi send or --attach then
+    # starts new workers on the newest chi rather than on its own. Activating
+    # the gem also makes its dependencies resolve as its gemspec pins them
+    # (reline ~> 0.6.3). Should that fail (a broken newest install), the
+    # worker falls back to the spawner's own version and logs why.
+    #
+    # A source checkout (bin/chi, bundle exec; InstalledGem.spec is nil
+    # there) keeps the plain -I lib: a worktree's bin/chi spawns its own code.
+    #
+    # CROSS-VERSION CONTRACT: this boot string, run_session_loop(id,
+    # state_dir:), the env keys spawn_options sets and the input/ file
+    # format are read by a NEWER chi than the one writing them. Change them
+    # only additively (spec/worker_contract_spec.rb).
+    BOOT_FALLBACK_ENV = "SAMAGOTCHI_BOOT_FALLBACK"
+
     def self.worker_command(session_id, state_dir:, gem_spec: InstalledGem.spec)
       boot = "require 'samagotchi/session_manager'; " \
              "Samagotchi::SessionManager.run_session_loop('#{session_id}', state_dir: #{state_dir.inspect})"
-      boot = "gem 'samagotchi', '= #{gem_spec.version}'; #{boot}" if gem_spec
-      [RbConfig.ruby, "-I", File.expand_path("..", __dir__), "-e", boot]
+      return [RbConfig.ruby, "-I", File.expand_path("..", __dir__), "-e", boot] unless gem_spec
+
+      activate = "begin; gem 'samagotchi', '>= 0.a'; rescue LoadError => e; " \
+                 "ENV['#{BOOT_FALLBACK_ENV}'] = e.message; gem 'samagotchi', '= #{gem_spec.version}'; end"
+      [RbConfig.ruby, "-e", "#{activate}; #{boot}"]
     end
 
     private_class_method def self.spawn_worker_for_session(session, state_dir:)

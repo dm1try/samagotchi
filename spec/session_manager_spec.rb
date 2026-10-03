@@ -608,6 +608,47 @@ RSpec.describe Samagotchi::SessionManager do
                                      "SAMAGOTCHI_GUARDRAILS_X" => nil)
     end
 
+    it "keeps the spawner's SAMAGOTCHI_INSTALLED_VERSION seam from the worker" do
+      spawned_env = nil
+      allow(Process).to receive(:spawn) do |env, *_args, **_opts|
+        spawned_env = env
+        12_345
+      end
+
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(spawned_env).to include("SAMAGOTCHI_INSTALLED_VERSION" => nil)
+    end
+
+    it "undoes Bundler's env for a gem-mode worker, which activates the newest chi itself" do
+      spawned_env = nil
+      allow(Process).to receive(:spawn) do |env, *_args, **_opts|
+        spawned_env = env
+        12_345
+      end
+      allow(Samagotchi::InstalledGem).to receive(:spec)
+        .and_return(Gem::Specification.new { |s| s.name = "samagotchi"; s.version = "9.9.9" })
+      stub_const("ENV", ENV.to_h.merge("RUBYOPT" => "-W0 -rbundler/setup", "BUNDLE_GEMFILE" => "/p/Gemfile"))
+      allow(Bundler).to receive(:unbundled_env).and_return(ENV.to_h.merge("RUBYOPT" => "-W0").except("BUNDLE_GEMFILE"))
+
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(spawned_env).to include("RUBYOPT" => "-W0", "BUNDLE_GEMFILE" => nil)
+    end
+
+    it "leaves Bundler's env to a source checkout's worker (bundle exec bin/chi)" do
+      spawned_env = nil
+      allow(Process).to receive(:spawn) do |env, *_args, **_opts|
+        spawned_env = env
+        12_345
+      end
+      stub_const("ENV", ENV.to_h.merge("BUNDLE_GEMFILE" => "/p/Gemfile"))
+
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(spawned_env).not_to have_key("BUNDLE_GEMFILE")
+    end
+
     it "spawns worker with explicit require for session manager" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       allow(Samagotchi::Session).to receive(:new_session).and_return(session)
@@ -639,10 +680,12 @@ RSpec.describe Samagotchi::SessionManager do
           .to eq([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", boot])
       end
 
-      it "activates the installed gem first, so its pinned dependencies load" do
+      it "activates the newest installed gem, falling back to the spawner's own version, without -I" do
         spec = Gem::Specification.new { |s| s.name = "samagotchi"; s.version = "9.9.9" }
-        expect(described_class.worker_command("abc", state_dir: "/s", gem_spec: spec).last)
-          .to eq("gem 'samagotchi', '= 9.9.9'; #{boot}")
+        command = described_class.worker_command("abc", state_dir: "/s", gem_spec: spec)
+        expect(command).to eq([RbConfig.ruby, "-e",
+                               "begin; gem 'samagotchi', '>= 0.a'; rescue LoadError => e; " \
+                               "ENV['SAMAGOTCHI_BOOT_FALLBACK'] = e.message; gem 'samagotchi', '= 9.9.9'; end; #{boot}"])
       end
     end
 
