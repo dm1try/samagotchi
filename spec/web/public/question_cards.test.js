@@ -411,6 +411,20 @@ test("a card drawn from a snapshot shows the relay line at once", () => {
   assert.equal(cards.questionCard().querySelector(".question-relayed").classList.contains("hidden"), false);
 });
 
+// 4.02: a reopened card (the snapshot re-renders the resolved question) had
+// the result in both its summary and the .question-result body line.
+test("a reopened answered card shows the result once: the body line hides", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ ...APPROVAL, id: "a2" });
+  const card = cards.questionCard();
+  // What the snapshot replay has already done: the summary carries it.
+  card.querySelector("summary").textContent = "execute: git push → Allowed: Allow once";
+  cards.resolveQuestion("a2", { answer: { selected: ["Allow once"] } });
+  const line = card.querySelector(".question-result");
+  assert.equal(line.classList.contains("hidden"), true);
+  assert.equal(line.textContent, "Allowed: Allow once");
+});
+
 test("a relayed approval on the parent links its delegate's session", () => {
   const { cards } = setup();
   cards.renderQuestion({ ...APPROVAL, relay: { id: "r1", child_id: "cccc2222-0000", chain: ["cccc2222"], task: "push it" } });

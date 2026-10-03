@@ -34,6 +34,7 @@ and commands may change between minor versions. How releases are made:
   waiting: the page stops waiting when the worker goes away, or after 20 s.
 - A first web message the page answers itself (`/stats`, `/exit` …) or that is a typo of a command (`/modle`) no
   longer leaves an empty session behind.
+- A question card reopened after a reload shows its result once, in the collapsed summary, not twice.
 
 ## [0.18.1] - 2026-10-03
 
