@@ -66,4 +66,27 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
     # The temp dir is gone once the agent step is done.
     expect(File.exist?(seen[:incoming])).to be(false)
   end
+
+
+  it "removes the extracted temp dir when the upgrade fails before the agent step" do
+    v1 = make_bundle(File.join(tmpdir, "v1"), name: "demo", version: "1.0.0", content: "one\n")
+    run("install", v1)
+    File.write(File.join(Samagotchi::MemoryPaths.system_dir, "a.md"), "edited\n")
+
+    v2 = make_bundle(File.join(tmpdir, "v2"), name: "demo", version: "2.0.0", content: "two\n")
+    zip = File.join(tmpdir, "v2.zip")
+    Dir.chdir(v2) { system("zip", "-r", zip, ".") }
+
+    extracted = []
+    allow(Samagotchi::MemoryBundle::SourceNormalizer).to receive(:normalize).and_wrap_original do |original, *args|
+      original.call(*args).tap { |dir, owned, _commit| extracted << dir if owned }
+    end
+    command = Samagotchi::BundleCommand.new(["upgrade", zip, "--agent"], stdin: StringIO.new(""), stdout: out, stderr: err)
+    allow(command).to receive(:print_hooks_and_plugin).and_raise(IOError, "stdout closed")
+
+    expect { command.run }.to raise_error(IOError)
+    # The bundle name is read from its own extraction; the installer's is the last.
+    expect(extracted).not_to be_empty
+    expect(extracted.select { |dir| File.exist?(dir) }).to eq([])
+  end
 end

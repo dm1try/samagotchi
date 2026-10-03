@@ -233,7 +233,7 @@ RSpec.describe "chi subcommand argument parsing" do
     before do
       allow(Samagotchi::MemoryBundle::Installer).to receive(:new) do |**kwargs|
         installers << kwargs
-        instance_double(Samagotchi::MemoryBundle::Installer, run: [nil, nil], summary: "S", conflicts: {})
+        instance_double(Samagotchi::MemoryBundle::Installer, run: [nil, nil], summary: "S", conflicts: {}, cleanup_source!: nil)
       end
       allow(Samagotchi::MemoryBundle::Builder).to receive(:new) do |**kwargs|
         builders << kwargs

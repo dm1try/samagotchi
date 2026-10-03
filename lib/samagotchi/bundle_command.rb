@@ -200,6 +200,10 @@ module Samagotchi
     end
 
     # Runs +installer+, prints its summary, then yields the manifest.
+    # Ensures the extracted source dir is cleaned up even if an exception
+    # occurs between installer.run and the block (e.g. summary,
+    # print_hooks_and_plugin). The block (upgrade_conflicts) still sees
+    # the files because cleanup happens after the block returns or raises.
     # @return [Integer] the block's exit status, or 1 after "<failed> failed: …"
     def run_installer(installer, failed:)
       _nd, manifest = installer.run
@@ -208,6 +212,8 @@ module Samagotchi
     rescue Samagotchi::MemoryBundle::Installer::InstallError => e
       @stderr.puts "#{failed} failed: #{e.message}"
       1
+    ensure
+      installer.cleanup_source!
     end
 
     def print_hooks_and_plugin(manifest, plugin: true)
