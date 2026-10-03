@@ -654,7 +654,7 @@ module Samagotchi
     # @param poll_interval [Numeric, nil] seconds between the loop's fallback
     #   ticks (nil: Worker::FALLBACK_TICK_SECONDS); queued turns wake it at once
     # A stopped session's worker exits 0 and a crashed one 1, there.
-    # @return [Symbol] :idle_exit or :exit_requested
+    # @return [Symbol] :idle_exit, :exit_requested or :restart
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
                               idle_exit_minutes: nil, poll_interval: nil)
       # A worker inherits chi's locale (LC_ALL=C too): read files as UTF-8.
@@ -691,7 +691,10 @@ module Samagotchi
       # Only after the release: a writer that still saw this worker as the
       # owner may have queued input since the last check. Either it finds no
       # owner after its write and wakes one, or this finds its input.
-      if %i[idle_exit exit_requested].include?(result) && !SessionInbox.find_new_input_files(session_dir).empty?
+      # A restart starts its successor here, on the newest chi installed
+      # (worker_command), once this one's lock is free.
+      if result == :restart ||
+         (%i[idle_exit exit_requested].include?(result) && !SessionInbox.find_new_input_files(session_dir).empty?)
         resume_session(session_id, state_dir: sd)
       elsif worker.discard?
         discard_left_session(session_id, state_dir: sd, default_model: worker.default_model)

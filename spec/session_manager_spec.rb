@@ -877,6 +877,23 @@ RSpec.describe Samagotchi::SessionManager do
   end
 
   describe ".run_session_loop" do
+    it "starts the next worker after a restart, once its lock is free, and never discards the session" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      worker = instance_double(Samagotchi::Worker, run: :restart, discard?: false)
+      allow(Samagotchi::Worker).to receive(:new).and_return(worker)
+      owner_at_resume = :unset
+      allow(described_class).to receive(:resume_session) do |id, state_dir:|
+        owner_at_resume = described_class.session_owner(id, state_dir: state_dir)
+      end
+      allow(described_class).to receive(:delete_session)
+
+      expect(described_class.run_session_loop(session.id, state_dir: tmpdir)).to eq(:restart)
+      expect(described_class).to have_received(:resume_session).with(session.id, state_dir: tmpdir)
+      expect(owner_at_resume).to be_nil
+      expect(described_class).not_to have_received(:delete_session)
+    end
+
     it "logs a worker crash with its backtrace (its stderr is /dev/null) and re-raises" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)

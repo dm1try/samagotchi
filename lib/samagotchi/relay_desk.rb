@@ -63,6 +63,15 @@ module Samagotchi
       end
     end
 
+    # Whether a relay is open, or settled recently enough that its child
+    # may still ask about it: a restart would drop them.
+    def active?
+      @mutex.synchronize do
+        prune
+        !@relays.empty?
+      end
+    end
+
     private
 
     def prune

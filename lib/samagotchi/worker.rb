@@ -16,6 +16,7 @@ require_relative "continue_offer"
 require_relative "iteration_limit"
 require_relative "session_commands"
 require_relative "model_profile"
+require_relative "tools/task_runtime"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -85,6 +86,8 @@ module Samagotchi
       @exit_requested_by = nil
       # Set as it leaves: nothing happened in the session (#discard?).
       @discard = false
+      # The exit asked for is a restart (POST /exit restart: true).
+      @exit_restart = false
     end
 
     # Whether the session was empty as the worker left it, so the caller
@@ -96,7 +99,8 @@ module Samagotchi
     attr_reader :default_model
 
     # @return [Symbol] :idle_exit, :exit_requested when a client asked it
-    #   to exit (Bridge POST /exit), :stopped when the session was stopped
+    #   to exit (Bridge POST /exit), :restart when it asked for a restart
+    #   (the caller starts a new worker), :stopped when the session was stopped
     #   (chi stop), :crashed when the loop raised (the session is marked
     #   errored); SessionManager.run_session_loop turns it into the exit
     def run
@@ -154,7 +158,8 @@ module Samagotchi
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
         input_pending: -> { !@command_queue.empty? || !SessionInbox.find_new_input_files(@session_dir).empty? },
-        awaiting_continue: -> { @turn_flow.awaiting_continue? }
+        awaiting_continue: -> { @turn_flow.awaiting_continue? },
+        running_tasks: -> { Tools::TaskRuntime.running_created_in(@engine.messages_checkpoint) }
       )
 
       begin
@@ -188,7 +193,7 @@ module Samagotchi
           if input_files.empty?
             next if run_due_reminders
             return left(:idle_exit) if @idle_exit.due? && leave_idle
-            return left(:exit_requested) if @exit_requested && leave_on_request
+            return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
 
             @waker.wait(@poll_interval)
             next
@@ -581,17 +586,20 @@ module Samagotchi
 
     # Bridge POST /exit, on a Bridge thread with the event log held.
     # +delete+: the session is deleted after (/exit --delete), so no recap.
+    # +restart+: a new worker takes over (on the newest chi installed), so
+    # WorkerIdleExit#hold_for_restart's rules, and no recap or discard.
     # @return [Symbol, nil] what keeps the worker up, nil when it will leave
-    def exit_request(client_id, delete: false)
+    def exit_request(client_id, delete: false, restart: false)
       # The Bridge serves before the idle-exit policy exists.
       return :starting unless @idle_exit
 
-      hold = @idle_exit.hold_for_request(requester: client_id)
+      hold = restart ? @idle_exit.hold_for_restart : @idle_exit.hold_for_request(requester: client_id)
       return hold if hold
 
       @exit_requested = true
       @exit_requested_by = client_id
-      @exit_deletes = delete
+      @exit_deletes = delete && !restart
+      @exit_restart = restart
       @waker.wake
       nil
     end
@@ -604,16 +612,21 @@ module Samagotchi
     # @return [Boolean] false when something came in since the request
     def leave_on_request
       @engine.synchronize_events do
-        hold = @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
+        hold = if @exit_restart
+                 @idle_exit.hold_for_restart
+               else
+                 @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
+               end
         if hold
           @exit_requested = nil
+          @exit_restart = false
           Log.info(:worker, "exit_held", reason: hold)
           next false
         end
 
         @bridge&.stop
         @engine.stop_idle
-        Log.info(:worker, "exit_requested", by: @exit_requested_by || "a client")
+        Log.info(:worker, @exit_restart ? "restart_requested" : "exit_requested", by: @exit_requested_by || "a client")
         true
       end
     end
@@ -623,7 +636,11 @@ module Samagotchi
     #   stopped by now, and nothing waits on this (the TUI has detached). A
     #   `chi send` meanwhile is picked up after the exit (run_session_loop);
     #   a `chi --attach` finds no Bridge until then.
+    # A restart keeps even an empty session (a new worker takes it over at
+    # once) and leaves the recap to the conversation's next real pause.
     def left(result)
+      return result if result == :restart
+
       @discard = empty_session?
       write_recap_on_leave unless @discard || (result == :exit_requested && @exit_deletes)
       result

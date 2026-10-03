@@ -432,6 +432,43 @@ RSpec.describe Samagotchi::Worker do
         expect(@thread).to be_alive
       end
 
+      describe "with restart: true" do
+        def post_restart
+          port = JSON.parse(File.read(sidecar))["port"]
+          res = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
+                               JSON.generate(client_id: "web:1", restart: true), "Content-Type" => "application/json")
+          [res.code.to_i, JSON.parse(res.body)]
+        end
+
+        it "leaves as :restart while other clients' streams are open, keeping even an empty session, with no recap" do
+          allow(engine).to receive(:write_recap_now)
+          start_worker(poll_interval: 0.05)
+          follow(client_id: "tui:1")
+          follow # a web tab
+          expect(wait_until { open_streams == 2 }).to be(true)
+
+          expect(post_restart).to eq([200, { "status" => "restarting", "session_id" => session.id }])
+          expect(@thread.join(2)&.value).to eq(:restart)
+          expect(@worker.discard?).to be(false)
+          expect(engine).not_to have_received(:write_recap_now)
+        end
+
+        it "stays up while a question waits, and checks again as it leaves" do
+          start_worker(poll_interval: 0.05)
+          allow(engine).to receive(:pending_question).and_return({ id: "q1" })
+          expect(post_restart.last).to include("status" => "held", "reason" => "question_pending")
+          sleep(0.2)
+          expect(@thread).to be_alive
+
+          allow(engine).to receive(:pending_question).and_return(nil)
+          policy = @worker.instance_variable_get(:@idle_exit)
+          allow(policy).to receive(:hold_for_restart).and_return(nil, :input_queued)
+          expect(post_restart.first).to eq(200)
+          sleep(0.3)
+          expect(@thread).to be_alive # held at the second look, as it left
+        end
+      end
+
       it "answers :starting before the idle-exit policy exists" do
         worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir)
         expect(worker.send(:exit_request, "tui:1")).to eq(:starting)

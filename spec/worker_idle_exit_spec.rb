@@ -3,21 +3,26 @@
 require "spec_helper"
 require "samagotchi/worker_idle_exit"
 require "samagotchi/reminder_store"
+require "samagotchi/relay_desk"
 
 RSpec.describe Samagotchi::WorkerIdleExit do
   let(:now) { [1000.0] }
   let(:clock) { -> { now.first } }
   let(:reminders) { Samagotchi::ReminderStore.new }
+  let(:relays) { Samagotchi::RelayDesk.new }
   let(:engine) do
-    double("engine", turn_running?: false, last_activity_at: 1000.0, reminder_store: reminders)
+    double("engine", turn_running?: false, last_activity_at: 1000.0, reminder_store: reminders, pending_question: nil,
+                     anytime_running?: false, relay_desk: relays)
   end
+  let(:tasks) { [[]] }
   let(:bridge) { double("bridge", open_streams: 0, last_client_activity_at: 1000.0) }
   let(:queued) { [false] }
   let(:offer) { [false] }
 
   def policy(minutes: 1.0, bridge: self.bridge)
     described_class.new(engine: engine, bridge: bridge, timeout_minutes: minutes,
-                        input_pending: -> { queued.first }, awaiting_continue: -> { offer.first }, clock: clock)
+                        input_pending: -> { queued.first }, awaiting_continue: -> { offer.first },
+                        running_tasks: -> { tasks.first }, clock: clock)
   end
 
   def advance(seconds)
@@ -142,5 +147,43 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     p = policy
     advance(75)
     expect(p.idle_seconds).to eq(75.0)
+  end
+
+  describe "#hold_for_restart (a client asks for a new worker: POST /exit restart: true)" do
+    it "lets it go when nothing would be lost, whatever the streams, the timeout and recent activity" do
+      allow(bridge).to receive(:open_streams).and_return(2)
+      expect(policy.hold_for_restart).to be_nil
+      expect(policy(minutes: 0).hold_for_restart).to be_nil
+      expect(policy(bridge: nil).hold_for_restart).to be_nil
+    end
+
+    it "holds for a turn, queued input, a continue offer, a question and a reminder" do
+      allow(engine).to receive(:pending_question).and_return({ id: "q1" })
+      expect(policy.hold_for_restart).to eq(:question_pending)
+      reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
+      allow(engine).to receive(:pending_question).and_return(nil)
+      expect(policy.hold_for_restart).to eq(:reminders)
+      offer[0] = true
+      expect(policy.hold_for_restart).to eq(:continue_offered)
+      queued[0] = true
+      expect(policy.hold_for_restart).to eq(:input_queued)
+      allow(engine).to receive(:turn_running?).and_return(true)
+      expect(policy.hold_for_restart).to eq(:turn_running)
+    end
+
+    it "holds while an anytime command (/btw) runs" do
+      allow(engine).to receive(:anytime_running?).and_return(true)
+      expect(policy.hold_for_restart).to eq(:command_running)
+    end
+
+    it "holds while a delegate's approval relay is open or recently settled" do
+      relays.open(child_id: "c1", child_question_id: "q1")
+      expect(policy.hold_for_restart).to eq(:relays_open)
+    end
+
+    it "holds while a background task this conversation started runs" do
+      tasks[0] = [{ id: "t1", command: "sleep 100" }]
+      expect(policy.hold_for_restart).to eq(:background_tasks)
+    end
   end
 end

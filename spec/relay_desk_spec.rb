@@ -39,4 +39,15 @@ RSpec.describe Samagotchi::RelayDesk do
     expect(desk.status(open_id)[:state]).to eq("open")
     expect(desk.status("nope")).to be_nil
   end
+
+  it "is active while a relay is open or settled less than 10 minutes ago (a restart would drop it)" do
+    expect(desk).not_to be_active
+    id = desk.open(child_id: "c", child_question_id: "q")
+    expect(desk).to be_active
+    desk.close(id)
+    now[0] += 599
+    expect(desk).to be_active
+    now[0] += 2
+    expect(desk).not_to be_active
+  end
 end

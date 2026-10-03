@@ -614,6 +614,11 @@ module Samagotchi
       Thread.current[key] = outer
     end
 
+    # Whether an anytime command (/btw) still runs on its thread.
+    def anytime_running?
+      @lifecycle_mutex.synchronize { @anytime_threads.any?(&:alive?) }
+    end
+
     # Start an anytime command on its own thread (D8), one #shutdown waits
     # for, so its command_ran is announced before the process leaves.
     # @return [Thread]

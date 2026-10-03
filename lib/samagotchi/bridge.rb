@@ -458,7 +458,8 @@ module Samagotchi
     # What a client may ask of this worker beyond the routes, named in its
     # sidecar (WorkerSidecar#features): a client checks a name here rather
     # than a version.
-    FEATURES = [].freeze
+    # restart: POST /exit takes "restart": true (WorkerIdleExit#hold_for_restart).
+    FEATURES = ["restart"].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -691,11 +692,13 @@ module Samagotchi
       @engine.announce(type: :command_queued, **command, **anytime)
     end
 
-    # A client asks the worker to exit now (`/exit` in the attached TUI). The
-    # worker decides with the event log held, so no POST /turn lands between
-    # its check and its answer; it leaves from its loop after this reply.
-    # 200 {status: "exiting", discard?: the session is empty and goes}, or 409 {status: "held", reason:} naming what
-    # keeps it up. Returns [headers, status, body].
+    # A client asks the worker to exit now (`/exit` in the attached TUI), or
+    # with "restart": true to hand the session to a new worker on the newest
+    # chi installed (the "restart" feature). The worker decides with the
+    # event log held, so no POST /turn lands between its check and its
+    # answer; it leaves from its loop after this reply.
+    # 200 {status: "exiting", discard?: the session is empty and goes} ({status: "restarting"} for a restart), or 409
+    # {status: "held", reason:} naming what keeps it up. Returns [headers, status, body].
     def handle_exit_request(session_id, body)
       return [{}, 501, { error: "exit_unavailable" }] unless @on_exit_request
 
@@ -704,8 +707,12 @@ module Samagotchi
 
       client_id = fetched(parsed, "client_id")
       delete = fetched(parsed, "delete") == true
-      reason = @engine.synchronize_events { @on_exit_request.call(client_id, delete: delete) }
+      restart = fetched(parsed, "restart") == true
+      options = restart ? { delete: delete, restart: true } : { delete: delete }
+      reason = @engine.synchronize_events { @on_exit_request.call(client_id, **options) }
       if reason.nil?
+        return [{}, 200, { status: "restarting", session_id: @session_id }] if restart
+
         body = { status: "exiting", session_id: @session_id }
         body[:discard] = @exit_discards.call == true if @exit_discards
         return [{}, 200, body]

@@ -1649,6 +1649,16 @@ RSpec.describe Samagotchi::Bridge do
         expect(asked).to eq([["tui:1", true], ["tui:2", false]])
       end
 
+      it "asks for a restart with restart: true and answers restarting, never discard" do
+        asked = []
+        start_bridge(on_exit_request: ->(client_id, **opts) { asked << [client_id, opts] && nil },
+                     exit_discards: -> { raise "must not be called" })
+
+        expect(post_exit(JSON.generate(client_id: "web:1", restart: true)))
+          .to eq([200, { "status" => "restarting", "session_id" => @session.id }])
+        expect(asked).to eq([["web:1", { delete: false, restart: true }]])
+      end
+
       it "says whether the worker will delete the session as empty" do
         start_bridge(on_exit_request: ->(_, **) {}, exit_discards: -> { true })
 
