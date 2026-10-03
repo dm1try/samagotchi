@@ -259,6 +259,9 @@ and `--shared` are refused. Its first line says it is a scratch session.
   answers "scratch session: nothing is saved", and `write`/`edit` into the
   memories folder are denied (a guardrail, rule `scratch-session`). `execute`
   can still write files anywhere, memories included.
+- An approval offers only "Allow once" and "for the session", and a session
+  approval is kept in memory, not in the approvals store; approvals stored
+  before still apply.
 - No child sessions: the `delegate` tools are not offered, and a plugin's
   `ctx.sessions.fork` (btw's side session) refuses, since they would outlive it.
   Nor is `send_note`, whose note would stay in the other session.

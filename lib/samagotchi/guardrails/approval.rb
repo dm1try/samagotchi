@@ -22,9 +22,11 @@ module Samagotchi
       #   approval[:tool] stays the raw name
       # @param preview [Hash, nil] EditPreview.for(verdict.call) for edit and
       #   write: the card shows its diff, the question text one change line
+      # @param only [Array<String>, nil] offer no scope beyond these (a
+      #   scratch session: once, session); "once" when none is left
       # @return [Hash] open_question fields
-      def payload(verdict, label: nil, preview: nil)
-        scopes = offered_scopes(verdict)
+      def payload(verdict, label: nil, preview: nil, only: nil)
+        scopes = offered_scopes(verdict, only: only)
         targets = verdict.targets
         {
           question: question_text(verdict, label: label, preview: preview),
@@ -81,8 +83,12 @@ module Samagotchi
       end
 
       # The rule's scopes; "rule" only when a rule id names what to approve.
-      def offered_scopes(verdict)
-        verdict.scopes.reject { |scope| scope == "rule" && verdict.rule.nil? }
+      def offered_scopes(verdict, only: nil)
+        scopes = verdict.scopes.reject { |scope| scope == "rule" && verdict.rule.nil? }
+        return scopes unless only
+
+        scopes &= only
+        scopes.empty? ? ["once"] : scopes
       end
 
       def label(scope, verdict)

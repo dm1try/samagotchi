@@ -68,6 +68,8 @@ and commands may change between minor versions. How releases are made:
 - A question card reopened after a reload shows its result once, in the collapsed summary, not twice.
 - After a mid-turn reload, this tab's own prompt is still recognized as its own instead of being labelled `web`.
 - A `chi scratch` session no longer offers `send_note`, so it leaves no note behind in another session.
+- A `chi scratch` session's tool approvals offer only "Allow once" and "for the session", and keep a session
+  approval in memory: no "in this repo" or rule approval from it stays in the approvals store.
 
 ## [0.18.1] - 2026-10-03
 

@@ -45,10 +45,25 @@ module Samagotchi
       # @param verdict [Verdict] an ask with its targets and context
       # @return [Hash, nil] the first entry that allows it
       def match(verdict)
-        key = self.class.key_for(verdict)
-        place = self.class.place_for(verdict)
+        self.class.find_in(read, verdict)
+      end
+
+      # Store the verdict's allowed scope (not "once").
+      # @return [Hash, nil] the entry
+      def add(verdict, scope)
+        entry = self.class.entry_for(verdict, scope) or return nil
+
+        update { |list| list << entry unless list.any? { |e| e.except("created_at") == entry.except("created_at") } }
+        entry
+      end
+
+      # @param list [Array<Hash>] entries
+      # @return [Hash, nil] the first of +list+ that allows +verdict+
+      def self.find_in(list, verdict)
+        key = key_for(verdict)
+        place = place_for(verdict)
         session_id = verdict.context&.session_id
-        read.find do |e|
+        list.find do |e|
           case e["scope"]
           when "session" then session_id && e["session_id"] == session_id && e["key"] == key
           when "repo" then e["repo_root"] == place && e["key"] == key
@@ -58,21 +73,18 @@ module Samagotchi
         end
       end
 
-      # Store the verdict's allowed scope (not "once").
-      # @return [Hash, nil] the entry
-      def add(verdict, scope)
+      # @return [Hash, nil] the entry that stores +scope+ for +verdict+; nil for "once"
+      def self.entry_for(verdict, scope)
         return nil unless STORED_SCOPES.include?(scope)
 
         entry = { "scope" => scope, "tool" => verdict.targets&.tool || verdict.call[:name].to_s,
                   "rule" => verdict.rule, "source" => verdict.source, "created_at" => Time.now.utc.iso8601 }
         case scope
-        when "session" then entry.merge!("session_id" => verdict.context&.session_id, "key" => self.class.key_for(verdict))
-        when "repo" then entry.merge!("repo_root" => self.class.place_for(verdict), "key" => self.class.key_for(verdict))
-        when "rule" then entry["repo_root"] = self.class.place_for(verdict)
+        when "session" then entry.merge!("session_id" => verdict.context&.session_id, "key" => key_for(verdict))
+        when "repo" then entry.merge!("repo_root" => place_for(verdict), "key" => key_for(verdict))
+        when "rule" then entry["repo_root"] = place_for(verdict)
         end
-        entry.compact!
-        update { |list| list << entry unless list.any? { |e| e.except("created_at") == entry.except("created_at") } }
-        entry
+        entry.compact
       end
 
       # Remove entry +index+ (0-based, as #entries lists them).
@@ -165,6 +177,42 @@ module Samagotchi
           list = read(locked: true)
           yield list
           AtomicFile.write(@path, JSON.pretty_generate(list))
+        end
+      end
+
+      # A scratch session's approvals: the store's entries still apply, and
+      # its own session approvals are kept in memory, so none outlives it
+      # (it offers no wider scope; one that comes anyway is not kept).
+      class InMemory
+        def initialize(store)
+          @store = store
+          @own = []
+          @mutex = Mutex.new
+        end
+
+        def path = @store.path
+
+        # The store's entries, then this session's own.
+        def entries = @store.entries + @mutex.synchronize { @own.dup }
+
+        def match(verdict)
+          @mutex.synchronize { Approvals.find_in(@own, verdict) } || @store.match(verdict)
+        end
+
+        def add(verdict, scope)
+          return nil unless scope == "session"
+
+          entry = Approvals.entry_for(verdict, scope)
+          @mutex.synchronize { @own << entry unless @own.any? { |e| e.except("created_at") == entry.except("created_at") } }
+          entry
+        end
+
+        # Index as #entries lists them: the store's first, then its own.
+        def revoke(index)
+          stored = @store.entries.size
+          return @store.revoke(index) if index < stored
+
+          @mutex.synchronize { index - stored < @own.size ? @own.delete_at(index - stored) : nil }
         end
       end
     end

@@ -70,10 +70,15 @@ module Samagotchi
       @interface = value
     end
 
+    # The approval scopes a scratch session offers: nothing outlives it.
+    SCRATCH_SCOPES = %w[once session].freeze
+
     # Where the approval store lives: beside Session's state dir
-    # ($XDG_STATE_HOME/samagotchi/guardrails/).
+    # ($XDG_STATE_HOME/samagotchi/guardrails/). A scratch session reads
+    # it but keeps its own session approvals in memory.
     def state_dir=(state_dir)
       @approvals = Guardrails::Approvals.new(dir: Guardrails::Approvals.dir_for(state_dir))
+      @approvals = Guardrails::Approvals::InMemory.new(@approvals) if @scratch
       @protected = nil
     end
 
@@ -207,7 +212,8 @@ module Samagotchi
       # A plugin tool is asked about by its label, as its row shows it.
       label = ToolActivity.plugin_label(verdict.call[:name].to_s, registry: @tools_lookup.call)
       # verdict.call is the call that will run (a hook may have replaced it).
-      payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call))
+      payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call),
+                                                      only: (SCRATCH_SCOPES if @scratch))
       Guardrails::Approval.settle(verdict, @ask.call(payload), payload[:approval][:scopes])
     end
 

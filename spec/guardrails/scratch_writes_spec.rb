@@ -69,3 +69,70 @@ RSpec.describe "Engine: a scratch session" do
     expect(Samagotchi::Engine.new(client: client).instance_variable_get(:@tools).names).to include("delegate", "send_note")
   end
 end
+
+RSpec.describe "Engine: a scratch session's approvals" do
+  let(:client) { instance_double(Samagotchi::Client) }
+  let(:state) { Dir.mktmpdir("scratch-approvals") }
+  let(:sessions_dir) { File.join(state, "sessions") }
+  let(:store_path) { File.join(Samagotchi::Guardrails::Approvals.dir_for(sessions_dir), "approvals.json") }
+
+  after { FileUtils.rm_rf(state) }
+
+  def engine_for(scratch:, scopes: nil)
+    Samagotchi::Engine.new(client: client, scratch: scratch).tap do |e|
+      e.guardrail_state_dir = sessions_dir
+      e.interface = :worker
+      e.session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
+      e.register_hook(:before_tool_call) { |ev| ev[:guardrail].ask!("pushes", rule: "git-push", source: "config", scopes: scopes) }
+    end
+  end
+
+  def gate(engine) = engine.instance_variable_get(:@kernel).guardrail_gate
+
+  # Evaluates the call on a thread, answers its approval with the option
+  # for +scope+ (nil: no question expected) and returns [verdict, offered].
+  def evaluate(engine, scope)
+    verdict = nil
+    thread = Thread.new do
+      verdict = gate(engine).evaluate({ name: "execute", content: "git push" }, iteration: 1, params: "")
+      gate(engine).settle_ask(verdict)
+    end
+    offered = nil
+    if scope
+      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      pending = engine.pending_question
+      offered = pending[:approval][:scopes]
+      engine.answer_question(id: pending[:id], selected: [pending[:options][offered.index(scope)]])
+    end
+    thread.join(2)
+    [verdict, offered]
+  end
+
+  it "offers only once and session, and keeps a session approval in memory, not in the store" do
+    engine = engine_for(scratch: true)
+    verdict, offered = evaluate(engine, "session")
+    expect(offered).to eq(%w[once session])
+    expect([verdict.decision, verdict.scope]).to eq([:allow, "session"])
+    expect(File.exist?(store_path)).to be(false)
+
+    verdict, = evaluate(engine, nil)
+    expect([verdict.decision, verdict.decided_by]).to eq([:allow, "approval"])
+    expect(File.exist?(store_path)).to be(false)
+  end
+
+  it "still honors an approval stored before (a repo one)" do
+    plain = engine_for(scratch: false)
+    _, offered = evaluate(plain, "repo")
+    expect(offered).to eq(%w[once session repo rule])
+    expect(File.exist?(store_path)).to be(true)
+
+    verdict, = evaluate(engine_for(scratch: true), nil)
+    expect([verdict.decision, verdict.scope]).to eq([:allow, "repo"])
+  end
+
+  it "offers once when the rule offers only wider scopes" do
+    verdict, offered = evaluate(engine_for(scratch: true, scopes: %w[repo]), "once")
+    expect(offered).to eq(%w[once])
+    expect(verdict).to be_allow
+  end
+end
