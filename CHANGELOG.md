@@ -24,6 +24,9 @@ and commands may change between minor versions. How releases are made:
   error instead of a stack trace.
 - The web model picker shows a model's configured sampling (`temperature=0.6 (hosts.work)`) as its row's tooltip;
   `GET /api/models` has it as `sampling` on the models that have some.
+- The web shows a plugin card that is only a notice (info level, no buttons, one short line, such as check-in's
+  "Nudged the model at 105 tool calls.") as a one-line row, `▸ check-in: Nudged …`, that opens on a click, like the
+  tool rows and resolved questions; warn cards, cards with buttons and longer ones stay framed cards.
 
 ### Fixed
 

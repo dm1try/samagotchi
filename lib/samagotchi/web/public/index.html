@@ -303,6 +303,17 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.plugin-card{border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--glass-bg));padding:10px 12px;transition:box-shadow .3s ease}
 .bubble.plugin-card.warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--glass-bg))}
 .bubble.plugin-card.card-updated{box-shadow:inset 0 1px 0 var(--glass-highlight),0 0 0 1px var(--accent-ring),var(--glass-shadow)}
+/* A notice card (card.js isNoticeCard): a one-line row like a resolved question, "▸ check-in: Nudged …"; opened, the line wraps and the card's glass comes back. */
+.bubble.plugin-card.notice:not([open]){padding:3px 10px;background:transparent;border-color:transparent;border-left-color:var(--accent);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;align-self:flex-start;max-width:100%;border-radius:6px;transition:background .12s ease}
+.bubble.plugin-card.notice:not([open]):hover{background:var(--bg-panel)}
+.bubble.plugin-card.notice>summary{cursor:pointer;color:var(--text-muted);font-size:12px;font-weight:500;user-select:none;list-style:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bubble.plugin-card.notice>summary::-webkit-details-marker{display:none}
+.bubble.plugin-card.notice>summary::before{content:"▸ ";color:var(--accent)}
+.bubble.plugin-card.notice[open]{padding:6px 10px}
+.bubble.plugin-card.notice[open]>summary{white-space:pre-wrap;font-size:13px;color:var(--text-2)}
+.bubble.plugin-card.notice[open]>summary::before{content:"▾ "}
+.notice-from{margin-top:4px;font-size:11px;color:var(--text-faint)}
+.gen .bubble.plugin-card.notice:not([open]){margin:2px 0;padding:2px 8px}
 .card-head{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
 .card-title{font-size:14px;font-weight:600;color:var(--text-bright)}
 .card-source{font-size:11px;color:var(--text-faint);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, isCard, leavesBlock, splitSnapshotCards, turnNoticePlace } from "../../../lib/samagotchi/web/public/card.js";
+import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, isCard, isNoticeCard, leavesBlock, noticeCardLine, noticeInnerHtml, NOTICE_CHARS, splitSnapshotCards, turnNoticePlace } from "../../../lib/samagotchi/web/public/card.js";
 
 const card = {
   type: "card", id: "c1", source: "sample-plugin", title: "Hello <you>", body: "hi *there*", level: "info",
@@ -32,6 +32,32 @@ test("cardBodyHtml: the server's body_html (rendered markdown), else the text es
 test("cardClass: a warn card wears the warning colour", () => {
   assert.equal(cardClass(card), "bubble plugin-card");
   assert.equal(cardClass({ ...card, level: "warn" }), "bubble plugin-card warn");
+});
+
+const nudged = { type: "card", id: "check-in-1", source: "check-in", title: "check-in", body: "Nudged the model at 105 tool calls.", level: "info" };
+
+test("isNoticeCard: an info card with nothing to click and one short line is a notice", () => {
+  assert.equal(isNoticeCard(nudged), true);
+  assert.equal(isNoticeCard({ ...nudged, body: "" }), true);
+  assert.equal(isNoticeCard({ ...nudged, actions: [{ label: "x" }] }), true);
+  assert.equal(isNoticeCard({ ...nudged, level: "warn" }), false);
+  assert.equal(isNoticeCard({ ...nudged, actions: [{ label: "Nudge", command: "/checkin nudge" }] }), false);
+  assert.equal(isNoticeCard({ ...nudged, body: "line one\nline two" }), false);
+  assert.equal(isNoticeCard({ ...nudged, body: "x".repeat(NOTICE_CHARS + 1) }), false);
+  assert.equal(isNoticeCard(null), false);
+});
+
+test("cardClass: a notice is marked for its one-line row", () => {
+  assert.equal(cardClass(nudged), "bubble plugin-card notice");
+  assert.equal(cardClass(card), "bubble plugin-card");
+});
+
+test("noticeCardLine / noticeInnerHtml: 'title: body' as the summary, the source when it differs, escaped", () => {
+  assert.equal(noticeCardLine(nudged), "check-in: Nudged the model at 105 tool calls.");
+  assert.equal(noticeCardLine({ title: "T", body: " " }), "T");
+  assert.equal(noticeInnerHtml(nudged), "<summary>check-in: Nudged the model at 105 tool calls.</summary>");
+  assert.equal(noticeInnerHtml({ title: "kept as <a>", body: "b", source: "btw" }),
+    '<summary>kept as &lt;a&gt;: b</summary><div class="notice-from">from <span class="card-source">btw</span></div>');
 });
 
 test("cardPlace: above the first turn after the card (turns_since from the end), else the end", () => {

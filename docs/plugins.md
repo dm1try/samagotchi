@@ -524,6 +524,11 @@ ctx.card(id: id, title: "Build finished", body: "no warnings left")  # replaces 
   its line; the web shows a bubble only when the command answers with
   text or fails.
 - `level:` is `:info` or `:warn` (the warning colour).
+- An `:info` card with no actions and a body of one short line (up to 160
+  characters) is a notice: the web shows it as a one-line row,
+  `▸ check-in: Nudged the model at 105 tool calls.`, that opens on a click,
+  like a resolved question. A warn card, one with actions and one with more
+  to read stay framed cards.
 - `id:` names an earlier card to replace. Without one a new id is made. The
   web updates the card in place; the terminal prints it again, marked
   `(updated)`. A card that waits for something (a model's answer) shows
