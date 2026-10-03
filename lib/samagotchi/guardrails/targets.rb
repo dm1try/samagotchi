@@ -4,19 +4,25 @@ require_relative "../tools/tool_path"
 require_relative "../tools/memory"
 require_relative "../log"
 require_relative "model_size"
-require_relative "../memory_bundle/index_sync"
+require_relative "outside"
 
 module Samagotchi
   module Guardrails
     # What a tool call acts on, resolved the way the tools resolve it: the
     # shell command, absolute paths (against Dir.pwd, as the file tools have
     # no cwd:), the directory a command runs in, its repo root, and whether
-    # a path leaves the repo (the cwd when there is no repo).
+    # a path leaves the session's repo (Outside: the context cwd's repo
+    # root, the cwd when there is no repo; not the call's own cwd:).
     class Targets
       SHELL_TOOLS = %w[execute task_create].freeze
       PATH_TOOLS = %w[write edit read memory_write].freeze
 
       attr_reader :tool, :command, :paths, :cwd, :repo_root
+
+      # @return [String] the session's repo root (the context cwd's; the cwd
+      #   outside a repo): what outside_repo measures from. repo_root is the
+      #   call's (its own cwd: for shell and plugin tools).
+      attr_reader :session_root
 
       # @return [String, nil] the effective model: its bare name (no host
       #   prefix) and its key (ModelOverlay.key_for), for a rule's models:
@@ -62,7 +68,7 @@ module Samagotchi
           args = call[:args] if entry && !entry.core? && call[:args].is_a?(Hash)
         end
         new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd), args: args,
-            model_name: model_name, model_key: model_key)
+            model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base)
       end
 
       # What a plugin tool's targets: callable says the call acts on:
@@ -102,7 +108,9 @@ module Samagotchi
         nil
       end
 
-      def initialize(tool:, command:, paths:, cwd:, repo_root:, args: nil, model_name: nil, model_key: nil)
+      def initialize(tool:, command:, paths:, cwd:, repo_root:, args: nil, model_name: nil, model_key: nil,
+                     session_root: nil)
+        @session_root = session_root || repo_root || cwd
         @args = args
         @model_name = model_name
         @model_key = model_key
@@ -123,15 +131,10 @@ module Samagotchi
         @small_model = ModelSize.small?(@model_name, @model_key)
       end
 
-      # Whether any path is outside the repo root (the cwd outside a repo).
-      # A memory's file doesn't count (MemoryBundle::IndexSync.memory_scope):
-      # write/edit there is what memory_write does, unasked; index.md, the
-      # bundles dir and the rest of chi's config dir still count.
+      # Whether any path is outside the session's repo (Outside.outside?:
+      # symlinks resolved; a memory's file and tmp dirs don't count).
       def outside_repo?
-        root = @repo_root || @cwd
-        @paths.any? do |p|
-          p != root && !p.start_with?(File.join(root, "")) && !MemoryBundle::IndexSync.memory_scope(p)
-        end
+        @paths.any? { |p| Outside.outside?(p, root: @session_root) }
       end
 
       # The hook event's targets: hash.
