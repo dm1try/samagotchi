@@ -193,6 +193,17 @@ RSpec.describe "chi sessions list" do
     expect(out).to include("  answer: the build failed same bug?\n")
   end
 
+  it "shows the first message of a session with no turn yet (chi send --new -m \"/model x\", the web start page)" do
+    session = make(nil)
+    session.first_preview = "/model box:gemma"
+    session.save(state_dir: state_dir)
+
+    out, err, status = run_chi
+
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to include("#{session.id}  idle  ").and include("  /model box:gemma\n")
+  end
+
   def write_recap(session, text)
     dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
     FileUtils.mkdir_p(dir)

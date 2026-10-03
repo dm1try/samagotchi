@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   pill on its session card again; it was drawn as a large empty circle over the card.
 - Web: with a prompt queued behind a turn, the next turn's live timing line no longer freezes or takes the
   previous turn's number when the previous turn's re-read lands late.
+- `chi sessions list` shows the first message of a session that has no turn yet, such as one started with
+  `chi send --new -m "/model x"` or from the web start page; its row was blank.
 
 ## [0.17.0] - 2026-10-03
 

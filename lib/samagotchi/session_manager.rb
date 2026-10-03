@@ -364,7 +364,10 @@ module Samagotchi
       cut(summary_text(session), SUMMARY_PREVIEW_LIMIT)
     end
 
-    private_class_method def self.summary_text(session)
+    # A session as one line of text for the lists: its last prompt, else the
+    # first message it was started with (a session command like `/model x`,
+    # or a first turn not saved yet).
+    def self.summary_text(session)
       one_line(session.last_prompt.to_s.strip.empty? ? session.first_preview.to_s : session.last_prompt.to_s)
     end
 

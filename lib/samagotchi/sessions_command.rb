@@ -191,11 +191,12 @@ module Samagotchi
       order ||= "desc"
       sessions = Samagotchi::SessionManager.list_sessions(sort: sort, order: order, limit: limit, project_root: project,
                                                           include_archived: include_archived)
-      # The saved recap's first sentence, else the last prompt, cut as before.
+      # The saved recap's first sentence, else the last prompt (or the first
+      # message, before any turn), cut as before.
       state_dir = Samagotchi::Session.default_state_dir
       list_text = lambda do |s|
         recap = Samagotchi::RecapStore.preview(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
-        (recap || Samagotchi::SessionManager.one_line(s.last_prompt))[0, 60]
+        (recap || Samagotchi::SessionManager.summary_text(s))[0, 60]
       end
       # A delegated session points at its parent: ↳ <parent's short id>.
       row = lambda do |s|
