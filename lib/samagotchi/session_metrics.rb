@@ -609,6 +609,12 @@ module Samagotchi
       @tool_records.each { |record| count_tool(record) }
       @started_at = earliest_timestamp(prior["started_at"], @started_at)
       @last_activity_at ||= prior["last_activity_at"]
+      # The served model last reported, with the name asked for then (the
+      # Engine shows it only while that name is still the one asked for).
+      if @served_model.nil? && prior["served_model"]
+        @served_model = prior["served_model"]
+        @served_model_for = prior["served_model_for"]
+      end
       # The window last seen, until this process's first generation reports.
       window = prior["context"].is_a?(Hash) ? prior["context"] : {}
       if window["window_tokens"] && @context_window_tokens.nil?

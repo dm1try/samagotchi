@@ -74,6 +74,8 @@ and commands may change between minor versions. How releases are made:
   worker beside it.
 - The note a cancelled turn leaves for the model says "the reply above ends where it was cut off", not "the
   answer", so narration cut off before a tool call isn't taken for an answer.
+- A session worker that wakes again shows the model the server last said it served (`/stats`, the status row,
+  the web's info bar) right away, instead of none until its first generation.
 
 ## [0.18.1] - 2026-10-03
 

@@ -451,6 +451,24 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(JSON.parse(File.read(path)).fetch("turn_records").size).to eq(2)
   end
 
+  it "brings back the served model a woken collector's session last reported" do
+    state_dir = Dir.mktmpdir
+    first = described_class.new
+    first.state_dir = state_dir
+    first.call(type: :turn_started, session_id: "woken", prompt: "one")
+    first.call(type: :generation_started, iteration: 1)
+    first.call(type: :generation_completed, iteration: 1, served_model: "ornith", requested_model: "qwen")
+    first.call(type: :turn_completed)
+    first.persist
+
+    woken = described_class.new
+    woken.state_dir = state_dir
+    woken.session_id = "woken"
+
+    expect(woken.served_report).to eq(served_model: "ornith", served_model_for: "qwen")
+    expect(woken.snapshot).to include(served_model: "ornith", served_model_for: "qwen")
+  end
+
   # A worker that stops (idle exit, `chi sessions stop`) and wakes again is
   # a new collector for the same session: its totals must cover both.
   it "totals every process's turns when two collectors persist to one dir in turn" do
