@@ -20,6 +20,7 @@ module Samagotchi
       STOP_POLL_INTERVAL_SEC = 0.05
       WAIT_SLICE_SEC = 0.2
       NOT_RUN_ON_STOP = "Error: not run, the user stopped the turn"
+      TIMEOUT_HINT = "(killed at the limit; for a long command use task_create, then task_wait)"
 
       def self.name        = NAME
 
@@ -51,9 +52,9 @@ module Samagotchi
         parts << (silent ? "exit: #{status.exitstatus} (no output)" : "exit: #{status.exitstatus}")
         parts.join("\n")
       rescue CommandTimedOut => e
-        # Keep the "Error:" first line (callers classify on it) and return
-        # whatever the command printed before it was killed.
-        stopped_result("Error: command timed out after #{timeout_sec}s", e)
+        # Keep the "Error:" first line (callers classify on it), say how to run
+        # a long command, and return whatever it printed before it was killed.
+        stopped_result("Error: command timed out after #{timeout_sec}s\n#{TIMEOUT_HINT}", e)
       rescue CommandCancelled => e
         stopped_result("Error: command stopped by the user after #{e.elapsed.round}s (killed; rerun it if still needed)", e)
       rescue => e

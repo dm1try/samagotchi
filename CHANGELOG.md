@@ -26,6 +26,8 @@ and commands may change between minor versions. How releases are made:
   whole conversation and timing history, so they stay the same size however long the session runs.
 - `execute` gives a command 120 s by default (was 30 s) before it is killed; `execute.timeout_sec` /
   `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC` still set it.
+- An `execute` command killed at its time limit says how to run a long one: a second line
+  `(killed at the limit; for a long command use task_create, then task_wait)` follows `Error: command timed out after Ns`.
 
 ### Fixed
 

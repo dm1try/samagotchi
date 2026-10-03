@@ -175,7 +175,7 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       result = described_class.call("ruby -e 'sleep 5'")
 
-      expect(result).to eq("Error: command timed out after 1s")
+      expect(result).to eq("Error: command timed out after 1s\n(killed at the limit; for a long command use task_create, then task_wait)")
     end
 
     it "gives a command 120 s by default, the same as the config default" do
@@ -195,7 +195,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         File.write(File.join(dir, "samagotchi", "config.yml"), "default:\n  model: m\nexecute:\n  timeout_sec: 1\n")
         with_env("XDG_CONFIG_HOME" => dir) do
           expect(Samagotchi::Config.validate_yaml_sections(Samagotchi::ConfigFile.read_yaml)).to eq([])
-          expect(described_class.call("ruby -e 'sleep 5'")).to eq("Error: command timed out after 1s")
+          expect(described_class.call("ruby -e 'sleep 5'").lines.first).to eq("Error: command timed out after 1s\n")
         end
       end
     end
@@ -207,7 +207,7 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       result = described_class.call("echo before; echo oops >&2; sleep 10; echo never-printed")
 
-      expect(result).to start_with("Error: command timed out after 3s\n")
+      expect(result).to start_with("Error: command timed out after 3s\n(killed at the limit; for a long command use task_create, then task_wait)\n")
       expect(result).to include("stdout:\nbefore")
       expect(result).to include("stderr:\noops")
       expect(result).not_to include("never-printed")
