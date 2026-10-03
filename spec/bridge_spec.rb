@@ -1716,6 +1716,18 @@ RSpec.describe Samagotchi::Bridge do
         expect(JSON.parse(tool_result.pop(timeout: 2))).to include("selected" => ["A"])
       end
 
+      it "answers 409 not_dismissable for a standing question (the step limit's): it stays open" do
+        start_bridge
+        id = @engine.post_question({ kind: "continue", question: "Continue?", options: %w[Continue Stop],
+                                     multi_select: false, allow_freeform: true }, on_answer: ->(_a, client_id:) {})[:id]
+
+        status, resp = post_dismiss(JSON.generate(id: id))
+
+        expect(status).to eq(409)
+        expect(resp).to eq("error" => "not_dismissable", "detail" => "answer Continue or Stop")
+        expect(@engine.pending_question).to include(id: id, status: "pending")
+      end
+
       it "answers 409 with no question pending, and 400 without an id" do
         start_bridge
 

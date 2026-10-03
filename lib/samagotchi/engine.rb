@@ -1257,6 +1257,19 @@ module Samagotchi
       @question_desk.open_question({ **fields.to_h, **more }, watch: watch)
     end
 
+    # Publish a standing question that blocks nobody (QuestionDesk#post: a
+    # worker's step-limit question).
+    # @return [Hash, nil] the pending question, nil while another is open
+    def post_question(fields, on_answer:, on_superseded_close: nil)
+      @question_desk.post(fields, on_answer: on_answer, on_superseded_close: on_superseded_close)
+    end
+
+    # Withdraw the standing question (QuestionDesk#withdraw).
+    # @return [Boolean]
+    def withdraw_question(reason, id: nil)
+      @question_desk.withdraw(reason, id: id)
+    end
+
     # Answer the pending question (called from UI thread; QuestionDesk#answer).
     # @return [Hash] normalized answer
     def answer_question(id:, selected:, freeform: nil, client_id: nil, parent_agent: nil)
@@ -1277,6 +1290,7 @@ module Samagotchi
 
     # Cancel the pending question (QuestionDesk#cancel).
     # @return [Boolean] whether it was cancelled
+    # @raise [QuestionDesk::NotDismissable] +id+ names a standing question
     def cancel_question(reason = "user", id: nil)
       @question_desk.cancel(reason, id: id)
     end

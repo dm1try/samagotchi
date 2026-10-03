@@ -15,6 +15,15 @@ module Samagotchi
   # by every UI. The turn thread blocks in #open_question; the UIs answer or
   # cancel from theirs (a REPL answers inline through the sync handler).
   #
+  # A standing question (#post: a worker's step-limit question, kind
+  # "continue") blocks nobody: it waits between turns, its answer goes to
+  # its on_answer, and its poster withdraws it (#withdraw). It can't be
+  # dismissed. One question stays pending at a time: a question opened
+  # while one stands supersedes it (withdrawn, reason "superseded"), and
+  # once that one closes the standing one is offered again
+  # (on_superseded_close); one posted while another is open waits for it
+  # the same way.
+  #
   # What it needs from the Engine comes through lookups, read at call time.
   class QuestionDesk
     # Raised by #answer when the question it targets is no longer open
@@ -35,6 +44,14 @@ module Samagotchi
         super("a parent may not allow this approval (#{reason})")
       end
     end
+
+    # Raised by #cancel for a standing question (#post): its poster closes
+    # it, an answer settles it. Transports map it to 409 not_dismissable.
+    class NotDismissable < StandardError; end
+
+    # A step-limit question's options (kind "continue").
+    CONTINUE_KIND = "continue"
+    CONTINUE_OPTION = "Continue"
 
     # Seconds between two looks of an open question's watch (#open_question).
     WATCH_INTERVAL = 0.5
@@ -62,6 +79,11 @@ module Samagotchi
       @pending = nil
       @answer = nil
       @sync_handler = nil
+      # The standing question while it is @pending: {id:, fields:,
+      # on_answer:, on_superseded_close:}; @shelved, one superseded by (or
+      # posted during) another question, offered again when that closes.
+      @standing = nil
+      @shelved = nil
     end
 
     # @return [Hash, nil] current pending question (thread-safe copy)
@@ -99,6 +121,66 @@ module Samagotchi
     # @return [Hash, String] the answer {id:, selected:, freeform:, selected_indices:},
     #   or {error:, …}; a String when a sync handler returned text itself
     def open_question(fields, watch: nil)
+      supersede_standing
+      ask(fields, watch)
+    ensure
+      offer_shelved
+    end
+
+    # Publish a standing question: pending (saved, announced with
+    # standing: true) without blocking anyone. An answer to it is checked
+    # as any other and handed to +on_answer+ (answer, client_id:) on the
+    # answering thread, after it is cleared and :question_answered is out.
+    # Posted while another question is open, it waits for that one to
+    # close (as a superseded one does). A standing one already up is
+    # replaced (withdrawn, reason "replaced").
+    # @param fields [Hash] as for #open_question
+    # @param on_answer [#call] (answer, client_id:)
+    # @param on_superseded_close [#call, nil] called when a question that
+    #   superseded it closes (its poster posts it again if it still
+    #   stands); nil: posted again as it was
+    # @return [Hash, nil] the pending question; nil when it waits for another
+    def post(fields, on_answer:, on_superseded_close: nil)
+      standing = { fields: fields, on_answer: on_answer, on_superseded_close: on_superseded_close }
+      shelved = @lock.synchronize do
+        next false unless @pending && !@standing
+
+        @shelved = standing
+        true
+      end
+      return nil if shelved
+
+      withdraw("replaced")
+      publish(fields, standing: standing)
+    end
+
+    # Withdraw the standing question (its poster's close: the offer went,
+    # was answered by a command, the worker leaves), announced as
+    # :question_cancelled with +reason+. A shelved one just goes.
+    # @param id [String, nil] only this one
+    # @return [Boolean] whether one was pending
+    def withdraw(reason, id: nil)
+      withdrawn = @lock.synchronize do
+        @shelved = nil if id.nil?
+        standing = @standing
+        next nil unless standing && @pending && @pending[:id] == standing[:id]
+        next nil if id && standing[:id].to_s != id.to_s
+
+        @standing = nil
+        @pending = nil
+        standing[:id]
+      end
+      return false unless withdrawn
+
+      clear_saved_question
+      emit({ type: :question_cancelled, id: withdrawn, reason: reason.to_s })
+      true
+    end
+
+    # @return [Boolean] the pending question is a standing one
+    def standing? = @lock.synchronize { !@standing.nil? }
+
+    private def ask(fields, watch)
       pending = publish(fields)
       id = pending[:id]
 
@@ -187,7 +269,8 @@ module Samagotchi
       parent_agent = client_id.to_s == Guardrails::ParentApprovals::CLIENT_ID if parent_agent.nil?
       # Read before the lock (config may touch the disk); this worker's own.
       parent_setting = Guardrails::ParentApprovals.setting if parent_agent
-      @lock.synchronize do
+      standing = nil
+      answer = @lock.synchronize do
         pending = @pending
         raise NotPending, "no pending question" unless pending
         raise NotPending, "id mismatch" unless pending[:id].to_s == id.to_s
@@ -198,13 +281,21 @@ module Samagotchi
         raise NotPending, "question #{pending[:status]}" unless pending[:status].to_s == "pending"
 
         answer = validated_answer(pending, sel, fm, parent_agent: parent_agent, parent_setting: parent_setting)
-        @answer = answer
-        @cv.broadcast
+        if @standing
+          # No waiter: cleared here, so a second answer finds none.
+          standing = @standing
+          @standing = nil
+          @pending = nil
+        else
+          @answer = answer
+          @cv.broadcast
+        end
         answer
-      end.tap do
-        # A human answered: the session is back in the lists (ArchiveStore).
-        @user_input.call(session&.id) unless parent_agent
       end
+      settle_standing(standing, answer, client_id) if standing
+      # A human answered: the session is back in the lists (ArchiveStore).
+      @user_input.call(session&.id) unless parent_agent
+      answer
     end
 
     # Mark the pending question as relayed to a parent session's user, or
@@ -249,12 +340,16 @@ module Samagotchi
     #   names the one it showed)
     # @return [Boolean] whether it was cancelled (true with none pending and
     #   no id, as before)
+    # @raise [NotDismissable] +id+ names a standing question (#post)
     def cancel(reason = "user", id: nil)
       cancelled_id = @lock.synchronize do
         pending = @pending
         next unless pending
         next if id && pending[:id].to_s != id.to_s
         next if @answer || pending[:status].to_s != "pending"
+        # Its poster closes it; nothing waits on a cancel.
+        raise NotDismissable, "answer #{Array(pending[:options]).join(' or ')}" if @standing && id
+        next if @standing
 
         pending[:status] = "cancelled"
         @cv.broadcast
@@ -298,18 +393,64 @@ module Samagotchi
     # TerminalUI handle_question_event) discard it as stale if a sync
     # handler answers and clears it first (drain_pending_question?).
     # @return [Hash] the pending question
-    def publish(fields)
+    # @param standing [Hash, nil] a standing question's record (#post)
+    def publish(fields, standing: nil)
       pending = { id: SecureRandom.uuid, **fields, status: "pending", created_at: Time.now.iso8601(3) }.compact
       @lock.synchronize do
         @pending = pending
         @answer = nil
+        @standing = standing&.merge(id: pending[:id])
       end
       if session
         session.pending_question = pending.dup
         begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
       end
-      emit({ type: :question_requested, pending_question: pending })
+      event = { type: :question_requested, pending_question: pending }
+      event[:standing] = true if standing
+      emit(event)
       pending
+    end
+
+    # A question is about to open: a standing one gives way (withdrawn,
+    # reason "superseded") and is shelved until the new one closes.
+    def supersede_standing
+      standing = @lock.synchronize do
+        next nil unless @standing
+
+        @shelved = @standing
+        @standing = nil
+        @pending = nil
+        @shelved[:id]
+      end
+      emit({ type: :question_cancelled, id: standing, reason: "superseded" }) if standing
+    end
+
+    # The question that superseded a standing one closed: offer it again.
+    def offer_shelved
+      shelved = @lock.synchronize do
+        next nil if @pending || @shelved.nil?
+
+        @shelved.tap { @shelved = nil }
+      end
+      return unless shelved
+
+      if shelved[:on_superseded_close]
+        shelved[:on_superseded_close].call
+      else
+        post(shelved[:fields], on_answer: shelved[:on_answer])
+      end
+    rescue StandardError => e
+      Log.warn(:turn, "standing_question_repost_failed", error: e.class.name, message: e.message)
+    end
+
+    # A standing question's answer: cleared from the file, announced, then
+    # handed to its poster with who answered.
+    def settle_standing(standing, answer, client_id)
+      clear_saved_question
+      emit({ type: :question_answered, id: answer[:id], answer: answer })
+      standing[:on_answer].call(answer.except(:by), client_id: client_id)
+    rescue StandardError => e
+      Log.warn(:turn, "standing_answer_failed", error: e.class.name, message: e.message)
     end
 
     # An answer to +pending+, checked: the selections are its options (value
@@ -324,6 +465,11 @@ module Samagotchi
       raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})" unless invalid.empty?
       raise ArgumentError, "single-select question: got #{sel.size} selections" if !pending[:multi_select] && sel.size > 1
       raise ArgumentError, "selection required" if pending[:multi_select] == false && sel.empty? && fm.nil?
+      # A step-limit question: Continue resumes the turn as it was; a text
+      # goes with Stop (steering a continue is not a thing).
+      if pending[:kind].to_s == CONTINUE_KIND && sel == [CONTINUE_OPTION] && fm
+        raise ArgumentError, "Continue takes no text (a text goes with Stop)"
+      end
 
       indices = sel.map { |v| opts.index(v) }
       # The one whose answer settles the approval (Approval.settle, by index).

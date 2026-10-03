@@ -607,7 +607,12 @@ module Samagotchi
       return BAD_DEADLINE unless deadline_valid?(deadline)
       return deadline_passed("dismissal") if expired?("dismiss_expired", deadline, sid: session_id, id: qid)
 
-      dismissed = @engine.cancel_question("dismissed", id: qid)
+      begin
+        dismissed = @engine.cancel_question("dismissed", id: qid)
+      rescue QuestionDesk::NotDismissable => e
+        # A step-limit question: its answer is Continue or Stop.
+        return [{}, 409, { error: "not_dismissable", detail: e.message }]
+      end
       return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless dismissed
 
       [{}, 200, { status: "dismissed", id: qid, session_id: @session_id }]

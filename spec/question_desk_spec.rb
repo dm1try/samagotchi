@@ -30,7 +30,8 @@ RSpec.describe Samagotchi::QuestionDesk do
     box = {}
     thread = Thread.new { box[:answer] = desk.open_question(fields, **opts) }
     thread.report_on_exception = false
-    wait_until(timeout: 2) { desk.pending }
+    # Past a standing question pending before it.
+    wait_until(timeout: 2) { desk.pending && desk.pending[:kind] != "continue" }
     [thread, box, desk.pending[:id]]
   end
 
@@ -157,6 +158,120 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(desk.annotate(id, relayed_to: { relay_id: "r" })).to be(false)
       thread.join(2)
       expect(events.map { |e| e[:type] }).not_to include(:question_relay)
+    end
+  end
+
+  describe "a standing question (#post, the step-limit question)" do
+    let(:continue_fields) do
+      { kind: "continue", header: "Step limit", question: "Continue it?", options: %w[Continue Stop],
+        multi_select: false, allow_freeform: true, limit: 3 }
+    end
+    let(:answers) { [] }
+    let(:on_answer) { ->(answer, client_id:) { answers << [answer, client_id] } }
+
+    it "is pending, saved and announced as standing, and blocks no one" do
+      pending = desk.post(continue_fields, on_answer: on_answer)
+
+      expect(desk.pending).to include(id: pending[:id], kind: "continue", limit: 3, status: "pending")
+      expect(saved).to include(id: pending[:id], kind: "continue")
+      expect(events.last).to include(type: :question_requested, standing: true)
+      expect(desk).to be_standing
+    end
+
+    it "hands an answer to on_answer with who answered, after it is cleared and announced" do
+      id = desk.post(continue_fields, on_answer: lambda { |answer, client_id:|
+        answers << [answer, client_id, desk.pending, events.last[:type]]
+      })[:id]
+
+      result = desk.answer(id: id, selected: ["Stop"], freeform: "enough", client_id: "web:1")
+
+      expect(result).to include(selected: ["Stop"], freeform: "enough")
+      expect(answers).to eq([[result, "web:1", nil, :question_answered]])
+      expect(saved).to be_nil
+      expect(inputs).to eq([session.id])
+      expect { desk.answer(id: id, selected: ["Continue"]) }.to raise_error(described_class::NotPending)
+    end
+
+    it "doesn't bring the session back to the lists on a parent agent's answer" do
+      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      desk.answer(id: id, selected: ["Stop"], client_id: "cli:answer")
+
+      expect(answers.map(&:last)).to eq(["cli:answer"])
+      expect(inputs).to be_empty
+    end
+
+    it "refuses Continue with a text (a text goes with Stop), and stays open" do
+      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+
+      expect { desk.answer(id: id, selected: ["Continue"], freeform: "and also") }
+        .to raise_error(ArgumentError, /Continue takes no text/)
+      expect(desk.pending).to include(id: id)
+      expect(answers).to be_empty
+    end
+
+    it "can't be dismissed: a UI's dismiss raises, a cancel with no id leaves it" do
+      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+
+      expect { desk.cancel("dismissed", id: id) }.to raise_error(described_class::NotDismissable)
+      expect(desk.cancel("user")).to be(false)
+      expect(desk.pending).to include(id: id)
+    end
+
+    it "is withdrawn by its poster, announced with the reason" do
+      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+
+      expect(desk.withdraw("dropped", id: "other")).to be(false)
+      expect(desk.withdraw("dropped")).to be(true)
+      expect(desk.pending).to be_nil
+      expect(saved).to be_nil
+      expect(events.last).to eq(type: :question_cancelled, id: id, reason: "dropped")
+      expect(desk.withdraw("dropped")).to be(false)
+    end
+
+    it "gives way to a question opened meanwhile (superseded) and is offered again once that closes" do
+      reposts = []
+      id = desk.post(continue_fields, on_answer: on_answer, on_superseded_close: -> { reposts << desk.pending })[:id]
+
+      thread, box, other = open_in_background
+      expect(events.find { |e| e[:type] == :question_cancelled }).to eq(type: :question_cancelled, id: id, reason: "superseded")
+      expect(desk.pending).to include(id: other, question: "Run it?")
+      expect(reposts).to be_empty
+
+      desk.answer(id: other, selected: ["Yes"])
+      thread.join(2)
+      expect(box[:answer]).to include(selected: ["Yes"])
+      expect(reposts).to eq([nil])
+    end
+
+    it "is posted again as it was when it has no on_superseded_close" do
+      desk.post(continue_fields, on_answer: on_answer)
+      thread, _box, other = open_in_background
+      desk.answer(id: other, selected: ["No"])
+      thread.join(2)
+
+      expect(desk.pending).to include(kind: "continue", status: "pending")
+      desk.answer(id: desk.pending[:id], selected: ["Continue"], client_id: "tui:1")
+      expect(answers.map(&:last)).to eq(["tui:1"])
+    end
+
+    it "waits for a question open as it is posted, then goes up" do
+      thread, _box, other = open_in_background
+      expect(desk.post(continue_fields, on_answer: on_answer)).to be_nil
+      expect(desk.pending).to include(id: other)
+
+      desk.answer(id: other, selected: ["Yes"])
+      thread.join(2)
+      expect(desk.pending).to include(kind: "continue")
+    end
+
+    it "isn't offered again once withdrawn while shelved" do
+      desk.post(continue_fields, on_answer: on_answer)
+      thread, _box, other = open_in_background
+      desk.withdraw("dropped")
+      desk.answer(id: other, selected: ["Yes"])
+      thread.join(2)
+
+      expect(desk.pending).to be_nil
     end
   end
 end
