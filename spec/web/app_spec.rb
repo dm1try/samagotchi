@@ -227,7 +227,8 @@ RSpec.describe Samagotchi::Web::App do
 
   describe "GET /api/events" do
     let(:state_dir) { Dir.mktmpdir("web-events-spec") }
-    let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir) }
+    let(:installed) { Struct.new(:newest).new(nil) }
+    let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir, installed_versions: installed) }
 
     after { FileUtils.rm_rf(state_dir) }
 
@@ -330,7 +331,23 @@ RSpec.describe Samagotchi::Web::App do
       collected = Thread.new { frames_of(body) }
       hub.stop
 
-      expect(collected.value.first).to eq(["snapshot", { "sessions" => [], "version" => Samagotchi::VERSION }])
+      expect(collected.value.first)
+        .to eq(["snapshot", { "sessions" => [], "version" => Samagotchi::VERSION, "installed" => nil }])
+    end
+
+    it "names the newest installed chi in the snapshot, and sends a `chi` frame when it changes" do
+      installed.newest = "0.18.0"
+      hub.scan
+      _, _, body = events_app.call(env_for("/api/events"))
+      collected = Thread.new { frames_of(body) }
+      installed.newest = "99.0.0"
+      hub.instance_variable_set(:@next_full_probe, nil) # the next scan is a full probe
+      hub.scan
+      hub.stop
+
+      frames = collected.value
+      expect(frames.first[1]).to include("installed" => "0.18.0")
+      expect(frames[1]).to eq(["chi", { "version" => Samagotchi::VERSION, "installed" => "99.0.0" }])
     end
 
     it "ends the connection when its queue overflowed: the reconnect's snapshot is the recovery" do

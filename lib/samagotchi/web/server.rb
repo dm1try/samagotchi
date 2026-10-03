@@ -129,6 +129,8 @@ module Samagotchi
                       annotate_presets: annotate_presets, hub: hub, lan: lan_option)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         Samagotchi::Log.info(:web, "lan", ip: lan.ip, interface: lan.interface) if lan
+        # Subscribed before the first scan, which makes the first check.
+        hub.subscribe(method(:on_hub_event))
         hub.start
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
@@ -165,6 +167,27 @@ module Samagotchi
       end
 
       class LanListenError < StandardError; end
+
+      # The hub's `chi` event: a newer chi installed than this chi web runs
+      # is said once in its terminal (the page says it too).
+      def self.on_hub_event(event)
+        return unless event.type == "chi"
+
+        line = installed_line(event.data[:installed])
+        return unless line
+
+        Samagotchi::Log.info(:web, "newer_installed", installed: event.data[:installed], version: Samagotchi::VERSION)
+        puts line
+        $stdout.flush
+      end
+
+      # nil unless +installed+ is newer than this chi web.
+      def self.installed_line(installed, running = Samagotchi::VERSION)
+        return nil unless InstalledVersions.newer?(installed, running)
+
+        "chi #{installed} is installed; this chi web runs #{running}. Restart it: Ctrl-C here, then chi web " \
+          "(new sessions already run #{installed})"
+      end
 
       # The LAN address's listener, next to the loopback one WEBrick made.
       # The loopback socket is bound by now: on a failure it is closed

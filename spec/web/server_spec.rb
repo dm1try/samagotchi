@@ -61,7 +61,36 @@ RSpec.describe Samagotchi::Web::Server do
   # The hub logs nothing of its own: the web log's start and stop lines
   # are the server's. Server.start starts it before WEBrick and stops it
   # after.
-  let(:hub) { instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil) }
+  let(:hub) { instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, subscribe: nil) }
+
+  describe "a newer chi installed" do
+    def chi_event(installed)
+      Samagotchi::Web::SessionHub::Event.new(type: "chi", seq: 1, data: { version: Samagotchi::VERSION, installed: installed })
+    end
+
+    it "is said in chi web's terminal when the hub finds one, subscribed before the hub's first scan" do
+      allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
+      allow(Rackup::Handler::WEBrick).to receive(:run)
+      sink = nil
+      allow(hub).to receive(:subscribe) { |s| sink = s }
+
+      described_class.start(port: 4998, hub: hub)
+      expect(hub).to have_received(:subscribe).ordered
+      expect(hub).to have_received(:start).ordered
+
+      expect { sink.call(chi_event("99.0.0")) }
+        .to output("chi 99.0.0 is installed; this chi web runs #{Samagotchi::VERSION}. Restart it: Ctrl-C here, " \
+                   "then chi web (new sessions already run 99.0.0)\n").to_stdout
+    end
+
+    it "says nothing for the same or an older version, nothing found, or another event" do
+      expect { described_class.on_hub_event(chi_event(Samagotchi::VERSION)) }.not_to output.to_stdout
+      expect { described_class.on_hub_event(chi_event("0.0.1")) }.not_to output.to_stdout
+      expect { described_class.on_hub_event(chi_event(nil)) }.not_to output.to_stdout
+      expect { described_class.on_hub_event(Samagotchi::Web::SessionHub::Event.new(type: "session", seq: 1, data: {})) }
+        .not_to output.to_stdout
+    end
+  end
 
   it "writes its start and stop to the log" do
     dir = Dir.mktmpdir

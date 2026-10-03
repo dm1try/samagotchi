@@ -14,6 +14,11 @@ and commands may change between minor versions. How releases are made:
   terminal left on an older chi no longer starts workers on its own version. A worker already running keeps its
   version until it is restarted.
 
+### Added
+
+- `chi web` notices a newer chi installed (`chi update`, `gem update`, a `git pull` in a checkout) and says in its
+  terminal to restart it.
+
 ### Fixed
 
 - source-links (0.3.2): a `case_insensitive: true` source no longer lists a ref in its `sources:` note when the ref

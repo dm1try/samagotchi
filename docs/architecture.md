@@ -302,7 +302,13 @@ the server, no daemon) that keeps an in-memory projection of the session list an
 changes to every open tab over `GET /api/events` (SSE: a `snapshot` frame on every connect,
 then `session` for an upsert and `session_gone` for a removal, `: ping` while idle, no replay).
 The snapshot names chi's version: a tab served by another one (its `<body data-version>`) offers a
-reload in a toast, since an open tab keeps its old JS across a `chi web` upgrade.
+reload in a toast, since an open tab keeps its old JS across a `chi web` upgrade. It also names
+`installed`, the newest chi on this machine (`InstalledVersions`: the highest `samagotchi-<v>.gemspec`
+in RubyGems' specification dirs, or a checkout's `version.rb` on disk; looked at again on each full
+probe, every 10 s), and a change is a `chi` frame `{version, installed}`. A newer one than the
+server runs is said in chi web's terminal and on the page: restart chi web (its workers already
+run the newest chi, [Sessions](sessions.md)). `GET /api/info` carries `installed` too, and the
+feature `newest_workers`.
 Files stay the source of truth and workers don't know the hub. Its watcher is a 1 s tick that
 stats the sessions dir (every session writer goes tmp + rename, which bumps the dir's mtime) and
 each `<id>/` folder (recap.json, bridge.json, the stopped and archived markers), re-parsing only the files whose mtime or size

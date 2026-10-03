@@ -9,6 +9,8 @@ require_relative "../session_manager"
 require_relative "../bridge_client"
 require_relative "../worker_sidecar"
 require_relative "../log"
+require_relative "../installed_versions"
+require_relative "../version"
 require_relative "session_summary"
 
 module Samagotchi
@@ -37,7 +39,9 @@ module Samagotchi
       FULL_PROBE_INTERVAL = 10.0
 
       # What a subscriber gets: `session` with {session: summary} for an
-      # upsert, `session_gone` with {id:} for a removal. seq is monotonic per
+      # upsert, `session_gone` with {id:} for a removal, `chi` with
+      # {version:, installed:} when the newest installed chi changed (checked
+      # with the full probe; #installed has it for a new tab). seq is monotonic per
       # hub, for the log's sake: there is no replay.
       Event = Struct.new(:type, :seq, :data, keyword_init: true)
 
@@ -68,9 +72,12 @@ module Samagotchi
       # @param manager [#session_owner, #retention_sweep_if_due] SessionManager,
       #   or a stand-in
       # @param now [#call] a monotonic clock in seconds (specs drive it)
+      # @param installed_versions [#newest] what is installed (InstalledVersions)
       def initialize(state_dir:, manager: SessionManager, now: nil, scan_interval: SCAN_INTERVAL,
-                     full_probe_interval: FULL_PROBE_INTERVAL)
+                     full_probe_interval: FULL_PROBE_INTERVAL, installed_versions: InstalledVersions.new)
         @state_dir = state_dir
+        @installed_versions = installed_versions
+        @installed = nil
         @manager = manager
         @now = now || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
         @scan_interval = scan_interval
@@ -120,9 +127,17 @@ module Samagotchi
           full = full_probe_due?
           scan_files
           @sessions.each_key { |id| refresh(id, probe: full) }
-          sweep if full
+          if full
+            sweep
+            check_installed
+          end
         end
         nil
+      end
+
+      # The newest installed chi as of the last full probe (nil: unknown).
+      def installed
+        @monitor.synchronize { @installed }
       end
 
       # Rescan one session now (its file, its folder, its owner), for the
@@ -200,6 +215,18 @@ module Samagotchi
         @manager.retention_sweep_if_due(state_dir: @state_dir)
       rescue StandardError
         nil
+      end
+
+      # A change (the first look too, unless it finds nothing) is a `chi`
+      # event: chi web's terminal line and the open tabs hear it.
+      def check_installed
+        newest = @installed_versions.newest
+        return if newest == @installed
+
+        @installed = newest
+        emit("chi", version: VERSION, installed: newest)
+      rescue StandardError => e
+        Log.warn(:web, "installed_check_failed", error: e.class.name, msg: e.message)
       end
 
       # The state dir's files: a new id is parsed and emitted, an id gone

@@ -15,7 +15,9 @@ require "samagotchi/owner_lock"
 RSpec.describe Samagotchi::Web::SessionHub do
   let(:root) { Dir.mktmpdir("session-hub-spec") }
   let(:state_dir) { File.join(root, "sessions") }
-  let(:hub) { described_class.new(state_dir: state_dir) }
+  # What is installed, as InstalledVersions#newest says (nil: no `chi` event).
+  let(:installed) { Struct.new(:newest).new(nil) }
+  let(:hub) { described_class.new(state_dir: state_dir, installed_versions: installed) }
   let(:events) { [] }
 
   before { hub.subscribe(->(event) { events << event }) }
@@ -432,7 +434,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
 
   describe "the tick thread" do
     it "scans on its own once started, and stops when told" do
-      hub = described_class.new(state_dir: state_dir, scan_interval: 0.01)
+      hub = described_class.new(state_dir: state_dir, scan_interval: 0.01, installed_versions: installed)
       seen = Queue.new
       hub.subscribe(->(event) { seen << event.type })
       hub.start
@@ -450,7 +452,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
     it "logs a tick that raises and keeps going" do
       dir = Dir.mktmpdir
       Samagotchi::Log.configure(path: File.join(dir, "chi.log"))
-      hub = described_class.new(state_dir: state_dir, scan_interval: 0.01)
+      hub = described_class.new(state_dir: state_dir, scan_interval: 0.01, installed_versions: installed)
       calls = Queue.new
       allow(hub).to receive(:scan) do
         calls << 1
@@ -477,6 +479,42 @@ RSpec.describe Samagotchi::Web::SessionHub do
 
       expect(snapshot.map { |s| s[:id] }).to eq([a.id])
       expect(handle).to respond_to(:unsubscribe)
+    end
+  end
+
+  describe "the newest installed chi" do
+    it "is a `chi` event on the full probe when it changes, and #installed has it" do
+      installed.newest = "0.18.1"
+      hub.scan
+      expect(events.map { |e| [e.type, e.data] }).to eq([["chi", { version: Samagotchi::VERSION, installed: "0.18.1" }]])
+      expect(hub.installed).to eq("0.18.1")
+
+      installed.newest = "0.19.0"
+      hub.scan # not a full probe yet: nothing
+      expect(types).to eq(%w[chi])
+    end
+
+    it "is looked at again on the next full probe only, and an unchanged answer is no event" do
+      clock = 0.0
+      hub = described_class.new(state_dir: state_dir, installed_versions: installed, now: -> { clock })
+      seen = []
+      hub.subscribe(->(event) { seen << event })
+      installed.newest = "0.18.1"
+      hub.scan
+      clock += Samagotchi::Web::SessionHub::FULL_PROBE_INTERVAL
+      hub.scan
+      expect(seen.map(&:type)).to eq(%w[chi])
+
+      installed.newest = "0.19.0"
+      clock += Samagotchi::Web::SessionHub::FULL_PROBE_INTERVAL
+      hub.scan
+      expect(seen.map { |e| e.data[:installed] }).to eq(%w[0.18.1 0.19.0])
+    end
+
+    it "survives a detector that raises" do
+      allow(installed).to receive(:newest).and_raise(Errno::EACCES)
+      expect { hub.scan }.not_to raise_error
+      expect(hub.installed).to be_nil
     end
   end
 end

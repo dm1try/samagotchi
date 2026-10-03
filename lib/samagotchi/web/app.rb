@@ -375,10 +375,12 @@ module Samagotchi
       end
 
       # What a second `chi web` probes before starting its own server: this
-      # is chi web, and it knows ?dir (features).
+      # is chi web, and it knows ?dir (features). installed: the newest chi
+      # on this machine (nil until the hub has looked); newest_workers: the
+      # workers it starts run that one, not this chi web's version.
       def handle_info(_req)
-        json_response(200, { app: "chi-web", version: Samagotchi::VERSION, pid: Process.pid, cwd: Dir.pwd,
-                             features: ["dir"], lan: @lan && @lan[:ip] })
+        json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
+                             cwd: Dir.pwd, features: %w[dir newest_workers], lan: @lan && @lan[:ip] })
       end
 
       # The models a new session can start on, spelled as chi spells them
@@ -1073,7 +1075,8 @@ module Samagotchi
       # GET /api/events: the session list as one SSE stream per tab. The
       # first frame is the hub's snapshot (scoped by ?dir= as the list is,
       # with chi's version),
-      # then `session` for an upsert and `session_gone` for a removal, with
+      # then `session` for an upsert, `session_gone` for a removal and `chi`
+      # when the newest installed chi changed, with
       # a `: ping` while idle. Frame ids are the hub's seq, for the log's
       # sake: there is no replay, a reconnect starts with a fresh snapshot.
       def handle_events(req)
@@ -1609,11 +1612,15 @@ module Samagotchi
           @server_running = server_running
           @queue = Bridge::BoundedQueue.new(capacity: capacity)
           @handle, @snapshot = @hub.subscribe(->(event) { @queue.push(event) }, snapshot: true, project_root: project_root)
+          # Read after subscribing: a change in between is also a queued event.
+          @installed = @hub.installed
         end
 
         def each
-          # version: the page compares it with the one it was served by.
-          yield frame(nil, "snapshot", sessions: @snapshot, version: Samagotchi::VERSION)
+          # version: the page compares it with the one it was served by;
+          # installed: the newest chi on this machine (a later change is a
+          # `chi` event).
+          yield frame(nil, "snapshot", sessions: @snapshot, version: Samagotchi::VERSION, installed: @installed)
           last_write = monotonic
           loop do
             event = @queue.pop([@heartbeat, EVENTS_POLL].min)
