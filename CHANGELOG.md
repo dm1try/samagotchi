@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Model speed and token stats. `/stats` has a speed line (the last generation's decode speed and the
+  session's average: exact from llama.cpp, estimated and marked `~` elsewhere), cached and reasoning
+  tokens, and the cost when the provider reports it (OpenRouter). The web's info bar shows the speed
+  next to `ctx`, updated after each generation, and the `ctx` tooltip there and on session cards lists
+  tokens in / cached / out (+ reasoning) and the cost, for that session only.
+
 ### Changed
 
 - `chi bundle status` shows a bundle whose recorded scope this chi doesn't know (one a newer chi wrote, or a hand

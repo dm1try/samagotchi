@@ -274,6 +274,12 @@ The metrics in `/state`, `/snapshot`, `/stats` and the SSE `snapshot`/`reset` fr
 newest turn the worker finished and any it hasn't saved yet (at most 20 turns), with their tool
 calls and the running turn's finished ones. The full history is the session's `analytics.json`,
 which `SessionMetrics#persist` rewrites after each turn; the web server merges the two by id.
+The totals' `tokens` block adds the cached and reasoning sums, the cost, the decode time and tokens
+behind the average speed (`avg_decode_tps`) and the last speeds (`last_decode_tps`,
+`last_prefill_tps`, `tps_source`: `server` or `estimate`). Each `generation_completed` event
+carries the generation's `speed` (`{decode_tps, source}`, null without one) and those running
+`tokens`: the Engine closes the generation in `SessionMetrics#finish_generation` before relaying
+it, so the web's info bar updates per generation without parsing chunk payloads.
 
 The page's frequent reads of `GET /api/sessions/:id` stay light too:
 - `?tail=1&recent=1` (each turn's end, a cancel, an answer display): `{tail, session: {id, status,

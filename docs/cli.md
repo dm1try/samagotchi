@@ -413,8 +413,17 @@ file and index line stay as they are; only this session doesn't see it.
 `/help` lists the commands this session takes, the installed bundles' too, each
 with a line on what it does. `/stats` shows the session's numbers: turns, tool
 calls (by tool, with errors), iterations, tokens in/out summed over every
-request, generation latency, cancellations, retries, context used and window,
-the prompt profile and the model the server says it ran. `/recap` is in
+request (with the cached and reasoning tokens when the server reports them),
+the decode speed, generation latency, cancellations, retries, context used
+and window, the prompt profile and the model the server says it ran, and the
+cost when the provider reports one (OpenRouter's `usage.cost`; no prices are
+guessed). The speed line is the last generation's and the session's average
+(weighted by tokens): llama.cpp reports it exactly (`87 tok/s out, 1.9k tok/s
+prompt (last, server)`); for other servers it is estimated from the first
+streamed chunk to the end and marked `~` (`~64 tok/s out (last, estimate)`).
+Generations under 8 tokens or 100 ms get no speed of their own, nor does a
+reply without server token counts or a non-streamed one. A delegated child
+keeps its own numbers: a parent's tokens and cost leave them out. `/recap` is in
 [Session recap](#session-recap), `/model` and `/models` in [Runtime Model
 Switch](#runtime-model-switch-assist-mode).
 
