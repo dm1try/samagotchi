@@ -343,7 +343,11 @@ module Samagotchi
         end
         lines << "iterations:       #{snapshot[:iterations_total]}"
         # Summed over every request: each prompt is sent in full again.
-        lines << "tokens in/out:    #{tokens[:prompt_sum].to_i}/#{tokens[:completion_sum].to_i} (all requests, #{token_src_label})"
+        lines << "tokens in/out:    #{tokens[:prompt_sum].to_i}/#{tokens[:completion_sum].to_i} (all requests, #{token_src_label})" \
+                 "#{token_breakdown_text(tokens)}"
+        speed = stats_speed_text(tokens)
+        lines << "speed:            #{speed}" if speed
+        lines << "cost:             #{cost_text(tokens[:cost_sum])} (this session only)" if tokens[:cost_sum].to_f.positive?
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"
         lines << "retries:          #{snapshot[:retries]}"
@@ -360,6 +364,46 @@ module Samagotchi
           lines << "served model:     #{snapshot[:served_model]}#{note}"
         end
         lines.join("\n")
+      end
+
+      # ", cached 4864 (93%), reasoning 212" for the tokens line; the counts a
+      # server didn't report are left out.
+      def token_breakdown_text(tokens)
+        cached = tokens[:cached_sum].to_i
+        reasoning = tokens[:reasoning_sum].to_i
+        prompt = tokens[:prompt_sum].to_i
+        text = +""
+        text << ", cached #{cached} (#{(cached * 100.0 / prompt).round}%)" if cached.positive? && prompt.positive?
+        text << ", reasoning #{reasoning}" if reasoning.positive?
+        text
+      end
+
+      # "87 tok/s out, 1.9k tok/s prompt (last, server), avg 81 tok/s", or nil
+      # before a generation had a speed. The prompt (prefill) speed only when
+      # the server reported it.
+      def stats_speed_text(tokens)
+        last = tokens[:last_decode_tps]
+        return nil unless last
+
+        source = tokens[:tps_source].to_s
+        text = +"#{speed_text(last, source)} out"
+        text << ", #{speed_text(tokens[:last_prefill_tps], 'server')} prompt" if tokens[:last_prefill_tps]
+        text << " (last, #{source})"
+        text << ", avg #{speed_text(tokens[:avg_decode_tps], source)}" if tokens[:avg_decode_tps]
+        text
+      end
+
+      # "87 tok/s", "1.9k tok/s"; "~64 tok/s" for an estimate.
+      def speed_text(tps, source)
+        value = tps.to_f
+        number = value >= 1000 ? "#{(value / 1000).round(1)}k" : value.round.to_s
+        "#{'~' if source.to_s == 'estimate'}#{number} tok/s"
+      end
+
+      # "$0.42"; a cost under a cent keeps four decimals ("$0.0012").
+      def cost_text(cost)
+        value = cost.to_f
+        value >= 0.01 ? format("$%.2f", value) : format("$%.4f", value)
       end
 
       def format_elapsed_duration(duration_ms)

@@ -34,6 +34,36 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to include("10/5")
     end
 
+    describe "the token breakdown, speed and cost" do
+      def stats(tokens)
+        base = agent.engine.metrics.snapshot
+        agent.send(:format_session_metrics, base.merge(tokens: base[:tokens].merge(tokens))).lines.map(&:chomp)
+      end
+
+      it "shows the server's exact speeds, the cached and reasoning counts" do
+        output = stats(prompt_sum: 5210, completion_sum: 340, source: "server", cached_sum: 4864, reasoning_sum: 212,
+                       last_decode_tps: 87.46, last_prefill_tps: 1904.2, tps_source: "server", avg_decode_tps: 81.2)
+        expect(output).to include(
+          "tokens in/out:    5210/340 (all requests, server-reported), cached 4864 (93%), reasoning 212",
+          "speed:            87 tok/s out, 1.9k tok/s prompt (last, server), avg 81 tok/s"
+        )
+        expect(output.join("\n")).not_to include("cost:")
+      end
+
+      it "marks an estimated speed with ~ and shows the cost" do
+        output = stats(prompt_sum: 900, completion_sum: 60, source: "server", last_decode_tps: 64.4, tps_source: "estimate",
+                       avg_decode_tps: 70.0, cost_sum: 0.4213)
+        expect(output).to include("speed:            ~64 tok/s out (last, estimate), avg ~70 tok/s",
+                                  "cost:             $0.42 (this session only)",
+                                  "tokens in/out:    900/60 (all requests, server-reported)")
+        expect(stats(cost_sum: 0.00123)).to include("cost:             $0.0012 (this session only)")
+      end
+
+      it "has no speed line before a generation had one" do
+        expect(stats({}).join("\n")).not_to include("speed:")
+      end
+    end
+
     it "shows the context window and where it came from in /stats" do
       metrics = agent.engine.metrics
       metrics.call(type: :generation_started, context_window_tokens: 128_000, context_window_source: :server)
