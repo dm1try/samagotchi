@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   api,
   listSessions,
-  createSession,
   createIdleSession,
   getSession,
   sendTurn,
@@ -81,28 +80,26 @@ test("listSessions adds the scope folder only when there is one, never to fetch'
   assert.deepEqual(calls[0], ["/api/sessions?sort=updated_at&order=desc&dir=%2FUsers%2Fme%2Fmy%20proj", false]);
 });
 
-test("createSession and createIdleSession send the folder in the body when given", async () => {
+test("createIdleSession sends the folder in the body when given", async () => {
   const bodies = [];
   const fetchImpl = (_path, opts) => {
     bodies.push(JSON.parse(opts.body));
     return Promise.resolve(okResponse({ id: "new" }));
   };
-  await createSession("hi", { dir: "/r", fetchImpl });
   await createIdleSession({ dir: "/r", fetchImpl });
   await createIdleSession({ fetchImpl });
-  assert.deepEqual(bodies, [{ prompt: "hi", dir: "/r" }, { idle: true, dir: "/r" }, { idle: true }]);
+  assert.deepEqual(bodies, [{ idle: true, dir: "/r" }, { idle: true }]);
 });
 
-test("createSession and createIdleSession send the model in the body when given, not when blank", async () => {
+test("createIdleSession sends the model and the preview in the body when given, not when blank", async () => {
   const bodies = [];
   const fetchImpl = (_path, opts) => {
     bodies.push(JSON.parse(opts.body));
     return Promise.resolve(okResponse({ id: "new" }));
   };
-  await createSession("hi", { dir: "/r", model: "box:gemma", fetchImpl });
-  await createSession("hi", { model: "", fetchImpl });
-  await createIdleSession({ model: "box:gemma", fetchImpl });
-  assert.deepEqual(bodies, [{ prompt: "hi", dir: "/r", model: "box:gemma" }, { prompt: "hi" }, { idle: true, model: "box:gemma" }]);
+  await createIdleSession({ model: "box:gemma", preview: "hi", fetchImpl });
+  await createIdleSession({ model: "", preview: "", fetchImpl });
+  assert.deepEqual(bodies, [{ idle: true, model: "box:gemma", preview: "hi" }, { idle: true }]);
 });
 
 test("listModels reads /api/models", async () => {
@@ -116,17 +113,6 @@ test("listModels reads /api/models", async () => {
   });
   assert.deepEqual(calls, ["/api/models"]);
   assert.deepEqual(got, payload);
-});
-
-test("createSession posts a JSON prompt", async () => {
-  const calls = [];
-  await createSession("hello", {
-    fetchImpl: (path, opts) => {
-      calls.push([path, opts.method, opts.body]);
-      return Promise.resolve(okResponse({ id: "new" }));
-    },
-  });
-  assert.deepEqual(calls[0], ["/api/sessions", "POST", JSON.stringify({ prompt: "hello" })]);
 });
 
 test("getSession hits the detail route", async () => {
