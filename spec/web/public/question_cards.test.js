@@ -28,6 +28,13 @@ class FakeEl {
   set className(v) { this.classes = new Set(String(v).split(/\s+/).filter(Boolean)); }
   get className() { return [...this.classes].join(" "); }
   appendChild(c) { this.children.push(c); c.parent = this; return c; }
+  insertBefore(c, ref) {
+    const i = this.children.indexOf(ref);
+    if (i < 0) return this.appendChild(c);
+    this.children.splice(i, 0, c);
+    c.parent = this;
+    return c;
+  }
   remove() {
     if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this);
     this.parent = null;
@@ -327,6 +334,24 @@ test("a step-limit question resolves to what was picked, or why it closed", () =
   cards.renderQuestion({ ...STEP_LIMIT, id: "c2" });
   cards.resolveQuestion("c2", { cancelled: true, reason: "dropped" });
   assert.equal(history.children[1].querySelector(".question-result").textContent, "Dropped: a new prompt came");
+});
+
+// N1: an allowed call's verdict reads before the command it allows (with the
+// details expanded the command reads like another tool call otherwise).
+test("a resolved approval card puts the verdict before the command", () => {
+  const { cards, history } = setup();
+  const pq = {
+    id: "a9", kind: "approval", question: "Run it?", options: ["Allow once", "Deny"],
+    approval: { tool: "execute", command: "rm -rf build", cwd: "/r", reason: "cleanup" },
+  };
+  cards.renderQuestion(pq);
+  const card = history.children[0];
+  cards.resolveQuestion("a9", { answer: { selected: ["Allow once"] } });
+  const result = card.querySelector(".question-result");
+  const details = card.querySelector(".approval-details");
+  assert.ok(result.classList.contains("verdict"));
+  assert.ok(card.children.indexOf(result) < card.children.indexOf(details));
+  assert.equal(result.textContent, "Allowed: Allow once");
 });
 
 const RELAYED_TO = { parent_id: "pppp1111-0000", parent_short: "pppp1111", relay_id: "r1" };
