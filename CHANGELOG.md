@@ -36,6 +36,8 @@ and commands may change between minor versions. How releases are made:
   was wrong for a model that can't see images.
 - An MCP `resource` block carrying an image `blob` is now attached like an `image` block instead of being
   dropped to its URI text.
+- check-in's `nudge` mode no longer says "nudged" when the steer was dropped later; it says "nudge not sent" at
+  the turn's end.
 
 ## [0.19.0] - 2026-10-03
 

@@ -222,6 +222,25 @@ RSpec.describe "The check-in plugin" do
       expect(steered).to be_empty
       expect(ctx.cards).to be_empty
     end
+
+    it "nudge says at the turn's end that the nudge wasn't sent when the answer came first" do
+      p = plugin("after" => 2, "mode" => "nudge")
+      turn(p)
+      tools(p, "read", "read")
+      fire(p, :after_turn, status: "completed", messages: [{ role: "user", content: "go" }, { role: "model", content: "done" }])
+
+      expect(ctx.notices.last).to eq(["The answer came first; nudge not sent.", :warn])
+    end
+
+    it "nudge says nothing at the turn's end when the steer joined the turn" do
+      p = plugin("after" => 2, "mode" => "nudge")
+      turn(p)
+      tools(p, "read", "read")
+      steer = { role: "user", kind: "steer", source: "check-in", content: steered.last }
+      fire(p, :after_turn, status: "completed", messages: [{ role: "user", content: "go" }, steer, { role: "model", content: "done" }])
+
+      expect(ctx.notices.map(&:first)).to eq(["nudged the model after 2 tool calls"])
+    end
   end
 
   describe "/checkin" do

@@ -103,7 +103,11 @@ class Plugin
   def check_in(ctx, count, mode)
     case mode
     when "nudge"
-      ctx.notify("nudged the model after #{count} tool calls") if ctx.steer(message(count))
+      text = message(count)
+      if ctx.steer(text)
+        @mutex.synchronize { @nudge = { text: text, count: count } }
+        ctx.notify("nudged the model after #{count} tool calls")
+      end
     when "notify"
       ctx.notify("#{count} tool calls in this turn, no answer yet")
     else
@@ -117,15 +121,20 @@ class Plugin
     nudge_not_sent(event, ctx)
   end
 
-  # The card said "Nudged": if the turn ended before the nudge joined it
-  # (the model answered first, or the turn was stopped), the card says so.
+  # A nudge that was accepted but dropped before it joined the turn (the
+  # model answered first, or the turn was stopped): the card says so, or,
+  # for a mode nudge (no card), a notice does.
   def nudge_not_sent(event, ctx)
     id, nudge = @mutex.synchronize { [@card_id, @nudge] }
-    return unless id && nudge
+    return unless nudge
     return if steered?(event[:messages], nudge[:text])
 
     first = event[:status].to_s == "canceled" ? "The turn ended first" : "The answer came first"
-    ctx.card(id: id, title: "check-in", body: "#{first}; nudge not sent.")
+    if id
+      ctx.card(id: id, title: "check-in", body: "#{first}; nudge not sent.")
+    else
+      ctx.notify("#{first}; nudge not sent.", level: :warn)
+    end
   end
 
   # Whether this turn's messages (after its last prompt) have the steer.
