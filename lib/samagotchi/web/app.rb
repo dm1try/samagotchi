@@ -15,6 +15,7 @@ require_relative "../bridge/bounded_queue"
 require_relative "../bridge/card_store"
 require_relative "../session"
 require_relative "../session_manager"
+require_relative "../session_metrics"
 require_relative "../session_commands"
 require_relative "../steer"
 require_relative "../host_registry"
@@ -522,6 +523,7 @@ module Samagotchi
         # The page's light re-reads: never the whole conversation.
         return handle_cards_read(id) if req.params["cards"] == "1"
         return handle_tail_read(req, id) if req.params["tail"] == "1"
+        return handle_timing_read(id) if req.params["timing"] == "1"
 
         session = @session_class.load(id, state_dir: default_state_dir)
         # Read-only preview: selecting a session never spawns a worker.
@@ -605,7 +607,9 @@ module Samagotchi
       # worker's GET tail alone (no session file read); else the file. The
       # session part is what the page reads of it (id, status, used memory
       # names). ?turn_id=: that turn's answer (a queued turn's page re-reads
-      # after the next one started).
+      # after the next one started). ?recent=1 (the page since this
+      # release): the timing's records are the newest turn's (#recent_timing),
+      # which the page merges by id; without it, the whole timing as before.
       def handle_tail_read(req, id)
         return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
 
@@ -622,15 +626,29 @@ module Samagotchi
           session_json = { id: id, status: displayed_status(session), used_memory_names: Array(session.used_memory_names) }
           messages = last_assistant_for_display(session.messages, turn_id: turn_id)
         end
+        live_metrics = state && state["metrics"]
+        # Without recent=1: a tab opened before this release (it replaces its
+        # timing with the reply's). Remove this branch after the next release.
+        timing = req.params["recent"] == "1" ? recent_timing(id, live_metrics) : timing_payload(id, live_metrics: live_metrics)
         json_response(200, {
           tail: true,
           session: session_json,
           messages: messages,
           markdown_warning: @markdown_renderer.warning,
-          timing: timing_payload(id, live_metrics: state && state["metrics"])
+          timing: timing
         })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # ?timing=1: the whole timing (every record, analytics.json merged with
+      # the live ones) and turn_count, when the page's merge comes up short.
+      # The worker's GET state, never its messages.
+      def handle_timing_read(id)
+        return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
+
+        state = bridge_get_json(id, "state")
+        json_response(200, { timing: timing_payload(id, live_metrics: state && state["session_state_snapshot"]&.fetch("metrics", nil)) })
       end
 
       def session_exists?(id)
@@ -1205,9 +1223,12 @@ module Samagotchi
                                 session_dir: @session_class.session_dir(s.id, state_dir: default_state_dir))
       end
 
+      # The whole timing: analytics.json's records merged with a live
+      # worker's (by id), and turn_count, the finished turns (#turn_count).
       def timing_payload(session_id, live_metrics: nil)
         persisted = read_analytics(session_id)
-        source = if live_metrics.is_a?(Hash)
+        live = live_metrics.is_a?(Hash)
+        source = if live
                    persisted.merge(live_metrics).merge(
                      "started_at" => persisted["started_at"] || live_metrics["started_at"],
                      "turn_records" => merge_timing_records(persisted["turn_records"], live_metrics["turn_records"]),
@@ -1216,14 +1237,66 @@ module Samagotchi
                  else
                    persisted
                  end
+        turns = Array(source["turn_records"])
+        timing_from(source, turns, Array(source["tool_records"]), live: live,
+                                                                 turn_count: (live && turn_count(live_metrics)) || turns.size)
+      end
+
+      # The timing a ?tail=1&recent=1 read sends: a live worker's recent
+      # records as its metrics hold them (the newest finished turn's and
+      # the unsaved ones, the running turn's finished calls), no
+      # analytics.json read; with no worker the disk's, trimmed to the
+      # newest turn. turn_count tells the page whether its merge missed one
+      # (it then reads ?timing=1).
+      def recent_timing(session_id, live_metrics)
+        if live_metrics.is_a?(Hash)
+          count = turn_count(live_metrics)
+          # A metrics hash without the count: the whole timing.
+          return timing_payload(session_id, live_metrics: live_metrics) unless count
+
+          turns = Array(live_metrics["turn_records"])
+          tools = Array(live_metrics["tool_records"])
+          # An older worker's metrics hold every record (before they held the
+          # recent ones only, never more than LIVE_RECORDS_CAP turns).
+          turns, tools = newest_turn_records(turns, tools, live_metrics["active_turn"]) if turns.size > SessionMetrics::LIVE_RECORDS_CAP
+          return timing_from(live_metrics, turns, tools, live: true, turn_count: count)
+        end
+
+        persisted = read_analytics(session_id)
+        all = Array(persisted["turn_records"])
+        turns, tools = newest_turn_records(all, Array(persisted["tool_records"]), nil)
+        timing_from(persisted, turns, tools, live: false, turn_count: all.size)
+      end
+
+      # The finished turns a live worker counts: its metrics' turns (the
+      # loaded history, its own and the running one) less the running one.
+      # @return [Integer, nil]
+      def turn_count(metrics)
+        turns = metrics["turns"]
+        return nil unless turns.is_a?(Integer)
+
+        [turns - (metrics["active_turn"] ? 1 : 0), 0].max
+      end
+
+      # The newest turn record and its tool records (and the running turn's
+      # finished calls).
+      def newest_turn_records(turns, tools, active_turn)
+        kept = turns.last(1)
+        ids = kept.filter_map { |r| r["id"] if r.is_a?(Hash) }
+        ids << active_turn["id"] if active_turn.is_a?(Hash) && active_turn["id"]
+        [kept, tools.select { |r| r.is_a?(Hash) && ids.include?(r["turn_id"]) }]
+      end
+
+      def timing_from(source, turn_records, tool_records, live:, turn_count:)
         started_at = source["started_at"]
         last_activity_at = source["last_activity_at"]
         {
           started_at: started_at,
           last_activity_at: last_activity_at,
-          session_duration_ms: session_duration_ms(started_at, last_activity_at, active: live_metrics.is_a?(Hash)),
-          turn_records: Array(source["turn_records"]),
-          tool_records: Array(source["tool_records"]),
+          session_duration_ms: session_duration_ms(started_at, last_activity_at, active: live),
+          turn_records: turn_records,
+          tool_records: tool_records,
+          turn_count: turn_count,
           active_turn: source["active_turn"],
           active_tools: Array(source["active_tools"]),
           # The context last seen and the token sums, for the ctx meter

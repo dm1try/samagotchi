@@ -1265,15 +1265,17 @@ RSpec.describe Samagotchi::Web::App do
                                  tool_records: turns.flat_map { |n| [tool(n, 1), tool(n, 2)] }))
       end
 
-      def live_with(turns)
-        metrics = { "started_at" => "2026-10-03T10:00:00.000Z", "turns" => 3,
+      def live_with(turns, count: 3, **extra)
+        metrics = { "started_at" => "2026-10-03T10:00:00.000Z", "turns" => count,
                     "turn_records" => turns.map { |n| turn(n) },
-                    "tool_records" => turns.flat_map { |n| [tool(n, 1), tool(n, 2)] } }
-        stub_worker(app, "snapshot" => { "messages" => [] },
-                         "session_state_snapshot" => { "status" => "idle", "event_seq" => 9, "metrics" => metrics })
+                    "tool_records" => turns.flat_map { |n| [tool(n, 1), tool(n, 2)] } }.merge(extra.transform_keys(&:to_s))
+        state = { "status" => "idle", "event_seq" => 9, "metrics" => metrics }
+        stub_worker(app, "snapshot" => { "messages" => [] }, "session_state_snapshot" => state)
+        allow(app).to receive(:bridge_get_json).with("s1", "state").and_return("session_state_snapshot" => state)
       end
 
       def timing(query = "") = JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first).fetch("timing")
+      def ids(records) = records.map { |r| r["id"] }
 
       it "appends the live turn the file doesn't hold yet, in order (show and ?tail=1)" do
         save([1, 2])
@@ -1300,6 +1302,87 @@ RSpec.describe Samagotchi::Web::App do
 
         expect(timing["turn_records"].map { |r| r["id"] }).to eq(%w[t1 t2])
         expect(timing["tool_records"].size).to eq(4)
+      end
+
+      it "counts the finished turns everywhere (turn_count): live, the running one not; on disk, the records" do
+        save([1, 2])
+        live_with([3], count: 4, "active_turn" => { "id" => "t4", "started_at" => "2026-10-03T10:09:00.000Z" })
+        ["", "?tail=1", "?tail=1&recent=1", "?timing=1"].each { |query| expect(timing(query)["turn_count"]).to eq(3), query }
+
+        stub_worker(app, nil)
+        allow(app).to receive(:bridge_get_json).with("s1", "state").and_return(nil)
+        ["", "?tail=1", "?tail=1&recent=1", "?timing=1"].each { |query| expect(timing(query)["turn_count"]).to eq(2), query }
+      end
+
+      describe "?tail=1&recent=1 (the page since this release: it merges by id)" do
+        it "sends the worker's recent records only (the newest turn's) and the count, without reading analytics.json" do
+          save([1, 2])
+          live_with([3])
+          expect(app).not_to receive(:read_analytics)
+
+          t = timing("?tail=1&recent=1")
+          expect(ids(t["turn_records"])).to eq(%w[t3])
+          expect(ids(t["tool_records"])).to eq(%w[t3:1:1 t3:1:2])
+          expect(t).to include("turn_count" => 3, "started_at" => "2026-10-03T10:00:00.000Z")
+          expect(t.keys).to include("session_duration_ms", "active_turn", "active_tools", "context", "tokens", "last_activity_at")
+        end
+
+        it "sends every unsaved turn a worker holds (a failed persist)" do
+          save([1])
+          live_with([2, 3])
+
+          expect(ids(timing("?tail=1&recent=1")["turn_records"])).to eq(%w[t2 t3])
+        end
+
+        it "trims an older worker's full lists to the newest turn's" do
+          live_with((1..25).to_a, count: 25)
+
+          t = timing("?tail=1&recent=1")
+          expect(ids(t["turn_records"])).to eq(%w[t25])
+          expect(ids(t["tool_records"])).to eq(%w[t25:1:1 t25:1:2])
+          expect(t["turn_count"]).to eq(25)
+        end
+
+        it "with no worker, trims the file's records to the newest turn's" do
+          save([1, 2])
+          stub_worker(app, nil)
+
+          t = timing("?tail=1&recent=1")
+          expect(ids(t["turn_records"])).to eq(%w[t2])
+          expect(ids(t["tool_records"])).to eq(%w[t2:1:1 t2:1:2])
+          expect(t["turn_count"]).to eq(2)
+        end
+
+        it "a tail without recent=1 (a tab opened before) keeps the whole timing" do
+          save([1, 2])
+          live_with([3])
+
+          expect(ids(timing("?tail=1")["turn_records"])).to eq(%w[t1 t2 t3])
+        end
+      end
+
+      describe "?timing=1 (the page's merge came up short)" do
+        it "is the whole timing from the worker's GET state and analytics.json, never its snapshot" do
+          save([1, 2])
+          live_with([3])
+          expect(StubSessionLoader).not_to receive(:load)
+
+          payload = JSON.parse(app.call(env_for("/api/sessions/s1?timing=1"))[2].first)
+          expect(payload.keys).to eq(["timing"])
+          expect(ids(payload["timing"]["turn_records"])).to eq(%w[t1 t2 t3])
+          expect(payload["timing"]["tool_records"].size).to eq(6)
+          expect(app).not_to have_received(:bridge_get_json).with("s1", "snapshot")
+          expect(app).not_to have_received(:bridge_get)
+        end
+
+        it "reads the file alone without a worker; 404 for an unknown id" do
+          save([1, 2])
+          allow(app).to receive(:bridge_get_json).with("s1", "state").and_return(nil)
+          expect(ids(timing("?timing=1")["turn_records"])).to eq(%w[t1 t2])
+
+          gone = Class.new(StubSessionLoader) { def self.exist?(_id, state_dir: nil) = false }
+          expect(build_app(state_dir: state_dir, session_class: gone).call(env_for("/api/sessions/s1?timing=1"))[0]).to eq(404)
+        end
       end
     end
   end
