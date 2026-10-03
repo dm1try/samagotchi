@@ -82,6 +82,9 @@ module Samagotchi
           end
         end
 
+        # An absolute path for +word+ against the current dir, or nil.
+        def path(word) = resolve(word, @dir)
+
         private
 
         def command(words)

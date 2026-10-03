@@ -8,6 +8,7 @@ require_relative "outside"
 require_relative "shell_git_dirs"
 require_relative "read_only_shell"
 require_relative "shell_paths"
+require_relative "rm_targets"
 
 module Samagotchi
   module Guardrails
@@ -174,6 +175,15 @@ module Samagotchi
           ShellPaths.touches?(@command, dirs: @chi_dirs ? @chi_dirs.call : ParentApprovals.chi_dirs,
                                         text: ParentApprovals::CHI_SHELL_TEXT, cwd: @cwd, tmp_roots: Outside.tmp_roots)
         end
+      end
+
+      # Whether an rm -rf in the command reaches outside the tmp dirs
+      # (RmTargets; a tmp dir the session's root is in doesn't count as one).
+      def rm_outside_tmp?
+        return @rm_outside_tmp if defined?(@rm_outside_tmp)
+
+        @rm_outside_tmp = !@command.nil? &&
+                          RmTargets.outside_tmp?(@command, cwd: @cwd, tmp_roots: Outside.tmp_roots, session_root: @session_root)
       end
 
       # Whether a shell call runs mutating git outside the session's repo

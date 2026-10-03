@@ -201,7 +201,15 @@ guardrails:
       scopes: [once, session, rule]
 ```
 
-A rule gives at least one of `tool`, `command`, `path`, `git` and `touches`.
+A rule gives at least one of `tool`, `command`, `path`, `git`, `touches` and `rm`.
+
+`rm: outside_tmp` (shell tools) matches a command whose `rm -r -f` reaches
+outside the tmp folders (`$TMPDIR`, `/tmp`, `/var/tmp`): every such `rm` in a
+chain must name only paths inside one, resolved like `touches` (so
+`/tmp/../etc` and a link from `/tmp` to `/` are outside). The tmp folder
+itself, a glob (`/tmp/*`), a `$VAR` other than `$HOME`/`$TMPDIR`, an `rm`
+behind `sudo`/`xargs`/`sh -c` or in `$(…)`, and the tmp folder the session's
+repo is in count as outside.
 
 `touches: chi_dirs` (shell tools) matches a command that names a path in chi's
 own folders: the config folder (`config.yml`, `memories/`), the hooks folder,
@@ -338,7 +346,7 @@ chi bundle install guardrails    # chi bootstrap installs it, with the core prof
 installs a default rule set plus a short memory telling the model not to
 route around a deny. It asks before `git push`, `reset --hard`, `clean -f`,
 `branch -D`, `rebase`, `filter-branch`/`filter-repo`; `rm -rf` on `/`, `~`,
-`$HOME` or `..` paths; `curl … | sh` and `base64 -d … | sh`; writes outside the
+`$HOME` or `..` paths, unless every target is inside a tmp folder; `curl … | sh` and `base64 -d … | sh`; writes outside the
 session's repo (`write-outside-repo`) and git that changes another checkout
 (`git-outside-repo`: `cd ../main && git commit`, `git -C ../main add .`; it
 offers once, this session and "rule in this repo", the last stored for later

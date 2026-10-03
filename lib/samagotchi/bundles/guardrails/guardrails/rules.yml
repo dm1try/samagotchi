@@ -47,10 +47,13 @@ rules:
 
   # ── deleting ───────────────────────────────────────────────────────────
   # rm with both -r and -f on an absolute path, ~, $HOME or a path with ..
-  # (a text heuristic; rm -rf build/ in the repo is not asked).
+  # (a text heuristic; rm -rf build/ in the repo is not asked), unless
+  # every rm -rf target is inside a tmp dir (rm: outside_tmp; /tmp itself,
+  # /tmp/* and a link out of it still ask).
   - id: rm-rf-wide
     tool: shell
     command: '\brm\b(?=[^;&|\n]*\s(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)(\s|$))(?=[^;&|\n]*\s(-[a-zA-Z]*f[a-zA-Z]*|--force)(\s|$))[^;&|\n]*\s(/|~|\$HOME|\S*\.\.)'
+    rm: outside_tmp
     verdict: ask
     reason: rm -rf on a path outside the working tree
 
