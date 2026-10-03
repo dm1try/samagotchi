@@ -28,8 +28,10 @@ module Samagotchi
         def in_ui?(ui) = uis.nil? || uis.include?(ui)
       end
 
-      def initialize
+      # @param entries [Array<Entry>] taken as they are, in order (.from_listing)
+      def initialize(entries: [])
         @entries = []
+        entries.each { |entry| add(entry) }
       end
 
       # A UI without an Engine (attached) learns the session's commands from
@@ -39,8 +41,7 @@ module Samagotchi
       # @param listing [Array<Hash>] #listing, with String or Symbol keys
       # @return [Registry]
       def self.from_listing(listing, base:)
-        registry = new
-        base.entries.each { |entry| registry.send(:add, entry) }
+        registry = new(entries: base.entries)
         known = base.entries.map(&:name)
         Array(listing).each do |item|
           item = item.transform_keys(&:to_sym)
