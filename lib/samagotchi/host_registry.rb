@@ -125,9 +125,17 @@ module Samagotchi
     LOCAL_NETS = %w[127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10
                     ::1/128 fc00::/7 fe80::/10].map { |net| IPAddr.new(net) }.freeze
 
-    # Whether an address is remote: https, or an http IP address outside
-    # the local nets (LOCAL_NETS). An http host named by a name (localhost,
-    # box, mac.local, gpu.lan) counts as local: chi doesn't look names up.
+    # Name suffixes that stay on a home or office network: mDNS, the
+    # special-use and customary private names, router defaults (fritz.box)
+    # and Tailscale's MagicDNS. Compared on whole labels.
+    LOCAL_NAME_SUFFIXES = %w[localhost local lan home home.arpa internal intranet localdomain private corp test
+                             box ts.net].freeze
+
+    # Whether an address is remote: https, an http IP address outside the
+    # local nets (LOCAL_NETS), or an http name with a dot whose suffix isn't
+    # a local one (LOCAL_NAME_SUFFIXES): `gpu.example.com` is remote, while
+    # `box`, `mac.local`, `gpu.lan` and `pc.tail1234.ts.net` are local. chi
+    # doesn't look names up; hosts.<name>.remote overrides either way.
     def self.remote_address?(scheme, host)
       return true if scheme.to_s == "https"
 
@@ -135,8 +143,16 @@ module Samagotchi
       address = address.native if address.ipv4_mapped?
       LOCAL_NETS.none? { |net| net.family == address.family && net.include?(address) }
     rescue IPAddr::Error
-      false
+      remote_name?(host)
     end
+
+    def self.remote_name?(host)
+      name = host.to_s.downcase.delete_suffix(".")
+      return false unless name.include?(".")
+
+      LOCAL_NAME_SUFFIXES.none? { |suffix| name == suffix || name.end_with?(".#{suffix}") }
+    end
+    private_class_method :remote_name?
 
     # server.first_token_timeout, or nil when unset or unreadable.
     def self.configured_first_token_timeout

@@ -14,6 +14,10 @@ and commands may change between minor versions. How releases are made:
   is a markdown link's label whose target names it in another case (`[jira-1](…/JIRA-1)`). Run `chi update` to get it.
 - An `@path` image in a prompt takes backslash escapes, as a Finder drag into the terminal types them:
   `@my\ shot.png` and `@a\ \(1\).png` attach the file instead of stopping at the first space.
+- An `http` host named by a public name (`gpu.example.com`) counts as a remote provider (120-second first-token
+  limit, no llama.cpp `/props`), as a public IP address already did. Names without a dot and local suffixes
+  (`.local`, `.lan`, `.home.arpa`, `.internal`, `.ts.net`, `fritz.box`, …) stay local; `hosts.<name>.remote` decides
+  either way.
 
 ## [0.18.1] - 2026-10-03
 

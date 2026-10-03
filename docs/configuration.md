@@ -235,8 +235,11 @@ hosts:
 **Remote or local.** chi treats a host as a remote provider by its address, not
 by its key: an `https` url, or an `http` IP address outside the loopback,
 private (`10.*`, `172.16–31.*`, `192.168.*`, IPv6 `fc00::/7`), link-local and
-CGNAT/Tailscale (`100.64.0.0/10`) nets. An `http` host given by a name
-(`localhost`, `box`, `mac.local`) is local: chi doesn't look names up. A remote
+CGNAT/Tailscale (`100.64.0.0/10`) nets, or an `http` name with a dot that
+doesn't end in a local suffix (`gpu.example.com`). A name without a dot (`box`)
+or ending in `localhost`, `.local`, `.lan`, `.home`, `.home.arpa`, `.internal`,
+`.intranet`, `.localdomain`, `.private`, `.corp`, `.test`, `.box` (`fritz.box`)
+or `.ts.net` (Tailscale) is local: chi doesn't look names up. A remote
 host keeps its model list for 10 minutes, gets a 120-second first-token limit,
 and isn't asked for llama.cpp's `/props` (its context window and served model
 come from its model list and each turn). `remote: true` or `remote: false` on a

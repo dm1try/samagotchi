@@ -117,6 +117,17 @@ RSpec.describe "hosts: url and api_key_env" do
         end
       end
 
+      it "calls an http name with a public-looking suffix remote, and keeps local names local" do
+        %w[gpu.example.com api.provider.io GPU.Example.COM.].each do |host|
+          expect(entry(name: "x", host: host, port: 8080, scheme: "http")).to be_remote, host
+        end
+        %w[box LOCALHOST mac.local gpu.lan nas.home router.home.arpa llm.corp.internal pc.tail1234.ts.net
+           srv.localdomain fritz.box ml.test].each do |host|
+          expect(entry(name: "x", host: host, port: 8080, scheme: "http")).not_to be_remote, host
+        end
+        expect(entry(name: "x", host: "gpu.example.com", port: 8080, scheme: "http", remote: false)).not_to be_remote
+      end
+
       it "doesn't count an API key: a keyed llama.cpp on the LAN stays local (/props, its timeouts and list cache)" do
         lan = entry(name: "x", host: "192.168.1.29", port: 8080, scheme: "http", api_key_env: "BOX_KEY")
         expect(lan).not_to be_remote
