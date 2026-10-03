@@ -9,6 +9,9 @@ require "samagotchi/memory_bundle/provenance"
 require "samagotchi/hooks/registry"
 require "samagotchi/hooks/bundle_loader"
 require "samagotchi/guardrails"
+require "samagotchi/tools/memory"
+require "yaml"
+require "digest"
 
 RSpec.describe "Sample hooks bundle E2E", type: :integration do
   let(:tmpdir) { Dir.mktmpdir("sample-e2e-") }
@@ -57,5 +60,32 @@ RSpec.describe "Sample hooks bundle E2E", type: :integration do
     uninstaller.run
     expect(Dir.exist?(File.join(bundles_dir, "sample-hooks-bundle"))).to be false
     expect(uninstaller.removed_files).to include("hooks/guardrails.rb")
+  end
+  it "installs a model overlay that only its model reads, with no index line, and uninstalls both" do
+    key = "deepseek-v4-1-flash"
+    src = File.join(tmpdir, "ovl-src")
+    FileUtils.mkdir_p(src)
+    files = { "tips.md" => "Base tips.\n", "tips.#{key}.md" => "DeepSeek: keep answers short.\n" }
+    files.each { |f, body| File.write(File.join(src, f), body) }
+    File.write(File.join(src, "manifest.yml"), YAML.dump(
+      "name" => "ovl-test", "version" => "0.1.0",
+      "files" => files.to_h { |f, body| [f, "sha256:#{Digest::SHA256.hexdigest(body)}"] }
+    ))
+
+    installer = Samagotchi::MemoryBundle::Installer.new(source: src, name: "ovl-test", scope: "system", strict: true)
+    installer.run
+    expect(installer.warnings).to be_empty
+
+    index = File.read(File.join(system_dir, "index.md"))
+    expect(index.scan(/^- \*\*([^*]+)\*\*/).flatten).to eq(["tips"])
+
+    read = Samagotchi::Tools::MemoryRead
+    expect(read.call("tips", scope: "system", model_key: key)).to include("Base tips.", "DeepSeek: keep answers short.")
+    expect(read.call("tips", scope: "system", model_key: "qwen3-6-35b-a3b")).to eq("Base tips.\n")
+
+    Samagotchi::MemoryBundle::Uninstaller.new(name: "ovl-test").run
+    expect(File.exist?(File.join(system_dir, "tips.md"))).to be false
+    expect(File.exist?(File.join(system_dir, "tips.#{key}.md"))).to be false
+    expect(File.read(File.join(system_dir, "index.md"))).not_to include("tips")
   end
 end

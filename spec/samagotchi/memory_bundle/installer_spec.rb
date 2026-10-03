@@ -441,6 +441,46 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  describe "model overlays (<name>.<key>.md next to <name>.md)" do
+    let(:index_path) { File.join(system_memories_dir, "index.md") }
+    let(:key) { "deepseek-v4-1-flash" } # sorts before tips.md: the base isn't copied yet
+
+    def install(files, **opts)
+      dir = write_bundle(tmpdir, files, name: "ovl-bundle")
+      described_class.new(source: dir, name: "ovl-bundle", scope: "system", strict: true, **opts).tap(&:run)
+    end
+
+    it "installs the overlay next to its base with no index line of its own" do
+      inst = install({ "tips.md" => "# Tips\n", "tips.#{key}.md" => "DeepSeek only\n", "tips.qwen3.md" => "Qwen only\n" })
+      expect(File.read(File.join(system_memories_dir, "tips.#{key}.md"))).to eq("DeepSeek only\n")
+      index = File.read(index_path)
+      expect(index).to include("- **tips** · system")
+      expect(index).not_to include("tips.#{key}")
+      expect(index).not_to include("tips.qwen3")
+      expect(inst.warnings.grep(/overlay/)).to be_empty
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "ovl-bundle").read[:files].keys.map(&:to_s))
+        .to include("tips.#{key}.md")
+    end
+
+    it "removes a stale overlay line an earlier install wrote" do
+      install({ "tips.md" => "# Tips\n", "tips.#{key}.md" => "DeepSeek only\n" })
+      Samagotchi::MemoryBundle::IndexUpdater.update_index("system", "tips.#{key}", 14, source: "ovl-bundle")
+      install({ "tips.md" => "# Tips\n", "tips.#{key}.md" => "DeepSeek only, v2\n" }, upgrade: true)
+      expect(File.read(index_path)).not_to include("tips.#{key}")
+      expect(File.read(index_path)).to include("- **tips** · system")
+    end
+
+    it "warns about an overlay whose base is nowhere, and writes no line for it (dry run warns too)" do
+      dry = install({ "other.md" => "x\n", "tips.#{key}.md" => "DeepSeek only\n" }, dry_run: true)
+      warning = "tips.#{key}.md is a model overlay with no tips.md; it loads only once tips.md exists"
+      expect(dry.warnings).to include(warning)
+
+      inst = install({ "other.md" => "x\n", "tips.#{key}.md" => "DeepSeek only\n" })
+      expect(inst.warnings).to include(warning)
+      expect(File.read(index_path)).not_to include("tips.#{key}")
+    end
+  end
+
   describe "a plain re-install over a local edit" do
     it "keeps the installed base, so the next upgrade still keeps the edit" do
       bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })

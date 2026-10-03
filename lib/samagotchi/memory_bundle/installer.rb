@@ -12,6 +12,7 @@ require_relative "merger"
 require_relative "trash"
 require_relative "../version"
 require_relative "../bundle_needs"
+require_relative "../model_overlay"
 
 module Samagotchi
   module MemoryBundle
@@ -42,6 +43,7 @@ module Samagotchi
         @warnings = []
         @placeholder_warnings = []
         @conflicts = {}
+        @overlays = []
         @trash = Trash.new(name)
       end
 
@@ -56,6 +58,7 @@ module Samagotchi
         manifest = nil
         begin
           normalized_dir, source_owned, source_commit = SourceNormalizer.normalize(@source)
+          @bundle_dir = normalized_dir
           manifest = Manifest.read(dir: normalized_dir)
         rescue SourceNormalizer::UnknownSourceError => e
           raise InstallError, "Source normalization failed: #{e.message}"
@@ -89,6 +92,7 @@ module Samagotchi
         Dir.glob(File.join(normalized_dir, "*.md")).each do |file_path|
           file_key = File.basename(file_path)
           all_files_in_bundle << file_key
+          note_overlay(file_key, target_dir)
           target_path = File.join(target_dir, file_key)
 
           if @upgrade && existing_provenance && !@force && File.exist?(target_path) && !owned_before.include?(file_key)
@@ -550,9 +554,34 @@ module Samagotchi
         dest
       end
 
+      # A model overlay (<name>.<key>.md, docs/memory.md) loads only with
+      # its base, under the matching model: it gets no index line (every
+      # model would see it as a memory of its own). Its base is looked for
+      # in the bundle dir, not the target: Dir.glob sorts tips.<key>.md
+      # before tips.md, so on a fresh install the base isn't copied yet.
+      # An overlay-looking name with no base anywhere is an overlay too,
+      # with a warning (a dry run warns as well).
+      def note_overlay(file_key, target_dir)
+        base = ModelOverlay.base_file_for(file_key)
+        return unless base
+
+        if ModelOverlay.overlay_file?(file_key, base_dirs: [@bundle_dir])
+          @overlays << file_key
+        elsif !File.file?(File.join(target_dir, base))
+          @overlays << file_key
+          @warnings << "#{file_key} is a model overlay with no #{base}; it loads only once #{base} exists"
+        end
+      end
+
       # +owned+: the bundle wrote (owns) the file, so its line says
       # "· from <bundle>"; a skipped file's line keeps whatever it had.
+      # An overlay gets none: a stale one (an earlier install's) is removed.
       def update_target_index(scope, file_path, file_key, owned: true)
+        if @overlays.include?(file_key)
+          remove_target_index(scope, file_key) if owned
+          return
+        end
+
         byte_count = File.exist?(file_path) ? File.size(file_path) : 0
         entry_name = file_key.delete_suffix(".md")
         begin
