@@ -569,7 +569,12 @@ module Samagotchi
         base = ModelOverlay.base_file_for(file_key)
         return if @bundle_files.include?(base)
 
-        @warnings << "#{file_key} is a model overlay with no #{base}; it loads only once #{base} exists"
+        @warnings << if File.file?(File.join(target_dir, base))
+                       "#{file_key} is taken as a model overlay of your #{base}, which the bundle doesn't ship; " \
+                         "it gets no index line"
+                     else
+                       "#{file_key} is a model overlay with no #{base}; it loads only once #{base} exists"
+                     end
       end
 
       # +owned+: the bundle wrote (owns) the file, so its line says

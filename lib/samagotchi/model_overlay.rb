@@ -77,13 +77,15 @@ module Samagotchi
     # How a bundle's installer, status and uninstaller tell an overlay
     # (they agree, so a line the installer left out isn't "no-index"): the
     # base is one of +bundle_files+ (basenames), or it is nowhere in
-    # +target_dir+ (an orphan overlay; it loads once the base exists). A
-    # base only in +target_dir+ (the user's own memory) doesn't count.
+    # +target_dir+ (an orphan overlay; it loads once the base exists).
+    # A base only in +target_dir+ (an installed memory, maybe the user's
+    # own) counts too: the installer warns, so the dot-name ambiguity
+    # (notes.v2.md next to a user's notes.md) is visible.
     def self.bundle_overlay?(file_key, bundle_files:, target_dir:)
       base = base_file_for(file_key)
       return false unless base
 
-      overlay_file?(file_key, base_dirs: [], base_names: bundle_files) ||
+      overlay_file?(file_key, base_dirs: [target_dir], base_names: bundle_files) ||
         !File.file?(File.join(target_dir, base))
     end
   end

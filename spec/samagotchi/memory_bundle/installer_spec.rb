@@ -6,6 +6,7 @@ require "yaml"
 require "json"
 
 require "samagotchi/memory_bundle/installer"
+require "samagotchi/memory_bundle/status"
 
 RSpec.describe Samagotchi::MemoryBundle::Installer do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-installer-") }
@@ -478,6 +479,16 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       inst = install({ "other.md" => "x\n", "tips.#{key}.md" => "DeepSeek only\n" })
       expect(inst.warnings).to include(warning)
       expect(File.read(index_path)).not_to include("tips.#{key}")
+    end
+
+    it "takes a file whose base is only among the installed memories as an overlay of it, and says so" do
+      FileUtils.mkdir_p(system_memories_dir)
+      File.write(File.join(system_memories_dir, "tips.md"), "my own tips\n")
+      inst = install({ "tips.#{key}.md" => "DeepSeek only\n" })
+      expect(inst.warnings).to include("tips.#{key}.md is taken as a model overlay of your tips.md, which the bundle " \
+                                       "doesn't ship; it gets no index line")
+      expect(File.exist?(index_path) ? File.read(index_path) : "").not_to include("tips.#{key}")
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("ovl-bundle")[:files]["tips.#{key}.md"][:overlay]).to be(true)
     end
   end
 
