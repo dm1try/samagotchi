@@ -520,17 +520,18 @@ file2.rb")
       expect(seen.first).to include("refactor this")
     end
 
-    # An empty answer (retries used up) is a failure: a line on stderr, exit 1,
-    # nothing on stdout that could pass for an answer.
-    it "says so on stderr and exits 1 when the -p --non-interactive turn ends with an empty answer" do
+    # An empty answer (retries used up) is a failure: a line on stderr,
+    # nothing on stdout that could pass for an answer, and :empty_answer
+    # for bin/chi to exit 1 on (the run returns, so its ensure tidies up).
+    it "says so on stderr and returns :empty_answer when the -p --non-interactive turn ends with an empty answer" do
       allow(client).to receive(:complete).and_return("")
       agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
 
-      status = nil
+      ended = nil
       expect do
-        expect { agent.run }.to raise_error(SystemExit) { |e| status = e.status }
-      end.to output("chi: the model gave an empty answer\n").to_stderr
-      expect(status).to eq(1)
+        ended = agent.run
+      end.to output(/chi: the model gave an empty answer\n/).to_stderr
+      expect(ended).to eq(:empty_answer)
     end
 
     # As typed at the prompt: a session command runs as the command.

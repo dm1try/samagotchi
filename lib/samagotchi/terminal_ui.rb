@@ -210,7 +210,8 @@ module Samagotchi
     # follow-up REPL (--non-interactive) or drops into the REPL carrying the
     # post-turn conversation.
     # @return [Symbol, nil] :turn_failed when lines came from a pipe and a
-    #   turn failed (bin/chi exits 1)
+    #   turn failed, :empty_answer when a -p --non-interactive turn ended
+    #   with no answer (bin/chi exits 1 on both)
     def run
       # --non-interactive with no --prompt is a harmless no-op exit: build
       # nothing and return (no transient session, no banner).
@@ -251,11 +252,11 @@ module Samagotchi
         # No answer (the empty-answer retries used up): no text, or the chat
         # loop's placeholder (LLM::ModelResult#empty_answer?).
         if result.empty_answer?
-          # Nothing to print: say so on stderr and fail, so a script that
-          # pipes the answer doesn't take the silence for one.
+          # Nothing to print: say so on stderr and fail (bin/chi exits 1),
+          # so a script that pipes the answer doesn't take the silence for one.
           session.save
           warn EMPTY_ANSWER_ERROR
-          exit 1
+          return :empty_answer
         end
         @surface.commit(result.output)
         session.save

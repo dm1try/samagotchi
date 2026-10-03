@@ -326,8 +326,9 @@ begin
     model_name: options[:model],
     scratch: scratch
   ).run
-  # `chi -p X </dev/null`: the turn failed (nothing was sent again).
-  exit 1 if ended == :turn_failed
+  # `chi -p X </dev/null`: the turn failed (nothing was sent again); -p
+  # --non-interactive: the turn ended with no answer.
+  exit 1 if %i[turn_failed empty_answer].include?(ended)
 rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel => e
   warn "Error: #{e.message}"
   exit 1
