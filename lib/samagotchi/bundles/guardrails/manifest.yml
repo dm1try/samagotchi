@@ -5,6 +5,6 @@ scope: system
 description: Optional default guardrail rules (git push/rewrites, rm -rf wide, curl | sh, writes and git in another checkout outside the session's repo, git hooks, answering chi around chi answer), asks only small models get (git checkout --/restore, git stash drop), and a note for the model
 trust_level: reviewed
 # models: in small-models.yml (guardrails.small_models) needs 0.8.1; git: in rules.yml needs 0.17.0
-requires_chi: ">= 0.17.0"
+requires_chi: ">= 0.18.0"
 files:
   guardrails.md: sha256:04207fd1738aeeeef3b7a8053fc57597565bddd7862f01acaba784419cbd909b

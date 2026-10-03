@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-03
+
 ### Added
 
 - The guardrails bundle (0.4.0) asks before git that changes another checkout: `cd ../main && git commit`,
@@ -65,6 +67,8 @@ and commands may change between minor versions. How releases are made:
   `chi send --new -m "/model x"` or from the web start page; its row was blank.
 - Web: a terminal-only command (`/stats`, `/exit`, `/recap` …) typed as the start page's first message is answered on
   the start page; it no longer starts a session just to show that reply.
+
+Update with `chi update`: the guardrails bundle moves to 0.4.0 (the `git-outside-repo` rule; it needs chi 0.18.0).
 
 ## [0.17.0] - 2026-10-03
 
@@ -998,7 +1002,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/dm1try/samagotchi/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/dm1try/samagotchi/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/dm1try/samagotchi/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/dm1try/samagotchi/compare/v0.14.0...v0.15.0
