@@ -27,6 +27,18 @@ and commands may change between minor versions. How releases are made:
   `cd DIR && nohup server > log 2>&1 &`) that keeps its output open: after a short grace it stops that process and
   returns the output, with a note to start servers and long jobs with `task_create`. Stop and
   `execute.timeout_sec` work during the wait too.
+- A native turn sends `GET /props` once, not twice: the window cache is dropped at the turn's end instead of
+  its start, and one `/props` store per host serves every client of that server in the process.
+- A server that answered a chat or a model list after a failed `/props` probe is probed again at the next turn,
+  instead of the failure being reused for 30 s.
+- The served-model notice no longer treats `gpt-4` and `gpt-4o` as the same model: a served name counts as the
+  asked one only when what follows starts with `:`, `-`, `@` or `/` (`qwen3` = `qwen3:latest`).
+- A Gemma thought channel (`<|channel>thought` … `<channel|>`) is stripped as a whole block: the model's private
+  reasoning no longer shows up in the answer.
+- `ModelProfile.normalize` with an unknown profile name, and `Prompt.format` with no profile, fall back to
+  `qwen36` — the same profile `ModelProfile.resolve` falls back to — instead of `gemma4`.
+- Every HTTP connection chi opens turns Net::HTTP's own hidden retry off (`max_retries: 0`), so a request is sent
+  as many times as chi says it was.
 
 ## [0.18.0] - 2026-10-03
 

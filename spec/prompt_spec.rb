@@ -64,22 +64,22 @@ RSpec.describe Samagotchi::Prompt do
     end
 
     it "formats a system turn" do
-      result = described_class.format([{ role: "system", content: "Be helpful" }])
+      result = described_class.format([{ role: "system", content: "Be helpful" }], profile: Samagotchi::ModelProfile.gemma4)
       expect(result).to include("<|turn>system\nBe helpful<end_of_turn>")
     end
 
     it "formats a user turn" do
-      result = described_class.format([{ role: "user", content: "Hello" }])
+      result = described_class.format([{ role: "user", content: "Hello" }], profile: Samagotchi::ModelProfile.gemma4)
       expect(result).to include("<|turn>user\nHello<end_of_turn>")
     end
 
     it "formats a model turn" do
-      result = described_class.format([{ role: "model", content: "Hi there" }])
+      result = described_class.format([{ role: "model", content: "Hi there" }], profile: Samagotchi::ModelProfile.gemma4)
       expect(result).to include("<|turn>model\nHi there<end_of_turn>")
     end
 
     it "formats a tool_response turn using <|tool_response> tokens (not a regular turn)" do
-      result = described_class.format([{ role: "tool_response", content: "[execute]\nstdout:\nhi" }])
+      result = described_class.format([{ role: "tool_response", content: "[execute]\nstdout:\nhi" }], profile: Samagotchi::ModelProfile.gemma4)
       expect(result).to include("<|tool_response>\n[execute]\nstdout:\nhi<tool_response|>")
       expect(result).not_to include("<|turn>tool_response")
     end
@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::Prompt do
     end
 
     it "escapes literal control tokens inside user content" do
-      result = described_class.format([{ role: "user", content: "show <end_of_turn> and <|tool_response> literally" }])
+      result = described_class.format([{ role: "user", content: "show <end_of_turn> and <|tool_response> literally" }], profile: Samagotchi::ModelProfile.gemma4)
 
       expect(result).to include("[[SAMAGOTCHI_LITERAL_TURN_END]]")
       expect(result).to include("[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_OPEN]]")
@@ -105,7 +105,7 @@ RSpec.describe Samagotchi::Prompt do
     end
 
     it "escapes literal control tokens inside tool response content while keeping wrapper tokens" do
-      result = described_class.format([{ role: "tool_response", content: "literal <end_of_turn> and <|tool_response>" }])
+      result = described_class.format([{ role: "tool_response", content: "literal <end_of_turn> and <|tool_response>" }], profile: Samagotchi::ModelProfile.gemma4)
 
       expect(result).to start_with("<|tool_response>\n")
       expect(result).to include("[[SAMAGOTCHI_LITERAL_TURN_END]]")
@@ -118,7 +118,7 @@ RSpec.describe Samagotchi::Prompt do
         { role: "model",         content: "<|tool_call>call:execute{command: \"echo hi\"}<tool_call|>" },
         { role: "tool_response", content: "[execute]\nstdout:\nhi" }
       ]
-      result = described_class.format(msgs)
+      result = described_class.format(msgs, profile: Samagotchi::ModelProfile.gemma4)
       model_pos         = result.index("<|turn>model\n<|tool_call>")
       tool_response_pos = result.index("<|tool_response>")
       cue_pos           = result.rindex("<|turn>model\n")
@@ -127,7 +127,7 @@ RSpec.describe Samagotchi::Prompt do
     end
 
     it "always ends with the model turn starter to cue generation" do
-      result = described_class.format([{ role: "user", content: "go" }])
+      result = described_class.format([{ role: "user", content: "go" }], profile: Samagotchi::ModelProfile.gemma4)
       expect(result).to end_with("<|turn>model\n")
     end
 
@@ -138,7 +138,7 @@ RSpec.describe Samagotchi::Prompt do
         { role: "model",  content: "hi" },
         { role: "user",   content: "bye" }
       ]
-      result = described_class.format(msgs)
+      result = described_class.format(msgs, profile: Samagotchi::ModelProfile.gemma4)
       expect(result).to include("<|turn>system\nsys<end_of_turn>")
       expect(result).to include("<|turn>user\nhello<end_of_turn>")
       expect(result).to include("<|turn>model\nhi<end_of_turn>")
@@ -151,12 +151,12 @@ RSpec.describe Samagotchi::Prompt do
         { role: "user",  content: "first" },
         { role: "model", content: "second" }
       ]
-      result = described_class.format(msgs)
+      result = described_class.format(msgs, profile: Samagotchi::ModelProfile.gemma4)
       expect(result.index("<|turn>user")).to be < result.index("<|turn>model\nsecond")
     end
 
     it "produces an empty turn list followed by the model cue when given no messages" do
-      result = described_class.format([])
+      result = described_class.format([], profile: Samagotchi::ModelProfile.gemma4)
       expect(result).to eq("<|turn>model\n")
     end
   end
