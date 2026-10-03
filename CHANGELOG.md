@@ -26,6 +26,8 @@ and commands may change between minor versions. How releases are made:
   the step it's on, as a live view does, instead of the previous step still live.
 - Web: sending into a session whose worker was already up (but the page didn't know) no longer draws
   that worker's earlier turns a second time: the page re-reads the session instead.
+- Web without the session events stream (fetched list): a re-fetched list now badges and notifies like the
+  live list does.
 
 ## [0.20.0] - 2026-10-03
 

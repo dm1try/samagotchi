@@ -121,3 +121,14 @@ test("the bell is hidden without the Notification API, blocked when denied", () 
   assert.equal(denied.dataset.state, "denied");
   assert.match(denied.title, /blocked/);
 });
+
+test("a fetched list (no hub: the refresh fallback) notifies as the hub's snapshots do (4.12)", () => {
+  const { page, doc, shown } = fakePage();
+  page.noticeList([session()]);
+  assert.equal(shown.length, 0, "the first list only seeds");
+  page.noticeList([asking]);
+  assert.equal(doc.title, "(1) Chi");
+  assert.deepEqual(shown.map((n) => n.opts.tag), ["s1:q1"]);
+  page.noticeList([session()]);
+  assert.equal(doc.title, "Chi", "answered: the badge goes");
+});
