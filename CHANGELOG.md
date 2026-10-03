@@ -32,6 +32,8 @@ and commands may change between minor versions. How releases are made:
   typed while a fast-failed turn's prompt was coming back is kept, with the restored prompt going under it.
 - A worker that dies between a turn's end and its after-turn display no longer leaves the turn's answer bubble
   waiting: the page stops waiting when the worker goes away, or after 20 s.
+- A first web message the page answers itself (`/stats`, `/exit` …) or that is a typo of a command (`/modle`) no
+  longer leaves an empty session behind.
 
 ## [0.18.1] - 2026-10-03
 

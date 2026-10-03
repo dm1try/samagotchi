@@ -218,7 +218,7 @@ test("restoreInto puts the restored prompt back without replacing what was typed
 });
 
 
-import { commandView, continueLine, sessionCommandLine, startPageReply, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { commandView, continueLine, sessionCommandLine, startPageReply, startPageReplyOrHint, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("sessionCommandLine: the session's commands go to the command route, an unknown /word to the model", () => {
   const commands = [{ name: "/model" }, { name: "/models" }, { name: "!rollback" }, { name: "/hello", source: "b" }];
@@ -275,6 +275,20 @@ test("startPageReply: a first message the page answers itself makes no session; 
   assert.equal(startPageReply("/model x"), null);
   assert.equal(startPageReply("hello"), null);
   assert.equal(startPageReply("/stats", { images: 1 }), null);
+});
+
+// 2.29: the message the start page answers itself, or the hint a typo of a
+// command gets — either way the page says it without a session.
+test("startPageReplyOrHint: a first message that makes no session", () => {
+  const commands = [{ name: "/model" }];
+  assert.match(startPageReplyOrHint("/stats", { commands }), /^\/stats: not in the web yet/);
+  assert.match(startPageReplyOrHint(" /exit ", { commands }), /^\/exit: /);
+  assert.match(startPageReplyOrHint("/modle", { commands }), /^Unknown command \/modle\. Did you mean \/model\?/);
+  assert.equal(startPageReplyOrHint("/model x", { commands }), null);
+  assert.equal(startPageReplyOrHint("hello", { commands }), null);
+  // With an image it is a message: the session is made and the image is sent.
+  assert.equal(startPageReplyOrHint("/stats", { commands, images: 1 }), null);
+  assert.equal(startPageReplyOrHint("/modle", { commands, images: 1 }), null);
 });
 
 test("webLocalReply: /stats, /recap and /detach, terminal commands the worker doesn't take, get a page reply", () => {
