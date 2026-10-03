@@ -20,8 +20,10 @@ module Samagotchi
   # sums over the records, kept as running counters as records are added, so
   # a worker that stops and wakes again (a new collector) keeps counting:
   # #session_id= loads the records already saved.
-  # Only prompt and completion counts, which every backend reports the same
-  # way, are kept.
+  # Prompt and completion counts come from every backend. Cached and reasoning
+  # tokens, cost (OpenRouter's usage.cost) and the server's speeds (llama.cpp's
+  # timings) are kept when the server reports them; a generation without a
+  # server speed gets an estimated decode speed (see #close_generation).
   #
   # A snapshot is surfaced via Engine#session_state_snapshot (the Bridge's
   # /state, /snapshot, /stats and SSE frames) and persisted to a sibling
@@ -34,6 +36,17 @@ module Samagotchi
     # The most turns (with their tool calls) a live snapshot carries: the
     # unsaved ones of a collector whose saves keep failing stay bounded.
     LIVE_RECORDS_CAP = 20
+
+    # A generation shorter than this gets no decode speed of its own: one
+    # tiny generation would skew the session's average.
+    SPEED_MIN_TOKENS = 8
+    SPEED_MIN_MS = 100
+
+    # The session's token totals as a saved analytics.json has them (zeros
+    # where an older file lacks a count), with how full the context was.
+    SavedSummary = Data.define(:ctx_pct, :prompt_sum, :completion_sum, :cached_sum, :reasoning_sum, :cost_sum) do
+      def tokens = to_h.except(:ctx_pct)
+    end
 
     # Per-turn transient state, reset on each turn_started.
     TurnState = Struct.new(
@@ -56,6 +69,17 @@ module Samagotchi
       # comes cumulative per request) and whether it is still streaming.
       :gen_prompt_max,
       :gen_open,
+      # The rest of this generation's server report: the largest cached and
+      # reasoning counts, the last cost, and the server's speeds and decode
+      # time (llama.cpp's timings); and when its first content, reasoning or
+      # tool call chunk came (an estimated speed runs from there).
+      :gen_cached_max,
+      :gen_reasoning_max,
+      :gen_cost,
+      :gen_decode_tps,
+      :gen_prefill_tps,
+      :gen_decode_ms,
+      :gen_first_chunk_at,
       # The turn's generations, folded as each one ends: the count, the last
       # one's prompt and completion, the sums, and which kinds of counts
       # (server / estimate) they came from.
@@ -65,6 +89,18 @@ module Samagotchi
       :completion_last,
       :completion_sum,
       :token_sources,
+      # Summed over the turn's generations: cached and reasoning tokens, the
+      # cost (nil until one reports it), and the decode time and completion
+      # tokens of the generations with a speed. The last speeds and where the
+      # decode one came from (server / estimate).
+      :cached_sum,
+      :reasoning_sum,
+      :cost_sum,
+      :decode_ms_sum,
+      :decode_tokens_sum,
+      :last_decode_tps,
+      :last_prefill_tps,
+      :tps_source,
       :retries,
       :model,
       :id,
@@ -80,7 +116,27 @@ module Samagotchi
     # @param session_dir [String]
     # @return [Float, nil]
     def self.saved_context_pct(session_dir)
-      context = JSON.parse(File.read(File.join(session_dir, "analytics.json")))["context"]
+      saved_summary(session_dir)&.ctx_pct
+    end
+
+    # The context's fill and the token totals from the session's saved
+    # analytics.json, read once; nil without a readable file.
+    # @param session_dir [String]
+    # @return [SavedSummary, nil]
+    def self.saved_summary(session_dir)
+      data = JSON.parse(File.read(File.join(session_dir, "analytics.json")))
+      return nil unless data.is_a?(Hash)
+
+      tokens = data["tokens"].is_a?(Hash) ? data["tokens"] : {}
+      count = ->(key) { tokens[key].is_a?(Numeric) ? tokens[key] : 0 }
+      SavedSummary.new(ctx_pct: saved_pct(data["context"]), prompt_sum: count.("prompt_sum"),
+                       completion_sum: count.("completion_sum"), cached_sum: count.("cached_sum"),
+                       reasoning_sum: count.("reasoning_sum"), cost_sum: count.("cost_sum"))
+    rescue JSON::ParserError, SystemCallError, TypeError
+      nil
+    end
+
+    def self.saved_pct(context)
       return nil unless context.is_a?(Hash)
 
       used = context["used_tokens"]
@@ -88,9 +144,8 @@ module Samagotchi
       return nil unless used.is_a?(Numeric) && window.is_a?(Numeric) && window.positive?
 
       used * 100.0 / window
-    rescue JSON::ParserError, SystemCallError, TypeError
-      nil
     end
+    private_class_method :saved_pct
 
     # One turn's tool records from the session's saved analytics.json, in
     # call order (iteration, then call_index), string-keyed as saved: what a
@@ -278,11 +333,7 @@ module Samagotchi
         session_id: @session_id,
         turns: @turn_records.size + (turn ? 1 : 0),
         cancellations: totals[:cancellations],
-        tokens: {
-          prompt_sum: totals[:prompt_sum] + (turn&.prompt_sum || 0),
-          completion_sum: totals[:completion_sum] + (turn&.completion_sum || 0),
-          source: combined_source(totals[:token_sources] + (turn&.token_sources || []))
-        },
+        tokens: tokens_block(totals, turn),
         context: context_block(@turn_records),
         profile: @profile,
         profile_source: @profile_source,
@@ -301,6 +352,30 @@ module Samagotchi
         **records_view(records_mode),
         active_turn: active_turn_snapshot,
         active_tools: active_tool_snapshots
+      }
+    end
+
+    # The session's token totals, with the running turn's finished
+    # generations; the last speeds are the newest a generation reported.
+    # Caller holds the mutex.
+    def tokens_block(totals, turn)
+      add = ->(key) { totals[key] + (turn&.public_send(key) || 0) }
+      decode_ms = add.(:decode_ms_sum)
+      decode_tokens = add.(:decode_tokens_sum)
+      speed_turn = turn&.last_decode_tps ? turn : nil
+      {
+        prompt_sum: add.(:prompt_sum),
+        completion_sum: add.(:completion_sum),
+        cached_sum: add.(:cached_sum),
+        reasoning_sum: add.(:reasoning_sum),
+        cost_sum: add.(:cost_sum),
+        decode_ms_sum: decode_ms.round,
+        decode_tokens_sum: decode_tokens,
+        avg_decode_tps: decode_ms.positive? ? (decode_tokens * 1000.0 / decode_ms).round(1) : nil,
+        last_decode_tps: speed_turn ? speed_turn.last_decode_tps : totals[:last_decode_tps],
+        last_prefill_tps: turn&.last_prefill_tps || totals[:last_prefill_tps],
+        tps_source: speed_turn ? speed_turn.tps_source : totals[:tps_source],
+        source: combined_source(totals[:token_sources] + (turn&.token_sources || []))
       }
     end
 
@@ -340,12 +415,19 @@ module Samagotchi
           gen_estimate_sum: 0,
           gen_prompt_max: 0,
           gen_open: false,
+          gen_cached_max: 0,
+          gen_reasoning_max: 0,
           generations: 0,
           prompt_last: nil,
           prompt_sum: 0,
           completion_last: 0,
           completion_sum: 0,
           token_sources: [],
+          cached_sum: 0,
+          reasoning_sum: 0,
+          cost_sum: nil,
+          decode_ms_sum: 0,
+          decode_tokens_sum: 0,
           retries: 0,
           model: nil,
           id: event[:turn_id] || SecureRandom.uuid,
@@ -415,6 +497,7 @@ module Samagotchi
         turn.prompt_last = turn.gen_prompt_max
         turn.prompt_sum += turn.gen_prompt_max
         turn.token_sources |= ["server"]
+        close_server_report(turn, completion)
       else
         completion = turn.gen_estimate_sum
         turn.token_sources |= ["estimate"] if completion.positive?
@@ -429,12 +512,55 @@ module Samagotchi
       turn.gen_started_at = nil
     end
 
+    # The generation's cached/reasoning counts, cost and decode speed, into
+    # the turn. The speed is the server's (llama.cpp's predicted_per_second
+    # over its predicted_ms) or, without one, an estimate: the completion
+    # over the time from the first streamed chunk to now (that leaves out
+    # queueing and the prefill). An estimated chars/4 generation never gets
+    # here: it has no speed. Caller holds the mutex.
+    def close_server_report(turn, completion)
+      turn.cached_sum += turn.gen_cached_max
+      turn.reasoning_sum += turn.gen_reasoning_max
+      turn.cost_sum = turn.cost_sum.to_f + turn.gen_cost if turn.gen_cost
+      turn.last_prefill_tps = turn.gen_prefill_tps.round(1) if turn.gen_prefill_tps
+      speed = generation_speed(turn, completion)
+      return unless speed
+
+      tps, decode_ms, source = speed
+      turn.decode_ms_sum += decode_ms
+      turn.decode_tokens_sum += completion
+      turn.last_decode_tps = tps.round(1)
+      turn.tps_source = source
+    end
+
+    # [tokens per second, decode ms, "server" | "estimate"], or nil for a
+    # generation too short (or without a first chunk) to time.
+    def generation_speed(turn, completion)
+      if turn.gen_decode_tps && turn.gen_decode_ms
+        decode_ms = turn.gen_decode_ms
+        tps = turn.gen_decode_tps
+        source = "server"
+      elsif turn.gen_first_chunk_at
+        decode_ms = (monotonic_time - turn.gen_first_chunk_at) * 1000.0
+        tps = decode_ms.positive? ? completion * 1000.0 / decode_ms : 0
+        source = "estimate"
+      end
+      return nil unless decode_ms && completion >= SPEED_MIN_TOKENS && decode_ms >= SPEED_MIN_MS
+
+      [tps, decode_ms, source]
+    end
+
     # Caller holds the mutex.
     def reset_generation_tokens
       @turn.gen_completion_max = 0
       @turn.gen_prompt_max = 0
       @turn.gen_had_server = false
       @turn.gen_estimate_sum = 0
+      @turn.gen_cached_max = 0
+      @turn.gen_reasoning_max = 0
+      @turn.gen_cost = nil
+      @turn.gen_decode_tps = @turn.gen_prefill_tps = @turn.gen_decode_ms = nil
+      @turn.gen_first_chunk_at = nil
     end
 
     # The turn record's model and token fields. The context used at the end
@@ -455,7 +581,24 @@ module Samagotchi
         tool_errors: turn.tool_errors,
         iterations: turn.iteration_count,
         retries: turn.retries
+      }.merge(turn_usage_fields(turn))
+    end
+
+    # The rest of the server's report: cached and reasoning tokens, the cost,
+    # and the speeds (decode_tps is the turn's last generation's, decode_ms
+    # and decode_tokens what the session's average is weighted by).
+    def turn_usage_fields(turn)
+      fields = {
+        cached_tokens_sum: turn.cached_sum,
+        reasoning_tokens: turn.reasoning_sum,
+        decode_ms: turn.decode_ms_sum.round,
+        decode_tokens: turn.decode_tokens_sum,
+        decode_tps: turn.last_decode_tps,
+        prefill_tps: turn.last_prefill_tps,
+        tps_source: turn.tps_source
       }
+      fields.merge!(cost: turn.cost_sum, cost_source: "reported") if turn.cost_sum
+      fields
     end
 
     def record_tool_call_start(event)
@@ -519,15 +662,10 @@ module Samagotchi
       payload = event[:payload]
       payload = {} unless payload.is_a?(Hash)
 
+      @mutex.synchronize { note_first_chunk(payload, event) }
       usage = TokenUsage.from_payload(payload)
       if usage
-        @mutex.synchronize do
-          if @turn
-            @turn.gen_prompt_max = [@turn.gen_prompt_max, usage.prompt_tokens.to_i].max
-            @turn.gen_completion_max = [@turn.gen_completion_max, usage.completion_tokens.to_i].max
-            @turn.gen_had_server = true
-          end
-        end
+        @mutex.synchronize { note_server_usage(usage) if @turn }
       else
         @mutex.synchronize do
           chars = event_content_chars(payload, event)
@@ -537,6 +675,37 @@ module Samagotchi
           @turn.gen_estimate_sum += TokenUsage.estimate(payload_content(payload, event)) if @turn
         end
       end
+    end
+
+    # Caller holds the mutex.
+    def note_server_usage(usage)
+      turn = @turn
+      turn.gen_prompt_max = [turn.gen_prompt_max, usage.prompt_tokens.to_i].max
+      turn.gen_completion_max = [turn.gen_completion_max, usage.completion_tokens.to_i].max
+      turn.gen_cached_max = [turn.gen_cached_max, usage.cached_tokens.to_i].max
+      turn.gen_reasoning_max = [turn.gen_reasoning_max, usage.reasoning_tokens.to_i].max
+      turn.gen_cost = usage.cost if usage.cost
+      if usage.predicted_per_second && usage.predicted_ms
+        turn.gen_decode_tps = usage.predicted_per_second
+        turn.gen_decode_ms = usage.predicted_ms
+      end
+      turn.gen_prefill_tps = usage.prompt_per_second if usage.prompt_per_second
+      turn.gen_had_server = true
+    end
+
+    # The first chunk with content, reasoning or a tool call starts the
+    # generation's decode clock (an estimated speed runs from it). Caller
+    # holds the mutex.
+    def note_first_chunk(payload, event)
+      return unless @turn && @turn.gen_open && @turn.gen_first_chunk_at.nil?
+      return unless !event[:content].to_s.empty? || tool_call_delta?(payload)
+
+      @turn.gen_first_chunk_at = monotonic_time
+    end
+
+    def tool_call_delta?(payload)
+      choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
+      choice.is_a?(Hash) && choice["delta"].is_a?(Hash) && !Array(choice["delta"]["tool_calls"]).empty?
     end
 
     def event_content_chars(payload, event)
@@ -663,7 +832,9 @@ module Samagotchi
     # (#snapshot adds the running turn). Caller holds the mutex.
     def reset_totals
       @totals = { cancellations: 0, prompt_sum: 0, completion_sum: 0, token_sources: [], iterations: 0,
-                  gen_ms: 0, retries: 0, by_tool: {}, tool_errors: 0 }
+                  gen_ms: 0, retries: 0, by_tool: {}, tool_errors: 0, cached_sum: 0, reasoning_sum: 0,
+                  cost_sum: 0, decode_ms_sum: 0, decode_tokens_sum: 0, last_decode_tps: nil,
+                  last_prefill_tps: nil, tps_source: nil }
     end
 
     def count_turn(record)
@@ -674,6 +845,17 @@ module Samagotchi
       totals[:iterations] += number(record[:iterations])
       totals[:gen_ms] += number(record[:gen_ms])
       totals[:retries] += number(record[:retries])
+      totals[:cached_sum] += number(record[:cached_tokens_sum])
+      totals[:reasoning_sum] += number(record[:reasoning_tokens])
+      totals[:cost_sum] += number(record[:cost])
+      totals[:decode_ms_sum] += number(record[:decode_ms])
+      totals[:decode_tokens_sum] += number(record[:decode_tokens])
+      # The newest speeds a record has (an older record has none).
+      if record[:decode_tps].is_a?(Numeric)
+        totals[:last_decode_tps] = record[:decode_tps]
+        totals[:tps_source] = record[:tps_source]
+      end
+      totals[:last_prefill_tps] = record[:prefill_tps] if record[:prefill_tps].is_a?(Numeric)
       source = record[:token_source]
       totals[:token_sources] |= [source.to_s] unless source.nil?
     end

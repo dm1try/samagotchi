@@ -24,7 +24,8 @@ RSpec.describe Samagotchi::SessionMetrics do
   it "starts empty" do
     snap = metrics.snapshot
     expect(snap[:turns]).to eq(0)
-    expect(snap[:tokens]).to eq(prompt_sum: 0, completion_sum: 0, source: nil)
+    expect(snap[:tokens]).to include(prompt_sum: 0, completion_sum: 0, source: nil, cached_sum: 0, reasoning_sum: 0,
+                                     cost_sum: 0, avg_decode_tps: nil, last_decode_tps: nil, tps_source: nil)
     expect(snap[:tool_calls_total]).to eq(0)
   end
 
@@ -59,7 +60,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     snap = metrics.snapshot
     expect(snap[:session_id]).to eq("sess-1")
     expect(snap[:turns]).to eq(1)
-    expect(snap[:tokens]).to eq(prompt_sum: 120, completion_sum: 30, source: "server")
+    expect(snap[:tokens]).to include(prompt_sum: 120, completion_sum: 30, source: "server")
     expect(snap[:tool_calls_total]).to eq(2)
     expect(snap[:tool_errors]).to eq(1)
     expect(snap[:tool_calls_by_tool]).to eq("read" => 1, "execute" => 1)
@@ -190,7 +191,7 @@ RSpec.describe Samagotchi::SessionMetrics do
 
     snap = metrics.snapshot
     # 11 chars / 4.0 -> ceil -> 3; an estimate has no prompt count
-    expect(snap[:tokens]).to eq(prompt_sum: 0, completion_sum: 3, source: "estimate")
+    expect(snap[:tokens]).to include(prompt_sum: 0, completion_sum: 3, source: "estimate")
   end
 
   it "sums completion tokens across multiple generations in a tool-call loop" do
@@ -207,7 +208,7 @@ RSpec.describe Samagotchi::SessionMetrics do
 
     snap = metrics.snapshot
     # Every request's prompt and answer, summed across generations.
-    expect(snap[:tokens]).to eq(prompt_sum: 250, completion_sum: 35, source: "server")
+    expect(snap[:tokens]).to include(prompt_sum: 250, completion_sum: 35, source: "server")
   end
 
   it "does not double count when timings arrive only on the final chunk" do
@@ -316,6 +317,171 @@ RSpec.describe Samagotchi::SessionMetrics do
         generations: 1, completion_tokens: 10, prompt_tokens: nil, context_used_tokens: nil,
         token_source: "estimate", retries: 1
       )
+    end
+  end
+
+  describe "cached and reasoning tokens, cost and speed" do
+    let(:monotonic) { [100.0] }
+    let(:metrics) { described_class.new(clock: -> { monotonic[0] }) }
+
+    def tick(seconds) = monotonic[0] += seconds
+
+    def llama_chunk(content, completion, timings = nil)
+      payload = { "usage" => { "prompt_tokens" => 300, "completion_tokens" => completion,
+                               "prompt_tokens_details" => { "cached_tokens" => 280 } } }
+      payload["timings"] = timings if timings
+      { type: :generation_chunk, iteration: 1, content: content, payload: payload }
+    end
+
+    def router_chunk(content, completion, cost: nil, reasoning: nil)
+      usage = { "prompt_tokens" => 1000, "completion_tokens" => completion }
+      usage["cost"] = cost if cost
+      usage["completion_tokens_details"] = { "reasoning_tokens" => reasoning } if reasoning
+      { type: :generation_chunk, iteration: 1, content: content, payload: { "choices" => [], "usage" => usage } }
+    end
+
+    # A generation whose speed is timed by the clock: the first chunk after
+    # +wait+ s (queueing and prefill), the last +decode+ s later.
+    def estimated_generation(completion, wait: 0.5, decode: 1.0, cost: nil)
+      metrics.call(type: :generation_started, iteration: 1)
+      tick(wait)
+      metrics.call(type: :generation_chunk, iteration: 1, content: "a", payload: { "choices" => [{ "delta" => {} }] })
+      tick(decode)
+      metrics.call(router_chunk("", completion, cost: cost))
+      metrics.call(type: :generation_completed, iteration: 1)
+    end
+
+    def start_turn(id = "t1") = metrics.call(type: :turn_started, session_id: "speed", prompt: "p", turn_id: id)
+
+    it "takes the server's exact speeds and cached count" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(llama_chunk("a", 10))
+      metrics.call(llama_chunk("", 56, { "cache_n" => 280, "prompt_per_second" => 1900.04, "predicted_ms" => 640.0,
+                                         "predicted_per_second" => 87.46 }))
+      metrics.call(type: :generation_completed, iteration: 1)
+      metrics.call(type: :turn_completed)
+
+      expect(metrics.snapshot[:tokens]).to include(cached_sum: 280, last_decode_tps: 87.5, last_prefill_tps: 1900.0,
+                                                   tps_source: "server", decode_ms_sum: 640, decode_tokens_sum: 56,
+                                                   avg_decode_tps: 87.5, cost_sum: 0)
+      expect(metrics.snapshot[:turn_records].last).to include(cached_tokens_sum: 280, decode_tps: 87.5, prefill_tps: 1900.0,
+                                                              tps_source: "server", decode_ms: 640, decode_tokens: 56)
+      expect(metrics.snapshot[:turn_records].last).not_to include(:cost)
+    end
+
+    it "estimates the decode speed from the first streamed chunk, not from the request, with cost and reasoning" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      tick(2.0)
+      metrics.call(router_chunk("a", 1))
+      tick(0.5)
+      metrics.call(router_chunk("", 40, cost: 0.25, reasoning: 12))
+      metrics.call(type: :generation_completed, iteration: 1)
+
+      expect(metrics.snapshot[:tokens]).to include(last_decode_tps: 80.0, tps_source: "estimate", reasoning_sum: 12,
+                                                   cost_sum: 0.25, last_prefill_tps: nil, cached_sum: 0)
+      metrics.call(type: :turn_completed)
+      expect(metrics.snapshot[:turn_records].last).to include(cost: 0.25, cost_source: "reported", reasoning_tokens: 12)
+    end
+
+    it "starts the clock on a tool call delta too" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      tick(1.0)
+      metrics.call(type: :generation_chunk, iteration: 1, content: "",
+                   payload: { "choices" => [{ "delta" => { "tool_calls" => [{ "index" => 0 }] } }] })
+      tick(0.25)
+      metrics.call(router_chunk("", 20))
+      metrics.call(type: :generation_completed, iteration: 1)
+
+      expect(metrics.snapshot[:tokens]).to include(last_decode_tps: 80.0)
+    end
+
+    it "weights the session average by tokens, and gives tiny generations no speed of their own" do
+      start_turn
+      estimated_generation(100, decode: 1.0)
+      estimated_generation(10, decode: 1.0)
+      expect(metrics.snapshot[:tokens]).to include(last_decode_tps: 10.0, decode_tokens_sum: 110, avg_decode_tps: 55.0)
+
+      estimated_generation(7, decode: 1.0)
+      estimated_generation(50, decode: 0.05)
+      expect(metrics.snapshot[:tokens]).to include(last_decode_tps: 10.0, decode_tokens_sum: 110, avg_decode_tps: 55.0)
+    end
+
+    it "gives a chars/4 estimated generation no speed and no cached count" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(type: :generation_chunk, iteration: 1, content: "x" * 400, payload: nil)
+      tick(2.0)
+      metrics.call(type: :generation_completed, iteration: 1)
+
+      expect(metrics.snapshot[:tokens]).to include(completion_sum: 100, last_decode_tps: nil, cached_sum: 0,
+                                                   decode_tokens_sum: 0)
+    end
+
+    it "times a retried generation from the retry's first chunk, and counts its report once" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(router_chunk("a", 5, cost: 0.5))
+      tick(5.0)
+      metrics.call(type: :generation_retrying, iteration: 1, attempt: 1)
+      tick(1.0)
+      metrics.call(router_chunk("b", 1))
+      tick(0.5)
+      metrics.call(router_chunk("", 30, cost: 0.25))
+      metrics.call(type: :generation_completed, iteration: 1)
+
+      expect(metrics.snapshot[:tokens]).to include(last_decode_tps: 60.0, cost_sum: 0.25, completion_sum: 30)
+    end
+
+    it "times a generation cut mid-stream by the estimate (a cut native stream has no timings)" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(type: :generation_chunk, iteration: 1, content: "a", payload: { "tokens_evaluated" => 300, "tokens_predicted" => 1 })
+      tick(1.0)
+      metrics.call(type: :generation_chunk, iteration: 1, content: "b", payload: { "tokens_evaluated" => 300, "tokens_predicted" => 30 })
+      metrics.call(type: :generation_cancelled, iteration: 1)
+      metrics.call(type: :turn_canceled, cancellation_reason: :user)
+
+      expect(metrics.snapshot[:turn_records].last).to include(decode_tps: 30.0, tps_source: "estimate", decode_tokens: 30)
+    end
+
+    it "keeps the newest speed's source when a session mixes server and estimated speeds" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(llama_chunk("a", 50, { "predicted_per_second" => 50.0, "predicted_ms" => 1000.0 }))
+      metrics.call(type: :generation_completed, iteration: 1)
+      estimated_generation(150, decode: 1.0)
+      metrics.call(type: :turn_completed)
+
+      expect(metrics.snapshot[:tokens]).to include(last_decode_tps: 150.0, tps_source: "estimate", avg_decode_tps: 100.0)
+    end
+
+    it "brings the sums back on reload, with the newest saved speeds; an older record counts as zeros" do
+      dir = Dir.mktmpdir
+      metrics.state_dir = dir
+      start_turn("t1")
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(llama_chunk("a", 50, { "predicted_per_second" => 50.0, "predicted_ms" => 1000.0,
+                                          "prompt_per_second" => 900.0 }))
+      metrics.call(type: :generation_completed, iteration: 1)
+      metrics.call(type: :turn_completed)
+      start_turn("t2")
+      estimated_generation(30, decode: 1.0, cost: 0.5)
+      metrics.call(type: :turn_completed)
+      metrics.persist
+      path = File.join(Samagotchi::Session.session_dir("speed", state_dir: dir), "analytics.json")
+      saved = JSON.parse(File.read(path))
+      # An older record (no usage fields) after them.
+      saved["turn_records"] << { "id" => "t0", "status" => "completed", "prompt_tokens_sum" => 10, "completion_tokens" => 2 }
+      File.write(path, JSON.generate(saved))
+
+      woken = described_class.new.tap { |m| m.state_dir = dir }
+      woken.session_id = "speed"
+      expect(woken.snapshot[:tokens]).to include(cached_sum: 280, cost_sum: 0.5, decode_tokens_sum: 80,
+                                                 last_decode_tps: 30.0, tps_source: "estimate", last_prefill_tps: 900.0,
+                                                 avg_decode_tps: 40.0, prompt_sum: 1310)
     end
   end
 
@@ -543,7 +709,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(written["iterations_total"]).to eq(2)
     expect(written["tool_calls_total"]).to eq(2)
     expect(written["tool_calls_by_tool"]).to eq("read" => 1, "shell" => 1)
-    expect(written["tokens"]).to eq("prompt_sum" => 250, "completion_sum" => 20, "source" => "server")
+    expect(written["tokens"]).to include("prompt_sum" => 250, "completion_sum" => 20, "source" => "server")
     expect(second.snapshot).to include(turns: 2, tool_calls_total: 2)
   ensure
     ENV["XDG_STATE_HOME"] = original
@@ -652,7 +818,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(snap[:tool_records]).to eq([])
       expect(snap).to include(turns: 6, tool_calls_total: 10, tool_calls_by_tool: { "read" => 10 },
                               iterations_total: 5, retries: 1, cancellations: 1,
-                              tokens: { prompt_sum: 500, completion_sum: 50, source: "server" })
+                              tokens: hash_including(prompt_sum: 500, completion_sum: 50, source: "server"))
       expect(snap[:context]).to include(used_tokens: 110)
 
       run_turn(woken, 7)
@@ -683,6 +849,9 @@ RSpec.describe Samagotchi::SessionMetrics do
         cancellations: records.count { |r| r[:status] == "canceled" },
         tokens: { prompt_sum: num(records, :prompt_tokens_sum) + (turn&.prompt_sum || 0),
                   completion_sum: num(records, :completion_tokens) + (turn&.completion_sum || 0),
+                  cached_sum: num(records, :cached_tokens_sum) + (turn&.cached_sum || 0),
+                  reasoning_sum: num(records, :reasoning_tokens) + (turn&.reasoning_sum || 0),
+                  cost_sum: num(records, :cost) + (turn&.cost_sum || 0),
                   source: kinds.size > 1 ? "mixed" : kinds.first },
         tool_calls_total: tools.size,
         tool_calls_by_tool: tools.map { |t| t[:tool].to_s }.reject(&:empty?).tally,
@@ -693,7 +862,11 @@ RSpec.describe Samagotchi::SessionMetrics do
       }
     end
 
-    def totals(snapshot) = snapshot.slice(*recomputed_keys)
+    def totals(snapshot)
+      snapshot.slice(*recomputed_keys).merge(tokens: snapshot[:tokens].slice(*recomputed_token_keys))
+    end
+
+    def recomputed_token_keys = %i[prompt_sum completion_sum cached_sum reasoning_sum cost_sum source]
     def recomputed_keys = %i[turns cancellations tokens tool_calls_total tool_calls_by_tool tool_errors
                              iterations_total gen_latency_ms retries]
 
@@ -704,7 +877,11 @@ RSpec.describe Samagotchi::SessionMetrics do
         events << { type: :generation_retrying, attempt: 1 } if rng.rand < 0.2
         events << if rng.rand < 0.7
                     { type: :generation_chunk, iteration: iteration + 1, content: "a",
-                      payload: { "usage" => { "prompt_tokens" => rng.rand(1..500), "completion_tokens" => rng.rand(1..50) } } }
+                      payload: { "usage" => { "prompt_tokens" => rng.rand(1..500), "completion_tokens" => rng.rand(1..50),
+                                              "prompt_tokens_details" => { "cached_tokens" => rng.rand(0..100) },
+                                              "completion_tokens_details" => { "reasoning_tokens" => rng.rand(0..20) },
+                                              # Quarters add up exactly in any order.
+                                              "cost" => rng.rand < 0.5 ? rng.rand(0..8) * 0.25 : nil } } }
                   else
                     { type: :generation_chunk, iteration: iteration + 1, content: "x" * rng.rand(1..80), payload: nil }
                   end
@@ -753,6 +930,27 @@ RSpec.describe Samagotchi::SessionMetrics do
 end
 
 RSpec.describe Samagotchi::TokenUsage do
+  describe "SessionMetrics.saved_summary" do
+    let(:dir) { Dir.mktmpdir }
+
+    def save(data) = File.write(File.join(dir, "analytics.json"), JSON.generate(data))
+
+    it "reads the context's fill and the token totals in one go" do
+      save("context" => { "used_tokens" => 250, "window_tokens" => 1000 },
+           "tokens" => { "prompt_sum" => 900, "completion_sum" => 80, "cached_sum" => 600, "reasoning_sum" => 20,
+                         "cost_sum" => 0.42 })
+      summary = Samagotchi::SessionMetrics.saved_summary(dir)
+      expect(summary.ctx_pct).to eq(25.0)
+      expect(summary.tokens).to eq(prompt_sum: 900, completion_sum: 80, cached_sum: 600, reasoning_sum: 20, cost_sum: 0.42)
+    end
+
+    it "has zeros for the counts an older file lacks, and is nil without a file" do
+      expect(Samagotchi::SessionMetrics.saved_summary(dir)).to be_nil
+      save("tokens" => { "prompt_sum" => 9, "completion_sum" => 1, "source" => "server" })
+      expect(Samagotchi::SessionMetrics.saved_summary(dir)).to have_attributes(ctx_pct: nil, cached_sum: 0, cost_sum: 0)
+    end
+  end
+
   describe "SessionMetrics.saved_context_pct" do
     let(:dir) { Dir.mktmpdir }
 

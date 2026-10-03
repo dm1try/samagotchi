@@ -49,7 +49,7 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
     # Single generation: the per-generation MAX of prompt_n (42) and of
     # predicted_n (9).
     expect(snap[:turns]).to eq(1)
-    expect(snap[:tokens]).to eq(prompt_sum: 42, completion_sum: 9, source: "server")
+    expect(snap[:tokens]).to include(prompt_sum: 42, completion_sum: 9, source: "server")
     expect(snap[:tool_calls_total]).to eq(0)
   end
 
@@ -64,7 +64,7 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
     expect(File.exist?(path)).to be(true)
 
     written = JSON.parse(File.read(path))
-    expect(written["tokens"]).to eq("prompt_sum" => 42, "completion_sum" => 9, "source" => "server")
+    expect(written["tokens"]).to include("prompt_sum" => 42, "completion_sum" => 9, "source" => "server")
     expect(written["turn_records"]).to include(hash_including("status" => "completed"))
     expect(written["active_turn"]).to be_nil
   end
