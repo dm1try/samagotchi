@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   `^[[12;1R` at the shell prompt: input nobody read is dropped before the terminal is handed back.
 - Joining a running turn (web or `chi --attach`) while the model is holding before its first token now shows
   the step it's on, as a live view does, instead of the previous step still live.
+- Web: sending into a session whose worker was already up (but the page didn't know) no longer draws
+  that worker's earlier turns a second time: the page re-reads the session instead.
 
 ## [0.20.0] - 2026-10-03
 

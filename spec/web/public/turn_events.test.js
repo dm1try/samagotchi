@@ -491,3 +491,14 @@ test("noticeLine: a snapshot's turn row as the live row's text", () => {
   assert.equal(noticeLine({ type: "empty_answer_retry", attempt: 1, of: 2 }), "↻ empty answer, asking again (1/2)");
   assert.equal(noticeLine({ type: "empty_answer_retry", attempt: 1, of: 1, stopped_by: "loop-guard" }), "↻ cut by loop-guard, asking again (1/1)");
 });
+
+import { replaysDrawnTurn } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("replaysDrawnTurn: a replayed turn_started for a turn the page already drew (4.01)", () => {
+  const records = [{ id: "t1" }, { id: "t2" }];
+  assert.equal(replaysDrawnTurn({ type: "turn_started", turn_id: "t2" }, records), true);
+  assert.equal(replaysDrawnTurn({ type: "turn_started", turn_id: "t3" }, records), false);
+  assert.equal(replaysDrawnTurn({ type: "turn_started" }, records), false);
+  assert.equal(replaysDrawnTurn({ type: "turn_completed", turn_id: "t1" }, records), false);
+  assert.equal(replaysDrawnTurn({ type: "turn_started", turn_id: "t1" }, []), false);
+});
