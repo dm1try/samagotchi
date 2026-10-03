@@ -74,20 +74,26 @@ RSpec.describe Samagotchi::TerminalUI::LiveRegion do
     PTY.open do |terminal, input|
       surface = described_class.open(out: tty, input: input, env: { "TERM" => "xterm" })
       Samagotchi::TerminalUI::RelineSeam.unanswered_query_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      written_at = nil
       replier = Thread.new do
-        sleep 0.25
+        sleep 0.1
         terminal.write("\e[12;1R")
         terminal.flush
+        written_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       described_class.close(surface, input: input)
-      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      closed_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       replier.join
 
       left = input.raw { input.wait_readable(0.1) && input.read_nonblock(64, exception: false) }
       expect(left).to be_nil
-      expect(took).to be_between(0.2, 0.45)
+      # Timed from the reply itself: a loaded CI runner can wake the replier
+      # late (0.50 s seen on macOS; the reply comes early so a late wake still
+      # lands inside the 0.5 s wait), and close must wait for it either way,
+      # then stop soon after instead of running out its whole wait.
+      expect(closed_at).to be >= written_at
+      expect(closed_at - written_at).to be < 0.15
       expect(Samagotchi::TerminalUI::RelineSeam.unanswered_query_at).to be_nil
     end
   end
