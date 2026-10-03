@@ -154,6 +154,44 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     end
   end
 
+  describe "a file another installed bundle has too" do
+    before do
+      install_bundle(write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "first"), "first")
+      # A bundle installed before chi recorded only the files it wrote
+      # claims the same file.
+      Samagotchi::MemoryBundle::Provenance.new(name: "legacy").write(
+        files: { "identity.md" => File.join(system_dir, "identity.md") }, scope: "system", version: "1.0.0", source_path: "/gone"
+      )
+    end
+
+    it "stays (with its index line) while the other bundle is installed, then goes with the last one" do
+      uninstaller = described_class.new(name: "legacy")
+      uninstaller.run
+
+      expect(File.read(File.join(system_dir, "identity.md"))).to eq("# Id\n")
+      expect(uninstaller.trashed_files).to eq([])
+      expect(uninstaller.warnings).to eq(["Kept identity.md: bundle first has it too"])
+      expect(File.read(File.join(system_dir, "index.md"))).to include("- **identity** ·")
+
+      described_class.new(name: "first").run
+      expect(File.exist?(File.join(system_dir, "identity.md"))).to be false
+    end
+
+    it "doesn't block the uninstall when edited: it isn't removed" do
+      File.write(File.join(system_dir, "identity.md"), "# Id\nmine\n")
+      expect { described_class.new(name: "legacy").run }.not_to raise_error
+      expect(File.read(File.join(system_dir, "identity.md"))).to eq("# Id\nmine\n")
+    end
+
+    it "only counts a bundle of the same scope" do
+      Samagotchi::MemoryBundle::Provenance.new(name: "first").write(
+        files: { "identity.md" => File.join(system_dir, "identity.md") }, scope: "project", version: "1.0.0", source_path: "/x"
+      )
+      described_class.new(name: "legacy").run
+      expect(File.exist?(File.join(system_dir, "identity.md"))).to be false
+    end
+  end
+
   it "memory-only bundles unaffected" do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "no-hook")
     install_bundle(src, "no-hook")

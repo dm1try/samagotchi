@@ -463,7 +463,11 @@ module Samagotchi
           target = File.join(target_dir, key)
           next unless File.exist?(target)
 
-          if @force || installed_unchanged?(target, meta, provenance.base_path(key))
+          others = Provenance.claimants(key, scope: scope, except: @name)
+          if others.any?
+            @results[key] = { status: "kept_shared", reason: "bundle #{others.join(", ")} has it too" }
+            @warnings << "Kept #{key}: no longer in the bundle, but bundle #{others.join(", ")} has it too"
+          elsif @force || installed_unchanged?(target, meta, provenance.base_path(key))
             @results[key] = { status: @dry_run ? "would_remove" : "removed", reason: "no longer in the bundle" }
             next if @dry_run
             @trash.move(target)

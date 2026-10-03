@@ -17,6 +17,9 @@ and commands may change between minor versions. How releases are made:
   `chi bundle build` then installing the result on the same machine. An upgrade no longer reports such a file as
   a conflict (or `chi update --dry-run` as kept). Bundles installed before this fix may still list such a file;
   uninstall now moves it to the trash (below) rather than deleting it.
+- A memory file two installed bundles list (one an older install adopted, like `identity.md` under both
+  `samagotchi-system` and a `chi bundle build` of your memories) stays when one of them is uninstalled, or drops it
+  in an upgrade: `Kept identity.md: bundle samagotchi-system has it too`. It goes with the last one.
 
 ### Changed
 

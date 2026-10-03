@@ -523,6 +523,19 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(File.read(File.join(up.trash_dir, "old.md"))).to eq("# Old\nmy notes\n")
     end
 
+    it "keeps a dropped file another installed bundle has too, and drops it from this bundle's record" do
+      Samagotchi::MemoryBundle::Provenance.new(name: "other").write(
+        files: { "old.md" => old_path }, scope: "system", version: "1.0.0", source_path: "/x"
+      )
+      up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"))
+
+      expect(File.read(old_path)).to eq("# Old\n")
+      expect(up.warnings).to include("Kept old.md: no longer in the bundle, but bundle other has it too")
+      expect(up.trash_dir).to be_nil
+      data = JSON.parse(File.read(File.join(bundles_dir, "drop-bundle", "manifest.json")))
+      expect(data["files"].keys).to eq(["keep.md"])
+    end
+
     it "only reports the removal on a dry run" do
       up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"), dry_run: true)
       expect(File.exist?(old_path)).to be true

@@ -48,12 +48,18 @@ module Samagotchi
           return true
         end
 
+        # A file another installed bundle lists too stays, edited or not.
+        shared = files.keys.map(&:to_s).to_h do |key|
+          [key, Provenance.claimants(key, scope: target_scope, except: @name)]
+        end.reject { |_, others| others.empty? }
+
         blocked = []
         files.each do |file_key, meta|
           file_key_str = file_key.to_s
           target_path = File.join(target_dir, file_key_str)
           base_path = provenance.base_path(file_key_str)
           next unless File.exist?(target_path)
+          next if shared.key?(file_key_str)
           if !@force && File.exist?(base_path) && Merger.current_modified?(base_path, target_path)
             blocked << file_key_str
             @warnings << "Skipped #{file_key_str}: local edits detected (use --force to remove)"
@@ -65,6 +71,10 @@ module Samagotchi
         files.each do |file_key, _meta|
           file_key_str = file_key.to_s
           target_path = File.join(target_dir, file_key_str)
+          if (others = shared[file_key_str])
+            @warnings << "Kept #{file_key_str}: bundle #{others.join(", ")} has it too" if File.exist?(target_path)
+            next
+          end
           if File.exist?(target_path)
             @trash.move(target_path)
             @trashed_files << file_key_str

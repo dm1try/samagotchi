@@ -84,6 +84,20 @@ module Samagotchi
         end
       end
 
+      # The other installed bundles of +scope+ whose record lists the memory
+      # file +file_key+, by name (a manifest that doesn't read is left out).
+      # A project-scoped record doesn't say which project: one from another
+      # repo counts too, which errs on keeping the file.
+      def self.claimants(file_key, scope:, except: nil, dir: bundles_dir)
+        each_installed(dir: dir).filter_map do |name, data|
+          next if name == except || data[:error]
+          next unless (data[:scope].to_s.empty? ? "system" : data[:scope].to_s) == scope.to_s
+          next unless data[:files].is_a?(Hash) && data[:files].keys.map(&:to_s).include?(file_key.to_s)
+
+          name
+        end
+      end
+
       # The hex digest a manifest records, in either of its formats:
       # "sha256:<hex>" (hooks, rules, the plugin) or bare <hex> (a memory
       # file's checksum:). "" when none is recorded.
