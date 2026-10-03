@@ -39,6 +39,21 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(bare).to include("chi")
     end
 
+    # chi self run by the command reports the session's model (live after /model).
+    it "exports SAMAGOTCHI_SESSION_MODEL, the session's model ref, and unsets an inherited one without it" do
+      require "samagotchi/tools/builtins"
+      peers = Samagotchi::Tools::Peers.new(session_id: "sess-1", model_ref: "splash:qwen", cancelled: false)
+      kctx = Struct.new(:peers).new(peers)
+      execute = Samagotchi::Tools::Builtins::HANDLERS.fetch("execute")
+      expect(execute.call({ content: "printenv SAMAGOTCHI_SESSION_MODEL" }, kctx)).to include("splash:qwen")
+
+      with_env("SAMAGOTCHI_SESSION_MODEL" => "stale:model") do
+        bare = execute.call({ content: "printenv SAMAGOTCHI_SESSION_MODEL; echo done" }, Struct.new(:peers).new(nil))
+        expect(bare).to include("done")
+        expect(bare).not_to include("stale:model")
+      end
+    end
+
     it "captures stdout and reports exit 0" do
       result = described_class.call("ruby -e 'puts \"hello world\"'")
       expect(result).to include("hello world")

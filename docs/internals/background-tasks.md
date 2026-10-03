@@ -22,5 +22,6 @@ Behavior:
 - `task_get` returns metadata and `output_path`; use `read` for output contents.
 - `task_wait` accepts `timeout`, `tail_lines` (maximum 100), and `done_pattern` (a regular expression string).
 - `task_create` accepts `env` as a JSON object string for deterministic overrides such as `PATH`; use an absolute interpreter path when that is simpler. Ruby/Bundler isolation variables remain protected.
+- `execute` and `task_create` export chi's own markers into the command, set over the model's `env` (which can't set them: `Error: env key is reserved`): `SAMAGOTCHI_PARENT_SESSION` (the session's id, `chi` without one; a chi started there answers as a parent agent) and `SAMAGOTCHI_SESSION_MODEL` (the resolved ref the session runs on, read at each call so it follows `/model`; unset when unknown). `chi self` reads the latter for its `model` row.
 
 Work that needs a model, not a shell command, goes to a child chi session instead: `delegate` / `delegate_result` have the same shape (start, then wait) and return only the child's final reply; see [Sessions: Delegating](../sessions.md#delegating).

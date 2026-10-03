@@ -97,6 +97,18 @@ RSpec.describe "task tools" do
         .to eq("Error: env key is reserved: SAMAGOTCHI_PARENT_SESSION")
     end
 
+    it "exports SAMAGOTCHI_SESSION_MODEL from the builtin handler, which the model's env can't set" do
+      peers = Samagotchi::Tools::Peers.new(session_id: "sess-1", model_ref: "main:ornith", cancelled: false)
+      created = Samagotchi::Tools::Builtins::HANDLERS.fetch("task_create")
+                                                     .call({ content: "printenv SAMAGOTCHI_SESSION_MODEL" },
+                                                           Struct.new(:peers).new(peers))
+      result = wait_for_task(extract_field(created, "task_id"))
+      expect(File.read(extract_field(result, "output_path"))).to eq("main:ornith\n")
+
+      expect(described_class.call("true", env: { "SAMAGOTCHI_SESSION_MODEL" => "x" }))
+        .to eq("Error: env key is reserved: SAMAGOTCHI_SESSION_MODEL")
+    end
+
     it "spawns a non-login shell so profile files can't clobber inherited PATH" do
       expect(Process).to receive(:spawn) do |*args, **_kwargs|
         expect(args[1..2]).to eq(["/bin/sh", "-c"])

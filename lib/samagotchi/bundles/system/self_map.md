@@ -3,6 +3,7 @@
 ## Start here
 - `chi self` (via `execute`) prints my version, **source dir**, config path, hooks dir,
   memory dirs, sessions dir, model/host and bundles. Use its source dir; don't hunt via `which`/`gem list`/`find /`.
+  Its `model` row is this session's model (live after `/model`), `model key` my overlay key.
 - My current session id is in the system prompt; resume with `chi --resume <id>`.
 - My debug log is the `log` line of `chi self` (default `$XDG_STATE_HOME/samagotchi/samagotchi.log`,
   next to the sessions dir; not `~/.local/state` when `XDG_STATE_HOME` is set). One record per line,

@@ -1307,6 +1307,7 @@ module Samagotchi
       def state_dir = engine.peer_state_dir
       def cancelled? = !!engine.active_cancel_controller&.cancelled?
       def relay = engine.relay_peer
+      def model_ref = engine.effective_model_ref
     end
 
     # What the approval relay needs from the parent's Engine (Peers#relay):

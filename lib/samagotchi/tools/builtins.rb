@@ -105,11 +105,19 @@ module Samagotchi
       # What execute and task_create export into the commands they run: a
       # chi started there answers as a parent agent
       # (Guardrails::ParentApprovals.parent_process?), even under a PTY
-      # wrapper. The session's id, "chi" without one.
+      # wrapper. The session's id, "chi" without one. And the model the
+      # session runs on (SAMAGOTCHI_SESSION_MODEL, read live, so right after
+      # /model), which chi self reports; unset when unknown, so a value
+      # inherited from an outer session never passes for this one.
       def parent_env(kctx)
-        id = kctx.peers.respond_to?(:session_id) ? kctx.peers.session_id.to_s : ""
-        { Guardrails::ParentApprovals::PARENT_SESSION_ENV => id.empty? ? "chi" : id }
+        peers = kctx.peers
+        id = peers.respond_to?(:session_id) ? peers.session_id.to_s : ""
+        model = peers.respond_to?(:model_ref) ? peers.model_ref.to_s : ""
+        { Guardrails::ParentApprovals::PARENT_SESSION_ENV => id.empty? ? "chi" : id,
+          SESSION_MODEL_ENV => model.empty? ? nil : model }
       end
+
+      SESSION_MODEL_ENV = "SAMAGOTCHI_SESSION_MODEL"
 
       # Stop flips the turn's controller, seen through the Engine's PeerView
       # (as DelegateWait does); a bare kernel has no peers: never cancelled.

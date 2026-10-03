@@ -20,7 +20,7 @@ module Samagotchi
       OUTPUT_TAIL_READ_BYTES = 16 * 1024
       SANITIZED_ENV_KEYS = %w[RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION].freeze
       # Set by chi (Builtins.parent_env); the model's env can't change it.
-      MARKER_ENV_KEYS = %w[SAMAGOTCHI_PARENT_SESSION].freeze
+      MARKER_ENV_KEYS = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL].freeze
 
       module_function
 

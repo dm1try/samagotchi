@@ -138,6 +138,15 @@ RSpec.describe Samagotchi::ModelRef do
       engine.tap { |e| e.switch_model!(name) }
     end
 
+    it "exports the effective ref to execute children, live after /model" do
+      require "samagotchi/tools/builtins"
+      e = engine
+      execute = ->(cmd) { Samagotchi::Tools::Builtins::HANDLERS.fetch("execute").call({ content: cmd }, Struct.new(:peers).new(Samagotchi::Engine::PeerView.new(e))) }
+      expect(execute.call("printenv SAMAGOTCHI_SESSION_MODEL")).to include("spec-model")
+      e.switch_model!("tiny")
+      expect(execute.call("printenv SAMAGOTCHI_SESSION_MODEL")).to include("box:gemma-small")
+    end
+
     it "#1 /model box:tiny stores box:gemma-small and sends gemma-small to box", step: :F1 do
       e = engine
       expect(e.switch_model!("box:tiny")).to eq("box:gemma-small")
