@@ -174,8 +174,13 @@ RSpec.describe "chi bundle (CLI)" do
     it "uninstalls a hooks bundle" do
       chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
 
-      expect(chi("uninstall", "sample-hooks-bundle"))
-        .to eq(["Uninstalled bundle 'sample-hooks-bundle'\nRemoved: identity.md, hooks/guardrails.rb\nHooks removed: 1\n", "", 0])
+      out, err, code = chi("uninstall", "sample-hooks-bundle")
+      trash = File.join(memories, ".bundles", ".trash")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to match(%r{\AUninstalled bundle 'sample-hooks-bundle'
+Moved to the trash: identity.md \(#{Regexp.escape(trash)}/sample-hooks-bundle-\d{8}-\d{6}\)
+Removed: hooks/guardrails.rb
+Hooks removed: 1\n\z})
     end
 
     it "lists nothing installed, then a shipped bundle installed by name" do
@@ -209,8 +214,10 @@ RSpec.describe "chi bundle (CLI)" do
       expect(chi("upgrade", "core")).to eq(["core v0.1.0 (profile)\n  nothing new to install\n", "", 0])
       expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[core guardrails loop-guard])
 
-      expect(chi("uninstall", "core")).to eq(["Uninstalled bundle 'core'\nRemoved: loop-guard, guardrails\n", "", 0])
-      expect(Dir.children(File.join(memories, ".bundles"))).to eq([])
+      out, err, code = chi("uninstall", "core")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to match(%r{\AUninstalled bundle 'core'\nRemoved: loop-guard, guardrails\nMoved to the trash: guardrails.md \(\S+/guardrails-\d{8}-\d{6}\)\n\z})
+      expect(Dir.children(File.join(memories, ".bundles"))).to eq([".trash"])
     end
 
     it "lists an installed profile's members and those left out, and status shows each" do
@@ -249,8 +256,10 @@ RSpec.describe "chi bundle (CLI)" do
         .to eq(["Removed from core: loop-guard, check-in\nKept guardrails: Uninstall blocked: guardrails.md has local edits (use --force)\n",
                 "Uninstall failed: core stays installed until guardrails goes (chi bundle uninstall core --force)\n", 1])
       expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[core guardrails])
-      expect(chi("uninstall", "core", "--force"))
-        .to eq(["Uninstalled bundle 'core'\nRemoved: guardrails\n", "", 0])
+      out, err, code = chi("uninstall", "core", "--force")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to match(%r{\AUninstalled bundle 'core'\nRemoved: guardrails\nMoved to the trash: guardrails.md \(\S+/\.trash/guardrails-\d{8}-\d{6}\)\n\z})
+      expect(File.read(Dir.glob(File.join(memories, ".bundles", ".trash", "guardrails-*", "guardrails.md")).first)).to eq("mine\n")
     end
 
     it "refuses a bad build scope and a value flag followed by a flag" do

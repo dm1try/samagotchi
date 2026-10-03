@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `chi bundle uninstall` (and an upgrade dropping a file the new version no longer ships) moves the bundle's memory
+  files to `<memories>/.bundles/.trash/<bundle>-<time>/` instead of deleting them, and says where:
+  `Moved to the trash: notes.md (…/.trash/notes-bundle-20261003-120000)`. Nothing empties the trash; delete it by hand.
+
 ### Fixed
 
 - Web: after a reload, a turn with an empty retry mid-turn shows each tool row's own duration; the rows took their

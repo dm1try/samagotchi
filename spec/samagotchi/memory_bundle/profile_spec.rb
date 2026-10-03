@@ -188,6 +188,9 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
 
       forced = described_class.uninstall("core", shipped_dir: shipped, force: true)
       expect(forced).to have_attributes(removed: %w[a], blocked: {}, gone: true)
+      files, dir = forced.trash["a"]
+      expect(files).to eq(["a.md"])
+      expect(File.read(File.join(dir, "a.md"))).to eq("# mine\n")
       expect(installed).to eq([])
     end
   end

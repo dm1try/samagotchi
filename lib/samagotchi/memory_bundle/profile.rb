@@ -30,8 +30,9 @@ module Samagotchi
         def failed? = !failed.empty?
       end
       # removed: members uninstalled; blocked: name => why; gone: the meta
-      # itself was removed (only once every member is).
-      UninstallResult = Struct.new(:name, :removed, :blocked, :gone, keyword_init: true)
+      # itself was removed (only once every member is); trash: member =>
+      # [memory files, the trash dir they were moved to].
+      UninstallResult = Struct.new(:name, :removed, :blocked, :gone, :trash, keyword_init: true)
 
       module_function
 
@@ -127,10 +128,12 @@ module Samagotchi
         shipped = File.join(shipped_dir, name)
         manifest = File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil
         members = recorded(data, manifest)
-        result = UninstallResult.new(name: name, removed: [], blocked: {}, gone: false)
+        result = UninstallResult.new(name: name, removed: [], blocked: {}, gone: false, trash: {})
         (members & installed_names).each do |member|
-          Uninstaller.new(name: member, force: force).run
+          uninstaller = Uninstaller.new(name: member, force: force)
+          uninstaller.run
           result.removed << member
+          result.trash[member] = [uninstaller.trashed_files, uninstaller.trash_dir] if uninstaller.trash_dir
         rescue Uninstaller::UninstallError => e
           result.blocked[member] = e.message
         end

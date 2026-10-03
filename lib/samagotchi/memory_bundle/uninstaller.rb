@@ -5,13 +5,17 @@ require_relative "../memory_paths"
 require_relative "provenance"
 require_relative "index_updater"
 require_relative "merger"
+require_relative "trash"
 
 module Samagotchi
   module MemoryBundle
     class Uninstaller
       class UninstallError < StandardError; end
 
-      attr_reader :warnings, :removed_files
+      # removed_files: the bundle's own hooks/ and plugin/ files (deleted);
+      # trashed_files: its memory files, moved to trash_dir (Trash), nil
+      # when none was moved.
+      attr_reader :warnings, :removed_files, :trashed_files
 
       def initialize(name:, scope: nil, force: false)
         @name = name
@@ -19,7 +23,11 @@ module Samagotchi
         @force = force
         @warnings = []
         @removed_files = []
+        @trashed_files = []
+        @trash = Trash.new(name)
       end
+
+      def trash_dir = @trash.dir
 
       def run
         provenance = Provenance.new(name: @name)
@@ -58,8 +66,8 @@ module Samagotchi
           file_key_str = file_key.to_s
           target_path = File.join(target_dir, file_key_str)
           if File.exist?(target_path)
-            FileUtils.rm_f(target_path)
-            @removed_files << file_key_str
+            @trash.move(target_path)
+            @trashed_files << file_key_str
           end
           # Remove index line
           begin

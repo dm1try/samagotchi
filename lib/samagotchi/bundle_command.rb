@@ -272,6 +272,7 @@ module Samagotchi
       begin
         uninstaller.run
         @stdout.puts "Uninstalled bundle '#{bundle_name}'"
+        puts_trashed(uninstaller.trashed_files, uninstaller.trash_dir)
         @stdout.puts "Removed: #{uninstaller.removed_files.join(', ')}" unless uninstaller.removed_files.empty?
         hook_removed = uninstaller.removed_files.count { |f| f.start_with?("hooks/") }
         @stdout.puts "Hooks removed: #{hook_removed}" if hook_removed > 0
@@ -311,9 +312,11 @@ module Samagotchi
       if result.gone
         @stdout.puts "Uninstalled bundle '#{name}'"
         @stdout.puts "Removed: #{result.removed.join(", ")}" unless result.removed.empty?
+        result.trash.each_value { |files, dir| puts_trashed(files, dir) }
         return 0
       end
       @stdout.puts "Removed from #{name}: #{result.removed.join(", ")}" unless result.removed.empty?
+      result.trash.each_value { |files, dir| puts_trashed(files, dir) }
       result.blocked.each { |member, why| @stdout.puts "Kept #{member}: #{why}" }
       @stderr.puts "Uninstall failed: #{name} stays installed until #{result.blocked.keys.join(", ")} goes " \
                    "(chi bundle uninstall #{name} --force)"
@@ -321,6 +324,11 @@ module Samagotchi
     rescue Samagotchi::MemoryBundle::Uninstaller::UninstallError => e
       @stderr.puts "Uninstall failed: #{e.message}"
       1
+    end
+
+    # Memory files an uninstall moved to the trash (MemoryBundle::Trash).
+    def puts_trashed(files, dir)
+      @stdout.puts "Moved to the trash: #{files.join(", ")} (#{dir})" if dir && !files.empty?
     end
 
     def status(rest)

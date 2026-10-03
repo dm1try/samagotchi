@@ -67,12 +67,69 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     expect(index_content).to include("- **notes** ·")
   end
 
+  describe "the trash" do
+    let(:trash_root) { File.join(bundles_dir, ".trash") }
+
+    it "moves the bundle's memory files into .bundles/.trash/<name>-<time>/ instead of deleting them" do
+      src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, { "g.rb" => "class G; def call(e); end; end" }, name: "trash-me")
+      install_bundle(src, "trash-me")
+
+      uninstaller = described_class.new(name: "trash-me", force: false)
+      uninstaller.run
+
+      expect(File.exist?(File.join(system_dir, "notes.md"))).to be false
+      expect(uninstaller.trash_dir).to match(%r{\A#{Regexp.escape(trash_root)}/trash-me-\d{8}-\d{6}\z})
+      expect(File.read(File.join(uninstaller.trash_dir, "notes.md"))).to eq("# Notes\n")
+      expect(uninstaller.trashed_files).to eq(["notes.md"])
+      expect(uninstaller.removed_files).to eq(["hooks/g.rb"])
+      expect(File.read(File.join(system_dir, "index.md"))).not_to include("**notes**")
+    end
+
+    it "moves an edited file there too with --force" do
+      src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, {}, name: "trash-forced")
+      install_bundle(src, "trash-forced")
+      File.write(File.join(system_dir, "notes.md"), "# Notes\nmine\n")
+
+      uninstaller = described_class.new(name: "trash-forced", force: true)
+      uninstaller.run
+      expect(File.read(File.join(uninstaller.trash_dir, "notes.md"))).to eq("# Notes\nmine\n")
+    end
+
+    it "gives two uninstalls in the same second their own dirs" do
+      now = Time.new(2026, 10, 3, 12, 0, 0)
+      allow(Time).to receive(:now).and_return(now)
+      dirs = 2.times.map do
+        install_bundle(write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, {}, name: "twice"), "twice")
+        described_class.new(name: "twice").tap(&:run).trash_dir
+      end
+      expect(dirs.map { |d| File.basename(d) }).to eq(%w[twice-20261003-120000 twice-20261003-120000-2])
+    end
+
+    it "makes no trash dir when there is nothing to move" do
+      src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, {}, name: "gone-already")
+      install_bundle(src, "gone-already")
+      File.delete(File.join(system_dir, "notes.md"))
+
+      uninstaller = described_class.new(name: "gone-already")
+      uninstaller.run
+      expect(uninstaller.trash_dir).to be_nil
+      expect(Dir.exist?(trash_root)).to be false
+    end
+
+    it "is never read as an installed bundle" do
+      src = write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, {}, name: "hidden")
+      install_bundle(src, "hidden")
+      described_class.new(name: "hidden").run
+      expect(Samagotchi::MemoryBundle::Provenance.each_installed.map(&:first)).to eq([])
+    end
+  end
+
   it "memory-only bundles unaffected" do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "no-hook")
     install_bundle(src, "no-hook")
     uninstaller = described_class.new(name: "no-hook", force: false)
     expect { uninstaller.run }.not_to raise_error
-    expect(uninstaller.removed_files).to include("identity.md")
+    expect(uninstaller.trashed_files).to include("identity.md")
   end
 
   it "removes provenance bundle_dir even when hooks present" do

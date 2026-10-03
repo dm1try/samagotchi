@@ -436,10 +436,11 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"))
 
       expect(File.exist?(old_path)).to be false
+      expect(File.read(File.join(up.trash_dir, "old.md"))).to eq("# Old\n")
       expect(File.exist?(File.join(system_memories_dir, "keep.md"))).to be true
       expect(File.read(index_path)).not_to match(/^.*\bold\b/)
       expect(up.results["old.md"][:status]).to eq("removed")
-      expect(up.summary).to include("Removed (no longer in the bundle): old.md")
+      expect(up.summary).to include("Removed (no longer in the bundle): old.md (moved to #{up.trash_dir})")
       data = JSON.parse(File.read(File.join(bundles_dir, "drop-bundle", "manifest.json")))
       expect(data["files"].keys).to eq(["keep.md"])
     end
@@ -455,14 +456,16 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
     it "removes an edited dropped file with --force" do
       File.write(old_path, "# Old\nmy notes\n")
-      upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"), force: true)
+      up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"), force: true)
       expect(File.exist?(old_path)).to be false
+      expect(File.read(File.join(up.trash_dir, "old.md"))).to eq("# Old\nmy notes\n")
     end
 
     it "only reports the removal on a dry run" do
       up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"), dry_run: true)
       expect(File.exist?(old_path)).to be true
       expect(up.results["old.md"][:status]).to eq("would_remove")
+      expect(up.trash_dir).to be_nil
     end
   end
 

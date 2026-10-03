@@ -9,6 +9,7 @@ require_relative "source"
 require_relative "placeholder"
 require_relative "index_updater"
 require_relative "merger"
+require_relative "trash"
 require_relative "../version"
 require_relative "../bundle_needs"
 
@@ -41,7 +42,12 @@ module Samagotchi
         @warnings = []
         @placeholder_warnings = []
         @conflicts = {}
+        @trash = Trash.new(name)
       end
+
+      # Where an upgrade moved the files the bundle no longer ships (nil:
+      # none moved).
+      def trash_dir = @trash.dir
 
       def run
         normalized_dir = nil
@@ -408,7 +414,7 @@ module Samagotchi
         lines << "Updated: #{updated.join(', ')}" unless updated.empty?
         lines << "Would install: #{would_install.join(', ')}" unless would_install.empty?
         lines << "Fast-forward: #{fast_forward.join(', ')}" unless fast_forward.empty?
-        lines << "Removed (no longer in the bundle): #{removed.join(', ')}" unless removed.empty?
+        lines << "Removed (no longer in the bundle): #{removed.join(', ')}#{trash_dir ? " (moved to #{trash_dir})" : ""}" unless removed.empty?
         lines << "Would remove (no longer in the bundle): #{would_remove.join(', ')}" unless would_remove.empty?
         lines << "Kept (local edits preserved): #{kept.join(', ')}" unless kept.empty?
         lines << "Skipped: #{skipped.join(', ')}" unless skipped.empty?
@@ -423,8 +429,9 @@ module Samagotchi
       private
 
       # A file the previous version installed that this one doesn't ship is
-      # removed (with its index line) when it still matches what was
-      # installed, or with --force; one the user edited is kept with a note.
+      # moved to the trash (with its index line removed) when it still
+      # matches what was installed, or with --force; one the user edited is
+      # kept with a note.
       def prune_dropped_files(previous_files, bundle_files, target_dir, scope, provenance)
         previous_files.each do |old_key, meta|
           key = old_key.to_s
@@ -435,7 +442,7 @@ module Samagotchi
           if @force || installed_unchanged?(target, meta, provenance.base_path(key))
             @results[key] = { status: @dry_run ? "would_remove" : "removed", reason: "no longer in the bundle" }
             next if @dry_run
-            FileUtils.rm_f(target)
+            @trash.move(target)
             remove_target_index(scope, key)
           else
             @results[key] = { status: "kept_pruned", reason: "local edits preserved" }
