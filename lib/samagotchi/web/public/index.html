@@ -602,8 +602,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   #infoBar .meta>*{flex-shrink:0}
   #infoBar .meta .id{order:-2}
   #infoBar .meta .status{order:-1}
-  /* Right after the id: the meta scrolls, and only its start is in sight. */
-  #infoBar .meta .mem-chip{display:inline;order:-2}
+  /* After the status (same order, later in the DOM): the meta scrolls, and only its start is in sight. */
+  #infoBar .meta .mem-chip{display:inline;order:-1}
   #infoBar .meta .dir{word-break:normal}
   #infoBar button{padding:4px 8px}
 }
