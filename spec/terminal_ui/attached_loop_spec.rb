@@ -1126,6 +1126,17 @@ end
     expect(screen.slots[:notes].first).to eq("? The turn ran out of iterations. Continue it?")
   end
 
+  it "asks a question pending between turns (the step-limit one) on a join" do
+    other = described_class.new(client: client, screen: screen, client_id: "tui:2")
+    question = { id: "q9", kind: "continue", header: "Step limit", question: "The turn ran out of iterations. Continue it?",
+                 options: %w[Continue Stop], multi_select: false, allow_freeform: true, status: "pending" }
+    snapshot = joined.tap { |event| event[:snapshot][:pending_question] = question }
+    other.handle_event(JSON.parse(JSON.generate(snapshot)))
+
+    expect(other.send(:prompt_text)).to eq("? ")
+    expect(screen.slots[:notes].join("\n")).to include("Step limit").and include("Continue")
+  end
+
   describe "context notes" do
     let(:note) { Samagotchi::ContextNote.message(note_id: "n1", text: "deploy frozen", source: "slack") }
 

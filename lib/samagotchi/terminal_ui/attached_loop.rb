@@ -896,6 +896,8 @@ module Samagotchi
           sync_continue_slot
         end
         render_current_turn(snapshot[:current_turn])
+        # A question between turns (the step-limit one) belongs to no turn.
+        ask(snapshot[:pending_question]) if snapshot[:current_turn].nil? && snapshot[:pending_question]
         render_snapshot_cards(cards.select { |card| card[:current] }, joining: !reset)
         Array(snapshot[:queued]).each do |entry|
           next if own?(entry[:client_id])

@@ -697,6 +697,17 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)["pending_question"]).to include("id" => "q1")
     end
 
+    it "draws a question asked between turns (the step-limit one) from the live snapshot's top level" do
+      app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
+      question = { "id" => "q9", "kind" => "continue", "status" => "pending" }
+      stub_worker(app, { "snapshot" => { "messages" => [], "current_turn" => nil, "pending_question" => question,
+                                         "event_seq" => 3, "event_id" => "3-e1" },
+                         "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } })
+
+      _status, _headers, body = app.call(env_for("/api/sessions/s1"))
+      expect(JSON.parse(body.first)["pending_question"]).to eq(question)
+    end
+
     it "renders a live session from the worker's snapshot: its messages, the turn in progress and its seq" do
       app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
       live = {

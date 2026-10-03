@@ -764,6 +764,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(snap).to have_key("recap")
         expect(snap).to have_key("saved_recap")
         expect(snap).to have_key("continue_offer")
+        expect(snap).to have_key("pending_question")
         expect(body["session_state_snapshot"]).to include("status" => "running", "event_seq" => snap["event_seq"])
         expect(snap["event_id"]).to eq("#{snap["event_seq"]}-#{@bridge.epoch}")
         expect(body["session_state_snapshot"]["event_id"]).to eq(snap["event_id"])
@@ -1714,6 +1715,16 @@ RSpec.describe Samagotchi::Bridge do
         expect(@engine.pending_question).to include(id: id, status: "pending")
         @engine.answer_question(id: id, selected: ["A"])
         expect(JSON.parse(tool_result.pop(timeout: 2))).to include("selected" => ["A"])
+      end
+
+      it "carries a question asked between turns in its snapshot's top level (the turn accumulator drops it)" do
+        start_bridge
+        id = @engine.post_question({ kind: "continue", question: "Continue?", options: %w[Continue Stop],
+                                     multi_select: false, allow_freeform: true }, on_answer: ->(_a, client_id:) {})[:id]
+
+        snap = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("snapshot")["snapshot"]
+        expect(snap["current_turn"]).to be_nil
+        expect(snap["pending_question"]).to include("id" => id, "kind" => "continue")
       end
 
       it "answers 409 not_dismissable for a standing question (the step limit's): it stays open" do

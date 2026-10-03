@@ -549,8 +549,9 @@ module Samagotchi
         # The file's question only while a worker owns the session: one a
         # dead worker saved can't be answered (its turn is gone), nor a chi
         # REPL's (it shares nothing with the web).
+        # A question between turns (the step-limit one) is the snapshot's own.
         pending = if turn_snapshot
-                    current_turn && current_turn["pending_question"]
+                    current_turn ? current_turn["pending_question"] : turn_snapshot["pending_question"]
                   elsif owner&.worker?
                     session.pending_question
                   end

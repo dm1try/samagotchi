@@ -209,8 +209,11 @@ module Samagotchi
     # last cards and between-turns notices (CardStore#list), the session's commands (Commands::Registry#listing:
     # what an attached TUI routes and completes, the web's autocomplete), and the event_seq it all covers.
     # Taken with the log held, so no event is half-applied.
-    # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, guardrail_warning:,
-    #   plugin_warning:, init_tasks:, cards:, commands:, event_seq:, event_id:}
+    # The pending question at the top level too: one asked between turns
+    # (the step-limit question) belongs to no turn, so the accumulator
+    # doesn't keep it.
+    # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, pending_question:,
+    #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
@@ -221,6 +224,7 @@ module Samagotchi
           recap: @accumulator.recap,
           saved_recap: @engine.saved_recap,
           continue_offer: @accumulator.continue_offer,
+          pending_question: @engine.pending_question,
           guardrail_warning: @engine.guardrail_warning,
           plugin_warning: @engine.plugin_warning,
           init_tasks: @engine.init_tasks,
