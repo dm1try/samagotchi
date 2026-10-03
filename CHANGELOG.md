@@ -31,6 +31,8 @@ and commands may change between minor versions. How releases are made:
   pill comes back, with a finger-sized target, instead of the last column of the sideways-scrolling strip.
 - On a phone the web info bar shows `mem N` (the memories the session used; their names in the tooltip) right after
   the session id, since the `mem: …` line is hidden there.
+- The web info bar's chips (model, ctx, speed, session time) are tinted over the card's glass instead of solid, and
+  the empty-history cover is see-through like the session panel.
 
 ### Fixed
 

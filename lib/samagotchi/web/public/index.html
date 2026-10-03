@@ -568,7 +568,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar .meta .copy-attach:hover{color:#fff;border-color:var(--border-strong)}
 #infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px}
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);word-break:break-all}
-#infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:var(--bg-hover);color:var(--text-3)}
+/* The footer sits on the card's glass: its chips are tinted, not solid, so the glass reads through them. */
+#infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3)}
 /* The memory chip ("mem 2", when the session used some): phones only, where the "mem: …" line is hidden. */
 #infoBar .meta .mem-chip{display:none}
 #infoBar .meta .model.served-mismatch{background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border)}
@@ -606,7 +607,7 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   #infoBar .meta .dir{word-break:normal}
   #infoBar button{padding:4px 8px}
 }
-#empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-muted);padding:24px;text-align:center;background:var(--bg);z-index:1}
+#empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-muted);padding:24px;text-align:center;background:color-mix(in srgb,var(--bg) 35%,transparent);z-index:1}
 #empty.hidden{display:none !important}
 /* Start page (no session): the composer alone, centered; no info bar. */
 body:not(.has-session) #center{justify-content:safe center;background:transparent}
