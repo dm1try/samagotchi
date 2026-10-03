@@ -33,7 +33,16 @@ module Samagotchi
     #   "failed", text is the failure's summary when the turn note has one.
     # @!attribute limit [Integer, nil] the iteration limit an "exhausted"
     #   turn ran out at
-    Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, keyword_init: true)
+    # @!attribute error_kind [String, nil] a "failed" turn's provider error
+    #   kind (credits, server, auth, …), from last_turn
+    # @!attribute retryable [Boolean, nil] whether that error may pass on a
+    #   retry
+    # @!attribute cancel_reason [String, nil] a "canceled" turn's reason
+    #   (user, hook, ctrl_c, manual)
+    # @!attribute stopped_by [String, nil] the hook that canceled it
+    #   (loop-guard)
+    Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, :error_kind, :retryable, :cancel_reason,
+                        :stopped_by, keyword_init: true)
 
     module_function
 
@@ -151,7 +160,8 @@ module Samagotchi
       return Result.new(status: :no_reply, outcome: "exhausted", limit: last["limit"]) if fresh && last["exhausted"]
 
       text = outcome == "failed" ? failure_summary(session.messages) : nil
-      Result.new(status: :no_reply, outcome: outcome, text: text)
+      why = fresh ? last.slice("error_kind", "retryable", "cancel_reason", "stopped_by").transform_keys(&:to_sym) : {}
+      Result.new(status: :no_reply, outcome: outcome, text: text, **why)
     end
 
     # The summary in the failed-turn note at the conversation's tail, nil

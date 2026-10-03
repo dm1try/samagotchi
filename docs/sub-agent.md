@@ -37,7 +37,7 @@ Exit codes, both commands:
 | 0 | `not_continued` | (`chi answer`) a Stop answered the step-limit question; the turn's work so far stays |
 | 3 | `question` | chi waits for an answer: `question`, `answer_with` |
 | 4 | `running` | `--timeout` passed; the turn goes on, wait again |
-| 1 | `failed`, `canceled`, `limit`, `no_answer`, `error`, `worker_gone`, `stopped` | `detail` says what happened (`limit`: the turn ran out of steps and nobody can be asked, e.g. an older worker; `chi send ID -m '/continue yes'` continues it) |
+| 1 | `failed`, `canceled`, `limit`, `no_answer`, `error`, `worker_gone`, `stopped` | `detail` says what happened (`limit`: the turn ran out of steps and nobody can be asked, e.g. an older worker; `chi send ID -m '/continue yes'` continues it). `failed` adds `error_kind` (the provider error's kind: `credits`, `credits_held`, `rate_limited`, `server`, `auth`, `connection`, …) and `retryable` when known; `canceled` adds `cancel_reason` (`user`: a Stop in the web or `chi sessions stop`; `hook`; `ctrl_c`; `manual`) and `stopped_by` (the hook that stopped it, e.g. `loop-guard`) when known |
 | 2 | (no JSON) | usage error, or an option the question doesn't offer |
 | 130 | `running` | Ctrl-C; the turn goes on |
 

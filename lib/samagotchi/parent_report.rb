@@ -81,9 +81,23 @@ module Samagotchi
         question = question(result.question)
         report[:question] = question
         report[:answer_with] = answer_with(session_id, question)
-      else report[:detail] = detail(result, session_id: session_id, timeout: timeout)
+      else
+        report.merge!(stop_facts(result))
+        report[:detail] = detail(result, session_id: session_id, timeout: timeout)
       end
       report.merge(extra)
+    end
+
+    # Why a failed or canceled turn stopped, as far as last_turn knows
+    # (ReplyWait::Result): error_kind and retryable, cancel_reason and
+    # stopped_by; absent when unknown.
+    # @return [Hash]
+    def stop_facts(result)
+      case status(result)
+      when "failed" then { error_kind: result.error_kind, retryable: result.retryable }.compact
+      when "canceled" then { cancel_reason: result.cancel_reason, stopped_by: result.stopped_by }.compact
+      else {}
+      end
     end
 
     # @return [String] the JSON object as one line

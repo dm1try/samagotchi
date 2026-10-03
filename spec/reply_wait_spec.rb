@@ -172,6 +172,34 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(result.to_h).to include(status: :no_reply, outcome: "exhausted", limit: 3)
     end
 
+    it "says why the turn stopped, from its last_turn: a failure's kind, a cancel's reason and who" do
+      baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.last_turn = { "outcome" => "failed", "ended_at" => "2026-10-04T10:00:00.000+00:00", "error_kind" => "credits",
+                      "retryable" => false }
+      s.save(state_dir: tmpdir)
+      expect(wait(baseline: baseline).to_h).to include(status: :no_reply, outcome: "failed", error_kind: "credits",
+                                                       retryable: false, stopped_by: nil, cancel_reason: nil)
+
+      baseline = described_class.baseline_of(s)
+      s.last_turn = { "outcome" => "canceled", "ended_at" => "2026-10-04T10:01:00.000+00:00", "cancel_reason" => "hook",
+                      "stopped_by" => "loop-guard" }
+      s.save(state_dir: tmpdir)
+      expect(wait(baseline: baseline).to_h).to include(outcome: "canceled", cancel_reason: "hook", stopped_by: "loop-guard",
+                                                       error_kind: nil)
+    end
+
+    it "doesn't take why from a last_turn that ended before the wait (not the turn waited for)" do
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.last_turn = { "outcome" => "failed", "ended_at" => "2026-10-04T10:00:00.000+00:00", "error_kind" => "credits",
+                      "retryable" => false }
+      s.messages << { role: "user", content: "[turn note]" }
+      s.save(state_dir: tmpdir)
+      baseline = { messages: 0, question_id: nil, last_turn: "2026-10-04T10:00:00.000+00:00" }
+
+      expect(wait(baseline: baseline).to_h).to include(status: :no_reply, outcome: nil, error_kind: nil, retryable: nil)
+    end
+
     it "ignores the question pending at the baseline, not a new one" do
       own_by_worker
       set(pending_question: { id: "old", question: "Old?" })

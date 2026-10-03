@@ -92,6 +92,20 @@ RSpec.describe Samagotchi::ParentReport do
     end
   end
 
+  it "says why a turn stopped when it is known: a failure's error_kind and retryable, a cancel's reason and stopper" do
+    failed = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", text: "out of credits on host or: x",
+                                               error_kind: "credits", retryable: false)
+    expect(json(failed)).to eq("status" => "failed", "session_id" => id, "error_kind" => "credits", "retryable" => false,
+                               "detail" => "the turn failed: out of credits on host or: x; chi --attach #{id} shows it")
+
+    canceled = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "canceled", cancel_reason: "hook",
+                                                 stopped_by: "loop-guard")
+    expect(json(canceled)).to include("status" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard")
+
+    by_user = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "canceled", cancel_reason: "user")
+    expect(json(by_user).keys).to eq(%w[status session_id cancel_reason detail])
+  end
+
   it "says a waiting approval is the user's to allow, a question where to open it" do
     approval_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: approval)
     expect(described_class.detail(approval_wait, session_id: id))

@@ -27,6 +27,10 @@ and commands may change between minor versions. How releases are made:
 - `chi answer --format json` says `"answered_here": false` when the question was no longer open (answered
   elsewhere, or another one waits now): it still waits for what comes next, but the JSON no longer reads as if
   the given answer went in.
+- `chi send --wait` and `chi answer` with `--format json` say why a turn stopped: a failed turn adds `error_kind`
+  (the provider error's kind, e.g. `credits`, `server`) and `retryable`, a canceled one `cancel_reason` (`user`,
+  `hook`, `ctrl_c`, `manual`) and `stopped_by` (the hook, e.g. `loop-guard`), when known. The session's
+  `last_turn` records them.
 
 ## [0.21.0] - 2026-10-04
 

@@ -160,6 +160,30 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect(session.last_turn["outcome"]).to eq("failed")
     end
 
+    it "says why a turn stopped: a provider error's kind, a cancel's reason; nothing for a completed turn" do
+      allow(kernel).to receive(:run).and_return(kernel_result)
+      engine.run_turn(session, "hi")
+      expect(session.last_turn.keys).not_to include("error_kind", "retryable", "stopped_by", "cancel_reason")
+
+      allow(kernel).to receive(:run).and_raise(Samagotchi::LLM::OutOfCredits.new("or: no credits", host: "or", status: 402))
+      expect { engine.run_turn(session, "hi") }.to raise_error(Samagotchi::LLM::OutOfCredits)
+      expect(session.last_turn).to include("outcome" => "failed", "error_kind" => "credits", "retryable" => false)
+
+      # Not a provider error: no kind to tell.
+      allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+      expect(session.last_turn.keys).not_to include("error_kind", "retryable")
+
+      allow(kernel).to receive(:run).and_return(kernel_result(canceled: true, cancellation_reason: :user))
+      engine.run_turn(session, "hi")
+      expect(session.last_turn).to include("outcome" => "canceled", "cancel_reason" => "user")
+      expect(session.last_turn).not_to have_key("stopped_by")
+
+      allow(kernel).to receive(:run).and_raise(Interrupt)
+      expect { engine.run_turn(session, "hi") }.to raise_error(Interrupt)
+      expect(session.last_turn).to include("outcome" => "canceled", "cancel_reason" => "ctrl_c")
+    end
+
     it "maps the origin: a delegate, a reminder, a client, none" do
       allow(kernel).to receive(:run).and_return(kernel_result)
       {

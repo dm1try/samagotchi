@@ -1104,7 +1104,8 @@ module Samagotchi
     # @param limit [Integer, nil] the turn ran out of iterations at this
     #   limit: "exhausted" => true, "limit" => N, so a wait with nobody to
     #   answer the continue offer says so (ReplyWait, ParentReport "limit")
-    def record_last_turn(session, outcome, seconds, origin, limit: nil)
+    # @param event [Hash] the turn's end event (#stop_facts)
+    def record_last_turn(session, outcome, seconds, origin, event, limit: nil)
       client_id = origin.is_a?(Hash) ? origin[:client_id].to_s : ""
       source = if client_id.start_with?("#{Tools::Delegate::CLIENT_PREFIX}:") then "delegate"
                elsif client_id == SessionManager::REMINDER_CLIENT_ID then "reminder"
@@ -1113,8 +1114,22 @@ module Samagotchi
       session.last_turn = { "outcome" => outcome, "ended_at" => Time.now.iso8601(3),
                             "seconds" => seconds.round(1), "origin" => source }
       session.last_turn.merge!("exhausted" => true, "limit" => limit) if limit
+      session.last_turn.merge!(stop_facts(event))
     end
     private :record_last_turn
+
+    # Why a turn stopped, from its end event, for a parent agent's wait
+    # (ReplyWait): a provider error's kind and whether a retry may help, a
+    # cancel's reason and the hook that stopped it. Only what is known.
+    def stop_facts(event)
+      case event&.dig(:type)
+      when :turn_failed then { "error_kind" => event[:error_kind]&.to_s, "retryable" => event[:retryable] }.compact
+      when :turn_canceled
+        { "cancel_reason" => event[:cancellation_reason]&.to_s, "stopped_by" => event[:cancelled_by]&.to_s }.compact
+      else {}
+      end
+    end
+    private :stop_facts
 
     # How every turn ends (completed, canceled, failed): the session gets
     # what the turn kept, goes idle and records the ending, and the end
@@ -1133,7 +1148,7 @@ module Samagotchi
         kept, event = yield(seconds)
         replace_session_messages(turn.session, kept) if kept
         turn.session.status = Session::STATUS_IDLE
-        record_last_turn(turn.session, outcome, seconds, turn.origin, limit: exhausted ? turn.limit : nil)
+        record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
         emit_event(turn.on_event, turn.tag(event))
       end
       turn.ended = true

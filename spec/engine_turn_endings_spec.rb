@@ -214,6 +214,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(tail(2)).to eq(["user:hi", "system:[SYSTEM: the previous turn was cancelled (ho"])
     expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn was cancelled (hook loop-guard: looping)")
     expect(canceled).to include(cancellation_reason: :hook, cancelled_by: "loop-guard", duration_ms: be_a(Integer))
+    expect(session.last_turn).to include("outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard")
     expect(result.conversation.last).to eq(session.messages.last)
     expect(at_end).to eq(status: "idle", outcome: "canceled")
     expect_released
