@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
   how to continue it (`chi --resume ID`).
 - `chi -p … --non-interactive` prints the retry lines on stderr (`↻ empty answer, asking again (1/1)`, `retrying
   (1/5 in 0.5s): …`), as the REPL shows them, instead of nothing.
+- `chi -p` shows the after_turn hooks' notices (source-links' `sources:`, any notifier), which it lost: with
+  `--non-interactive` on stderr after the answer; attached (input from a pipe) it waits for them and shows them
+  before it detaches.
 
 ## [0.18.0] - 2026-10-03
 

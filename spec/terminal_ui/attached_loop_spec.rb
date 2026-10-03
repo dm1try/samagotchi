@@ -2021,6 +2021,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
     expect(screen.lines.last).to start_with("Detached; the session keeps running.")
   end
 
+  # The after_turn hooks run after turn_completed (display_pending says
+  # they will): their notices (source-links' sources:) come before the
+  # answer_display that follows them, and the run waits for it.
+  it "waits after its turn for the after_turn hooks' notices, then ends" do
+    start
+    @push.call("type" => "turn_started", "prompt" => "hello", "origin" => origin)
+    @push.call("type" => "turn_completed", "turn_summary" => { "output" => "hi there", "tool_activity" => [] },
+               "display_pending" => true, "origin" => origin)
+    expect(@thread.join(0.3)).to be_nil
+    @push.call("type" => "hook_notice", "hook" => "sources.rb (bundle source-links)", "text" => "sources: JIRA-1",
+               "level" => "info", "between_turns" => true)
+    @push.call("type" => "answer_display", "display" => nil)
+
+    expect(result).to eq(:detached)
+    expect(screen.lines.last(2)).to eq(["source-links> sources: JIRA-1",
+                                        "Detached; the session keeps running. Re-attach with: chi --attach s-1234"])
+  end
+
   it "ends with :empty_answer when its turn ends with no answer" do
     start
     @push.call("type" => "turn_started", "prompt" => "hello", "origin" => origin)

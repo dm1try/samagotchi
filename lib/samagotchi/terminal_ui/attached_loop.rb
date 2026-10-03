@@ -237,6 +237,8 @@ module Samagotchi
           end_turn
           own_turn_ended(event)
         when :prompt_restored then restore_prompt(event)
+        # The after_turn hooks are done (their notices came before it).
+        when :answer_display then @display_pending = false
         when :context_status, :used_memories_updated then @status.take_event(event)
         # Another client's anytime command: its line now, before the cards
         # it shows (its command_ran comes when it's done).
@@ -580,9 +582,10 @@ module Samagotchi
         @screen.commit("could not send the prompt (#{worker_down(e)})")
       end
 
-      # Whether the input's end must wait: the -p prompt isn't sent yet, or
-      # a prompt this run sent hasn't had its turn.
-      def own_turns_pending? = !@first_prompt.to_s.strip.empty? || !@open_ids.empty?
+      # Whether the input's end must wait: the -p prompt isn't sent yet, a
+      # prompt this run sent hasn't had its turn, or its turn's after_turn
+      # hooks still run (their notices, source-links' sources:, come next).
+      def own_turns_pending? = !@first_prompt.to_s.strip.empty? || !@open_ids.empty? || @display_pending == true
 
       # A turn ended: this run's prompt (and ours merged into it) had its turn.
       def own_turn_ended(event)
@@ -592,6 +595,8 @@ module Samagotchi
         ours = @open_ids.include?(id) || !@merged_ids.empty?
         @own_failed = true if ours && event[:type] == :turn_failed
         @own_empty = true if ours && event[:type] == :turn_completed && event.dig(:turn_summary, :empty_answer)
+        # The worker sends answer_display once its after_turn hooks ran.
+        @display_pending = true if ours && event[:type] == :turn_completed && event[:display_pending]
         @open_ids.delete(id)
         @open_ids.subtract(@merged_ids)
         @merged_ids.clear

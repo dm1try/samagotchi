@@ -23,6 +23,17 @@ RSpec.describe Samagotchi::TerminalUI::OneShotSink do
     expect(err.string).to eq("retrying (1/3 in 0.5s): Errno::ECONNREFUSED\n")
   end
 
+  it "prints a hook's notice during the turn at once, and keeps one after its end for #flush" do
+    sink.call({ type: :hook_notice, hook: "loop-guard.rb (bundle loop-guard)", text: "looping?", level: :warn })
+    sink.call({ type: :turn_completed })
+    sink.call({ type: :hook_notice, hook: "sources.rb (bundle source-links)", text: "sources: JIRA-1", level: :info })
+    expect(err.string).to eq("loop-guard> warning: looping?\n")
+
+    sink.flush
+    sink.flush
+    expect(err.string).to eq("loop-guard> warning: looping?\nsource-links> sources: JIRA-1\n")
+  end
+
   it "prints nothing for the other events" do
     sink.call({ type: :generation_chunk, text: "hi" })
     sink.call({ type: :tool_call_started, tool: "read" })

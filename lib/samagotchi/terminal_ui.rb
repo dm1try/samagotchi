@@ -242,12 +242,13 @@ module Samagotchi
       if @prompt && @non_interactive
         # Headless / CI mode: run directly without TTY rendering.
         ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir)
+        # Retry lines and hook notices on stderr; stdout gets the answer below.
+        sink = OneShotSink.new
         begin
           result = @engine.run_turn(
             session,
             @prompt,
-            # Retry lines on stderr; stdout gets the answer below.
-            on_event: OneShotSink.new,
+            on_event: sink,
             max_iterations: IterationLimit.for(no_interrupt: true),
             cancel_controller: nil,
             images: ImageInput.extract(@prompt)
@@ -262,10 +263,13 @@ module Samagotchi
           # so a script that pipes the answer doesn't take the silence for one.
           session.save
           warn EMPTY_ANSWER_ERROR
+          sink.flush
           return :empty_answer
         end
         @surface.commit(result.output)
         session.save
+        # The after_turn hooks' notices, after the answer as the REPL shows them.
+        sink.flush
         return
       end
 

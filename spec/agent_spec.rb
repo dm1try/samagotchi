@@ -581,6 +581,34 @@ file2.rb")
       end.to output(/^↻ empty answer, asking again \(1\/1\)$/).to_stderr
     end
 
+    # A hook's notice goes to stderr: one during the turn as it comes, an
+    # after_turn one (source-links' sources:) after the answer.
+    it "prints the hooks' notices on stderr with --non-interactive, an after_turn one after the answer" do
+      allow(client).to receive(:complete).and_return("done")
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
+      agent.engine.register_hook(:before_turn) { |e| e[:notify].call("early") }
+      agent.engine.register_hook(:after_turn) { |e| e[:notify].call("sources: JIRA-1", level: :warn) }
+      both = StringIO.new
+      out = StringIO.new
+      tee = Object.new
+      tee.define_singleton_method(:puts) { |*args| both.puts(*args); out.puts(*args) }
+      tee.define_singleton_method(:method_missing) { |name, *args, &blk| out.public_send(name, *args, &blk) }
+      tee.define_singleton_method(:respond_to_missing?) { |*_| true }
+      original_out = $stdout
+      original_err = $stderr
+      begin
+        $stdout = tee
+        $stderr = both
+        agent.run
+      ensure
+        $stdout = original_out
+        $stderr = original_err
+      end
+
+      expect(out.string).to eq("done\n")
+      expect(both.string.lines.map(&:chomp).drop(1)).to eq(["hook> early", "done", "hook> warning: sources: JIRA-1"])
+    end
+
     it "keeps a failed -p --non-interactive turn's session and says how to go on" do
       allow(client).to receive(:complete).and_raise(Samagotchi::LLM::ServerError.new("boom", host: "h"))
       agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
