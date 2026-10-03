@@ -178,6 +178,38 @@ RSpec.describe "Session archive" do
       expect([archived?(parent), archived?(child)]).to eq([false, false])
     end
 
+    it "refuses while a prompt is queued in it (a resume would run it), and stops nothing" do
+      queued = make(owner: "worker")
+      Samagotchi::SessionInbox.write_input(dir_of(queued), prompt: "run the tests")
+      allow(Samagotchi::SessionManager).to receive(:stop_session)
+
+      expect { Samagotchi::SessionManager.archive_session(queued.id, state_dir: tmpdir) }
+        .to raise_error(Samagotchi::SessionManager::ArchiveRefused, /a prompt is queued/) { |e| expect(e.reason).to eq(:queued) }
+      expect(Samagotchi::SessionManager).not_to have_received(:stop_session)
+      expect(archived?(queued)).to be(false)
+    end
+
+    it "refuses a stopped session with a prompt left queued, and a delegate's, naming it" do
+      parent = make
+      child = make(parent: parent)
+      Samagotchi::SessionInbox.write_input(dir_of(child), prompt: "later")
+
+      expect { Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir) }
+        .to raise_error(Samagotchi::SessionManager::ArchiveRefused, /delegate #{child.id[0, 8]} has a prompt queued/)
+      expect([archived?(parent), archived?(child)]).to eq([false, false])
+    end
+
+    it "refuses while its live worker offers to continue past the step limit" do
+      offering = make(owner: "worker")
+      offering.pending_question = { id: "q1", kind: "continue", status: "pending" }
+      offering.save(state_dir: tmpdir)
+      allow(Samagotchi::SessionManager).to receive(:stop_session)
+
+      expect { Samagotchi::SessionManager.archive_session(offering.id, state_dir: tmpdir) }
+        .to raise_error(Samagotchi::SessionManager::ArchiveRefused, /step-limit question waits/) { |e| expect(e.reason).to eq(:offer) }
+      expect(Samagotchi::SessionManager).not_to have_received(:stop_session)
+    end
+
     it "refuses a session a chi REPL owns, as delete does" do
       open_one = make(owner: "tui")
 

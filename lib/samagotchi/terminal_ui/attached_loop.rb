@@ -435,9 +435,10 @@ module Samagotchi
       end
 
       # /archive: the worker is asked to exit as for /exit, then the session
-      # is archived. A worker staying up for another UI (or reminders, a
-      # queued prompt) is stopped by the archive, as the web's archive
-      # stops it; a turn running refuses it. An empty session: the worker
+      # is archived. A worker staying up for another UI (or reminders) is
+      # stopped by the archive, as the web's archive stops it; a turn
+      # running, a queued prompt or an open continue offer refuses it
+      # (SessionManager.archive_session). An empty session: the worker
       # deletes it as it leaves.
       def exit_and_archive
         reply = @client.request_exit(client_id: @client_id)

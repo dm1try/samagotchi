@@ -24,6 +24,7 @@ require_relative "installed_gem"
 require_relative "installed_versions"
 require_relative "recap_store"
 require_relative "archive_store"
+require_relative "continue_offer"
 require_relative "image_store"
 require_relative "plugin_session_state"
 require_relative "terminal_ui"
@@ -105,6 +106,10 @@ module Samagotchi
         case @reason
         when :scratch then "a scratch session is deleted when you leave; nothing to archive"
         when :busy_child then "its delegate #{@busy_id[0, 8]} is running a turn; wait for it or stop it first"
+        when :queued then "a prompt is queued, which a resume would run; let it run first"
+        when :queued_child then "its delegate #{@busy_id[0, 8]} has a prompt queued, which a resume would run; let it run first"
+        when :offer then "the step-limit question waits for an answer; answer Continue or Stop first"
+        when :offer_child then "its delegate #{@busy_id[0, 8]} waits for an answer to its step-limit question; answer it first"
         else "a turn is running; wait for it or cancel it first"
         end
       end
@@ -309,8 +314,9 @@ module Samagotchi
     #   discarded: empty sessions their stopping worker deleted
     # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
     # @raise [OwnedByTUI] a chi REPL owns it or one of its children
-    # @raise [ArchiveRefused] a turn runs in it or in a child, or it is a
-    #   scratch session
+    # @raise [ArchiveRefused] a turn runs in it or in a child, a prompt is
+    #   queued in one (a later resume would run it), a live one offers to
+    #   continue past the step limit, or it is a scratch session
     def self.archive_session(id_or_prefix, state_dir: nil, wait: 5)
       sd = state_dir || Session.default_state_dir
       id = archive_target(id_or_prefix, sd)
@@ -319,13 +325,8 @@ module Samagotchi
       tree = [id, *descendant_ids(id, sd)]
       owners = tree.to_h { |sid| [sid, session_owner(sid, state_dir: sd)] }
       tree.each do |sid|
-        owner = owners[sid]
-        next unless owner
-
-        raise OwnedByTUI, sid if owner.tui?
-        next unless Session.load(sid, state_dir: sd).status == Session::STATUS_RUNNING
-
-        raise ArchiveRefused.new(id, sid == id ? :busy : :busy_child, busy_id: sid)
+        refusal = archive_refusal(sid, owners[sid], sd)
+        raise ArchiveRefused.new(id, sid == id ? refusal : :"#{refusal}_child", busy_id: sid) if refusal
       end
 
       stopped = tree.select { |sid| owners[sid] }
@@ -333,6 +334,22 @@ module Samagotchi
       archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
       { id: id, archived: archived, stopped: stopped, discarded: discarded }
     end
+
+    # What keeps +sid+ (in an archive's tree) from being archived: :busy (a
+    # turn runs), :queued (input/ holds a prompt, which outlives the stop and
+    # runs on a resume, live worker or not), :offer (a live worker's continue
+    # offer, which the stop would drop), or nil.
+    # @raise [OwnedByTUI] a chi REPL owns it
+    def self.archive_refusal(sid, owner, state_dir)
+      raise OwnedByTUI, sid if owner&.tui?
+
+      session = owner && Session.load(sid, state_dir: state_dir)
+      return :busy if session&.status == Session::STATUS_RUNNING
+      return :queued unless SessionInbox.find_new_input_files(Session.session_dir(sid, state_dir: state_dir)).empty?
+
+      :offer if session&.waiting_question(live: true)&.dig(:kind) == ContinueOffer::KIND
+    end
+    private_class_method :archive_refusal
 
     # Unarchive a session and its delegated children.
     # @return [Hash] {id:, unarchived: [ids that were archived]}

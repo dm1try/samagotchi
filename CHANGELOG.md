@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
 - The attached `/exit` (and `/exit --delete`, `/archive`) in an empty session no longer claims the session is
   already gone: a note arriving before the worker stops keeps it, so it says it will be discarded if nothing
   arrives.
+- Archiving a session (`/archive`, `chi sessions archive`, the web) with a prompt still queued or a step-limit
+  question open is refused with a message saying so, instead of stopping the worker and leaving the queued
+  prompt to run on the next resume.
 
 ## [0.20.0] - 2026-10-03
 
