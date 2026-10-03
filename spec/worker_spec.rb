@@ -986,6 +986,18 @@ RSpec.describe Samagotchi::Worker do
           seen.find { |e| e[:type] == :command_ran && e[:line] == line }
         end
 
+        it "opens after the turn's after_turn hooks ran (check-in closes its card there), so the two never stand together" do
+          seen_by_hook = []
+          engine.instance_variable_get(:@hooks).register_persistent(:after_turn) do |_event|
+            seen_by_hook << engine.pending_question
+          end
+          # A second turn that runs out too: the first question went as it started.
+          post_turn("long task")
+          expect(wait_until { events_seen.count { |e| e[:type] == :question_requested } == 2 }).to be(true)
+
+          expect(seen_by_hook).to eq([nil])
+        end
+
         it "is pending in the file as the session goes idle, with the turn's limit, and no reply is written" do
           expect(question).to include(kind: "continue", header: "Step limit", options: %w[Continue Stop], limit: 100,
                                       allow_freeform: true)
