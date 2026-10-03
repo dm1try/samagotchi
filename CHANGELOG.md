@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: after a reload, a turn with an empty retry mid-turn shows each tool row's own duration; the rows took their
   records by iteration, so every call after the retry showed the wrong one, or none.
+- Attached TUI: `/detach` typed at a question's `?` prompt detaches (the question stays open), as Ctrl-D does; it
+  was read as an answer and refused as an unknown option.
 
 ## [0.16.0] - 2026-10-03
 

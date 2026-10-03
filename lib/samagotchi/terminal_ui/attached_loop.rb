@@ -310,7 +310,13 @@ module Samagotchi
         return detach("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}") if line.nil?
 
         text = line.strip
-        return answer_question(text) if @question
+        if @question
+          # /detach leaves the question open, as Ctrl-D does; any other
+          # line (/exit too) is read as the answer.
+          return submit(nil) if command_registry.lookup_local(text)&.id == :detach
+
+          return answer_question(text)
+        end
 
         # The terminal's own commands (SessionCommands registers them, the
         # REPL reads the same words). Before the continue offer: the

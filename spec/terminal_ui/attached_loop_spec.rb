@@ -1857,6 +1857,19 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     expect(client).not_to have_received(:request_exit)
   end
 
+  it "detaches on /detach at an open question, as Ctrl-D does; the question stays open for another UI" do
+    allow(client).to receive(:answer)
+    allow(client).to receive(:dismiss_question)
+    question = { "id" => "q1", "question" => "Pick", "options" => %w[a b] }
+    turn = { "prompt" => "p", "parts" => [], "pending_question" => question }
+
+    expect(run_lines("/detach", snapshot: idle.merge("current_turn" => turn), at: "? ")).to eq(:detached)
+
+    expect(screen.lines.last).to eq("Detached; the session keeps running. Re-attach with: chi --attach s-1234")
+    expect(client).not_to have_received(:answer)
+    expect(client).not_to have_received(:dismiss_question)
+  end
+
   it "offers /detach and /quit on Tab" do
     expect(attached.send(:assist_path_completion_candidates, "/d")).to eq(["/detach"])
     expect(attached.send(:assist_path_completion_candidates, "/q")).to eq(["/quit"])
