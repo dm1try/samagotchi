@@ -26,10 +26,13 @@ module Samagotchi
     # @!attribute question [Hash, nil] the pending question
     #   (:waiting_for_answer)
     # @!attribute outcome [String, nil] how the turn ended when it left no
-    #   reply (:no_reply): "failed", "canceled" or "completed" (empty), from
-    #   the session's last_turn; nil when unknown. With "failed", text is
-    #   the failure's summary when the turn note has one.
-    Result = Struct.new(:status, :text, :file, :question, :outcome, keyword_init: true)
+    #   reply (:no_reply): "failed", "canceled", "completed" (empty) or
+    #   "exhausted" (it ran out of iterations, with nobody asked whether to
+    #   continue), from the session's last_turn; nil when unknown. With
+    #   "failed", text is the failure's summary when the turn note has one.
+    # @!attribute limit [Integer, nil] the iteration limit an "exhausted"
+    #   turn ran out at
+    Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, keyword_init: true)
 
     module_function
 
@@ -144,6 +147,8 @@ module Samagotchi
       last = session.last_turn.is_a?(Hash) ? session.last_turn : {}
       fresh = baseline.nil? || !baseline.key?(:last_turn) || (last["ended_at"] && last["ended_at"] != baseline[:last_turn])
       outcome = fresh ? last["outcome"] : nil
+      return Result.new(status: :no_reply, outcome: "exhausted", limit: last["limit"]) if fresh && last["exhausted"]
+
       text = outcome == "failed" ? failure_summary(session.messages) : nil
       Result.new(status: :no_reply, outcome: outcome, text: text)
     end

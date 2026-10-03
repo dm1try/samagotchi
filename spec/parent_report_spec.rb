@@ -75,6 +75,9 @@ RSpec.describe Samagotchi::ParentReport do
       Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", text: "boom") => ["failed", "the turn failed: boom; chi --attach #{id} shows it", 1],
       Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "canceled") => ["canceled", "the turn was canceled; chi --attach #{id} shows it", 1],
       Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "completed") => ["no_answer", "the turn ended with no visible answer; chi --attach #{id} shows it", 1],
+      Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "exhausted", limit: 100) =>
+        ["limit", "the turn ran out of iterations (100 steps) before it answered; chi send #{id} -m '/continue yes' continues it, " \
+                  "a message drops it; chi --attach #{id} shows it", 1],
       Samagotchi::ReplyWait::Result.new(status: :no_reply) => ["no_answer", "the turn ended without a reply (canceled, failed or empty); chi --attach #{id} shows it", 1],
       Samagotchi::ReplyWait::Result.new(status: :error, text: "no model") => ["error", "the worker failed: no model; chi --attach #{id} shows what happened", 1],
       Samagotchi::ReplyWait::Result.new(status: :worker_gone) => ["worker_gone", "the worker is gone; chi --attach #{id} shows what happened", 1],

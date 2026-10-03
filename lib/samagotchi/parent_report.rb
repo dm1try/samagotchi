@@ -31,8 +31,9 @@ module Samagotchi
     module_function
 
     # @param result [ReplyWait::Result]
-    # @return [String] answered, question, failed, canceled, no_answer,
-    #   error, worker_gone, stopped or running
+    # @return [String] answered, question, failed, canceled, limit (the
+    #   turn ran out of iterations, nobody asked), no_answer, error,
+    #   worker_gone, stopped or running
     def status(result)
       case result.status
       when :done then "answered"
@@ -41,6 +42,7 @@ module Samagotchi
         case result.outcome
         when "failed" then "failed"
         when "canceled" then "canceled"
+        when "exhausted" then "limit"
         else "no_answer"
         end
       when :error then "error"
@@ -166,7 +168,7 @@ module Samagotchi
         else
           "waiting for an answer: #{first_line(result.question&.dig(:question))}; open it: #{attach} or the web"
         end
-      when :no_reply then "#{no_reply_line(result)}; #{attach} shows it"
+      when :no_reply then "#{no_reply_line(result, session_id)}; #{attach} shows it"
       when :error then "the worker failed: #{result.text}; #{attach} shows what happened"
       when :worker_gone then "the worker is gone; #{attach} shows what happened"
       when :stopped then "the session was stopped (chi sessions stop)"
@@ -197,11 +199,14 @@ module Samagotchi
       lines.map { |line| "#{line}\n" }.join
     end
 
-    def no_reply_line(result)
+    def no_reply_line(result, session_id = nil)
       case result.outcome
       when "failed" then result.text.to_s.strip.empty? ? "the turn failed" : "the turn failed: #{result.text.strip}"
       when "canceled" then "the turn was canceled"
       when "completed" then "the turn ended with no visible answer"
+      when "exhausted"
+        "the turn ran out of iterations#{" (#{result.limit} steps)" if result.limit} before it answered; " \
+          "chi send #{session_id} -m '/continue yes' continues it, a message drops it"
       else "the turn ended without a reply (canceled, failed or empty)"
       end
     end

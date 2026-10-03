@@ -141,6 +141,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
                               replace! turn_completed persist hook:session_end])
     expect(completed).to include(display_pending: false, result: be_a(Samagotchi::LLM::ModelResult))
     expect(completed[:turn_summary]).to include(output: "done", resumable: false)
+    expect(session.last_turn.keys).not_to include("exhausted", "limit")
   end
 
   it "2. native empty: TurnNote.empty with its marker, the nudge dropped, no made-up answer" do
@@ -186,12 +187,14 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
                     text: "", exhausted: true, pending_tool_calls: true)
     end
 
-    run
+    run(max_iterations: 7)
 
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected used_memories_updated
                               replace! turn_completed persist hook:after_turn=completed answer_display hook:session_end])
     expect(tail).to eq(["user:hi", "model:calling", "tool_response:r"])
     expect(at_end).to eq(status: "idle", outcome: "completed")
+    # It ran out at the limit it was given: a wait nobody answers says so.
+    expect(session.last_turn).to include("outcome" => "completed", "exhausted" => true, "limit" => 7)
     expect_released
   end
 

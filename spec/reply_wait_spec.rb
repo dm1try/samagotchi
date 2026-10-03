@@ -162,6 +162,16 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(wait(baseline: { messages: 0, question_id: nil }).status).to eq(:no_reply)
     end
 
+    it "says a turn ran out of iterations when its last_turn is marked exhausted (nobody asked to continue)" do
+      baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.last_turn = { "outcome" => "completed", "ended_at" => "2026-10-03T10:00:00.000+00:00", "exhausted" => true, "limit" => 3 }
+      s.save(state_dir: tmpdir)
+
+      result = wait(baseline: baseline)
+      expect(result.to_h).to include(status: :no_reply, outcome: "exhausted", limit: 3)
+    end
+
     it "ignores the question pending at the baseline, not a new one" do
       own_by_worker
       set(pending_question: { id: "old", question: "Old?" })

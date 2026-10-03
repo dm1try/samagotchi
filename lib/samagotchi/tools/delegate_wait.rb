@@ -139,7 +139,7 @@ module Samagotchi
         when :canceled
           canceled_result(child_id)
         when :no_reply
-          result(child_id, status, "#{no_reply_text(wait)}; its session shows what happened")
+          result(child_id, status, "#{no_reply_text(wait, child_id)}; its session shows what happened")
         when :worker_gone
           result(child_id, status,
                  "the child's worker is gone (it stopped or crashed); delegate with session: #{child_id} starts it again with a message")
@@ -168,8 +168,8 @@ module Samagotchi
       end
 
       # ParentReport's line for a turn that left no reply, about the child.
-      def no_reply_text(wait)
-        ParentReport.no_reply_line(wait).sub(/\Athe turn/, "the child's turn")
+      def no_reply_text(wait, child_id)
+        ParentReport.no_reply_line(wait, child_id).sub(/\Athe turn/, "the child's turn")
       end
 
       def result(child_id, status, text)

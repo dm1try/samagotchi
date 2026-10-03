@@ -1079,7 +1079,10 @@ module Samagotchi
 
     # How the turn ended, on the session (Session#last_turn): the caller's
     # save puts it in the file the session hub watches.
-    def record_last_turn(session, outcome, seconds, origin)
+    # @param limit [Integer, nil] the turn ran out of iterations at this
+    #   limit: "exhausted" => true, "limit" => N, so a wait with nobody to
+    #   answer the continue offer says so (ReplyWait, ParentReport "limit")
+    def record_last_turn(session, outcome, seconds, origin, limit: nil)
       client_id = origin.is_a?(Hash) ? origin[:client_id].to_s : ""
       source = if client_id.start_with?("#{Tools::Delegate::CLIENT_PREFIX}:") then "delegate"
                elsif client_id == SessionManager::REMINDER_CLIENT_ID then "reminder"
@@ -1087,6 +1090,7 @@ module Samagotchi
                end
       session.last_turn = { "outcome" => outcome, "ended_at" => Time.now.iso8601(3),
                             "seconds" => seconds.round(1), "origin" => source }
+      session.last_turn.merge!("exhausted" => true, "limit" => limit) if limit
     end
     private :record_last_turn
 
@@ -1099,14 +1103,15 @@ module Samagotchi
     # returns [the messages to keep (nil: leave the session's), the end
     # event]. +save:+ also saves the session (a failed turn: a worker exits
     # after it). The disk writes come after the step: every emitter waits
-    # for the event lock.
-    def end_turn(turn, outcome, save: false)
+    # for the event lock. +exhausted:+ the turn ran out of iterations
+    # (its limit goes in last_turn).
+    def end_turn(turn, outcome, save: false, exhausted: false)
       seconds = turn.elapsed
       synchronize_events do
         kept, event = yield(seconds)
         replace_session_messages(turn.session, kept) if kept
         turn.session.status = Session::STATUS_IDLE
-        record_last_turn(turn.session, outcome, seconds, turn.origin)
+        record_last_turn(turn.session, outcome, seconds, turn.origin, limit: exhausted ? turn.limit : nil)
         emit_event(turn.on_event, turn.tag(event))
       end
       turn.ended = true
@@ -1412,8 +1417,9 @@ module Samagotchi
     # set on the kernel in #generate.
     # +id+: names the turn on :turn_started (its metrics record's id) and on
     # its saved prompt, so a UI pairs the two whatever left the conversation.
+    # +limit+: the iteration limit #generate ran it with.
     Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                      :settings, :id) do
+                      :settings, :id, :limit) do
       # The turn's boundary events carry the origin only when there is one,
       # so payloads stay unchanged for callers that don't pass it.
       def tag(event) = origin ? event.merge(origin: origin) : event
@@ -1664,9 +1670,10 @@ module Samagotchi
       # turn's model, not the last native one.
       @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: turn_window_setting)
 
+      turn.limit = @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for
       backend.complete(
         messages: turn.messages,
-        max_iterations: @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for,
+        max_iterations: turn.limit,
         on_stream_event: build_stream_event_handler(turn.on_event, cancel_controller: turn.controller),
         cancel_controller: turn.controller,
         model_name: bare_for_backend,
@@ -1703,7 +1710,7 @@ module Samagotchi
       # after_turn hooks run below and may present the answer (the web
       # holds its pop until it knows).
       display_pending = !canceled && @hooks.any?(:after_turn)
-      end_turn(turn, canceled ? "canceled" : "completed") do |seconds|
+      end_turn(turn, canceled ? "canceled" : "completed", exhausted: !canceled && result.exhausted?) do |seconds|
         kept = kept_messages(turn, result, seconds)
         if canceled
           [kept, { type: :turn_canceled, cancellation_reason: result.cancellation_reason,
