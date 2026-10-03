@@ -588,10 +588,40 @@ it "makes one attempt with retries: false" do
   it "uses TLS for an https URL" do
     secure = URI("https://api.example.test/v1/models")
     allow(Net::HTTP).to receive(:start)
-      .with("api.example.test", 443, open_timeout: 2, read_timeout: 5, use_ssl: true)
+      .with("api.example.test", 443, open_timeout: 2, read_timeout: 5, max_retries: 0, use_ssl: true)
       .and_return(:response)
 
     expect(http.fetch(secure, Net::HTTP::Get.new(secure))).to eq(:response)
+  end
+
+  describe "Net::HTTP's own retries" do
+    # Net::HTTP retries an idempotent request once by itself when the
+    # connection drops before an answer (max_retries: 1). chi's RetryPolicy
+    # owns retries (and logs each one), so every connection it opens must
+    # turn Net::HTTP's silent one off.
+    it "turns Net::HTTP's hidden retry off on a streamed request and a GET" do
+      server.enqueue("/v1/chat/completions", sse: "data: 1\n\n")
+      server.enqueue("/v1/props", json: { ok: true })
+      props = URI("#{server.base_url}/props")
+      allow(Net::HTTP).to receive(:start).and_call_original
+
+      http.stream_lines(uri, post_request) { nil }
+      http.fetch(props, Net::HTTP::Get.new(props), retries: false, check_status: false)
+
+      expect(Net::HTTP).to have_received(:start).twice do |_host, _port, **options|
+        expect(options[:max_retries]).to eq(0)
+      end
+    end
+
+    it "turns it off on a GET that chi retries itself" do
+      server.enqueue("/v1/models", json: { data: [] })
+      models = URI("#{server.base_url}/models")
+      allow(Net::HTTP).to receive(:start).and_call_original
+
+      http.fetch(models, Net::HTTP::Get.new(models))
+
+      expect(Net::HTTP).to have_received(:start).with(anything, anything, hash_including(max_retries: 0))
+    end
   end
 
   describe described_class::RetryPolicy do

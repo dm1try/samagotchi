@@ -168,7 +168,7 @@ module Samagotchi
 
       # Send +request+ and return the response with its body read.
       # @param retries [Boolean] false: one attempt, network errors raised as
-      #   is (Net::HTTP's own silent retry of an idempotent GET included)
+      #   is; either way Net::HTTP's own silent retry is off (see #start)
       # @param check_status [Boolean] false: return an error response instead
       #   of raising its ProviderError
       # @raise [RequestCancelled] when +cancel_controller+ cancels (with or
@@ -178,7 +178,7 @@ module Samagotchi
         identify(request)
         current = new_attempt_state(uri, request, log_fields, stream: false)
         attempt = lambda do |state|
-          start(uri, open_timeout: open_timeout, read_timeout: read_timeout, max_retries: retries ? nil : 0) do |http|
+          start(uri, open_timeout: open_timeout, read_timeout: read_timeout, max_retries: 0) do |http|
             state[:http] = http
             http.request(request).tap do |response|
               state[:status] = response.code.to_i
@@ -210,7 +210,13 @@ module Samagotchi
 
       def start(uri, open_timeout: nil, read_timeout: nil, max_retries: nil, &block)
         options = { open_timeout: open_timeout || @open_timeout, read_timeout: read_timeout || @read_timeout }
-        options[:max_retries] = max_retries if max_retries
+        # Net::HTTP retries an idempotent request once on its own (max_retries
+        # defaults to 1) when the connection drops before an answer: chi's
+        # RetryPolicy owns retries (and the log line says how many were sent),
+        # so every request here gets Net::HTTP's silent one off. Callers may
+        # still ask for it explicitly (a fetch whose retries: false passes 0).
+        retries = max_retries || 0
+        options[:max_retries] = retries
         options[:use_ssl] = true if uri.scheme == "https"
         Net::HTTP.start(uri.host, uri.port, **options, &block)
       end

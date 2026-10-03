@@ -76,7 +76,7 @@ RSpec.describe Samagotchi::Client do
       request = nil
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) do |built_request, &block|
         request = built_request
@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::Client do
       ]
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) do |built_request, &block|
         request = built_request
@@ -129,7 +129,7 @@ RSpec.describe Samagotchi::Client do
       request = nil
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) do |built_request, &block|
         request = built_request
@@ -172,7 +172,7 @@ RSpec.describe Samagotchi::Client do
       request = nil
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) do |built_request, &block|
         request = built_request
@@ -193,7 +193,7 @@ RSpec.describe Samagotchi::Client do
       request = nil
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) do |built_request, &block|
         request = built_request
@@ -213,7 +213,7 @@ RSpec.describe Samagotchi::Client do
       response = double("response", code: "200")
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 2, read_timeout: 1200)
+        .with("localhost", 8080, open_timeout: 2, read_timeout: 1200, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) { |_request, &block| block.call(response) }
       allow(response).to receive(:read_body)
@@ -228,7 +228,7 @@ RSpec.describe Samagotchi::Client do
       chunks = []
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) { |_request, &block| block.call(response) }
       allow(response).to receive(:read_body).and_yield("data: {\"content\":\"Hel\"}\n")
@@ -265,7 +265,7 @@ RSpec.describe Samagotchi::Client do
       response = double("response", code: "200")
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 3, read_timeout: 900)
+        .with("localhost", 8080, open_timeout: 3, read_timeout: 900, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) { |_request, &block| block.call(response) }
       allow(response).to receive(:read_body)
@@ -285,7 +285,7 @@ RSpec.describe Samagotchi::Client do
       response = double("response", code: "200")
 
       expect(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) { |_request, &block| block.call(response) }
       allow(response).to receive(:read_body)
@@ -314,7 +314,7 @@ RSpec.describe Samagotchi::Client do
       response = double("response", code: "200")
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) { |_request, &block| block.call(response) }
       allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
@@ -330,7 +330,7 @@ RSpec.describe Samagotchi::Client do
       retries = []
       call_count = 0
 
-      allow(Net::HTTP).to receive(:start).with("localhost", 8080, open_timeout: 10, read_timeout: 600) do |_host, _port, open_timeout:, read_timeout:, &block|
+      allow(Net::HTTP).to receive(:start).with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0) do |_host, _port, open_timeout:, read_timeout:, max_retries: nil, &block|
         call_count += 1
         raise Errno::ECONNRESET if call_count == 1
 
@@ -352,7 +352,7 @@ RSpec.describe Samagotchi::Client do
     it "raises RetryExhausted after retry budget is exhausted" do
       client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_raise(Net::OpenTimeout)
 
       expect { client.complete("prompt") }
@@ -384,7 +384,7 @@ RSpec.describe Samagotchi::Client do
     it "does not retry non-network errors" do
       client = described_class.new(host: "localhost", port: 8080)
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_raise(JSON::ParserError.new("bad json"))
 
       expect { client.complete("prompt") }
@@ -428,7 +428,7 @@ RSpec.describe Samagotchi::Client do
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
@@ -456,7 +456,7 @@ RSpec.describe Samagotchi::Client do
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
@@ -475,7 +475,7 @@ RSpec.describe Samagotchi::Client do
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
@@ -494,7 +494,7 @@ RSpec.describe Samagotchi::Client do
         chunks = []
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) { |_request, &block| block.call(response) }
         allow(response).to receive(:read_body)
@@ -515,7 +515,7 @@ RSpec.describe Samagotchi::Client do
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
@@ -532,7 +532,7 @@ RSpec.describe Samagotchi::Client do
       it "labels errors with mlx instead of llama.cpp" do
         client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_raise(JSON::ParserError.new("bad json"))
 
         expect { client.complete("prompt") }
@@ -551,7 +551,7 @@ RSpec.describe Samagotchi::Client do
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
@@ -581,7 +581,7 @@ RSpec.describe Samagotchi::Client do
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
@@ -607,7 +607,7 @@ RSpec.describe Samagotchi::Client do
         response = double("response", code: "200")
         built = nil
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) { |req, &block| built = req; block.call(response) }
         allow(response).to receive(:read_body)
@@ -659,7 +659,7 @@ RSpec.describe Samagotchi::Client do
         chunks = []
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) { |_request, &block| block.call(response) }
         allow(response).to receive(:read_body)
@@ -679,7 +679,7 @@ RSpec.describe Samagotchi::Client do
         response = double("response", code: "200")
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) { |_request, &block| block.call(response) }
         allow(response).to receive(:read_body).and_yield(
@@ -700,7 +700,7 @@ RSpec.describe Samagotchi::Client do
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
@@ -723,7 +723,7 @@ RSpec.describe Samagotchi::Client do
       it "labels errors with omlx instead of llama.cpp" do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_raise(JSON::ParserError.new("bad json"))
 
         expect { client.complete("prompt") }
@@ -739,7 +739,7 @@ RSpec.describe Samagotchi::Client do
       response = instance_double(Net::HTTPResponse, code: "200", body: '{"data":[{"id":"ggml-org/gemma-4-26b-a4b-it-GGUF:Q4_K_M","status":"loaded"}]}')
 
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request).and_return(response)
 
@@ -753,7 +753,7 @@ RSpec.describe Samagotchi::Client do
     it "raises RetryExhausted after retry budget is exhausted" do
       client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_raise(Net::OpenTimeout)
 
       expect { client.list_models }
@@ -771,7 +771,7 @@ RSpec.describe Samagotchi::Client do
         response = instance_double(Net::HTTPResponse, code: "200", body: '{"object":"list","data":[{"id":"mlx-community/Qwen3-14B-Instruct","object":"model","created":1}]}')
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request|
           request = built_request
@@ -795,7 +795,7 @@ RSpec.describe Samagotchi::Client do
         response = instance_double(Net::HTTPResponse, code: "200", body: '{"object":"list","data":[{"id":"omlx-community/Qwen3.6","object":"model","created":1}]}')
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600, max_retries: 0)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request|
           request = built_request
@@ -1029,7 +1029,7 @@ end
       stub_probe
       client.context_window(model: "m")
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600, max_retries: 0)
         .and_raise(Errno::ECONNREFUSED)
 
       expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::ConnectionRefused)
