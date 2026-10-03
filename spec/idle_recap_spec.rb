@@ -72,6 +72,13 @@ RSpec.describe Samagotchi::IdleRecap do
         result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
         expect(result).to eq("what is this?\n[image shot.png]\n\nA red square.")
       end
+      it "names an image once in a turn of images alone (the web's placeholder text)" do
+        refs = [{ "file" => "images/0123456789abcdef.png", "name" => "a.png" },
+                { "file" => "images/fedcba9876543210.png", "name" => "b.png" }]
+        messages = [{ "role" => "user", "content" => "[image: a.png] [image: b.png]", "images" => refs },
+                    { "role" => "model", "content" => "Two cats." }]
+        expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("[image: a.png] [image: b.png]\n\nTwo cats.")
+      end
       it "keeps model messages and strips think tokens" do
         messages = [
           { "role" => "user", "content" => "Hi" },

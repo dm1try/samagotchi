@@ -52,6 +52,8 @@ module Samagotchi
       # separator, while the chat loop writes one message per call.
       TOOL_OUTPUT_SEPARATOR = "\n\n---\n\n"
       TOOL_OUTPUT_HEADER_RE = /\A\[([\w.:-]+)\]/
+      # The text the web sends for a turn of images alone (images.js turnText).
+      IMAGE_ONLY_RE = /\A\s*(?:\[image: [^\]\n]*\]\s*)+\z/
 
       module_function
 
@@ -64,8 +66,11 @@ module Samagotchi
             # A plugin's steer is a prod to the model, not what the user said.
             next nil if Steer.steer?(message)
 
-            # An image is a line naming it (refs only, never its bytes).
-            [message["content"].to_s, *image_lines(message["images"])].reject(&:empty?).join("\n")
+            # An image is a line naming it (refs only, never its bytes), unless
+            # the text is only the web's placeholder naming it already.
+            content = message["content"].to_s
+            images = IMAGE_ONLY_RE.match?(content) ? [] : image_lines(message["images"])
+            [content, *images].reject(&:empty?).join("\n")
           when "model", "assistant"
             strip_thought(message["content"].to_s.gsub(TOOL_CALL_RE, ""))
           else
