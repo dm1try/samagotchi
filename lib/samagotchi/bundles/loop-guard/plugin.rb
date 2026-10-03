@@ -133,7 +133,9 @@ class ThinkingWatch
   # The complete sentences in the carry; the unfinished tail stays.
   def sentences
     parts = @carry.split(SPLIT, -1)
-    @carry = parts.pop.to_s
+    # An empty carry splits into no parts: nil.to_s is frozen, and the next
+    # feed's << would raise (the watch went blind for that generation).
+    @carry = +parts.pop.to_s
     if @carry.length > MAX_CARRY
       cut = @carry.rindex(" ", MAX_CARRY) || MAX_CARRY
       parts << @carry[0, cut]

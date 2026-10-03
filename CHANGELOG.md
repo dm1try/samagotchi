@@ -9,6 +9,7 @@ and commands may change between minor versions. How releases are made:
 ## [Unreleased]
 
 ### Fixed
+- loop-guard 0.3.1: the thinking watch no longer goes blind for the rest of a generation after an empty thinking delta (a FrozenError, logged as plugin_hook_failed).
 
 - loop-guard (bundle 0.3.0) cuts thinking that loops in short sentences ("I'll write it. Go. OK. Writing."),
   which it skipped before: such a loop ran for minutes to the provider's output cap. New settings

@@ -139,6 +139,15 @@ RSpec.describe "The loop-guard thinking watch" do
       expect(first_loop(calm + (run.split(" ").each_slice(20).map { |part| part.join(" ") } * " This sentence has enough words in it. "))).to be_nil
     end
 
+    it "keeps watching after an empty delta (nil.to_s is a frozen string)" do
+      detector = watch
+      expect(detector.feed("")).to be_nil
+      expect(detector.feed(nil)).to be_nil
+      sentence = "I keep going round the very same idea again. "
+      expect(detector.feed(("Some calm thinking that sets the scene for a while. " * 50) + (sentence * 12)))
+        .to be_a(mod::ThinkingWatch::Loop)
+    end
+
     describe "red-checks: the short-run rule" do
       it "counts code lines when their fences are gone (real DeepSeek code run)" do
         text, = fixture("real_deepseek_code_run.txt")
