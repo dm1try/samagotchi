@@ -27,6 +27,7 @@ require_relative "llm/backend"
 require_relative "llm/openai_chat"
 require_relative "llm/turn_settings"
 require_relative "session"
+require_relative "answer_tail"
 require_relative "archive_store"
 require_relative "session_observer"
 require_relative "tool_declarations"
@@ -1967,6 +1968,14 @@ module Samagotchi
     # Out-of-turn edits to the current session's conversation (`!cmd` output,
     # rollback after Ctrl-C). Each replaces the array rather than mutating it,
     # so the recap's lock-free snapshot never sees a half-applied edit.
+
+    # The answer a UI shows last (AnswerTail), a copy of that one message
+    # only: walked back from the end, never a #messages_checkpoint of the
+    # whole conversation (the Bridge's GET tail).
+    # @return [Hash, nil]
+    def last_answer_message
+      AnswerTail.find(@session&.messages)&.dup
+    end
 
     # @return [Array<Hash>] a copy of the current session's messages to hand
     #   back to #rollback_to later

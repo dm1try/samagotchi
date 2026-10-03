@@ -244,6 +244,20 @@ module Samagotchi
       end
     end
 
+    # What the page re-reads at a turn's end and when a card arrives: the
+    # session state, the last answer (Engine#last_answer_message: one
+    # message, not the conversation) and the cards, as one step of the event
+    # log (one event_seq). Light whatever the session's length: GET tail.
+    # @return [Hash] {session_id:, session_state_snapshot:, answer:, cards:, event_seq:, event_id:}
+    def tail_frame
+      @engine.synchronize_events do
+        seq = @engine.event_count
+        state = @engine.session_state_snapshot.merge(event_seq: seq, event_id: event_id(seq))
+        { session_id: @session_id, session_state_snapshot: state, answer: @engine.last_answer_message,
+          cards: @cards.list, event_seq: seq, event_id: event_id(seq) }
+      end
+    end
+
     # The worker's own way in for a session command that came as a message
     # (its first prompt, an input file): queued and announced as a POST
     # /command's is (#handle_command).
@@ -446,7 +460,8 @@ module Samagotchi
       %w[POST relay/status] => :handle_relay_status,
       %w[GET state] => :handle_state,
       %w[GET stats] => :handle_stats,
-      %w[GET snapshot] => :handle_snapshot
+      %w[GET snapshot] => :handle_snapshot,
+      %w[GET tail] => :handle_tail
     }.freeze
     ROUTE_PATH = %r|\A/session/([^/]+)/(.+)\z|u
 
@@ -762,6 +777,11 @@ module Samagotchi
     # after (or the stream resets). Returns [headers, status, body].
     def handle_snapshot(session_id, _body = nil)
       [{}, 200, snapshot_frame]
+    end
+
+    # The page's light re-read (#tail_frame): no message list.
+    def handle_tail(session_id, _body = nil)
+      [{}, 200, tail_frame]
     end
 
     # The stream cursor for +seq+ in this worker.

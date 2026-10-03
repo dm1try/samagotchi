@@ -770,6 +770,57 @@ RSpec.describe Samagotchi::Bridge do
         expect(missing).to be_nil
       end
 
+      describe "GET /session/:id/tail" do
+        def tail(session_id = @session.id)
+          Samagotchi::BridgeClient.new(session_id: session_id, port: @bridge_port).get_json("tail")
+        end
+
+        it "carries the session state, the last answer and the cards at one event_seq, no message list" do
+          start_bridge
+          @engine.session = @session
+          @session.messages = [
+            { role: "user", content: "check", turn_id: "t1" },
+            { role: "assistant", content: "", tool_calls: [{ id: "c1" }] },
+            { role: "tool_response", content: "out" },
+            { role: "assistant", content: "All **good**." }
+          ]
+          @engine.show_card(source: "spec", title: "Card", body: "body", id: "card-1")
+
+          body = tail
+          state = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("state")
+
+          expect(body.keys).to contain_exactly("session_id", "session_state_snapshot", "answer", "cards", "event_seq", "event_id")
+          expect(body["answer"]).to eq("role" => "assistant", "content" => "All **good**.")
+          expect(body["cards"].map { |c| c["id"] }).to eq(["card-1"])
+          expect(body["event_seq"]).to eq(state["session_state_snapshot"]["event_seq"])
+          expect(body["session_state_snapshot"]).to include("event_seq" => body["event_seq"], "event_id" => body["event_id"])
+          expect(body["event_id"]).to eq("#{body["event_seq"]}-#{@bridge.epoch}")
+        end
+
+        it "has a null answer on a fresh session, and 404s another session's id" do
+          start_bridge
+          @engine.session = @session
+
+          expect(tail["answer"]).to be_nil
+          expect(tail("nope")).to be_nil
+        end
+
+        it "takes the event log once and never copies the conversation" do
+          start_bridge
+          @engine.session = @session
+          @session.messages = [{ role: "user", content: "q" }, { role: "assistant", content: "a" }]
+          held = []
+          allow(@engine).to receive(:session_state_snapshot).and_wrap_original do |original, *args|
+            held << Thread.new { @engine.synchronize_events { true } }.join(0.2).nil?
+            original.call(*args)
+          end
+          expect(@engine).not_to receive(:messages_checkpoint)
+
+          expect(tail["answer"]).to eq("role" => "assistant", "content" => "a")
+          expect(held).to eq([true])
+        end
+      end
+
       it "carries the guardrail load warning once the first turn announced it" do
         start_bridge
         @engine.guardrail_failures.add("hook g.rb (config)", "LoadError: x", required: false)
