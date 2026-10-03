@@ -569,6 +569,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px}
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);word-break:break-all}
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:var(--bg-hover);color:var(--text-3)}
+/* The memory chip ("mem 2", when the session used some): phones only, where the "mem: …" line is hidden. */
+#infoBar .meta .mem-chip{display:none}
 #infoBar .meta .model.served-mismatch{background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border)}
 /* The open session's worker runs an older chi: its version, and Restart when it can. */
 #infoBar .meta .worker-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:2px 2px 2px 6px;border-radius:6px;background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border);white-space:nowrap}
@@ -599,6 +601,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   #infoBar .meta>*{flex-shrink:0}
   #infoBar .meta .id{order:-2}
   #infoBar .meta .status{order:-1}
+  /* Right after the id: the meta scrolls, and only its start is in sight. */
+  #infoBar .meta .mem-chip{display:inline;order:-2}
   #infoBar .meta .dir{word-break:normal}
   #infoBar button{padding:4px 8px}
 }

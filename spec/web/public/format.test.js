@@ -241,3 +241,12 @@ test("steerRowHtml: who nudged the model, the text collapsed and escaped; a bubb
     '<details class="steer-row"><summary>check-in nudged the model</summary><div class="steer-text">a &lt;b&gt;</div></details>');
   assert.match(steerRowHtml({ text: "x" }, { bubble: true }), /^<details class="bubble steer-row"><summary>nudged the model</);
 });
+
+import { memChipText, memChipTitle } from "../../../lib/samagotchi/web/public/format.js";
+
+test("memChipText / memChipTitle: the phone's memory chip counts them, the tooltip names them", () => {
+  assert.equal(memChipText(["a", "b"]), "mem 2");
+  assert.equal(memChipText(undefined), "mem 0");
+  assert.equal(memChipTitle(["a", "b"]), "memories: a, b");
+  assert.equal(memChipTitle([]), "no memories in this session");
+});

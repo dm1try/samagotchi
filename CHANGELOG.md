@@ -29,6 +29,8 @@ and commands may change between minor versions. How releases are made:
   tool rows and resolved questions; warn cards, cards with buttons and longer ones stay framed cards.
 - On a phone (a window under 900 px wide) the sessions strip's `hide` is in the top bar, where the `▾ N sessions`
   pill comes back, with a finger-sized target, instead of the last column of the sideways-scrolling strip.
+- On a phone the web info bar shows `mem N` (the memories the session used; their names in the tooltip) right after
+  the session id, since the `mem: …` line is hidden there.
 
 ### Fixed
 
