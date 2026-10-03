@@ -44,6 +44,7 @@ module Samagotchi
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       # The gate runs first, so tool_call_started shows the call that runs.
+      original = call.dup
       verdict = evaluate(call, iteration, params)
       call = verdict.call
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
@@ -73,6 +74,11 @@ module Samagotchi
       result, images = attach_images(call, result) if result[:images]
 
       output = scrub(result[:output].to_s)
+      # The gate may have replaced the call (known-names corrects a near
+      # miss): one leading line tells the model what actually ran.
+      if (changed = changed_call_line(original, call))
+        output = "#{changed}\n#{output}"
+      end
       capped = output
       truncated = false
       if max_tool_output_chars && output.length > max_tool_output_chars
@@ -204,6 +210,17 @@ module Samagotchi
 
     # A plugin tool's label, what the UIs show for its raw name.
     def plugin_label(name) = ToolActivity.plugin_label(name, registry: tools)
+
+    # The one leading line the model gets when the gate changed the call it
+    # asked for: "ran as: <tool> <changed args>", or nil when nothing
+    # changed. The args are the changed call's activity params, so the line
+    # stays short.
+    def changed_call_line(original, call)
+      return nil if original == call
+
+      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
+      ["ran as: #{call[:name]}", params].compact.join(" ")
+    end
 
     # The Engine sets the kernel's gate (its context, later the approval
     # flow); a bare kernel (specs) gets one that only runs the hooks.

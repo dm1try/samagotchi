@@ -30,6 +30,8 @@ and commands may change between minor versions. How releases are made:
 - A hook that raises is now logged (`hook_failed`) instead of being swallowed silently; the turn still goes on.
 - A hook's card (check-in, skills) now prints under its tool call's row: `tool_call_completed` is emitted before
   `after_tool_call` fires.
+- When a hook corrects a tool call (known-names), the model is told what actually ran with a leading
+  `ran as: <tool> <args>` line.
 
 ## [0.19.0] - 2026-10-03
 

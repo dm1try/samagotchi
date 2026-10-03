@@ -101,6 +101,24 @@ RSpec.describe Samagotchi::ToolRunner do
     expect(dispatched).to eq([{ name: "execute", content: "pwd" }])
   end
 
+  it "tells the model what actually ran when the gate changed the call" do
+    hooks.register(:before_tool_call) { |e| e[:call] = { name: "execute", content: "pwd" } }
+    result = run
+    expect(result[:output]).to start_with("ran as: execute command=\"pwd\"\n")
+    expect(result[:capped_output]).to start_with("ran as: execute command=\"pwd\"\n")
+  end
+
+  it "tells the model when the gate changed only the tool's name" do
+    hooks.register(:before_tool_call) { |e| e[:call] = e[:call].merge(name: "read") }
+    result = run
+    expect(result[:output]).to start_with("ran as: read")
+  end
+
+  it "adds no ran-as line when the gate left the call alone" do
+    hooks.register(:before_tool_call) { |e| e[:call] = e[:call].dup }
+    expect(run[:output]).to eq("[execute]\nran")
+  end
+
   it "passes the before event its call, params, and an unset veto" do
     seen = nil
     hooks.register(:before_tool_call) { |e| seen = e.dup }
