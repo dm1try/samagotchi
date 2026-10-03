@@ -1716,12 +1716,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     end
   end
 
-  it "says an empty session is discarded instead of how to resume it" do
+  # The worker checks again once it has let go: a note arriving first keeps it.
+  it "says an empty session will be discarded instead of how to resume it" do
     allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting","discard":true}'))
 
     run_lines("/exit")
 
-    expect(screen.lines.last).to eq("Detached; the session was empty, so it is discarded.")
+    expect(screen.lines.last).to eq("Detached; the session is empty: it will be discarded if nothing arrives before its worker stops.")
   end
 
   it "says how to resume a session the worker keeps" do
@@ -1809,7 +1810,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
       run_lines("/exit --delete")
 
       expect(deleted).to be_empty
-      expect(screen.lines.last).to eq("Detached; deleted session s-1234.")
+      expect(screen.lines.last).to eq("Detached; the session is empty: it will be discarded if nothing arrives before its worker stops.")
     end
 
     it "deletes nothing when the worker stays up, and says why" do
@@ -1884,7 +1885,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
       run_lines("/archive")
 
       expect(archived).to be_empty
-      expect(screen.lines.last).to eq("Detached; the session was empty, so it is discarded.")
+      expect(screen.lines.last).to eq("Detached; the session is empty: it will be discarded if nothing arrives before its worker stops.")
     end
 
     it "archives when the worker stays up for another UI: the archive stops it, as the web's does" do

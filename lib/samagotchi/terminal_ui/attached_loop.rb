@@ -47,6 +47,10 @@ module Samagotchi
       DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"
       # Why a request the Bridge read after its deadline didn't go through.
       LATE = "worker not answering in time"
+      # An exit the worker agreed to in an empty session. Said before it has
+      # left: it checks again once it lets go, and a note or prompt arriving
+      # first keeps the session (SessionManager.discard_left_session).
+      EMPTY_EXIT = "Detached; the session is empty: it will be discarded if nothing arrives before its worker stops."
       # Why the worker stayed up after /exit, by the reason it gave.
       HELD_REASONS = {
         "turn_running" => "a turn is running", "input_queued" => "prompts are queued",
@@ -420,7 +424,9 @@ module Samagotchi
           return detach("#{line} Not deleted.")
         end
         # An empty session: the worker deletes it as it leaves.
-        @delete_session.call(id) unless discards?(reply)
+        return detach(EMPTY_EXIT) if discards?(reply)
+
+        @delete_session.call(id)
         detach("Detached; deleted session #{id}.")
       rescue SystemCallError, IOError => e
         detach("#{exit_failed_line(e.message)} Not deleted.")
@@ -436,7 +442,7 @@ module Samagotchi
       def exit_and_archive
         reply = @client.request_exit(client_id: @client_id)
         id = @client.session_id
-        return detach("Detached; the session was empty, so it is discarded.") if reply.status == 200 && discards?(reply)
+        return detach(EMPTY_EXIT) if reply.status == 200 && discards?(reply)
         return detach("#{exit_line(reply)} Not archived.") unless [200, 409].include?(reply.status)
 
         result = @archive_session.call(id)
@@ -454,9 +460,7 @@ module Samagotchi
         error = reply.json&.fetch("error", nil)
         case reply.status
         when 200
-          # Said as the worker agreed to leave; a note coming in before it
-          # does keeps the session after all (rare, left as is).
-          return "Detached; the session was empty, so it is discarded." if discards?(reply)
+          return EMPTY_EXIT if discards?(reply)
 
           "Detached; the session's worker is stopping. Resume with: chi --resume #{id}"
         when 409

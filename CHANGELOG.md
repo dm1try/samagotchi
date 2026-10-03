@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - An attached `/exit` the worker reads only after the TUI stopped waiting (a frozen or sleeping worker) no
   longer stops it later: the request is dropped, as late turns and commands are.
+- The attached `/exit` (and `/exit --delete`, `/archive`) in an empty session no longer claims the session is
+  already gone: a note arriving before the worker stops keeps it, so it says it will be discarded if nothing
+  arrives.
 
 ## [0.20.0] - 2026-10-03
 
