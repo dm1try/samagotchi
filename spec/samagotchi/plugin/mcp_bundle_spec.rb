@@ -228,14 +228,14 @@ RSpec.describe "The mcp bundle" do
     expect(call_tool("mcp_fake_echo", { "text" => "BANANA42" })).to eq("echo: BANANA42")
     expect(call_tool("mcp_fake_add", { "a" => 2, "b" => 3.5 })).to eq("5.5")
     expect(call_tool("mcp_fake_mixed"))
-      .to eq("first\n[image 1: image/png, attached]\ninline\n[resource link: file:///y.txt]\nlast")
+      .to eq("first\n[image 1: image/png]\ninline\n[resource link: file:///y.txt]\nlast")
     expect(call_tool("mcp_fake_fail")).to eq("Error: it broke")
   end
 
   describe "images" do
     it "attaches an image block's picture (decoded), the text saying where it was" do
       result = run_tool("mcp_fake_mixed")
-      expect(result[:output]).to eq("[mcp_fake_mixed]\nfirst\n[image 1: image/png, attached]\ninline\n[resource link: file:///y.txt]\nlast")
+      expect(result[:output]).to eq("[mcp_fake_mixed]\nfirst\n[image 1: image/png]\ninline\n[resource link: file:///y.txt]\nlast")
       expect(result[:images].map { |ref| ref.slice(:name, :width, :height, :source) })
         .to eq([{ name: "mixed-1.png", width: 3, height: 2, source: "tool" }])
       expect(File.binread(File.join(session_dir, result[:images].first[:file]))).to eq(File.binread(tiny_png))
@@ -249,11 +249,17 @@ RSpec.describe "The mcp bundle" do
       expect(result).not_to have_key(:images)
     end
 
+    it "writes a neutral image line, never claiming it was attached" do
+      result = run_tool("mcp_fake_mixed")
+      expect(result[:output]).to include("[image 1: image/png]")
+      expect(result[:output]).not_to include("attached")
+    end
+
     it "attaches an image whose path is the whole answer, when it is in the temp dir" do
       shot = File.join(tmpdir, "screenshot.png")
       FileUtils.cp(tiny_png, shot)
       result = run_tool("mcp_fake_path", { "path" => shot })
-      expect(result[:output]).to eq("[mcp_fake_path]\n#{shot}\n[image 1: screenshot.png, attached]")
+      expect(result[:output]).to eq("[mcp_fake_path]\n#{shot}\n[image 1: screenshot.png]")
       expect(result[:images].map { |ref| ref[:name] }).to eq(["screenshot.png"])
     end
 
@@ -288,7 +294,7 @@ RSpec.describe "The mcp bundle" do
       text = "Saved screenshot to #{shot}. Also (#{shot}), \"#{second}\" and #{spaced}."
       result = run_tool("mcp_fake_path", { "path" => text })
       expect(result[:output])
-        .to eq("[mcp_fake_path]\n#{text}\n[image 1: screenshot.png, attached]\n[image 2: b.JPEG, attached]")
+        .to eq("[mcp_fake_path]\n#{text}\n[image 1: screenshot.png]\n[image 2: b.JPEG]")
       expect(result[:images].map { |ref| ref[:name] }).to eq(%w[screenshot.png b.JPEG])
     end
 

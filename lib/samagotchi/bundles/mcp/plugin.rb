@@ -656,7 +656,7 @@ class Plugin
 
         notes = paths.map do |path|
           images << { path: path, name: File.basename(path) }
-          "[image #{images.size}: #{File.basename(path)}, attached]"
+          "[image #{images.size}: #{File.basename(path)}]"
         end
         [line, *notes].join("\n")
       when "image"
@@ -665,7 +665,7 @@ class Plugin
         next "[image: #{mime}, empty]" if bytes.empty?
 
         images << { bytes: bytes, name: "#{tool}-#{images.size + 1}.#{IMAGE_EXT.fetch(mime, "img")}" }
-        "[image #{images.size}: #{mime}, attached]"
+        "[image #{images.size}: #{mime}]"
       when "audio" then "[audio: #{block["mimeType"] || "unknown type"}]"
       when "resource"
         resource = block["resource"] || {}

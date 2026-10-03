@@ -32,6 +32,8 @@ and commands may change between minor versions. How releases are made:
   `after_tool_call` fires.
 - When a hook corrects a tool call (known-names), the model is told what actually ran with a leading
   `ran as: <tool> <args>` line.
+- MCP image content is described with a neutral `[image N: …]` line instead of claiming it was attached, which
+  was wrong for a model that can't see images.
 
 ## [0.19.0] - 2026-10-03
 
