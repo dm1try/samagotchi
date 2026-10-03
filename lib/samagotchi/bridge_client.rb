@@ -20,6 +20,10 @@ module Samagotchi
     # A reply's status line; its code is group 1.
     STATUS_LINE = %r{\AHTTP/1\.[01] (\d{3})}
     STREAM_CONNECT_ATTEMPTS = 3
+    # Seconds #stream waits for the Bridge's response headers, per attempt:
+    # a worker that took the connection and froze must not hold the web's
+    # proxy thread (as EventStream::HEADER_TIMEOUT for the TUI's).
+    STREAM_HEADER_TIMEOUT = 5.0
     # Seconds #stream waits for bytes before it asks `running` again.
     STREAM_POLL = 0.5
     # Seconds a one-shot request waits for the whole reply. Every route
@@ -259,7 +263,8 @@ module Samagotchi
     # @param running [#call, nil] asked before every read, and every
     #   STREAM_POLL seconds of silence: the stream ends once it returns
     #   false. A quiet stream is never cut otherwise.
-    def stream(query: "", last_event_id: nil, running: nil)
+    # @param header_timeout [Float] see STREAM_HEADER_TIMEOUT
+    def stream(query: "", last_event_id: nil, running: nil, header_timeout: STREAM_HEADER_TIMEOUT)
       sock = nil
       # Absorb the probe→connect race around a resumed worker's bridge:
       # the sidecar probe can succeed a moment before the worker dies (or
@@ -267,7 +272,7 @@ module Samagotchi
       # avoid the silent empty-200 that EventSource would otherwise keep
       # re-opening.
       STREAM_CONNECT_ATTEMPTS.times do |attempt|
-        sock, = connect_stream(query: query, last_event_id: last_event_id)
+        sock, = connect_stream(query: query, last_event_id: last_event_id, timeout: header_timeout)
         break if sock
 
         sleep(0.15 * (attempt + 1))
@@ -303,7 +308,7 @@ module Samagotchi
     end
 
     # Open GET /session/:id/stream and read past the response headers.
-    # @param timeout [Float, nil] give up when the headers don't start in time
+    # @param timeout [Float, nil] give up when the headers aren't all in by then
     # @return [Array(TCPSocket, Integer), nil] the socket positioned at the
     #   body and the HTTP status, or nil when the Bridge can't be reached
     def connect_stream(query: "", last_event_id: nil, timeout: nil)
@@ -311,10 +316,9 @@ module Samagotchi
       lei = last_event_id.to_s.strip
       last_event_line = lei.empty? ? "" : "Last-Event-ID: #{lei}\r\n"
       sock.write("GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\n#{last_event_line}Connection: keep-alive\r\n\r\n")
-      raise Errno::ETIMEDOUT if timeout && !sock.wait_readable(timeout)
-
-      status = sock.gets.to_s[STATUS_LINE, 1].to_i
-      while (line = sock.gets)
+      deadline = timeout && (Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout)
+      status = header_line(sock, deadline).to_s[STATUS_LINE, 1].to_i
+      while (line = header_line(sock, deadline))
         break if line.strip.empty?
       end
       [sock, status]
@@ -324,6 +328,25 @@ module Samagotchi
     end
 
     private
+
+    # One line of the response headers, or nil at EOF; raises
+    # Errno::ETIMEDOUT once +deadline+ (monotonic, nil: none) has passed. A
+    # line read in pieces, so a Bridge that stops mid-line can't hold it.
+    def header_line(sock, deadline)
+      return sock.gets unless deadline
+
+      line = +""
+      loop do
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        raise Errno::ETIMEDOUT unless remaining.positive? && sock.wait_readable(remaining)
+
+        char = sock.getc
+        return line.empty? ? nil : line if char.nil?
+
+        line << char
+        return line if char == "\n"
+      end
+    end
 
     # When this client stops waiting for a reply, as epoch seconds (see
     # DEADLINE_SHARE). Wall clock: the worker runs on this machine and reads

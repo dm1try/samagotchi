@@ -30,6 +30,8 @@ and commands may change between minor versions. How releases are made:
   live list does.
 - Web: with several chi tabs in the background, a session that needs you shows one OS notification, not one
   per tab (every tab still counts it in its title).
+- chi web: a session stream whose worker took the connection and froze before answering no longer holds the
+  request forever; it gives up after 5 s per attempt.
 
 ## [0.20.0] - 2026-10-03
 

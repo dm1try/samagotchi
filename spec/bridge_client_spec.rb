@@ -333,6 +333,49 @@ RSpec.describe Samagotchi::BridgeClient do
     peer&.kill
     server&.close
   end
+
+  it "gives up on a Bridge that accepts the stream but never sends its headers (4.20)" do
+    server = TCPServer.new("127.0.0.1", 0)
+    conns = []
+    peer = Thread.new do
+      loop do
+        conn = server.accept
+        conn.readpartial(16_384)
+        conns << conn # held open, never answered
+      end
+    end
+    peer.report_on_exception = false
+    client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
+    reader = Thread.new { client.stream(header_timeout: 0.1) { raise "no body expected" } }
+
+    expect(reader.join(3)).to eq(reader)
+    expect(conns.size).to eq(described_class::STREAM_CONNECT_ATTEMPTS)
+  ensure
+    reader&.kill
+    peer&.kill
+    conns&.each { |conn| conn.close rescue nil }
+    server&.close
+  end
+
+  it "gives up on headers that start but never end" do
+    server = TCPServer.new("127.0.0.1", 0)
+    peer = Thread.new do
+      conn = server.accept
+      conn.readpartial(16_384)
+      conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n")
+      sleep
+    end
+    peer.report_on_exception = false
+    client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    expect(client.connect_stream(timeout: 0.2)).to be_nil
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.5
+  ensure
+    peer&.kill
+    server&.close
+  end
+
   describe "#relay / #relay_status (the approval relay)" do
     it "posts a relay action and keeps the reply's status and body" do
       port, received = serve_once(json_reply("409 Conflict", '{"error":"question_not_pending"}'))
