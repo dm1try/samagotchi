@@ -39,7 +39,7 @@ module Samagotchi
         cli_scope = @scope.to_s.strip.empty? ? nil : @scope
         raw = cli_scope || data[:scope]&.to_s
         target_scope = (raw.nil? || raw.strip.empty?) ? "system" : raw
-        target_dir = resolve_target_dir(target_scope)
+        target_dir = MemoryPaths.scope_dir(target_scope) or raise UninstallError, "invalid scope: #{target_scope}"
 
         files = data[:files] || {}
         hooks = data[:hooks] || {}
@@ -128,10 +128,6 @@ module Samagotchi
         IndexUpdater.update_index(scope, file_key.delete_suffix(".md"), File.size(path), source: bundle)
       rescue StandardError => e
         @warnings << "index.md: line for #{file_key.delete_suffix(".md")} not updated (#{e.message})"
-      end
-
-      def resolve_target_dir(scope)
-        MemoryPaths.scope_dir(scope) or raise UninstallError, "invalid scope: #{scope}"
       end
     end
   end

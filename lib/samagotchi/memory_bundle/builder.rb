@@ -41,7 +41,7 @@ module Samagotchi
       end
 
       def run
-        target_dir = resolve_target_dir(@scope)
+        target_dir = MemoryPaths.scope_dir(@scope) or raise BuildError, "invalid scope: #{@scope}"
         resolved_name = @name || default_name(@scope)
         resolved_version = @version || DEFAULT_VERSION
 
@@ -331,10 +331,6 @@ module Samagotchi
         base = File.basename(s)
         base = "#{base}.md" unless base.downcase.end_with?(".md")
         base
-      end
-
-      def resolve_target_dir(scope)
-        MemoryPaths.scope_dir(scope) or raise BuildError, "invalid scope: #{scope}"
       end
 
       def resolve_out_path(out_arg, default_name)

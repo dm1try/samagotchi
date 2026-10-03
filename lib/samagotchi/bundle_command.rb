@@ -431,7 +431,11 @@ module Samagotchi
         @stderr.puts "Bundle '#{bname}' not installed"; return 1
       end
       scope = data[:scope]&.to_s || "system"
-      target_dir = Samagotchi::MemoryBundle::Installer.new(source: ".", name: bname, scope: scope).send(:resolve_target_dir, scope)
+      begin
+        target_dir = Samagotchi::MemoryPaths.scope_dir!(scope)
+      rescue ArgumentError => e
+        @stderr.puts "Bundle '#{bname}': #{e.message}"; return 1
+      end
       files = data[:files] || {}
       hooks = data[:hooks] || {}
       plugin_path = prov.plugin_path(data)

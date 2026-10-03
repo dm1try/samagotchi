@@ -4,6 +4,7 @@ require "open3"
 require "rbconfig"
 require "tmpdir"
 require "digest"
+require "json"
 require "fileutils"
 require "spec_helper"
 
@@ -429,6 +430,22 @@ Hooks removed: 1\n\z})
       expect(out).to match(/\A=== plugin\/plugin\.rb ===\n--- base \(provenance\) ---\n#{Regexp.escape(plugin)}--- current \(on-disk\) ---\n#{Regexp.escape(plugin)}--- metadata: sha256=\S+ requires_chi=>= 0\.1\.28\n\n\z/)
     end
   end
+  # A scope only a newer chi knows (read after a downgrade), or a hand edit.
+  context "with a bundle whose provenance names a scope this chi doesn't know" do
+    before(:context) do
+      @root = self.class.sandbox
+      self.class.run_in(@root, "install", self.class.make_bundle(File.join(@root, "b"), name: "demo", version: "1.0.0", content: "one\n"))
+      mjson = File.join(@root, "cfg", "samagotchi", "memories", ".bundles", "demo", "manifest.json")
+      File.write(mjson, JSON.generate(JSON.parse(File.read(mjson)).merge("scope" => "team")))
+    end
+
+    after(:context) { FileUtils.rm_rf(@root) }
+
+    it "diff refuses it" do
+      expect(chi("diff", "demo")).to eq(["", "Bundle 'demo': invalid scope: team\n", 1])
+    end
+  end
+
   context "with a hooks bundle this chi is too old for" do
     before(:context) do
       @root = self.class.sandbox

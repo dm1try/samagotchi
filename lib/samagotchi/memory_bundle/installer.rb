@@ -73,7 +73,7 @@ module Samagotchi
         # Determine target scope (CLI wins over manifest).
         cli_scope = @scope.to_s.strip.empty? ? nil : @scope
         target_scope = cli_scope || manifest&.scope || "system"
-        target_dir = resolve_target_dir(target_scope)
+        target_dir = MemoryPaths.scope_dir(target_scope) or raise InstallError, "invalid scope: #{target_scope}"
         FileUtils.mkdir_p(target_dir)
 
         # Copy .md files and update index for each.
@@ -597,10 +597,6 @@ module Samagotchi
           # Not fatal (the file is in place): a warning says so.
           @warnings << "index.md: line for #{entry_name} not updated (#{e.message})"
         end
-      end
-
-      def resolve_target_dir(scope)
-        MemoryPaths.scope_dir(scope) or raise InstallError, "invalid scope: #{scope}"
       end
     end
   end

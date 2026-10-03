@@ -112,6 +112,12 @@ module Samagotchi
       end
     end
 
+    # scope_dir, or ArgumentError ("invalid scope: team") for a scope it
+    # doesn't know: for a caller that must not guess a folder.
+    def scope_dir!(scope, env: ENV, cwd: Dir.pwd)
+      scope_dir(scope, env: env, cwd: cwd) or raise ArgumentError, "invalid scope: #{scope}"
+    end
+
     def bundles_dir(env: ENV)
       File.join(system_dir(env: env), ".bundles")
     end
