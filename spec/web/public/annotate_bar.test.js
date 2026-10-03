@@ -70,7 +70,7 @@ function fakePage({ selectionText = "the answer", inRoot = true } = {}) {
     docListeners.selectionchange.forEach((fn) => fn());
     frames.splice(0).forEach((fn) => fn());
   };
-  return { bar, doc, quotes, state, selectionChange, win };
+  return { answer, bar, doc, quotes, state, selectionChange, win };
 }
 
 const click = (bar, btn) => bar.fire("click", { target: btn });
@@ -134,4 +134,25 @@ test("schedule reads the selection once per frame", () => {
   frames[0]();
   assert.equal(reads, 1);
   assert.equal(bar.el.hidden, false);
+});
+
+test("the bar moves below a copy button it would cover (this bubble's or the next one's)", () => {
+  const copyBtn = (top, bottom) => ({ getBoundingClientRect: () => ({ top, bottom, left: 0, right: 1000 }) });
+  const run = ({ own = [], next = [] } = {}) => {
+    const page = fakePage();
+    // The bar's box follows where it was placed (120 x 30, as offsetWidth/Height).
+    page.bar.el.getBoundingClientRect = function () {
+      const top = parseFloat(this.style.top); const left = parseFloat(this.style.left);
+      return { top, bottom: top + 30, left, right: left + 120 };
+    };
+    page.answer.querySelectorAll = (sel) => (sel === ".copy-btn" ? own : []);
+    if (next.length) page.answer.nextElementSibling = { querySelectorAll: (sel) => (sel === ".copy-btn" ? next : []) };
+    page.selectionChange();
+    return page.bar.el.style.top;
+  };
+  assert.equal(run(), "126px"); // under the selection (bottom 120 + 6)
+  assert.equal(run({ own: [copyBtn(300, 330)] }), "126px"); // a button elsewhere: stays
+  assert.equal(run({ own: [copyBtn(120, 150)] }), "154px"); // over this bubble's button: just below it
+  assert.equal(run({ next: [copyBtn(140, 160)] }), "164px"); // the next bubble's button too
+  assert.equal(run({ own: [copyBtn(140, 790)] }), "762px"); // never below the viewport (800 - 30 - 8)
 });
