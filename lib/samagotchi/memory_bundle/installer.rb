@@ -487,11 +487,12 @@ module Samagotchi
         File.exist?(base_path) && Provenance.file_sha(target) == Provenance.file_sha(base_path)
       end
 
+      # Not fatal, like update_target_index: a warning says so.
       def remove_target_index(scope, file_key)
         IndexUpdater.remove_index(scope, file_key.delete_suffix(".md"))
         IndexUpdater.remove_index(scope, file_key) # legacy "name.md" line
-      rescue StandardError
-        # Best-effort, like update_target_index.
+      rescue StandardError => e
+        @warnings << "index.md: line for #{file_key.delete_suffix(".md")} not removed (#{e.message})"
       end
 
       # One warning per need not found on this PATH (read-only, so dry-run
@@ -557,8 +558,9 @@ module Samagotchi
           # legacy "name.md" line older installs wrote.
           IndexUpdater.remove_index(scope, file_key) unless entry_name == file_key
           IndexUpdater.update_index(scope, entry_name, byte_count)
-        rescue => _e
-          # Silently skip index updates — they're best-effort.
+        rescue StandardError => e
+          # Not fatal (the file is in place): a warning says so.
+          @warnings << "index.md: line for #{entry_name} not updated (#{e.message})"
         end
       end
 

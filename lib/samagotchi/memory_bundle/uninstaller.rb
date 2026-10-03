@@ -79,11 +79,12 @@ module Samagotchi
             @trash.move(target_path)
             @trashed_files << file_key_str
           end
-          # Remove index line
+          # Remove index line (not fatal: a warning says so)
           begin
             IndexUpdater.remove_index(target_scope, file_key_str.delete_suffix(".md"))
             IndexUpdater.remove_index(target_scope, file_key_str) # legacy "name.md" line
-          rescue => _e
+          rescue StandardError => e
+            @warnings << "index.md: line for #{file_key_str.delete_suffix(".md")} not removed (#{e.message})"
           end
         end
 

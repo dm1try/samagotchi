@@ -264,6 +264,16 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(index_content).to include("- **identity** · system ·")
           expect(index_content).not_to include("**identity.md**")
         end
+        it "says when an index line couldn't be written, and installs anyway" do
+          allow(Samagotchi::MemoryBundle::IndexUpdater).to receive(:update_index).and_raise(Errno::EACCES, "index.md")
+          bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+          installer = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
+          installer.run
+
+          expect(File.exist?(File.join(system_memories_dir, "identity.md"))).to be true
+          expect(installer.warnings).to include("index.md: line for identity not updated (Permission denied - index.md)")
+        end
+
         it "replaces a legacy name.md index line with the entry name" do
           FileUtils.mkdir_p(system_memories_dir)
           File.write(File.join(system_memories_dir, "index.md"),

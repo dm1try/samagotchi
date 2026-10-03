@@ -192,6 +192,16 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     end
   end
 
+  it "says when an index line couldn't be removed, and uninstalls anyway" do
+    install_bundle(write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "idx"), "idx")
+    allow(Samagotchi::MemoryBundle::IndexUpdater).to receive(:remove_index).and_raise(Errno::EACCES, "index.md")
+
+    uninstaller = described_class.new(name: "idx")
+    uninstaller.run
+    expect(uninstaller.trashed_files).to eq(["identity.md"])
+    expect(uninstaller.warnings).to eq(["index.md: line for identity not removed (Permission denied - index.md)"])
+  end
+
   it "memory-only bundles unaffected" do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "no-hook")
     install_bundle(src, "no-hook")

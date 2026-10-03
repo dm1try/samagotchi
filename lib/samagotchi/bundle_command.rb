@@ -313,10 +313,12 @@ module Samagotchi
         @stdout.puts "Uninstalled bundle '#{name}'"
         @stdout.puts "Removed: #{result.removed.join(", ")}" unless result.removed.empty?
         result.trash.each_value { |files, dir| puts_trashed(files, dir) }
+        result.warnings.each { |w| @stdout.puts w }
         return 0
       end
       @stdout.puts "Removed from #{name}: #{result.removed.join(", ")}" unless result.removed.empty?
       result.trash.each_value { |files, dir| puts_trashed(files, dir) }
+      result.warnings.each { |w| @stdout.puts w }
       result.blocked.each { |member, why| @stdout.puts "Kept #{member}: #{why}" }
       @stderr.puts "Uninstall failed: #{name} stays installed until #{result.blocked.keys.join(", ")} goes " \
                    "(chi bundle uninstall #{name} --force)"

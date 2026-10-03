@@ -173,6 +173,16 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
       expect(installed).to eq(%w[c])
     end
 
+    it "passes on a member's warnings" do
+      ship("a")
+      install(ship_meta("core", %w[a]))
+      prov.new(name: "mine").write(files: { "a.md" => File.join(system_dir, "a.md") }, scope: "system", version: "1", source_path: "/x")
+
+      result = described_class.uninstall("core", shipped_dir: shipped)
+      expect(result.warnings).to eq(["a: Kept a.md: bundle mine has it too"])
+      expect(File.exist?(File.join(system_dir, "a.md"))).to be true
+    end
+
     it "carries on past a member with an edited file, reports it and keeps the meta; --force removes it" do
       %w[a b].each { |n| ship(n) }
       install(ship_meta("core", %w[a b]))
