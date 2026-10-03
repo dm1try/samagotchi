@@ -177,7 +177,7 @@ test("restoreAction never refills a prompt this page didn't send (a replay after
   assert.deepEqual(restoreAction(initial, opts), { refill: null, own: false, label: null });
 });
 
-import { keepEarlyRestore, restoreOnAck, dropEarlyRestores, restoreInto } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { keepEarlyRestore, restoreOnAck, dropEarlyRestores, restoreInto, composerAfterAck } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("a prompt_restored before its /turn ack is kept, and the ack gets the prompt back", () => {
   const event = { type: "prompt_restored", prompt: "boom", origin: { client_id: ME, enqueued_id: "e1" } };
@@ -237,6 +237,18 @@ test("restoreInto puts the restored prompt back without replacing what was typed
   assert.equal(restoreInto("", "why not"), "why not");
   assert.equal(restoreInto(null, "why not"), "why not");
   assert.equal(restoreInto(null, ""), "");
+});
+
+// 4.13: the ack lands while the composer still holds the text just sent (it
+// goes: the bubble has it), and it must not come back doubled. Text typed
+// since the send stays.
+test("composerAfterAck clears the text just sent and keeps what was typed since", () => {
+  assert.equal(composerAfterAck({ sent: "Say ping", current: "Say ping" }), "");
+  assert.equal(composerAfterAck({ sent: "Say ping", current: "Say ping", refill: "Say ping" }), "Say ping");
+  assert.equal(composerAfterAck({ sent: "Say ping", current: "why not" }), "why not");
+  assert.equal(composerAfterAck({ sent: "Say ping", current: "why not", refill: "Say ping" }), "why not\nSay ping");
+  assert.equal(composerAfterAck({ sent: "Say ping", current: " why not " }), " why not ");
+  assert.equal(composerAfterAck(), "");
 });
 
 
