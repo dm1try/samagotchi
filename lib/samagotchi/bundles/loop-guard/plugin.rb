@@ -44,12 +44,19 @@ require "digest"
 #   of 2 or more needs a cycle of distinct sentences (not all alike), and a
 #   period of 1 (one sentence over and over) needs `similarity` +
 #   SAME_MARGIN (0.9 by default: near-identical);
-# - the same sentence max_same times in the generation, in any order.
+# - the same sentence max_same times in the generation, in any order;
+# - a short run: short_run short sentences (under min_words) in a row, at
+#   most short_distinct different ones among the last short_run ("I'll
+#   write it. Go. OK. Writing. Go."). Normal thinking has short sentences
+#   too ("Hmm.", "Fine."), but spread out, or in runs of different ones
+#   (code lines); a sentence of min_words or more ends the run, one with no
+#   letters or digits neither counts nor ends it. Lines inside a ``` code
+#   block are not short sentences.
 # Nothing triggers before min_chars of thinking. O(new chars) per feed.
 class ThinkingWatch
   DEFAULTS = { "watch" => true, "action" => "retry", "min_chars" => 2000, "repeats" => 3, "max_period" => 6,
                "similarity" => 0.5, "min_span_sentences" => 6, "min_span_chars" => 600, "max_same" => 8,
-               "min_words" => 5 }.freeze
+               "min_words" => 5, "short_run" => 24, "short_distinct" => 6 }.freeze
   ACTIONS = %w[retry stop notify].freeze
   MAX_CARRY = 400
   # One sentence again and again needs this much more alike than a cycle.
@@ -68,7 +75,8 @@ class ThinkingWatch
     out = DEFAULTS.dup
     out["watch"] = !%w[false no off 0].include?(raw["watch"].to_s.downcase) if raw.key?("watch")
     out["action"] = raw["action"].to_s if ACTIONS.include?(raw["action"].to_s)
-    %w[min_chars repeats max_period min_span_sentences min_span_chars max_same min_words].each do |key|
+    %w[min_chars repeats max_period min_span_sentences min_span_chars max_same min_words short_run
+       short_distinct].each do |key|
       number = Integer(raw[key].to_s, exception: false)
       out[key] = number if number&.positive?
     end
@@ -87,12 +95,17 @@ class ThinkingWatch
     @min_span_chars = settings["min_span_chars"]
     @max_same = settings["max_same"]
     @min_words = settings["min_words"]
+    @short_run = settings["short_run"]
+    @short_distinct = settings["short_distinct"]
     @same_similarity = [@similarity + SAME_MARGIN, 0.95].min
     @carry = +""
     @window = [] # the last max_period + 1 sentences
     @run = Array.new(@max_period + 1, 0)
     @run_chars = Array.new(@max_period + 1, 0) # chars of the run's sentences plus the first cycle's
     @counts = Hash.new(0)
+    @short_count = 0  # short sentences in a row
+    @short_window = [] # the last short_run of them, [key, text]
+    @in_code = false
     @thinking_chars = 0
   end
 
@@ -125,8 +138,13 @@ class ThinkingWatch
   end
 
   def add(text)
+    if text.strip.start_with?("```")
+      @in_code = !@in_code
+      return nil
+    end
     words = text.downcase.gsub(/[^[:alnum:]]+/, " ").split
-    return nil if words.length < @min_words
+    short = short_loop(text.strip, words) unless @in_code
+    return (short if @thinking_chars >= @min_chars) if words.length < @min_words
 
     key = words.join(" ")
     sentence = Sentence.new(text: text.strip, words: words.map(&:hash).uniq,
@@ -138,6 +156,25 @@ class ThinkingWatch
     return nil if @thinking_chars < @min_chars
 
     cycle || (same >= @max_same ? Loop.new(period: 1, times: same, sentences: [sentence.text], chars: nil) : nil)
+  end
+
+  def short_loop(text, words)
+    return nil if words.empty?
+
+    if words.length >= @min_words
+      @short_count = 0
+      @short_window.clear
+      return nil
+    end
+    @short_count += 1
+    @short_window << [words.join(" "), text]
+    @short_window.shift if @short_window.length > @short_run
+    return nil if @short_window.length < @short_run
+
+    distinct = @short_window.uniq(&:first)
+    return nil if distinct.length > @short_distinct
+
+    Loop.new(period: distinct.length, times: @short_count / distinct.length, sentences: distinct.first(3).map(&:last), chars: nil)
   end
 
   def count(key)

@@ -1,0 +1,45 @@
+# REAL DeepSeek v4.1 flash (archived session bbd7560c, msg 96): thinking with Markdown bullet lists; must never trigger
+Hmm, hold on. Let me reconsider: maybe don't touch TurnFlow at all. Instead, carry the steer text in the *command hash*: `@queue_command.call(line, client_id: client_id, steer: text)`. Then Bridge#queue_command(line, client_id:, card:, steer:) → command hash gets `steer:`. Then Worker#run_command → `@continue_offer.run_continue_turn(command)` → `@run_turn.call(nil, continue: true, steer: command[:steer], ...)`.
+
+But wait: does the command hash survive? `@command_queue << command.merge(after_seq: ...)` in worker. Yes, the hash is passed through. And `announce_command` builds the event from specific fields, so `steer:` wouldn't leak into events. Good.
+
+But hmm, `queue_command` is also called from `queue_as_command` (a message that is a command) and from Bridge's handle_command (POST /command). Adding an optional `steer:` kwarg is fine.
+
+Hmm, but is the command hash the right carrier? The command line is the "typed" representation. A `/continue yes` line with a separate steer field is a bit odd but contained.
+
+Alternatively: make the line itself carry it: `/continue yes, <text>` and have `continue_answer` parse it. That keeps one carrier (the line) and works for any transport that queues a command line (e.g. a user typing `/continue yes, do X` in the REPL/web!). That's actually elegant: the REPL's `/continue` command already accepts "yes"/"no, reason". Adding "yes, <text>" to `TurnFlow.continue_decision` gives the same capability to the REPL and web for free.
+
+But then the steer text must travel from `SessionCommands#continue_answer` (which returns a Result) to the worker's run_continue_turn. Result has `resume` and `decision` attributes. We could add `steer` to Result. Let me look at Result.
+
+Let me read session_commands.rb Result definition.
+
+Then Worker#run_command: `@continue_offer.run_continue_turn(command)` — we'd pass the result: `run_continue_turn(command, steer: result.steer)`. Hmm, or store on the command hash.
+
+Hmm, wait. Actually, maybe simpler: `ContinueOffer#run_continue_turn(command)` could read the steer from the command line itself: `TurnFlow.continue_decision(command[:line])` → [:resume, text]. Hmm, that re-parses. Meh.
+
+Let me think about which is cleanest for a reviewer:
+
+Option A (line carries it):
+- TurnFlow.continue_decision: "yes, <text>" → [:resume, text]. Hmm, but the second element is documented as "reason". For :resume it's currently always nil. We'd document it as "the steer text for a resume".
+- SessionCommands#continue_answer: on :resume with reason → Result(resume: true, steer: reason).
+- Result gains `steer` attribute.
+- Worker#run_command: `@continue_offer.run_continue_turn(command, steer: result.steer)`.
+- ContinueOffer#run_continue_turn(command, steer: nil) → `@run_turn.call(nil, continue: true, steer: steer, ...)`.
+- Worker#run_engine_turn passes `steer:` through to engine.run_turn.
+- Engine#run_turn(..., steer: nil) → after begin_turn, `steer(steer, source: ...)`.
+
+Hmm, that's a lot of plumbing through 5 files. And the source label needs to travel too.
+
+Option B (command hash carries it):
+- ContinueOffer#answered: `@queue_command.call(line, client_id: client_id, steer: text, steer_source: source)`.
+- Bridge#queue_command(line, client_id:, card:, steer: nil, steer_source: nil) → command[:steer], command[:steer_source].
+- Worker#run_command → run_continue_turn(command) → `@run_turn.call(nil, continue: true, steer: command[:steer], steer_source: command[:steer_source], ...)`.
+- Same tail plumbing.
+
+Both need the tail plumbing (run_turn → engine). Option B avoids touching TurnFlow/SessionCommands/Result. But it adds fields to the command hash that only the continue path uses.
+
+Hmm, hold on. Is there a way to avoid touching Engine#run_turn at all? What if the worker steers *after* the turn starts? The worker's run_engine_turn calls `@engine.run_turn(...)` synchronously on the worker thread. We could spawn a thread that waits for the turn to be running and then steers... ugly and racy.
+
+What about `Engine#run_turn`'s `pending_input:` drain? The worker passes `pending_input_drain`. We could wrap it: for the continue turn, pass a drain that first returns the steer text as a *line* (a plain string) — that merges as a user message kind "input" rather than a steer. Hmm, that's the "user line" path, not the steer path. The task explicitly says use the steer path.
+
+Hmm, actually wait. Let me re-read: "Wanted: Continue + text continues the turn AND the text joins the continued turn as a steer, the same way a `chi send -m` into a running turn does. Use the existing steer / pending-input path (`rg -n "steer" lib/samagotchi`, look at `steer.rb` and how `chi send` delivers into a running turn); don't build a second mechanism."

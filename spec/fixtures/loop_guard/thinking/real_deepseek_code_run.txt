@@ -1,0 +1,43 @@
+# REAL DeepSeek v4.1 flash (archived session bbd7560c, msg 119): thinking with a fenced Ruby block (11 short code lines in a row, all different); must never trigger
+- `Bridge#queue_command(line, client_id: nil, card: false, steer: nil)` → `command[:steer] = steer if steer`.
+- `Worker#run_command(command)` → `@continue_offer.run_continue_turn(command)`.
+- `ContinueOffer#run_continue_turn(command)`:
+```ruby
+@run_turn.call(nil, continue: true, origin: {...}, max_iterations: ..., steer: command[:steer]) do |result, error| ... end
+```
+Hmm, `run_turn` here is `method(:run_engine_turn)` which is `run_engine_turn(prompt, **turn_args)` → `@engine.run_turn(@session, prompt, pending_input: pending_input_drain, **turn_args)`. So `steer:` would flow to `Engine#run_turn`.
+
+- `Engine#run_turn(..., steer: nil)`: after begin_turn, `@turn_state.steer(steer[:text], source: steer[:source])`. Hmm, but naming: maybe `steers:` (array)? Keep it simple: `steer:` a Hash {text:, source:}.
+
+Hmm, wait. Is there an even better place? What about `Engine#steer` being callable *before* the turn starts and queued for the next turn? No.
+
+Alternatively, the worker could call `@engine.steer(text, source:)` inside the `run_engine_turn` block? No, the block runs after the turn.
+
+Hmm, what about the `origin`? The continue turn's origin is `{client_id: command[:client_id]}`. Could we smuggle the steer in origin? No, origin is for events.
+
+OK here's another thought: what if instead of a new `steer:` param on run_turn, the worker pushes the steer into the Engine's turn state *before* calling run_turn, and TurnState#steer queues even with no turn running... no, that breaks "never starts one" semantics and would leak into the next turn.
+
+Hmm, actually — wait. What about `TurnState` having a "seed" that `begin!` picks up? Like `@turn_state.seed_steer(text, source:)` which stores in a `@seeded` array, and `begin!` moves seeded into @steers. That's a small, contained change in TurnState, and `Engine#steer` could... hmm, but then Engine#steer with no turn running would queue for the *next* turn, which contradicts the documented behavior ("With no turn running it does nothing (it never starts one)").
+
+I think the explicit `steer:` param on `Engine#run_turn` is cleanest and most testable: "a steer to inject at the turn's first boundary". Let me name it `steer:` with a Hash {text:, source:} or nil. Hmm, or `seed_steer:`? Let me look at how run_turn's params are documented and keep it minimal.
+
+Actually hold on. Let me reconsider: maybe simpler — the worker's `pending_input_drain` could return the steer Hash. Look:
+
+```ruby
+def pending_input_drain
+  @pending_input_drain ||= lambda do
+    refuse_queued_commands(mid_turn: true)
+    files = ...
+    merged = ...
+    merged.each { ... }
+    unless merged.empty? ... end
+    merged.map(&:first)
+  end
+end
+```
+
+If I add at the top: `steers = @pending_steers.shift(...)` and return `merged.map(&:first) + steers`, then the Engine's `turn_drain` does `lines + take_steers(at_answer)` → `Steer.merge` sees Hash items → steers. That works with zero Engine changes! And it's "the existing pending-input path".
+
+But: the drain is called at every iteration boundary; the one-shot queue must be consumed exactly once. And the drain is also called at the `at_answer` boundary where plugin steers are dropped — but our Hash items come from `lines` (the worker's drain), not from `take_steers`, so they'd survive at_answer. Hmm, that's a subtle difference: at the after-answer boundary, a steer from the worker's drain would still be injected, restarting the turn. For our use case (the first boundary), it doesn't matter.
+
+Hmm, but which is cleaner? The `steer:` param on run_turn is explicit and doesn't touch the drain's semantics. But it adds a param to Engine#run_turn (public API) and to run_engine_turn.

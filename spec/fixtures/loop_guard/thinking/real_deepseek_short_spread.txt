@@ -1,0 +1,89 @@
+# REAL DeepSeek v4.1 flash (archived session bbd7560c, msg 247): normal thinking with short sentences spread out ("Hmm.", "Fine.", "No."); must never trigger
+Hmm, but what about a model where the server sends reasoning in a separate field? The native loop's client (Client#stream_completion) parses `parse_stream_line` → [content, payload]. Let me check if it handles reasoning separately... `rg reasoning lib/samagotchi/client.rb` returned nothing. So the native loop has no separate reasoning field.
+
+So: both loops start the clock on reasoning. Theory fails.
+
+Hmm, hold on. Let me reconsider the whole thing. Maybe the real cause of the high estimate is something else entirely: **the completion count is the max cumulative, but the clock starts at the first chunk of the generation — and for a generation that ends with a tool call, the usage chunk may arrive... ** no.
+
+Let me look at `close_server_report` and `generation_speed` once more:
+
+```ruby
+elsif turn.gen_first_chunk_at
+  decode_ms = (monotonic_time - turn.gen_first_chunk_at) * 1000.0
+  tps = decode_ms.positive? ? completion * 1000.0 / decode_ms : 0
+```
+
+`completion` = gen_completion_max (server-reported, includes reasoning). decode_ms = now - first_chunk.
+
+Hmm, what if the *first chunk* is a tool-call delta that arrives early, and the reasoning comes later? No.
+
+What if the generation is *retried* mid-stream? `generation_retrying` → reset_generation_tokens → gen_first_chunk_at = nil. Then the retry's first chunk starts the clock. Fine.
+
+Hmm, what if the *usage* chunk arrives in a separate HTTP response? No.
+
+OK, let me look at the actual numbers for a *short* answer in the log and compute the estimate vs. the "real" speed. I need the first-chunk time. The log's `generation_completed` has ms (total generation time). The http stream has ttft_ms. So decode_ms ≈ ms - ttft_ms.
+
+For iteration 1: ms=1068, ttft=? Let me find the http stream line right before it.
+
+Let me do that: find the stream line preceding each generation_completed for session eb2a8875 and compute completion/(ms-ttft).
+
+Actually, I can't get per-generation completion tokens from the log. But I can estimate: tokens ≈ (content+thinking)/4.
+
+Let me compute for a few generations: speed_est = ((content+thinking)/4) / ((ms-ttft)/1000).
+
+If that's ~134 for short answers, then the estimate (which uses the same formula with server tokens) should also be ~134 — unless the server token count is much higher than chars/4 (which it is: reasoning tokens are denser).
+
+Hmm! That's a thought: the server's completion_tokens (including reasoning) might be much larger than chars/4 of the visible text. For deepseek, reasoning tokens ≈ 187939 vs chars/4 of thinking 819452/4 = 204863. Close. So no.
+
+OK, let me just do the empirical test: write the spec with the real shape, run it, and see. Enough theorizing.
+
+Let me write the spec now.
+
+Actually, let me reconsider one more time — maybe the real cause is that the clock starts at the first chunk, but the *completion* count is the max over chunks, and for OpenRouter the usage chunk reports the *cumulative* completion tokens for the request... and the request includes the *prompt*? No, completion_tokens is completion.
+
+Hmm, what about `gen_completion_max` being the max across chunks — if the server sends cumulative counts, the max is the final. Fine.
+
+OK. Empirical test. Let me write the spec with the chat-loop shape.
+
+Wait, actually — I want to check one thing first: does the *first* chunk of an OpenRouter stream with reasoning have `content` non-empty? The first chunk is usually `{"choices":[{"delta":{"role":"assistant","content":""}}]}`. Then reasoning chunks. So the first *non-empty* content chunk is a reasoning chunk → clock starts there. Good.
+
+So the estimate measures from the first reasoning token. That's the correct behavior. So the theory fails.
+
+Hmm, but then why does the task say the estimate runs high? Let me look for another cause: maybe `decode_ms` is measured from the first chunk, but the *completion* count includes tokens from the *whole turn* (all generations)? No, it's per generation.
+
+Hmm, what about `turn.decode_ms_sum += decode_ms` and `turn.decode_tokens_sum += completion` — the session average. Fine.
+
+Let me look at the web's display: `last_decode_tps` = the last generation's. Fine.
+
+OK — maybe the real cause is that for a *short answer*, the generation is short and `SPEED_MIN_MS`/`SPEED_MIN_TOKENS` thresholds... no.
+
+Let me just run the experiment. I'll write the spec with the real shape and see if it fails.
+
+Let me write it now, in spec/session_metrics_spec.rb, in the "cached and reasoning tokens, cost and speed" describe block.
+
+The spec:
+```ruby
+it "starts the clock on the first reasoning chunk, so a reasoning model's estimate counts its reasoning time" do
+  start_turn
+  metrics.call(type: :generation_started, iteration: 1)
+  tick(2.0)
+  # The chat loop's shape: a reasoning delta arrives as content (reasoning + content).
+  metrics.call(type: :generation_chunk, iteration: 1, content: "thinking hard", text: "", thinking: "thinking hard",
+               payload: { "choices" => [{ "delta" => { "reasoning" => "thinking hard" } }] })
+  tick(3.0)
+  metrics.call(type: :generation_chunk, iteration: 1, content: "the answer", text: "the answer", thinking: "",
+               payload: { "choices" => [{ "delta" => { "content" => "the answer" } }] })
+  tick(1.0)
+  metrics.call(router_chunk("", 400, reasoning: 300))
+  metrics.call(type: :generation_completed, iteration: 1)
+
+  # 400 tokens over the 4 s from the first reasoning chunk (not the 1 s from the answer).
+  expect(metrics.snapshot[:tokens]).to include(last_decode_tps: 100.0, tps_source: "estimate")
+end
+```
+
+With the current code: the first chunk (reasoning, content non-empty) starts the clock at 102.0. Then the answer chunk at 105.0, then the usage chunk at 106.0. decode_ms = 106-102 = 4s. completion = 400. tps = 100. So the spec PASSES with the current code.
+
+Hmm. So the theory fails. Unless I use the shape content: "" for reasoning.
+
+Hmm, hold on. Let me reconsider: maybe the real shape IS content: "" for reasoning, because... let me check the *Engine's* handler once more. `build_stream_event_handler` — it computes `text = event.key?(:text) ? event[:text] : event[:content]` and `progress = {thinking:, text:}`. It passes the event through. So content stays "thinking hard".

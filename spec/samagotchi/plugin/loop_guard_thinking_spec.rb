@@ -10,7 +10,9 @@ require "support/plugin_handler_ctx"
 # too, stops the turn with a card. The detector is fed the fixtures in
 # spec/fixtures/loop_guard/thinking: positives (a loop_start and cycle_chars
 # header) must trigger within one batch of the loop's third cycle,
-# negatives never.
+# negatives never. A loop of short sentences (write_loop.txt, a loop_start
+# and run_chars header) must trigger within one batch of its short_run-th
+# sentence.
 RSpec.describe "The loop-guard thinking watch" do
   let(:source) { File.expand_path("../../../lib/samagotchi/bundles/loop-guard/plugin.rb", __dir__) }
   let(:fixtures) { File.expand_path("../../fixtures/loop_guard/thinking", __dir__) }
@@ -66,7 +68,21 @@ RSpec.describe "The loop-guard thinking watch" do
       end
     end
 
-    %w[calm_long.txt enumeration.txt real_runaway_numbers.txt].each do |name|
+    # DeepSeek run #5: hundreds of short sentences ("Go. OK. Writing.") in a
+    # row, under min_words, from about 5 different ones.
+    it "cuts write_loop.txt within one batch of its short_run-th short sentence" do
+      text, header = fixture("write_loop.txt")
+      run_end = header.fetch("loop_start") + header.fetch("run_chars")
+
+      offset, found = first_loop(text)
+
+      expect(offset).to be_between(run_end, run_end + batch)
+      expect(found).to have_attributes(period: 5, times: 4)
+      expect(found.sentences).to eq(["I'll write it.", "Go.", "OK."])
+    end
+
+    %w[calm_long.txt enumeration.txt real_runaway_numbers.txt real_deepseek_short_spread.txt real_deepseek_code_run.txt
+       real_deepseek_bullets.txt].each do |name|
       it "never triggers on #{name}" do
         expect(first_loop(fixture(name).first)).to be_nil
       end
@@ -112,6 +128,29 @@ RSpec.describe "The loop-guard thinking watch" do
     it "triggers nothing before min_chars of thinking" do
       expect(first_loop("Let me write the reply to the user now. " * 12)).to be_nil
       expect(first_loop("Let me write the reply to the user now. " * 60)).not_to be_nil
+    end
+
+    it "reads short sentences only past min_chars, and a long sentence ends the run" do
+      run = "Go. OK. Writing. " * 10
+      calm = random_thinking(3000)
+
+      expect(first_loop(run * 2)).to be_nil
+      expect(first_loop(calm + run).last).to have_attributes(period: 3, times: 8)
+      expect(first_loop(calm + (run.split(" ").each_slice(20).map { |part| part.join(" ") } * " This sentence has enough words in it. "))).to be_nil
+    end
+
+    describe "red-checks: the short-run rule" do
+      it "counts code lines when their fences are gone (real DeepSeek code run)" do
+        text, = fixture("real_deepseek_code_run.txt")
+        tight = { "short_run" => 5, "short_distinct" => 12 }
+
+        expect(first_loop(text, tight)).to be_nil
+        expect(first_loop(text.gsub(/^```.*\n/, ""), tight)).not_to be_nil
+      end
+
+      it "triggers on the spread-out short sentences once any run of 2 counts (real DeepSeek)" do
+        expect(first_loop(fixture("real_deepseek_short_spread.txt").first, { "short_run" => 2, "short_distinct" => 2 })).not_to be_nil
+      end
     end
 
     describe "red-checks: the enumeration (N2) is a near miss" do
@@ -224,10 +263,11 @@ RSpec.describe "The loop-guard thinking watch" do
 
     it "reads its settings, keeping the defaults for bad values" do
       settings = mod::ThinkingWatch.settings("action" => "explode", "similarity" => "0.6", "repeats" => "1",
-                                             "min_chars" => "-3", "max_same" => "12")
+                                             "min_chars" => "-3", "max_same" => "12", "short_run" => "40",
+                                             "short_distinct" => "nope")
 
       expect(settings).to include("action" => "retry", "similarity" => 0.6, "repeats" => 2, "min_chars" => 2000,
-                                  "max_same" => 12, "watch" => true)
+                                  "max_same" => 12, "watch" => true, "short_run" => 40, "short_distinct" => 6)
     end
   end
 end
