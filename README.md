@@ -201,6 +201,8 @@ npm test             # web frontend specs
 npm run e2e          # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
 ```
 
+Integration specs against a live model server, and what the suite isolates: [docs/testing.md](docs/testing.md).
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

@@ -279,14 +279,14 @@ spec. It requires the model to call `execute` and return the current UTC date:
 
 ```shell
 SAMAGOTCHI_INTEGRATION=1 \
-SAMAGOTCHI_SERVER_HOST=192.0.2.10 SAMAGOTCHI_SERVER_PORT=8000 \
-SAMAGOTCHI_DEFAULT_MODEL=incoai/Qwen3.8-27B-Splash \
-bundle exec rspec spec/integration/chat_loop_spec.rb -fd < /dev/null
+SAMAGOTCHI_INTEGRATION_HOST=192.0.2.10 SAMAGOTCHI_INTEGRATION_PORT=8000 \
+SAMAGOTCHI_INTEGRATION_MODEL=incoai/Qwen3.8-27B-Splash \
+bundle exec rspec spec/integration/chat_loop_spec.rb
 ```
 
 The same test works against a llama.cpp OpenAI-compatible server by changing
 the host, port, and model values. The test is skipped unless
-`SAMAGOTCHI_INTEGRATION=1` is set.
+`SAMAGOTCHI_INTEGRATION=1` is set; see [Testing](testing.md).
 
 oMLX's known tool-call limitation (a stream filter that strips markup) only
 affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
