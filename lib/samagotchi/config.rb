@@ -142,6 +142,9 @@ module Samagotchi
       # Asks again in the same turn after an empty answer (EmptyAnswerRetry);
       # 0 = off, capped at 3. No CLI flag: workers get no CLI args.
       Entry.new(key: "retry.empty_answer",       yaml_path: %w[retry empty_answer],       type: :integer, default: 1,               expose: %i[env config]),
+      # A turn's step limit: model ↔ tool rounds before it stops and offers to continue (IterationLimit); integer ≥ 1.
+      # --no-interrupt turns get max(1000, this). No CLI flag: --no-interrupt is the flag.
+      Entry.new(key: "turn.max_iterations",      yaml_path: %w[turn max_iterations],      type: :integer, default: 100,             expose: %i[env config]),
       # What `chi update` touches; its --no-gem/--no-bundles/--no-desktop turn one off for a run.
       Entry.new(key: "update.gem",               yaml_path: %w[update gem],               type: :bool,    default: true,            expose: %i[env config]),
       Entry.new(key: "update.bundles",           yaml_path: %w[update bundles],           type: :bool,    default: true,            expose: %i[env config]),
