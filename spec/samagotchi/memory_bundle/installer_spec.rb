@@ -706,6 +706,17 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(installer.results["guardrails.rb"][:status]).to eq("would_install")
     end
 
+    it "an upgrade with an identical hook reports it up to date, not Updated" do
+      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, name: "same-bundle")
+      installer_for(source: bundle_dir, name: "same-bundle", scope: "system").run
+
+      up = described_class.new(source: bundle_dir, name: "same-bundle", scope: "system", strict: true, upgrade: true)
+      up.run
+      expect(up.results["guardrails.rb"]).to eq(status: "skipped", reason: "already up to date")
+      expect(up.summary).to include("Skipped: identity.md, guardrails.rb")
+      expect(up.summary).not_to include("Updated:")
+    end
+
     it "strict hook checksum verify warns on mismatch" do
       bundle_dir = File.join(tmpdir, "bundle_hook_cksum")
       FileUtils.mkdir_p(File.join(bundle_dir, "hooks"))

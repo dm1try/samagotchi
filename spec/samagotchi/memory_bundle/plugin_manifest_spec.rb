@@ -121,6 +121,14 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(installer.warnings.join).to match(/won't load: it requires chi >= 99.0/)
     end
 
+    it "an upgrade with an identical plugin reports it up to date, not Updated" do
+      install(write_source)
+      up = install(write_source, upgrade: true)
+      expect(up.results["plugin.rb"]).to eq(status: "skipped", reason: "already up to date")
+      expect(up.summary).to include("Skipped: identity.md, plugin.rb")
+      expect(up.summary).not_to include("Updated:")
+    end
+
     it "warns that a hook-only bundle's hooks won't load when this chi doesn't meet requires_chi" do
       installer = install(write_source(plugin: nil, hook: true, requires_chi: ">= 99.0"))
       expect(installer.warnings).to include("Bundle plug: its hooks won't load: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})")

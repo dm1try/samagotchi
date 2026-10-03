@@ -58,6 +58,8 @@ and commands may change between minor versions. How releases are made:
   like); the hint is for a local server, where a slow answer is a model loading.
 - `chi bootstrap` says why it saved a host as `name-2` when the derived name is already taken (or a model id
   starts with it), instead of silently picking another name.
+- `chi bundle upgrade` reports a hook or plugin file that is byte-identical to the installed one as "already up
+  to date" instead of "Updated".
 
 ## [0.19.0] - 2026-10-03
 

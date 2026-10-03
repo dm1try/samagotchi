@@ -199,12 +199,15 @@ module Samagotchi
             end
 
             FileUtils.mkdir_p(hooks_target)
+            unchanged = File.exist?(dest) && FileUtils.identical?(src, dest)
             FileUtils.cp(src, dest)
-            if @upgrade && existing_provenance
-              @results[basename] = { status: "updated" }
-            else
-              @results[basename] = { status: "installed" }
-            end
+            @results[basename] = if unchanged
+                                   { status: "skipped", reason: "already up to date" }
+                                 elsif @upgrade && existing_provenance
+                                   { status: "updated" }
+                                 else
+                                   { status: "installed" }
+                                 end
             hooks_files_for_provenance[basename] = dest
           end
         else
@@ -541,11 +544,18 @@ module Samagotchi
           return nil
         end
 
+        dest = File.join(provenance.plugin_dir, plugin[:file])
+        unchanged = File.file?(dest) && FileUtils.identical?(src, dest)
         FileUtils.rm_rf(provenance.plugin_dir)
         FileUtils.mkdir_p(provenance.plugin_dir)
-        dest = File.join(provenance.plugin_dir, plugin[:file])
         FileUtils.cp(src, dest)
-        @results[plugin[:file]] = { status: @upgrade && provenance.read ? "updated" : "installed" }
+        @results[plugin[:file]] = if unchanged
+                                   { status: "skipped", reason: "already up to date" }
+                                 elsif @upgrade && provenance.read
+                                   { status: "updated" }
+                                 else
+                                   { status: "installed" }
+                                 end
         expected = manifest.checksum_for_plugin
         actual = Digest::SHA256.hexdigest(File.binread(dest))
         if @strict && expected && actual != expected
