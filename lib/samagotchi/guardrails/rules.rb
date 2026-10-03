@@ -20,6 +20,8 @@ module Samagotchi
     #            or a glob on the bare model name or the model key, or a
     #            list of them: the rule only votes for a model that matches
     #            (no model matches none; missing = every model)
+    #   skip_read_only: true: a shell command that only reads
+    #            (ReadOnlyShell) doesn't match
     # verdict ask|deny, reason, scopes (for an ask; default all).
     # `guardrails.disable` switches single rules off (#parse_disable).
     # A rule that doesn't parse raises ParseError: the Engine then denies
@@ -28,12 +30,13 @@ module Samagotchi
     class Rules
       class ParseError < StandardError; end
 
-      KEYS = %w[id tool command path git models verdict reason scopes].freeze
+      KEYS = %w[id tool command path git models skip_read_only verdict reason scopes].freeze
       MATCH_KEYS = %w[tool command path git].freeze
       VERDICTS = %w[ask deny].freeze
       GLOB_FLAGS = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB
 
-      Rule = Struct.new(:id, :tools, :command, :path, :git, :models, :verdict, :reason, :scopes, :source, keyword_init: true) do
+      Rule = Struct.new(:id, :tools, :command, :path, :git, :models, :skip_read_only, :verdict, :reason, :scopes, :source,
+                        keyword_init: true) do
         def matches?(targets)
           return false unless targets
           return false unless for_model?(targets.model_name, targets.model_key, -> { targets.small_model? })
@@ -41,6 +44,7 @@ module Samagotchi
           return false if command && !(targets.command && command.match?(targets.command))
           return false if path && !path_matches?(targets)
           return false if git && !targets.git_outside_repo?
+          return false if skip_read_only && targets.read_only?
 
           true
         end
@@ -108,7 +112,8 @@ module Samagotchi
         end
 
         Rule.new(id: id, tools: tools_of(raw["tool"], label), command: regex_of(raw["command"], label),
-                 path: path_of(raw["path"], label), git: git_of(raw["git"], label), models: models_of(raw["models"], label), verdict: verdict.to_sym,
+                 path: path_of(raw["path"], label), git: git_of(raw["git"], label), models: models_of(raw["models"], label),
+                 skip_read_only: flag_of(raw, "skip_read_only", label), verdict: verdict.to_sym,
                  reason: (raw["reason"] || "rule #{id}").to_s, scopes: scopes_of(raw["scopes"], label), source: source)
       end
 
@@ -143,6 +148,14 @@ module Samagotchi
       def self.git_of(value, label)
         return nil if value.nil?
         raise ParseError, "#{label}: git must be outside_repo" unless value == "outside_repo"
+
+        value
+      end
+
+      # A true/false key; missing is false.
+      def self.flag_of(raw, key, label)
+        value = raw.fetch(key, false)
+        raise ParseError, "#{label}: #{key} must be true or false" unless [true, false].include?(value)
 
         value
       end

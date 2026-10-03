@@ -203,6 +203,18 @@ guardrails:
 
 A rule gives at least one of `tool`, `command`, `path` and `git`.
 
+`skip_read_only: true` lets a shell command through when it only reads:
+every command in it (split at `;`, `&&`, `||`, `|`) is `ls`, `cat`, `head`,
+`tail`, `wc`, `stat`, `du`, `grep`, `rg`, `find`, `tree`, `file`, `sort`,
+`uniq`, `cut`, `diff`, `echo`, `cd`, `sed`, `awk` or a reading `git`
+(`log`, `show`, `diff`, `status`, `branch` listing, …), with no option that
+writes or runs something (`sed -i`, `sed 's/a/b/w f'`, `find -delete`/`-exec`,
+`rg --pre`, `sort -o`, `awk` with `>`/`|`/`system(`, `git -c`, `git diff
+--ext-diff`, …) and no redirection other than to `/dev/null` or another fd.
+`$(…)`, backticks, `$VAR` (other than `$HOME`, `$XDG_*`, `$TMPDIR` and `$PWD`
+at a word's start), an env prefix, `sh -c`, `xargs`, `eval`, `sudo` and the
+like make a command not read-only. It errs towards asking.
+
 A tool name may be a glob, so one rule covers a plugin's tools (an MCP server's,
 say): `tool: "mcp_*"` or `tool: ["mcp_{git,gh}_*", web_fetch]` (`*`, `?`, `[…]` and
 `{a,b}`, matched with `File.fnmatch`). `/guardrails` lists the glob as given.
@@ -317,7 +329,7 @@ session's repo (`write-outside-repo`) and git that changes another checkout
 (`git-outside-repo`: `cd ../main && git commit`, `git -C ../main add .`; it
 offers once, this session and "rule in this repo", the last stored for later
 sessions in that repo); shell commands that name chi's config, hooks or guardrails or
-`.git/hooks`; and answering chi's questions around `chi answer`: `chi --attach`
+`.git/hooks`, unless they only read (`skip_read_only`); and answering chi's questions around `chi answer`: `chi --attach`
 or `chi -p` with stdin from a pipe, a here-string or a file
 (`chi-answer-piped`), and `curl`/`wget` to a session's `/answer` route
 (`chi-answer-http`), both once or for the session. `chi answer` itself isn't

@@ -5,7 +5,7 @@ module Samagotchi
     # A small shell lexer for the guardrails' text checks (ShellGitDirs
     # and the rules' shell matchers): words with quotes and
     # backslashes undone, operators apart, comments dropped, and $(…) or
-    # backticks as one opaque SUBST marker inside a word. It never runs
+    # backticks (quoted or not) as one opaque SUBST marker inside a word. It never runs
     # anything, and it does its best on odd input (an unbalanced quote).
     module ShellLex
       # Longest first: "&&" before "&", ";;" before ";".
@@ -15,7 +15,10 @@ module Samagotchi
       # A word that is a redirection (>, >>, 2>&1, <).
       REDIRECT = /\A\d*[<>]/
 
-      # Words and operators ([:word, "x"] / [:op, "&&"]).
+      # Words and operators ([:word, "x", specials] / [:op, "&&"]). A word's
+      # specials are the characters the shell would act on in it, unquoted
+      # ("$" also when double-quoted): "$" an expansion, "{" / "}" a brace
+      # expansion, ">" / "<" a redirection.
       def self.lex(text)
         Lexer.new(text).tokens
       end
@@ -45,6 +48,7 @@ module Samagotchi
           @i = 0
           @tokens = []
           @word = +""
+          @specials = +""
           @in_word = false
         end
 
@@ -63,7 +67,7 @@ module Samagotchi
           when "'" then single_quote
           when '"' then double_quote
           when "`" then backtick
-          when "$" then @s[@i + 1] == "(" ? substitution : add(c, 1)
+          when "$" then @s[@i + 1] == "(" ? substitution : special(c)
           when "#" then @in_word ? add(c, 1) : comment
           when ">", "<" then redirection
           when " ", "\t" then flush && (@i += 1)
@@ -77,9 +81,16 @@ module Samagotchi
           @i += advance
         end
 
+        # A character the shell acts on, kept in the word and noted.
+        def special(char)
+          @specials << char unless @specials.include?(char)
+          add(char, 1)
+        end
+
         def flush
-          @tokens << [:word, @word.dup] if @in_word
+          @tokens << [:word, @word.dup, @specials.dup] if @in_word
           @word.clear
+          @specials.clear
           @in_word = false
           true
         end
@@ -96,6 +107,9 @@ module Samagotchi
             if @s[@i] == "\\" && @i + 1 < @s.size
               @word << @s[@i + 1]
               @i += 2
+            elsif @s[@i] == "`" then backtick
+            elsif @s[@i] == "$" && @s[@i + 1] == "(" then substitution
+            elsif @s[@i] == "$" then special("$")
             else
               @word << @s[@i]
               @i += 1
@@ -127,12 +141,13 @@ module Samagotchi
 
         # >, >>, 2>&1, &>, <, <<: kept in the word (the walk drops them).
         def redirection
-          add(@s[@i], 1)
+          special(@s[@i])
           add(@s[@i], 1) while @i < @s.size && @s[@i].match?(/[&\d>-]/) && @word.match?(/>\z/)
         end
 
         def operator_or_char(char)
           op = OPERATORS.find { |o| @s[@i, o.size] == o }
+          return special(char) if char == "{" || char == "}"
           return add(char, 1) unless op
 
           if op == "&" && @word.match?(/\d*>\z/)

@@ -6,6 +6,7 @@ require_relative "../log"
 require_relative "model_size"
 require_relative "outside"
 require_relative "shell_git_dirs"
+require_relative "read_only_shell"
 
 module Samagotchi
   module Guardrails
@@ -142,6 +143,13 @@ module Samagotchi
       # :unknown for one the text doesn't tell); [] for other tools.
       def git_dirs
         @git_dirs ||= shell? ? ShellGitDirs.for(@command, cwd: @cwd) : []
+      end
+
+      # Whether the command only reads (ReadOnlyShell); false without one.
+      def read_only?
+        return @read_only if defined?(@read_only)
+
+        @read_only = !@command.nil? && ReadOnlyShell.read_only?(@command)
       end
 
       # Whether a shell call runs mutating git outside the session's repo

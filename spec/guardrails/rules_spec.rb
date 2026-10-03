@@ -87,6 +87,27 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       end
     end
 
+    describe "skip_read_only" do
+      let(:raw) { { id: "names-x", tool: "shell", command: "secret/x", verdict: "ask" } }
+
+      it "lets a command that only reads through, and still asks for one that writes" do
+        set = rules(raw.merge(skip_read_only: true))
+        expect(verdict_for({ name: "execute", content: "ls secret/x && cat secret/x/a | head" }, set)).to be_allow
+        expect(verdict_for({ name: "execute", content: "echo y > secret/x/a" }, set)).to be_ask
+        expect(verdict_for({ name: "execute", content: "sed -i s/a/b/ secret/x/a" }, set)).to be_ask
+      end
+
+      it "asks for a read-only command without it, or with false" do
+        expect(verdict_for({ name: "execute", content: "ls secret/x" }, rules(raw))).to be_ask
+        expect(verdict_for({ name: "execute", content: "ls secret/x" }, rules(raw.merge(skip_read_only: false)))).to be_ask
+      end
+
+      it "rejects a value that isn't true or false" do
+        expect { rules(raw.merge(skip_read_only: "yes")) }
+          .to raise_error(described_class::ParseError, "rule names-x: skip_read_only must be true or false")
+      end
+    end
+
     it "matches absolute, ** and repo-relative globs" do
       hooks = rules({ id: "git-hooks", tool: %w[write edit], path: "**/.git/hooks/**", verdict: "deny" })
       expect(verdict_for({ name: "write", path: ".git/hooks/pre-commit", content: "" }, hooks)).to be_deny
