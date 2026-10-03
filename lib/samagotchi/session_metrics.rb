@@ -364,6 +364,10 @@ module Samagotchi
           # A turn that failed mid-stream never saw its generation end:
           # what it got to still counts.
           close_generation if @turn.gen_open
+          # A call still running when the turn ends (a cancel, a failure)
+          # never completes: its record says so, as the count already has it.
+          @turn.tool_calls_by_id.each_value { |active| finish_tool_record(active, "canceled") }
+          @turn.tool_calls_by_id.clear
           finished_at = now
           record = {
             id: @turn.id,
@@ -486,18 +490,22 @@ module Samagotchi
         active = @turn.tool_calls_by_id.delete(key)
         return unless active
 
-        finished_at = now
-        record = active.slice(
-          :id, :turn_id, :iteration, :call_index, :tool, :started_at
-        ).merge(
-          status: status.empty? ? "ok" : status,
-          completed_at: finished_at.iso8601(3),
-          # Less a guardrail approval wait (ToolRunner's waited_ms).
-          duration_ms: [elapsed_ms(active[:started_monotonic]) - event[:waited_ms].to_i, 0].max
-        )
-        @tool_records << record
-        count_tool(record)
+        finish_tool_record(active, status.empty? ? "ok" : status, waited_ms: event[:waited_ms].to_i)
       end
+    end
+
+    # Caller holds the mutex.
+    def finish_tool_record(active, status, waited_ms: 0)
+      record = active.slice(
+        :id, :turn_id, :iteration, :call_index, :tool, :started_at
+      ).merge(
+        status: status,
+        completed_at: now.iso8601(3),
+        # Less a guardrail approval wait (ToolRunner's waited_ms).
+        duration_ms: [elapsed_ms(active[:started_monotonic]) - waited_ms, 0].max
+      )
+      @tool_records << record
+      count_tool(record)
     end
 
     # Accumulate token counts from a streamed generation_chunk payload.

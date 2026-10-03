@@ -76,6 +76,8 @@ and commands may change between minor versions. How releases are made:
   answer", so narration cut off before a tool call isn't taken for an answer.
 - A session worker that wakes again shows the model the server last said it served (`/stats`, the status row,
   the web's info bar) right away, instead of none until its first generation.
+- A tool call still running when its turn is cancelled (or fails) is saved in the session's analytics as
+  `canceled`, so the session's tool totals (`/stats`) count it as the turn did instead of dropping it.
 
 ## [0.18.1] - 2026-10-03
 
