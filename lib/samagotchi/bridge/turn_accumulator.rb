@@ -41,11 +41,23 @@ module Samagotchi
       #   continue, ordered parts (thinking / text / tool / input / steer /
       #   reminder / notice), pending_question and the last event_seq folded
       #   in. A finished tool part keeps the live row's action and duration_ms
-      #   too. A notice part holds the event of one of the turn's rows
-      #   (TurnNotice: a hook's notice, an empty-answer retry, a question and
-      #   its answer), which a UI replays through its live handler.
+      #   too, a running one the time it has run so far (elapsed_ms), so a
+      #   join times its row from its start. A notice part holds the event
+      #   of one of the turn's rows (TurnNotice: a hook's notice, an
+      #   empty-answer retry, a question and its answer), which a UI replays
+      #   through its live handler.
       def current_turn
-        @mutex.synchronize { @turn && Marshal.load(Marshal.dump(@turn)) }
+        @mutex.synchronize do
+          next nil unless @turn
+
+          turn = Marshal.load(Marshal.dump(@turn))
+          now = @clock.call
+          Array(turn[:parts]).each do |part|
+            started_at = part[:kind] == "tool" && part[:status] == "running" && @tool_started_at[[part[:iteration], part[:call_index]]]
+            part[:elapsed_ms] = ((now - started_at) * 1000).round if started_at
+          end
+          turn
+        end
       end
 
       # The turn in progress as conversation messages, for a plugin's
@@ -142,7 +154,10 @@ module Samagotchi
         call[:label] = part[:label] if part[:label]
         title = part[:title] ? { title: part[:title] } : {}
         events = [{ type: :tool_call_started, **call, params: part[:params], **title }]
-        return events if part[:status] == "running"
+        if part[:status] == "running"
+          events.first[:elapsed_ms] = part[:elapsed_ms] unless part[:elapsed_ms].nil?
+          return events
+        end
 
         activity = { tool: part[:tool], status: part[:status], params: part[:params], **title }
         activity[:action] = part[:action] if part[:action]

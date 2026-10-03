@@ -35,6 +35,14 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     [base.merge(type: :tool_call_started, call: { name: activity[:tool] }), base.merge(type: :tool_call_completed, activity: activity)]
   end
 
+  it "times a joined running call's row from its start (the replayed started event's elapsed_ms), not from the join" do
+    renderer.call({ type: :tool_call_started, iteration: 1, call_index: 1, tool: "read", elapsed_ms: 60_000 })
+    now[0] += 2.0
+    renderer.call({ type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", activity: activity })
+
+    expect(view.lines).to eq(["read 62000.0"])
+  end
+
   it "prints a line per plugin steer after the merge note, and no note for a steer-only merge" do
     view.define_singleton_method(:format_steer_line) { |source:, text:| "#{source}> nudged: #{text}" }
     renderer.call({ type: :pending_input_merged, count: 1, content: "also", steers: [{ source: "check-in", text: "status?" }] })

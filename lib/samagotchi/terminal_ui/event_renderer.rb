@@ -63,7 +63,8 @@ module Samagotchi
         when :generation_chunk
           @view.generation_feedback_chunk(event)
         when :tool_call_started
-          @tool_started_at[tool_call_key(event)] = @clock.call
+          # A joined running call (a snapshot's replay) started elapsed_ms ago.
+          @tool_started_at[tool_call_key(event)] = @clock.call - (event[:elapsed_ms].to_f / 1000)
           @view.tool_call_feedback_started(event)
         when :tool_call_completed
           @view.clear_generation_retry

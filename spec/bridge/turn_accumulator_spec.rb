@@ -66,6 +66,15 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts].last).to include(action: "Running command", duration_ms: 1500)
   end
 
+  it "gives a running call's part the time it has run so far, so a join times the row from its start" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "delegate", params: "task" })
+    clock[0] += 42.25
+    turn = acc.current_turn
+    expect(turn[:parts].last).to include(status: "running", elapsed_ms: 42_250)
+    expect(described_class.replay_events(turn).last).to include(type: :tool_call_started, tool: "delegate", elapsed_ms: 42_250)
+  end
+
   it "keeps a plugin tool's label on its part" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "mcp_chrome_screenshot", label: "chrome: screenshot", params: "" })

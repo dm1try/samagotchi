@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   records by iteration, so every call after the retry showed the wrong one, or none.
 - Attached TUI: `/detach` typed at a question's `?` prompt detaches (the question stays open), as Ctrl-D does; it
   was read as an answer and refused as an unknown option.
+- Attached TUI: joining a turn while a tool call runs (a long `delegate`, a slow command), its row's duration counts
+  from the call's start, not from the join.
 
 ## [0.16.0] - 2026-10-03
 
