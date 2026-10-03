@@ -209,6 +209,38 @@ test("without BroadcastChannel every tab delivers at once", () => {
   b.seenInFront([q1.key]); // no channel: nothing to tell, no throw
 });
 
+test("several tabs behind: each badges, one shows the OS notification (the lowest claim) (4.11)", () => {
+  const [one, two, three] = channels(3);
+  const c = clock();
+  const gates = [["t2", one], ["t1", two], ["t3", three]].map(([id, channel]) => [id, createNotifyGate({ id, channel, schedule: c.schedule, cancel: c.cancel })]);
+  const delivered = [];
+  for (const [id, gate] of gates) gate.offer(q1, (notify) => delivered.push([id, notify]));
+  c.run();
+  assert.deepEqual(delivered, [["t2", false], ["t1", true], ["t3", false]]);
+});
+
+test("a claim that came before this tab's own offer still counts", () => {
+  const [one, two] = channels(2);
+  const c = clock();
+  const early = createNotifyGate({ id: "a", channel: one, schedule: c.schedule, cancel: c.cancel });
+  const late = createNotifyGate({ id: "b", channel: two, schedule: c.schedule, cancel: c.cancel });
+  const delivered = [];
+  early.offer(q1, (notify) => delivered.push(["a", notify]));
+  late.offer(q1, (notify) => delivered.push(["b", notify]));
+  c.run();
+  assert.deepEqual(delivered.sort(), [["a", true], ["b", false]]);
+});
+
+test("a tab alone, or without BroadcastChannel, shows the OS notification", () => {
+  const [ch] = channels(1);
+  const c = clock();
+  const flags = [];
+  createNotifyGate({ channel: ch, schedule: c.schedule, cancel: c.cancel }).offer(q1, (notify) => flags.push(notify));
+  createNotifyGate({ channel: null }).offer(q1, (notify) => flags.push(notify));
+  c.run();
+  assert.deepEqual(flags, [true, true]);
+});
+
 test("a word about other keys or a stray message changes nothing", () => {
   const [front, behind] = channels(2);
   const c = clock();

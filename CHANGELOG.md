@@ -28,6 +28,8 @@ and commands may change between minor versions. How releases are made:
   that worker's earlier turns a second time: the page re-reads the session instead.
 - Web without the session events stream (fetched list): a re-fetched list now badges and notifies like the
   live list does.
+- Web: with several chi tabs in the background, a session that needs you shows one OS notification, not one
+  per tab (every tab still counts it in its title).
 
 ## [0.20.0] - 2026-10-03
 
