@@ -19,6 +19,10 @@ Gem::Specification.new do |spec|
   DESC
   spec.homepage      = "https://github.com/dm1try/samagotchi"
   spec.license       = "MIT"
+  # Ruby 3.3 reaches EOL 2027-03-31 (security fixes only since 2026-04-01).
+  # After that: ">= 3.4", drop 3.3 from the CI matrix, and the 3.3-only
+  # workarounds can go (Zlib::BufError, docs/releasing.md "CI on Linux";
+  # gem builds in a child process, spec/gem_contents_spec.rb).
   spec.required_ruby_version = ">= 3.3"
 
   spec.metadata = {

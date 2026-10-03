@@ -42,9 +42,12 @@ module Samagotchi
       return nil unless sidecar&.port&.positive?
 
       begin
-        # Not Socket.tcp: with connect_timeout (Ruby 3.4, macOS 26) it hands
-        # back the socket of a refused connect (SO_ERROR set), so a dead
-        # worker's port read as live. TCPSocket raises ECONNREFUSED.
+        # Not Socket.tcp: with connect_timeout on macOS 26 it hands back the
+        # socket of a refused connect (the kernel's second connect() says
+        # EISCONN, SO_ERROR is unchecked), so a dead worker's port read as
+        # live. Ruby bug #22223, fixed in 3.4.11 / 4.0.7, not in 3.3.
+        # TCPSocket checks SO_ERROR and raises ECONNREFUSED on every Ruby,
+        # so this stays even once 3.3 is dropped.
         TCPSocket.new(host, sidecar.port, connect_timeout: timeout).close
         sidecar
       rescue StandardError
