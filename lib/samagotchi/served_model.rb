@@ -17,16 +17,26 @@ module Samagotchi
       name.is_a?(String) && !name.strip.empty? ? name : nil
     end
 
+    # The separators a provider uses when it decorates a model name: a tag
+    # (`qwen3:latest`), a date or quant suffix (`gpt-4o-2024-08-06`), an
+    # owner (`@org/name`) or a path (`meta-llama/Llama-3`). Anything else
+    # after the name is a different model (`gpt-4` is not `gpt-4o`).
+    EXTENSION_SEPARATORS = [":", "-", "@", "/"].freeze
+
     # Whether +served+ is another model than +asked+. Names that are equal
-    # (any case) or where one extends the other (a provider dropping
-    # `:free`, or adding a date) are the same model; unknown names never
-    # differ.
+    # (any case), or where one extends the other at a tag/date/owner
+    # separator (a provider dropping `:free`, or adding a date), are the
+    # same model; unknown names never differ.
     def differs?(asked, served)
       asked = asked.to_s.strip.downcase
       served = served.to_s.strip.downcase
       return false if asked.empty? || served.empty?
+      return false if asked == served
 
-      !(asked.start_with?(served) || served.start_with?(asked))
+      shorter, longer = asked.length <= served.length ? [asked, served] : [served, asked]
+      return true unless longer.start_with?(shorter)
+
+      !longer[shorter.length..].start_with?(*EXTENSION_SEPARATORS)
     end
   end
 end
