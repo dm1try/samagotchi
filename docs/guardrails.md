@@ -295,6 +295,14 @@ restart. A rule that doesn't parse (an unknown key, a bad regex, no
 verdict, a `disable:` that isn't an id or a list of ids) makes chi **deny every tool call** and say why, rather than run
 without it.
 
+A bundle whose `requires_chi` the running chi doesn't meet (installed by a
+newer chi while the session's worker kept running) isn't read again: the
+rules the session loaded from it before stay, and a `guardrails>` line says
+once per bundle version to restart the session (`chi sessions stop ID`, then
+`chi --resume ID`). A chi that never loaded that bundle's rules (it starts
+older than the bundle) denies every tool call, as for a rule that doesn't
+parse, until chi is updated or the bundle uninstalled.
+
 ## The guardrails bundle
 
 ```sh

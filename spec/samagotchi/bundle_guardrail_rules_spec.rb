@@ -34,12 +34,13 @@ RSpec.describe "Bundle guardrail rule files" do
     FileUtils.rm_rf(tmpdir)
   end
 
-  def write_bundle(name, rules, version: "1.0.0")
+  def write_bundle(name, rules, version: "1.0.0", requires_chi: nil)
     src = File.join(tmpdir, "src_#{name}_#{rand(100_000)}")
     FileUtils.mkdir_p(File.join(src, "guardrails"))
     File.write(File.join(src, "guide.md"), "# Guide\n")
     rules.each { |file, doc| File.write(File.join(src, "guardrails", file), YAML.dump(doc)) }
     manifest = { "name" => name, "version" => version, "files" => { "guide.md" => "sha256:#{Digest::SHA256.hexdigest("# Guide\n")}" } }
+    manifest["requires_chi"] = requires_chi if requires_chi
     File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
     src
   end
@@ -124,6 +125,64 @@ RSpec.describe "Bundle guardrail rule files" do
       File.write(File.join(bundles_dir, "g", "manifest.json"), "{nope")
       expect { eng = engine }.to output(/manifest.json is unreadable/).to_stderr
       expect(evaluate(eng, "ls")).to be_deny
+    end
+  end
+
+  # A running worker reads a bundle's rules again when they change; after
+  # `chi update` the installed bundle may need a newer chi than the worker
+  # runs (a rule key it doesn't know).
+  describe "a bundle that needs a newer chi than this one" do
+    let(:future_rules) do
+      { "rules" => [{ "id" => "future", "tool" => "shell", "future_key" => "x", "verdict" => "deny" }] }
+    end
+
+    def warnings(events) = events.select { |e| e[:type] == :guardrail_warning }
+
+    it "keeps the rules it loaded before and says so once per bundle version, no deny-all" do
+      install(write_bundle("g", { "rules.yml" => push_rules }), "g")
+      eng = engine
+      events = []
+      eng.subscribe(observer: ->(e) { events << e })
+      expect(evaluate(eng, "git push").rule).to eq("git-push")
+
+      install(write_bundle("g", { "rules.yml" => future_rules }, version: "2.0.0", requires_chi: ">= 99.0"), "g")
+      v = evaluate(eng, "git push origin main")
+      expect([v.decision, v.rule, v.source]).to eq([:ask, "git-push", "bundle g"])
+      expect(evaluate(eng, "ls")).to be_allow
+      expect(eng.guardrail_failures.list).to be_empty
+
+      # Another reload (config.yml changed) keeps them and says nothing new.
+      File.write(Samagotchi::ConfigFile.global_path, "guardrails:\n  rules: []\n")
+      expect(evaluate(eng, "git push").rule).to eq("git-push")
+      expect(warnings(events).size).to eq(1)
+      expect(warnings(events).first[:message]).to eq(
+        "bundle g 2.0.0 needs chi >= 99.0 and this session runs chi #{Samagotchi::VERSION}: its new rules are not " \
+        "loaded, the ones loaded before still apply. Restart the session to load them " \
+        "(chi sessions stop ID, then chi --resume ID)"
+      )
+
+      # Another too-new version: one more notice.
+      install(write_bundle("g", { "rules.yml" => future_rules }, version: "2.1.0", requires_chi: ">= 99.0"), "g")
+      expect(evaluate(eng, "git push").rule).to eq("git-push")
+      expect(warnings(events).map { |e| e[:message][/bundle g \S+/] }).to eq(["bundle g 2.0.0", "bundle g 2.1.0"])
+    end
+
+    it "shows the notice as a turn event during a turn" do
+      eng = engine
+      sink = []
+      allow(eng.instance_variable_get(:@turn_state)).to receive(:in_turn_sink).and_return([true, ->(e) { sink << e }])
+      eng.send(:guardrail_notify, "kept")
+      expect(sink).to eq([{ type: :guardrail_warning, message: "kept" }])
+    end
+
+    it "loads none of them and denies every call when it never loaded that bundle's rules" do
+      install(write_bundle("g", { "rules.yml" => future_rules }, version: "2.0.0", requires_chi: ">= 99.0"), "g")
+      eng = nil
+      expect { eng = engine }.to output(/bundle g: its rules are not loaded: it requires chi >= 99.0/).to_stderr
+      v = evaluate(eng, "ls")
+      expect([v.decision, v.rule]).to eq([:deny, "guardrail-load"])
+      expect(v.reason).to include("rules (bundle g) failed to load: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})")
+      expect(eng.guardrail_failures.message).to include("chi update")
     end
   end
 end

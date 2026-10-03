@@ -5,6 +5,8 @@ require "yaml"
 require_relative "config"
 require_relative "log"
 require_relative "guardrails"
+require_relative "memory_bundle/manifest"
+require_relative "version"
 require_relative "hooks"
 require_relative "edit_preview"
 require_relative "tool_activity"
@@ -32,7 +34,10 @@ module Samagotchi
     # @param model_name [#call] → String, nil: the effective model's bare name
     # @param cancelled [#call] → Boolean, whether the running turn is cancelled
     # @param ask       [#call] (fields) → the answer; the Engine's question flow
-    def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:, model_name: -> {})
+    # @param notify    [#call] (message) → shows a guardrails line in every UI
+    #   (a bundle's rules kept because it needs a newer chi)
+    def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:, model_name: -> {},
+                   notify: ->(_message) {})
       @scratch = scratch
       @hooks_lookup = hooks
       @tools_lookup = tools
@@ -41,6 +46,11 @@ module Samagotchi
       @model_name_lookup = model_name
       @cancelled_lookup = cancelled
       @ask = ask
+      @notify = notify
+      # Bundle name → the rules last loaded from it whole, kept while the
+      # installed version needs a newer chi; [name, version] said so once.
+      @loaded_bundle_rules = {}
+      @kept_noticed = {}
       @failures = Guardrails::LoadFailures.new
       @rules_mutex = Mutex.new
       @git = Guardrails::GitInfo.new
@@ -115,7 +125,9 @@ module Samagotchi
 
     # Installed bundles' guardrails/*.yml, by bundle name then file name.
     # A file that is missing, changed since install (sha256) or doesn't
-    # parse is a required load failure.
+    # parse is a required load failure. A bundle whose requires_chi this
+    # chi doesn't meet isn't read (its rules may use keys this chi doesn't
+    # know): the rules last loaded from it stay (#too_new_bundle_rules).
     def bundle_rules
       require_relative "memory_bundle/provenance"
       rules = []
@@ -125,7 +137,13 @@ module Samagotchi
           @failures.add("rules (bundle #{bundle_name})", data[:error], required: true, group: :rules)
           next
         end
+        if (too_new = MemoryBundle::Manifest.requires_chi_failure(data[:requires_chi], Samagotchi::VERSION))
+          rules.concat(too_new_bundle_rules(bundle_name, data, too_new))
+          next
+        end
         dir = MemoryBundle::Provenance.new(name: bundle_name).guardrails_dir
+        loaded = []
+        whole = true
         data[:guardrails].sort_by { |k, _| k.to_s }.each do |basename, meta|
           what = "rules #{basename} (bundle #{bundle_name})"
           path = File.join(dir, basename.to_s)
@@ -139,12 +157,15 @@ module Samagotchi
             doc = YAML.safe_load(File.read(path))
             raise Guardrails::Rules::ParseError, "expected a mapping with rules:" unless doc.is_a?(Hash)
 
-            rules.concat(Guardrails::Rules.parse(doc["rules"], source: "bundle #{bundle_name}"))
+            loaded.concat(Guardrails::Rules.parse(doc["rules"], source: "bundle #{bundle_name}"))
           rescue Guardrails::Rules::ParseError, Psych::Exception => e
             Log.warn(:guardrails, "rules_file_invalid", echo: "[samagotchi:guardrails] #{what}: #{e.message}", bundle: bundle_name, file: basename.to_s)
             @failures.add(what, e.message, required: true, group: :rules)
+            whole = false
           end
         end
+        rules.concat(loaded)
+        @loaded_bundle_rules[bundle_name] = loaded if whole
       end
       rules
     rescue StandardError => e
@@ -191,6 +212,38 @@ module Samagotchi
     end
 
     private
+
+    # The rules of a bundle that needs a newer chi: the ones last loaded
+    # from it, with one notice per bundle version (restart the session to
+    # load the new ones). Never loaded (a chi older than the bundle it
+    # starts with): none, and a required load failure, as the hook loader
+    # does for a guardrail hook, so the calls aren't quietly unguarded.
+    def too_new_bundle_rules(bundle_name, data, reason)
+      kept = @loaded_bundle_rules[bundle_name]
+      unless kept
+        Log.warn(:guardrails, "bundle_rules_requires_chi", echo: "[samagotchi:guardrails] bundle #{bundle_name}: its rules are not loaded: #{reason}",
+                                                           bundle: bundle_name)
+        @failures.add("rules (bundle #{bundle_name})", "#{reason}; update chi (chi update) or uninstall the bundle",
+                      required: true, group: :rules)
+        return []
+      end
+
+      key = [bundle_name, data[:version].to_s]
+      return kept if @kept_noticed[key]
+
+      @kept_noticed[key] = true
+      Log.warn(:guardrails, "bundle_rules_kept", bundle: bundle_name, version: data[:version].to_s,
+                                                 requires_chi: data[:requires_chi].to_s)
+      @notify.call(kept_notice(bundle_name, data))
+      kept
+    end
+
+    def kept_notice(bundle_name, data)
+      id = @session_lookup.call&.id || "ID"
+      "bundle #{bundle_name} #{data[:version]} needs chi #{data[:requires_chi]} and this session runs chi #{Samagotchi::VERSION}: " \
+        "its new rules are not loaded, the ones loaded before still apply. Restart the session to load them " \
+        "(chi sessions stop #{id}, then chi --resume #{id})"
+    end
 
     # [path, mtime, size] of config.yml and every installed bundle's
     # manifest.json and guardrails/ file.

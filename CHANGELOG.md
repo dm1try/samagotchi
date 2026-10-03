@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
   before it detaches.
 - Ctrl-C in `chi -p … --non-interactive` keeps the session: the prompt and a cancel note are saved, so
   `chi --resume ID` has them, and stderr says so instead of a Ruby backtrace. The exit status stays 130.
+- A running session no longer denies every tool call after an installed bundle's rules are upgraded to a version
+  that needs a newer chi (`requires_chi`): it keeps the rules it loaded before and says once to restart the session
+  (`chi sessions stop ID`, then `chi --resume ID`).
 
 ## [0.18.0] - 2026-10-03
 

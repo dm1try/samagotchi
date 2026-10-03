@@ -142,7 +142,8 @@ module Samagotchi
         model_key: -> { @model_key },
         model_name: -> { guardrail_model_name },
         cancelled: -> { !!active_cancel_controller&.cancelled? },
-        ask: ->(fields) { open_question(fields) }
+        ask: ->(fields) { open_question(fields) },
+        notify: ->(message) { guardrail_notify(message) }
       )
       @guardrail_failures = @guardrail_wiring.failures
       # Plugins that failed to load: announced apart, as plugins (not
@@ -1193,6 +1194,16 @@ module Samagotchi
       nil
     end
     private :hook_notify
+
+    # A guardrails line to the user after load (:guardrail_warning, as the
+    # load failures show): a running turn's event, else announced.
+    def guardrail_notify(message)
+      event = { type: :guardrail_warning, message: message.to_s }
+      in_turn, sink = @turn_state.in_turn_sink
+      in_turn ? emit_event(sink, event) : announce_or_hold(event)
+      nil
+    end
+    private :guardrail_notify
 
     # A question through the question flow (REPL sync handler, attached TUI,
     # web), single-select, kind "hook". A --non-interactive run has no one
