@@ -6,7 +6,7 @@
 // option). The lan project's
 // chi web also listens on the LAN address (the `lan` option).
 import { test as base, expect } from "@playwright/test";
-import { startEnv, stopEnv, useMode, useScript } from "./env.js";
+import { startEnv, stopEnv, useMode, useScript, useTurnLimit } from "./env.js";
 
 export const test = base.extend({
   view: ["stage", { option: true }],
@@ -31,6 +31,15 @@ export const test = base.extend({
       await use((mode) => useMode(chi, mode));
     } finally {
       useMode(chi, "script");
+    }
+  },
+
+  // turnLimit(n): turn.max_iterations for this test (the default after it).
+  turnLimit: async ({ chi }, use) => {
+    try {
+      await use((limit) => useTurnLimit(chi, limit));
+    } finally {
+      useTurnLimit(chi, null);
     }
   },
 

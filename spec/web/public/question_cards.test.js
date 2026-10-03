@@ -267,6 +267,68 @@ test("forgetContinue: a later offer draws a new card", () => {
   assert.equal(history.children.length, 2);
 });
 
+const STEP_LIMIT = {
+  id: "c1", kind: "continue", header: "Step limit", options: ["Continue", "Stop"], allow_freeform: true, limit: 3,
+  question: "The turn ran out of iterations (3 steps) before it answered. Continue it?\nPrompt: fix the build",
+};
+
+test("a step-limit question: Continue and Stop buttons, a reason for Stop, no Dismiss", () => {
+  const { cards, history, calls } = setup();
+  cards.renderQuestion(STEP_LIMIT);
+  const card = history.children[0];
+  assert.ok(card.classList.contains("step-limit"));
+  assert.equal(card.querySelector("summary").textContent, "Step limit");
+  assert.equal(card.querySelector(".question-text").textContent, STEP_LIMIT.question);
+  assert.deepEqual(card.querySelectorAll(".question-choice").map((b) => b.textContent), ["Continue", "Stop"]);
+  assert.equal(card.querySelector(".continue-reason").placeholder, "Stop, because… (the model reads it)");
+  assert.equal(card.querySelector(".question-dismiss"), null);
+  assert.equal(card.querySelector(".question-submit"), null);
+  assert.equal(card.querySelector(".question-option"), null);
+
+  card.querySelector(".continue-yes").click();
+  assert.deepEqual(calls[0], ["sendAnswer", "s1", { id: "c1", selected: ["Continue"] }]);
+  assert.ok(card.querySelectorAll("button, input").every((el) => el.disabled));
+});
+
+test("Stop sends the reason with it; Continue with a reason in the box is refused here", () => {
+  const { cards, history, calls } = setup();
+  cards.renderQuestion(STEP_LIMIT);
+  const card = history.children[0];
+  card.querySelector(".continue-reason").value = "  enough  ";
+  card.querySelector(".continue-yes").click();
+  assert.equal(calls.length, 0);
+  assert.equal(card.querySelector(".question-error").classList.contains("hidden"), false);
+  card.querySelector(".continue-no").click();
+  assert.deepEqual(calls[0], ["sendAnswer", "s1", { id: "c1", selected: ["Stop"], freeform: "enough" }]);
+});
+
+test("a step-limit question stands for the old continue card: it drops one drawn first, and none is drawn after", () => {
+  const { cards, history } = setup();
+  cards.renderContinue({ context: { original_prompt: "fix the build" } });
+  assert.equal(history.querySelectorAll(".continue").length, 1);
+  cards.renderQuestion(STEP_LIMIT);
+  cards.renderContinue({ context: { original_prompt: "fix the build" } });
+  assert.equal(history.querySelectorAll(".continue").length, 0);
+  assert.equal(history.children.length, 1);
+  // An older worker (no question): the old card as before.
+  const old = setup();
+  old.cards.renderContinue({});
+  assert.equal(old.history.querySelectorAll(".continue").length, 1);
+});
+
+test("a step-limit question resolves to what was picked, or why it closed", () => {
+  const { cards, history } = setup();
+  cards.renderQuestion(STEP_LIMIT);
+  cards.resolveQuestion("c1", { answer: { selected: ["Stop"], freeform: "enough" } });
+  const card = history.children[0];
+  assert.equal(card.querySelector(".question-result").textContent, "Stopped: enough");
+  assert.ok(card.querySelector(".continue-no").classList.contains("selected"));
+  assert.equal(card.querySelector("summary").textContent.endsWith("→ Stopped: enough"), true);
+  cards.renderQuestion({ ...STEP_LIMIT, id: "c2" });
+  cards.resolveQuestion("c2", { cancelled: true, reason: "dropped" });
+  assert.equal(history.children[1].querySelector(".question-result").textContent, "Dropped: a new prompt came");
+});
+
 const RELAYED_TO = { parent_id: "pppp1111-0000", parent_short: "pppp1111", relay_id: "r1" };
 const APPROVAL = {
   id: "a1", kind: "approval", question: "execute: git push", options: ["Allow once", "Deny"], allow_freeform: true,

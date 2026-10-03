@@ -69,6 +69,8 @@ test("listedSessions leaves archived sessions out unless asked, and keeps the li
 // A card's "needs you" badge follows notify.js's waitingOn.
 test("waitingBadge says what the session waits on the user for", () => {
   assert.deepEqual(waitingBadge({ id: "s", pending_question: { id: "q", kind: "question" } }), { kind: "question", text: "question", title: "Waiting for your answer" });
+  assert.deepEqual(waitingBadge({ id: "s", status: "idle", pending_question: { id: "c", kind: "continue" } }),
+    { kind: "continue", text: "out of steps", title: "The turn hit its step limit: continue or stop it" });
   assert.equal(waitingBadge({ id: "s", pending_question: { id: "q", kind: "approval" } }).text, "approval");
   assert.equal(waitingBadge({ id: "s", pending_card: { id: "c" } }).text, "needs you");
   assert.equal(waitingBadge({ id: "s", pending_question: null, pending_card: null }), null);
@@ -80,6 +82,9 @@ const asks = (id, extra = {}) => ({ id, pending_question: { id: `q-${id}` }, ...
 test("waitingFirst lifts the sessions that wait on the user, each part in the list's order", () => {
   const list = [{ id: "a" }, asks("b"), { id: "c" }, { id: "d", pending_card: { id: "k" } }];
   assert.deepEqual(ids(waitingFirst(list)), ["b", "d", "a", "c"]);
+  // An idle session at its step limit waits too.
+  const limited = [{ id: "a" }, { id: "e", status: "idle", pending_question: { id: "c", kind: "continue" } }];
+  assert.deepEqual(ids(waitingFirst(limited)), ["e", "a"]);
 });
 
 test("waitingFirst: nobody waiting returns the same list; answered goes back to its place", () => {

@@ -244,6 +244,31 @@ test("a question card: the answer lets the turn go on", { tag: "@turn" }, async 
   await expect(page.locator("#history .activity-tool")).toHaveText(["ask_user_question", "read"]);
 });
 
+// The step limit asks as a question (kind continue) between turns: its card,
+// the session card's badge, a reload, and Continue running the turn on.
+// Stop and its reason are unit specs (question_cards.test.js, worker_spec).
+test("a turn at its step limit asks to continue: the card survives a reload, Continue finishes the turn", async ({ page, script, turnLimit }) => {
+  script("step_limit");
+  turnLimit(3);
+  await send(page, "Do a long task");
+  const card = page.locator(`${HC()} .bubble.question.step-limit`);
+  await expect(card.locator(".question-text")).toContainText("The turn ran out of iterations (3 steps) before it answered. Continue it?");
+  await expect(card.locator(".question-choice")).toHaveText(["Continue", "Stop"]);
+  await expect(card.locator(".question-dismiss")).toHaveCount(0);
+  // The old continue card isn't drawn beside it.
+  await expect(page.locator(".bubble.continue")).toHaveCount(0);
+  await expect(page.locator("#topStrip .card.waiting .attn")).toHaveText("out of steps");
+
+  await page.reload();
+  await expect(card).toHaveCount(1);
+  await expect(page.locator(".bubble.continue")).toHaveCount(0);
+
+  await card.locator(".continue-yes").click();
+  await expect(answer(page)).toHaveText("Finished after the continue: STEP-LIMIT-DONE");
+  await expect(page.locator(`${H()} .bubble.question.step-limit .question-result`)).toHaveText("Continued");
+  await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0);
+});
+
 test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ page, script }) => {
   script("approval");
   await send(page, "Run the command that needs approval");

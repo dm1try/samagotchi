@@ -12,6 +12,12 @@ test("a new question needs an answer, keyed by its id", () => {
   assert.deepEqual(attentionFor(base, next), { reason: "question", sessionId: "s1", key: "s1:q1" });
 });
 
+test("a turn that ran out of steps rings once, as the step-limit question, not as a turn done", () => {
+  const next = { ...base, status: "idle", pending_question: { id: "c1", kind: "continue" },
+    last_turn: { ...turn("completed", 120), exhausted: true, limit: 100 } };
+  assert.deepEqual(attentionFor(base, next), { reason: "continue", sessionId: "s1", key: "s1:c1" });
+});
+
 test("the same question twice is one", () => {
   const next = { ...base, pending_question: { id: "q1", kind: "question" } };
   assert.equal(attentionFor(next, { ...next, updated_at: "later" }), null);
@@ -81,6 +87,7 @@ test("the words: session name and the reason, no question text", () => {
   assert.deepEqual(attentionText(s, { reason: "done" }), { title: "fix the build", body: "done in 42 s" });
   assert.equal(attentionText(s, { reason: "question" }).body, "needs an answer");
   assert.equal(attentionText(s, { reason: "approval" }).body, "needs approval");
+  assert.equal(attentionText(s, { reason: "continue" }).body, "hit its step limit");
   assert.equal(attentionText(s, { reason: "failed" }).body, "turn failed");
   assert.equal(attentionText({ id: "x" }, { reason: "failed" }).title, "chi session");
 });
@@ -235,6 +242,8 @@ test("the bell is denied, on or off on a secure origin", () => {
 test("waitingOn names an open question, an approval or a card with actions; else null", () => {
   assert.deepEqual(waitingOn({ ...base, pending_question: { id: "q1", kind: "question" } }), { reason: "question", id: "q1" });
   assert.deepEqual(waitingOn({ ...base, pending_question: { id: "q1", kind: "approval" } }), { reason: "approval", id: "q1" });
+  // The step-limit question, between turns (the session is idle).
+  assert.deepEqual(waitingOn({ ...base, status: "idle", pending_question: { id: "c1", kind: "continue" } }), { reason: "continue", id: "c1" });
   assert.deepEqual(waitingOn({ ...base, pending_card: { id: "c1" } }), { reason: "card", id: "c1" });
   assert.equal(waitingOn(base), null);
   assert.equal(waitingOn({ ...base, pending_question: {} }), null);

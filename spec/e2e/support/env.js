@@ -19,7 +19,8 @@ export const APPROVAL_COMMAND = "echo E2E_APPROVED";
 // The file whose edit asks (scripts/edit.json writes it, then edits it).
 export const EDIT_ASK_FILE = "e2e-settings.conf";
 
-function config(fakePort) {
+// @param extra YAML appended (a scenario's own settings: useTurnLimit)
+function config(fakePort, extra = "") {
   return `default:
   model: fake-script
 hosts:
@@ -47,7 +48,7 @@ guardrails:
       path: '**/${EDIT_ASK_FILE}'
       verdict: ask
       reason: the e2e edit preview scenario
-`;
+${extra}`;
 }
 
 export function freePort() {
@@ -134,6 +135,7 @@ export async function startEnv({ lan = false } = {}) {
   const env = { root, dirs, procs: [] };
   try {
     const fakePort = await freePort();
+    env.fakePort = fakePort;
     fs.writeFileSync(path.join(dirs.config, "samagotchi", "config.yml"), config(fakePort));
     // No upstream: the error modes' /props and /models get a 404 here instead
     // of going to the smoke runs' LAN llama.cpp (unreachable on CI: each
@@ -188,6 +190,13 @@ export async function startEnv({ lan = false } = {}) {
 // script before its turn starts.
 export function useScript(env, name) {
   fs.copyFileSync(path.join(SCRIPTS, `${name}.json`), path.join(env.dirs.fake, "script.json"));
+}
+
+// A turn's step limit (turn.max_iterations) for the next turns, or the
+// default again with null: the workers read config.yml at each turn.
+export function useTurnLimit(env, limit) {
+  const extra = limit == null ? "" : `turn:\n  max_iterations: ${limit}\n`;
+  fs.writeFileSync(path.join(env.dirs.config, "samagotchi", "config.yml"), config(env.fakePort, extra));
 }
 
 // The fake's mode (fake_openai.py's header: 500, stall, …); "script" plays

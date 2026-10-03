@@ -1,0 +1,9 @@
+{
+  "delay": 0.01,
+  "iterations": [
+    {"text": "Step one.", "tools": [{"name": "execute", "arguments": {"command": "true"}}]},
+    {"text": "Step two.", "tools": [{"name": "execute", "arguments": {"command": "true"}}]},
+    {"text": "Step three.", "tools": [{"name": "execute", "arguments": {"command": "true"}}]},
+    {"text": "Finished after the continue: STEP-LIMIT-DONE"}
+  ]
+}
