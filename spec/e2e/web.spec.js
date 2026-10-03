@@ -685,6 +685,21 @@ test("/archive and /exit typed in the composer get a local reply, not a worker e
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
 });
 
+test("/modle typed in the composer gets the hint, not a turn", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  await page.locator("#prompt").fill("/modle");
+  await page.locator("#actionBtn").click();
+  const bubble = page.locator("#history .bubble.command").last();
+  await expect(bubble.locator(".command-line")).toHaveText("/modle");
+  await expect(bubble.locator(".command-output"))
+    .toHaveText("Unknown command /modle. Did you mean /model? /help lists the commands.");
+  await expect(page.locator("#prompt")).toHaveValue("");
+  // No turn ran: the one turn's timing line is still the only one.
+  await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(1);
+});
+
 // check-in (after: 3 in the e2e config): the card comes up in the running
 // step after the 3rd call; Nudge puts its message into the turn as a nudge
 // row of that step, and the model's next step answers it.

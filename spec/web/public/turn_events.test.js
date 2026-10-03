@@ -191,7 +191,7 @@ test("keepEarlyRestore skips an acked prompt (the usual order), another client's
   assert.equal(restoreOnAck(undefined, early, opts), null);
 });
 
-import { commandView, continueLine, sessionCommandLine, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { commandView, continueLine, sessionCommandLine, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("sessionCommandLine: the session's commands go to the command route, an unknown /word to the model", () => {
   const commands = [{ name: "/model" }, { name: "/models" }, { name: "!rollback" }, { name: "/hello", source: "b" }];
@@ -207,6 +207,30 @@ test("sessionCommandLine: the session's commands go to the command route, an unk
   assert.equal(sessionCommandLine("!", commands), false);
   assert.equal(sessionCommandLine("hello /model", commands), false);
   assert.equal(sessionCommandLine("/model x", undefined), false);
+});
+
+test("unknownCommandHint: a typo of a command gets the hint, a prompt gets none", () => {
+  const commands = [{ name: "/model" }, { name: "/models" }, { name: "!rollback" }, { name: "/hello", source: "b" }];
+  assert.equal(unknownCommandHint("/modle", commands),
+    "Unknown command /modle. Did you mean /model? /help lists the commands.");
+  // A transposition counts as 1, so /model (1) beats /models (2), as Ruby's
+  // DidYouMean reads it.
+  assert.equal(unknownCommandHint("/modle", [{ name: "/models" }, { name: "/model" }]),
+    "Unknown command /modle. Did you mean /model? /help lists the commands.");
+  assert.equal(unknownCommandHint("  /modle  ", commands),
+    "Unknown command /modle. Did you mean /model? /help lists the commands.");
+  assert.equal(unknownCommandHint("/xyz", commands), "Unknown command /xyz. /help lists the commands.");
+  assert.equal(unknownCommandHint("/model", commands), null);
+  assert.equal(unknownCommandHint("/model x", commands), null);
+  assert.equal(unknownCommandHint("/foo bar", commands), null);
+  assert.equal(unknownCommandHint("/usr/bin/env", commands), null);
+  assert.equal(unknownCommandHint("!ls", commands), null);
+  assert.equal(unknownCommandHint("hello", commands), null);
+  assert.equal(unknownCommandHint("", commands), null);
+  // The page's own commands count too (webLocalReply).
+  assert.equal(unknownCommandHint("/exi", commands),
+    "Unknown command /exi. Did you mean /exit? /help lists the commands.");
+  assert.equal(unknownCommandHint("/stats", commands), null);
 });
 
 test("webLocalReply: /archive, /exit and /quit are answered by the page, other commands go to the worker", () => {
