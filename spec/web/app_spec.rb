@@ -2029,6 +2029,34 @@ RSpec.describe Samagotchi::Web::App do
       expect(Process).not_to have_received(:spawn)
     end
 
+    it "restarts the session's worker on POST /restart and says which chi the new one runs" do
+      allow(Samagotchi::SessionManager).to receive(:restart_session)
+        .and_return(Samagotchi::SessionManager::Restarted.new(session_id: session.id, from_version: "0.18.1",
+                                                              version: "0.19.0"))
+
+      status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/restart", method: "POST"))
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body.first)).to eq("status" => "restarted", "session_id" => session.id,
+                                           "from_version" => "0.18.1", "version" => "0.19.0")
+      expect(Samagotchi::SessionManager).to have_received(:restart_session)
+        .with(session.id, state_dir: state_dir, client_id: "web:restart")
+    end
+
+    it "answers POST /restart with 409 and the reason in words when it can't" do
+      refusals = { question_pending: "held", not_running: "not_running", unsupported: "unsupported" }
+      refusals.each do |reason, error|
+        allow(Samagotchi::SessionManager).to receive(:restart_session)
+          .and_raise(Samagotchi::SessionManager::RestartRefused.new(session.id, reason, version: "0.18.0"))
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/restart", method: "POST"))
+
+        expect(status).to eq(409)
+        expect(JSON.parse(body.first)).to include("error" => error, "reason" => reason.to_s,
+                                                  "detail" => Samagotchi::SessionManager::RestartRefused.words(session.id, reason, "0.18.0"))
+      end
+    end
+
     it "waits (bounded) for the worker to let go on POST /stop, so a resume after it spawns a fresh one" do
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
 

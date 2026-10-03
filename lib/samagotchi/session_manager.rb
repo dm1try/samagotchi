@@ -439,6 +439,85 @@ module Samagotchi
                                 since_time: since_time)
     end
 
+    # A restart that can't happen now. reason: :not_running (no live worker:
+    # the next prompt starts one on the newest chi anyway), :unsupported (a
+    # worker from before restarts, running +version+: stop it instead), a
+    # WorkerIdleExit#hold_for_restart hold (:turn_running, :reminders, ...),
+    # or :failed (the worker answered something else).
+    class RestartRefused < StandardError
+      attr_reader :session_id, :reason, :version
+
+      def initialize(session_id, reason, version: nil)
+        @session_id = session_id
+        @reason = reason.to_sym
+        @version = version
+        super(RestartRefused.words(session_id, @reason, version))
+      end
+
+      HOLDS = {
+        starting: "its worker is still starting",
+        turn_running: "a turn is running",
+        input_queued: "a prompt is queued",
+        continue_offered: "the step-limit question waits for an answer",
+        question_pending: "a question or approval waits for an answer",
+        reminders: "it has reminders, which a restart would drop",
+        command_running: "a /btw (or another command) is still running",
+        relays_open: "a delegate's approval relayed here is open or just answered",
+        background_tasks: "background tasks it started are still running"
+      }.freeze
+
+      # What the CLI and the web say.
+      def self.words(session_id, reason, version = nil)
+        case reason
+        when :not_running
+          "session #{session_id} has no running worker; the next prompt starts one on the newest chi"
+        when :unsupported
+          "session #{session_id}'s worker runs chi #{version || "(older)"}, which can't restart: " \
+            "chi sessions stop #{session_id}, then any prompt starts it on the newest chi"
+        when :failed then "session #{session_id}'s worker didn't take the restart"
+        else "not now: #{HOLDS.fetch(reason, reason.to_s.tr("_", " "))}"
+        end
+      end
+    end
+
+    # What a restart did: the worker's version before and after (nil when
+    # the new worker hadn't published its Bridge within the wait).
+    Restarted = Struct.new(:session_id, :from_version, :version, keyword_init: true)
+
+    RESTART_WAIT = 10.0
+
+    # Hand a session to a new worker on the newest chi installed: ask its
+    # worker (POST /exit restart: true), which leaves only when nothing would
+    # be lost and starts its successor (Worker#exit_request), then wait up to
+    # +wait+ seconds for the successor's Bridge. Web tabs and attached
+    # terminals reconnect to it.
+    # @return [Restarted]
+    # @raise [OwnedByTUI] a chi REPL owns the session
+    # @raise [RestartRefused]
+    # @raise [ArgumentError] no such session
+    def self.restart_session(session_id, state_dir: nil, wait: RESTART_WAIT, client_id: "cli:restart")
+      sd = state_dir || Session.default_state_dir
+      Session.load(session_id, state_dir: sd) # ArgumentError for none
+      owner = refuse_tui!(session_id, state_dir: sd)
+      dir = Session.session_dir(session_id, state_dir: sd)
+      sidecar = owner&.worker? && WorkerSidecar.live(dir, unlink: false)
+      raise RestartRefused.new(session_id, :not_running) unless sidecar
+      unless sidecar.features.include?("restart")
+        raise RestartRefused.new(session_id, :unsupported, version: sidecar.version)
+      end
+
+      reply = BridgeClient.new(session_id: session_id, port: sidecar.port).request_exit(client_id: client_id, restart: true)
+      raise RestartRefused.new(session_id, reply.json&.fetch("reason", nil) || :failed) if reply.status == 409
+      raise RestartRefused.new(session_id, :failed) unless reply.status == 200
+
+      Log.info(:worker, "restart", sid: session_id, from: sidecar.version, by: client_id)
+      fresh = BridgeClient.poll(wait, interval: 0.1) do
+        found = WorkerSidecar.live(dir, unlink: false)
+        found if found && found.started_at != sidecar.started_at
+      end
+      Restarted.new(session_id: session_id, from_version: sidecar.version, version: fresh&.version)
+    end
+
     # Stop a session by sending TERM to its process.
     # With +wait+ (seconds), also wait for the owner to let go of the session,
     # so a resume right after spawns a fresh worker instead of finding the
@@ -766,6 +845,8 @@ module Samagotchi
       env = opts.delete(:env)
       command = worker_command(session.id, state_dir: state_dir)
       pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
+      # Reaped when it exits: a long-lived spawner (chi web) keeps no zombies.
+      Process.detach(pid)
       Log.info(:worker, "spawn", sid: session.id, child_pid: pid)
       pid
     end

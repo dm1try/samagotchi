@@ -139,6 +139,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output],
         ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel],
         ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop],
+        ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart],
         ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive],
         ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive],
         ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn],
@@ -997,6 +998,26 @@ module Samagotchi
         @manager.stop_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
         @hub&.touch(id)
         json_response(200, { status: "stopped", session_id: id })
+      rescue SessionManager::OwnedByTUI => e
+        error_response(409, "owned_by_tui", e.message)
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      # POST /api/sessions/:id/restart: hand the session to a new worker on
+      # the newest chi installed (SessionManager.restart_session). 200
+      # {status: "restarted", session_id, from_version, version} (version nil:
+      # the new worker is still starting; its bridge_up follows); 409
+      # {error: "held" | "not_running" | "unsupported" | "failed", reason, detail} in words; 409
+      # owned_by_tui; 404.
+      def handle_restart(_req, id)
+        result = @manager.restart_session(id, state_dir: @state_dir, client_id: "web:restart")
+        @hub&.touch(id)
+        json_response(200, { status: "restarted", session_id: id, from_version: result.from_version,
+                             version: result.version })
+      rescue SessionManager::RestartRefused => e
+        error = %i[not_running unsupported failed].include?(e.reason) ? e.reason.to_s : "held"
+        json_response(409, { error: error, reason: e.reason.to_s, detail: e.message, session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
       rescue ArgumentError => e

@@ -15,7 +15,7 @@
 - `chi web --web-host lan` — the Web UI on your home network too, for your phone: a link with an access token and its QR code (see [chi web on your phone](#chi-web-on-your-phone)); `chi web --new-token` replaces the token
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `chi web --web-view turn` — draw turns with the turn view (each turn as one block of steps, the running one at the bottom of the history) instead of the default stage view (the running turn pinned above the composer); `?view=stage|turn` on the page URL overrides it (see [Web views](#web-views))
-- `chi sessions list|stop|archive|unarchive|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)). A usage error (an unknown subcommand or flag, a flag missing its value, `stop` or `delete` with no ids, a bad `list --format` or `--scope`) exits 2; an unknown or refused session exits 1
+- `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)). A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, a bad `list --format` or `--scope`) exits 2; an unknown or refused session exits 1
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead, and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; `--format json` prints one JSON object instead; exit 3 a question waits, its options on stderr; exit 4 `--timeout` passed with the turn still running; see [Starting a session](sessions.md#starting-a-session))
 - `chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]` (or `--dismiss`) — answer the question a session waits on (the one `chi send --wait` exited 3 with), then wait and print what comes next as `chi send --wait` does: the reply (0), the next question (3), still running after `--timeout` (4). `--option` is 1-based or the label, repeated on a multi-select question; `--text` is free text, or a Deny's reason; `--dismiss` leaves it unanswered and the model finishes its reply. A question no longer open (the web answered first) isn't answered again: it waits for that turn's reply. An option the question doesn't offer exits 2; a worker that is gone exits 1 (`send the task again: chi send --wait -m "…" ID`). An approval can be denied, not allowed, unless `guardrails.parent_approvals: once` (a convention, not a security boundary; see [Guardrails](guardrails.md#approvals-from-a-parent-agent))
@@ -319,6 +319,16 @@ note or image) is deleted as its worker exits, and `/exit` says so; set
 a `chi --resume ID` after it starts a fresh one. A worker still running an
 older chi (from before an upgrade) takes turns but not commands; the attached
 terminal and the Web UI say so, with that restart line.
+
+`chi sessions restart ID...` hands each session to a new worker on the newest
+chi installed, without stopping it: an attached terminal and the web's tabs
+move to the new worker. It is refused, with the reason, while something would
+be lost: a turn running or queued, a question or approval waiting, reminders,
+a `/btw` still running, an approval relayed from a delegate, or background
+tasks the session started. A session with no running worker needs none (its
+next prompt starts one on the newest chi), and a worker from before restarts
+needs `chi sessions stop ID`. The Web UI's `POST /api/sessions/:id/restart`
+does the same (409 with `reason` and `detail` when it can't).
 
 `chi sessions archive ID...` hides sessions from every list (the terminal's,
 the web's, `list_sessions`) and keeps them for good: the retention sweep never

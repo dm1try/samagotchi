@@ -13,7 +13,7 @@ require_relative "cli/command"
 require_relative "cli/flags"
 
 module Samagotchi
-  # `chi sessions`: list, stop, archive/unarchive, delete, prune and clean
+  # `chi sessions`: list, stop, restart, archive/unarchive, delete, prune and clean
   # sessions from the shell (bin/chi dispatches here before OptionParser;
   # the subcommands have their own flags). Not SessionCommands, the REPL's
   # slash commands for sessions (session_commands.rb).
@@ -21,7 +21,7 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi sessions <list|stop|archive|unarchive|delete|prune|clean> [options]
+      Usage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean> [options]
         list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
              [--live] [--cwd PATH] [--format text|json|tsv] [--archived]
              --live: sessions a worker runs now (the ones chi note reaches), 10 unless --limit
@@ -29,6 +29,7 @@ module Samagotchi
              [--scope=all]: every project's sessions; by default only this git project's (all outside a repo)
              --archived: archived sessions too (marked [archived]; json: archived: true)
         stop ID...   # stop each session's worker (IDs or unique prefixes); chi --resume ID then starts a fresh one
+        restart ID...   # hand each session to a new worker on the newest chi installed; refused while a turn, question or reminder would be lost
         archive ID...   # hide sessions (and their delegates) from every list and keep them for good; unarchive ID... brings them back
         delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
@@ -37,7 +38,8 @@ module Samagotchi
     TEXT
 
     STOP_USAGE = "Usage: chi sessions stop ID...\n"
-    SUBCOMMANDS = %w[list stop archive unarchive delete prune clean].freeze
+    RESTART_USAGE = "Usage: chi sessions restart ID...\n"
+    SUBCOMMANDS = %w[list stop restart archive unarchive delete prune clean].freeze
 
     # Each subcommand's flags ("--flag V" or "--flag=V" for a value): an
     # unknown flag, a value flag with nothing after it or an argument where
@@ -50,6 +52,7 @@ module Samagotchi
         f.switch "--archived", key: :include_archived
       end,
       "stop" => CLI::Flags.new,
+      "restart" => CLI::Flags.new,
       "prune" => CLI::Flags.new(args: false) do |f|
         %w[--days --keep --keep-status].each { |name| f.value name }
         f.switch "--dry-run"
@@ -94,6 +97,7 @@ module Samagotchi
       case @sub
       when "list" then list
       when "stop" then stop(parsed.args)
+      when "restart" then restart(parsed.args)
       else prune(@sub)
       end
     end
@@ -101,7 +105,7 @@ module Samagotchi
     private
 
     def command_name = @sub && SUBCOMMANDS.include?(@sub) ? "chi sessions #{@sub}" : "chi sessions"
-    def usage_text = @sub == "stop" ? STOP_USAGE : USAGE
+    def usage_text = { "stop" => STOP_USAGE, "restart" => RESTART_USAGE }.fetch(@sub, USAGE)
 
     # quirk: a number that isn't one is 0 (--days=abc turns the age limit off)
     def integers(options)
@@ -255,6 +259,41 @@ module Samagotchi
         true
       end
       ok.all? ? 0 : 1
+    end
+
+    # Each session in turn: its worker hands over to a new one on the newest
+    # chi (SessionManager.restart_session), or says why not.
+    def restart(ids)
+      return usage_error("give session ids") if ids.empty?
+
+      ok = ids.uniq.map do |given|
+        begin
+          id = Samagotchi::Session.resolve_id(given)
+          result = Samagotchi::SessionManager.restart_session(id)
+        rescue Samagotchi::SessionManager::OwnedByTUI
+          @stdout.flush
+          @stderr.puts "session #{id} is open in a chi REPL; close it there first"
+          next false
+        rescue Samagotchi::SessionManager::RestartRefused => e
+          @stdout.flush
+          @stderr.puts e.reason == :not_running || e.reason == :unsupported ? e.message : "session #{id}: #{e.message}"
+          next false
+        rescue ArgumentError => e
+          @stdout.flush
+          @stderr.puts e.message
+          next false
+        end
+        @stdout.puts restarted_line(result)
+        true
+      end
+      ok.all? ? 0 : 1
+    end
+
+    def restarted_line(result)
+      return "Restarting session #{result.session_id}; its new worker is still starting." unless result.version
+
+      from = result.from_version && result.from_version != result.version ? " (was #{result.from_version})" : ""
+      "Restarted session #{result.session_id} on chi #{result.version}#{from}."
     end
 
     def prune(sub)

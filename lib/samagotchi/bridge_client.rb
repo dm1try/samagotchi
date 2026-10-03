@@ -156,14 +156,16 @@ module Samagotchi
       post("command", payload, read_body: true)
     end
 
-    # POST /session/:id/exit: ask the worker to exit now. 200 = it will
-    # (status "exiting"), 409 = something keeps it up (reason), 404 with
+    # POST /session/:id/exit: ask the worker to exit now (+restart+: hand
+    # the session to a new worker, a worker with the "restart" feature). 200
+    # = it will (status "exiting"/"restarting"), 409 = something keeps it up (reason), 404 with
     # error "not_found" = a worker older than the route.
     # @param client_id [String] the asking UI, whose own streams don't hold
     # @return [Response]
-    def request_exit(client_id:, delete: false)
+    def request_exit(client_id:, delete: false, restart: false)
       body = { client_id: client_id }
       body[:delete] = true if delete
+      body[:restart] = true if restart
       post("exit", body, read_body: true)
     end
 

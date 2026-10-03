@@ -18,9 +18,13 @@ and commands may change between minor versions. How releases are made:
 
 - `chi web` notices a newer chi installed (`chi update`, `gem update`, a `git pull` in a checkout) and says to
   restart it, in its terminal and once in each open page.
+- `chi sessions restart ID...` moves a running session to a new worker on the newest chi installed, keeping its
+  attached terminal and web tabs on it; it is refused, with the reason, while a turn, a question, reminders or
+  background tasks would be lost.
 
 ### Fixed
 
+- `chi web` no longer leaves exited session workers behind as zombie processes.
 - The web's model picker lists a host added to (or changed in) `hosts:` while `chi web` runs, instead of the hosts
   it started with.
 

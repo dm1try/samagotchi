@@ -608,6 +608,15 @@ RSpec.describe Samagotchi::SessionManager do
                                      "SAMAGOTCHI_GUARDRAILS_X" => nil)
     end
 
+    it "reaps the worker when it exits, so a long-lived spawner (chi web) keeps no zombies" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+      allow(Process).to receive(:detach)
+
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(Process).to have_received(:detach).with(12_345)
+    end
+
     it "keeps the spawner's SAMAGOTCHI_INSTALLED_VERSION seam from the worker" do
       spawned_env = nil
       allow(Process).to receive(:spawn) do |env, *_args, **_opts|
@@ -873,6 +882,73 @@ RSpec.describe Samagotchi::SessionManager do
       expect(pid_seen).to be(false)
       # Released on the way out.
       expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
+    end
+  end
+
+  describe ".restart_session" do
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+                         .tap { |s| s.save(state_dir: tmpdir) }
+    end
+    let(:worker) { Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1, started_at: nil) }
+    let(:old_sidecar) do
+      Samagotchi::WorkerSidecar.new(port: 4100, started_at: "t1", version: "0.18.1", features: ["restart"])
+    end
+    let(:client) { instance_double(Samagotchi::BridgeClient) }
+
+    def response(status, body)
+      Samagotchi::BridgeClient::Response.new(status: status, body: JSON.generate(body))
+    end
+
+    before do
+      allow(described_class).to receive(:session_owner).and_return(worker)
+      allow(Samagotchi::BridgeClient).to receive(:new).with(session_id: session.id, port: 4100).and_return(client)
+    end
+
+    it "asks the worker for a restart and waits for its successor's Bridge" do
+      fresh = old_sidecar.with(port: 4200, started_at: "t2", version: "0.19.0")
+      allow(Samagotchi::WorkerSidecar).to receive(:live).and_return(old_sidecar, old_sidecar, nil, fresh)
+      allow(client).to receive(:request_exit).and_return(response(200, status: "restarting"))
+
+      result = described_class.restart_session(session.id, state_dir: tmpdir, wait: 2, client_id: "web:restart")
+
+      expect(client).to have_received(:request_exit).with(client_id: "web:restart", restart: true)
+      expect(result.to_h).to eq(session_id: session.id, from_version: "0.18.1", version: "0.19.0")
+    end
+
+    it "gives no version when the successor didn't come up within the wait" do
+      allow(Samagotchi::WorkerSidecar).to receive(:live).and_return(old_sidecar)
+      allow(client).to receive(:request_exit).and_return(response(200, status: "restarting"))
+
+      expect(described_class.restart_session(session.id, state_dir: tmpdir, wait: 0.2).version).to be_nil
+    end
+
+    it "is refused with the worker's reason" do
+      allow(Samagotchi::WorkerSidecar).to receive(:live).and_return(old_sidecar)
+      allow(client).to receive(:request_exit).and_return(response(409, status: "held", reason: "reminders"))
+
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused, "not now: it has reminders, which a restart would drop") { |e|
+          expect(e.reason).to eq(:reminders)
+        }
+    end
+
+    it "is refused for a worker from before restarts, which it never asks" do
+      allow(Samagotchi::WorkerSidecar).to receive(:live).and_return(old_sidecar.with(features: []))
+      allow(client).to receive(:request_exit)
+
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused, /runs chi 0.18.1, which can't restart: chi sessions stop/)
+      expect(client).not_to have_received(:request_exit)
+    end
+
+    it "is refused with no live worker, and raises OwnedByTUI for a REPL's session" do
+      allow(described_class).to receive(:session_owner).and_return(nil)
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused) { |e| expect(e.reason).to eq(:not_running) }
+
+      allow(described_class).to receive(:session_owner).and_return(Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1, started_at: nil))
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }.to raise_error(described_class::OwnedByTUI)
     end
   end
 
@@ -1265,7 +1341,7 @@ RSpec.describe Samagotchi::SessionManager do
       it "is kept when another owner took it after the worker left" do
         allow(described_class).to receive(:session_owner).and_call_original
         allow(described_class).to receive(:session_owner).with(session.id, state_dir: tmpdir)
-                                                         .and_return(Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1))
+                                                         .and_return(Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1, started_at: nil))
 
         run_worker
 

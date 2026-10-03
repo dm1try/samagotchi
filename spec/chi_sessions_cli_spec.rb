@@ -18,7 +18,7 @@ RSpec.describe "chi sessions (CLI)" do
 
   let(:usage) do
     <<~TEXT
-      Usage: chi sessions <list|stop|archive|unarchive|delete|prune|clean> [options]
+      Usage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean> [options]
         list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
              [--live] [--cwd PATH] [--format text|json|tsv] [--archived]
              --live: sessions a worker runs now (the ones chi note reaches), 10 unless --limit
@@ -26,6 +26,7 @@ RSpec.describe "chi sessions (CLI)" do
              [--scope=all]: every project's sessions; by default only this git project's (all outside a repo)
              --archived: archived sessions too (marked [archived]; json: archived: true)
         stop ID...   # stop each session's worker (IDs or unique prefixes); chi --resume ID then starts a fresh one
+        restart ID...   # hand each session to a new worker on the newest chi installed; refused while a turn, question or reminder would be lost
         archive ID...   # hide sessions (and their delegates) from every list and keep them for good; unarchive ID... brings them back
         delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
