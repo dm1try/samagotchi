@@ -184,9 +184,18 @@ module Samagotchi
 
       # The whole question, as `chi send --wait` prints it (ParentReport):
       # its text, options and the commands that answer it.
+      # A step-limit question (kind continue) is the parent model's to
+      # decide (it isn't relayed: Continue grants no permission): continue
+      # it with chi answer through execute, send a follow-up instead, or
+      # report back.
       def waiting_text(child_id, pending)
-        "Child #{child_id} is #{ParentReport.question_text(pending, session_id: child_id)}" \
-          "delegate_result #{child_id} waits again once it is answered."
+        text = "Child #{child_id} is #{ParentReport.question_text(pending, session_id: child_id)}"
+        if ParentReport.continue?(pending)
+          text += "The child ran out of steps before it answered. Decide: continue it (run the chi answer command " \
+                  "above with execute) if it is getting somewhere; send it a narrower follow-up with delegate " \
+                  "session: #{child_id} (that drops the question); or stop it and report back to your user.\n"
+        end
+        "#{text}delegate_result #{child_id} waits again once it is answered."
       end
 
       def cut(text)

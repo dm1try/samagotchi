@@ -290,6 +290,18 @@ RSpec.describe "delegate tools" do
                               "    1. A\n    2. B\n  answer: chi answer #{child.id} --question q2 --option N\n")
     end
 
+    it "hands a child's step-limit question back to the parent model (not relayed): continue, follow up or report" do
+      set_status(child, "idle", pending_question: { id: "c1", kind: "continue", header: "Step limit",
+                                                     question: "The turn ran out of iterations (100 steps) before it answered. Continue it?",
+                                                     options: %w[Continue Stop], allow_freeform: true, limit: 100 })
+      out = wait
+      expect(out).to start_with("session: #{child.id}\nstatus: question\nChild #{child.id} is waiting for an answer (continue): Step limit\n")
+      expect(out).to include("  continue: chi answer #{child.id} --question c1 --option Continue\n")
+      expect(out).to include("  stop: chi answer #{child.id} --question c1 --option Stop --text WHY")
+      expect(out).to include("send it a narrower follow-up with delegate session: #{child.id} (that drops the question)")
+      expect(out).to end_with("delegate_result #{child.id} waits again once it is answered.")
+    end
+
     it "says the child's worker is gone, not that its question waits, when the worker died asking" do
       dead = make(parent_id: parent.id, prompt: "task", status: "running")
       set_status(dead, "running", pending_question: { id: "q1", question: "Which one?" })
