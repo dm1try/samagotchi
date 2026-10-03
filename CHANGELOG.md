@@ -38,6 +38,8 @@ and commands may change between minor versions. How releases are made:
   dropped to its URI text.
 - check-in's `nudge` mode no longer says "nudged" when the steer was dropped later; it says "nudge not sent" at
   the turn's end.
+- A session started with an annotation (a web quote) is previewed by the note typed under the quote, not
+  `From your thinking: > …`; a quote with no note previews by its words.
 
 ## [0.19.0] - 2026-10-03
 

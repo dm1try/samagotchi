@@ -474,6 +474,22 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.first_preview).to end_with("…")
     end
 
+    it "previews an annotated message by the note under the quote" do
+      text = "From your thinking:\n> the quoted line\n> and more\n\nwhy did you pick this?"
+      expect(described_class.preview_of(text)).to eq("why did you pick this?")
+      expect(described_class.preview_of("From the execute call:\n> ok\n\nFrom my earlier message:\n> a\n\nnote"))
+        .to eq("note")
+    end
+
+    it "previews a quote with no note by its words, without the label and markers" do
+      expect(described_class.preview_of("From your earlier step:\n> step one\n>\n> step two\n\n"))
+        .to eq("step one step two")
+    end
+
+    it "keeps a message with no quote as it is" do
+      expect(described_class.preview_of("From your thinking: is a phrase\nhere")).to eq("From your thinking: is a phrase here")
+    end
+
     it "does not recompute when already cached" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.first_preview = "original"

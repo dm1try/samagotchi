@@ -426,11 +426,29 @@ module Samagotchi
       true
     end
 
+    # The web's annotation labels (annotations.js sourceLabel), each on its
+    # own line above a quote.
+    QUOTE_LABEL_RE = /\AFrom (?:your thinking|your earlier step|the .{1,80} call|my earlier message):\z/
+
     # A prompt as a one-line preview: whitespace collapsed, cut at 80 chars.
+    # A quoted or annotated message previews by what was typed under the
+    # quote; a quote alone by its words, without the "> " markers or label.
     def self.preview_of(text)
-      norm = text.to_s.gsub(/\s+/, " ").strip
+      norm = preview_words(text.to_s).gsub(/\s+/, " ").strip
       norm.length > 80 ? "#{norm[0, 80]}…" : norm
     end
+
+    def self.preview_words(text)
+      lines = text.lines.map(&:strip)
+      quoted = lines.select { |line| line.start_with?(">") }
+      return text if quoted.empty?
+
+      own = lines.reject { |line| line.start_with?(">") || QUOTE_LABEL_RE.match?(line) }.join("\n")
+      return own unless own.strip.empty?
+
+      quoted.map { |line| line.sub(/\A(?:>[ \t]?)+/, "") }.join("\n")
+    end
+    private_class_method :preview_words
 
     private
 
