@@ -14,6 +14,7 @@ require "samagotchi/session_manager"
 RSpec.describe "delegate tools" do
   let(:tmpdir) { Dir.mktmpdir("delegate-tools") }
   let(:locks) { [] }
+  let(:threads) { [] }
   let(:parent) { make(cwd: "/work/app", prompt: "the plan", model: "big-model") }
   let(:cancelled) { [false] }
   let(:peers) do
@@ -32,6 +33,10 @@ RSpec.describe "delegate tools" do
   end
 
   after do
+    # A wait can return on the reply before its child thread's last step
+    # (set_status idle); unjoined, that step's Session.load landed in a later
+    # example and broke its `not_to receive(:load)`.
+    threads.each { |t| t.join(5) || t.kill }
     locks.each(&:release)
     FileUtils.rm_rf(tmpdir)
   end
@@ -77,7 +82,7 @@ RSpec.describe "delegate tools" do
     Thread.new do
       sleep(delay)
       block.call
-    end
+    end.tap { |t| threads << t }
   end
 
   describe Samagotchi::Tools::Delegate do
