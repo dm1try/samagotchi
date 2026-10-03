@@ -95,8 +95,9 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
   it "cancels the question on empty input or end of input" do
     allow(engine).to receive(:cancel_question)
 
-    expect(answer_with("\n")).to eq([false, answer_with("").last])
-    expect(answer_with("").last).to end_with("? Which one? → (cancelled)\n")
+    # The empty line is echoed as typed; the end of the input leaves no bare ? prompt.
+    expect(answer_with("\n")).to eq([false, answer_with("").last.sub("? Which one? →", "? \n? Which one? →")])
+    expect(answer_with("").last).to end_with("Enter alone cancels]\n? Which one? → (cancelled)\n")
     expect(engine).to have_received(:cancel_question).with("user").exactly(3).times
   end
 
@@ -279,6 +280,18 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       expect(out).not_to match(/^\S+ \S+ 2$/)
       expect(out.lines.grep(/\b2$/).size).to eq(1), out
       expect(answer).not_to include(selected_indices: [1])
+      expect(answer).to include(error: "no answer")
+    end
+
+    # F10: the input's end leaves no bare "? " above the summary.
+    it "prints no ? prompt when the piped input has already ended" do
+      answer, out = open_with("2\n")
+      expect(out).not_to match(/^\S* ?\? *$/), out
+      expect(answer).to include(error: "no answer")
+
+      answer, out = open_with("")
+      expect(out).not_to match(/^\S* ?\? *$/), out
+      expect(out.lines.last).to match(/\(denied\)|no answer|→/), out
       expect(answer).to include(error: "no answer")
     end
 

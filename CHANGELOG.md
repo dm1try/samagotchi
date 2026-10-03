@@ -81,6 +81,8 @@ and commands may change between minor versions. How releases are made:
 - macOS 26: a dead worker's leftover `bridge.json` no longer counts as a live worker. Ruby's `Socket.tcp` with a
   connect timeout returns the socket of a refused connect there, so the check said live: clients tried its port
   first, `chi update` listed the dead worker as running, and an approval relay kept watching a parent that was gone.
+- REPL with piped input: when the input ends at a question or approval, no bare `? ` line is left above its
+  `(denied)` / `(cancelled)` summary.
 
 ## [0.16.0] - 2026-10-03
 

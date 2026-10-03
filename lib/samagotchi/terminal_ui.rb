@@ -1204,6 +1204,10 @@ module Samagotchi
 
     # A ? read of its own, off a terminal (specs, pipes): $stdin.gets.
     def read_choice_line(question_prompt)
+      # Off a terminal the ? prompt can't be taken back: at the input's end
+      # it would stay bare above the summary. eof? waits as gets would.
+      return nil if !$stdin.tty? && $stdin.eof?
+
       @surface.set_slot(:editor, [question_prompt])
       line = $stdin.gets
       # A pipe doesn't echo: the line completes the ? prompt here, once,
