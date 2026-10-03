@@ -905,7 +905,7 @@ file2.rb")
         .to output(/answer yes, no, or no, <reason>.*finished/m).to_stdout
     end
 
-    it "supports no to cancel the interrupted turn" do
+    it "supports no to stop: the interrupted turn stays (D3)" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
@@ -919,9 +919,10 @@ file2.rb")
       agent = described_class.new(client: client)
 
       expect { agent.run }
-        .to output(/interrupted turn cancelled; enter your next prompt.*fresh answer/m).to_stdout
+        .to output(/turn not continued; its work so far stays.*fresh answer/m).to_stdout
       expect(prompts.last).to include(next_request)
-      expect(prompts.last).not_to include(old_request)
+      expect(prompts.last).to include(old_request)
+      expect(prompts.last).to include("the user chose not to continue it")
     end
 
     it "accepts no with explanation and records it in conversation" do
@@ -938,8 +939,8 @@ file2.rb")
       agent = described_class.new(client: client)
 
       expect { agent.run }
-        .to output(/noted your explanation.*fresh answer/m).to_stdout
-      expect(prompts.last).to include("I chose not to continue the interrupted turn because: this is too risky")
+        .to output(/noted your reason.*fresh answer/m).to_stdout
+      expect(prompts.last).to include("I chose not to continue the turn that ran out of steps because: this is too risky")
       expect(prompts.last).to include("Interrupted turn summary:")
       expect(prompts.last).to include(old_request)
       expect(prompts.last).to include("Please keep the original prompt context")
@@ -962,10 +963,10 @@ file2.rb")
       agent = described_class.new(client: client)
 
       expect { agent.run }
-        .to output(/anchor response.*iteration limit reached.*noted your explanation.*fresh answer/m).to_stdout
+        .to output(/anchor response.*iteration limit reached.*noted your reason.*fresh answer/m).to_stdout
       expect(prompts.last).to include(anchor_request)
       expect(prompts.last).to include(interrupted_request)
-      expect(prompts.last).to include("I chose not to continue the interrupted turn because: stay in plan mode")
+      expect(prompts.last).to include("I chose not to continue the turn that ran out of steps because: stay in plan mode")
       expect(prompts.last).to include("Interrupted turn summary:")
       expect(prompts.last).to include("Please keep the original prompt context")
       expect(prompts.last).to include(next_request)

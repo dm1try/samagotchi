@@ -131,6 +131,13 @@ module Samagotchi
       (entry[:kind] || entry["kind"]).to_s == KIND
     end
 
+    # The step-limit offer answered Stop (no reason): the partial turn
+    # stays, and the model reads that it wasn't continued.
+    def not_continued
+      message("the previous turn ran out of steps before it answered, and the user chose not to continue it. " \
+              "Its work so far (tool calls, file changes) stays; wait for the user's next message.")
+    end
+
     def message(text)
       { role: "system", content: "#{OPEN}#{text}#{CLOSE}", kind: KIND }
     end

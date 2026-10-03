@@ -25,10 +25,13 @@
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[33m? The turn ran out of iterations. Continue it?\e[0m → no
 \e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
-model> interrupted turn cancelled; enter your next prompt
+model> turn not continued; its work so far stays (!rollback erases it)
 \e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
 Continue session: chi --resume <session-id>
 \e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
 \e[?25h\e[?2026l--- session ---
 system: <prompt>
+user: "go"
+tool_response: "remember milk"
+system: "[SYSTEM: the previous turn ran out of steps before it answered, and the user chose not to continue it. Its work so far (tool calls, file changes) stays; wait for the user's next message.]"

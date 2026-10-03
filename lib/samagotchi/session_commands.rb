@@ -158,11 +158,11 @@ module Samagotchi
                when :abort
                  @turn_flow.abort_continue!
                  save_session
-                 reply("interrupted turn cancelled; enter your next prompt", changed: [:messages])
+                 reply("turn not continued; its work so far stays (!rollback erases it)", changed: [:messages])
                when :abort_with_reason
                  @turn_flow.abort_continue!(reason: reason)
                  save_session
-                 reply("interrupted turn cancelled; noted your explanation", changed: [:messages])
+                 reply("turn not continued; noted your reason", changed: [:messages])
                else
                  reply("answer yes, no, or no, <reason>", status: :error)
                end

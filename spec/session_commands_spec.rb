@@ -333,14 +333,16 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(turn_flow.awaiting_continue?).to be(true)
     end
 
-    it "discards the interrupted turn on no" do
+    it "keeps the interrupted turn on no, with a note for the model (D3)" do
       offered_continue
+      kept = session.messages.map { |m| m[:content] }
 
       result = commands.run("/continue no")
 
-      expect(result.output).to eq("interrupted turn cancelled; enter your next prompt")
+      expect(result.output).to eq("turn not continued; its work so far stays (!rollback erases it)")
       expect(result.changed).to eq([:messages])
-      expect(session.messages.map { |m| m[:content] }).to eq(%w[sys old])
+      expect(session.messages.map { |m| m[:content] }[0...-1]).to eq(kept)
+      expect(session.messages.last).to eq(Samagotchi::TurnNote.not_continued)
       expect(turn_flow.awaiting_continue?).to be(false)
       expect(saved.size).to eq(1)
     end
@@ -348,8 +350,8 @@ RSpec.describe Samagotchi::SessionCommands do
     it "notes the reason on no, <reason>" do
       offered_continue
 
-      expect(commands.continue_answer("no, too slow").output).to eq("interrupted turn cancelled; noted your explanation")
-      expect(session.messages.last[:content]).to start_with("I chose not to continue the interrupted turn because: too slow")
+      expect(commands.continue_answer("no, too slow").output).to eq("turn not continued; noted your reason")
+      expect(session.messages.last[:content]).to start_with("I chose not to continue the turn that ran out of steps because: too slow")
     end
 
     it "asks again on anything else" do

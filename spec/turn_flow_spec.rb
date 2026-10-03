@@ -180,21 +180,24 @@ RSpec.describe Samagotchi::TurnFlow do
       flow.after_turn(result(engine.messages, exhausted: true, pending: true))
     end
 
-    it "discards the interrupted turn" do
+    it "keeps the interrupted turn with a note for the model (D3); !rollback still erases it" do
+      kept = engine.messages.dup
       flow.abort_continue!
 
-      expect(engine.messages).to eq(before)
+      expect(engine.messages).to eq(kept + [Samagotchi::TurnNote.not_continued])
       expect(flow.awaiting_continue?).to be(false)
-      expect(flow.rollback!).to be(false)
+      expect(flow.rollback!).to be(true)
+      expect(engine.messages).to eq(before)
     end
 
     it "notes the reason with a summary of the interrupted turn" do
+      kept = engine.messages.dup
       flow.abort_continue!(reason: "too slow")
 
-      expect(engine.messages[0...-1]).to eq(before)
+      expect(engine.messages[0...-1]).to eq(kept)
       note = engine.messages.last
       expect(note[:role]).to eq("user")
-      expect(note[:content]).to start_with("I chose not to continue the interrupted turn because: too slow")
+      expect(note[:content]).to start_with("I chose not to continue the turn that ran out of steps because: too slow")
       expect(note[:content]).to include("- original_prompt: the task", "- interrupted_tools: (none)", "- last_model_intent: working")
       expect(flow.awaiting_continue?).to be(false)
     end
@@ -282,7 +285,9 @@ RSpec.describe Samagotchi::TurnFlow do
 
       flow.abort_continue!(reason: "too slow")
 
-      expect(engine.messages.first(4)).to eq(before + [note])
+      # The turn stays (D3), the note with it.
+      expect(engine.messages).to include(note)
+      expect(engine.messages.map { |m| m[:content] }).to include("list it", "calling ls")
       expect(engine.messages.last[:role]).to eq("user")
     end
 

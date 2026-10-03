@@ -947,12 +947,12 @@ RSpec.describe Samagotchi::Worker do
           expect(wait_until { engine.activity_seq > seq }).to be(true)
         end
 
-        it "discards the interrupted turn on no" do
+        it "keeps the interrupted turn on no, with a note (D3)" do
           done = ran(JSON.parse(post_command("/continue no").body)["command_id"])
 
-          expect(done).to include(output: "interrupted turn cancelled; enter your next prompt", changed: ["messages"])
+          expect(done).to include(output: "turn not continued; its work so far stays (!rollback erases it)", changed: ["messages"])
           expect(seen.find { |e| e[:type] == :continue_resolved }).to include(decision: "abort", client_id: "tui:9")
-          expect(wait_until { saved_messages.empty? }).to be(true)
+          expect(wait_until { saved_messages == ["long task", "r1", Samagotchi::TurnNote.not_continued[:content]] }).to be(true)
         end
 
         it "asks again on anything else, with the offer still open" do

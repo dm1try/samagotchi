@@ -108,12 +108,13 @@ module Samagotchi
       @checkpoint = nil
     end
 
-    # Answer the offer with no: the interrupted turn is discarded, and a
-    # reason (with a summary of that turn) is left for the model to read.
+    # Answer the offer with no (Stop): the interrupted turn stays, as
+    # after a Ctrl-C or a new prompt (!rollback still erases it), and the
+    # model reads that it wasn't continued: a note, or the user's reason
+    # (with a summary of that turn).
     def abort_continue!(reason: nil)
-      restore(@checkpoint) if @checkpoint
-      @checkpoint = nil
-      @engine.append_messages([{ role: "user", content: reason_message(reason) }]) if reason
+      message = reason ? { role: "user", content: reason_message(reason) } : TurnNote.not_continued
+      @engine.append_messages([message])
       @offer = nil
     end
 
@@ -212,9 +213,9 @@ module Samagotchi
 
     def reason_message(reason)
       context = @offer && @offer[:context]
-      lines = ["I chose not to continue the interrupted turn because: #{reason}"]
+      lines = ["I chose not to continue the turn that ran out of steps because: #{reason}"]
       lines << ""
-      lines << "Interrupted turn summary:"
+      lines << "Its work so far stays. Interrupted turn summary:"
       original_prompt = context && context[:original_prompt]
       lines << "- original_prompt: #{original_prompt.to_s.empty? ? "(unavailable)" : original_prompt}"
 
