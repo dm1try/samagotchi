@@ -229,8 +229,9 @@ chi's own. Path and command rules need to know what a call acts on, and that
 is what `targets:` says:
 
 - `paths:`: files the call reads or writes, absolute or relative to `cwd:`
-  (else the session's directory). `path:` globs, `outside_repo` and the
-  protected paths (chi's config, …) match them.
+  (else the session's directory). `path:` globs, `outside_repo` (measured
+  from the session's repo, whatever the call's `cwd:`) and the protected
+  paths (chi's config, …) match them.
 - `command:`: a shell command the call runs; `command:` rules match it.
 - `cwd:`: where it runs, for the repo root and relative paths.
 

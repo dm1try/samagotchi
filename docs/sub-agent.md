@@ -101,6 +101,10 @@ variable), "Allow once" goes through; the wider scopes never do,
 and neither does any allow on chi's own config, hooks or guardrail rules. See
 [Guardrails](guardrails.md#approvals-from-a-parent-agent).
 
+Start a child in the folder it should change (`chi send --new --dir PATH`):
+writes and mutating git outside its own repo ask (`write-outside-repo`,
+`git-outside-repo`), which a parent can only deny.
+
 An answer typed into `chi --attach` or the REPL counts as a parent's too when
 stdin isn't a terminal or an agent marker (`CLAUDECODE`, `AI_AGENT`,
 `CODEX_THREAD_ID`, `SAMAGOTCHI_PARENT_SESSION`) is set.

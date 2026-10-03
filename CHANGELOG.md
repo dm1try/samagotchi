@@ -10,6 +10,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- The guardrails bundle (0.4.0) asks before git that changes another checkout: `cd ../main && git commit`,
+  `git -C ../main add .`, an `execute` with `cwd:` there (commit, add, reset, checkout, switch, rebase, merge, push,
+  stash, rm, mv, cherry-pick, revert, pull, restore, am). Read-only git and tests there still run unasked. Its card
+  offers once, this session, or "rule in this repo" (stored, so later sessions there don't ask); switch it off with
+  `guardrails.disable: [git-outside-repo]`. Run `chi update` (or `chi bundle upgrade guardrails`) to get it.
 - Web: a tab left open across a `chi web` upgrade says so: when its event stream reconnects to a newer chi, a toast
   `chi was updated to X` offers a Reload button (it never reloads by itself; ✕ dismisses it).
 - `chi bundle trash` lists the bundle trash (moved files from uninstalls/upgrades) oldest first, with file count,
@@ -24,6 +29,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `write-outside-repo` and any `path: outside_repo` rule measure from the session's repo (not a plugin call's own
+  `cwd:`), with symlinks resolved: `/tmp/x` and `/private/tmp/x` are the same
+  folder, and a link in the repo that points elsewhere counts as outside. Writes into tmp folders (`$TMPDIR`, `/tmp`)
+  no longer ask, unless the session itself lives there. Hook events' `targets` gain `git_dirs`.
 - A one-word `/word` that no command answers (`/modle`) is no longer sent to the model as a prompt: every UI
   (the REPL, the attached TUI, the web composer) prints `Unknown command /modle. Did you mean /model? /help lists
   the commands.` instead, with the "Did you mean" part only when a command name is close. Lines that are prompts

@@ -341,7 +341,10 @@ the voter's own (a guard that wants the model to retry a corrected call:
 `event[:context]` is `{cwd:, repo_root:, branch:, session_id:, interface:, origin:}`
 (`interface` is `:repl`, `:worker` or `:non_interactive`). `event[:targets]` is
 what the call acts on, resolved as the tools resolve it:
-`{command:, paths:, cwd:, repo_root:, outside_repo:}`.
+`{command:, paths:, cwd:, repo_root:, outside_repo:, git_dirs:}`. `outside_repo`
+is measured from the session's repo, not the call's `cwd:`; `git_dirs` lists where
+a shell call runs git that changes a checkout (`"unknown"` for a folder the
+text doesn't tell; `[]` for other tools).
 
 The older flag still works: `event[:blocked] = true` with an optional
 `event[:block_reason]`. It is folded into the verdict after each hook (so it

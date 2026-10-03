@@ -118,6 +118,12 @@ directory, the rule) stay with the web and the terminal. An approval that
 doesn't offer "once" can't be allowed from a parent, and neither can one whose
 offered scopes are missing or don't fit its options: then only Deny goes.
 
+A child that has to work in another folder (`write-outside-repo`,
+`git-outside-repo`) is denied this way too. Start it in that folder instead
+(`chi send --new --dir PATH`), or have your user allow "rule … in this repo"
+once on the web (it is stored for later sessions in that repo), or switch the
+rules off: `guardrails: {disable: [write-outside-repo, git-outside-repo]}`.
+
 Whatever the setting, a parent can't allow a call on chi's own files: a
 `write`, `edit` or `execute` on the config dir (config.yml, installed bundles'
 rules), the hooks dir or the approval store, by its rule (`chi-config`,
@@ -187,8 +193,15 @@ guardrails:
       tool: [write, edit]
       path: outside_repo     # or a glob: "**/.git/hooks/**", "/etc/**", "config/*.yml"
       verdict: ask
-      reason: writes outside the repository
+      reason: writes outside this session's repo
+    - id: git-outside-repo
+      tool: shell
+      git: outside_repo      # a shell call runs commit/add/reset/… in another checkout
+      verdict: ask
+      scopes: [once, session, rule]
 ```
+
+A rule gives at least one of `tool`, `command`, `path` and `git`.
 
 A tool name may be a glob, so one rule covers a plugin's tools (an MCP server's,
 say): `tool: "mcp_*"` or `tool: ["mcp_{git,gh}_*", web_fetch]` (`*`, `?`, `[…]` and
@@ -208,11 +221,30 @@ All the fields a rule gives must match. Absolute and `**/` globs match the
 resolved path; other globs match the path relative to the repo root. Paths
 resolve the way the tools resolve them (against the cwd; `~` expanded).
 
-`outside_repo` leaves out a memory's file: a `*.md` right in the project or
-system memories folder (not `index.md`, not a hidden file). `write`/`edit`
-there is what `memory_write` does unasked, and the model is told to `edit` a
-memory for a small change. The memories folder's `index.md`, `.bundles/`, and
-the rest of chi's config folder still count as outside.
+`outside_repo` is measured from the session's repo: the git work tree its
+folder is in (a linked worktree is its own), or the folder itself outside a
+repo. Not the call's own `cwd:`: an `execute` with `cwd:` in another checkout
+is outside. Symlinks are resolved on both sides (`/tmp` and `/private/tmp` are
+one folder; a link in the repo that points elsewhere is outside). Never outside:
+
+- a memory's file: a `*.md` right in the project or system memories folder (not
+  `index.md`, not a hidden file). `write`/`edit` there is what `memory_write`
+  does unasked, and the model is told to `edit` a memory for a small change.
+  The memories folder's `index.md`, `.bundles/`, and the rest of chi's config
+  folder still count as outside, as does chi's state folder (sessions,
+  approvals);
+- a tmp folder (`$TMPDIR`, `/tmp`, `/var/tmp`), unless the session's repo is
+  itself in that tmp folder: a sandbox there still gets asked about its siblings.
+
+`git: outside_repo` (shell tools only) reads the command for git subcommands
+that change a checkout: `commit`, `add`, `reset`, `checkout`, `switch`,
+`rebase`, `merge`, `push`, `stash` (not `stash list`/`show`), `rm`, `mv`,
+`cherry-pick`, `revert`, `pull`, `restore`, `am`. It follows `cd`,
+`pushd`/`popd`, `( … )`, `git -C`, `--git-dir`/`--work-tree`, `GIT_DIR`/`GIT_WORK_TREE`
+and the call's `cwd:`, and matches when one of them runs outside the session's
+repo (the same `outside_repo` as above). `cd /other && git status`, `git -C
+/other log` and `cd /other && bundle exec rspec` don't match. A folder the text
+doesn't tell (`cd $REPO`, `cd "$(…)"`, `cd -`) doesn't either; see Limits.
 
 To switch off single rules (a bundle's, say) without editing its files, list
 them under `disable:`. A plain id switches off every rule with that id; `bundle:id`
@@ -273,7 +305,10 @@ installs a default rule set plus a short memory telling the model not to
 route around a deny. It asks before `git push`, `reset --hard`, `clean -f`,
 `branch -D`, `rebase`, `filter-branch`/`filter-repo`; `rm -rf` on `/`, `~`,
 `$HOME` or `..` paths; `curl … | sh` and `base64 -d … | sh`; writes outside the
-repo; shell commands that name chi's config, hooks or guardrails or
+session's repo (`write-outside-repo`) and git that changes another checkout
+(`git-outside-repo`: `cd ../main && git commit`, `git -C ../main add .`; it
+offers once, this session and "rule in this repo", the last stored for later
+sessions in that repo); shell commands that name chi's config, hooks or guardrails or
 `.git/hooks`; and answering chi's questions around `chi answer`: `chi --attach`
 or `chi -p` with stdin from a pipe, a here-string or a file
 (`chi-answer-piped`), and `curl`/`wget` to a session's `/answer` route
@@ -359,6 +394,9 @@ it as `~` or `$HOME`, so the model rarely has to spell it.
 
 Text matching on shell commands stops accidents, not a model set on getting
 around it: `sh -c`, base64, a script written earlier, `git -C` variants and
-aliases can get past a regex. `!cmd` lines typed by you are not checked. The only
+aliases can get past a regex. `outside_repo` covers the file tools and git
+only: `sed -i`, `cp` or `cat > file` into another folder from the shell aren't
+asked about, and neither is git run through `sh -c`, a script, an alias, `make`
+or a folder in a variable. `!cmd` lines typed by you are not checked. The only
 real defence against an adversarial model is isolation (a sandbox, a git
 identity without push rights).
