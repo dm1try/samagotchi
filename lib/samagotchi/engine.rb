@@ -2138,7 +2138,8 @@ module Samagotchi
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
         },
-        model_name: -> { @session&.model_name || @effective_model_name },
+        model_name: -> { effective_model_ref },
+        model_key: -> { @model_key },
         state_dir: -> { session_state_dir },
         scratch: -> { @scratch }
       )

@@ -18,11 +18,14 @@ module Samagotchi
     # (chat messages, timeout:, max_tokens:, cancel_controller:) and returns
     # the answer text.
     # +messages_partial+ says whether +messages+ leaves out a running turn;
-    # +model_name+ and +state_dir+ are what ctx.sessions forks with.
+    # +model_name+ (the session's resolved model ref, live after /model) and
+    # +state_dir+ are what ctx.sessions forks with; +model_key+ is the
+    # model's memory overlay key (ctx.model, ctx.model_key).
     # +steer+ takes (text, label), +stop_turn+ and +stop_generation+
     # (reason, label), each true when it acted on a running turn.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
-                      :ask_model, :model_name, :state_dir, :scratch, :steer, :stop_turn, :stop_generation, keyword_init: true)
+                      :ask_model, :model_name, :model_key, :state_dir, :scratch, :steer, :stop_turn, :stop_generation,
+                      keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -85,6 +88,15 @@ module Samagotchi
 
       # @return [String, nil] the session's id (nil before the first one)
       def session_id = @host.session_id.call
+
+      # @return [String, nil] the model the session runs on now: its
+      #   resolved ref ("host:id"), right after /model too
+      def model = @host.model_name&.call
+
+      # @return [String, nil] the model's memory overlay key
+      #   (`<name>.<key>.md`, ModelOverlay.key_for), as memory_write
+      #   current_model_only names it
+      def model_key = @host.model_key&.call
 
       # @return [String] the session's working directory
       def cwd = @host.cwd.call || Dir.pwd

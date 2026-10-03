@@ -478,6 +478,8 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.session_id` | the session's id (nil before there is one) |
 | `ctx.cwd` | the session's working directory |
 | `ctx.repo_root` | the git checkout holding `cwd`, or nil |
+| `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
+| `ctx.model_key` | that model's memory overlay key (`<name>.<key>.md`, what `memory_write current_model_only` writes) |
 | `ctx.settings` | the bundle's settings, frozen |
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use. A session's own state goes in `sessions/<id>.json` or `sessions/<id>/` there: chi removes it when the session is deleted, discarded or pruned |
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
