@@ -30,6 +30,7 @@ module Samagotchi
       def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil)
         used = Array(session.used_memory_names)
         up = bridge_up?(session_dir, owner)
+        sidecar = up ? WorkerSidecar.read(session_dir) : nil
         {
           id: session.id,
           status: status,
@@ -59,6 +60,10 @@ module Samagotchi
           # A worker is reachable: its Bridge sidecar is there and the
           # owner lock is held. A sidecar a dead worker left is not up.
           bridge_up: up,
+          # The chi the live worker runs and what it can do (its sidecar;
+          # nil and [] without one): the page's stale-worker badge.
+          worker_version: sidecar&.version,
+          worker_features: sidecar ? sidecar.features : [],
           # For the tab's notifications (notify.js): an open question, the
           # running turn's open card with actions, and how the last turn
           # ended. A question saved by a worker that died is not open, nor a

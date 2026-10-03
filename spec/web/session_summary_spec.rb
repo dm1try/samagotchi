@@ -160,6 +160,22 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(described_class.build(s, owner: Samagotchi::OwnerLock::Owner.new(kind: "worker"), session_dir: session_dir(s))).to include(bridge_up: true)
     end
 
+    it "names the live worker's chi version and features from its sidecar, and none without a live worker" do
+      s = session
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "bridge.json"),
+                 JSON.generate("port" => 1234, "version" => "0.18.1", "features" => ["restart"]))
+      worker = Samagotchi::OwnerLock::Owner.new(kind: "worker")
+
+      expect(described_class.build(s, owner: worker, session_dir: session_dir(s)))
+        .to include(worker_version: "0.18.1", worker_features: ["restart"])
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s)))
+        .to include(worker_version: nil, worker_features: [])
+      File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234))
+      expect(described_class.build(s, owner: worker, session_dir: session_dir(s)))
+        .to include(worker_version: nil, worker_features: [])
+    end
+
     it "gives the recap's preview from the session folder" do
       s = session
       FileUtils.mkdir_p(session_dir(s))

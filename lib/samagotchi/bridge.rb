@@ -212,8 +212,10 @@ module Samagotchi
     # The pending question at the top level too: one asked between turns
     # (the step-limit question) belongs to no turn, so the accumulator
     # doesn't keep it.
+    # chi_version: the chi this worker runs (an attaching TUI compares it
+    # with its own).
     # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, pending_question:,
-    #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, event_seq:, event_id:}
+    #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
@@ -230,6 +232,7 @@ module Samagotchi
           init_tasks: @engine.init_tasks,
           cards: @cards.list,
           commands: command_registry.listing,
+          chi_version: Samagotchi::VERSION,
           event_seq: seq,
           event_id: event_id(seq)
         }
@@ -451,6 +454,11 @@ module Samagotchi
       host = headers["host"].to_s
       !host.empty? && !LOOPBACK_NAMES.include?(host.downcase.sub(/:\d*\z/, ""))
     end
+
+    # What a client may ask of this worker beyond the routes, named in its
+    # sidecar (WorkerSidecar#features): a client checks a name here rather
+    # than a version.
+    FEATURES = [].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -1029,9 +1037,10 @@ module Samagotchi
     end
 
     def write_sidecar
-      # version: the chi this worker runs (chi update reports older ones).
+      # version: the chi this worker runs (chi update and the web's badge
+      # report older ones); features: what a client may ask of it.
       WorkerSidecar.new(port: @port, bind: @bind, session_id: @session_id, started_at: Time.now.iso8601(3),
-                        version: Samagotchi::VERSION, input_format: @input_format).write(session_dir)
+                        version: Samagotchi::VERSION, input_format: @input_format, features: FEATURES).write(session_dir)
     rescue StandardError => e
       Log.warn(:bridge, "sidecar_write_failed", echo: "Bridge: failed to write #{WorkerSidecar::FILE}: #{e.class}: #{e.message}", error: e.class.name)
     end
