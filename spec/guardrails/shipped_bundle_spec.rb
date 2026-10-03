@@ -6,12 +6,15 @@ require "samagotchi/guardrails"
 require "samagotchi/model_overlay"
 
 # The optional guardrails bundle's rules (lib/samagotchi/bundles/guardrails):
-# what each one catches and what it lets through.
+# what each one catches and what it lets through, in auto mode (the
+# default) unless a block says strict.
 RSpec.describe "The guardrails bundle's rules" do
   let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/guardrails", __dir__) }
+  let(:mode) { "auto" }
   let(:rules) do
     doc = YAML.safe_load(File.read(File.join(bundle_dir, "guardrails", "rules.yml")))
-    Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(doc["rules"], source: "bundle guardrails"))
+    Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(doc["rules"], source: "bundle guardrails"),
+                                      mode: mode)
   end
   let(:repo) { File.realpath(Dir.mktmpdir("shipped-rules")).tap { |d| system("git", "-C", d, "init", "-q") } }
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo) }
@@ -32,7 +35,6 @@ RSpec.describe "The guardrails bundle's rules" do
     "git-reset-hard" => ["git reset --hard", "git reset --hard HEAD~1"],
     "git-clean-force" => ["git clean -fdx", "git clean -f", "git clean --force -d"],
     "git-branch-force-delete" => ["git branch -D topic", "git branch --delete --force topic"],
-    "git-rebase" => ["git rebase main", "git rebase -i HEAD~3"],
     "git-history-rewrite" => ["git filter-branch --tree-filter x", "git filter-repo --path a"],
     "rm-rf-wide" => ["rm -rf ~", "rm -rf /", "rm -fr ~/projects", "rm -r -f $HOME/x", "rm -rf ../other",
                      "rm -rf /tmp", "rm -rf /tmp/*", "rm -rf /var/tmp/x && rm -rf ~", "rm -rf /tmp/../etc",
@@ -85,18 +87,62 @@ RSpec.describe "The guardrails bundle's rules" do
     end
   end
 
+  it "tags git-rebase, write-outside-repo and git-outside-repo strict, and nothing else" do
+    strict = rules.rules.select(&:modes).map(&:id)
+    expect(strict).to contain_exactly("git-rebase", "write-outside-repo", "git-outside-repo")
+    expect(rules.rules.select(&:modes).map(&:modes).uniq).to eq([["strict"]])
+  end
+
+  it "lets git rebase through in auto mode" do
+    expect(shell("git rebase main")).to be_allow
+  end
+
+  context "in strict mode" do
+    let(:mode) { "strict" }
+
+    ["git rebase main", "git rebase -i HEAD~3"].each do |command|
+      it "git-rebase asks for: #{command}" do
+        v = shell(command)
+        expect([v.decision, v.rule]).to eq([:ask, "git-rebase"])
+      end
+    end
+
+    it "still asks for every rule auto mode asks for" do
+      caught.each do |rule, commands|
+        commands.each { |command| expect(shell(command).rule).to eq(rule), command }
+      end
+    end
+  end
+
   let_through.each do |command|
     it "lets through: #{command}" do
       expect(shell(command)).to be_allow
     end
   end
 
-  it "asks before a write outside the repo, and lets one inside through" do
-    expect(verdict_for({ name: "write", path: "../elsewhere.txt", content: "x" }).rule).to eq("write-outside-repo")
-    expect(verdict_for({ name: "edit", path: "src/a.rb", content: "x" })).to be_allow
+  it "lets a write outside the repo through in auto mode" do
+    expect(verdict_for({ name: "write", path: "../elsewhere.txt", content: "x" })).to be_allow
   end
 
-  describe "git in another checkout" do
+  context "in strict mode, a write outside the repo" do
+    let(:mode) { "strict" }
+
+    it "asks, and lets one inside through" do
+      expect(verdict_for({ name: "write", path: "../elsewhere.txt", content: "x" }).rule).to eq("write-outside-repo")
+      expect(verdict_for({ name: "edit", path: "src/a.rb", content: "x" })).to be_allow
+    end
+  end
+
+  it "lets git in another checkout through in auto mode, but not git push there" do
+    other = File.realpath(Dir.mktmpdir("shipped-rules-other"))
+    expect(shell("cd #{other} && git add a.rb && git commit -m x")).to be_allow
+    expect(shell("cd #{other} && git push").rule).to eq("git-push")
+  ensure
+    FileUtils.rm_rf(other)
+  end
+
+  describe "git in another checkout, in strict mode" do
+    let(:mode) { "strict" }
     let(:other) { File.realpath(Dir.mktmpdir("shipped-rules-other")) }
 
     after { FileUtils.rm_rf(other) }

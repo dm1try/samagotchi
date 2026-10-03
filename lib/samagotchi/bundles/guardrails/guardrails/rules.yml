@@ -8,8 +8,9 @@
 # a shell call runs commit/add/reset/… in another checkout), touches
 # (chi_dirs: a shell command names a path in chi's own dirs), skip_read_only
 # (true: a command that only reads, ls/cat/rg/sed -n/git log…, doesn't
-# match), verdict (ask|deny), reason, scopes (for an ask: once, session,
-# repo, rule; default all).
+# match), modes (strict: only with guardrails.mode: strict; untagged rules
+# ask in every mode), verdict (ask|deny), reason, scopes (for an ask: once,
+# session, repo, rule; default all).
 # [^;&|\n]* keeps a match inside one command of a chain; the git rules match
 # the subcommand after optional global options (git -C dir push).
 rules:
@@ -34,9 +35,11 @@ rules:
     command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+branch\b[^;&|\n]*\s(-[a-zA-Z]*D|--delete\s+--force|--force\s+--delete)\b'
     verdict: ask
     reason: git branch -D deletes a branch even if it is not merged
+  # Strict mode only: a rebase rewrites local history, which the reflog keeps.
   - id: git-rebase
     tool: shell
     command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+rebase\b'
+    modes: [strict]
     verdict: ask
     reason: git rebase rewrites history
   - id: git-history-rewrite
@@ -71,10 +74,13 @@ rules:
 
   # ── work outside this session's repo, and git hooks ───────────────────
   # outside_repo: not in the session's repo (its folder outside a repo);
-  # tmp dirs and memory files don't count.
+  # tmp dirs and memory files don't count. Strict mode only, as is
+  # git-outside-repo; chi's own config and hooks still ask (core protected
+  # paths, shell-touches-chi).
   - id: write-outside-repo
     tool: [write, edit]
     path: outside_repo
+    modes: [strict]
     verdict: ask
     reason: writes outside this session's repo
   # cd/git -C into another checkout, then commit, add, reset, checkout,
@@ -86,6 +92,7 @@ rules:
   - id: git-outside-repo
     tool: shell
     git: outside_repo
+    modes: [strict]
     verdict: ask
     scopes: [once, session, rule]
     reason: runs git that changes another checkout, outside this session's repo

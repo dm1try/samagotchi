@@ -366,7 +366,11 @@ guardrails:
 
 A rule without `modes:` votes in every mode, so a rule you add to config.yml
 always applies unless you tag it. The core checks (protected paths, hooks)
-vote in both modes.
+vote in both modes. In the guardrails bundle, `git-rebase`,
+`write-outside-repo` and `git-outside-repo` are strict only; its small-model
+rules (`models: small`) are untagged, so they ask a small model in both modes.
+`/guardrails` shows the mode on its first lines and marks the rules this mode
+leaves out `(strict only)`.
 
 A rule in config.yml that uses a key this chi doesn't know yet (`modes:`,
 `touches:`, `rm:`, `skip_read_only:` before 0.20) doesn't parse, and a rule
@@ -380,19 +384,22 @@ chi bundle install guardrails    # chi bootstrap installs it, with the core prof
 ```
 
 installs a default rule set plus a short memory telling the model not to
-route around a deny. It asks before `git push`, `reset --hard`, `clean -f`,
-`branch -D`, `rebase`, `filter-branch`/`filter-repo`; `rm -rf` on `/`, `~`,
-`$HOME` or `..` paths, unless every target is inside a tmp folder; `curl … | sh` and `base64 -d … | sh`; writes outside the
-session's repo (`write-outside-repo`) and git that changes another checkout
-(`git-outside-repo`: `cd ../main && git commit`, `git -C ../main add .`; it
-offers once, this session and "rule in this repo", the last stored for later
-sessions in that repo); shell commands that name a path in chi's config, hooks,
-approvals or bundles or a `.git/hooks` (`shell-touches-chi`, `touches: chi_dirs`),
-unless they only read (`skip_read_only`); and answering chi's questions around `chi answer`: `chi --attach`
-or `chi -p` with stdin from a pipe, a here-string or a file
-(`chi-answer-piped`), and `curl`/`wget` to a session's `/answer` route
-(`chi-answer-http`), both once or for the session. `chi answer` itself isn't
-asked about. It denies writes into `.git/hooks`. The rules are in
+route around a deny. In both modes it asks before `git push`, `reset --hard`,
+`clean -f`, `branch -D`, `filter-branch`/`filter-repo`; `rm -rf` on `/`, `~`,
+`$HOME` or `..` paths, unless every target is inside a tmp folder; `curl … |
+sh` and `base64 -d … | sh`; shell commands that name a path in chi's config,
+hooks, approvals or bundles or a `.git/hooks` (`shell-touches-chi`, `touches:
+chi_dirs`), unless they only read (`skip_read_only`); and answering chi's
+questions around `chi answer`: `chi --attach` or `chi -p` with stdin from a
+pipe, a here-string or a file (`chi-answer-piped`), and `curl`/`wget` to a
+session's `/answer` route (`chi-answer-http`), both once or for the session.
+`chi answer` itself isn't asked about. It denies writes into `.git/hooks`.
+
+In strict mode (`guardrails: { mode: strict }`) it also asks before `git
+rebase`, writes outside the session's repo (`write-outside-repo`) and git that
+changes another checkout (`git-outside-repo`: `cd ../main && git commit`, `git
+-C ../main add .`; it offers once, this session and "rule in this repo", the
+last stored for later sessions in that repo). The rules are in
 `lib/samagotchi/bundles/guardrails/guardrails/rules.yml`.
 
 Small models (`models: small`, see above) get two more asks, in
