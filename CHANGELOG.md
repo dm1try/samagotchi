@@ -30,6 +30,8 @@ and commands may change between minor versions. How releases are made:
   live worker.
 - A turn that failed to send no longer leaves its prompt waiting to be restored into the composer later; and text
   typed while a fast-failed turn's prompt was coming back is kept, with the restored prompt going under it.
+- A worker that dies between a turn's end and its after-turn display no longer leaves the turn's answer bubble
+  waiting: the page stops waiting when the worker goes away, or after 20 s.
 
 ## [0.18.1] - 2026-10-03
 

@@ -338,10 +338,42 @@ test("reminderText names the reminders a turn got", () => {
   assert.equal(reminderText({}), "reminder");
 });
 
+import { displayWait } from "../../../lib/samagotchi/web/public/turn_events.js";
+
 test("workerGoneText ends a running turn whose worker went away, and only a running one", () => {
   assert.equal(workerGoneText({ turnRunning: true, stopped: true }), "\u2715 canceled (session stopped)");
   assert.equal(workerGoneText({ turnRunning: true }), "\u2715 canceled (worker exited)");
   assert.equal(workerGoneText({ turnRunning: false, stopped: true }), null);
+});
+
+// 4.14: the worker can die between turn_completed and answer_display, so the
+// wait for the display must end by itself (workerGone, a re-render, the
+// timeout) instead of holding the turn's answer bubble forever.
+test("displayWait ends on finish, and on its timeout when no display comes", async () => {
+  const timers = [];
+  const fake = { setTimeoutImpl: (fn) => { timers.push(fn); return fn; }, clearTimeoutImpl: () => {} };
+  const wait = displayWait(fake);
+  assert.equal(wait.settled(), false);
+  assert.equal(timers.length, 1);
+
+  timers[0](); // the timeout
+  await wait.promise;
+  assert.equal(wait.settled(), true);
+
+  // The worker went away instead: finish ends it, once.
+  const gone = displayWait(fake);
+  gone.finish();
+  gone.finish();
+  await gone.promise;
+  assert.equal(gone.settled(), true);
+});
+
+test("displayWait's finish works after the callbacks are gone (a worker that exits with the page)", async () => {
+  const wait = displayWait({ timeoutMs: 100000 });
+  const settled = wait.promise.then(() => "done");
+  wait.finish();
+  assert.equal(await settled, "done");
+  assert.equal(wait.settled(), true);
 });
 
 import { hookNoticeLabel } from "../../../lib/samagotchi/web/public/turn_events.js";
