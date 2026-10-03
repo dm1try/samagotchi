@@ -44,6 +44,14 @@ module Samagotchi
 
     # The session's token totals as a saved analytics.json has them (zeros
     # where an older file lacks a count), with how full the context was.
+    # A generation's decode speed (tokens per second) and where it came
+    # from: "server" (llama.cpp's timings) or "estimate".
+    GenerationSpeed = Data.define(:decode_tps, :source)
+
+    # What #finish_generation reports: the generation's speed (nil when it
+    # had none) and the session's tokens block as the snapshot has it.
+    GenerationReport = Data.define(:speed, :tokens)
+
     SavedSummary = Data.define(:ctx_pct, :prompt_sum, :completion_sum, :cached_sum, :reasoning_sum, :cost_sum) do
       def tokens = to_h.except(:ctx_pct)
     end
@@ -291,6 +299,17 @@ module Samagotchi
       @mutex.synchronize { build_snapshot(:recent) }
     end
 
+    # Close the open generation now, ahead of its :generation_completed
+    # (which then finds it closed), and report its speed with the session's
+    # running token totals: what the event carries to the UIs.
+    # @return [GenerationReport]
+    def finish_generation
+      @mutex.synchronize do
+        speed = close_generation if @turn&.gen_open
+        GenerationReport.new(speed: speed, tokens: tokens_block(@totals, @turn))
+      end
+    end
+
     # The served model a generation last reported and the name asked for
     # then, without building a snapshot (Engine#served_model).
     # @return [Hash] :served_model, :served_model_for
@@ -489,15 +508,17 @@ module Samagotchi
     # instead (there is no prompt count then). The two paths are mutually
     # exclusive per generation, so a final chunk carrying timings while
     # earlier chunks did not will not double count. Caller holds the mutex.
+    # @return [GenerationSpeed, nil] the generation's speed, if it had one
     def close_generation
       turn = @turn
       turn.gen_open = false
+      speed = nil
       if turn.gen_had_server
         completion = turn.gen_completion_max
         turn.prompt_last = turn.gen_prompt_max
         turn.prompt_sum += turn.gen_prompt_max
         turn.token_sources |= ["server"]
-        close_server_report(turn, completion)
+        speed = close_server_report(turn, completion)
       else
         completion = turn.gen_estimate_sum
         turn.token_sources |= ["estimate"] if completion.positive?
@@ -505,11 +526,12 @@ module Samagotchi
       turn.completion_last = completion
       turn.completion_sum += completion
       started = turn.gen_started_at
-      return unless started
+      return speed unless started
 
       elapsed_ms = (monotonic_time - started) * 1000.0
       turn.gen_latency_accum += elapsed_ms if elapsed_ms > 0
       turn.gen_started_at = nil
+      speed
     end
 
     # The generation's cached/reasoning counts, cost and decode speed, into
@@ -531,6 +553,7 @@ module Samagotchi
       turn.decode_tokens_sum += completion
       turn.last_decode_tps = tps.round(1)
       turn.tps_source = source
+      GenerationSpeed.new(decode_tps: turn.last_decode_tps, source: source)
     end
 
     # [tokens per second, decode ms, "server" | "estimate"], or nil for a

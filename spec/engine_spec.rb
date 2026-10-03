@@ -264,7 +264,7 @@ RSpec.describe Samagotchi::Engine do
       expect(session.messages).to eq(result.conversation)
     end
 
-    it "emits turn_started, forwards raw kernel events unchanged, then turn_completed" do
+    it "emits turn_started, forwards raw kernel events, then turn_completed" do
       events = []
       allow(kernel).to receive(:run) do |_messages, **kwargs|
         cb = kwargs[:on_stream_event]
@@ -282,14 +282,40 @@ RSpec.describe Samagotchi::Engine do
       expect(types.last).to eq(:turn_completed)
       expect(types).to include(:generation_started, :generation_completed)
 
-      # Raw kernel events are forwarded unchanged.
-      expect(events.find { |e| e[:type] == :generation_completed })
-        .to eq(type: :generation_completed, iteration: 1, content: "hello back")
+      # Raw kernel events are forwarded unchanged, but a generation's end
+      # gets its speed and the session's token totals.
+      expect(events.find { |e| e[:type] == :generation_started }).to eq(type: :generation_started, iteration: 1)
+      completed = events.find { |e| e[:type] == :generation_completed }
+      expect(completed).to include(type: :generation_completed, iteration: 1, content: "hello back", speed: nil)
+      expect(completed[:tokens]).to include(prompt_sum: 0, completion_sum: 0, last_decode_tps: nil)
 
       # Higher-level Engine events carry turn boundaries + session id.
       expect(events.find { |e| e[:type] == :turn_started })
         .to include(session_id: session.id, prompt: "hi")
       expect(events.find { |e| e[:type] == :turn_completed }[:result]).to be_a(Samagotchi::LLM::ModelResult)
+    end
+
+    it "puts the generation's speed and the session's totals on :generation_completed, from the server's timings" do
+      events = []
+      allow(kernel).to receive(:run) do |_messages, **kwargs|
+        cb = kwargs[:on_stream_event]
+        cb.call(type: :generation_started, iteration: 1)
+        cb.call(type: :generation_chunk, iteration: 1, content: "hi",
+                payload: { "usage" => { "prompt_tokens" => 300, "completion_tokens" => 40,
+                                        "prompt_tokens_details" => { "cached_tokens" => 280 } },
+                           "timings" => { "predicted_per_second" => 87.46, "predicted_ms" => 457.0 } })
+        cb.call(type: :generation_completed, iteration: 1)
+        result
+      end
+      engine = build_engine(profile: "gemma4")
+
+      engine.run_turn(make_session, "hi", on_event: proc { |event| events << event })
+
+      completed = events.find { |e| e[:type] == :generation_completed }
+      expect(completed[:speed]).to eq(decode_tps: 87.5, source: "server")
+      expect(completed[:tokens]).to include(prompt_sum: 300, completion_sum: 40, cached_sum: 280, last_decode_tps: 87.5)
+      # The metrics counted the generation once.
+      expect(engine.metrics.snapshot[:tokens]).to include(prompt_sum: 300, completion_sum: 40)
     end
 
     it "emits turn_canceled (not turn_completed) when the result is canceled" do

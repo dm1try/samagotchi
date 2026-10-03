@@ -75,4 +75,16 @@ RSpec.describe "Shared labels matrix (TUI side)" do
       expect(Samagotchi::ServedModel.differs?(entry["asked"], entry["served"])).to eq(entry["differs"])
     end
   end
+
+  cases(matrix, "speeds").each do |entry|
+    it "words the speed #{entry["tps"].inspect} (#{entry["source"]})" do
+      expect(fmt.speed_text(entry["tps"], entry["source"])).to eq(expected(entry))
+    end
+  end
+
+  cases(matrix, "costs").each do |entry|
+    it "words the cost #{entry["cost"].inspect}" do
+      expect(fmt.cost_text(entry["cost"])).to eq(expected(entry))
+    end
+  end
 end

@@ -458,6 +458,22 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(metrics.snapshot[:tokens]).to include(last_decode_tps: 150.0, tps_source: "estimate", avg_decode_tps: 100.0)
     end
 
+    it "finish_generation closes the generation once and reports its speed with the running totals" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      tick(1.0)
+      metrics.call(router_chunk("a", 1))
+      tick(0.5)
+      metrics.call(router_chunk("", 40, cost: 0.25))
+
+      report = metrics.finish_generation
+      expect(report.speed).to eq(described_class::GenerationSpeed.new(decode_tps: 80.0, source: "estimate"))
+      expect(report.tokens).to include(completion_sum: 40, cost_sum: 0.25, last_decode_tps: 80.0)
+      metrics.call(type: :generation_completed, iteration: 1)
+      expect(metrics.snapshot[:tokens]).to include(completion_sum: 40, cost_sum: 0.25)
+      expect(metrics.finish_generation.speed).to be_nil
+    end
+
     it "brings the sums back on reload, with the newest saved speeds; an older record counts as zeros" do
       dir = Dir.mktmpdir
       metrics.state_dir = dir

@@ -221,6 +221,26 @@ module Samagotchi
         duration_ms.nil? ? "" : " · #{format_elapsed_duration(duration_ms)}"
       end
 
+      # "87 tok/s", "1.9k tok/s"; "~64 tok/s" for an estimate; "" without a
+      # speed. The web says the same (ctx.js speedText;
+      # spec/shared/labels_matrix.json).
+      def speed_text(tps, source)
+        value = tps.to_f
+        return "" unless value.positive?
+
+        number = value >= 1000 ? "#{format('%.1f', (value / 100).round / 10.0)}k" : value.round.to_s
+        "#{'~' if source.to_s == 'estimate'}#{number} tok/s"
+      end
+
+      # "$0.42"; a cost under a cent keeps four decimals ("$0.0012"); "" for
+      # none. As ctx.js costText.
+      def cost_text(cost)
+        value = cost.to_f
+        return "" unless value.positive?
+
+        value >= 0.01 ? format("$%.2f", value) : format("$%.4f", value)
+      end
+
       private
 
       # The recap shown on return: dim, one "recap>" block, noting how many
@@ -391,19 +411,6 @@ module Samagotchi
         text << " (last, #{source})"
         text << ", avg #{speed_text(tokens[:avg_decode_tps], source)}" if tokens[:avg_decode_tps]
         text
-      end
-
-      # "87 tok/s", "1.9k tok/s"; "~64 tok/s" for an estimate.
-      def speed_text(tps, source)
-        value = tps.to_f
-        number = value >= 1000 ? "#{(value / 1000).round(1)}k" : value.round.to_s
-        "#{'~' if source.to_s == 'estimate'}#{number} tok/s"
-      end
-
-      # "$0.42"; a cost under a cent keeps four decimals ("$0.0012").
-      def cost_text(cost)
-        value = cost.to_f
-        value >= 0.01 ? format("$%.2f", value) : format("$%.4f", value)
       end
 
       def format_elapsed_duration(duration_ms)

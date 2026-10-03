@@ -2298,6 +2298,7 @@ module Samagotchi
         # not an event of its own.
         next thinking_refused(event) if event[:type] == :thinking_refused
 
+        event = with_generation_report(event) if event[:type] == :generation_completed
         emit_event(on_event, event)
         watch.feed(**progress) if watch && progress
         if event[:type] == :generation_completed
@@ -2306,6 +2307,19 @@ module Samagotchi
         end
       end
     end
+
+    # A :generation_completed with the generation's decode speed (`speed:`
+    # {decode_tps:, source:}, nil without one) and the session's running
+    # token totals (`tokens:`, the snapshot's block): the web's info bar
+    # reads them from the stream. SessionMetrics closes the generation here,
+    # so the event it gets next finds it closed.
+    def with_generation_report(event)
+      report = @metrics.finish_generation
+      event.merge(speed: report.speed&.to_h, tokens: report.tokens)
+    rescue StandardError
+      event
+    end
+    private :with_generation_report
 
     # The turn's StreamWatch, or nil when no hook listens.
     def stream_watch(cancel_controller)
@@ -2322,8 +2336,8 @@ module Samagotchi
       rescue StandardError
         nil
       end
-      # Turn-scoped sink: receives the original event hash (no event_seq),
-      # byte-for-byte unchanged. Sink errors are isolated and never break the
+      # Turn-scoped sink: receives the event hash as the stream handler
+      # passed it (no event_seq; a :generation_completed has its report). Sink errors are isolated and never break the
       # kernel loop (same as KernelLoop's own handling).
       if on_event
         begin

@@ -79,5 +79,26 @@
       { "asked": "", "served": "gemma-3", "differs": false },
       { "asked": "qwen3", "served": null, "differs": false }
     ]
+  },
+  "speeds": {
+    "note": "A decode speed (Formatting#speed_text in /stats; ctx.js speedText in the web's info bar): \"~\" marks an estimate (no server timings); none or zero: \"\".",
+    "cases": [
+      { "tps": 87.46, "source": "server", "expected": "87 tok/s" },
+      { "tps": 64.5, "source": "estimate", "expected": "~65 tok/s" },
+      { "tps": 1904.2, "source": "server", "expected": "1.9k tok/s" },
+      { "tps": 1950, "source": "server", "expected": "2.0k tok/s" },
+      { "tps": null, "source": "server", "expected": "" },
+      { "tps": 0, "source": "estimate", "expected": "" }
+    ]
+  },
+  "costs": {
+    "note": "A cost in USD (Formatting#cost_text in /stats; ctx.js costText in the ctx tooltip): cents, four decimals under a cent; none or zero: \"\".",
+    "cases": [
+      { "cost": 0.4213, "expected": "$0.42" },
+      { "cost": 12.5, "expected": "$12.50" },
+      { "cost": 0.00123, "expected": "$0.0012" },
+      { "cost": 0, "expected": "" },
+      { "cost": null, "expected": "" }
+    ]
   }
 }

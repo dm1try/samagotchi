@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  extractCtxPct, savedCtxPct, cardCtxText, speedText, costText, tokensTipText, lastSpeedText,
+  extractCtxPct, savedCtxPct, cardCtxText, speedText, costText, tokensTipText, lastSpeedText, generationTokens,
 } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
@@ -94,4 +94,15 @@ test("lastSpeedText: the newest generation's speed from the tokens block", () =>
   assert.equal(lastSpeedText({ last_decode_tps: 31.6, tps_source: "server" }), "32 tok/s");
   assert.equal(lastSpeedText({ last_decode_tps: 80, tps_source: "estimate" }), "~80 tok/s");
   assert.equal(lastSpeedText(null), "");
+});
+
+test("generationTokens: the event's totals with its speed; an event without them keeps the page's", () => {
+  const previous = { prompt_sum: 10, completion_sum: 2, last_decode_tps: 50, tps_source: "server" };
+  const totals = { prompt_sum: 300, completion_sum: 40, last_decode_tps: 50, tps_source: "server" };
+  assert.deepEqual(generationTokens(previous, { tokens: totals, speed: { decode_tps: 80, source: "estimate" } }),
+    { ...totals, last_decode_tps: 80, tps_source: "estimate" });
+  // A generation too short for a speed: the totals' last speed stands.
+  assert.deepEqual(generationTokens(previous, { tokens: totals, speed: null }), totals);
+  assert.deepEqual(generationTokens(previous, { type: "generation_completed" }), previous);
+  assert.equal(generationTokens(undefined, {}), null);
 });

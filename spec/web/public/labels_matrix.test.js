@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
 import { clientLabel, emptyAnswerLine, emptyRetryLine, hookNoticeLabel, reminderText, retryStatusLine } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { servedModelDiffers } from "../../../lib/samagotchi/web/public/format.js";
+import { costText, speedText } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Shared contract: spec/shared/labels_matrix.json, the words the web and the
 // TUI put on the same event. spec/labels_matrix_spec.rb reads the same file;
@@ -64,5 +65,17 @@ test("reminder lines per the shared labels matrix", () => {
 test("served-model check per the shared labels matrix", () => {
   for (const entry of cases("served_model")) {
     assert.equal(servedModelDiffers(entry.asked, entry.served), entry.differs, `${entry.served} for ${entry.asked}`);
+  }
+});
+
+test("speeds per the shared labels matrix", () => {
+  for (const entry of cases("speeds")) {
+    assert.equal(speedText(entry.tps, entry.source), expected(entry), `speed ${entry.tps} ${entry.source}`);
+  }
+});
+
+test("costs per the shared labels matrix", () => {
+  for (const entry of cases("costs")) {
+    assert.equal(costText(entry.cost), expected(entry), `cost ${entry.cost}`);
   }
 });
