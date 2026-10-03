@@ -12,7 +12,7 @@ module Samagotchi
         counts = TokenUsage.from_payload(payload)
         return nil unless counts
 
-        new(prompt_tokens: counts[:prompt_tokens].to_i, completion_tokens: counts[:completion_tokens].to_i,
+        new(prompt_tokens: counts.prompt_tokens.to_i, completion_tokens: counts.completion_tokens.to_i,
             source: :server)
       end
 

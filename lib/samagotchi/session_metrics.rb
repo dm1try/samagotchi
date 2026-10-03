@@ -523,8 +523,8 @@ module Samagotchi
       if usage
         @mutex.synchronize do
           if @turn
-            @turn.gen_prompt_max = [@turn.gen_prompt_max, usage[:prompt_tokens].to_i].max
-            @turn.gen_completion_max = [@turn.gen_completion_max, usage[:completion_tokens].to_i].max
+            @turn.gen_prompt_max = [@turn.gen_prompt_max, usage.prompt_tokens.to_i].max
+            @turn.gen_completion_max = [@turn.gen_completion_max, usage.completion_tokens.to_i].max
             @turn.gen_had_server = true
           end
         end

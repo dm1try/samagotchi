@@ -804,12 +804,13 @@ RSpec.describe Samagotchi::TokenUsage do
   describe ".from_payload" do
     it "extracts llama.cpp timings" do
       result = described_class.from_payload("timings" => { "prompt_n" => 50, "predicted_n" => 12 })
-      expect(result).to eq(prompt_tokens: 50, completion_tokens: 12, source: :server)
+      expect(result).to have_attributes(prompt_tokens: 50, completion_tokens: 12, source: :server)
     end
 
     it "extracts mlx usage" do
       result = described_class.from_payload("usage" => { "prompt_tokens" => 7, "completion_tokens" => 3 })
-      expect(result).to eq(prompt_tokens: 7, completion_tokens: 3, source: :server)
+      expect(result).to have_attributes(prompt_tokens: 7, completion_tokens: 3, cached_tokens: nil, cost: nil,
+                                        predicted_per_second: nil, source: :server)
     end
 
     it "returns nil when no token data is present" do
@@ -821,7 +822,7 @@ RSpec.describe Samagotchi::TokenUsage do
       # Some backends emit floats (e.g. 50.0); ensure it coerces instead of
       # raising RangeError.
       result = described_class.from_payload("timings" => { "prompt_n" => 50.0, "predicted_n" => 12.9 })
-      expect(result).to eq(prompt_tokens: 50, completion_tokens: 12, source: :server)
+      expect(result).to have_attributes(prompt_tokens: 50, completion_tokens: 12, source: :server)
     end
   end
 

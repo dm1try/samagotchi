@@ -26,9 +26,9 @@ module Samagotchi
       usage = {} unless usage.is_a?(Hash)
 
       # The token counts come from the same parser SessionMetrics uses.
-      counts = TokenUsage.from_payload(payload_hash) || {}
-      prompt_tokens = counts[:prompt_tokens]
-      completion_tokens = counts[:completion_tokens]
+      counts = TokenUsage.from_payload(payload_hash)
+      prompt_tokens = counts&.prompt_tokens
+      completion_tokens = counts&.completion_tokens
 
       total_tokens = first_positive_integer(
         usage["total_tokens"], usage[:total_tokens],
