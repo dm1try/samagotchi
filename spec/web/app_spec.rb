@@ -1147,6 +1147,63 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(timing).to include("context" => context, "tokens" => tokens)
     end
+
+    # A live worker's metrics carry only its recent records (the newest
+    # turn's and unsaved ones); the full history is analytics.json.
+    describe "merging the live recent records with the saved history" do
+      let(:state_dir) { Dir.mktmpdir }
+      let(:app) { build_app(manager: FakeResponsesManager.new, state_dir: state_dir) }
+
+      def turn(n) = { "id" => "t#{n}", "status" => "completed", "duration_ms" => n * 100 }
+      def tool(n, i) = { "id" => "t#{n}:1:#{i}", "turn_id" => "t#{n}", "tool" => "read", "duration_ms" => i }
+
+      def save(turns)
+        FileUtils.mkdir_p(File.join(state_dir, "s1"))
+        File.write(File.join(state_dir, "s1", "analytics.json"),
+                   JSON.generate(started_at: "2026-10-03T10:00:00.000Z", turn_records: turns.map { |n| turn(n) },
+                                 tool_records: turns.flat_map { |n| [tool(n, 1), tool(n, 2)] }))
+      end
+
+      def live_with(turns)
+        metrics = { "started_at" => "2026-10-03T10:00:00.000Z", "turns" => 3,
+                    "turn_records" => turns.map { |n| turn(n) },
+                    "tool_records" => turns.flat_map { |n| [tool(n, 1), tool(n, 2)] } }
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot")
+                                               .and_return("snapshot" => { "messages" => [] },
+                                                           "session_state_snapshot" => { "status" => "idle",
+                                                                                         "event_seq" => 9,
+                                                                                         "metrics" => metrics })
+      end
+
+      def timing(query = "") = JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first).fetch("timing")
+
+      it "appends the live turn the file doesn't hold yet, in order (show and ?tail=1)" do
+        save([1, 2])
+        live_with([3])
+
+        ["", "?tail=1"].each do |query|
+          expect(timing(query)["turn_records"].map { |r| r["id"] }).to eq(%w[t1 t2 t3])
+          expect(timing(query)["tool_records"].map { |r| r["id"] })
+            .to eq(%w[t1:1:1 t1:1:2 t2:1:1 t2:1:2 t3:1:1 t3:1:2])
+        end
+      end
+
+      it "keeps one copy of a turn both hold" do
+        save([1, 2, 3])
+        live_with([3])
+
+        expect(timing["turn_records"].map { |r| r["id"] }).to eq(%w[t1 t2 t3])
+        expect(timing["tool_records"].size).to eq(6)
+      end
+
+      it "reads the file alone without a live worker" do
+        save([1, 2])
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(nil)
+
+        expect(timing["turn_records"].map { |r| r["id"] }).to eq(%w[t1 t2])
+        expect(timing["tool_records"].size).to eq(4)
+      end
+    end
   end
 
   describe "POST /api/sessions (worker spawn)" do

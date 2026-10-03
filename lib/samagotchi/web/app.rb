@@ -1059,7 +1059,8 @@ module Samagotchi
         port && BridgeClient.new(session_id: session_id, port: port, host: DEFAULT_HOST)
       end
 
-      # Read the live Engine state over the bridge (raw GET /session/:id/state).
+      # GET a read path of the session's live Bridge (+path+: "state",
+      # "snapshot", "stats", ...).
       # @return [Hash, nil] parsed JSON body, or nil when no live bridge / timeout.
       def bridge_get_json(session_id, path)
         bridge_client(session_id)&.get_json(path)
