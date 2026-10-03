@@ -80,7 +80,7 @@ module Samagotchi
     # :pending_input_merged. After a cancel the input stays queued: it runs
     # as the next turn instead of dying with this one. +answer+ (a String,
     # or a Proc called only on a merge) is the answer the merge follows, for
-    # the UIs; given, the drain is told it is the after-answer site (plugin
+    # the TUI's line (the web has it as the step's streamed text); given, the drain is told it is the after-answer site (plugin
     # steers are dropped there). A blank answer is none.
     # @return [Boolean] whether anything was injected
     def inject!(conversation, pending_input, iteration:, emit:, cancel_controller:, answer: nil)
