@@ -56,6 +56,8 @@ and commands may change between minor versions. How releases are made:
 - A web turn of images alone names each image once in the transcript a recap is written from, not twice.
 - `chi bootstrap` no longer says "loading the model?" for a slow test on a remote provider (OpenRouter and the
   like); the hint is for a local server, where a slow answer is a model loading.
+- `chi bootstrap` says why it saved a host as `name-2` when the derived name is already taken (or a model id
+  starts with it), instead of silently picking another name.
 
 ## [0.19.0] - 2026-10-03
 

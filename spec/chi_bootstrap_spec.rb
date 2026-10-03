@@ -189,6 +189,18 @@ RSpec.describe "chi bootstrap" do
     expect(Dir["#{config}.bak-*"]).to be_empty
   end
 
+  it "explains the -2 suffix when the derived name is taken" do
+    FileUtils.mkdir_p(File.dirname(config))
+    File.write(config, "hosts:\n  local:\n    host: 10.0.0.9\n    port: 8080\n")
+    server.default("/v1/models", json: models("m"))
+
+    out, _err, status = bootstrap(target, "--no-test")
+
+    expect(status.exitstatus).to eq(0)
+    expect(out).to include("a host named local already exists; saved as local-2, use --name to choose")
+    expect(written["hosts"]).to include("local-2")
+  end
+
   it "reports a closed port in one line" do
     port = TCPServer.open("127.0.0.1", 0) { |s| s.addr[1] }
 

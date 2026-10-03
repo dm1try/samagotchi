@@ -263,12 +263,14 @@ module Samagotchi
       writer = Bootstrap::ConfigWriter.new(path: @config_path, env: @env)
       fields = host_fields(result.candidate, result.native?, key_env)
       ids = result.models.map(&:id)
-      name = begin
-        writer.host_name(Bootstrap::ConfigWriter.derived_name(result.candidate.host), requested: options[:name], model_ids: ids)
+      base = Bootstrap::ConfigWriter.derived_name(result.candidate.host)
+      name, reason = begin
+        writer.host_name_with_reason(base, requested: options[:name], model_ids: ids)
       rescue Bootstrap::ConfigWriter::Error => e
         @exit = usage_error(e.message)
         return nil
       end
+      explain_name(base, name, reason)
       outcome = writer.write(name: name, fields: fields, model: model, dry_run: options[:dry_run])
       code = report(outcome, model)
       return code unless INSTALLS_BUNDLES.include?(outcome.kind)
@@ -276,6 +278,16 @@ module Samagotchi
       code = [code, install_bundles].max
       next_steps if outcome.kind == :new
       code
+    end
+
+    # One line when the name wasn't free as derived: why chi picked another.
+    def explain_name(base, name, reason)
+      case reason
+      when :taken
+        @stdout.puts("a host named #{base} already exists; saved as #{name}, use --name to choose")
+      when :model_prefix
+        @stdout.puts("a model id starts with #{base} (chi would read it as a host); saved as #{name}, use --name to choose")
+      end
     end
 
     # The system bundle, core, and dev when a terminal says yes: one line

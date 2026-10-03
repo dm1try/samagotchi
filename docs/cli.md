@@ -53,7 +53,9 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
 - **The file.** With no config.yml it writes a small commented one:
   `default.model` as `<host>:<model>` and one `hosts:` entry named `local`
   (localhost), `lan` (an IP) or after the domain (`openrouter`); `--name`
-  sets it. An existing file is left as it is apart from the new entry, added
+  sets it. When that name is taken (or a model id starts with it), chi picks
+  `name-2` and says why, with `--name` to choose another. An existing file is
+  left as it is apart from the new entry, added
   at the end of its `hosts:` block (it gets a `hosts:` block, with a
   `default` entry for its `server:` first, when it has none), after a backup
   to `config.yml.bak-<time>`. `default.model` is set only when the file has

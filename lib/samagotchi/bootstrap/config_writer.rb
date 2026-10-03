@@ -95,20 +95,31 @@ module Samagotchi
       # +base+, with -2, -3… when the name is taken or is the prefix of a
       # model id (chi would read "qwen3:8b" as host qwen3, model 8b).
       def host_name(base, requested: nil, model_ids: [])
+        host_name_with_reason(base, requested: requested, model_ids: model_ids).first
+      end
+
+      # [name, reason]: reason is :taken when the name was suffixed because
+      # config.yml already has it, :model_prefix when a model id's prefix
+      # would read as a host, nil when the name is free as given.
+      def host_name_with_reason(base, requested: nil, model_ids: [])
         taken = current_hosts.keys
         if requested
           name = requested.to_s.strip
           raise Error, "--name must match #{ConfigFile::HOST_NAME_RE.source}" unless name.match?(ConfigFile::HOST_NAME_RE)
           raise Error, "config.yml already has a host named '#{name}'; pick another --name" if taken.include?(name.downcase)
 
-          return name
+          return [name, nil]
         end
 
         prefixes = [*model_ids, configured_default_model].compact.map { |id| id.to_s.split(":", 2).first.downcase }
         name = base
         n = 1
-        name = "#{base}-#{n += 1}" while taken.include?(name) || prefixes.include?(name)
-        name
+        reason = nil
+        while taken.include?(name) || prefixes.include?(name)
+          reason ||= taken.include?(name) ? :taken : :model_prefix
+          name = "#{base}-#{n += 1}"
+        end
+        [name, reason]
       end
 
       # Write the entry. @param fields [Hash] the hosts entry (string keys,
