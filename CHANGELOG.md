@@ -23,6 +23,10 @@ and commands may change between minor versions. How releases are made:
 - A running session no longer denies every tool call after an installed bundle's rules are upgraded to a version
   that needs a newer chi (`requires_chi`): it keeps the rules it loaded before and says once to restart the session
   (`chi sessions stop ID`, then `chi --resume ID`).
+- The `execute` tool no longer hangs when the command puts a process in the background (`server &`, or
+  `cd DIR && nohup server > log 2>&1 &`) that keeps its output open: after a short grace it stops that process and
+  returns the output, with a note to start servers and long jobs with `task_create`. Stop and
+  `execute.timeout_sec` work during the wait too.
 
 ## [0.18.0] - 2026-10-03
 

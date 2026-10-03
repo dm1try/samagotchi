@@ -256,6 +256,114 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
     end
 
+    # `cmd &` forks a child that keeps the tool's stdout/stderr pipes: once
+    # the shell exits, the readers wait a short grace, then the command's
+    # process group is stopped and the output so far returned.
+    describe "with a background process holding the output open" do
+      def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      def pid_from(result)
+        Integer(result[/^pid=(\d+)$/, 1])
+      end
+
+      # The orphan is reaped by init: give it a moment.
+      def alive?(pid)
+        deadline = now + 2
+        loop do
+          Process.kill(0, pid)
+          return true if now > deadline
+
+          sleep 0.05
+        rescue Errno::ESRCH
+          return false
+        end
+      end
+
+      it "returns the output within the grace period, with the shell's exit status and a note" do
+        started = now
+        result = described_class.call("sleep 30.81 & echo pid=$!; echo hi")
+
+        expect(now - started).to be < described_class::BACKGROUND_GRACE_SEC + 3
+        expect(result).to include("stdout:\npid=")
+        expect(result).to include("hi")
+        expect(result).to end_with("exit: 0\n#{described_class::BACKGROUND_HINT}")
+        expect(alive?(pid_from(result))).to be(false)
+      end
+
+      it "returns promptly when the user stops the turn during the grace period" do
+        stub_const("#{described_class}::BACKGROUND_GRACE_SEC", 30)
+        started = now
+        result = described_class.call("sleep 30.82 & echo pid=$!; echo hi", cancelled: -> { now - started > 0.3 })
+
+        expect(now - started).to be < 5
+        expect(result).to match(/\AError: command stopped by the user after \d+s/)
+        expect(result).to include("hi")
+        expect(alive?(pid_from(result))).to be(false)
+      end
+
+      it "stops at execute.timeout_sec during the grace period" do
+        stub_const("#{described_class}::BACKGROUND_GRACE_SEC", 30)
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        started = now
+        result = described_class.call("sleep 30.83 & echo pid=$!")
+
+        expect(now - started).to be < 5
+        expect(result).to start_with("Error: command timed out after 1s\n")
+        expect(alive?(pid_from(result))).to be(false)
+      end
+
+      it "leaves a fully redirected nohup process running and adds no note" do
+        result = described_class.call("nohup sleep 30.84 >/dev/null 2>&1 </dev/null & echo pid=$!; echo hi")
+        pid = pid_from(result)
+        begin
+          expect(result).to end_with("hi\n\nexit: 0")
+          expect(alive?(pid)).to be(true)
+        ensure
+          begin
+            Process.kill("TERM", pid)
+          rescue Errno::ESRCH
+            nil
+          end
+        end
+      end
+
+      # Seen live: the `cd && nohup …` list is backgrounded as a subshell, and
+      # the subshell keeps the pipes although nohup's own output is redirected.
+      it "ends a backgrounded `cd && nohup … > f 2>&1` list too, stopping the server" do
+        Dir.mktmpdir do |dir|
+          started = now
+          result = described_class.call("cd #{dir} && nohup env X=1 sleep 30.86 > out 2>&1 & echo pid=$!; echo hi")
+
+          expect(now - started).to be < described_class::BACKGROUND_GRACE_SEC + 3
+          expect(result).to include("hi")
+          expect(result).to end_with("exit: 0\n#{described_class::BACKGROUND_HINT}")
+          expect(alive?(pid_from(result))).to be(false)
+          expect(system("pgrep", "-f", "sleep 30.86", out: File::NULL)).to be(false)
+        end
+      end
+
+      it "says a holder that left the process group (setsid) was left running" do
+        result = described_class.call(%q{ruby -e "Process.setsid; sleep 30.85" & echo pid=$!; echo hi})
+        pid = pid_from(result)
+        begin
+          expect(result).to include("hi")
+          expect(result).to end_with("exit: 0\n#{described_class::BACKGROUND_DETACHED_HINT}")
+          expect(alive?(pid)).to be(true)
+        ensure
+          begin
+            Process.kill("KILL", pid)
+          rescue Errno::ESRCH
+            nil
+          end
+        end
+      end
+
+      it "keeps a normal command's output and exit status unchanged" do
+        result = described_class.call("echo one; echo two >&2; exit 3")
+        expect(result).to eq("stdout:\none\n\nstderr:\ntwo\n\nexit: 3")
+      end
+    end
+
     it "keeps partial output from a compound command whose last part hangs" do
       ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "3"
 

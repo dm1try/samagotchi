@@ -21,6 +21,15 @@ module Samagotchi
       WAIT_SLICE_SEC = 0.2
       NOT_RUN_ON_STOP = "Error: not run, the user stopped the turn"
       TIMEOUT_HINT = "(killed at the limit; for a long command use task_create, then task_wait)"
+      # How long the output may stay open once the shell has exited: a
+      # `server &` child keeps the pipes, and the read would never end.
+      BACKGROUND_GRACE_SEC = 1.5
+      BACKGROUND_HINT = "(a background process kept the output open and was stopped; " \
+                        "to keep a server or long job running, start it with task_create)"
+      # It had left the process group (setsid), so it is still running.
+      BACKGROUND_DETACHED_HINT = "(a background process kept the output open and was left running; " \
+                                 "to keep a server or long job running, start it with task_create)"
+      READ_CHUNK_BYTES = 65_536
 
       def self.name        = NAME
 
@@ -35,7 +44,7 @@ module Samagotchi
         return "Error: cwd not found: #{resolved_cwd}" unless resolved_cwd
 
         timeout_sec = timeout_seconds
-        stdout, stderr, status = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd, cancelled: cancelled,
+        stdout, stderr, status, held_open = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd, cancelled: cancelled,
                                                       env: env)
 
         stdout_block = output_block("stdout", stdout)
@@ -50,6 +59,7 @@ module Samagotchi
         # model as "done, something happened".
         silent = stdout_block.nil? && stderr_block.nil?
         parts << (silent ? "exit: #{status.exitstatus} (no output)" : "exit: #{status.exitstatus}")
+        parts << (held_open == :detached ? BACKGROUND_DETACHED_HINT : BACKGROUND_HINT) if held_open
         parts.join("\n")
       rescue CommandTimedOut => e
         # Keep the "Error:" first line (callers classify on it), say how to run
@@ -75,13 +85,14 @@ module Samagotchi
         status = nil
         timed_out = false
         was_cancelled = false
+        aborted = false
+        held_open = false
         started = monotonic_time
         deadline = started + timeout_sec
 
         Open3.popen3(env || {}, command, chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
           stdin.close
-          stdout_reader = reader_thread_for(stdout)
-          stderr_reader = reader_thread_for(stderr)
+          readers = [OutputReader.new(stdout), OutputReader.new(stderr)]
 
           begin
             until wait_thr.join(WAIT_SLICE_SEC)
@@ -100,36 +111,103 @@ module Samagotchi
             # An Interrupt (or anything else) mid-wait: the child is in its own
             # process group, so it never saw the SIGINT. Kill it, or the reads
             # below block until it closes stdout.
+            aborted = true
             terminate_process_tree(wait_thr.pid)
             raise
           ensure
-            # Read the buffered output before closing the pipes. For a process
-            # that exits almost instantly (e.g. `echo hello`), the background
-            # reader thread may not have scheduled its `io.read` yet; joining
-            # the reader after the pipe is closed would return "".
-            stdout_text = stdout_reader.value
-            stderr_text = stderr_reader.value
-            close_quietly(stdout)
-            close_quietly(stderr)
+            # The shell is gone, but a child it put in the background (`cmd &`)
+            # may still hold the pipes: wait for EOF a short grace only, then
+            # stop the command's process group and keep the output so far.
+            # Already stopped (timeout, Stop, an exception): no more checks.
+            stopping = timed_out || was_cancelled || aborted
+            outcome = await_readers(readers, until_time: monotonic_time + BACKGROUND_GRACE_SEC,
+                                             deadline: stopping ? nil : deadline,
+                                             cancelled: stopping ? -> { false } : cancelled)
+            unless outcome == :done
+              was_cancelled = true if outcome == :cancelled
+              timed_out = true if outcome == :timeout
+              stopped = stop_process_group(wait_thr.pid, readers)
+              held_open = (stopped ? :stopped : :detached) if outcome == :grace && !stopping
+            end
+            readers.each(&:finish)
+            stdout_text, stderr_text = readers.map(&:text)
           end
         end
 
         raise CommandTimedOut.new(stdout_text, stderr_text) if timed_out
         raise CommandCancelled.new(stdout_text, stderr_text, monotonic_time - started) if was_cancelled
 
-        [stdout_text, stderr_text, status]
+        [stdout_text, stderr_text, status, held_open]
       end
       private_class_method :run_command
 
-      def self.reader_thread_for(io)
-        Thread.new do
-          Thread.current.report_on_exception = false
-          io.read.to_s
-        rescue IOError, EOFError
-          ""
+      # Waits for both readers to hit EOF until +until_time+, the overall
+      # +deadline+ or a Stop. Returns :done, :grace, :timeout or :cancelled.
+      def self.await_readers(readers, until_time:, deadline:, cancelled:)
+        loop do
+          return :done if readers.all?(&:done?)
+          return :cancelled if cancelled.call
+          return :timeout if deadline && monotonic_time > deadline
+          return :grace if monotonic_time > until_time
+
+          readers.find { |r| !r.done? }&.wait(STOP_POLL_INTERVAL_SEC)
         end
       end
-      private_class_method :reader_thread_for
+      private_class_method :await_readers
+
+      # The shell has exited (its pid is reaped) but its process group still
+      # has members holding the output: TERM the group, then KILL it. A process
+      # that left the group (setsid) is out of reach; the pipes get closed.
+      # True once the output was released, false if something still holds it.
+      def self.stop_process_group(pgid, readers)
+        signal_group(pgid, "TERM")
+        return true if await_readers(readers, until_time: monotonic_time + STOP_GRACE_SEC, deadline: nil,
+                                              cancelled: -> { false }) == :done
+
+        signal_group(pgid, "KILL")
+        await_readers(readers, until_time: monotonic_time + STOP_GRACE_SEC, deadline: nil, cancelled: -> { false }) == :done
+      end
+      private_class_method :stop_process_group
+
+      # Only the group: the leader's pid is reaped, so it may name another process.
+      def self.signal_group(pgid, signal)
+        Process.kill(signal, -pgid)
+      rescue Errno::ESRCH, Errno::EPERM
+        nil
+      end
+      private_class_method :signal_group
+
+      # Reads a pipe in chunks on its own thread, so the output read so far
+      # survives the pipe being closed under it.
+      class OutputReader
+        def initialize(io)
+          @io = io
+          @buffer = String.new(encoding: Encoding::BINARY)
+          @thread = Thread.new do
+            Thread.current.report_on_exception = false
+            loop { @buffer << io.readpartial(READ_CHUNK_BYTES) }
+          rescue EOFError, IOError
+            nil
+          end
+        end
+
+        def done? = !@thread.alive?
+
+        def wait(seconds) = @thread.join(seconds)
+
+        # Closes the pipe (a reader still blocked gets IOError) and ends the
+        # thread; the text is safe to read afterwards.
+        def finish
+          @thread.join(STOP_POLL_INTERVAL_SEC) unless done?
+          Execute.send(:close_quietly, @io)
+          @thread.kill unless @thread.join(STOP_GRACE_SEC)
+        end
+
+        def text
+          @buffer.dup.force_encoding(@io.external_encoding || Encoding.default_external)
+        end
+      end
+      private_constant :OutputReader
 
       def self.close_quietly(io)
         io.close unless io.closed?
