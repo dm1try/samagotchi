@@ -353,9 +353,15 @@ module Samagotchi
           @stdout.puts "Bundle '#{name}' not installed."
           return 0
         end
-        @stdout.puts "Bundle: #{name} v#{st[:provenance][:version]} scope=#{st[:scope]} installed=#{st[:provenance][:installed_at]}"
-        @stdout.puts "Target: #{st[:target_dir]}"
+        @stdout.puts "Bundle: #{name} v#{st[:provenance][:version]} scope=#{status_scope(st)} installed=#{st[:provenance][:installed_at]}"
+        if st[:scope_error]
+          @stdout.puts "Target: (unknown scope: this chi can't resolve it; upgrade chi or reinstall the bundle)"
+        else
+          @stdout.puts "Target: #{st[:target_dir]}"
+        end
         st[:files].each do |k, info|
+          next @stdout.puts("  #{k}: unchecked") if info[:unchecked]
+
           mods = []
           mods << "conflict (kept your edits over v#{st[:provenance][:version]}: chi bundle diff #{name} #{k})" if info[:conflict]
           mods << "modified" if info[:modified]
@@ -409,14 +415,18 @@ module Samagotchi
           plugin = st[:plugin]
           mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
           mods += 1 if st[:hooks_requires_failure]
+          mods += 1 if st[:scope_error]
           plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
           includes = st[:provenance][:includes]
           includes_info = includes ? " includes=#{includes.join(",")}" : ""
-          @stdout.puts "  #{bname} v#{st[:provenance][:version]} scope=#{st[:scope]} files=#{st[:files].size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
+          @stdout.puts "  #{bname} v#{st[:provenance][:version]} scope=#{status_scope(st)} files=#{st[:files].size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
         end
       end
       return 0
     end
+
+    # "team (unknown)" for a scope this chi can't resolve (Status#bundle_status).
+    def status_scope(st) = st[:scope_error] ? "#{st[:scope]} (unknown)" : st[:scope]
 
     def diff(rest)
       args = rest.reject { |a| a.start_with?("--") }

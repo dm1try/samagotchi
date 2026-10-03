@@ -11,6 +11,9 @@ require_relative "../model_overlay"
 module Samagotchi
   module MemoryBundle
     module Status
+      # A scope this chi can't resolve (a newer chi's, a hand edit) isn't
+      # guessed: scope_error says so, target_dir is nil and each file is
+      # unchecked (no disk reads, nothing counted as missing).
       def self.bundle_status(name, scope_override: nil)
         provenance = Provenance.new(name: name)
         data = provenance.read
@@ -18,11 +21,13 @@ module Samagotchi
 
         raw_scope = scope_override || data[:scope]&.to_s
         scope = (raw_scope.nil? || raw_scope.strip.empty?) ? "system" : raw_scope
-        target_dir = resolve_target_dir(scope)
+        target_dir = MemoryPaths.scope_dir(scope)
         files = data[:files] || {}
         details = {}
         files.each do |file_key, meta|
           file_key_str = file_key.to_s
+          next details[file_key_str] = unchecked_file(meta) unless target_dir
+
           target_path = File.join(target_dir, file_key_str)
           base_path = provenance.base_path(file_key_str)
           stored_checksum = meta[:checksum] || meta["checksum"]
@@ -46,7 +51,8 @@ module Samagotchi
             base_path: base_path
           }
         end
-        { provenance: data, scope: scope, target_dir: target_dir, files: details, plugin: plugin_status(provenance, data),
+        { provenance: data, scope: scope, scope_error: target_dir ? nil : "unknown scope: #{scope}",
+          target_dir: target_dir, files: details, plugin: plugin_status(provenance, data),
           hooks_requires_failure: hooks_requires_failure(data), needs: needs_status(data) }
       end
 
@@ -91,9 +97,11 @@ module Samagotchi
           requires_failure: Manifest.requires_chi_failure(data[:requires_chi], Samagotchi::VERSION) }
       end
 
-      def self.resolve_target_dir(scope)
-        MemoryPaths.scope_dir(scope) || MemoryPaths.system_dir
+      def self.unchecked_file(meta)
+        { conflict: meta.is_a?(Hash) && meta[:conflict] == true, stored_checksum: meta.is_a?(Hash) ? meta[:checksum] || meta["checksum"] : nil,
+          unchecked: true, modified: false, missing: false, index_present: nil, overlay: false }
       end
+      private_class_method :unchecked_file
 
       # Index lines name the entry without ".md" (Installer#update_target_index,
       # memory_write); a legacy "name.md" line counts too.

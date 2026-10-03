@@ -9,6 +9,7 @@ require_relative "provenance"
 require_relative "source"
 require_relative "status"
 require_relative "system_bundle"
+require_relative "../memory_paths"
 require_relative "../version"
 
 module Samagotchi
@@ -112,6 +113,7 @@ module Samagotchi
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
         end
         return skip(row, "project scope: chi bundle upgrade #{ship.source} in the project") if row.scope == "project"
+        return skip(row, "unknown scope #{row.scope}: upgrade chi or reinstall") unless MemoryPaths.scope_dir(row.scope)
 
         row.kept = conflicts(row, data)
         row.replaced = edited_executables(name, data)
@@ -147,7 +149,7 @@ module Samagotchi
       # version (a same-name file it didn't install is skipped, not merged).
       def conflicts(row, data)
         provenance = Provenance.new(name: row.name)
-        target_dir = Status.resolve_target_dir(row.scope)
+        target_dir = MemoryPaths.scope_dir!(row.scope)
         return [] unless data[:files].is_a?(Hash)
 
         owned = data[:files].keys.map(&:to_s)

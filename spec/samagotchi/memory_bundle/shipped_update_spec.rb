@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "tmpdir"
+require "json"
 require "fileutils"
 require "yaml"
 require "digest"
@@ -144,6 +145,17 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
 
     row = described_class.plan(shipped_dir: root).first
     expect(row).to have_attributes(status: :skipped, note: "needs chi >= 99.0", to: "0.9.0")
+    expect(described_class.apply([row]).first.status).to eq(:skipped)
+    expect(version_of("btw")).to eq("0.0.1")
+  end
+
+  it "skips a bundle whose provenance names a scope this chi doesn't know" do
+    install(old_copy("btw"), "btw")
+    mjson = File.join(system_dir, ".bundles", "btw", "manifest.json")
+    File.write(mjson, JSON.generate(JSON.parse(File.read(mjson)).merge("scope" => "team")))
+
+    row = described_class.plan.first
+    expect(row).to have_attributes(status: :skipped, note: "unknown scope team: upgrade chi or reinstall", to: nil)
     expect(described_class.apply([row]).first.status).to eq(:skipped)
     expect(version_of("btw")).to eq("0.0.1")
   end

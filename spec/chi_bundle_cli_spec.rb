@@ -441,6 +441,22 @@ Hooks removed: 1\n\z})
 
     after(:context) { FileUtils.rm_rf(@root) }
 
+    it "status NAME shows the scope as unknown and checks no file" do
+      out, err, code = chi("status", "demo")
+
+      expect([err, code]).to eq(["", 0])
+      expect(out).to match(/\ABundle: demo v1\.0\.0 scope=team \(unknown\) installed=\S+\n/)
+      expect(out.lines.drop(1).join).to eq(<<~TEXT)
+        Target: (unknown scope: this chi can't resolve it; upgrade chi or reinstall the bundle)
+          a.md: unchecked
+          trust_level: experimental
+      TEXT
+    end
+
+    it "status counts the unknown scope as one issue, not its files as missing" do
+      expect(chi("status")).to eq(["  demo v1.0.0 scope=team (unknown) files=1 issues=1\n", "", 0])
+    end
+
     it "diff refuses it" do
       expect(chi("diff", "demo")).to eq(["", "Bundle 'demo': invalid scope: team\n", 1])
     end

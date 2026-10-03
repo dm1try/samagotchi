@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "tmpdir"
+require "json"
 require "fileutils"
 require "yaml"
 require "samagotchi/memory_bundle/installer"
@@ -28,6 +29,27 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
     files = described_class.bundle_status("sample-needs")[:files]
     expect(files).not_to be_empty
     expect(files.transform_values { |f| f[:index_present] }).to all(satisfy { |_k, v| v == true })
+  end
+
+  it "doesn't guess a folder for a scope this chi doesn't know: scope_error, files unchecked, nothing read" do
+    Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
+    mjson = File.join(system_dir, ".bundles", "sample-needs", "manifest.json")
+    File.write(mjson, JSON.generate(JSON.parse(File.read(mjson)).merge("scope" => "team")))
+    allow(File).to receive(:read).and_call_original
+    allow(Samagotchi::MemoryBundle::IndexUpdater).to receive(:index_path_for).and_call_original
+
+    st = described_class.bundle_status("sample-needs")
+
+    expect(st).to include(scope: "team", scope_error: "unknown scope: team", target_dir: nil)
+    expect(st[:files]).not_to be_empty
+    expect(st[:files].values).to all(include(unchecked: true, missing: false, modified: false))
+    expect(File).not_to have_received(:read).with(start_with(system_dir + "/").and(end_with(".md")))
+    expect(Samagotchi::MemoryBundle::IndexUpdater).not_to have_received(:index_path_for)
+  end
+
+  it "has no scope_error for a scope it knows" do
+    Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
+    expect(described_class.bundle_status("sample-needs")).to include(scope: "system", scope_error: nil, target_dir: system_dir)
   end
 
   it "has no needs for a bundle that declares none" do

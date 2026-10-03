@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `chi bundle status` shows a bundle whose recorded scope this chi doesn't know (one a newer chi wrote, or a hand
+  edit) as `scope=team (unknown)`, counted as one issue, instead of checking its files in the system memories;
+  the shipped-bundle update skips it (upgrade chi or reinstall), and `chi bundle diff` refuses it with a one-line
+  error instead of a stack trace.
+
 ## [0.19.0] - 2026-10-03
 
 ### Changed
