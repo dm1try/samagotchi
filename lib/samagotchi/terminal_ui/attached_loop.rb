@@ -1029,7 +1029,8 @@ module Samagotchi
         exchange = messages.select { |m| %w[user model assistant].include?(m[:role].to_s) }
         # The id stays findable: the detach line and chi sessions list show it.
         Log.session_id = @client.session_id
-        Log.info(:attached, "joined", session: @client.session_id, messages: exchange.size)
+        Log.info(:attached, "joined", session: @client.session_id, messages: exchange.size,
+                                      notes: messages.count { |m| ContextNote.note?(m) })
         last_user = exchange.rindex { |m| Steer.prompt?(m) }
         render_join_notes(messages)
         return unless last_user

@@ -30,7 +30,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                { role: "model", content: "hello there" }]))
 
       expect(screen.lines).to eq(["user> hi", "hello there"])
-      expect(Samagotchi::Log).to have_received(:info).with(:attached, "joined", session: "s-1234", messages: 2)
+      expect(Samagotchi::Log).to have_received(:info).with(:attached, "joined", session: "s-1234", messages: 2, notes: 0)
       expect(Samagotchi::Log.session_id).to eq("s-1234")
       expect(attached).not_to be_running
     end
@@ -1242,11 +1242,14 @@ end
     end
 
     it "shows on join the notes that came after the last exchange, not older ones" do
+      allow(Samagotchi::Log).to receive(:info).and_call_original
       old = Samagotchi::ContextNote.message(note_id: "n0", text: "old news", source: "cli")
       join_fresh([{ role: "system", content: "sys" }, old, { role: "user", content: "hi" },
                   { role: "model", content: "hello there" }, note])
 
       expect(screen.lines).to eq(["user> hi", "hello there", "note from slack: deploy frozen"])
+      # The log counts every note the session holds, shown or not.
+      expect(Samagotchi::Log).to have_received(:info).with(:attached, "joined", session: "s-1234", messages: 2, notes: 2)
     end
 
     it "shows the notes of a session that has no exchange yet" do
