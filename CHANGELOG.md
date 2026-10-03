@@ -83,6 +83,9 @@ and commands may change between minor versions. How releases are made:
   first, `chi update` listed the dead worker as running, and an approval relay kept watching a parent that was gone.
 - REPL with piped input: when the input ends at a question or approval, no bare `? ` line is left above its
   `(denied)` / `(cancelled)` summary.
+- Web: an approval from a delegate its parent isn't waiting on directly rings once (the parent's relayed card), not
+  twice: a child's approval now waits 3.5 s (was 1.5 s) for the relay before it notifies on its own. Only delegated
+  children's approvals wait; one nobody relays rings that much later.
 
 ## [0.16.0] - 2026-10-03
 

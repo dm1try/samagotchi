@@ -258,6 +258,11 @@ test("a delegated child's approval is held; one already relayed to the parent ne
   assert.equal(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "approval", relayed_to: "p1aaaaaa" } }), null);
   // A question (the model's) isn't relayed: at once, as before.
   assert.equal(attentionFor(child, { ...child, pending_question: { id: "q1", kind: "question" } }).holdMs, undefined);
+  // Nor is the parent's own approval, or a top-level session's: at once.
+  assert.equal(attentionFor(base, { ...base, pending_question: { id: "q1", kind: "approval" } }).holdMs, undefined);
+  // A second child's approval is relayed up to ~3 s later (the parent's look
+  // at its other children every 2 s, then the hub's 1 s scan).
+  assert.ok(RELAY_HOLD_MS > 3000);
 });
 
 test("an approval relayed to the parent closes the child's key (its hold and its badge drop)", () => {
