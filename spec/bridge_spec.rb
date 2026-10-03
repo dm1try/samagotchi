@@ -805,6 +805,31 @@ RSpec.describe Samagotchi::Bridge do
           expect(tail("nope")).to be_nil
         end
 
+        it "?turn_id= answers that turn's answer; an unknown or empty id the newest" do
+          start_bridge
+          @engine.session = @session
+          @session.messages = [
+            { role: "user", content: "first", turn_id: "tA" },
+            { role: "assistant", content: "answer A" },
+            { role: "user", content: "late line", kind: Samagotchi::Steer::INPUT_KIND },
+            { role: "user", content: "second", turn_id: "tB" },
+            { role: "assistant", content: "answer B" }
+          ]
+
+          expect(tail.dig("answer", "content")).to eq("answer B")
+          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+            .get_json("tail?turn_id=tA").dig("answer", "content")).to eq("answer A")
+          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+            .get_json("tail?turn_id=tB").dig("answer", "content")).to eq("answer B")
+          %w[nope =].each do |id|
+            expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+              .get_json("tail?turn_id=#{id}").dig("answer", "content")).to eq("answer B")
+          end
+          # The query reaches no other route: /state answers as ever.
+          expect(Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+            .get_json("state?turn_id=tA")).to include("session_state_snapshot")
+        end
+
         it "takes the event log once and never copies the conversation" do
           start_bridge
           @engine.session = @session

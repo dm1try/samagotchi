@@ -15,10 +15,27 @@ module Samagotchi
 
     # @param messages [Array<Hash>] a session's messages (symbol keys from
     #   disk or the Engine, string keys from a Bridge snapshot)
+    # @param turn_id [String, nil] that turn's answer: the last one between
+    #   the prompt carrying this turn id and the next prompt (a queued turn's
+    #   page re-reads after the next turn ran). An unknown or missing id:
+    #   the newest answer.
     # @return [Hash, nil] the raw message (not a copy), or nil
-    def find(messages)
-      Array(messages).reverse_each { |m| return m if answer?(m) }
+    def find(messages, turn_id: nil)
+      list = Array(messages)
+      list = turn_slice(list, turn_id.to_s) || list unless turn_id.to_s.empty?
+      list.reverse_each { |m| return m if answer?(m) }
       nil
+    end
+
+    # The messages of the turn whose prompt carries +turn_id+, from its
+    # prompt up to the next prompt (merged input and steers stay in it), or
+    # nil when no prompt carries it.
+    def turn_slice(list, turn_id)
+      start = list.rindex { |m| Steer.turn_prompt?(m) && (m[:turn_id] || m["turn_id"]).to_s == turn_id }
+      return nil unless start
+
+      stop = list.each_index.find { |i| i > start && Steer.turn_prompt?(list[i]) } || list.size
+      list[start...stop]
     end
 
     # Shown as an assistant message: role assistant or model, not a context

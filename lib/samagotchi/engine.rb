@@ -1971,10 +1971,11 @@ module Samagotchi
 
     # The answer a UI shows last (AnswerTail), a copy of that one message
     # only: walked back from the end, never a #messages_checkpoint of the
-    # whole conversation (the Bridge's GET tail).
+    # whole conversation (the Bridge's GET tail). +turn_id+: that turn's
+    # answer (AnswerTail.find); unknown or nil: the newest.
     # @return [Hash, nil]
-    def last_answer_message
-      AnswerTail.find(@session&.messages)&.dup
+    def last_answer_message(turn_id: nil)
+      AnswerTail.find(@session&.messages, turn_id: turn_id)&.dup
     end
 
     # @return [Array<Hash>] a copy of the current session's messages to hand

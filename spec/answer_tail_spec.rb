@@ -84,6 +84,34 @@ RSpec.describe Samagotchi::AnswerTail do
     end
   end
 
+  describe "turn_id:" do
+    msgs = [
+      { role: "user", content: "first", turn_id: "tA" },
+      { role: "assistant", content: "", tool_calls: [{ id: "c" }] },
+      { role: "assistant", content: "answer A" },
+      { role: "user", content: "steering", kind: "input" },
+      { role: "assistant", content: "answer A, steered" },
+      { role: "user", content: "a steer", kind: "steer" },
+      { role: "user", content: "second", turn_id: "tB" },
+      { role: "assistant", content: "answer B" },
+      { role: "user", content: "third", turn_id: "tC" }
+    ]
+
+    it "is that turn's last answer (merged input and steers are the turn's); symbol and string keys" do
+      [msgs, stringify(msgs)].each do |list|
+        found = ->(id) { described_class.find(list, turn_id: id).then { |m| m && (m[:content] || m["content"]) } }
+        expect(found.("tA")).to eq("answer A, steered")
+        expect(found.("tB")).to eq("answer B")
+        # A turn with no answer (yet): none, not an earlier turn's.
+        expect(found.("tC")).to be_nil
+      end
+    end
+
+    it "an unknown, empty or nil id: the newest answer" do
+      ["nope", "", nil].each { |id| expect(described_class.find(msgs, turn_id: id)[:content]).to eq("answer B") }
+    end
+  end
+
   it "returns the raw message itself, not a copy" do
     answer = { role: "assistant", content: "the answer" }
     expect(described_class.find([{ role: "user", content: "q" }, answer])).to equal(answer)

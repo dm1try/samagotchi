@@ -249,11 +249,12 @@ module Samagotchi
     # message, not the conversation) and the cards, as one step of the event
     # log (one event_seq). Light whatever the session's length: GET tail.
     # @return [Hash] {session_id:, session_state_snapshot:, answer:, cards:, event_seq:, event_id:}
-    def tail_frame
+    # +turn_id+: that turn's answer, not the newest (Engine#last_answer_message).
+    def tail_frame(turn_id: nil)
       @engine.synchronize_events do
         seq = @engine.event_count
         state = @engine.session_state_snapshot.merge(event_seq: seq, event_id: event_id(seq))
-        { session_id: @session_id, session_state_snapshot: state, answer: @engine.last_answer_message,
+        { session_id: @session_id, session_state_snapshot: state, answer: @engine.last_answer_message(turn_id: turn_id),
           cards: @cards.list, event_seq: seq, event_id: event_id(seq) }
       end
     end
@@ -361,7 +362,7 @@ module Samagotchi
                                     client_id: stream_client_id(request[:query]))
           break # SSE owns the connection until the client disconnects.
         else
-          payload, status, body = dispatch(route.first, route.last, request[:body])
+          payload, status, body = dispatch(route.first, route.last, request[:body], request[:query])
           write_json(io, status, payload, body)
         end
 
@@ -477,8 +478,10 @@ module Samagotchi
     # #own_session?), and a handler that raises answers 500 bridge_error,
     # logged (the connection thread doesn't report).
     # @return [Array(Hash, Integer, Hash)] headers, status, body
-    def dispatch(handler, session_id, body)
+    # Only GET tail takes the request's +query+.
+    def dispatch(handler, session_id, body, query = nil)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+      return handle_tail(session_id, body, query) if handler == :handle_tail
 
       send(handler, session_id, body)
     rescue StandardError => e
@@ -779,8 +782,14 @@ module Samagotchi
       [{}, 200, snapshot_frame]
     end
 
-    # The page's light re-read (#tail_frame): no message list.
-    def handle_tail(session_id, _body = nil)
+    # The page's light re-read (#tail_frame): no message list. `?turn_id=`:
+    # that turn's answer (a queued turn's page re-reads late). The one
+    # handler that gets the query (#dispatch); an older worker's route
+    # ignores it and sends the newest answer.
+    def handle_tail(session_id, _body = nil, query = nil)
+      turn_id = query && URI.decode_www_form(query).to_h["turn_id"].to_s
+      [{}, 200, tail_frame(turn_id: turn_id.to_s.empty? ? nil : turn_id)]
+    rescue ArgumentError
       [{}, 200, tail_frame]
     end
 
