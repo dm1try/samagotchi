@@ -482,6 +482,38 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(stripCard).toBeVisible();
 });
 
+test("the info bar: copy chi --attach copies the full id, delete removes the session after the confirm", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  const stripCard = page.locator(`#topStrip .card[data-id="${id}"]`);
+  await expect(stripCard).toBeVisible();
+
+  // What the button hands the clipboard (headless Chromium's own clipboard
+  // needs a permission grant and focus).
+  await page.evaluate(() => {
+    window.__copied = [];
+    navigator.clipboard.writeText = async (text) => { window.__copied.push(text); };
+  });
+  const copy = page.locator("#infoBar .copy-attach");
+  await expect(copy).toHaveText("copy chi --attach");
+  await copy.click();
+  await expect(copy).toHaveText("copied ✓");
+  expect(await page.evaluate(() => window.__copied)).toEqual([`chi --attach ${id}`]);
+
+  let confirmText = null;
+  page.once("dialog", (dialog) => { confirmText = dialog.message(); dialog.accept(); });
+  const deleted = page.waitForResponse((res) => res.url().includes(id) && res.request().method() === "DELETE");
+  await page.locator("#infoDeleteBtn").click();
+  expect((await deleted).ok()).toBe(true);
+  expect(confirmText).toContain(`Delete session ${id.slice(0, 8)}`);
+  await expect(stripCard).toHaveCount(0);
+  await expect(page).not.toHaveURL(new RegExp(id));
+  await expect(page.locator("#infoDeleteBtn")).toBeHidden();
+  await expect(page.locator("#actionBtn")).toHaveText("Start");
+});
+
 // Notifications: the tab says whether it is in front through a stubbed
 // visibilityState/hasFocus (window.__setFront), and a stub Notification
 // records what would be shown (window.__notes). The page starts behind.
