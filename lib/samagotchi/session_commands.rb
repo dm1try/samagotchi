@@ -234,6 +234,9 @@ module Samagotchi
       rules = @engine.guardrail_rules
       approvals = @engine.guardrail_approvals.entries
       lines = ["guardrails: #{rules.enabled? ? "on" : "off (guardrails.enabled: false; denies still apply)"}"]
+      lines << if rules.mode == "strict" then "mode: strict (every rule votes)"
+               else "mode: auto (rules marked strict only don't vote; guardrails.mode: strict in config.yml for those)"
+               end
       name = @engine.guardrail_model_name
       key = @engine.model_key
       lines << "model: #{name || "none"} — #{Guardrails::ModelSize.describe(name, key)}"
@@ -253,9 +256,14 @@ module Samagotchi
           ("command /#{shorten_pattern(rule.command.source)}/" if rule.command),
           ("path #{rule.path}" if rule.path),
           ("git #{rule.git}" if rule.git),
-          ("models #{rule.models.join(",")}" if rule.models)
+          ("touches #{rule.touches}" if rule.touches),
+          ("rm #{rule.rm}" if rule.rm),
+          ("models #{rule.models.join(",")}" if rule.models),
+          ("modes #{rule.modes.join(",")}" if rule.modes),
+          ("skip_read_only" if rule.skip_read_only)
         ].compact.join(", ")
         off = "disabled (guardrails.disable) — " if rules.disabled?(rule)
+        off ||= "(#{rule.modes.join(", ")} only) — " unless rule.for_mode?(rules.mode)
         off ||= "off for this model — " unless rule.for_model?(name, key)
         lines << "  #{idx + 1}. #{rule.id}: #{off}#{rule.verdict} (#{match}) — #{rule.reason} [#{rule.source}]"
       end

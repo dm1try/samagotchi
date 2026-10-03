@@ -423,6 +423,28 @@ RSpec.describe Samagotchi::SessionCommands do
       )
     end
 
+    it "shows the mode, and marks the rules it leaves out strict only" do
+      rules = Samagotchi::Guardrails::Rules.parse(
+        [{ "id" => "git-rebase", "tool" => "shell", "command" => "git rebase", "modes" => ["strict"], "verdict" => "ask", "reason" => "rewrites" },
+         { "id" => "shell-touches-chi", "tool" => "shell", "touches" => "chi_dirs", "skip_read_only" => true, "verdict" => "ask", "reason" => "chi" },
+         { "id" => "rm-rf-wide", "tool" => "shell", "command" => "rm", "rm" => "outside_tmp", "verdict" => "ask", "reason" => "wide" }],
+        source: "bundle guardrails"
+      )
+      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rules))
+      out = commands.run("/guardrails").output
+      expect(out.lines[1]).to start_with("mode: auto")
+      expect(out).to include(
+        "  1. git-rebase: (strict only) — ask (tool execute,task_create, command /git rebase/, modes strict) — rewrites [bundle guardrails]",
+        "  2. shell-touches-chi: ask (tool execute,task_create, touches chi_dirs, skip_read_only) — chi [bundle guardrails]",
+        "  3. rm-rf-wide: ask (tool execute,task_create, command /rm/, rm outside_tmp) — wide [bundle guardrails]"
+      )
+
+      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rules, mode: "strict"))
+      out = commands.run("/guardrails").output
+      expect(out.lines[1]).to start_with("mode: strict")
+      expect(out).to include("  1. git-rebase: ask (tool execute,task_create, command /git rebase/, modes strict)")
+    end
+
     it "lists a tool glob as given" do
       rules = Samagotchi::Guardrails::Rules.parse(
         [{ "id" => "mcp-ask", "tool" => "mcp_*", "verdict" => "ask", "reason" => "an MCP tool" }], source: "config"
