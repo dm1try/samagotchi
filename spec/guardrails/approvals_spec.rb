@@ -57,6 +57,45 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
     expect(store.match(ask(rule: nil))).to be_nil
   end
 
+  describe "in a git repository with worktrees" do
+    let(:main) { File.realpath(File.join(state, "main").tap { |d| FileUtils.mkdir_p(d) }) }
+    let(:wt1) { File.join(File.realpath(state), "wt1") }
+    let(:wt2) { File.join(File.realpath(state), "wt2") }
+    let(:elsewhere) { File.realpath(File.join(state, "elsewhere").tap { |d| FileUtils.mkdir_p(d) }) }
+
+    def git(dir, *args) = system("git", "-C", dir, *args, out: File::NULL, err: File::NULL)
+
+    before do
+      [main, elsewhere].each do |dir|
+        git(dir, "init", "-q")
+        git(dir, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "x")
+      end
+      git(main, "worktree", "add", "-q", "-b", "one", wt1)
+      git(main, "worktree", "add", "-q", "-b", "two", wt2)
+    end
+
+    it "keeps a repo or rule approval from one worktree for the others, not for another repo" do
+      %w[repo rule].each do |scope|
+        store.add(ask(cwd: wt1), scope)
+        expect(store.match(ask(cwd: wt2, session: "s2"))).to include("scope" => scope), scope
+        expect(store.match(ask(cwd: main, session: "s3"))).to include("scope" => scope), scope
+        expect(store.match(ask(cwd: elsewhere))).to be_nil
+        store.revoke(0)
+      end
+    end
+
+    it "stores the repository and the worktree it was given in" do
+      store.add(ask(cwd: wt1), "repo")
+      expect(store.entries.first).to include("repo" => File.join(main, ".git"), "repo_root" => wt1)
+    end
+
+    it "still matches an entry from before repo: by its exact folder" do
+      old = { "scope" => "rule", "tool" => "execute", "rule" => "git-push", "source" => "config", "repo_root" => wt1 }
+      expect(described_class.find_in([old], ask(cwd: wt1))).to eq(old)
+      expect(described_class.find_in([old], ask(cwd: wt2))).to be_nil
+    end
+  end
+
   it "keys file tools by their paths" do
     v = ask(tool: "write", command: nil)
     v.targets = Samagotchi::Guardrails::Targets.for({ name: "write", path: "a.txt" }, v.context)

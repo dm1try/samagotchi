@@ -44,6 +44,8 @@ module Samagotchi
             args: args_for_card(targets),
             cwd: targets&.cwd,
             repo_root: targets&.repo_root,
+            # The repository's name (a worktree's main checkout's folder).
+            repo_name: targets&.repo_name,
             branch: verdict.context&.branch(targets&.cwd || verdict.context.cwd),
             rule: verdict.rule,
             source: verdict.source,
@@ -92,7 +94,7 @@ module Samagotchi
       end
 
       def label(scope, verdict)
-        place = verdict.targets&.repo_root ? "in this repo" : "in this directory"
+        place = verdict.targets&.repo_root ? "in this repo (#{verdict.targets.repo_name})" : "in this directory"
         case scope
         when "once" then "Allow once"
         when "session" then "Allow this call for the session"
@@ -129,9 +131,8 @@ module Samagotchi
         what = Approval.args_text(targets&.args, limit: ARGS_CHARS) if what.to_s.empty?
         lines = ["#{tool}: #{what}"]
         if targets
-          repo = targets.repo_root
           branch = verdict.context&.branch(targets.cwd)
-          where = repo ? "repo #{File.basename(repo)}#{", branch #{branch}" if branch}" : "not in a repo"
+          where = targets.repo_root ? "repo #{targets.repo_name}#{", branch #{branch}" if branch}" : "not in a repo"
           lines << "  in #{targets.cwd} (#{where})"
         end
         who = verdict.rule ? ["rule #{verdict.rule}", verdict.source].compact.join(", ") : (verdict.source || "hook")

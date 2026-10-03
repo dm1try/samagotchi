@@ -105,10 +105,29 @@ RSpec.describe Samagotchi::Guardrails::Approval do
              out: File::NULL, err: File::NULL)
       payload = described_class.payload(ask(scopes: %w[once repo]))
       expect(payload[:question]).to include("  in #{dir} (repo #{File.basename(dir)}, branch main)")
-      expect(payload[:options]).to eq(["Allow once", "Allow this call in this repo", "Deny"])
+      expect(payload[:options]).to eq(["Allow once", "Allow this call in this repo (#{File.basename(dir)})", "Deny"])
       expect(payload[:approval]).to eq(tool: "execute", command: "git push origin main", cwd: dir, repo_root: dir,
-                                       branch: "main", rule: "git-push", source: "bundle guardrails",
-                                       reason: "git push publishes commits", scopes: %w[once repo])
+                                       repo_name: File.basename(dir), branch: "main", rule: "git-push",
+                                       source: "bundle guardrails", reason: "git push publishes commits",
+                                       scopes: %w[once repo])
+    end
+
+    it "names the repository, not the worktree, in a linked worktree" do
+      system("git", "-C", dir, "init", "-q", "-b", "main", out: File::NULL, err: File::NULL)
+      system("git", "-C", dir, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "x",
+             out: File::NULL, err: File::NULL)
+      worktree = File.join(dir, "wt-feature")
+      system("git", "-C", dir, "worktree", "add", "-q", "-b", "feat", worktree, out: File::NULL, err: File::NULL)
+      c = { name: "execute", content: "git push", cwd: worktree }
+      v = Samagotchi::Guardrails::Verdict.new(call: c).ask!("pushes", rule: "git-push", source: "config", scopes: %w[once repo rule])
+      v.context = context
+      v.targets = Samagotchi::Guardrails::Targets.for(c, context)
+      payload = described_class.payload(v)
+      repo = File.basename(dir)
+      expect(payload[:question]).to include("  in #{worktree} (repo #{repo}, branch feat)")
+      expect(payload[:options]).to eq(["Allow once", "Allow this call in this repo (#{repo})",
+                                       "Allow rule git-push in this repo (#{repo})", "Deny"])
+      expect(payload[:approval]).to include(repo_root: worktree, repo_name: repo)
     end
 
     it "lists paths for a file tool, and offers no rule scope without a rule" do

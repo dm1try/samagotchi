@@ -23,6 +23,11 @@ module Samagotchi
 
       attr_reader :tool, :command, :paths, :cwd, :repo_root
 
+      # @return [String, nil] the call's repository (Context#repo: its
+      #   common git dir, shared by its worktrees): what a "this repo"
+      #   approval is kept for
+      attr_reader :repo
+
       # @return [String] the session's repo root (the context cwd's; the cwd
       #   outside a repo): what outside_repo measures from. repo_root is the
       #   call's (its own cwd: for shell and plugin tools).
@@ -71,7 +76,8 @@ module Samagotchi
           entry = registry && registry[tool]
           args = call[:args] if entry && !entry.core? && call[:args].is_a?(Hash)
         end
-        new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd), args: args,
+        new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd),
+            repo: context.repo(cwd), args: args,
             model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base,
             chi_dirs: -> { chi_dirs(context, base) })
       end
@@ -121,8 +127,9 @@ module Samagotchi
       end
 
       # @param chi_dirs [#call, nil] → the dirs touches_chi? looks for
-      def initialize(tool:, command:, paths:, cwd:, repo_root:, args: nil, model_name: nil, model_key: nil,
+      def initialize(tool:, command:, paths:, cwd:, repo_root:, repo: nil, args: nil, model_name: nil, model_key: nil,
                      session_root: nil, chi_dirs: nil)
+        @repo = repo
         @chi_dirs = chi_dirs
         @session_root = session_root || repo_root || cwd
         @args = args
@@ -136,6 +143,18 @@ module Samagotchi
       end
 
       def shell? = SHELL_TOOLS.include?(@tool)
+
+      # The repository's name: its main checkout's folder (the folder
+      # holding the common .git dir; a bare repo's name less .git), else
+      # the repo root's folder; nil outside a repo.
+      def repo_name
+        if @repo
+          base = File.basename(@repo)
+          base == ".git" ? File.basename(File.dirname(@repo)) : base.delete_suffix(".git")
+        elsif @repo_root
+          File.basename(@repo_root)
+        end
+      end
 
       # Whether the effective model is a small one (guardrails.small_models,
       # read when first asked: once per call's targets).

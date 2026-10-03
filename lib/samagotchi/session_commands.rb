@@ -277,7 +277,10 @@ module Samagotchi
 
     def approval_line(entry)
       what = entry["key"] ? entry["key"].tr("\n", " ") : "any call rule #{entry["rule"]} asks about"
-      where = entry["scope"] == "session" ? "session #{entry["session_id"].to_s[0, 8]}" : "in #{entry["repo_root"]}"
+      where = if entry["scope"] == "session" then "session #{entry["session_id"].to_s[0, 8]}"
+              elsif entry["repo"] then "in repo #{entry["repo"]}"
+              else "in #{entry["repo_root"]}"
+              end
       rule = entry["rule"] ? " (rule #{entry["rule"]}, #{entry["source"]})" : ""
       "#{entry["scope"]}: #{what} — #{where}#{rule}, #{entry["created_at"]}"
     end

@@ -27,6 +27,11 @@ test("approvalView shows the command, where and why", () => {
   });
 });
 
+test("approvalView names the repository (repo_name), not the worktree's folder", () => {
+  const pq = { ...approval, approval: { ...approval.approval, cwd: "/r/app-wt", repo_root: "/r/app-wt", repo_name: "app" } };
+  assert.equal(approvalView(pq).where, "/r/app-wt (repo app, branch main)");
+});
+
 test("a plugin tool's approval names it by its label, as its row does", () => {
   const pq = {
     kind: "approval", header: "",

@@ -81,6 +81,13 @@ Allowing beyond "once" is stored in `$XDG_STATE_HOME/samagotchi/guardrails/appro
 | repo | this exact call in this repo (the cwd outside a repo), any session |
 | rule | anything this rule asks about in this repo |
 
+"This repo" is the git repository, not the folder: an approval given in one
+worktree holds in the main checkout and every other worktree of it (it is
+stored with the repository's common git dir as `repo`, and the worktree as
+`repo_root`). The ask names the repository (`Allow this call in this repo
+(samagotchi)`). An entry stored before chi 0.20 has no `repo` and still only
+matches its exact folder.
+
 A stored approval only relaxes an ask; a deny rule is never approvable.
 A file that doesn't parse is moved aside to `approvals.json.corrupt-<UTC time>`
 with one warning, and chi starts with no stored approvals (more asks, nothing lost).

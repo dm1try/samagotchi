@@ -16,6 +16,10 @@ module Samagotchi
     #             this session;
     #   repo    — this exact call in this repo (the cwd outside a repo);
     #   rule    — anything this rule (from this source) asks about here.
+    # "This repo" is the repository (repo: its common git dir), so an
+    # approval holds in every worktree of it; repo_root, the worktree it
+    # was given in, is kept for showing, and an entry from before repo:
+    # still matches that exact folder.
     # "once" is never stored. A file that doesn't parse is moved aside to
     # approvals.json.corrupt-<UTC time>[-N], with a warning, and the store
     # starts empty: it only means more asks, and nothing is overwritten.
@@ -62,13 +66,14 @@ module Samagotchi
       def self.find_in(list, verdict)
         key = key_for(verdict)
         place = place_for(verdict)
+        repo = verdict.targets&.repo
+        here = ->(e) { e["repo"] ? e["repo"] == repo : e["repo_root"] == place }
         session_id = verdict.context&.session_id
         list.find do |e|
           case e["scope"]
           when "session" then session_id && e["session_id"] == session_id && e["key"] == key
-          when "repo" then e["repo_root"] == place && e["key"] == key
-          when "rule" then verdict.rule && e["rule"] == verdict.rule && e["source"] == verdict.source &&
-                           e["repo_root"] == place
+          when "repo" then here.(e) && e["key"] == key
+          when "rule" then verdict.rule && e["rule"] == verdict.rule && e["source"] == verdict.source && here.(e)
           end
         end
       end
@@ -81,8 +86,9 @@ module Samagotchi
                   "rule" => verdict.rule, "source" => verdict.source, "created_at" => Time.now.utc.iso8601 }
         case scope
         when "session" then entry.merge!("session_id" => verdict.context&.session_id, "key" => key_for(verdict))
-        when "repo" then entry.merge!("repo_root" => place_for(verdict), "key" => key_for(verdict))
-        when "rule" then entry["repo_root"] = place_for(verdict)
+        when "repo"
+          entry.merge!("repo_root" => place_for(verdict), "repo" => verdict.targets&.repo, "key" => key_for(verdict))
+        when "rule" then entry.merge!("repo_root" => place_for(verdict), "repo" => verdict.targets&.repo)
         end
         entry.compact
       end
