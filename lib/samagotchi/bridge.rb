@@ -134,7 +134,8 @@ module Samagotchi
 
     # Streams held by anyone but +client_id+: a client's own stream (or two,
     # while it reconnects and the old one isn't noticed dead yet) doesn't
-    # count. A closed stream counts until its next write fails (heartbeat).
+    # count. A closed stream stops counting once its writer reads the
+    # hang-up (SSEWriter#watch_hangup).
     # @return [Integer]
     def open_streams_except(client_id)
       @mutex.synchronize { @open_streams - (client_id ? @streams_by_client[client_id] : 0) }

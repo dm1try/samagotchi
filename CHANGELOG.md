@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
 - Archiving a session (`/archive`, `chi sessions archive`, the web) with a prompt still queued or a step-limit
   question open is refused with a message saying so, instead of stopping the worker and leaving the queued
   prompt to run on the next resume.
+- `/exit` right after a `/detach` and `chi --attach` no longer says "another UI is attached" and leaves the worker
+  up: the worker notices a closed stream at once instead of at its next 15-second heartbeat.
 
 ## [0.20.0] - 2026-10-03
 

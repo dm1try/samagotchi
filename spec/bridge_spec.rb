@@ -438,12 +438,13 @@ RSpec.describe Samagotchi::Bridge do
       WebMock.disable_net_connect! if defined?(WebMock)
     end
 
-    def start_bridge(input_format: nil, on_input: nil, on_command: nil, on_exit_request: nil, exit_discards: nil)
+    def start_bridge(input_format: nil, on_input: nil, on_command: nil, on_exit_request: nil, exit_discards: nil,
+                     heartbeat_interval: 0.2)
       @engine = make_engine
       @session = make_session
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
-        heartbeat_interval: 0.2, input_format: input_format, on_input: on_input, on_command: on_command,
+        heartbeat_interval: heartbeat_interval, input_format: input_format, on_input: on_input, on_command: on_command,
         on_exit_request: on_exit_request, exit_discards: exit_discards
       )
       @bridge.start
@@ -565,8 +566,22 @@ RSpec.describe Samagotchi::Bridge do
         expect(wait_until { @bridge.open_streams == 1 }).to be(true)
 
         client.stop
-        # The writer notices the hang-up on its next heartbeat (0.2s here).
+        # The writer's watcher reads the hang-up.
         expect(wait_until { @bridge.open_streams.zero? }).to be(true)
+      end
+
+      # A detached TUI's stream must not hold the worker up for a /exit
+      # from the next one (tui:<pid> differs) until a heartbeat fails.
+      it "stops counting a closed stream at once, not at its next heartbeat" do
+        start_bridge(heartbeat_interval: 30)
+        gone = SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
+        @clients << gone
+        expect(wait_until { @bridge.open_streams == 1 }).to be(true)
+
+        gone.stop
+
+        expect(wait_until(timeout: 2) { @bridge.open_streams.zero? }).to be(true)
+        expect(@bridge.open_streams_except("tui:2")).to eq(0)
       end
 
       it "counts the streams of everyone but a given client" do

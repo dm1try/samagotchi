@@ -39,6 +39,8 @@ module Samagotchi
     class SSEWriter
       DEFAULT_MAX_QUEUE = 1024
       DEFAULT_HEARTBEAT_INTERVAL = 15.0
+      # Queued by the hang-up watcher (#watch_hangup) to wake #drain!.
+      HANGUP = Object.new.freeze
 
       # @param engine [Samagotchi::Engine] the owning engine (live fan-out)
       # @param ring [Samagotchi::Bridge::RingBuffer] shared capture buffer
@@ -77,6 +79,7 @@ module Samagotchi
         @foreign_cursor = !cursor_epoch.nil? && cursor_epoch != @epoch
         @high_water = @foreign_cursor ? 0 : cursor_seq
         @handle = nil
+        @hung_up = false
       end
 
       # Non-blocking enqueue used as the per-connection live observer. Any
@@ -97,6 +100,7 @@ module Samagotchi
       # the client disconnects or the bridge stops.
       def serve!(io)
         write_sse_headers(io)
+        watcher = watch_hangup(io)
         begin
           if @join_with_snapshot
             # Subscribe and snapshot as one step of the event log, then go live.
@@ -119,10 +123,35 @@ module Samagotchi
           # Client hung up; nothing to do.
         ensure
           @engine.unsubscribe(handle: @handle) if @handle
+          watcher&.kill
         end
       end
 
       private
+
+      # A client that hangs up is noticed now, not at the next write (a
+      # heartbeat, up to its interval away): the Bridge stops counting its
+      # stream (Bridge#open_streams_except), so an attached /exit from the
+      # TUI attached after it isn't held by it. A thread waits for the
+      # socket to read EOF and wakes #drain!. A client sends nothing after
+      # its request; bytes it does send are dropped. Real sockets only.
+      def watch_hangup(io)
+        return nil unless io.is_a?(IO)
+
+        Thread.new do
+          loop do
+            case io.read_nonblock(4096, exception: false)
+            when nil then break
+            when :wait_readable then io.wait_readable
+            end
+          end
+        rescue IOError, SystemCallError
+          nil
+        ensure
+          @hung_up = true
+          @queue.push(HANGUP)
+        end.tap { |thread| thread.report_on_exception = false }
+      end
 
       def replay!(io, snapshot_seq)
         from_seq = @high_water
@@ -146,6 +175,9 @@ module Samagotchi
       def drain!(io)
         loop do
           payload = @queue.pop(@heartbeat_interval)
+          # The watcher's flag, not only its HANGUP: an overflow can drop that.
+          break if @hung_up
+
           if payload
             if payload.is_a?(Hash) && payload[:sse_reset]
               emit_reset(io)
