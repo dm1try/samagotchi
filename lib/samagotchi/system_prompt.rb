@@ -23,6 +23,11 @@ module Samagotchi
   class SystemPrompt
     AGENT_DESCRIPTION_FILE = "AGENT.md"
 
+    # The model a session runs on, as the prompt names it: the resolved
+    # ref, its host ("name, host:port" or url), the memory overlay key, and
+    # what a llama.cpp server says it serves when that differs (else nil).
+    ModelIdentity = Data.define(:ref, :host, :key, :served)
+
     # Always auto-loaded from the system scope unless muted (B-light).
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
 
@@ -34,10 +39,12 @@ module Samagotchi
     # @param tools    [#call] → Tools::Registry
     # @param session  [#call] → Session, nil
     # @param thinking [#call] → Symbol, the effective model's level (Thinking)
+    # @param model    [#call] → ModelIdentity, nil (the section is left out)
     # @param memories [Array<String>] the --memory list
     # @param muted_memory_names [Array<String>] normalized (MutedMemories)
-    def initialize(profile:, tools:, session:, thinking:, memories: [], muted_memory_names: [])
+    def initialize(profile:, tools:, session:, thinking:, model: -> {}, memories: [], muted_memory_names: [])
       @profile_lookup = profile
+      @model_lookup = model
       @tools_lookup = tools
       @session_lookup = session
       @thinking_lookup = thinking
@@ -223,7 +230,7 @@ module Samagotchi
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"
       ].join("\n\n")
-      [thinking_token + base, rg_guidance, project_description, project_location, current_session, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
+      [thinking_token + base, rg_guidance, project_description, project_location, current_model, current_session, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
     end
 
     # B-light: auto-preload the built-in identity memory.
@@ -376,6 +383,25 @@ module Samagotchi
       path.start_with?("#{home}/") ? "~#{path.delete_prefix(home)}" : path
     rescue ArgumentError
       path
+    end
+
+    # The model this session runs on. A model guesses its name from
+    # training (a fine-tune often knows only its base model's), so the line
+    # says to answer from here. It depends only on the effective model, and
+    # the prompt is rebuilt only on a switch (#reset!): no per-turn churn.
+    def current_model
+      model = @model_lookup.call
+      return nil unless model && !model.ref.to_s.empty?
+
+      details = [model.host, model.key && "model key #{model.key}", model.served && "the server says it serves #{model.served}"]
+      details = details.compact.reject(&:empty?)
+      where = details.empty? ? "" : " (#{details.join("; ")})"
+      "Model: this session runs on #{model.ref}#{where}.\n" \
+        "Asked which model you are, answer with this line, not from training: a fine-tuned model often knows only " \
+        "its base model's name, but this session runs what is named here; it changes only with /model. " \
+        "Guidance for this model only goes in memory overlays: memory_write current_model_only: true."
+    rescue StandardError
+      nil
     end
 
     # Fixed for the session's lifetime, so it doesn't churn the prompt cache.

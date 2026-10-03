@@ -23,6 +23,7 @@ Each memory entry may have a companion file named `<name>.<model-key>.md` in the
 
 - **Key derivation**: The harness normalizes the model name sent to the server, without its host prefix (`box:qwen3.6-35b-a3b` keys as `qwen3.6-35b-a3b`; an alias keys as its target, and the alias's own key is read when the target has no overlay) (lowercase, replace non-alphanumeric with `-`, squeeze dashes) to derive the file key. For example, `qwen3.6-35b-a3b` → `qwen3-6-35b-a3b`.
 - **Saving overlays**: Pass `current_model_only: true` to `memory_write` (the harness resolves the model key automatically). This writes the content as `<name>.<model-key>.md` and skips index maintenance.
+- **Which key is mine**: the system prompt's `Model:` line names the session's model key, and `chi self` (via `execute`) has a `model key` row; both follow `/model`.
 - **Dormancy**: Overlays are only active under the matching model key; other models see the base entry only.
 - **Invariant**: The base entry is the contract. Overlays only add model-specific guidance and never contradict the base protocol.
 

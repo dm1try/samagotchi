@@ -183,6 +183,13 @@ engine.system_prompt     # fully built system prompt string
 engine.session           # current session (Engine owns create/resume)
 ```
 
+The system prompt (`SystemPrompt#build`) is the base prompt, then rg guidance,
+AGENT.md, the working directory, **the model** (`Model: this session runs on
+<ref> (host …; model key …)` and a line telling the model to answer "which model
+are you" from it, not from training), the session id and log, the memory indexes,
+the identity and the preloaded memories. It is built once per loop and rebuilt only
+by a model switch (or changed tools), so the model line costs no KV churn.
+
 #### Subscribing to the live stream (and the bridge)
 
 For an **always-on** consumer (an external SSE client, a second UI), use

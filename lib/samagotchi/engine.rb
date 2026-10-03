@@ -243,7 +243,7 @@ module Samagotchi
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
       @prompt_builder = SystemPrompt.new(profile: -> { self.profile }, tools: -> { @tools }, session: -> { @session },
-                                         thinking: -> { turn_thinking }, memories: memories,
+                                         thinking: -> { turn_thinking }, model: -> { model_identity }, memories: memories,
                                          muted_memory_names: @muted_memory_names)
       @session = nil
       @session_observer = SessionObserver.new
@@ -409,6 +409,18 @@ module Samagotchi
     # the alias applied, "host:id" when it names a host).
     def effective_model_ref
       model_ref_for(@effective_model_name)
+    end
+
+    # The effective model as the system prompt names it (SystemPrompt::ModelIdentity):
+    # the ref, its host, the overlay key and, for a local llama.cpp host
+    # only, the model its /props names when that differs. Never a new
+    # request: only the /props answer profile resolution already cached.
+    def model_identity
+      target = @host_registry.resolve(@effective_model_name)
+      entry = target.entry
+      host = entry && "host #{entry.name}, #{entry.url || "#{entry.host}:#{entry.port}"}"
+      SystemPrompt::ModelIdentity.new(ref: effective_model_ref, host: host, key: @model_key,
+                                      served: prompt_served_model(target))
     end
 
     # +name+'s resolved ref (ModelRef#ref).
@@ -2319,6 +2331,18 @@ module Samagotchi
       served ? [served, asked] : [nil, nil]
     rescue StandardError
       [nil, nil]
+    end
+
+    # What a local native host's cached /props names, when it isn't the
+    # model asked for; nil for a chat or remote host, or before any probe.
+    def prompt_served_model(target)
+      entry = target.entry
+      return nil if entry.nil? || entry.chat? || entry.remote? || !target.client.respond_to?(:cached_server_props)
+
+      served = ServedModel.from_props(target.client.cached_server_props(model: target.bare_model))
+      served if ServedModel.differs?(target.bare_model, served)
+    rescue StandardError
+      nil
     end
 
     # ── Prompt profile ─────────────────────────────────────────────────────────
