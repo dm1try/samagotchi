@@ -191,6 +191,33 @@ RSpec.describe Samagotchi::BridgeClient do
     end
   end
 
+  describe "#get (status-aware) and #get_json on it" do
+    it "a 200: the status and the body; get_json the body" do
+      port, done = serve_once(json_reply("200 OK", JSON.generate(answer: nil)))
+      expect(described_class.new(session_id: "s1", port: port).get("tail")).to eq([200, { "answer" => nil }])
+      expect(done.call).to start_with("GET /session/s1/tail HTTP/1.1\r\n")
+      port, = serve_once(json_reply("200 OK", JSON.generate(answer: nil)))
+      expect(described_class.new(session_id: "s1", port: port).get_json("tail")).to eq("answer" => nil)
+    end
+
+    it "an older worker's 404 for a route it lacks: the status and its error; get_json nil" do
+      port, = serve_once(json_reply("404 Not Found", JSON.generate(error: "not_found", path: "/session/s1/tail")))
+      expect(described_class.new(session_id: "s1", port: port).get("tail"))
+        .to eq([404, { "error" => "not_found", "path" => "/session/s1/tail" }])
+      port, = serve_once(json_reply("404 Not Found", JSON.generate(error: "not_found")))
+      expect(described_class.new(session_id: "s1", port: port).get_json("tail")).to be_nil
+    end
+
+    it "a 500, a body that isn't JSON, a refused connect" do
+      port, = serve_once(json_reply("500 Internal Server Error", JSON.generate(error: "bridge_error")))
+      expect(described_class.new(session_id: "s1", port: port).get("tail")).to eq([500, { "error" => "bridge_error" }])
+      port, = serve_once(json_reply("200 OK", "{"))
+      expect(described_class.new(session_id: "s1", port: port).get("tail")).to eq([200, nil])
+      closed = TCPServer.new("127.0.0.1", 0).then { |srv| srv.local_address.ip_port.tap { srv.close } }
+      expect(described_class.new(session_id: "s1", port: closed).get("tail")).to eq([nil, nil])
+    end
+  end
+
   describe "a worker that takes the request and never answers" do
     let(:server) { TCPServer.new("127.0.0.1", 0) }
     let(:held) { [] }
@@ -224,6 +251,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
     it "gives up on a GET the same way (nil)" do
       expect(client.event_seq).to be_nil
+      expect(client.get("tail")).to eq([nil, nil])
     end
   end
 

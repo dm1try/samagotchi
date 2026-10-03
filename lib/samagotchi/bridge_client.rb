@@ -210,17 +210,32 @@ module Samagotchi
     # GET /session/:id/<path> as JSON.
     # @return [Hash, nil] the parsed body, or nil unless the Bridge answered 200
     def get_json(path)
+      status, body = get(path)
+      status == 200 ? body : nil
+    end
+
+    # GET /session/:id/<path>, telling a refusal apart from no answer: an
+    # older worker's 404 for a route it lacks from a refused connect, a
+    # timeout or a 500.
+    # @return [Array(Integer, Object)] the status and the parsed JSON body
+    #   (nil when it isn't JSON); [nil, nil] when no reply came
+    def get(path)
       sock = TCPSocket.new(@host, @port)
       sock.write("GET /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nConnection: close\r\n\r\n")
       response = read_reply(sock, path)
       sock.close rescue nil
       # A 500 whose text has "200" in it is not a 200.
-      return nil unless response && response[STATUS_LINE, 1] == "200"
+      status = response && response[STATUS_LINE, 1]
+      return [nil, nil] unless status
 
       body = response.split("\r\n\r\n", 2)[1] || ""
-      JSON.parse(body)
+      [status.to_i, begin
+        JSON.parse(body)
+      rescue JSON::ParserError
+        nil
+      end]
     rescue StandardError
-      nil
+      [nil, nil]
     end
 
     # Monotonic SSE cursor of the live Engine, from GET /session/:id/state.

@@ -65,6 +65,11 @@ class StubSessionLoader
     def session_dir(id, state_dir: nil)
       File.join(state_dir.to_s, id)
     end
+
+    # The light reads (?tail=1, ?cards=1) only stat the file.
+    def exist?(_id, state_dir: nil)
+      true
+    end
   end
 end
 
@@ -507,6 +512,22 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   describe "GET /api/sessions/:id" do
+    # A live worker: its GET snapshot (+live+, the full show's) and its
+    # light GET tail, built from the same reply as the Bridge's tail_frame
+    # would (nil: no worker).
+    def tail_from(live, turn_id: nil)
+      snap = live["snapshot"]
+      { "session_id" => "s1", "session_state_snapshot" => live["session_state_snapshot"],
+        "answer" => Samagotchi::AnswerTail.find(snap["messages"], turn_id: turn_id), "cards" => snap["cards"] || [],
+        "event_seq" => live.dig("session_state_snapshot", "event_seq"), "event_id" => snap["event_id"] }
+    end
+
+    def stub_worker(app, live)
+      allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+      allow(app).to receive(:bridge_get).and_call_original
+      allow(app).to receive(:bridge_get).with("s1", "tail").and_return(live ? [200, tail_from(live)] : [nil, nil])
+    end
+
     it "keeps Markdown disabled by default" do
       app = build_app(state_dir: Dir.mktmpdir)
       status, _headers, body = app.call(env_for("/api/sessions/s1"))
@@ -561,7 +582,7 @@ RSpec.describe Samagotchi::Web::App do
         { "role" => "user", "content" => "fix:\n    x  = 1" },
         { "role" => "model", "content" => "<think>hm</think>#{answer}" }
       ] } }
-      allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+      stub_worker(app, live)
       _status, _headers, body = app.call(env_for("/api/sessions/s1"))
 
       expect(JSON.parse(body.first)["messages"].map { |m| m["content"] }).to eq(["fix:\n    x  = 1", answer])
@@ -579,7 +600,7 @@ RSpec.describe Samagotchi::Web::App do
         { "role" => "system", "content" => "[SYSTEM: REMINDERS DUE]\n  x\n[END REMINDERS]" },
         peer.transform_keys(&:to_s)
       ] } }
-      allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+      stub_worker(app, live)
 
       _status, _headers, body = app.call(env_for("/api/sessions/s1"))
 
@@ -691,7 +712,7 @@ RSpec.describe Samagotchi::Web::App do
         "session_state_snapshot" => { "status" => "running", "event_seq" => 40, "model_name" => "Qwen3-14B",
                                       "served_model" => "ornith-1.5", "served_model_for" => "Qwen3-14B" }
       }
-      allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+      stub_worker(app, live)
       status, _headers, body = app.call(env_for("/api/sessions/s1"))
 
       expect(status).to eq(200)
@@ -783,7 +804,7 @@ RSpec.describe Samagotchi::Web::App do
       end
 
       def answer_of(app, query)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        stub_worker(app, live)
         JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first)["messages"].last
       end
 
@@ -843,13 +864,14 @@ RSpec.describe Samagotchi::Web::App do
           { "role" => "tool_response", "content" => "raw" },
           { "role" => "model", "content" => "<think>hm</think>see [x](https://example.test)" }
         ], "recap" => "We did things.", "queued" => [{ "prompt" => "next" }], "event_id" => "40-e1" },
-          "session_state_snapshot" => { "status" => "idle", "event_seq" => 40, "model_name" => "Qwen3-14B" } }
+          "session_state_snapshot" => { "status" => "idle", "event_seq" => 40, "model_name" => "Qwen3-14B",
+                                        "used_memory_names" => ["project:notes"] } }
       end
 
       it "answers the session, the timing and the last assistant message only, rendered" do
         manager = FakeResponsesManager.new(responses: %w[one two])
         app = build_app(manager: manager, state_dir: Dir.mktmpdir, markdown: true)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        stub_worker(app, live)
         allow(manager).to receive(:read_responses).and_call_original
 
         status, _headers, body = app.call(env_for("/api/sessions/s1?tail=1"))
@@ -861,8 +883,8 @@ RSpec.describe Samagotchi::Web::App do
         expect(payload["messages"].size).to eq(1)
         expect(payload["messages"].first).to include("role" => "assistant", "content" => "see [x](https://example.test)")
         expect(payload["messages"].first["html"]).to include('href="https://example.test"')
-        expect(payload.dig("session", "status")).to eq("idle")
-        expect(payload.dig("session", "model_name")).to eq("Qwen3-14B")
+        # What the page reads of the session, from the worker (no file read).
+        expect(payload["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => ["project:notes"])
         expect(payload["timing"]).to include("turn_records", "tool_records")
         # The responses file is the full answer's alone.
         expect(manager).not_to have_received(:read_responses)
@@ -870,7 +892,7 @@ RSpec.describe Samagotchi::Web::App do
 
       it "renders only that one message, not the whole history" do
         app = build_app(state_dir: Dir.mktmpdir, markdown: true)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        stub_worker(app, live)
         renderer = app.instance_variable_get(:@markdown_renderer)
         allow(renderer).to receive(:render).and_call_original
 
@@ -882,7 +904,7 @@ RSpec.describe Samagotchi::Web::App do
       it "a turn with no answer (canceled): the answer before it, as the full list's last one" do
         live["snapshot"]["messages"] << { "role" => "user", "content" => "third" }
         app = build_app(state_dir: Dir.mktmpdir)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        stub_worker(app, live)
 
         payload = JSON.parse(app.call(env_for("/api/sessions/s1?tail=1"))[2].first)
 
@@ -902,9 +924,88 @@ RSpec.describe Samagotchi::Web::App do
         expect(payload["messages"]).to eq([{ "role" => "assistant", "content" => "hi there" }])
       end
 
+      describe "from the worker's light GET tail" do
+        let(:app) { build_app(state_dir: Dir.mktmpdir) }
+        let(:snapshot_reply) { [200, live] }
+
+        def read(query) = JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first)
+
+        it "reads no session file on the live paths (?tail=1, ?cards=1), only stats it" do
+          stub_worker(app, live)
+          expect(StubSessionLoader).not_to receive(:load)
+          expect(StubSessionLoader).to receive(:exist?).twice.and_call_original
+
+          expect(read("?tail=1")["messages"].map { |m| m["content"] }).to eq(["see [x](https://example.test)"])
+          expect(read("?cards=1")).to eq("cards" => [])
+          expect(app).not_to have_received(:bridge_get_json)
+        end
+
+        it "an older worker without the route (404 not_found): its GET snapshot, in the same shape" do
+          allow(app).to receive(:bridge_get).with("s1", "tail").and_return([404, { "error" => "not_found", "path" => "/session/s1/tail" }])
+          allow(app).to receive(:bridge_get).with("s1", "snapshot").and_return(snapshot_reply)
+          live["snapshot"]["cards"] = [{ "type" => "hook_notice", "text" => "saved" }]
+          expect(StubSessionLoader).not_to receive(:load)
+
+          payload = read("?tail=1")
+          expect(payload["messages"].map { |m| m["content"] }).to eq(["see [x](https://example.test)"])
+          expect(payload["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => ["project:notes"])
+          expect(read("?cards=1")["cards"]).to eq([{ "type" => "hook_notice", "text" => "saved" }])
+        end
+
+        {
+          "a 500" => [500, { "error" => "bridge_error" }],
+          "a timeout or a refused connect" => [nil, nil],
+          "another session's worker (404 unknown_session)" => [404, { "error" => "unknown_session" }]
+        }.each do |what, reply|
+          it "#{what}: the disk, with no second try at the worker" do
+            allow(app).to receive(:bridge_get).with("s1", "tail").and_return(reply)
+            allow(app).to receive(:bridge_get).with("s1", "snapshot").and_return(snapshot_reply)
+
+            # StubSessionLoader's file: its answer, not the worker's.
+            expect(read("?tail=1")["messages"]).to eq([{ "role" => "assistant", "content" => "hi there" }])
+            expect(read("?cards=1")).to eq("cards" => [])
+            expect(app).not_to have_received(:bridge_get).with("s1", "snapshot")
+          end
+        end
+
+        it "no worker: the disk" do
+          expect(read("?tail=1")["messages"]).to eq([{ "role" => "assistant", "content" => "hi there" }])
+          expect(read("?tail=1")["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => [])
+        end
+
+        it "an unknown session id: 404, live or not" do
+          gone = Class.new(StubSessionLoader) { def self.exist?(_id, state_dir: nil) = false }
+          app = build_app(state_dir: Dir.mktmpdir, session_class: gone)
+          stub_worker(app, live)
+
+          %w[?tail=1 ?cards=1].each do |query|
+            expect(app.call(env_for("/api/sessions/s1#{query}"))[0]).to eq(404)
+          end
+          expect(app).not_to have_received(:bridge_get)
+        end
+
+        it "forwards ?turn_id= to the worker; the disk path picks that turn's answer too" do
+          allow(app).to receive(:bridge_get).with("s1", "tail?turn_id=t%2F1")
+                                            .and_return([200, tail_from(live).merge("answer" => { "role" => "model", "content" => "A's" })])
+          expect(read("?tail=1&turn_id=t/1")["messages"].map { |m| m["content"] }).to eq(["A's"])
+
+          loader = Class.new(StubSessionLoader) do
+            def self.load(id, state_dir: nil)
+              super.tap do |s|
+                s.messages = [{ role: "user", content: "a", turn_id: "tA" }, { role: "assistant", content: "answer A" },
+                              { role: "user", content: "b", turn_id: "tB" }, { role: "assistant", content: "answer B" }]
+              end
+            end
+          end
+          disk = build_app(state_dir: Dir.mktmpdir, session_class: loader)
+          expect(JSON.parse(disk.call(env_for("/api/sessions/s1?tail=1&turn_id=tA"))[2].first)["messages"].map { |m| m["content"] })
+            .to eq(["answer A"])
+        end
+      end
+
       it "without tail the answer stays full" do
         app = build_app(state_dir: Dir.mktmpdir)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        stub_worker(app, live)
 
         payload = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)
 
@@ -928,7 +1029,7 @@ RSpec.describe Samagotchi::Web::App do
       end
 
       def cards_of(app, path)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        stub_worker(app, live)
         JSON.parse(app.call(env_for(path))[2].first)
       end
 
@@ -998,7 +1099,7 @@ RSpec.describe Samagotchi::Web::App do
       end
 
       def payload_for(app, path)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        stub_worker(app, live)
         JSON.parse(app.call(env_for(path))[2].first)
       end
 
@@ -1047,7 +1148,7 @@ RSpec.describe Samagotchi::Web::App do
         empty = { "snapshot" => { "messages" => [{ "role" => "user", "content" => "hi" }, note] },
                   "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
         app = build_app(state_dir: Dir.mktmpdir)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(empty)
+        stub_worker(app, empty)
 
         turn = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)["messages"]
         chat = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"]
@@ -1068,7 +1169,7 @@ RSpec.describe Samagotchi::Web::App do
           { "role" => "model", "content" => "Passed.", "thinking" => "it passed" }
         ] }, "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
         app = build_app(state_dir: Dir.mktmpdir)
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(openai)
+        stub_worker(app, openai)
 
         turn = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)["messages"]
         chat = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"]
@@ -1168,11 +1269,8 @@ RSpec.describe Samagotchi::Web::App do
         metrics = { "started_at" => "2026-10-03T10:00:00.000Z", "turns" => 3,
                     "turn_records" => turns.map { |n| turn(n) },
                     "tool_records" => turns.flat_map { |n| [tool(n, 1), tool(n, 2)] } }
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot")
-                                               .and_return("snapshot" => { "messages" => [] },
-                                                           "session_state_snapshot" => { "status" => "idle",
-                                                                                         "event_seq" => 9,
-                                                                                         "metrics" => metrics })
+        stub_worker(app, "snapshot" => { "messages" => [] },
+                         "session_state_snapshot" => { "status" => "idle", "event_seq" => 9, "metrics" => metrics })
       end
 
       def timing(query = "") = JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first).fetch("timing")
@@ -1198,7 +1296,7 @@ RSpec.describe Samagotchi::Web::App do
 
       it "reads the file alone without a live worker" do
         save([1, 2])
-        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(nil)
+        stub_worker(app, nil)
 
         expect(timing["turn_records"].map { |r| r["id"] }).to eq(%w[t1 t2])
         expect(timing["tool_records"].size).to eq(4)

@@ -519,6 +519,10 @@ module Samagotchi
       end
 
       def handle_show(req, id)
+        # The page's light re-reads: never the whole conversation.
+        return handle_cards_read(id) if req.params["cards"] == "1"
+        return handle_tail_read(req, id) if req.params["tail"] == "1"
+
         session = @session_class.load(id, state_dir: default_state_dir)
         # Read-only preview: selecting a session never spawns a worker.
         # The worker is woken only on POST /turn (handle_turn) via
@@ -532,11 +536,6 @@ module Samagotchi
         # behind it, all at one event_seq the client streams on from.
         live = bridge_get_json(id, "snapshot")
         turn_snapshot = live && live["snapshot"]
-        # ?cards=1: the page's re-read when a card arrives, for its rendered
-        # body (the stream carries the card's plain text only).
-        if req.params["cards"] == "1"
-          return json_response(200, { cards: cards_for_display(turn_snapshot, id) })
-        end
         snapshot = live && live["session_state_snapshot"]
         last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
         current_turn = turn_snapshot && turn_snapshot["current_turn"]
@@ -558,19 +557,6 @@ module Samagotchi
         end
         raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"])
-        # ?tail=1: the page's re-read at the end of a turn wants the final
-        # answer's rendered markdown, the status and the timing, not the
-        # whole history again (nor a render of every earlier answer).
-        if req.params["tail"] == "1"
-          return json_response(200, {
-            tail: true,
-            session: session_json,
-            messages: last_assistant_for_display(raw_messages),
-            markdown_warning: @markdown_renderer.warning,
-            timing: timing
-          })
-        end
-
         json_response(200, {
           session: session_json,
           history: read_history(id),
@@ -586,7 +572,7 @@ module Samagotchi
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           # Plugins' slow setup still running (chi.init): the page's init row.
           init_tasks: turn_snapshot ? Array(turn_snapshot["init_tasks"]) : [],
-          cards: cards_for_display(turn_snapshot, id),
+          cards: cards_for_display(turn_snapshot ? turn_snapshot["cards"] : saved_cards(id)),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
@@ -602,14 +588,85 @@ module Samagotchi
         error_response(404, "not_found", e.message)
       end
 
+      # ?cards=1: the page's re-read when a card arrives, for its rendered
+      # body (the stream carries the card's plain text only). The worker's
+      # cards from its light GET tail, else the saved ones; the session file
+      # is only stat'ed (the 404), never parsed.
+      def handle_cards_read(id)
+        return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
+
+        tail = live_tail(id)
+        json_response(200, { cards: cards_for_display(tail ? tail["cards"] : saved_cards(id)) })
+      end
+
+      # ?tail=1: the page's re-read at the end of a turn wants the final
+      # answer's rendered markdown, the status and the timing, not the whole
+      # history again (nor a render of every earlier answer). Live: the
+      # worker's GET tail alone (no session file read); else the file. The
+      # session part is what the page reads of it (id, status, used memory
+      # names). ?turn_id=: that turn's answer (a queued turn's page re-reads
+      # after the next one started).
+      def handle_tail_read(req, id)
+        return error_response(404, "not_found", "Session not found: #{id}") unless session_exists?(id)
+
+        turn_id = req.params["turn_id"].to_s.strip
+        turn_id = nil if turn_id.empty?
+        tail = live_tail(id, turn_id: turn_id)
+        state = tail && tail["session_state_snapshot"]
+        if state.is_a?(Hash)
+          session_json = { id: id, status: state["status"], used_memory_names: Array(state["used_memory_names"]) }
+          messages = last_assistant_for_display([tail["answer"]].compact)
+        else
+          session = @session_class.load(id, state_dir: default_state_dir)
+          state = nil
+          session_json = { id: id, status: displayed_status(session), used_memory_names: Array(session.used_memory_names) }
+          messages = last_assistant_for_display(session.messages, turn_id: turn_id)
+        end
+        json_response(200, {
+          tail: true,
+          session: session_json,
+          messages: messages,
+          markdown_warning: @markdown_renderer.warning,
+          timing: timing_payload(id, live_metrics: state && state["metrics"])
+        })
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      def session_exists?(id)
+        @session_class.exist?(id, state_dir: default_state_dir)
+      rescue ArgumentError
+        false
+      end
+
+      # The worker's light read (Bridge GET tail): {"session_state_snapshot",
+      # "answer", "cards", "event_seq", "event_id"}. A worker from before the
+      # route answers 404 not_found: its GET snapshot, in the same shape (the
+      # answer by AnswerTail). Anything else (no worker, a refused connect, a
+      # 500, a timeout) is nil: the caller reads the disk, with no second
+      # try at a worker that failed once.
+      # @return [Hash, nil]
+      def live_tail(id, turn_id: nil)
+        status, body = bridge_get(id, turn_id ? "tail?turn_id=#{URI.encode_www_form_component(turn_id)}" : "tail")
+        return body if status == 200 && body.is_a?(Hash)
+        return nil unless status == 404 && body.is_a?(Hash) && body["error"] == "not_found"
+
+        status, live = bridge_get(id, "snapshot")
+        return nil unless status == 200 && live.is_a?(Hash) && live["snapshot"].is_a?(Hash)
+
+        snap = live["snapshot"]
+        { "session_state_snapshot" => live["session_state_snapshot"],
+          "answer" => AnswerTail.find(snap["messages"], turn_id: turn_id),
+          "cards" => snap["cards"], "event_seq" => snap["event_seq"], "event_id" => snap["event_id"] }
+      end
+
       # The worker's last cards and between-turns notices (Bridge
-      # snapshot[:cards]), else (no live worker) the ones the last worker
-      # saved in the session's folder (CardStore.saved), a card's body as
+      # cards: CardStore#list), else (no live worker) the ones the last
+      # worker saved in the session's folder (#saved_cards), a card's body as
       # body_html: rendered markdown when the renderer is on, else the
       # escaped text in a <pre>.
       # @return [Array<Hash>]
-      def cards_for_display(turn_snapshot, id)
-        cards = turn_snapshot ? turn_snapshot["cards"] : saved_cards(id)
+      def cards_for_display(cards)
         Array(cards).filter_map do |card|
           next unless card.is_a?(Hash)
           next card unless card["type"].to_s == "card"
@@ -1067,6 +1124,15 @@ module Samagotchi
         bridge_client(session_id)&.get_json(path)
       end
 
+      # GET a read path of the session's live Bridge with its status
+      # (BridgeClient#get).
+      # @return [Array(Integer, Object)] [status, parsed body]; [nil, nil]
+      #   with no live bridge or no reply
+      def bridge_get(session_id, path)
+        client = bridge_client(session_id)
+        client ? client.get(path) : [nil, nil]
+      end
+
       # Monotonic SSE cursor for a live bridge session, else nil.
       def bridge_event_seq(session_id)
         bridge_client(session_id)&.event_seq
@@ -1335,8 +1401,8 @@ module Samagotchi
 
       # The last message messages_for_display shows as an answer
       # (AnswerTail), as a list of at most one: only that one is rendered.
-      def last_assistant_for_display(msgs)
-        messages_for_display([AnswerTail.find(msgs)].compact)
+      def last_assistant_for_display(msgs, turn_id: nil)
+        messages_for_display([AnswerTail.find(msgs, turn_id: turn_id)].compact)
       end
 
       def parse_json(str)
