@@ -257,8 +257,10 @@ module Samagotchi
           event[:hook] = label if event.is_a?(Hash)
           begin
             hook_proc.call(event)
-          rescue StandardError
+          rescue StandardError => e
             # A failing hook must not break the turn.
+            Log.exception(:hooks, "hook_failed", e, echo: "[samagotchi:hooks] #{label} failed: #{e.class}: #{e.message}",
+                                                hook: label, event: name.to_s)
           end
         end
       end
@@ -284,8 +286,10 @@ module Samagotchi
           event[:hook] = label if event.is_a?(Hash)
           begin
             hook_proc.call(event)
-          rescue StandardError
+          rescue StandardError => e
             # A failing hook must not break the turn.
+            Log.exception(:hooks, "hook_failed", e, echo: "[samagotchi:hooks] #{label} failed: #{e.class}: #{e.message}",
+                                                hook: label, event: name.to_s)
           end
           yield event
         end

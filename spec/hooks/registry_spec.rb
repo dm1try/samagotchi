@@ -55,6 +55,15 @@ RSpec.describe Samagotchi::Hooks::Registry do
       expect { subject.fire(:boom, { raise: true }) }.not_to raise_error
     end
 
+    it "logs a raising hook and still runs the hooks after it" do
+      ran = []
+      subject.register(:boom) { raise StandardError, "oops" }
+      subject.register(:boom) { ran << :after }
+      expect(Samagotchi::Log).to receive(:exception).with(:hooks, "hook_failed", an_instance_of(StandardError), any_args)
+      subject.fire(:boom, { type: :boom })
+      expect(ran).to eq([:after])
+    end
+
     it "only fires hooks that match the requested name" do
       values = []
       subject.register(:before_turn) { values << :before_turn }

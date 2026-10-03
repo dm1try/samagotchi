@@ -27,6 +27,7 @@ and commands may change between minor versions. How releases are made:
 
 - An MCP server that exits without a wait status no longer raises `NoMethodError`; its waiting calls fail with
   "the server exited" instead of hanging.
+- A hook that raises is now logged (`hook_failed`) instead of being swallowed silently; the turn still goes on.
 
 ## [0.19.0] - 2026-10-03
 
