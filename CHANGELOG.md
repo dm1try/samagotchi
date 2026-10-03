@@ -8,13 +8,15 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-03
+
 ### Added
 
-- The system prompt names the model the session runs on: `Model: this session runs on splash:incoai/Qwen3.8-27B-Splash
-  (host splash, 192.168.1.29:8082; model key incoai-qwen3-8-27b-splash).`, plus a line to answer "which model are you" from
-  it, not from training (a fine-tune often knows only its base model's name), and that model-only guidance goes in
+- The system prompt names the model the session runs on: `Model: this session runs on box:gemma-small (host box,
+  box.test:8080; model key gemma-small).`, plus a line to answer "which model are you" from it, not from training
+  (a fine-tune often knows only its base model's name), and that model-only guidance goes in
   `memory_write current_model_only: true` overlays. A local llama.cpp host whose `/props` names another model adds
-  `; the server says it serves <name>`. The line changes only with `/model` (the prompt was rebuilt there already).
+  `; the server says it serves <name>`. The line changes only with `/model`.
 - `execute` and `task_create` export `SAMAGOTCHI_SESSION_MODEL`, the session's model ref (it follows `/model`; the
   model's `env` can't set it).
 - Plugins: `ctx.model` (the session's model ref, right after `/model` too) and `ctx.model_key` (its memory overlay
@@ -36,8 +38,6 @@ and commands may change between minor versions. How releases are made:
   `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system — …`. `memory_write` and `write`/`edit`
   keep the tag; a same-name memory the install skipped gets none. Bundles installed earlier get it on their next
   install or upgrade (the system bundle: with the next chi version).
-- docs/memory.md has a "What a bundle owns" section (skipped files, the trash, shared files, the index tag, what
-  build leaves out); the system bundle's memory guide says the same (its version moves with the next release).
 - `chi bundle uninstall` (and an upgrade dropping a file the new version no longer ships) moves the bundle's memory
   files to `<memories>/.bundles/.trash/<bundle>-<time>/` instead of deleting them, and says where:
   `Moved to the trash: notes.md (…/.trash/notes-bundle-20261003-120000)`. Nothing empties the trash; delete it by hand.
@@ -89,6 +89,8 @@ and commands may change between minor versions. How releases are made:
 - Web: an approval from a delegate its parent isn't waiting on directly rings once (the parent's relayed card), not
   twice: a child's approval now waits 3.5 s (was 1.5 s) for the relay before it notifies on its own. Only delegated
   children's approvals wait; one nobody relays rings that much later.
+
+Update with `chi update` (no bundle changes; the system bundle upgrades itself with chi).
 
 ## [0.16.0] - 2026-10-03
 
@@ -938,7 +940,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/dm1try/samagotchi/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/dm1try/samagotchi/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/dm1try/samagotchi/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/dm1try/samagotchi/compare/v0.13.0...v0.14.0
