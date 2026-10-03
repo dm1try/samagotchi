@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractCtxPct, savedCtxPct, cardCtxText } from "../../../lib/samagotchi/web/public/ctx.js";
+import {
+  extractCtxPct, savedCtxPct, cardCtxText, speedText, costText, tokensTipText, lastSpeedText,
+} from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
 const llamaFinal = { stop: true, tokens_evaluated: 120, tokens_predicted: 30, timings: { prompt_n: 3, predicted_n: 30 } };
@@ -54,4 +56,42 @@ test("cardCtxText: a rounded percentage, empty when unknown", () => {
   assert.equal(cardCtxText(0.2), "0%");
   assert.equal(cardCtxText(null), "");
   assert.equal(cardCtxText(undefined), "");
+});
+
+test("speedText: the server's speed as is, an estimate with ~, thousands as k, nothing without one", () => {
+  assert.equal(speedText(87.46, "server"), "87 tok/s");
+  assert.equal(speedText(64.4, "estimate"), "~64 tok/s");
+  assert.equal(speedText(1904.2, "server"), "1.9k tok/s");
+  assert.equal(speedText(null, "server"), "");
+  assert.equal(speedText(0, "server"), "");
+});
+
+test("costText: cents, or four decimals under a cent; nothing for none or zero", () => {
+  assert.equal(costText(0.4213), "$0.42");
+  assert.equal(costText(0.00123), "$0.0012");
+  assert.equal(costText(0), "");
+  assert.equal(costText(undefined), "");
+});
+
+test("tokensTipText: in with its cached share, out with reasoning, the cost; this session only", () => {
+  const tokens = { prompt_sum: 5210, completion_sum: 340, cached_sum: 4864, reasoning_sum: 212, cost_sum: 0.00123 };
+  assert.equal(tokensTipText(tokens), [
+    "Context used after the last turn",
+    "tokens: in 5,210 · cached 4,864 (93%) · out 340 (reasoning 212)",
+    "cost: $0.0012",
+    "this session only, all requests",
+  ].join("\n"));
+});
+
+test("tokensTipText: a local session has no cached or cost line; no tokens leaves the title alone", () => {
+  assert.equal(tokensTipText({ prompt_sum: 300, completion_sum: 56, cached_sum: 0, cost_sum: 0 }, "ctx"),
+    "ctx\ntokens: in 300 · out 56\nthis session only, all requests");
+  assert.equal(tokensTipText(null), "Context used after the last turn");
+  assert.equal(tokensTipText({ prompt_sum: 0, completion_sum: 0 }, "ctx"), "ctx");
+});
+
+test("lastSpeedText: the newest generation's speed from the tokens block", () => {
+  assert.equal(lastSpeedText({ last_decode_tps: 31.6, tps_source: "server" }), "32 tok/s");
+  assert.equal(lastSpeedText({ last_decode_tps: 80, tps_source: "estimate" }), "~80 tok/s");
+  assert.equal(lastSpeedText(null), "");
 });
