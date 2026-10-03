@@ -47,11 +47,15 @@ module Samagotchi
 
     # Angle-bracketed literal tokens stripped wholesale (including the thought
     # channel's trailing word). Applied before INDIVIDUAL_RE so multi-part tokens
-    # are removed as a unit.
-    # Angle-bracketed literal tokens stripped wholesale (including the thought
-    # channel's trailing word). Applied before INDIVIDUAL_RE so multi-part tokens
     # are removed as a unit. Pipes are escaped; angle brackets are literal.
-    LITERALS_RE = /<\|"\|>|<\|\w*channel>thought|<end_of_turn>/.freeze
+    LITERALS_RE = /<\|"\|>|<end_of_turn>/.freeze
+
+    # Gemma 4's thought channel, as a whole block: `<|channel>thought` to its
+    # `<channel|>` close, or to the end of the text when the close is missing
+    # (ToolCallParser::Gemma strips the same pair). Removing only the marker
+    # would leave the model's private reasoning in the answer; the channel is
+    # the profile's thinking lane, not output.
+    GEMMA_THOUGHT_RE = /<\|\w*channel>thought.*?(?:<channel\|>|\z)/m.freeze
 
     # Qwen prompt-literal placeholders, e.g. </think>.
     PROMPT_LITERALS = /\[\[SAMAGOTCHI_LITERAL_[A-Z_]+\]\]/.freeze
@@ -88,6 +92,7 @@ module Samagotchi
     def remove_tokens(text)
       text.to_s
           .gsub(QWEN_THINK_RE, '')
+          .gsub(GEMMA_THOUGHT_RE, '')
           .gsub(QWEN_TOOL_CALL_RE, '')
           .gsub(LITERALS_RE, '')
           .gsub(INDIVIDUAL_RE, '')

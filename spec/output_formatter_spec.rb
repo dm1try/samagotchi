@@ -83,6 +83,25 @@ RSpec.describe Samagotchi::OutputFormatter do
       expect(result).to eq("call:read{path: x} done")
     end
 
+    # Gemma 4's thought channel is a whole block, as Qwen's <think> is: the
+    # marker alone used to be stripped on the fallback path, which left the
+    # model's private reasoning in the answer.
+    it "removes a Gemma thought channel block with its body" do
+      result = strip("answer zero.<|channel>thought\nweighing options<channel|>Hello there.")
+      expect(result).to eq("answer zero.Hello there.")
+      expect(result).not_to include("weighing options")
+      expect(result).not_to include("<|channel>thought")
+    end
+
+    it "removes an unterminated Gemma thought channel to the end of the text" do
+      expect(strip("Hello.<|channel>thought\nstill thinking, no close")).to eq("Hello.")
+    end
+
+    it "keeps a bare <channel> word in surrounding content (over-strip guard)" do
+      expect(strip("the <channel> tag")).to eq("the <channel> tag")
+      expect(strip("a <|channel> without the thought word")).to eq("a without the thought word")
+    end
+
     it "preserves internal newlines in multi-line responses" do
       result = strip("line one\n<|tool_call>kept\nline three")
       expect(result.count("\n")).to eq(2)
