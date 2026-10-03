@@ -486,6 +486,121 @@ RSpec.describe Samagotchi::SessionMetrics do
     ENV["XDG_STATE_HOME"] = original
   end
 
+  # The live snapshot (Bridge /state, /snapshot, SSE frames) carries the
+  # totals and only the recent records; analytics.json keeps the history.
+  describe "the live snapshot's records" do
+    let(:state_dir) { Dir.mktmpdir }
+    let(:metrics) { described_class.new.tap { |m| m.state_dir = state_dir } }
+
+    def run_turn(metrics, n, tools: 2, sid: "live")
+      metrics.call(type: :turn_started, session_id: sid, prompt: "p#{n}", turn_id: "t#{n}")
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(type: :generation_chunk, iteration: 1, content: "a",
+                   payload: { "usage" => { "prompt_tokens" => 100, "completion_tokens" => 10 } })
+      metrics.call(type: :tool_dispatch_started, iteration: 1, call_count: tools)
+      tools.times do |i|
+        metrics.call(type: :tool_call_started, iteration: 1, call_index: i + 1, tool: "read")
+        metrics.call(type: :tool_call_completed, iteration: 1, call_index: i + 1, tool: "read", status: "ok")
+      end
+      metrics.call(type: :generation_completed, iteration: 1)
+      metrics.call(type: :turn_completed)
+    end
+
+    def saved(sid = "live")
+      JSON.parse(File.read(File.join(Samagotchi::Session.session_dir(sid, state_dir: state_dir), "analytics.json")))
+    end
+
+    it "holds the newest finished turn's records once saved; the file holds them all" do
+      (1..3).each do |n|
+        run_turn(metrics, n)
+        expect(metrics.persist).to be(true)
+      end
+
+      snap = metrics.snapshot
+      expect(snap[:turn_records].map { |r| r[:id] }).to eq(["t3"])
+      expect(snap[:tool_records].map { |r| r[:id] }).to eq(["t3:1:1", "t3:1:2"])
+      expect(snap).to include(turns: 3, tool_calls_total: 6, iterations_total: 3)
+      expect(saved["turn_records"].map { |r| r["id"] }).to eq(%w[t1 t2 t3])
+      expect(saved["tool_records"].size).to eq(6)
+      expect(saved).to include("turns" => 3, "tool_calls_total" => 6)
+    end
+
+    it "holds the newest turn between its end and its save" do
+      run_turn(metrics, 1)
+      metrics.persist
+      run_turn(metrics, 2)
+
+      expect(metrics.snapshot[:turn_records].map { |r| r[:id] }).to eq(["t2"])
+      expect(metrics.snapshot[:tool_records].map { |r| r[:turn_id] }.uniq).to eq(["t2"])
+    end
+
+    it "holds the running turn's finished calls" do
+      run_turn(metrics, 1)
+      metrics.persist
+      metrics.call(type: :turn_started, session_id: "live", prompt: "p2", turn_id: "t2")
+      metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "read")
+      metrics.call(type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", status: "ok")
+      metrics.call(type: :tool_call_started, iteration: 1, call_index: 2, tool: "grep")
+
+      snap = metrics.snapshot
+      expect(snap[:turn_records].map { |r| r[:id] }).to eq(["t1"])
+      expect(snap[:tool_records].map { |r| r[:id] }).to eq(["t1:1:1", "t1:1:2", "t2:1:1"])
+      expect(snap[:active_tools].map { |r| r[:id] }).to eq(["t2:1:2"])
+    end
+
+    it "keeps unsaved turns while saving fails, the newest 20 at most" do
+      blocked = described_class.new.tap { |m| m.state_dir = File.join(state_dir, "file") }
+      File.write(File.join(state_dir, "file"), "not a dir")
+      run_turn(blocked, 1, sid: "blocked")
+      run_turn(blocked, 2, sid: "blocked")
+      expect(blocked.persist).to be(false)
+      expect(blocked.snapshot[:turn_records].map { |r| r[:id] }).to eq(%w[t1 t2])
+
+      (3..25).each { |n| run_turn(blocked, n, sid: "blocked") }
+      snap = blocked.snapshot
+      expect(snap[:turn_records].map { |r| r[:id] }).to eq((6..25).map { |n| "t#{n}" })
+      expect(snap[:tool_records].map { |r| r[:turn_id] }.uniq).to eq((6..25).map { |n| "t#{n}" })
+      expect(snap).to include(turns: 25, tool_calls_total: 50)
+    end
+
+    it "caps a collector with no session id at 20 turns" do
+      bare = described_class.new
+      (1..22).each { |n| run_turn(bare, n, tools: 0, sid: nil) }
+      expect(bare.persist).to be(false)
+      expect(bare.snapshot[:turn_records].size).to eq(20)
+      expect(bare.snapshot[:turns]).to eq(22)
+    end
+
+    it "a woken collector has no records but every turn in its totals, and saves them all" do
+      first = described_class.new.tap { |m| m.state_dir = state_dir }
+      (1..5).each do |n|
+        run_turn(first, n)
+        first.persist
+      end
+      first.call(type: :turn_started, session_id: "live", prompt: "p6", turn_id: "t6")
+      first.call(type: :generation_retrying, attempt: 1)
+      first.call(type: :turn_canceled, cancellation_reason: :user)
+      first.persist
+
+      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken.session_id = "live"
+      snap = woken.snapshot
+      expect(snap[:turn_records]).to eq([])
+      expect(snap[:tool_records]).to eq([])
+      expect(snap).to include(turns: 6, tool_calls_total: 10, tool_calls_by_tool: { "read" => 10 },
+                              iterations_total: 5, retries: 1, cancellations: 1,
+                              tokens: { prompt_sum: 500, completion_sum: 50, source: "server" })
+      expect(snap[:context]).to include(used_tokens: 110)
+
+      run_turn(woken, 7)
+      expect(woken.snapshot[:turn_records].map { |r| r[:id] }).to eq(["t7"])
+      woken.persist
+      expect(saved["turn_records"].map { |r| r["id"] }).to eq(%w[t1 t2 t3 t4 t5 t6 t7])
+      expect(saved["tool_records"].size).to eq(12)
+      expect(woken.snapshot[:turn_records].map { |r| r[:id] }).to eq(["t7"])
+    end
+  end
+
   it "is error-isolated and never raises on bad input" do
     expect { metrics.call(nil) }.not_to raise_error
     expect { metrics.call("not a hash") }.not_to raise_error

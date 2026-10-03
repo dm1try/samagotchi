@@ -22,10 +22,18 @@ module Samagotchi
   # Only prompt and completion counts, which every backend reports the same
   # way, are kept.
   #
-  # A snapshot is surfaced via Engine#session_state_snapshot and (optionally)
-  # persisted to a sibling analytics.json next to the session file. The event
-  # trail itself goes to the debug log (LogSubscriber).
+  # A snapshot is surfaced via Engine#session_state_snapshot (the Bridge's
+  # /state, /snapshot, /stats and SSE frames) and persisted to a sibling
+  # analytics.json next to the session file. The live snapshot carries the
+  # totals and only the recent records (the newest finished turn's, plus any
+  # not yet saved, at most LIVE_RECORDS_CAP turns), so it stays the same size
+  # however long the session runs; analytics.json holds every record. The
+  # event trail itself goes to the debug log (LogSubscriber).
   class SessionMetrics
+    # The most turns (with their tool calls) a live snapshot carries: the
+    # unsaved ones of a collector whose saves keep failing stay bounded.
+    LIVE_RECORDS_CAP = 20
+
     # Per-turn transient state, reset on each turn_started.
     TurnState = Struct.new(
       :session_id,
@@ -118,6 +126,10 @@ module Samagotchi
       @turn = nil
       @turn_records = []
       @tool_records = []
+      # How many turn records the last successful save (or the load) holds,
+      # and how many were loaded (a woken collector's live records start empty).
+      @persisted_turns = 0
+      @loaded_turns = 0
     end
 
     # /model: the window and prompt profile a turn reported were the old
@@ -213,51 +225,24 @@ module Samagotchi
     # The session totals are sums over the turn records (the ones loaded from
     # disk and this process's), with the running turn's calls, iterations and
     # finished generations counted at once, so /stats agrees mid-turn.
+    # :turn_records / :tool_records are the recent ones only: the newest
+    # finished turn's and any not yet saved (at most LIVE_RECORDS_CAP turns),
+    # with the running turn's finished calls; the full history is the
+    # session's analytics.json.
     # @return [Hash] the current summary snapshot
     def snapshot
-      @mutex.synchronize do
-        records = @turn_records
-        turn = @turn
-        in_flight = turn ? turn.tool_calls_by_id.values : []
-        tools = @tool_records + in_flight
-        {
-          session_id: @session_id,
-          turns: records.size + (turn ? 1 : 0),
-          cancellations: records.count { |record| record[:status] == "canceled" },
-          tokens: {
-            prompt_sum: sum(records, :prompt_tokens_sum) + (turn&.prompt_sum || 0),
-            completion_sum: sum(records, :completion_tokens) + (turn&.completion_sum || 0),
-            source: combined_source(records.map { |record| record[:token_source] } + (turn&.token_sources || []))
-          },
-          context: context_block(records),
-          profile: @profile,
-          profile_source: @profile_source,
-          served_model: @served_model,
-          served_model_for: @served_model_for,
-          tool_calls_total: tools.size,
-          tool_calls_by_tool: tools.map { |tool| tool[:tool].to_s }.reject(&:empty?).tally,
-          tool_errors: @tool_records.count { |tool| tool[:status] == "error" },
-          iterations_total: sum(records, :iterations) + (turn&.iteration_count || 0),
-          gen_latency_ms: (sum(records, :gen_ms) + (turn&.gen_latency_accum || 0)).round,
-          retries: sum(records, :retries) + (turn&.retries || 0),
-          started_at: @started_at,
-          last_activity_at: @last_activity_at,
-          session_duration_ms: elapsed_ms(@session_started_monotonic),
-          turn_records: @turn_records.map(&:dup),
-          tool_records: @tool_records.map(&:dup),
-          active_turn: active_turn_snapshot,
-          active_tools: active_tool_snapshots
-        }
-      end
+      @mutex.synchronize { build_snapshot(:recent) }
     end
 
-    # Persist the summary snapshot to a sibling analytics.json in the session
-    # directory. Atomic write; failures are swallowed (analytics must never
-    # break the running session).
+    # Persist the summary snapshot, with every record, to a sibling
+    # analytics.json in the session directory. Atomic write; failures are
+    # swallowed (analytics must never break the running session).
     # @param state_dir [String, nil]
     # @return [Boolean] true on success
     def persist(state_dir: nil)
-      sid = @mutex.synchronize { @session_id }
+      sid, data, turn_count = @mutex.synchronize do
+        [@session_id, build_snapshot(:all).merge(active_turn: nil, active_tools: []), @turn_records.size]
+      end
       return false if sid.nil? || sid.to_s.empty?
 
       # Omitting state_dir lets Session.session_dir fall back to the default
@@ -265,13 +250,67 @@ module Samagotchi
       # File.join.
       FileUtils.mkdir_p(dir = session_dir(sid, state_dir || @state_dir))
       path = File.join(dir, "analytics.json")
-      AtomicFile.write(path, JSON.pretty_generate(snapshot.merge(active_turn: nil, active_tools: [])) + "\n")
+      AtomicFile.write(path, JSON.pretty_generate(data) + "\n")
+      @mutex.synchronize { @persisted_turns = [@persisted_turns, turn_count].max }
       true
     rescue StandardError
       false
     end
 
     private
+
+    # Caller holds the mutex. +records+: :recent (the live snapshot) or :all
+    # (analytics.json).
+    def build_snapshot(records_mode)
+      records = @turn_records
+      turn = @turn
+      in_flight = turn ? turn.tool_calls_by_id.values : []
+      tools = @tool_records + in_flight
+      {
+        session_id: @session_id,
+        turns: records.size + (turn ? 1 : 0),
+        cancellations: records.count { |record| record[:status] == "canceled" },
+        tokens: {
+          prompt_sum: sum(records, :prompt_tokens_sum) + (turn&.prompt_sum || 0),
+          completion_sum: sum(records, :completion_tokens) + (turn&.completion_sum || 0),
+          source: combined_source(records.map { |record| record[:token_source] } + (turn&.token_sources || []))
+        },
+        context: context_block(records),
+        profile: @profile,
+        profile_source: @profile_source,
+        served_model: @served_model,
+        served_model_for: @served_model_for,
+        tool_calls_total: tools.size,
+        tool_calls_by_tool: tools.map { |tool| tool[:tool].to_s }.reject(&:empty?).tally,
+        tool_errors: @tool_records.count { |tool| tool[:status] == "error" },
+        iterations_total: sum(records, :iterations) + (turn&.iteration_count || 0),
+        gen_latency_ms: (sum(records, :gen_ms) + (turn&.gen_latency_accum || 0)).round,
+        retries: sum(records, :retries) + (turn&.retries || 0),
+        started_at: @started_at,
+        last_activity_at: @last_activity_at,
+        session_duration_ms: elapsed_ms(@session_started_monotonic),
+        **records_view(records_mode),
+        active_turn: active_turn_snapshot,
+        active_tools: active_tool_snapshots
+      }
+    end
+
+    # The records a snapshot carries, copied. :all is every record; :recent
+    # the newest turn this collector finished (live before its save lands)
+    # and the unsaved ones (capped), and the tool records of those turns and
+    # of the running one. Records are appended in turn order, so both come
+    # from the tails. Caller holds the mutex.
+    def records_view(mode)
+      return { turn_records: @turn_records.map(&:dup), tool_records: @tool_records.map(&:dup) } if mode == :all
+
+      unsaved = @turn_records.size - @persisted_turns
+      count = unsaved.clamp(@turn_records.size > @loaded_turns ? 1 : 0, LIVE_RECORDS_CAP)
+      turns = @turn_records.last(count)
+      ids = turns.to_set { |record| record[:id] }
+      ids << @turn.id if @turn
+      tools = @tool_records.reverse_each.take_while { |tool| ids.include?(tool[:turn_id]) }.reverse
+      { turn_records: turns.map(&:dup), tool_records: tools.map(&:dup) }
+    end
 
     def begin_turn(event)
       @mutex.synchronize do
@@ -548,8 +587,10 @@ module Samagotchi
       prior = JSON.parse(File.read(path))
       return unless prior.is_a?(Hash)
 
-      @turn_records = loaded_records(prior["turn_records"]) + @turn_records
+      loaded_turns = loaded_records(prior["turn_records"])
+      @turn_records = loaded_turns + @turn_records
       @tool_records = loaded_records(prior["tool_records"]) + @tool_records
+      @persisted_turns = @loaded_turns = loaded_turns.size
       @started_at = earliest_timestamp(prior["started_at"], @started_at)
       @last_activity_at ||= prior["last_activity_at"]
       # The window last seen, until this process's first generation reports.
