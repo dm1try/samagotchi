@@ -126,12 +126,10 @@ RSpec.configure do |config|
     end
     # ConfigFile prints each config warning once per process.
     Samagotchi::ConfigFile.reset_warnings! if defined?(Samagotchi::ConfigFile)
-    # The REPL spinner's ticker thread draws until the spinner finishes, and
-    # many specs start one they never finish: it would write into later
-    # specs' output. Off by default; specs of the ticker pass an interval.
-    stub_const("Samagotchi::TerminalUI::THINKING_TICK_INTERVAL", nil) if defined?(Samagotchi::TerminalUI::THINKING_TICK_INTERVAL)
-    # The attached TUI's status ticker likewise (AttachedLoop builds its view
-    # with the default interval).
+    # The attached TUI's status ticker thread draws until the spinner
+    # finishes, and many specs start one they never finish: it would write
+    # into later specs' output (AttachedLoop builds its view with the default
+    # interval). Off by default; specs of the ticker pass an interval.
     stub_const("Samagotchi::TerminalUI::AttachedView::TICK_INTERVAL", nil) if defined?(Samagotchi::TerminalUI::AttachedView::TICK_INTERVAL)
   end
 
