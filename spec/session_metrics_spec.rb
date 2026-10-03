@@ -38,6 +38,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     ])
 
     expect(metrics.snapshot).to include(served_model: "ornith", served_model_for: "qwen")
+    expect(metrics.served_report).to eq(served_model: "ornith", served_model_for: "qwen")
   end
 
   it "captures server-reported token counts (cumulative max) and tool stats" do

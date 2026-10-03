@@ -904,7 +904,7 @@ module Samagotchi
     # else [nil, nil].
     # @return [Array(String, String), Array(nil, nil)]
     def served_model(probe: true)
-      served_model_for(@metrics.snapshot, target: probe ? @host_registry.resolve(@effective_model_name) : nil)
+      served_model_for(@metrics.served_report, target: probe ? @host_registry.resolve(@effective_model_name) : nil)
     end
 
     # Read-only snapshot of the engine's view of the current session plus the

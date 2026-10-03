@@ -234,6 +234,13 @@ module Samagotchi
       @mutex.synchronize { build_snapshot(:recent) }
     end
 
+    # The served model a generation last reported and the name asked for
+    # then, without building a snapshot (Engine#served_model).
+    # @return [Hash] :served_model, :served_model_for
+    def served_report
+      @mutex.synchronize { { served_model: @served_model, served_model_for: @served_model_for } }
+    end
+
     # Persist the summary snapshot, with every record, to a sibling
     # analytics.json in the session directory. Atomic write; failures are
     # swallowed (analytics must never break the running session).

@@ -253,4 +253,12 @@ RSpec.describe "Engine#stats_snapshot" do
     engine.metrics.call(type: :generation_completed, served_model: "ornith-x", requested_model: "house-blend-35b")
     expect(engine.session_state_snapshot).to include(served_model: "ornith-x", served_model_for: "house-blend-35b")
   end
+
+  it "builds the metrics snapshot once per session state" do
+    engine = engine_with(FakeResolvingClient.new(nil))
+    engine.metrics.call(type: :generation_completed, served_model: "ornith-x", requested_model: "house-blend-35b")
+    expect(engine.metrics).to receive(:snapshot).once.and_call_original
+
+    expect(engine.session_state_snapshot).to include(served_model: "ornith-x", served_model_for: "house-blend-35b")
+  end
 end
