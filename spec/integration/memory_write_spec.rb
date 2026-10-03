@@ -9,18 +9,7 @@ require "fileutils"
 # Integration tests that verify the model correctly calls memory_write to
 # save a memory entry to disk.
 #
-# Prerequisites:
-#   - A llama.cpp server must be running (default: localhost:8080)
-#   - SAMAGOTCHI_INTEGRATION=1 environment variable must be set
-#
-# Run with:
-#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/memory_write_spec.rb
-#
-# Verbose output (shows raw LLM responses and tool calls):
-#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/memory_write_spec.rb -v
-#
-# Custom server:
-#   SAMAGOTCHI_SERVER_HOST=myhost SAMAGOTCHI_SERVER_PORT=9090 SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/memory_write_spec.rb -v
+# Needs a live model server; how to run: docs/testing.md.
 RSpec.describe "memory_write tool - writing a new memory integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new }
   let(:project_memories_dir) { Dir.mktmpdir }

@@ -7,18 +7,7 @@ require "samagotchi/model_profile"
 # Integration tests that verify the model correctly calls the execute tool
 # and returns the output of Ruby expressions.
 #
-# Prerequisites:
-#   - A llama.cpp server must be running (default: localhost:8080)
-#   - SAMAGOTCHI_INTEGRATION=1 environment variable must be set
-#
-# Run with:
-#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/execute_spec.rb
-#
-# Verbose output (shows raw LLM responses and tool calls):
-#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/execute_spec.rb -v
-#
-# Custom server:
-#   SAMAGOTCHI_SERVER_HOST=myhost SAMAGOTCHI_SERVER_PORT=9090 SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/execute_spec.rb -v
+# Needs a live model server; how to run: docs/testing.md.
 RSpec.describe "execute tool - ruby expression integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new }
 

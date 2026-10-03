@@ -24,7 +24,7 @@ require "samagotchi/kernel_loop"
 #     SAMAGOTCHI_DEFAULT_MODEL=gemma-3-4b-it-4bit bundle exec rspec spec/integration/omlx_spec.rb -v
 RSpec.describe "omlx transport - model resolution + forwarding", :integration do
   # The short selector we expect to resolve to a live /v1/models id.
-  let(:selector) { ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL") }
+  let(:selector) { IntegrationServer.model }
 
   # A real oMLX client built from SAMAGOTCHI_SERVER_HOST / SAMAGOTCHI_SERVER_PORT / SAMAGOTCHI_SERVER_TRANSPORT.
   let(:client) { Samagotchi::Client.new(transport: :omlx) }

@@ -8,24 +8,8 @@ require "samagotchi/idle_client"
 # with a live llama.cpp server. Tests the full chain: Engine#build_recap →
 # IdleRecap idle detection → IdleClient summarization → :recap_ready event.
 #
-# Prerequisites:
-#   - A llama.cpp server must be running (default: localhost:8080)
-#   - SAMAGOTCHI_INTEGRATION=1 environment variable must be set
-#   - SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL must be set
-#     (or use the default config from the server)
-#
-# Run with:
-#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://localhost:8080/v1 \
-#     SAMAGOTCHI_RECAP_MODEL=gemma-small \
-#     bundle exec rspec spec/integration/recap_spec.rb
-#
-# Against the Qwen3.6-35B-A3B model (reasoning_content fallback test):
-#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://192.0.2.10:8081/v1 \
-#     SAMAGOTCHI_RECAP_MODEL=unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M \
-#     bundle exec rspec spec/integration/recap_spec.rb -v
-#
-# Verbose output:
-#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/recap_spec.rb -v
+# Needs a live model server; how to run: docs/testing.md. The recap asks the
+# integration server's /v1/chat/completions for the integration model.
 #
 # Test scope:
 #   - Unit tests (spec/idle_client_spec.rb, spec/idle_recap_spec.rb) cover the
@@ -42,8 +26,8 @@ RSpec.describe "idle session-recap end-to-end", :integration do
     ]
   end
   let(:recap_events) { [] }
-  let(:base_url) { ENV["SAMAGOTCHI_RECAP_BASE_URL"] || "http://localhost:8080/v1" }
-  let(:model) { ENV["SAMAGOTCHI_RECAP_MODEL"] || "gemma-small" }
+  let(:base_url) { IntegrationServer.openai_base_url }
+  let(:model) { IntegrationServer.model }
 
   # Build an Engine with a real IdleRecap that emits to our capture array.
   let(:engine) do

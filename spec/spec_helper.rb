@@ -22,24 +22,22 @@ WebMock.disable_net_connect!
 require_relative "support/waiting"
 require_relative "support/env"
 require_relative "support/chi_cli"
+# Reads SAMAGOTCHI_INTEGRATION_* now, before the clear below.
+require_relative "support/integration_server"
 
 # Start from none of the developer's SAMAGOTCHI_* settings: a shell may point
 # the debug log somewhere, and a suite run by chi's own execute tool inherits
 # the worker's environment (SAMAGOTCHI_HOSTS_JSON with the real hosts, the
 # spawner's CLI flags such as SAMAGOTCHI_GUARDRAILS_ENABLED=false). Specs set
-# what they need. The suite's own switches stay; :integration examples get
-# the rest back, all but the log settings.
+# what they need, :integration examples included. The suite's own switches stay.
 SPEC_ENV_SWITCHES = %w[SAMAGOTCHI_INTEGRATION SAMAGOTCHI_MACOS_BUILD].freeze
-REAL_SAMAGOTCHI_ENV = ENV.to_h.select { |key, _| key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) }
-                         .reject { |key, _| key.start_with?("SAMAGOTCHI_LOG_") }.freeze
 SPEC_ENV_CLEAR = -> { ENV.keys.each { |key| ENV.delete(key) if key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) } }
 SPEC_ENV_CLEAR.call
 
 # Isolate specs from the developer's ~/.config/samagotchi/config.yml (hosts,
-# memories, aliases...) with a minimal fixture config. Only :integration
-# examples see the real config, so they can reach the live model server; unit
-# specs stay isolated even under SAMAGOTCHI_INTEGRATION=1.
-REAL_XDG_CONFIG_HOME = ENV["XDG_CONFIG_HOME"]
+# memories, aliases...) with a minimal fixture config. :integration examples
+# get their own fixture config, built from SAMAGOTCHI_INTEGRATION_* (host,
+# port, model; spec/support/integration_server.rb), never the real one.
 SPEC_XDG_CONFIG_HOME = Dir.mktmpdir("samagotchi-spec-config")
 FileUtils.mkdir_p(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi"))
 File.write(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi", "config.yml"), <<~YAML)
@@ -52,6 +50,8 @@ YAML
 ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
 ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
+SPEC_INTEGRATION_XDG_CONFIG_HOME = (IntegrationServer.write_config_home(IntegrationServer.settings) if ENV["SAMAGOTCHI_INTEGRATION"] == "1")
+at_exit { FileUtils.remove_entry(SPEC_INTEGRATION_XDG_CONFIG_HOME) if SPEC_INTEGRATION_XDG_CONFIG_HOME && File.directory?(SPEC_INTEGRATION_XDG_CONFIG_HOME) }
 
 # Likewise keep sessions/*.json and history.json out of the developer's
 # ~/.local/state/samagotchi. Unlike config, :integration examples stay here too.
@@ -162,23 +162,21 @@ RSpec.configure do |config|
     example.run
   end
 
-  # Point :integration examples at the real config, then restore the fixture.
-  # Skip here, before the switch: this config-level around wraps the group's
-  # own around hooks and lets, so a skipped example runs none of its setup
-  # (e.g. Engine.new installing the bundle into the real memories).
+  # Point :integration examples at the integration fixture config and let
+  # them reach the network (the after hook above turns it off again), then
+  # restore the unit fixture. Skip here, before the switch: this config-level
+  # around wraps the group's own around hooks and lets, so a skipped example
+  # runs none of its setup. XDG_STATE_HOME stays the suite's temp dir.
   config.around(:each, :integration) do |example|
     skip "Set SAMAGOTCHI_INTEGRATION=1 to run integration tests" unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
+    unless IntegrationServer.settings.model?
+      skip "Set SAMAGOTCHI_INTEGRATION_MODEL to the served model id (see docs/testing.md)"
+    end
 
-    ENV["XDG_CONFIG_HOME"] = REAL_XDG_CONFIG_HOME
-    ENV.update(REAL_SAMAGOTCHI_ENV)
+    ENV["XDG_CONFIG_HOME"] = SPEC_INTEGRATION_XDG_CONFIG_HOME
     ENV.delete("SAMAGOTCHI_RECAP_ENABLED")
-    # The real config's log.file must never receive spec lines (workers
-    # spawned here inherit it too).
-    ENV["SAMAGOTCHI_LOG_DISABLE"] = "true"
-    Samagotchi::Log.reset! if defined?(Samagotchi::Log)
-    # They talk to the live model server; WebMock keeps every other spec off
-    # the network (the after hook above turns it off again).
     WebMock.allow_net_connect!
+    Samagotchi::Log.reset! if defined?(Samagotchi::Log)
     example.run
   ensure
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
