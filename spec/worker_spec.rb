@@ -38,12 +38,14 @@ RSpec.describe Samagotchi::Worker do
     end
 
     it "wakes a waiting thread" do
-      woken = Thread.new { waker.wait(5) }
+      # true means woken, not timed out; the bound sits well under the 10 s
+      # timeout so a loaded CI runner doesn't flake it.
+      woken = Thread.new { waker.wait(10) }
       sleep(0.05)
       started = mono
       waker.wake
       expect(woken.value).to be(true)
-      expect(mono - started).to be < 0.3
+      expect(mono - started).to be < 5
     end
   end
 

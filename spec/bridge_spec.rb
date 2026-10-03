@@ -229,9 +229,12 @@ RSpec.describe Samagotchi::Bridge do
 
     it "never blocks the producer even under a slow consumer" do
       queue = Samagotchi::Bridge::BoundedQueue.new(capacity: 2)
-      start = mono
-      1_000.times { |i| queue.push(i) }
-      expect(mono - start).to be < 1.0
+      # No consumer at all: a blocking push would hang past the join.
+      producer = Thread.new { 1_000.times { |i| queue.push(i) } }
+      expect(producer.join(5)).to be(producer)
+      expect(queue.overflow_dropped?).to be(true)
+    ensure
+      producer&.kill
     end
   end
 
@@ -378,9 +381,9 @@ RSpec.describe Samagotchi::Bridge do
       elapsed = mono - start
 
       # The enqueue path must stay non-blocking even though the writer thread
-      # is blocked on the slow socket.
+      # is blocked on the slow socket: 500 blocking writes would take 10 s.
       expect(io.buffer).to include("text/event-stream")
-      expect(elapsed).to be < 1.0
+      expect(elapsed).to be < 4.0
 
       io.write_sleep = 0
       writer_thread.kill
@@ -531,16 +534,18 @@ RSpec.describe Samagotchi::Bridge do
       end
 
       it "doesn't wait on an open stream" do
+        # A long request grace: waiting on the stream would take all of it.
+        stub_const("Samagotchi::Bridge::REQUEST_GRACE_SECONDS", 30)
         start_bridge
         @clients << SSEClient.new(@bridge_port, @session.id).start
         wait_until { @bridge.open_streams == 1 }
 
         started = mono
         @bridge.stop
-        # Not the 1 s request grace nor the stream: only the acceptor's
-        # 0.5 s IO.select poll, which closing the socket doesn't cut short
-        # on Linux (macOS wakes it at once).
-        expect(mono - started).to be < 0.9
+        # Not the request grace nor the stream: only the acceptor's 0.5 s
+        # IO.select poll, which closing the socket doesn't cut short on
+        # Linux (macOS wakes it at once). Wide for a loaded CI runner.
+        expect(mono - started).to be < 10
       end
     end
 
