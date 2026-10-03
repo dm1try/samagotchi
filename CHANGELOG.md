@@ -8,16 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-04
+
 ### Added
 
 - The debug log's generation_completed line names the OpenRouter provider that served it (provider=).
 
 ### Fixed
-- loop-guard 0.3.1: the thinking watch no longer goes blind for the rest of a generation after an empty thinking delta (a FrozenError, logged as plugin_hook_failed).
 
-- loop-guard (bundle 0.3.0) cuts thinking that loops in short sentences ("I'll write it. Go. OK. Writing."),
+- loop-guard cuts thinking that loops in short sentences ("I'll write it. Go. OK. Writing."),
   which it skipped before: such a loop ran for minutes to the provider's output cap. New settings
   `thinking.short_run` (24) and `thinking.short_distinct` (6).
+- loop-guard's thinking watch no longer goes blind for the rest of a generation after an empty thinking
+  chunk (a FrozenError, logged as `plugin_hook_failed`), so it now sees every generation's thinking.
 - loop-guard no longer stops a whole turn for a thinking loop that comes long after the model recovered from
   its first one: after `thinking.forget_after` (10) steps with no loop, the next loop is cut and retried again.
 - A turn a plugin stopped now says who did it, `✕ turn stopped by loop-guard` (the web: `✕ stopped by
@@ -48,6 +51,8 @@ and commands may change between minor versions. How releases are made:
   per tab (every tab still counts it in its title).
 - chi web: a session stream whose worker took the connection and froze before answering no longer holds the
   request forever; it gives up after 5 s per attempt.
+
+Update with `chi update`: loop-guard moves to 0.3.1 (short-sentence loops, forget_after, the blind-watch fix). Restart `chi web` and running sessions afterwards (`chi sessions restart ID`).
 
 ## [0.20.0] - 2026-10-03
 
@@ -1240,7 +1245,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/dm1try/samagotchi/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/dm1try/samagotchi/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/dm1try/samagotchi/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/dm1try/samagotchi/compare/v0.18.0...v0.18.1
