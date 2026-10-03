@@ -21,6 +21,13 @@ test("projectScopeHref: back to a folder's project view, keeping the hash", () =
   assert.equal(projectScopeHref("/a&b", ""), "/?dir=/a%26b");
 });
 
+test("the scope links keep the page's ?view= and drop its other params", () => {
+  assert.equal(allScopeHref("#/s/abc", null, "?view=turn"), "/?view=turn#/s/abc");
+  assert.equal(allScopeHref("", "/u/proj", "?dir=/u/proj&view=stage"), "/?from=/u/proj&view=stage");
+  assert.equal(projectScopeHref("/u/proj", "#/sessions", "?from=/x&view=turn"), "/?dir=/u/proj&view=turn#/sessions");
+  assert.equal(projectScopeHref("/u/proj", "", "?from=/x"), "/?dir=/u/proj");
+});
+
 test("cardFolder shows a folder only where the scope doesn't make it obvious", () => {
   assert.equal(cardFolder("/u/p/samagotchi", null), "samagotchi");
   assert.equal(cardFolder("/u/p/samagotchi/", "samagotchi"), "");

@@ -22,6 +22,7 @@ and commands may change between minor versions. How releases are made:
   without a body.
 - The web's delete confirm no longer promises a running worker from a stale list: it says the worker is stopped
   first if it is still running.
+- The web's scope links (`all`, `← project`) keep the page's `?view=stage|turn`.
 
 ## [0.18.1] - 2026-10-03
 
