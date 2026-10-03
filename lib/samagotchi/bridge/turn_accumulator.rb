@@ -38,8 +38,8 @@ module Samagotchi
       end
 
       # @return [Hash, nil] a copy of the turn in progress: prompt, origin,
-      #   continue, ordered parts (thinking / text / tool / input / steer /
-      #   reminder / notice), pending_question and the last event_seq folded
+      #   continue, ordered parts (generation / thinking / text / tool /
+      #   input / steer / reminder / notice), pending_question and the last event_seq folded
       #   in. A finished tool part keeps the live row's action and duration_ms
       #   too, a running one the time it has run so far (elapsed_ms), so a
       #   join times its row from its start. A notice part holds the event
@@ -101,7 +101,9 @@ module Samagotchi
       # The turn in progress (#current_turn's shape, symbol keys) as the live
       # events that would have drawn it, in order, as turn_events.js
       # snapshotEvents replays it for the web (spec/shared/turn_snapshot.json
-      # pins both): a generation_chunk per thinking or text part (a
+      # pins both): a generation_started per generation part (a join during
+      # a hold shows the step the model is on), a generation_chunk per
+      # thinking or text part (a
       # generation_completed closes text before the next step's), a tool's
       # tool_call_started and, once finished, its tool_call_completed (with
       # the live activity: action, tool, params, status), a merged_input
@@ -123,6 +125,9 @@ module Samagotchi
         end
         Array(turn[:parts]).each do |part|
           case part[:kind]
+          when "generation"
+            close_text.call
+            events << { type: :generation_started, iteration: part[:iteration] }
           when "thinking" then events << { type: :generation_chunk, text: "", thinking: part[:text], iteration: part[:iteration] }
           when "text"
             close_text.call if !text_iteration.nil? && text_iteration != part[:iteration]
@@ -233,6 +238,8 @@ module Samagotchi
       def fold_turn_event(event)
         parts = @turn[:parts]
         case event[:type]
+        when :generation_started
+          parts << { kind: "generation", iteration: event[:iteration] }
         when :generation_chunk
           if event.key?(:text)
             # Profile-split stream: thinking and visible text separately.

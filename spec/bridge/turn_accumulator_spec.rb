@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.queued).to eq([])
   end
 
-  it "folds a running turn: prompt, origin, thinking and text in order, tool calls" do
+  it "folds a running turn: prompt, origin, generations, thinking and text in order, tool calls" do
     feed(
       { type: :turn_started, session_id: "s", prompt: "hi", origin: { client_id: "web:1", enqueued_id: "e1" } },
       { type: :generation_started, iteration: 1 },
@@ -39,10 +39,12 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     turn = acc.current_turn
     expect(turn).to include(prompt: "hi", origin: { client_id: "web:1", enqueued_id: "e1" }, event_seq: 10)
     expect(turn[:parts]).to eq([
+      { kind: "generation", iteration: 1 },
       { kind: "thinking", iteration: 1, text: "ab" },
       { kind: "text", iteration: 1, text: "Hello" },
       { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "ls", status: "ok",
         output: "a.txt", output_truncated: false, duration_ms: 0 },
+      { kind: "generation", iteration: 2 },
       { kind: "text", iteration: 2, text: "Done" }
     ])
     expect { JSON.generate(turn) }.not_to raise_error
@@ -272,6 +274,20 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
              activity: { action: "Reading file", tool: "read", params: "p", status: "ok" } })
       expect(described_class.replay_events(acc.current_turn).map { |e| e[:type] })
         .to eq(%i[turn_started generation_chunk generation_completed tool_call_started tool_call_completed])
+    end
+
+    it "replays a generation that has sent nothing yet, so a join during a hold shows its live step" do
+      feed({ type: :turn_started, prompt: "hi", origin: { client_id: "web:1" } },
+           { type: :generation_started, iteration: 1, context_window_tokens: 8192 },
+           { type: :generation_chunk, iteration: 1, content: "a", thinking: "", text: "a" },
+           { type: :generation_completed, iteration: 1 },
+           { type: :tool_call_started, iteration: 1, call_index: 0, tool: "read", params: "p" },
+           { type: :tool_call_completed, iteration: 1, call_index: 0, tool: "read", output: "x", activity: { status: "ok" } },
+           { type: :generation_started, iteration: 2, context_window_tokens: 8192 })
+      expect(described_class.replay_events(acc.current_turn).map { |e| e[:type] })
+        .to eq(%i[turn_started generation_started generation_chunk generation_completed tool_call_started tool_call_completed
+                  generation_started])
+      expect(described_class.replay_events(acc.current_turn).last).to eq(type: :generation_started, iteration: 2)
     end
 
     it "has nothing to replay with no turn" do

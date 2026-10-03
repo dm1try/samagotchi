@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
   up: the worker notices a closed stream at once instead of at its next 15-second heartbeat.
 - Leaving chi's terminal UI (`/exit`, `/detach`, Ctrl-D) no longer can leave a stray cursor report such as
   `^[[12;1R` at the shell prompt: input nobody read is dropped before the terminal is handed back.
+- Joining a running turn (web or `chi --attach`) while the model is holding before its first token now shows
+  the step it's on, as a live view does, instead of the previous step still live.
 
 ## [0.20.0] - 2026-10-03
 

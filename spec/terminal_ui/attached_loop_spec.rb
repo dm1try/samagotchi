@@ -96,6 +96,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).to be_running
     end
 
+    it "shows a join during a hold as the live view does: thinking on the new step, not the last one's text" do
+      turn = { prompt: "go", origin: nil,
+               parts: [{ kind: "generation", iteration: 1 }, { kind: "text", iteration: 1, text: "Checking." },
+                       { kind: "tool", iteration: 1, call_index: 0, tool: "read", params: "path=log", status: "ok" },
+                       { kind: "generation", iteration: 2 }] }
+      feed(snapshot(current_turn: turn))
+
+      expect(screen.statuses.last).to eq("| thinking…")
+    end
+
     it "adds an edit's +N −M to its tool line on a join" do
       turn = { prompt: "go", origin: nil,
                parts: [{ kind: "tool", tool: "edit", params: "path=k", status: "ok", diff: { text: "x", added: 3, removed: 1 } }] }

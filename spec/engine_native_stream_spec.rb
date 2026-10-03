@@ -97,7 +97,7 @@ RSpec.describe Samagotchi::Engine, "native stream lanes" do
       events.reject { |e| %i[turn_started turn_completed].include?(e[:type]) }.each { |e| accumulator.call(e) }
 
       parts = accumulator.current_turn[:parts].map { |part| part.slice(:kind, :text) }
-      expect(parts).to eq([{ kind: "thinking", text: "\npondering" }, { kind: "text", text: "Sure." }])
+      expect(parts).to eq([{ kind: "generation" }, { kind: "thinking", text: "\npondering" }, { kind: "text", text: "Sure." }])
     end
   end
 
