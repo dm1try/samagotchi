@@ -11,6 +11,7 @@ require_relative "image_input"
 require_relative "line_reader"
 require_relative "question_prompt"
 require_relative "reline_seam"
+require_relative "version_lines"
 require_relative "../bridge/turn_accumulator"
 require_relative "../bridge_client"
 require_relative "../log"
@@ -92,8 +93,10 @@ module Samagotchi
                      default_input: false, wait_at_eof: false, parent_answers: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
-                     archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) })
+                     archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) },
+                     installed_version: -> { InstalledVersions.new.newest })
         @client = client
+        @installed_version = installed_version
         @delete_session = delete_session
         @archive_session = archive_session
         @screen = screen
@@ -299,6 +302,13 @@ module Samagotchi
       end
 
       private
+
+      # The newest chi installed, looked at once, at the join.
+      def installed_version
+        @installed_version.call
+      rescue StandardError
+        nil
+      end
 
       # The session's live worker for the stream to follow (EventStream's
       # rediscover): nil while there is none yet, :gone once the session was
@@ -912,10 +922,12 @@ module Samagotchi
       def render_snapshot(snapshot, reset:)
         @view.finish_thinking_spinner
         # A new worker's first snapshot is the session as it now stands.
-        reset ||= @worker_changed
+        moved = @worker_changed
+        reset ||= moved
         @worker_changed = false
         if @attached
-          @screen.commit("(resynced with the session)") if reset
+          @screen.commit("(resynced with the session)") if reset && !moved
+          @screen.commit(paint(VersionLines.restarted(snapshot[:chi_version]), 2)) if moved
         else
           @attached = true
           # The recap first: what the session was about, then where it stopped.
@@ -924,6 +936,9 @@ module Samagotchi
           render_join_header(Array(snapshot[:messages]))
           @screen.commit("guardrails> #{snapshot[:guardrail_warning]}") if snapshot[:guardrail_warning]
           @screen.commit("plugins> #{snapshot[:plugin_warning]}") if snapshot[:plugin_warning]
+          version_line = VersionLines.at_attach(worker: snapshot[:chi_version], installed: installed_version,
+                                                session_id: @client.session_id)
+          @screen.commit(paint(version_line, 2)) if version_line
         end
         if snapshot[:commands]
           @command_registry = Commands::Registry.from_listing(snapshot[:commands], base: SessionCommands.builtin_registry)

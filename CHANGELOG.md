@@ -21,6 +21,9 @@ and commands may change between minor versions. How releases are made:
 - The web's info bar marks a session whose worker runs an older chi than the newest installed, with a Restart button
   (or, for a worker from before restarts, the `chi sessions stop ID` to run); the page and the draft in the
   composer stay as they are and follow the new worker.
+- An attached terminal says in one line when the session's worker or the terminal itself runs an older chi than
+  the newest installed, and how to move each (`chi sessions restart ID`; `/detach`, then `chi --attach ID`). When
+  the worker restarts, the terminal stays attached and says so.
 - `chi sessions restart ID...` moves a running session to a new worker on the newest chi installed, keeping its
   attached terminal and web tabs on it; it is refused, with the reason, while a turn, a question, reminders or
   background tasks would be lost.

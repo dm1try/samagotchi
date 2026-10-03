@@ -328,7 +328,11 @@ a `/btw` still running, an approval relayed from a delegate, or background
 tasks the session started. A session with no running worker needs none (its
 next prompt starts one on the newest chi), and a worker from before restarts
 needs `chi sessions stop ID`. The Web UI's `POST /api/sessions/:id/restart`
-does the same (409 with `reason` and `detail` when it can't).
+does the same (409 with `reason` and `detail` when it can't). An attached
+terminal says at the join, in one `chi>` line, when the worker or the terminal
+runs an older chi than the newest installed (the worker moves with `chi
+sessions restart ID`, the terminal with `/detach` and `chi --attach ID`), and
+`chi> the session's worker restarted on chi X` when its worker was replaced.
 
 `chi sessions archive ID...` hides sessions from every list (the terminal's,
 the web's, `list_sessions`) and keeps them for good: the retention sweep never

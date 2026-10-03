@@ -38,12 +38,34 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     it "moves to a new worker (a restart): requests go there, and its snapshot resyncs without repeating the join" do
       allow(client).to receive(:host).and_return("127.0.0.1")
       feed(snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello there" }]))
-      feed({ type: "worker_changed", port: 4321 },
-           snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello there" }]))
+      moved_snapshot = snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello there" }])
+      moved_snapshot[:snapshot][:chi_version] = "0.19.0"
+      feed({ type: "worker_changed", port: 4321 }, moved_snapshot)
 
       moved = attached.instance_variable_get(:@client)
       expect([moved.session_id, moved.port, moved.host]).to eq(["s-1234", 4321, "127.0.0.1"])
-      expect(screen.lines).to eq(["user> hi", "hello there", "(resynced with the session)"])
+      expect(screen.lines).to eq(["user> hi", "hello there", "chi> the session's worker restarted on chi 0.19.0"])
+    end
+
+    describe "chi versions at the join" do
+      def attach_with(installed:, worker:)
+        loop = described_class.new(client: client, screen: screen, client_id: "tui:1", installed_version: -> { installed })
+        joined = snapshot
+        joined[:snapshot][:chi_version] = worker
+        loop.handle_event(JSON.parse(JSON.generate(joined)))
+      end
+
+      it "says how to move a worker older than the newest chi installed" do
+        attach_with(installed: "99.0.0", worker: Samagotchi::VERSION)
+        expect(screen.lines.last).to start_with("chi> chi 99.0.0 is installed; this session's worker runs " \
+                                                "#{Samagotchi::VERSION} and this terminal #{Samagotchi::VERSION}.")
+      end
+
+      it "says nothing when all of it is current, or the worker doesn't say its version" do
+        attach_with(installed: Samagotchi::VERSION, worker: Samagotchi::VERSION)
+        attach_with(installed: "99.0.0", worker: nil)
+        expect(screen.lines.grep(/chi>/)).to be_empty
+      end
     end
 
     it "looks for the session's live worker for the stream, and gives up once the session was stopped" do
