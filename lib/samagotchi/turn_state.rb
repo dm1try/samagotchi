@@ -133,6 +133,13 @@ module Samagotchi
       true
     end
 
+    # Drop what #steer_next_turn queued and no turn began with (a no-op
+    # once #begin! took it).
+    # @return [Array<Hash>] the steers dropped ({text:, source:})
+    def drop_carried_steers
+      @lock.synchronize { @carried_steers.tap { @carried_steers = [] } }
+    end
+
     # @return [Array<Hash>] the steers queued so far ({text:, source:}), taken
     def take_steers
       @lock.synchronize { @steers.tap { @steers = [] } }

@@ -21,6 +21,9 @@ and commands may change between minor versions. How releases are made:
   429, 20s apart (about 100s with the default `retry.max`), instead of failing the turn at once; any other 402
   fails as `out of credits on host <name>: …; add credits, then send again`, with `error_kind` `credits`.
 - `chi answer --option Continue --text "…"` is accepted: the text joins the continued turn as a steer (marked as the parent agent's for `chi answer`), instead of being refused.
+- The Continue answer's text keeps its line breaks in the continued turn's steer, and it is dropped (logged
+  `steer_dropped why=not_begun`) when the continue turn fails before it begins or a typed `/continue no` answered
+  the offer first, instead of joining whatever turn ran next.
 
 ## [0.21.0] - 2026-10-04
 

@@ -99,6 +99,10 @@ module Samagotchi
       close(resolved ? "answered" : "dropped") unless awaiting?
       return unless resolved
 
+      # Answered without a turn (a typed /continue no that got there before
+      # the answer's /continue yes): the answer's text steers nothing.
+      @continue_steer = nil unless result.resume
+
       # An offer answered without a turn ("no") is activity: the recap
       # written at the offer (it says the turn stopped) gets rewritten.
       @engine.record_activity unless result.resume
@@ -107,21 +111,26 @@ module Samagotchi
     # The continue offer was answered yes: resume the conversation without a
     # user message, with the iteration limit the offer's turn had. A failure
     # keeps the offer, as the REPL does ("continue prompt preserved"), and
-    # asks again.
+    # asks again. The answer's text is carried into the turn as it begins;
+    # a turn that never began (a raise before it) leaves it to no other.
     def run_continue_turn(command)
       offer = @turn_flow.offer
       close("answered")
       steer = @continue_steer
       @continue_steer = nil
-      @engine.steer_next_turn(steer[:text], source: steer[:source]) if steer
-      @turn_flow.before_continue_turn
-      @run_turn.call(nil, continue: true, origin: { client_id: command[:client_id] }.compact,
-                          max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
-        if error
-          open(offer)
-        else
-          after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
+      begin
+        @engine.steer_next_turn(steer[:text], source: steer[:source]) if steer
+        @turn_flow.before_continue_turn
+        @run_turn.call(nil, continue: true, origin: { client_id: command[:client_id] }.compact,
+                            max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
+          if error
+            open(offer)
+          else
+            after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
+          end
         end
+      ensure
+        @engine.drop_carried_steers if steer
       end
     end
 
@@ -175,10 +184,13 @@ module Samagotchi
     # parent agent when the answer says so); Stop → no; a text (with Stop,
     # or alone) → no, <text>.
     def answered(answer, client_id:)
+      # The /continue line takes the text on one line; the steer keeps its
+      # line breaks.
       text = answer[:freeform].to_s.gsub(/\s+/, " ").strip
       @continue_steer = nil
       if Array(answer[:selected]).include?(CONTINUE) && !text.empty?
-        @continue_steer = { text: text, source: answer[:by] == "parent_agent" ? "parent_agent" : "user" }
+        @continue_steer = { text: answer[:freeform].to_s.strip,
+                            source: answer[:by] == "parent_agent" ? "parent_agent" : "user" }
       end
       line = if Array(answer[:selected]).include?(CONTINUE) then "/continue yes"
              elsif text.empty? then "/continue no"

@@ -98,5 +98,18 @@ RSpec.describe Samagotchi::TurnState do
       state.begin!(controller: controller, sink: nil)
       expect(state.take_steers).to eq([])
     end
+
+    it "drop_carried_steers drops what no turn began with, and nothing once one took it" do
+      state.steer_next_turn("go", source: "user")
+      expect(state.drop_carried_steers).to eq([{ text: "go", source: "user" }])
+      state.begin!(controller: controller, sink: nil)
+      expect(state.take_steers).to eq([])
+      state.finish!
+
+      state.steer_next_turn("again", source: "user")
+      state.begin!(controller: controller, sink: nil)
+      expect(state.drop_carried_steers).to eq([])
+      expect(state.take_steers).to eq([{ text: "again", source: "user" }])
+    end
   end
 end

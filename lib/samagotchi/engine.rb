@@ -327,10 +327,17 @@ module Samagotchi
 
     # Like #steer, for the turn that begins next (a continue turn answered
     # with a text): it joins that turn at its first boundary. Callable from
-    # any thread; a turn that never begins keeps it for the next one.
+    # any thread; a turn that never begins keeps it for the next one, unless
+    # #drop_carried_steers drops it.
     # @return [Boolean] whether it was queued (false: blank)
     def steer_next_turn(text, source:)
       @turn_state.steer_next_turn(text, source: source)
+    end
+
+    # Drop the #steer_next_turn steers no turn began with (the continue turn
+    # failed before it began), logged; a no-op once a turn took them.
+    def drop_carried_steers
+      log_dropped_steers(@turn_state.drop_carried_steers, "not_begun")
     end
 
     # The drain a turn's loop gets: the caller's lines (a UI's steering; nil
