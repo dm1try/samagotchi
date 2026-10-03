@@ -24,6 +24,9 @@
 #   thinking:          the thinking watch (ThinkingWatch::DEFAULTS)
 #     watch: true      false: the tool-call guard only
 #     action: retry    retry (cut, ask again; then stop) | stop | notify
+#     forget_after: 10 good steps (generations with no loop) in a row after a
+#                      cut loop, and the next loop is cut again, not stopped;
+#                      0: never forget, the turn's second loop stops it
 require "digest"
 
 # Sees thinking repeat itself, from the deltas of one generation.
@@ -56,7 +59,7 @@ require "digest"
 class ThinkingWatch
   DEFAULTS = { "watch" => true, "action" => "retry", "min_chars" => 2000, "repeats" => 3, "max_period" => 6,
                "similarity" => 0.5, "min_span_sentences" => 6, "min_span_chars" => 600, "max_same" => 8,
-               "min_words" => 5, "short_run" => 24, "short_distinct" => 6 }.freeze
+               "min_words" => 5, "short_run" => 24, "short_distinct" => 6, "forget_after" => 10 }.freeze
   ACTIONS = %w[retry stop notify].freeze
   MAX_CARRY = 400
   # One sentence again and again needs this much more alike than a cycle.
@@ -80,6 +83,8 @@ class ThinkingWatch
       number = Integer(raw[key].to_s, exception: false)
       out[key] = number if number&.positive?
     end
+    forget = Integer(raw["forget_after"].to_s, exception: false)
+    out["forget_after"] = forget if forget && forget >= 0
     similarity = Float(raw["similarity"].to_s, exception: false)
     out["similarity"] = similarity if similarity && similarity.positive? && similarity <= 1
     out["repeats"] = 2 if out["repeats"] < 2
@@ -246,6 +251,7 @@ class Plugin
     return unless @thinking["watch"]
 
     chi.on(:before_generation) do |_event|
+      good_step if @watch
       @watch = ThinkingWatch.new(@thinking)
       @watch_done = false
     end
@@ -279,6 +285,16 @@ class Plugin
     end
   end
 
+  # The generation before this one ended with no loop: a good step. After
+  # forget_after of them in a row the turn's loops are forgotten, so a loop
+  # long after the model recovered is cut and retried, not stopped.
+  def good_step
+    return @good_steps = 0 if @watch_done
+
+    @good_steps += 1
+    @thinking_loops = 0 if @good_steps == @thinking["forget_after"]
+  end
+
   def stop_thinking(ctx, found, what)
     return unless ctx.stop_turn("the model's thinking kept repeating itself (#{what})")
 
@@ -298,6 +314,7 @@ class Plugin
     @denials = 0
     @pending = nil
     @thinking_loops = 0
+    @good_steps = 0
     @watch = nil
   end
 

@@ -236,6 +236,54 @@ RSpec.describe "The loop-guard thinking watch" do
       expect(cards).to be_empty
     end
 
+    # Qwen run #6: a loop cut at step 10, then 43 steps of progress, then a
+    # second loop that stopped the whole turn.
+    describe "forgetting a loop after good steps" do
+      def steps(hooks, count, from:)
+        count.times { |i| generation(hooks, "I read the file and the method looks right.", iteration: from + i) }
+      end
+
+      it "cuts and retries a loop that comes forget_after good steps after the last one" do
+        hooks = plugin
+        fire(hooks, { type: :before_turn })
+        generation(hooks, looping)
+        steps(hooks, 10, from: 2)
+        generation(hooks, looping, iteration: 12)
+
+        expect(acts.map(&:first)).to eq(%i[stop_generation stop_generation])
+        expect(cards).to be_empty
+      end
+
+      it "stops the turn on a loop fewer good steps after the last one" do
+        hooks = plugin
+        fire(hooks, { type: :before_turn })
+        generation(hooks, looping)
+        steps(hooks, 3, from: 2)
+        generation(hooks, looping, iteration: 5)
+
+        expect(acts.map(&:first)).to eq(%i[stop_generation stop_turn])
+      end
+
+      it "doesn't count the cut generation as a good step" do
+        hooks = plugin("thinking" => { "forget_after" => "1" })
+        fire(hooks, { type: :before_turn })
+        generation(hooks, looping)
+        generation(hooks, looping, iteration: 2)
+
+        expect(acts.map(&:first)).to eq(%i[stop_generation stop_turn])
+      end
+
+      it "never forgets with forget_after: 0" do
+        hooks = plugin("thinking" => { "forget_after" => 0 })
+        fire(hooks, { type: :before_turn })
+        generation(hooks, looping)
+        steps(hooks, 30, from: 2)
+        generation(hooks, looping, iteration: 32)
+
+        expect(acts.map(&:first)).to eq(%i[stop_generation stop_turn])
+      end
+    end
+
     it "acts once per generation" do
       hooks = plugin("thinking" => { "action" => "notify" })
       fire(hooks, { type: :before_turn })
@@ -264,10 +312,12 @@ RSpec.describe "The loop-guard thinking watch" do
     it "reads its settings, keeping the defaults for bad values" do
       settings = mod::ThinkingWatch.settings("action" => "explode", "similarity" => "0.6", "repeats" => "1",
                                              "min_chars" => "-3", "max_same" => "12", "short_run" => "40",
-                                             "short_distinct" => "nope")
+                                             "short_distinct" => "nope", "forget_after" => "-1")
 
       expect(settings).to include("action" => "retry", "similarity" => 0.6, "repeats" => 2, "min_chars" => 2000,
-                                  "max_same" => 12, "watch" => true, "short_run" => 40, "short_distinct" => 6)
+                                  "max_same" => 12, "watch" => true, "short_run" => 40, "short_distinct" => 6,
+                                  "forget_after" => 10)
+      expect(mod::ThinkingWatch.settings("forget_after" => "0")).to include("forget_after" => 0)
     end
   end
 end
