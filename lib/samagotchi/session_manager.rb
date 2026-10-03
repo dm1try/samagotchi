@@ -425,11 +425,45 @@ module Samagotchi
       # status is turn state, not liveness: a new worker runs no turn yet,
       # and must not find the session stopped (it would exit): neither the
       # marker nor a status field from before it.
+      # One this process just spawned may not hold the lock yet (a slow
+      # start, deliver_turn's second resume): it would only lose it.
+      return session if still_starting?(session.id, state_dir: sd)
+
       Session.clear_stopped(session.id, state_dir: sd)
       session.status = Session::STATUS_IDLE
       session.save(state_dir: sd)
       spawn_worker_for_session(session, state_dir: sd)
       session
+    end
+
+    # How long after a spawn a resume trusts that worker to take the
+    # session, while it runs (and the session wasn't stopped since).
+    WORKER_START_GRACE = 30.0
+
+    @spawns = {}
+    @spawns_mutex = Mutex.new
+
+    # A worker this process spawned for the session within
+    # WORKER_START_GRACE is still running, and no stop came since.
+    private_class_method def self.still_starting?(session_id, state_dir:)
+      return false if Session.stopped_marker?(session_id, state_dir: state_dir)
+
+      at, waiter = @spawns_mutex.synchronize { @spawns[[state_dir, session_id]] }
+      return false unless at && waiter.respond_to?(:alive?) && waiter.alive?
+
+      Process.clock_gettime(Process::CLOCK_MONOTONIC) - at < WORKER_START_GRACE
+    end
+
+    private_class_method def self.note_spawn(session_id, state_dir:, waiter:)
+      @spawns_mutex.synchronize do
+        @spawns.delete_if { |_, (_, w)| !(w.respond_to?(:alive?) && w.alive?) }
+        @spawns[[state_dir, session_id]] = [Process.clock_gettime(Process::CLOCK_MONOTONIC), waiter]
+      end
+    end
+
+    # Forget the spawns #still_starting? remembers (specs).
+    def self.forget_spawns
+      @spawns_mutex.synchronize { @spawns.clear }
     end
 
     # Read any new output files from a session directory.
@@ -846,7 +880,7 @@ module Samagotchi
       command = worker_command(session.id, state_dir: state_dir)
       pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
       # Reaped when it exits: a long-lived spawner (chi web) keeps no zombies.
-      Process.detach(pid)
+      note_spawn(session.id, state_dir: state_dir, waiter: Process.detach(pid))
       Log.info(:worker, "spawn", sid: session.id, child_pid: pid)
       pid
     end
@@ -949,7 +983,8 @@ module Samagotchi
         raise OwnedByTUI, session_id
       end
       # A worker that idle-exited since the resume never reads it either:
-      # wake a new one. (The exiting worker also looks for input it left.)
+      # wake a new one. (The exiting worker also looks for input it left;
+      # one the first resume spawned that is still starting is left be.)
       manager.resume_session(session_id, state_dir: state_dir) if owner.nil?
       { status: :accepted, ack: { status: "accepted", enqueued_id: enqueued_id, session_id: session_id } }
     end

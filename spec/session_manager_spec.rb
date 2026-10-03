@@ -434,6 +434,45 @@ RSpec.describe Samagotchi::SessionManager do
       expect(marker_at_spawn).to be(false)
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_IDLE)
     end
+
+    describe "a worker it spawned that is still starting (no owner lock yet)" do
+      let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| s.save(state_dir: tmpdir) } }
+      let(:waiter) { instance_double(Thread, alive?: true) }
+
+      before do
+        allow(Process).to receive(:spawn).and_return(20_002)
+        allow(Process).to receive(:detach).and_return(waiter)
+      end
+
+      after { described_class.forget_spawns }
+
+      it "is not spawned again by a second resume (deliver_turn's after a slow start)" do
+        2.times { described_class.resume_session(session.id, state_dir: tmpdir) }
+        expect(Process).to have_received(:spawn).once
+      end
+
+      it "is spawned again once that worker exited, or after a stop" do
+        described_class.resume_session(session.id, state_dir: tmpdir)
+        allow(waiter).to receive(:alive?).and_return(false)
+        described_class.resume_session(session.id, state_dir: tmpdir)
+        expect(Process).to have_received(:spawn).twice
+
+        allow(waiter).to receive(:alive?).and_return(true)
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        described_class.resume_session(session.id, state_dir: tmpdir)
+        expect(Process).to have_received(:spawn).exactly(3).times
+      end
+
+      it "is spawned again after the grace" do
+        described_class.resume_session(session.id, state_dir: tmpdir)
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        allow(Process).to receive(:clock_gettime).and_call_original
+        allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC)
+                                                 .and_return(now + described_class::WORKER_START_GRACE + 1)
+        described_class.resume_session(session.id, state_dir: tmpdir)
+        expect(Process).to have_received(:spawn).twice
+      end
+    end
   end
 
   describe ".spawn_session" do
