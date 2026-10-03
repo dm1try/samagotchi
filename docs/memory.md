@@ -80,6 +80,43 @@ skills`, [docs/plugins.md](plugins.md#the-skills-bundle)) adds `/skill save`,
 one-line diff after each update, and nudges a model that skips a failing
 step instead of fixing the skill.
 
+## What a bundle owns
+
+A bundle owns the memory files it wrote, nothing else. `chi bundle install`
+copies each of its `*.md` files into the scope dir; a file of the same name
+that is already there is left as it is and reported `Skipped` (`--force`
+overwrites it, and then the bundle owns it). A skipped file stays yours: the
+bundle doesn't record it, so `chi bundle upgrade` never merges into it and
+`chi bundle uninstall` never removes it. That holds for a file the user wrote,
+for `chi bundle build` then installing the result on the same machine, and
+for a file another bundle installed.
+
+- **The index says where a memory came from.** The `index.md` line of a file
+  a bundle installed ends in `· from <bundle>`, before the description:
+  `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system —
+  …`. `memory_write`, `write` and `edit` keep it. A bundle installed by chi
+  0.16 or earlier gets it on its next install or upgrade.
+- **Uninstall moves, it doesn't delete.** The bundle's memory files go to
+  `$XDG_CONFIG_HOME/samagotchi/memories/.bundles/.trash/<bundle>-<YYYYmmdd-HHMMSS>/`,
+  and the output names them and the dir:
+  `Moved to the trash: notes.md (…/.trash/team-notes-20261003-120000)`. So
+  does an upgrade's removal of a file the new version no longer ships. A
+  file you edited still needs `--force`. Nothing empties the trash: delete
+  the dirs when you're sure. Hooks, rules and the plugin live in the
+  bundle's own dir and are deleted with it.
+- **A file two bundles list stays** until the last of them is uninstalled
+  (`Kept identity.md: bundle samagotchi-system has it too`); its index line
+  then names the bundle that still has it.
+- **Installs by chi 0.16 or earlier** recorded skipped files too. Such a bundle may
+  still list a file that was yours; uninstalling it moves that file to the
+  trash rather than deleting it, so check the `Moved to the trash` line and
+  move a file back if it was yours (and its line in `index.md` comes back
+  with the next `memory_write`, `write` or `edit` of it).
+- **`chi bundle build`** packs your memories, not other bundles': a memory an
+  installed bundle owns is left out with a line (`Left out identity.md:
+  installed by bundle samagotchi-system (name it to include it)`); naming it
+  in `FILES...` includes it.
+
 ## Bundle profiles: core and dev
 
 Every bundle chi ships (the system bundle aside) belongs to one of two

@@ -8,26 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
-### Fixed
-
-- `chi bundle uninstall` no longer deletes a memory the user had before the install. A bundle now records (and
-  so upgrades and removes) only the files it wrote; a same-name file that was already there is reported
-  `Skipped` and stays the user's, on install, re-install and upgrade. Before, it was recorded with the user's
-  content as its base, so uninstall removed it without `--force`: a third-party bundle shipping `notes.md`, or
-  `chi bundle build` then installing the result on the same machine. An upgrade no longer reports such a file as
-  a conflict (or `chi update --dry-run` as kept). Bundles installed before this fix may still list such a file;
-  uninstall now moves it to the trash (below) rather than deleting it.
-- A memory file two installed bundles list (one an older install adopted, like `identity.md` under both
-  `samagotchi-system` and a `chi bundle build` of your memories) stays when one of them is uninstalled, or drops it
-  in an upgrade: `Kept identity.md: bundle samagotchi-system has it too`. It goes with the last one.
-
 ### Changed
 
 - A memory a bundle installed says so in its `index.md` line, and so in the prompt's memory index:
   `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system — …`. `memory_write` and `write`/`edit`
   keep the tag; a same-name memory the install skipped gets none. Bundles installed earlier get it on their next
   install or upgrade (the system bundle: with the next chi version).
-
+- docs/memory.md has a "What a bundle owns" section (skipped files, the trash, shared files, the index tag, what
+  build leaves out); the system bundle's memory guide says the same (its version moves with the next release).
 - `chi bundle uninstall` (and an upgrade dropping a file the new version no longer ships) moves the bundle's memory
   files to `<memories>/.bundles/.trash/<bundle>-<time>/` instead of deleting them, and says where:
   `Moved to the trash: notes.md (…/.trash/notes-bundle-20261003-120000)`. Nothing empties the trash; delete it by hand.
@@ -40,6 +28,16 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi bundle uninstall` no longer deletes a memory the user had before the install. A bundle now records (and
+  so upgrades and removes) only the files it wrote; a same-name file that was already there is reported
+  `Skipped` and stays the user's, on install, re-install and upgrade. Before, it was recorded with the user's
+  content as its base, so uninstall removed it without `--force`: a third-party bundle shipping `notes.md`, or
+  `chi bundle build` then installing the result on the same machine. An upgrade no longer reports such a file as
+  a conflict (or `chi update --dry-run` as kept). Bundles installed before this fix may still list such a file;
+  uninstall now moves it to the trash (below) rather than deleting it.
+- A memory file two installed bundles list (one an older install adopted, like `identity.md` under both
+  `samagotchi-system` and a `chi bundle build` of your memories) stays when one of them is uninstalled, or drops it
+  in an upgrade: `Kept identity.md: bundle samagotchi-system has it too`. It goes with the last one.
 - Web: after a reload, a turn with an empty retry mid-turn shows each tool row's own duration; the rows took their
   records by iteration, so every call after the retry showed the wrong one, or none.
 - Attached TUI: `/detach` typed at a question's `?` prompt detaches (the question stays open), as Ctrl-D does; it

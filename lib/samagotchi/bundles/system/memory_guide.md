@@ -16,7 +16,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 | `project` | `<system dir>/projects/<basename>_<hash>/` (`MemoryPaths.project_dir`: `basename(root)` + 8-char `MD5(root)`, root = `MemoryPaths.project_root`) | Repo-specific conventions, workflow, stack decisions |
 
 - The project root is the git repository: its common git dir, which every linked worktree shares. All worktrees and subdirectories of one repository share one project folder; the system prompt shows the resolved root and folder. Outside a repository the root is the working directory. A separate clone is a different project.
-- `index.md` lives in each scope dir and contains auto-managed lines like `- **name** · scope · date · bytes — description`. Your free-form sections in `index.md` are preserved but managed lines are owned by `memory_write` (and refreshed when `write`/`edit` change a memory's file).
+- `index.md` lives in each scope dir and contains auto-managed lines like `- **name** · scope · date · bytes — description`; a memory a bundle installed adds `· from <bundle>` before the description. Your free-form sections in `index.md` are preserved but managed lines are owned by `memory_write` (and refreshed when `write`/`edit` change a memory's file).
 
 ## Tools you have
 
@@ -85,13 +85,13 @@ Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and
 
 | Command | Purpose |
 |---------|---------|
-| `install <source> [--scope system\|project] [--force]` | Install from dir/zip/tar.gz/git URL. `--force` overwrites existing entries, otherwise skips. Writes provenance to `.bundles/<name>/` (base snapshots + `manifest.json`) and updates `index.md`. Warns on double-brace placeholders and checksum mismatches (strict mode). |
+| `install <source> [--scope system\|project] [--force]` | Install from dir/zip/tar.gz/git URL. `--force` overwrites existing entries, otherwise skips them; a skipped file stays the user's (not recorded, never upgraded or removed by the bundle). Writes provenance to `.bundles/<name>/` (base snapshots + `manifest.json`) and updates `index.md`. Warns on double-brace placeholders and checksum mismatches (strict mode). |
 | `upgrade <source> [--force] [--dry-run] [--agent]` | 3-way merge upgrade (base vs current vs incoming) per `Merger.classify`: `install` (new file), `noop` (current==incoming), `fast_forward` (current==base, not edited → auto-update), `keep` (incoming==base → preserve local edits), `conflict` (both edited → warn, needs `--force` or interactive `memory_write` resolution). Pruned files (removed from new bundle) are kept if locally edited, otherwise warned. |
-| `uninstall <bundle> [--force]` | Removes bundle files (skips locally edited files unless `--force`) and `index.md` lines, deletes provenance dir. |
+| `uninstall <bundle> [--force]` | Moves the bundle's memory files to `.bundles/.trash/<bundle>-<time>/` (refuses locally edited ones unless `--force`; keeps a file another installed bundle also lists), removes their `index.md` lines, deletes the provenance dir. |
 | `status [<bundle>]` | Provenance + per-file `ok|modified|missing|no-index` vs stored checksum and base snapshot. |
 | `diff <bundle> [file]` | Prints `base` (provenance snapshot) vs `current` (on-disk) for each file. |
 | `list` | Lists installed bundles (`name v<version> scope files installed_at`, plus the shipped version when newer) and the bundles shipped with chi that are not installed (`install <name>` installs one), grouped under their profile; an installed profile shows `includes=` and `left out=`. |
-| `build [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — builds a shareable bundle from local memories and installed hooks. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<repo>_memories.zip` (project, named after the project root) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of memory basenames (`identity` or `identity.md`); if omitted, all `*.md` except `index.md`/hidden/non-md are included. Installed hooks are copied to `hooks/` with their manifest metadata. Computes `sha256:` checksums and writes `manifest.yml` via `Manifest.write`. No provenance write. |
+| `build [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — builds a shareable bundle from local memories and installed hooks. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<repo>_memories.zip` (project, named after the project root) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of memory basenames (`identity` or `identity.md`); if omitted, all `*.md` except `index.md`/hidden/non-md and the memories other installed bundles own (each named in a `Left out` line) are included. Installed hooks are copied to `hooks/` with their manifest metadata. Computes `sha256:` checksums and writes `manifest.yml` via `Manifest.write`. No provenance write. |
 
 **Scope resolution for install/build:**
 - CLI `--scope` wins over `manifest.yml` `scope`. Default is `system` if none given (`Installer#run`). For `project`, target is the project folder `<system dir>/projects/<basename>_<hash>` of the project root (`Installer#resolve_target_dir`).
@@ -119,7 +119,7 @@ chi bundle build --scope system --out updated.zip
 ### Provenance internals (for debugging)
 
 - Each installed bundle is recorded at `<system dir>/.bundles/<name>/manifest.json` + `bases/<file>.md` snapshots (`Provenance`). Used only for upgrade `Merger` and `status`/`diff`. Build does **not** write provenance.
-- `index.md` is best-effort — failures are swallowed (`Installer#update_target_index`).
+- A bundle records only the files it wrote. `index.md` updates aren't fatal: a failed one is a warning in the install/uninstall output.
 
 ## Best practices for the agent
 
