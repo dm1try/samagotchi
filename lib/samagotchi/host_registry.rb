@@ -2,6 +2,7 @@
 
 require "ipaddr"
 require_relative "config"
+require_relative "log"
 require_relative "model_ref"
 require_relative "client"
 require_relative "llm/openai_chat"
@@ -289,6 +290,7 @@ module Samagotchi
             data = { host: entry.host, port: entry.port, transport: entry.transport, models: models, error: nil }
             @mutex.synchronize { @host_lists[name] = { data: data, at: @clock.call } }
           rescue StandardError => e
+            Log.warn(:model, "list_failed", host: name, error: e.class.name, msg: e.message.to_s[0, 500])
             data = { host: entry.host, port: entry.port, transport: entry.transport, models: [], error: e.message }
           end
           results_mutex.synchronize { results[name] = data }

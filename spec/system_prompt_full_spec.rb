@@ -142,6 +142,20 @@ RSpec.describe "Full system prompt snapshots" do
       ])
     end
 
+    # The prompt is rebuilt for another loop or thinking level and after a
+    # /model switch (#reset!).
+    it "warns about a missing preload once, not on every prompt rebuild" do
+      with_rg(false)
+      e = engine("box:gemma-small", "gemma4", memories: ["gone_cli"], muted_memories: %w[cfg_note])
+      prompt = e.instance_variable_get(:@prompt_builder)
+      %i[low high].each { |level| prompt.build(thinking: level) }
+      prompt.reset!
+      prompt.build(thinking: :low)
+
+      expect(warnings.map(&:first).tally).to eq("preload_failed" => 2, "preload_muted" => 1)
+      expect(warnings.map(&:last)).to include(a_string_including("gone_config"), a_string_including("gone_cli"))
+    end
+
     it "leaves out muted memories: index lines, identity, a muted preload" do
       with_rg(false)
       e = engine("box:gemma-small", "gemma4", memories: ["cli_note"], muted_memories: %w[hidden identity cfg_note])

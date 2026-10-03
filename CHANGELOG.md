@@ -83,6 +83,8 @@ and commands may change between minor versions. How releases are made:
 - A session started with `chi --model X` no longer hands X to the commands it runs as the default model: a `chi
   self` (or other chi) run there reports and uses the configured default, with X as this session's model. A
   `SAMAGOTCHI_DEFAULT_MODEL` you export yourself still passes.
+- A preloaded memory that can't be loaded is warned about once, not again each time the prompt is rebuilt (another
+  thinking level, a `/model` switch).
 
 ## [0.18.1] - 2026-10-03
 

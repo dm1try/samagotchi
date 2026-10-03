@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::IdleScheduler do
       expect(job_b).to have_received(:tick).once
     end
 
-    it "logs the failure (stderr text unchanged, a WARN idle record in the file)" do
+    it "logs the failure (stderr text unchanged, an ERROR idle record with the backtrace in the file)" do
       dir = Dir.mktmpdir("samagotchi-log")
       path = File.join(dir, "chi.log")
       Samagotchi::Log.configure(path: path)
@@ -75,8 +75,9 @@ RSpec.describe Samagotchi::IdleScheduler do
       expect { scheduler.tick }.to output.to_stderr
 
       record = File.open(path) { |io| Samagotchi::LogLine.each_record(io).first }
-      expect(record.to_h).to include(level: "WARN", tag: "idle", event: "tick_failed")
-      expect(record.fields).to include("error" => "RuntimeError", "msg" => a_string_ending_with("tick failed: RuntimeError: boom"))
+      expect(record.to_h).to include(level: "ERROR", tag: "idle", event: "tick_failed")
+      expect(record.fields).to include("error" => "RuntimeError", "msg" => "boom", "job" => job_a.class.name)
+      expect(record.payload).not_to be_empty
     ensure
       FileUtils.remove_entry(dir)
     end

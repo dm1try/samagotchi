@@ -98,6 +98,18 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(results["fw"][:models].first.context_window).to eq(131_072)
     end
 
+    it "logs a host whose list failed, and lists the others" do
+      allow(registry.adapter_for(registry.entries["oai"])).to receive(:list_models).and_raise(Errno::ECONNREFUSED)
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+      results = registry.list_all_models
+
+      expect(results["oai"]).to include(models: [], error: a_string_including("Connection refused"))
+      expect(results["box"][:models].map(&:id)).to eq(["gemma-4-26b"])
+      expect(Samagotchi::Log).to have_received(:warn)
+        .with(:model, "list_failed", hash_including(host: "oai", error: "Errno::ECONNREFUSED"))
+    end
+
     it "calls a host remote when it has an API key variable or an https url" do
       expect(registry.entries.transform_values(&:remote?)).to eq("box" => false, "oai" => false, "fw" => true)
     end

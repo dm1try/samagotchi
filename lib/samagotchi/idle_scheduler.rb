@@ -56,7 +56,7 @@ module Samagotchi
       @jobs.each do |job|
         job.tick
       rescue StandardError => e
-        Log.warn(:idle, "tick_failed", echo: "[IdleScheduler] #{job.class} tick failed: #{e.class}: #{e.message}", job: job.class.name, error: e.class.name)
+        Log.exception(:idle, "tick_failed", e, echo: "[IdleScheduler] #{job.class} tick failed: #{e.class}: #{e.message}", job: job.class.name)
       end
     end
 

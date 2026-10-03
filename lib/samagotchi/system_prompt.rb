@@ -310,6 +310,15 @@ module Samagotchi
       end
     end
 
+    # Once per name for this prompt (the Engine's, one per process): a
+    # rebuild (another level, a /model switch) doesn't repeat it.
+    def warn_preload_failed(name, echo)
+      @warned_preloads ||= Set.new
+      return unless @warned_preloads.add?(name)
+
+      Log.warn(:memory, "preload_failed", echo: echo, memory: name)
+    end
+
     def explicit_memory_section
       return nil if @requested_memories.empty?
 
@@ -322,7 +331,7 @@ module Samagotchi
           body = Tools::MemoryRead.call(actual_name, scope: scope, **overlay_keys)
           if body.start_with?("Error:")
             source = Array(@config_memories).include?(raw) ? "memory '#{name}' (from config memories:)" : "--memory '#{name}'"
-            Log.warn(:memory, "preload_failed", echo: "Warning: #{source} could not be loaded (#{body})", memory: name)
+            warn_preload_failed(name, "Warning: #{source} could not be loaded (#{body})")
             next
           end
           # Record activated names so the UI can echo them in the sticky
