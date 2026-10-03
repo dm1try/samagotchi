@@ -134,6 +134,43 @@ test("turnGroups with parts: a turn that ended on a call has no answer; a call w
   ] }]);
 });
 
+test("turnGroups with parts: an empty retry mid-turn (an iteration with no message) shifts no call's record", () => {
+  const items = [
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "assistant", content: "Let me check.", parts: { tools: [EXECUTE] } },
+    // Iteration 2 was an empty generation, retried: it left no message.
+    { role: "assistant", content: "", parts: { tools: [READ] } },
+    { role: "assistant", content: "Both fine." },
+  ];
+  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 50 }],
+    tool_records: [
+      { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 },
+      { id: "T1:3:1", turn_id: "T1", iteration: 3, call_index: 1, tool: "read", status: "error", duration_ms: 4 },
+    ] });
+  const group = turnGroups(items, timing)[0];
+  assert.equal(group.answer, 3);
+  assert.deepEqual(group.steps, [
+    { i: 1, iteration: 1, thinking: "", tools: [{ key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE }] },
+    { i: 2, iteration: 2, thinking: "", tools: [{ key: "2:1", status: "error", duration_ms: 4, ...READ }] },
+  ]);
+});
+
+test("turnGroups with parts: records no saved message took (a generation that saved nothing) are steps after them", () => {
+  const items = [
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "assistant", content: "Checking.", parts: { tools: [EXECUTE] } },
+  ];
+  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", duration_ms: 50 }],
+    tool_records: [
+      { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 },
+      { id: "T1:2:1", turn_id: "T1", iteration: 2, call_index: 1, tool: "read", status: "ok", duration_ms: 3 },
+    ] });
+  assert.deepEqual(turnGroups(items, timing)[0].steps, [
+    { i: 1, iteration: 1, thinking: "", tools: [{ key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE }] },
+    { i: null, iteration: 2, thinking: "", tools: [{ key: "2:1", tool: "read", status: "ok", duration_ms: 3 }] },
+  ]);
+});
+
 function fakeParent() {
   const parent = {
     children: [],

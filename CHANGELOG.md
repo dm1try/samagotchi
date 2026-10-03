@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: after a reload, a turn with an empty retry mid-turn shows each tool row's own duration; the rows took their
+  records by iteration, so every call after the retry showed the wrong one, or none.
+
 ## [0.16.0] - 2026-10-03
 
 ### Added
