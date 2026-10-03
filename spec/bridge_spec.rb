@@ -1299,7 +1299,8 @@ RSpec.describe Samagotchi::Bridge do
 
       it "refuses any Origin, its own loopback one included" do
         start_bridge
-        expect(raw("post", "/session/#{@session.id}/cancel", { "Origin" => "http://127.0.0.1:#{@bridge_port}" }, "{}").first).to eq(403)
+        expect(raw("post", "/session/#{@session.id}/cancel",
+                   { "Content-Type" => "application/json", "Origin" => "http://127.0.0.1:#{@bridge_port}" }, "{}").first).to eq(403)
         expect(raw("get", "/session/#{@session.id}/state", { "Origin" => "null" }).first).to eq(403)
       end
 
