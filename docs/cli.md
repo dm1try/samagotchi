@@ -261,6 +261,7 @@ and `--shared` are refused. Its first line says it is a scratch session.
   can still write files anywhere, memories included.
 - No child sessions: the `delegate` tools are not offered, and a plugin's
   `ctx.sessions.fork` (btw's side session) refuses, since they would outlive it.
+  Nor is `send_note`, whose note would stay in the other session.
 
 ### Sharing a session
 

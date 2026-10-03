@@ -67,6 +67,7 @@ and commands may change between minor versions. How releases are made:
   longer leaves an empty session behind.
 - A question card reopened after a reload shows its result once, in the collapsed summary, not twice.
 - After a mid-turn reload, this tab's own prompt is still recognized as its own instead of being labelled `web`.
+- A `chi scratch` session no longer offers `send_note`, so it leaves no note behind in another session.
 
 ## [0.18.1] - 2026-10-03
 

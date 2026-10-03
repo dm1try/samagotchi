@@ -169,9 +169,10 @@ module Samagotchi
       # kernel's dispatch): the built-ins, per Engine.
       @tools = Tools::Builtins.registry
       if @scratch
-        # A scratch session's children would outlive it; its memories
-        # would too (write and edit into the memories: ScratchWrites).
-        [Tools::Delegate::NAME, Tools::DelegateResult::NAME].each { |name| @tools.unregister(name) }
+        # A scratch session's children would outlive it, and so would a
+        # note it left in a peer; its memories would too (write and edit
+        # into the memories: ScratchWrites).
+        [Tools::Delegate::NAME, Tools::DelegateResult::NAME, Tools::SendNote::NAME].each { |name| @tools.unregister(name) }
         @tools[Tools::MemoryWrite::NAME].handler = ->(_call, _kctx) { SCRATCH_MEMORY_WRITE }
       end
       # Likewise the slash commands its SessionCommands run.
