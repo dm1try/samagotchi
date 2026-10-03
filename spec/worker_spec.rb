@@ -149,15 +149,18 @@ RSpec.describe Samagotchi::Worker do
       expect(engine.interface).to eq(:worker)
     end
 
+    # The fallback tick is a minute away, so a turn that starts within a few
+    # seconds was woken, not ticked; a tight wall-clock bound flaked on a
+    # loaded CI runner (0.43 s on Ruby 4.0).
     it "starts a turn posted to its Bridge at once, not on the next tick" do
-      start_worker(poll_interval: 5)
+      start_worker(poll_interval: 60)
 
       posted_at = mono
       expect(post_turn("PING").code).to eq("202")
 
-      prompt, started_at = next_turn
+      prompt, started_at = next_turn(timeout: 5)
       expect(prompt).to eq("PING")
-      expect(started_at - posted_at).to be < 0.3
+      expect(started_at - posted_at).to be < 5
     end
 
     it "picks up an input file written without a wake on the fallback tick" do
@@ -170,15 +173,15 @@ RSpec.describe Samagotchi::Worker do
 
     it "runs a due reminder at once, as a continue turn with no user message (as the REPL)" do
       allow(engine).to receive(:reminders_due?).and_return(true)
-      start_worker(poll_interval: 5)
+      start_worker(poll_interval: 60)
 
       called_at = mono
       @reminder_callback.call(["stretch"])
 
-      prompt, started_at, kwargs = next_turn
+      prompt, started_at, kwargs = next_turn(timeout: 5)
       expect(prompt).to be_nil
       expect(kwargs).to include(continue: true, origin: { client_id: "system:reminder" })
-      expect(started_at - called_at).to be < 0.3
+      expect(started_at - called_at).to be < 5
       expect(Dir.children(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))).to be_empty
       expect(engine.due_reminder_names).to be_empty
     end
