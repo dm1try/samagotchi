@@ -672,16 +672,18 @@ RSpec.describe Samagotchi::Web::App do
         end
       end
       manager = FakeResponsesManager.new
+      owner = nil
+      manager.define_singleton_method(:session_owner) { |*, **| owner }
       app = build_app(manager: manager, state_dir: Dir.mktmpdir, session_class: loader)
 
       _status, _headers, body = app.call(env_for("/api/sessions/s1"))
       expect(JSON.parse(body.first)["pending_question"]).to be_nil
 
-      manager.define_singleton_method(:session_owner) { |*, **| Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1) }
+      owner = Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1)
       _status, _headers, body = app.call(env_for("/api/sessions/s1"))
       expect(JSON.parse(body.first)["pending_question"]).to be_nil
 
-      manager.define_singleton_method(:session_owner) { |*, **| Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1) }
+      owner = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1)
       _status, _headers, body = app.call(env_for("/api/sessions/s1"))
       expect(JSON.parse(body.first)["pending_question"]).to include("id" => "q1")
     end
