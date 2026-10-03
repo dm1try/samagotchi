@@ -5,6 +5,7 @@ require "json"
 require "securerandom"
 require "time"
 require_relative "atomic_file"
+require_relative "context_note"
 
 require_relative "paths"
 require_relative "project_scope"
@@ -413,14 +414,15 @@ module Samagotchi
 
     # Derive and cache the first user-message preview in the session record.
     # Returns true if the cached value was set or updated.
+    # A session with only context notes so far previews by its first note
+    # ("note: …"), until a message is typed.
     def compute_first_preview!
-      return false if @first_preview && !@first_preview.empty?
+      from_note = note_preview
+      return false if @first_preview && !@first_preview.empty? && @first_preview != from_note
 
       first_user = @messages.find { |m| m[:role].to_s == "user" || m["role"].to_s == "user" }
-      return false unless first_user
-
-      preview = self.class.preview_of(first_user[:content] || first_user["content"])
-      return false if preview.empty?
+      preview = first_user ? self.class.preview_of(first_user[:content] || first_user["content"]) : from_note.to_s
+      return false if preview.empty? || preview == @first_preview
 
       @first_preview = preview
       true
@@ -451,6 +453,15 @@ module Samagotchi
     private_class_method :preview_words
 
     private
+
+    # @return [String, nil] the first context note as a preview
+    def note_preview
+      note = @messages.find { |m| ContextNote.note?(m) }
+      return nil unless note
+
+      text = self.class.preview_of(ContextNote.text_of(note))
+      text.empty? ? nil : self.class.preview_of("note: #{text}")
+    end
 
     def stringify_message_keys(hash)
       hash.each_with_object({}) { |(k, v), h| h[k.to_s] = v }

@@ -40,6 +40,8 @@ and commands may change between minor versions. How releases are made:
   the turn's end.
 - A session started with an annotation (a web quote) is previewed by the note typed under the quote, not
   `From your thinking: > …`; a quote with no note previews by its words.
+- A session that has only context notes so far (`chi note`, `send_note`) is previewed on its card and in the
+  lists as `note: …` instead of `—`, until a message is typed.
 
 ## [0.19.0] - 2026-10-03
 

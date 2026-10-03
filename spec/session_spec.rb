@@ -490,6 +490,26 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.preview_of("From your thinking: is a phrase\nhere")).to eq("From your thinking: is a phrase here")
     end
 
+    it "previews a notes-only session by its first note, until a message is typed" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      note = Samagotchi::ContextNote.message(note_id: "n1", text: "the deploy\nis at 5", source: "chi note")
+      session.messages = [note]
+      session.save(state_dir: tmpdir)
+      expect(described_class.load(session.id, state_dir: tmpdir).first_preview).to eq("note: the deploy is at 5")
+
+      session.messages = [note, { role: "user", content: "when is the deploy?" }]
+      session.save(state_dir: tmpdir)
+      expect(described_class.load(session.id, state_dir: tmpdir).first_preview).to eq("when is the deploy?")
+    end
+
+    it "keeps a set preview when a note arrives" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.first_preview = "the task"
+      session.messages = [Samagotchi::ContextNote.message(note_id: "n1", text: "fyi", source: "chi note")]
+      session.save(state_dir: tmpdir)
+      expect(described_class.load(session.id, state_dir: tmpdir).first_preview).to eq("the task")
+    end
+
     it "does not recompute when already cached" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.first_preview = "original"
