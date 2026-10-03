@@ -1768,6 +1768,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     end
   end
 
+  it "says the worker didn't answer in time when the Bridge read the exit too late" do
+    allow(client).to receive(:request_exit).and_return(response(408, '{"error":"deadline_passed"}'))
+
+    expect(run_lines("/exit")).to eq(:detached)
+
+    expect(screen.lines.last)
+      .to eq("Detached (could not ask the worker to stop: worker not answering in time). Re-attach with: chi --attach s-1234")
+  end
+
   it "detaches when the Bridge is gone" do
     allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
 

@@ -463,6 +463,7 @@ module Samagotchi
           reason = reply.json&.fetch("reason", nil).to_s
           "Detached; the session keeps running (#{HELD_REASONS.fetch(reason, reason)}). Re-attach with: chi --attach #{id}"
         when 0 then exit_failed_line("no reply")
+        when 408 then exit_failed_line(LATE)
         else
           # A worker from before the route answers the Bridge's plain 404.
           return "Detached; this worker runs an older chi and can't be stopped from here: chi sessions stop #{id}" if error == "not_found"

@@ -132,7 +132,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
     expect(reply.status).to eq(409)
     expect(reply.json).to include("reason" => "turn_running")
-    expect(finish.call).to start_with("POST /session/s1/exit HTTP/1.1\r\n").and include('{"client_id":"tui:1"}')
+    expect(finish.call).to start_with("POST /session/s1/exit HTTP/1.1\r\n").and include('{"client_id":"tui:1","deadline":')
   end
 
   it "asks the worker for a recap" do
@@ -149,7 +149,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
     described_class.new(session_id: "s1", port: port).request_exit(client_id: "tui:1", delete: true)
 
-    expect(finish.call).to include('{"client_id":"tui:1","delete":true}')
+    expect(finish.call).to include('{"client_id":"tui:1","delete":true,"deadline":')
   end
 
   it "posts a turn with the client's id and returns the ACK" do

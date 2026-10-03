@@ -698,7 +698,10 @@ module Samagotchi
     # event log held, so no POST /turn lands between its check and its
     # answer; it leaves from its loop after this reply.
     # 200 {status: "exiting", discard?: the session is empty and goes} ({status: "restarting"} for a restart), or 409
-    # {status: "held", reason:} naming what keeps it up. Returns [headers, status, body].
+    # {status: "held", reason:} naming what keeps it up. A past +deadline+
+    # (see #handle_post_turn), checked with the event log held: 408
+    # deadline_passed, the worker not asked (its client said it didn't stop).
+    # Returns [headers, status, body].
     def handle_exit_request(session_id, body)
       return [{}, 501, { error: "exit_unavailable" }] unless @on_exit_request
 
@@ -709,7 +712,15 @@ module Samagotchi
       delete = fetched(parsed, "delete") == true
       restart = fetched(parsed, "restart") == true
       options = restart ? { delete: delete, restart: true } : { delete: delete }
-      reason = @engine.synchronize_events { @on_exit_request.call(client_id, **options) }
+      deadline = fetched(parsed, "deadline")
+      return BAD_DEADLINE unless deadline_valid?(deadline)
+
+      reason = @engine.synchronize_events do
+        next :expired if expired?("exit_expired", deadline, sid: session_id, client_id: client_id)
+
+        @on_exit_request.call(client_id, **options)
+      end
+      return deadline_passed("exit request") if reason == :expired
       if reason.nil?
         return [{}, 200, { status: "restarting", session_id: @session_id }] if restart
 
@@ -849,7 +860,7 @@ module Samagotchi
     end
 
     # The 408 for a request read after its deadline: +what+ (turn, command,
-    # answer, dismissal) was dropped.
+    # answer, dismissal, exit request) was dropped.
     def deadline_passed(what)
       [{}, 408, { error: "deadline_passed", detail: "the #{what} arrived after its client stopped waiting; not run" }]
     end

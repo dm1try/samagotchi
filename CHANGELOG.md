@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- An attached `/exit` the worker reads only after the TUI stopped waiting (a frozen or sleeping worker) no
+  longer stops it later: the request is dropped, as late turns and commands are.
+
 ## [0.20.0] - 2026-10-03
 
 ### Added

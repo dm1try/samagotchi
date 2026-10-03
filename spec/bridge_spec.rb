@@ -1666,6 +1666,21 @@ RSpec.describe Samagotchi::Bridge do
           .to eq([200, { "status" => "exiting", "session_id" => @session.id, "discard" => true }])
       end
 
+      it "drops an exit read after its deadline: the worker is not asked, and a warning logged" do
+        start_bridge(on_exit_request: ->(_, **) { raise "must not be called" })
+        allow(Samagotchi::Log).to receive(:warn).and_call_original
+        allow(@engine).to receive(:synchronize_events).and_call_original
+
+        status, resp = post_exit(JSON.generate(client_id: "tui:1", deadline: Time.now.to_f - 5))
+
+        expect(status).to eq(408)
+        expect(resp).to include("error" => "deadline_passed")
+        expect(@engine).to have_received(:synchronize_events)
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:bridge, "exit_expired", hash_including(sid: @session.id, client_id: "tui:1", late: be > 4))
+        expect(post_exit(JSON.generate(client_id: "tui:1", deadline: "soon")).first).to eq(400)
+      end
+
       it "answers 409 with what keeps the worker up" do
         start_bridge(on_exit_request: ->(_, **) { :client_connected })
 

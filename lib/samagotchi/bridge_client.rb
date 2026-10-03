@@ -28,7 +28,7 @@ module Samagotchi
     # raises Errno::ECONNREFUSED. The event stream has no such limit.
     READ_TIMEOUT = 30
     # Share of the read timeout a request's deadline allows (25 s of 30): the
-    # Bridge drops a turn, command, answer or dismissal it reads after the
+    # Bridge drops a turn, command, answer, dismissal or exit it reads after the
     # deadline, so one this client timed out on, and said did not go
     # through, never runs when a frozen worker wakes. The rest covers the
     # write and the reply.
@@ -159,13 +159,14 @@ module Samagotchi
     # POST /session/:id/exit: ask the worker to exit now (+restart+: hand
     # the session to a new worker, a worker with the "restart" feature). 200
     # = it will (status "exiting"/"restarting"), 409 = something keeps it up (reason), 404 with
-    # error "not_found" = a worker older than the route.
+    # error "not_found" = a worker older than the route, 408 = too late.
     # @param client_id [String] the asking UI, whose own streams don't hold
     # @return [Response]
     def request_exit(client_id:, delete: false, restart: false)
       body = { client_id: client_id }
       body[:delete] = true if delete
       body[:restart] = true if restart
+      body[:deadline] = deadline
       post("exit", body, read_body: true)
     end
 
