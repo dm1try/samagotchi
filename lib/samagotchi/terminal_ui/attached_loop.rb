@@ -455,7 +455,12 @@ module Samagotchi
       # too, so nothing waits here.
       def send_command(line)
         reply = @client.post_command(line: line, client_id: @client_id)
-        return if reply.status == 202
+        if reply.status == 202
+          # Input from a pipe ends once its output is in (#command_ran).
+          command_id = reply.json&.fetch("command_id", nil)
+          @open_ids << command_id if command_id && @wait_at_eof
+          return
+        end
         return @screen.commit(stale_worker("run commands")) if reply.status == 404
         return @screen.commit("could not run the command (#{LATE})") if too_late?(reply)
 
@@ -479,6 +484,7 @@ module Samagotchi
       end
 
       def command_ran(event)
+        @open_ids.delete(event[:command_id])
         @screen.commit(prompt_line(event[:client_id], event[:line])) unless own?(event[:client_id]) || event[:anytime] || event[:card]
         output = event[:output].to_s
         if output.empty?
@@ -945,7 +951,8 @@ module Samagotchi
         return if text.empty?
 
         @screen.commit("#{paint(PROMPT, 92)}#{text}")
-        send_prompt(text)
+        # As if typed: a session command runs as the command.
+        command_registry.command?(text) ? send_command(text) : send_prompt(text)
       end
 
       def render_join_header(messages)

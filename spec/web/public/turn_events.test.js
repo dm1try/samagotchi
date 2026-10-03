@@ -191,13 +191,22 @@ test("keepEarlyRestore skips an acked prompt (the usual order), another client's
   assert.equal(restoreOnAck(undefined, early, opts), null);
 });
 
-import { commandView, continueLine, isCommandLine, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { commandView, continueLine, sessionCommandLine, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
 
-test("isCommandLine: a composer line starting with / or ! goes to the command route", () => {
-  assert.equal(isCommandLine("/model x"), true);
-  assert.equal(isCommandLine("  !ls"), true);
-  assert.equal(isCommandLine("hello /model"), false);
-  assert.equal(isCommandLine(""), false);
+test("sessionCommandLine: the session's commands go to the command route, an unknown /word to the model", () => {
+  const commands = [{ name: "/model" }, { name: "/models" }, { name: "!rollback" }, { name: "/hello", source: "b" }];
+  assert.equal(sessionCommandLine("/model x", commands), true);
+  assert.equal(sessionCommandLine(" /models ", commands), true);
+  assert.equal(sessionCommandLine("/hello again", commands), true);
+  assert.equal(sessionCommandLine("!ls -la", commands), true);
+  assert.equal(sessionCommandLine("!rollback", commands), true);
+  assert.equal(sessionCommandLine("/stats", commands), true);
+  assert.equal(sessionCommandLine("/usr/bin/env is missing", commands), false);
+  assert.equal(sessionCommandLine("/modelx", commands), false);
+  assert.equal(sessionCommandLine("/foo bar", commands), false);
+  assert.equal(sessionCommandLine("!", commands), false);
+  assert.equal(sessionCommandLine("hello /model", commands), false);
+  assert.equal(sessionCommandLine("/model x", undefined), false);
 });
 
 test("webLocalReply: /archive, /exit and /quit are answered by the page, other commands go to the worker", () => {

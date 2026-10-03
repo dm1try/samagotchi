@@ -33,6 +33,7 @@ Exit codes, both commands:
 | Exit | `status` | Meaning |
 |---|---|---|
 | 0 | `answered` | `text` is chi's reply |
+| 0 | `command` | (`chi send`) the message was a session command (`/model x`): it ran as one, no reply comes |
 | 3 | `question` | chi waits for an answer: `question`, `answer_with` |
 | 4 | `running` | `--timeout` passed; the turn goes on, wait again |
 | 1 | `failed`, `canceled`, `no_answer`, `error`, `worker_gone`, `stopped` | `detail` says what happened |

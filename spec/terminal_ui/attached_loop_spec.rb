@@ -1921,6 +1921,31 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
     expect(screen.lines).not_to include("  prompt restored for retry")
   end
 
+  # chi -p "/model x" </dev/null: the command, as if typed; the run waits
+  # for its output, then ends.
+  context "when the -p line is a session command" do
+    let(:attached) do
+      described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "/model fast", wait_at_eof: true)
+    end
+
+    it "runs it as the command and ends once it ran" do
+      commands = []
+      allow(client).to receive(:post_command) do |**options|
+        commands << options[:line]
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}')
+      end
+      start
+      expect(@thread.join(0.3)).to be_nil # waiting for its output
+      @push.call("type" => "command_ran", "command_id" => "c1", "client_id" => "tui:1", "line" => "/model fast",
+                 "status" => "ok", "output" => "switched to fast", "model_name" => "fast")
+
+      expect(result).to eq(:detached)
+      expect(commands).to eq(["/model fast"])
+      expect(posts).to be_empty
+      expect(screen.lines).to include("> /model fast", "model> switched to fast")
+    end
+  end
+
   it "ends with :detached once the turn completes" do
     start
     @push.call("type" => "turn_started", "prompt" => "hello", "origin" => origin)

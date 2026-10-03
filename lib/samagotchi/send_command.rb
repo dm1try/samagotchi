@@ -37,6 +37,8 @@ module Samagotchi
              chi send --wait [--timeout S] [--format json] ID
         Sends a message to each session, as if typed in it: a turn starts,
         or a running one picks it up. A stopped session's worker starts.
+        A session command (/model x, !cmd) runs as the command; --wait
+        then has no reply to wait for (exit 0, status command).
         -m TEXT     the message; stdin, when piped too, goes above it as a
                     quote (context); without -m, stdin is the message
         --image PATH
@@ -64,7 +66,7 @@ module Samagotchi
                     (--wait) one JSON object on stdout, whatever the end:
                     status answered (text), question (question,
                     answer_with), running, or failed, canceled,
-                    no_answer, error, worker_gone, stopped (detail)
+                    no_answer, error, worker_gone, stopped, command (detail)
         Exit with --wait: 0 answered, 1 failed or gone, 2 usage, 3 a
         question waits, 4 still running (--timeout), 130 Ctrl-C.
         Only sessions on this machine. Answers show in the attached TUI
@@ -246,23 +248,27 @@ module Samagotchi
         error_line("chi send: refused: #{refusal}")
         return 1
       end
+      # With images the web's way: idle (the message names it in the
+      # lists), the images copied in, then the message as a turn. So too a
+      # line that may be a session command (/model x): its worker's answer
+      # says whether it ran as one.
+      through_worker = images || command_like?(prompt)
       begin
-        # With images the web's way: idle (the message names it in the
-        # lists), the images copied in, then the message as a turn.
-        start = images ? { prompt: nil, title: prompt } : { prompt: prompt }
+        start = through_worker ? { prompt: nil, title: prompt } : { prompt: prompt }
         session = SessionManager.spawn_session(**start, working_directory: options[:dir],
                                                         model_name: options[:model], state_dir: @state_dir)
       rescue StandardError => e
         error_line("chi send: could not start a session: #{e.message}")
         return 1
       end
-      if images
+      if through_worker
         return 1 unless deliver_new(session, prompt)
       else
         @info.puts("#{session.id}  started")
       end
       @session_id = session.id
       return 0 unless options[:wait]
+      return report_command(session.id) if @sent_command
 
       wait_for_reply(session.id, cursor: nil, baseline: baseline_of(session, question_id: nil),
                                  timeout: options[:timeout])
@@ -297,6 +303,7 @@ module Samagotchi
       cursor = ReplyWait.newest_reply(id, state_dir: @state_dir)
       baseline = baseline_of(session)
       return 1 unless deliver(id, prompt)
+      return report_command(id) if @sent_command
 
       wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout])
     end
@@ -352,8 +359,34 @@ module Samagotchi
         return false
       end
 
-      @info.puts("#{session.id}  started#{with_images}")
+      @sent_command = command_ack?(result[:ack])
+      @info.puts("#{session.id}  started#{with_images}#{"; #{SENT_COMMAND}" if @sent_command}")
       true
+    end
+
+    SENT_COMMAND = "sent as a session command"
+
+    # Whether the worker took the message as a session command (a POST
+    # /turn whose line is one answers with its command_id).
+    def command_ack?(ack) = ack.is_a?(Hash) && !ack["command_id"].to_s.empty?
+
+    # Whether +text+ may be a session command, which only its worker knows
+    # (a bundle's too).
+    def command_like?(text) = text.to_s.lstrip.start_with?("/", "!")
+
+    # --wait after a message that ran as a session command: no reply comes
+    # for it. Its output shows where the session is open.
+    # @return [Integer] 0
+    def report_command(id)
+      detail = "#{SENT_COMMAND}: no reply to wait for (its output shows in chi --attach #{id} or the web)"
+      if @json
+        @stdout.puts(JSON.generate({ status: "command", session_id: id, detail: detail }))
+        @stdout.flush
+        @reported = true
+      else
+        @stderr.puts("#{id[0, 8]}  #{detail}")
+      end
+      CLI::Exit::OK
     end
 
     # @return [Boolean] whether the message was queued
@@ -371,6 +404,12 @@ module Samagotchi
       unless result[:status] == :accepted
         @info.puts("#{short}  failed: #{result.dig(:ack, "detail") || "could not queue it"}")
         return false
+      end
+
+      @sent_command = command_ack?(result[:ack])
+      if @sent_command
+        @info.puts("#{short}  #{SENT_COMMAND}")
+        return true
       end
 
       # A busy worker runs a message with images as its own next turn

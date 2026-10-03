@@ -1383,6 +1383,39 @@ RSpec.describe Samagotchi::Bridge do
         expect(res.code).to eq("404")
       end
 
+      # chi send -m "/model x", chi -p "/model x", a web page whose command
+      # list lags: a session command sent as a prompt runs as the command.
+      it "runs a session command sent as a turn as the command, not as a prompt" do
+        queued = []
+        start_bridge(on_command: ->(command) { queued << command })
+        @engine.command_registry.register("/hello", "greet", source: "sample-plugin") { |_args| "hi" }
+        seen = []
+        @engine.subscribe(observer: ->(e) { seen << e })
+
+        status, body = post_turn(JSON.generate(session_id: @session.id, prompt: " /model x ", client_id: "cli:send"))
+        _, plugin = post_turn(JSON.generate(session_id: @session.id, prompt: "/hello there", client_id: "cli:send"))
+
+        expect(status).to eq(202)
+        expect(body).to include("status" => "accepted", "command_id" => be_a(String))
+        expect(body).not_to have_key("enqueued_id")
+        expect(queued.map { |c| c.slice(:command_id, :client_id, :line) })
+          .to eq([{ command_id: body["command_id"], client_id: "cli:send", line: "/model x" },
+                  { command_id: plugin["command_id"], client_id: "cli:send", line: "/hello there" }])
+        expect(seen.map { |e| e[:type] }).to eq(%i[command_queued command_queued])
+        input_dir = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+        expect(Dir.exist?(input_dir) ? Dir.children(input_dir) : []).to be_empty
+      end
+
+      # As the TUIs send them: an unknown /word goes to the model.
+      it "keeps a turn that only looks like a command a prompt: an unknown /word, a path" do
+        start_bridge(on_command: ->(_) { raise "must not be called" })
+
+        ["/usr/bin is slow", "/foo bar", "/modelx"].each do |prompt|
+          status, body = post_turn(JSON.generate(session_id: @session.id, prompt: prompt))
+          expect([status, body.keys]).to eq([202, %w[status enqueued_id session_id]])
+        end
+      end
+
       it "takes the Engine's plugin commands too (a card's action)" do
         queued = []
         start_bridge(on_command: ->(command) { queued << command })

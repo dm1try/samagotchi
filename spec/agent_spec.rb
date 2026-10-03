@@ -533,6 +533,23 @@ file2.rb")
       expect(status).to eq(1)
     end
 
+    # As typed at the prompt: a session command runs as the command.
+    it "runs a -p session command as the command with --non-interactive: its output, no turn" do
+      expect(client).not_to receive(:complete)
+      agent = described_class.new(prompt: "/model", client: client, non_interactive: true)
+
+      expect { expect(agent.run).to be_nil }.to output(/runtime model: /).to_stdout
+    end
+
+    it "fails a -p session command that errors with --non-interactive (bin/chi exits 1)" do
+      expect(client).not_to receive(:complete)
+      agent = described_class.new(prompt: "/guardrails revoke 99", client: client, non_interactive: true)
+
+      ended = nil
+      expect { ended = agent.run }.to output(/99/).to_stdout
+      expect(ended).to eq(:turn_failed)
+    end
+
     it "exits normally when the -p --non-interactive turn answers" do
       allow(client).to receive(:complete).and_return("done")
       agent = described_class.new(prompt: "hi", client: client, non_interactive: true)

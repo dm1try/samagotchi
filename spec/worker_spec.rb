@@ -733,6 +733,35 @@ RSpec.describe Samagotchi::Worker do
         expect(plain).not_to have_key(:card)
       end
 
+      # chi send --new -m "/model x", the web start page's first message.
+      it "runs a session command given as the first prompt as the command; the session is idle after it" do
+        session.messages = []
+        session.last_prompt = "/model Qwen3-14B"
+        session.status = Samagotchi::Session::STATUS_RUNNING
+        session.save(state_dir: tmpdir)
+
+        start_worker(poll_interval: 5)
+
+        wait_until(timeout: 2) { events_seen.any? { |e| e[:type] == :command_ran } }
+        done = seen.find { |e| e[:type] == :command_ran }
+        expect(done).to include(line: "/model Qwen3-14B", status: "ok", model_name: "Qwen3-14B", client_id: nil)
+        expect(turns).to be_empty
+        saved = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        expect([saved.model_name, saved.status, saved.last_prompt]).to eq(["Qwen3-14B", Samagotchi::Session::STATUS_IDLE, ""])
+      end
+
+      # A message queued as a file while no worker was up (chi send).
+      it "runs a session command from an input file as the command, for its sender" do
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "/model Qwen3-14B", client_id: "cli:send",
+                                                                enqueued_id: "e1", state_dir: tmpdir)
+        start_worker(poll_interval: 5)
+
+        wait_until(timeout: 2) { events_seen.any? { |e| e[:type] == :command_ran } }
+        expect(seen.find { |e| e[:type] == :command_ran }).to include(line: "/model Qwen3-14B", client_id: "cli:send",
+                                                                     status: "ok")
+        expect(turns).to be_empty
+      end
+
       it "refuses lines that aren't commands, and other sessions" do
         start_worker(poll_interval: 5)
 

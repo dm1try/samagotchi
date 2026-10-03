@@ -173,7 +173,7 @@ module Samagotchi
           absorb_notes
 
           if (prompt = take_initial_prompt)
-            run_prompt(prompt, nil)
+            run_prompt(prompt, nil) unless initial_command(prompt)
             next
           end
 
@@ -269,6 +269,29 @@ module Samagotchi
       prompt
     end
 
+    # A session command sent as a message (chi send -m "/model x", a web
+    # page's first message) runs as the command, as the Bridge does for a
+    # POST /turn; an unknown /word stays a prompt. Queued: the loop's next
+    # pass runs it.
+    # @return [Boolean] whether +text+ was one
+    def queue_as_command(text, origin)
+      return false unless @engine.command_registry.command?(text.to_s)
+
+      @bridge.queue_command(text, client_id: origin&.dig(:client_id))
+      true
+    end
+
+    # The first prompt as a command: the session was saved as running for a
+    # turn that won't run.
+    # @return [Boolean] whether it was one
+    def initial_command(prompt)
+      return false unless queue_as_command(prompt, nil)
+
+      @session.status = Session::STATUS_IDLE
+      save_session
+      true
+    end
+
     # Add the queued context notes to the conversation (between turns only,
     # on this thread), save, then delete their files: a crash before the
     # delete leaves them claimed, and Engine#add_context_note skips a note
@@ -293,7 +316,10 @@ module Samagotchi
 
       begin
         message, origin, no_interrupt, images = SessionInbox.read_input(claimed_file)
-        run_prompt(message, origin, no_interrupt: !!no_interrupt, images: images || []) unless message.to_s.strip.empty?
+        return if message.to_s.strip.empty?
+        return if Array(images).empty? && queue_as_command(message, origin)
+
+        run_prompt(message, origin, no_interrupt: !!no_interrupt, images: images || [])
       ensure
         FileUtils.rm_f(claimed_file)
       end

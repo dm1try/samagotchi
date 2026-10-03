@@ -244,6 +244,16 @@ module Samagotchi
       end
     end
 
+    # The worker's own way in for a session command that came as a message
+    # (its first prompt, an input file): queued and announced as a POST
+    # /command's is (#handle_command).
+    # @return [String] its command_id
+    def queue_command(line, client_id: nil)
+      command = { command_id: SecureRandom.uuid, client_id: client_id, line: line.to_s.strip }
+      @engine.synchronize_events { queue_command_locked(command) }
+      command[:command_id]
+    end
+
     private
 
     # The Engine's commands: the built-ins and its plugins'.
@@ -612,22 +622,35 @@ module Samagotchi
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
-      command = { command_id: SecureRandom.uuid, client_id: fetched(parsed, "client_id"), line: line }
+      queue_command_request(session_id, line, client_id: fetched(parsed, "client_id"), deadline: deadline,
+                                              card: fetched(parsed, "card") == true)
+    end
+
+    # Queues +line+ (a session command) for the worker and announces its
+    # :command_queued, unless +deadline+ has passed. Returns [headers,
+    # status, body]: 202 with its command_id, or 408.
+    def queue_command_request(session_id, line, client_id:, deadline: nil, card: false)
+      command = { command_id: SecureRandom.uuid, client_id: client_id, line: line }
       # A card's action: the UIs leave its line out (the card is the echo).
-      command[:card] = true if fetched(parsed, "card") == true
+      command[:card] = true if card
       queued = @engine.synchronize_events do
         next false if expired?("command_expired", deadline, sid: session_id, client_id: command[:client_id])
 
-        @on_command.call(command)
-        # An anytime command runs now, beside a turn (D8): the UIs show its
-        # line here, so the cards it shows come after it.
-        anytime = command_registry.lookup(line)&.anytime ? { anytime: true } : {}
-        @engine.announce(type: :command_queued, **command, **anytime)
+        queue_command_locked(command)
         true
       end
       return deadline_passed("command") unless queued
 
       [{}, 202, { status: "accepted", command_id: command[:command_id], session_id: @session_id }]
+    end
+
+    # With the event log held.
+    def queue_command_locked(command)
+      @on_command.call(command)
+      # An anytime command runs now, beside a turn (D8): the UIs show its
+      # line here, so the cards it shows come after it.
+      anytime = command_registry.lookup(command[:line])&.anytime ? { anytime: true } : {}
+      @engine.announce(type: :command_queued, **command, **anytime)
     end
 
     # A client asks the worker to exit now (`/exit` in the attached TUI). The
@@ -687,6 +710,14 @@ module Samagotchi
 
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
+
+      # A session command sent as a message (chi send -m "/model x", chi -p,
+      # a UI whose command list lags) runs as the command, as typed in a
+      # TUI; an unknown /word stays a prompt. Not with images: those are
+      # for the model.
+      if images.empty? && @on_command && command_registry.command?(prompt.to_s)
+        return queue_command_request(sid, prompt.to_s.strip, client_id: client_id, deadline: deadline)
+      end
 
       enqueued_id = SecureRandom.uuid
       # Write and announce with the event log held: the worker can't emit

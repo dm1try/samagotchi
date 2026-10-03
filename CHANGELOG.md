@@ -47,6 +47,9 @@ and commands may change between minor versions. How releases are made:
 - An `index.md` line a bundle install, upgrade or uninstall couldn't write or remove is now a warning
   (`index.md: line for notes not updated (…)`) instead of passing silently; `chi bundle uninstall` of a profile
   prints its bundles' warnings too.
+- Web: a composer line is a command only when it names one of the session's commands (or is `!…`); an unknown
+  `/word` (a path like `/usr/bin/env …`, a typo) goes to the model as a prompt, as in a terminal, instead of being
+  refused with `not a session command`.
 
 ### Fixed
 
@@ -71,6 +74,10 @@ and commands may change between minor versions. How releases are made:
   from the call's start, not from the join.
 - Web: in a short window a question or approval card that opens in the turn's stage is scrolled into view (its
   choices and buttons); it sat below the prompt and headline, out of sight.
+- A session command sent as a message runs as the command, as typed in a terminal: `chi send -m "/model x" ID`,
+  `chi send --new -m "/model x"`, `chi -p "/model x"` (attached and `--non-interactive`) and the web start page's
+  first message went to the model as a prompt. `chi send` says `sent as a session command`; with `--wait` there is
+  no reply to wait for (exit 0, `--format json` status `command`). An unknown `/word` still goes to the model.
 
 ## [0.16.0] - 2026-10-03
 

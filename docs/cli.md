@@ -283,7 +283,9 @@ In an attached terminal:
 - The prompt stays open while a turn runs; see [Typing during a turn](#typing-during-a-turn).
 - `/model`, `/models`, `/guardrails`, `/continue`, `!rollback` and `!commands` run in the
   worker, and every UI sees their output; `/stats` and `/recap` work too. The
-  Web UI's composer takes the same commands.
+  Web UI's composer takes the same commands, and so do `-p "/model x"` and
+  `chi send -m "/model x"`. A `/word` the session doesn't know (a path, a
+  typo) goes to the model as a prompt.
 - `!commands` and the model's tools run in the session's directory (where it
   was started), whichever terminal you attach from.
 - `-p` sends its prompt once attached, `--model` switches the worker's model

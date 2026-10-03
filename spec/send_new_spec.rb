@@ -207,6 +207,42 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(err.string).to eq("#{old.id[0, 8]}  sent\n")
   end
 
+  describe "a session command as the message (no reply comes for it)" do
+    before do
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, **|
+        delivered << [id, prompt]
+        { status: :accepted, ack: { "status" => "accepted", "command_id" => "c1", "session_id" => id } }
+      end
+    end
+
+    it "says it went in as a command and exits 0 without waiting" do
+      a = make(status: "idle")
+
+      expect(run("--wait", "-m", "/model x", a.id)).to eq(0)
+      expect(out.string).to be_empty
+      expect(err.string).to include("#{a.id[0, 8]}  sent as a session command: no reply to wait for")
+      expect(delivered).to eq([[a.id, "/model x"]])
+    end
+
+    it "is status command in --format json" do
+      a = make(status: "idle")
+
+      expect(run("--wait", "--format", "json", "-m", "/model x", a.id)).to eq(0)
+      expect(JSON.parse(out.string)).to include("status" => "command", "session_id" => a.id)
+    end
+
+    # The worker decides what is a command (a bundle's too), so the line
+    # goes in as a message to a live worker, whose answer says.
+    it "with --new starts the session idle and sends the line through its worker" do
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
+
+      expect(run("--new", "--wait", "-m", "/model x")).to eq(0), err.string
+      expect(@started.last_prompt).to be_nil
+      expect(delivered).to eq([[@started.id, "/model x"]])
+      expect(err.string).to include("sent as a session command")
+    end
+  end
+
   it "refuses a session with a running turn: its reply would be printed as the answer" do
     busy = make(status: "running")
 

@@ -232,6 +232,10 @@ module Samagotchi
       @engine.session = session
       messages = messages_for(session)
 
+      # As typed at the prompt: a session command (/models, !ls) runs as
+      # the command, not as a turn.
+      return run_one_shot_command(session) if @prompt && @non_interactive && command_registry.command?(@prompt)
+
       if @prompt && @non_interactive
         # Headless / CI mode: run directly without TTY rendering.
         ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir)
@@ -280,6 +284,22 @@ module Samagotchi
     end
 
     EMPTY_ANSWER_ERROR = "chi: the model gave an empty answer"
+
+    # `chi -p "/models" --non-interactive`: the command's output; a refused
+    # one fails the run (bin/chi exits 1). The session is saved only when
+    # the command changed it.
+    # @return [Symbol, nil] :turn_failed when the command was refused
+    def run_one_shot_command(session)
+      line = @prompt.strip
+      result = begin
+        @commands.run(line)
+      rescue StandardError => e
+        SessionCommands::Result.new(status: :error, output: "#{line.split.first}: #{e.message}", changed: [])
+      end
+      @surface.commit(result.output) unless result.output.to_s.empty?
+      session.save unless Array(result.changed).empty?
+      :turn_failed if result.status == :error
+    end
 
     # Delete the scratch session, the last thing the REPL does. Quiet after
     # a one-shot or on the way out of an error or a signal.

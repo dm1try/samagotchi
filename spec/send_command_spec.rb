@@ -53,13 +53,13 @@ RSpec.describe Samagotchi::SendCommand do
 
   # A live worker's Bridge (no turn loop: it only writes input files and
   # announces), with the events its engine sent.
-  def serve(session)
+  def serve(session, on_command: nil)
     engine = Samagotchi::Engine.new(client: test_client,
                                     kernel: test_kernel)
     events = []
     engine.subscribe(observer: ->(e) { events << e })
     bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
-                                    input_format: Samagotchi::SessionInbox::INPUT_FORMAT)
+                                    input_format: Samagotchi::SessionInbox::INPUT_FORMAT, on_command: on_command)
     bridge.start
     bridges << bridge
     events
@@ -85,6 +85,21 @@ RSpec.describe Samagotchi::SendCommand do
     expect(inputs_of(a)).to contain_exactly(include("prompt" => "is this the same bug?", "client_id" => "cli:send"))
     expect(events.map { |e| e.slice(:type, :client_id, :prompt) })
       .to eq([{ type: :turn_enqueued, client_id: "cli:send", prompt: "is this the same bug?" }])
+  end
+
+  # As typed in the TUI: /model switches the model, the model never sees it.
+  it "sends a session command as the command, and an unknown /word as a message" do
+    a = make(owner: "worker")
+    queued = []
+    events = serve(a, on_command: ->(command) { queued << command })
+
+    expect(run("-m", "/model qwen", short(a))).to eq(0), err.string
+    expect(run("-m", "/usr/bin/env is missing", short(a))).to eq(0), err.string
+
+    expect(out.string).to eq("#{short(a)}  sent as a session command\n#{short(a)}  sent\n")
+    expect(queued.map { |c| c.slice(:client_id, :line) }).to eq([{ client_id: "cli:send", line: "/model qwen" }])
+    expect(inputs_of(a)).to contain_exactly(include("prompt" => "/usr/bin/env is missing"))
+    expect(events.map { |e| e[:type] }).to eq(%i[command_queued turn_enqueued])
   end
 
   it "quotes stdin above the -m message" do
