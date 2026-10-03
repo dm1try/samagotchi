@@ -92,6 +92,20 @@ RSpec.describe "The mcp bundle's client" do
     expect(exits.size).to eq(0)
   end
 
+  it "fails a waiting call with a plain reason when the wait status is nil" do
+    initialize!
+    allow(client.instance_variable_get(:@wait)).to receive(:value).and_return(nil)
+    waiting = Thread.new do
+      client.request("tools/call", { name: "slow" }, timeout: 5)
+    rescue client_class::Dead => e
+      e.message
+    end
+    sleep 0.1
+    client.send(:ended)
+    expect(waiting.value).to eq("the server exited")
+    expect(exits.pop(timeout: 2)).to eq("the server exited")
+  end
+
   it "ends the process on close, without an exit notice" do
     initialize!
     pid = client.pid

@@ -23,6 +23,11 @@ and commands may change between minor versions. How releases are made:
   the shipped-bundle update skips it (upgrade chi or reinstall), and `chi bundle diff` refuses it with a one-line
   error instead of a stack trace.
 
+### Fixed
+
+- An MCP server that exits without a wait status no longer raises `NoMethodError`; its waiting calls fail with
+  "the server exited" instead of hanging.
+
 ## [0.19.0] - 2026-10-03
 
 ### Changed

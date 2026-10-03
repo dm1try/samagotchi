@@ -1,11 +1,11 @@
 ---
 name: mcp
-version: 0.4.0
+version: 0.4.1
 scope: system
 description: "Tools from MCP servers (stdio): each server in config.yml bundles: mcp: servers: runs for the session, its tools are mcp_<server>_<tool>; /mcp lists them"
 trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:009dbb3b754958a6d9edb1e3b828f486aa0ddd09ff5b548f0c576abbfea18807
+  sha256: sha256:7069ae2b388649980bf50242de9169298e165f6a084cb29ea43bbf5a34efe460
 requires_chi: ">= 0.8.0"

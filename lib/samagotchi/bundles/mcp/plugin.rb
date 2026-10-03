@@ -218,7 +218,11 @@ class Plugin
 
     def ended
       status = @wait.value
-      reason = "the server exited (#{status.exitstatus ? "status #{status.exitstatus}" : "signal #{status.termsig}"})"
+      reason = if status.nil?
+                 "the server exited"
+               else
+                 "the server exited (#{status.exitstatus ? "status #{status.exitstatus}" : "signal #{status.termsig}"})"
+               end
       waiting, closing = @mutex.synchronize do
         @dead ||= reason
         [@pending.values, @closing]
