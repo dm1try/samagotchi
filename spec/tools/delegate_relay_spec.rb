@@ -190,6 +190,14 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     expect(Samagotchi::Session.load(child.id, state_dir: tmpdir).pending_question[:id]).to eq("q1")
   end
 
+  it "closes the relay on the desk when the relay fails before it settles, so none stays open" do
+    update(child, pending_question: approval)
+    relay.answer = ->(_f, _w) { raise IOError, "question flow broke" }
+    expect { wait }.to raise_error(IOError)
+    relay_id = client.posts.first[:relay_id]
+    expect(relay.relay_desk.status(relay_id)).to include(state: "closed")
+  end
+
   it "waits on after the relay for a turn that ends with no reply, not until the timeout" do
     update(child, pending_question: approval)
     user_answers("Deny", 2)

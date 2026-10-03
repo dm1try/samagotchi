@@ -55,6 +55,10 @@ module Samagotchi
         fields = Relay.card(child, question, relay_id: relay_id, more: more)
         answer = relay.open_question(fields, watch: watch(child_id, qid, state_dir))
         settle(answer, fields, client: client, desk: desk, relay_id: relay_id, qid: qid)
+      ensure
+        # A relay that failed before it settled closes, so the desk (which
+        # prunes only settled ones) keeps none open; a settled one stays.
+        desk&.close(relay_id) if relay_id
       end
 
       # Closes the card when the child's question is no longer pending (it
