@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 - The web shows a plugin card that is only a notice (info level, no buttons, one short line, such as check-in's
   "Nudged the model at 105 tool calls.") as a one-line row, `▸ check-in: Nudged …`, that opens on a click, like the
   tool rows and resolved questions; warn cards, cards with buttons and longer ones stay framed cards.
+- On a phone (a window under 900 px wide) the sessions strip's `hide` is in the top bar, where the `▾ N sessions`
+  pill comes back, with a finger-sized target, instead of the last column of the sideways-scrolling strip.
 
 ### Fixed
 

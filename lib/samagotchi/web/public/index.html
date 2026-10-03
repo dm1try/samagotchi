@@ -672,6 +672,13 @@ body.has-session #scope .scope-where{display:none}
 #stripShow .waiting-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-right:4px;vertical-align:1px}
 #stripHide{align-self:flex-end;border:0;padding:0 2px;border-radius:4px}
 #stripHide:hover{text-decoration:underline;color:var(--text-2)}
+/* A narrow window's strip scrolls sideways, which puts its own "hide ▴" out of sight: the top bar has it instead, where the pill comes back, with a finger-sized target. */
+#stripHideTop{display:none;white-space:nowrap;flex-shrink:0}
+@media(max-width:900px){
+  body:not(.strip-hidden):not(.all-view) #stripHideTop{display:block}
+  #stripHide{display:none}
+  #stripHideTop,#stripShow{min-height:30px;padding:4px 12px;font-size:12px}
+}
 body.strip-hidden #stripShow{display:block}
 body.strip-hidden #topStrip, body.all-view #stripShow{display:none}
 #allTile{flex:1;flex-direction:column;justify-content:center;align-items:flex-start;text-align:left;color:var(--text-2);font-size:13px;font-weight:600;width:100%}
@@ -751,6 +758,7 @@ a{color:var(--accent)}
     <button type="button" id="newBtn" class="brand" title="New chat"><span class="brand-name">chi</span><span class="brand-new">+<span class="brand-new-word"> new chat</span></span></button>
     <div id="scope" hidden></div>
     <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions"><span class="pill-arrow" aria-hidden="true">▾</span> sessions</button>
+    <button type="button" class="strip-toggle" id="stripHideTop" title="Hide the latest sessions"><span class="pill-arrow" aria-hidden="true">▴</span> hide</button>
     <button type="button" id="notifyBtn" aria-label="Notifications" aria-pressed="false" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path class="bell" d="M8 1.75a4 4 0 0 0-4 4v2.6L2.75 10.6v.9h10.5v-.9L12 8.35v-2.6a4 4 0 0 0-4-4Z"/><path class="clapper" d="M6.5 13a1.5 1.5 0 0 0 3 0"/><path class="slash" d="M2.5 2.5l11 11"/></svg></button>
   </div>
   <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
