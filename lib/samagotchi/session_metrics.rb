@@ -296,7 +296,8 @@ module Samagotchi
         retries: totals[:retries] + (turn&.retries || 0),
         started_at: @started_at,
         last_activity_at: @last_activity_at,
-        session_duration_ms: elapsed_ms(@session_started_monotonic),
+        # From the session's first start (an earlier process's too), to now.
+        session_duration_ms: ms_since(@started_at),
         **records_view(records_mode),
         active_turn: active_turn_snapshot,
         active_tools: active_tool_snapshots
@@ -327,7 +328,6 @@ module Samagotchi
           load_persisted
         end
         @started_at ||= now.iso8601(3)
-        @session_started_monotonic ||= monotonic_time
         @turn = TurnState.new(
           session_id: @session_id,
           iteration_count: 0,
@@ -564,6 +564,15 @@ module Samagotchi
       return 0 unless started
 
       [((monotonic_time - started) * 1000.0).round, 0].max
+    end
+
+    # Wall-clock ms from an ISO 8601 stamp to now (0 without one).
+    def ms_since(timestamp)
+      return 0 unless timestamp
+
+      [((now - Time.iso8601(timestamp.to_s)) * 1000.0).round, 0].max
+    rescue ArgumentError
+      0
     end
 
     def tool_key(iteration, call_index)

@@ -493,6 +493,26 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(woken.snapshot).to include(tool_calls_total: 2, tool_calls_by_tool: { "read" => 1, "execute" => 1 })
   end
 
+  it "measures the session's duration from its first start, across collectors" do
+    state_dir = Dir.mktmpdir
+    wall_time = Time.utc(2026, 9, 21, 10, 0, 0)
+    first = described_class.new(wall_clock: -> { wall_time })
+    first.state_dir = state_dir
+    first.call(type: :turn_started, session_id: "long", prompt: "one")
+    first.call(type: :turn_completed)
+    first.persist
+
+    wall_time += 3600
+    woken = described_class.new(wall_clock: -> { wall_time })
+    woken.state_dir = state_dir
+    woken.call(type: :turn_started, session_id: "long", prompt: "two")
+    wall_time += 2
+
+    snap = woken.snapshot
+    expect(snap[:started_at]).to eq("2026-09-21T10:00:00.000Z")
+    expect(snap[:session_duration_ms]).to eq(3_602_000)
+  end
+
   # A worker that stops (idle exit, `chi sessions stop`) and wakes again is
   # a new collector for the same session: its totals must cover both.
   it "totals every process's turns when two collectors persist to one dir in turn" do

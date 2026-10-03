@@ -78,6 +78,8 @@ and commands may change between minor versions. How releases are made:
   the web's info bar) right away, instead of none until its first generation.
 - A tool call still running when its turn is cancelled (or fails) is saved in the session's analytics as
   `canceled`, so the session's tool totals (`/stats`) count it as the turn did instead of dropping it.
+- A session's `analytics.json` `session_duration_ms` runs from the session's `started_at`, not from when its current
+  worker started.
 
 ## [0.18.1] - 2026-10-03
 
