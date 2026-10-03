@@ -15,7 +15,7 @@ RSpec.describe "chi bundle (CLI)" do
   BUNDLE_FIXTURES = File.expand_path("fixtures", __dir__)
 
   TOP_USAGE = <<~TEXT
-    Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build> [options]
+    Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash> [options]
 
       install <source> [--scope system|project] [--force]
         Install a memory bundle from a directory, zip, tar archive, or git URL.
@@ -42,6 +42,10 @@ RSpec.describe "chi bundle (CLI)" do
         Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip).
         --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
         FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones).
+
+      trash [--empty] [--dry-run] [--older-than DAYS]
+        List bundle trash (moved files from uninstalls/upgrades).
+        --empty deletes all trash folders. --older-than DAYS keeps only recent ones.
   TEXT
 
   INSTALL_USAGE = <<~TEXT
@@ -288,7 +292,7 @@ Hooks removed: 1\n\z})
     end
 
     it "refuses an unknown subcommand" do
-      expect(chi("nope")).to eq(["", "Unknown bundle subcommand: nope. Use: install, upgrade, uninstall, status, diff, list, build\n", 2])
+      expect(chi("nope")).to eq(["", "Unknown bundle subcommand: nope. Use: install, upgrade, uninstall, status, diff, list, build, trash\n", 2])
     end
 
     it "status and diff with nothing installed" do
@@ -430,6 +434,66 @@ Hooks removed: 1\n\z})
       expect(out).to include("    guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]\n" \
                              "    requires_chi: >= 99.0\n    not loaded: #{failure}\n")
       expect(chi("status")[0]).to eq("  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n")
+    end
+  end
+
+  context "trash subcommand" do
+    before { @root = self.class.sandbox }
+    after { FileUtils.rm_rf(@root) }
+
+    it "prints usage error for --dry-run without --empty" do
+      out, err, code = chi("trash", "--dry-run")
+      expect([err, code]).to eq(["Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]\n", 2])
+    end
+
+    it "prints usage error for --older-than without --empty" do
+      out, err, code = chi("trash", "--older-than", "7")
+      expect([err, code]).to eq(["Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]\n", 2])
+    end
+
+    it "prints usage error for --older-than with bad value" do
+      _, err, code = chi("trash", "--empty", "--older-than", "abc")
+      expect([err, code]).to eq(["Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]\n", 2])
+    end
+
+    it "prints usage error for --older-than with 0" do
+      _, err, code = chi("trash", "--empty", "--older-than", "0")
+      expect([err, code]).to eq(["Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]\n", 2])
+    end
+
+    it "prints empty message when trash is empty" do
+      out, _, code = chi("trash")
+      expect([out, code]).to eq(["The bundle trash is empty.\n", 0])
+    end
+
+    it "lists trash entries after uninstall" do
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
+      chi("uninstall", "sample-hooks-bundle")
+
+      out, _, code = chi("trash")
+      expect([_, code]).to eq(["", 0])
+      expect(out).to match(/\A  sample-hooks-bundle-\d{8}-\d{6}  \d+ file  \d+ B  just now\n\nEmpty it with: chi bundle trash --empty \[--older-than DAYS\]\n\z/)
+    end
+
+    it "--empty deletes all trash folders" do
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
+      chi("uninstall", "sample-hooks-bundle")
+
+      out, _, code = chi("trash", "--empty")
+      expect([_, code]).to eq(["", 0])
+      expect(out).to match(/\ADeleted \d+ folder \(1 file\) from the trash\.\n\z/)
+      expect(Dir.glob(File.join(memories, ".bundles", ".trash", "**", "*"))).to eq([])
+    end
+
+    it "--empty --dry-run prints what would be deleted" do
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
+      chi("uninstall", "sample-hooks-bundle")
+
+      out, err, code = chi("trash", "--empty", "--dry-run")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to match(/\AWould delete: sample-hooks-bundle-\d{8}-\d{6}/)
+      # Trash should still exist
+      expect(Dir.glob(File.join(memories, ".bundles", ".trash", "*"))).not_to be_empty
     end
   end
 end

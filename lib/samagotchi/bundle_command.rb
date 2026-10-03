@@ -10,7 +10,7 @@ module Samagotchi
   # subcommands have their own flags).
   class BundleCommand
     USAGE = <<~TEXT
-      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build> [options]
+      Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build|trash> [options]
 
         install <source> [--scope system|project] [--force]
           Install a memory bundle from a directory, zip, tar archive, or git URL.
@@ -37,6 +37,10 @@ module Samagotchi
           Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip).
           --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
           FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones).
+
+        trash [--empty] [--dry-run] [--older-than DAYS]
+          List bundle trash (moved files from uninstalls/upgrades).
+          --empty deletes all trash folders. --older-than DAYS keeps only recent ones.
     TEXT
 
     # Each subcommand's --help (and only --help: -h and help are taken as
@@ -64,6 +68,7 @@ module Samagotchi
           chi bundle build --scope project --name my-bundle --version 1.0.0 --out bundle.zip
           chi bundle build --scope system --out ./my-bundle/ identity.md work.md
     TEXT
+    TRASH_HELP = "Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]"
 
     # The subcommands' flags: --help only; a word not starting with -- is
     # a positional (install's source, -h included). --scope takes whatever
@@ -82,6 +87,11 @@ module Samagotchi
     end
     BUILD_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/, dash_values: false) do |f|
       %w[--scope --name --version --description --out].each { |name| f.value name }
+    end
+    TRASH_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
+      f.switch "--empty"
+      f.switch "--dry-run"
+      f.value "--older-than"
     end
 
     # @param argv [Array<String>] the arguments after "bundle"
@@ -108,8 +118,9 @@ module Samagotchi
       when "diff" then diff(@argv[1..])
       when "list" then list
       when "build" then build(@argv[1..])
+      when "trash" then trash(@argv[1..])
       else
-        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build"
+        @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash"
         return CLI::Exit::USAGE
       end
     end
@@ -576,6 +587,101 @@ module Samagotchi
       rescue Samagotchi::MemoryBundle::Builder::BuildError => e
         @stderr.puts "Build failed: #{e.message}"
         return 1
+      end
+    end
+
+    def trash(rest)
+      parsed = parse_flags(TRASH_FLAGS, rest, "trash", help: TRASH_HELP)
+      return parsed if parsed.is_a?(Integer)
+
+      opts = parsed.options
+      empty = opts.fetch(:empty, false)
+      dry_run = opts.fetch(:dry_run, false)
+      older_than = opts[:older_than]
+
+      # --older-than and --dry-run without --empty are a usage error
+      if (older_than || dry_run) && !empty
+        @stderr.puts "Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]"
+        return CLI::Exit::USAGE
+      end
+
+      # Validate older_than if given
+      if older_than
+        if older_than.to_s.match?(/\A\d+\z/) && older_than.to_i > 0
+          older_than = older_than.to_i
+        else
+          @stderr.puts "Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]"
+          return CLI::Exit::USAGE
+        end
+      end
+
+      if empty
+        do_empty(older_than_days: older_than, dry_run: dry_run)
+      else
+        do_list
+      end
+    end
+
+    def do_list
+      entries = Samagotchi::MemoryBundle::Trash.entries
+      if entries.empty?
+        @stdout.puts "The bundle trash is empty."
+        return 0
+      end
+
+      entries.each do |e|
+        @stdout.puts "  #{e.name}  #{e.files} file#{'s' unless e.files == 1}  #{format_bytes(e.bytes)}  #{format_age(e.time)}"
+      end
+      @stdout.puts "\nEmpty it with: chi bundle trash --empty [--older-than DAYS]"
+      0
+    end
+
+    def do_empty(older_than_days:, dry_run:)
+      entries = Samagotchi::MemoryBundle::Trash.empty!(
+        older_than_days: older_than_days,
+        dry_run: dry_run,
+      )
+      if entries.empty?
+        @stdout.puts "The bundle trash is empty."
+        return 0
+      end
+
+      total_files = entries.sum(&:files)
+      if dry_run
+        entries.each do |e|
+          @stdout.puts "Would delete: #{e.name} (#{e.files} file#{'s' unless e.files == 1}, #{format_bytes(e.bytes)})"
+        end
+        @stdout.puts "\n(dry-run: #{entries.size} folder#{'s' unless entries.size == 1}, #{total_files} file#{'s' unless total_files == 1})"
+      else
+        @stdout.puts "Deleted #{entries.size} folder#{'s' unless entries.size == 1} (#{total_files} file#{'s' unless total_files == 1}) from the trash."
+      end
+      0
+    end
+
+    # Format bytes as human-readable (B, KB, MB with one decimal)
+    def format_bytes(bytes)
+      return "0 B" if bytes == 0
+      if bytes < 1024
+        "#{bytes} B"
+      elsif bytes < 1_048_576
+        "#{(bytes / 1024.0).round(1)} KB"
+      else
+        "#{(bytes / 1_048_576.0).round(1)} MB"
+      end
+    end
+
+    # Format age as "just now", "N minutes ago", "N hours ago", "N days ago"
+    def format_age(time)
+      now = Time.now
+      diff = now - time
+      if diff < 60
+        "just now"
+      elsif diff < 3600
+        "#{(diff / 60).to_i} minutes ago"
+      elsif diff < 86_400
+        "#{(diff / 3600).to_i} hours ago"
+      else
+        "#{(diff / 86_400).to_i} days ago"
       end
     end
 
