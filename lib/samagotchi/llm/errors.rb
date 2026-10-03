@@ -22,6 +22,9 @@ module Samagotchi
     #   ConnectionError  no answer (refused, reset, timeout); RetryExhausted,
     #                    ConnectionRefused
     #   RateLimited      429, with retry_after when the server says
+    #   CreditsHeld      402 "… in-flight requests": credit reserved by other
+    #                    requests; a RateLimited, retried after 20 s
+    #   OutOfCredits     any other 402; never retried
     #   ServerError      5xx or a server's error event mid-stream
     #   AuthError        401/403, or an API key variable that is not set
     #   BadRequest       other 4xx (a context overflow is one, whatever status;
@@ -82,6 +85,24 @@ module Samagotchi
       private
 
       def default_retryable? = true
+    end
+
+    # A 402 that says the account's credit is reserved by requests still in
+    # flight (OpenRouter: "This request would exceed your available credits
+    # given your current in-flight requests"): it clears once they settle,
+    # so it is retried like a 429, after CREDITS_SETTLE_DELAY unless the
+    # server says how long.
+    class CreditsHeld < RateLimited
+      def kind = :credits_held
+
+      def summary = "credits on host #{host} are held by in-flight requests (retry after #{retry_after.to_f.ceil}s)"
+    end
+
+    # Any other 402: the account has run out of credits. Never retried.
+    class OutOfCredits < ProviderError
+      def kind = :credits
+
+      def summary = "out of credits on host #{host}: #{detail}; add credits, then send again"
     end
 
     class ServerError < ProviderError
@@ -238,6 +259,10 @@ module Samagotchi
       VISION_UNSUPPORTED_RE = /support image input|image input is not supported|mmproj/i
       # A 400 about the thinking fields chi sent (Thinking.chat_fields).
       REASONING_REFUSED_RE = /reasoning|thinking/i
+      # A 402 about credit held by in-flight requests (see CreditsHeld).
+      CREDITS_HELD_RE = /in-flight requests/i
+      # Seconds to wait before retrying a CreditsHeld without a Retry-After.
+      CREDITS_SETTLE_DELAY = 20.0
       RETRYABLE_SERVER_STATUSES = [500, 502, 503, 504, 529].freeze
 
       module_function
@@ -259,6 +284,12 @@ module Samagotchi
         when 401, 403 then AuthError.new(text, **options)
         when 429 then RateLimited.new(text, retry_after: parse_retry_after(retry_after), **options)
         when 408 then ServerError.new(text, retryable: true, **options)
+        when 402
+          if CREDITS_HELD_RE.match?(message) || CREDITS_HELD_RE.match?(body.to_s)
+            CreditsHeld.new(text, retry_after: parse_retry_after(retry_after) || CREDITS_SETTLE_DELAY, **options)
+          else
+            OutOfCredits.new(text, **options)
+          end
         when 400..499
           tools = TOOLS_UNSUPPORTED_RE.match?(message)
           BadRequest.new(text, tools_unsupported: tools,

@@ -613,6 +613,9 @@ Transient network failures are retried automatically with exponential backoff.
 - Retry scope: transient network errors (timeouts, reset connections, EOF/socket reachability failures),
   HTTP 429 and HTTP 500/502/503/504/529. A `Retry-After` header replaces the backoff delay; one longer than
   60s is not waited out and the error is reported instead.
+- An HTTP 402 about credit held by in-flight requests (OpenRouter reserves credit for each running request, so
+  one session's long request can make another's fail) is retried like a 429, 20s apart unless `Retry-After`
+  says otherwise: with the default `retry.max` that is about 100s. With `retry.max: 0` it fails at once.
 - A refused connection (nothing listening) is not retried: the turn fails at once with `can't reach host <name> at
   <address> (connection refused) — is the server running?`.
 - A stream that has already produced output is never retried (the retry would repeat it); it fails the turn.
@@ -659,6 +662,8 @@ message (before, a failed llama.cpp `/completion` ended the turn as
 |---|---|---|
 | connection | reset, timed out, dropped mid-stream; refused | yes (network retry), not mid-stream; refused: no |
 | rate limited | HTTP 429 | yes, honouring `Retry-After` |
+| credits held | HTTP 402 "… in-flight requests" | yes, after 20s (or `Retry-After`) |
+| credits | any other HTTP 402: out of credits | no |
 | server | HTTP 5xx, llama.cpp's mid-stream `error:` event | 500/502/503/504/529 only |
 | auth | HTTP 401/403 | no |
 | bad request | other 4xx; a prompt larger than the context window, whatever the status | no |

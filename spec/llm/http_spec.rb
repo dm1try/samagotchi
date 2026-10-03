@@ -225,6 +225,8 @@ RSpec.describe Samagotchi::LLM::HTTP do
 
     {
       400 => [Samagotchi::LLM::BadRequest, false, :bad_request],
+      402 => [Samagotchi::LLM::OutOfCredits, false, :credits],
+      "402 in-flight requests" => [Samagotchi::LLM::CreditsHeld, true, :credits_held],
       401 => [Samagotchi::LLM::AuthError, false, :auth],
       403 => [Samagotchi::LLM::AuthError, false, :auth],
       404 => [Samagotchi::LLM::BadRequest, false, :bad_request],
@@ -233,16 +235,18 @@ RSpec.describe Samagotchi::LLM::HTTP do
       500 => [Samagotchi::LLM::ServerError, true, :server],
       501 => [Samagotchi::LLM::ServerError, false, :server],
       503 => [Samagotchi::LLM::ServerError, true, :server]
-    }.each do |status, (klass, retryable, kind)|
-      it "maps HTTP #{status} to #{klass.name.split("::").last}#{retryable ? ", retried" : ""}" do
-        server.default("/v1/chat/completions", status: status, json: { error: { message: "nope #{status}" } })
+    }.each do |key, (klass, retryable, kind)|
+      it "maps HTTP #{key} to #{klass.name.split("::").last}#{retryable ? ", retried" : ""}" do
+        status = key.to_s.to_i
+        message = "nope #{key}"
+        server.default("/v1/chat/completions", status: status, json: { error: { message: message } })
 
         expect { stream! }.to raise_error(klass) { |error|
           expect(error.status).to eq(status)
           expect(error.kind).to eq(kind)
           expect(error.retryable?).to be(retryable)
           expect(error.host).to eq("fake")
-          expect(error.message).to eq("fake: HTTP #{status}: nope #{status}")
+          expect(error.message).to eq("fake: HTTP #{status}: #{message}")
           expect(error.attempts).to eq(retryable ? 3 : 1)
         }
         expect(server.requests.size).to eq(retryable ? 3 : 1)
@@ -260,6 +264,27 @@ RSpec.describe Samagotchi::LLM::HTTP do
 
       expect(lines.first).to eq("data: ok")
       expect(sleeps.sum.round(2)).to eq(2.0)
+    end
+
+    it "waits 20 s after a 402 about credits held by in-flight requests, then succeeds" do
+      server.enqueue("/v1/chat/completions", status: 402,
+                                             json: { error: { code: 402, message: "would exceed your available credits given your current in-flight requests" } })
+      server.enqueue("/v1/chat/completions", sse: "data: ok\n\n")
+      lines = []
+
+      http.stream_lines(uri, post_request) { |line| lines << line }
+
+      expect(lines.first).to eq("data: ok")
+      expect(sleeps).to eq([20.0])
+      expect(server.requests.size).to eq(2)
+    end
+
+    it "fails at once on a 402 out of credits" do
+      server.default("/v1/chat/completions", status: 402, json: { error: { code: 402, message: "Insufficient credits" } })
+
+      expect { stream! }.to raise_error(Samagotchi::LLM::OutOfCredits) { |error| expect(error.attempts).to eq(1) }
+      expect(sleeps).to be_empty
+      expect(server.requests.size).to eq(1)
     end
 
     it "does not wait out a Retry-After longer than a minute" do
@@ -332,6 +357,25 @@ RSpec.describe Samagotchi::LLM::HTTP do
       end
 
       expect(retries.map { |event| event.slice(:error_class, :status) }).to eq([{ error_class: "Samagotchi::LLM::RateLimited", status: 429 }])
+      expect(server.requests.size).to eq(2)
+    end
+
+    it "retries an in-flight 402 error line raised before anything was shown" do
+      server.enqueue("/v1/chat/completions",
+                     sse: "data: {\"error\":{\"code\":402,\"message\":\"credits given your current in-flight requests\"}}\n\n")
+      server.enqueue("/v1/chat/completions", sse: "data: ok\n\n")
+      lines = []
+
+      http.stream_lines(uri, post_request) do |line, shown|
+        error = described_class.sse_error(line, host: "fake")
+        raise error if error
+
+        lines << line
+        shown.call unless line.empty?
+      end
+
+      expect(lines.first).to eq("data: ok")
+      expect(sleeps).to eq([20.0])
       expect(server.requests.size).to eq(2)
     end
 

@@ -392,8 +392,9 @@ output) and cancel. Cancel closes the in-flight socket from the
 `CancellationController` listener, so it works on any thread.
 
 **Errors.** A failed request raises an `LLM::ProviderError` of one kind:
-`ConnectionError` (`RetryExhausted`), `RateLimited`, `ServerError`, `AuthError`,
-`BadRequest` (`context_overflow?`) or `ProtocolError`. Engine keeps the turn's
+`ConnectionError` (`RetryExhausted`), `RateLimited` (`CreditsHeld`: a 402 about
+credit held by in-flight requests, retried after 20 s), `OutOfCredits` (any other
+402), `ServerError`, `AuthError`, `BadRequest` (`context_overflow?`) or `ProtocolError`. Engine keeps the turn's
 conversation (the prompt plus completed tool iterations) and emits
 `:turn_failed` with `error_kind:`, `retryable:`, `host:` and a one-line
 `summary:`, which the REPL, the attached TUI and the web show.

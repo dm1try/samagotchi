@@ -16,6 +16,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- An HTTP 402 is no longer a "rejected the request" bad request. OpenRouter's "would exceed your available
+  credits given your current in-flight requests" (credit reserved by another running request) is retried like a
+  429, 20s apart (about 100s with the default `retry.max`), instead of failing the turn at once; any other 402
+  fails as `out of credits on host <name>: …; add credits, then send again`, with `error_kind` `credits`.
 - `chi answer --option Continue --text "…"` is accepted: the text joins the continued turn as a steer (marked as the parent agent's for `chi answer`), instead of being refused.
 
 ## [0.21.0] - 2026-10-04

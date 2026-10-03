@@ -21,6 +21,31 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(from(429, "slow down").summary).to eq("rate limited by host fw: HTTP 429: slow down")
     end
 
+    it "retries a 402 about credits held by in-flight requests, waiting 20 s or what Retry-After asks" do
+      message = "This request would exceed your available credits given your current in-flight requests. " \
+                "Retry after in-flight requests settle, or add credits."
+      held = from(402, message)
+
+      expect(held).to be_a(Samagotchi::LLM::CreditsHeld).and be_a(Samagotchi::LLM::RateLimited)
+      expect(held).to be_retryable
+      expect(held.kind).to eq(:credits_held)
+      expect(held.retry_after).to eq(20.0)
+      expect(held.summary).to eq("credits on host fw are held by in-flight requests (retry after 20s)")
+      expect(from(402, message, retry_after: "7").retry_after).to eq(7.0)
+    end
+
+    it "names any other 402 as out of credits, never retried" do
+      error = from(402, "Insufficient credits. Add more using https://openrouter.ai/settings/credits")
+
+      expect(error).to be_a(Samagotchi::LLM::OutOfCredits)
+      expect(error).not_to be_a(Samagotchi::LLM::BadRequest)
+      expect(error).not_to be_retryable
+      expect(error.kind).to eq(:credits)
+      expect(error.summary).to eq("out of credits on host fw: HTTP 402: Insufficient credits. Add more using " \
+                                  "https://openrouter.ai/settings/credits; add credits, then send again")
+      expect(from(400, "in-flight requests")).to be_a(Samagotchi::LLM::BadRequest)
+    end
+
     it "reads the upstream reason and provider from error.metadata (OpenRouter's recorded 429)" do
       error = Samagotchi::LLM::ProviderErrors.from_response(
         status: 429, body: File.read(File.expand_path("../fixtures/providers/openai/openrouter_error_429.json", __dir__)),
@@ -87,6 +112,12 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(Samagotchi::LLM::ProviderErrors.error_message(body)).to eq("Provider returned error: model overloaded")
       expect(Samagotchi::LLM::ProviderErrors.error_message(JSON.generate(error: { message: "plain", metadata: {} })))
         .to eq("plain")
+    end
+
+    it "retries an in-stream 402 about in-flight requests too" do
+      line = 'data: {"error":{"code":402,"message":"would exceed your available credits given your current in-flight requests"}}'
+
+      expect(Samagotchi::LLM::ProviderErrors.from_sse_line(line, host: "or")).to be_a(Samagotchi::LLM::CreditsHeld)
     end
 
     it "carries the reason of an in-stream error event too" do
