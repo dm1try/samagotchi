@@ -37,11 +37,11 @@
           },
           "start_line": {
             "type": "integer",
-            "description": "Optional start line (1-based, inclusive). Must be provided with end_line."
+            "description": "Optional start line (1-based, inclusive). Without end_line, reads to the end of the file."
           },
           "end_line": {
             "type": "integer",
-            "description": "Optional end line (1-based, inclusive). Must be provided with start_line."
+            "description": "Optional end line (1-based, inclusive). Without start_line, reads from line 1."
           }
         },
         "required": [

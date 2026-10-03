@@ -122,15 +122,13 @@ RSpec.describe Samagotchi::Tools::Read do
       end
     end
 
-    it "returns an error when start_line is missing" do
+    it "reads from line 1 when only end_line is given" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "range.txt")
-        File.write(path, "one\ntwo\n")
+        File.write(path, "one\ntwo\nthree\n")
 
-        # end_line supplied but start_line omitted -> cannot resolve a span.
-        result = described_class.call(path, end_line: 1)
-        expect(result).to include("Error")
-        expect(result).to include("start_line must be provided")
+        expect(described_class.call(path, end_line: 2)).to eq(described_class.call(path, start_line: 1, end_line: 2))
+        expect(described_class.call(path, end_line: 2)).not_to include("three")
       end
     end
 

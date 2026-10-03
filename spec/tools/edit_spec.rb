@@ -156,8 +156,8 @@ RSpec.describe Samagotchi::Tools::Edit do
         File.write(path, "line 1\nline 2\n")
 
         result = described_class.call(**content("", "updated\n"), path: path, end_line: 2)
-        expect(result).to include("Error")
-        expect(result).to include("start_line must be provided")
+        expect(result).to eq("Error: end_line alone isn't enough for a range edit; pass start_line too (1-based, the first line to replace)")
+        expect(File.read(path)).to eq("line 1\nline 2\n")
       end
     end
 
@@ -272,7 +272,7 @@ RSpec.describe Samagotchi::Tools::Edit do
         expect(described_class.apply(old_text: "x", path: path, start_line: 1)).to eq(described_class::NEW_TEXT_REQUIRED)
         expect(described_class.apply(**content("", "n"), path: path, start_line: 0)).to eq("Error: start_line must be a positive integer")
         expect(described_class.apply(**content("", "n"), path: path, end_line: 1))
-          .to eq("Error: start_line must be provided for range edits")
+          .to eq("Error: end_line alone isn't enough for a range edit; pass start_line too (1-based, the first line to replace)")
         expect(described_class.apply(**content("", "n"), path: path, start_line: 5))
           .to eq("Error: start_line 5 out of bounds for #{path}: file has 2 lines")
         expect(described_class.apply(**content("", "n"), path: path, start_line: 2, end_line: 1))

@@ -28,6 +28,9 @@ and commands may change between minor versions. How releases are made:
   `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC` still set it.
 - An `execute` command killed at its time limit says how to run a long one: a second line
   `(killed at the limit; for a long command use task_create, then task_wait)` follows `Error: command timed out after Ns`.
+- `read` with only `end_line` reads from line 1 instead of failing with "start_line must be provided". A range
+  `edit` with only `end_line` still refuses (it would overwrite the top of the file) and now says what to pass:
+  `pass start_line too (1-based, the first line to replace)`.
 
 ### Fixed
 

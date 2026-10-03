@@ -62,6 +62,9 @@ module Samagotchi
         "Error: #{e.message}"
       end
 
+      START_LINE_REQUIRED = "Error: end_line alone isn't enough for a range edit; " \
+                            "pass start_line too (1-based, the first line to replace)"
+
       def self.apply_range_mode(new_text, path:, start_line:, end_line:, read:)
         return "Error: file not found: #{path}" unless File.exist?(path)
         return NEW_TEXT_REQUIRED if new_text.nil?
@@ -70,7 +73,9 @@ module Samagotchi
 
         start_num = parse_positive_line_number(start_line, "start_line")
         return start_num if start_num.is_a?(String)
-        return "Error: start_line must be provided for range edits" if start_num.nil?
+        # Not defaulted to 1 like read: a range edit replaces the span, so a
+        # guessed start would silently overwrite the top of the file.
+        return START_LINE_REQUIRED if start_num.nil?
 
         source = read.(path)
         lines = source.lines
