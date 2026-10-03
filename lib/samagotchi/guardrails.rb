@@ -3,6 +3,7 @@
 require_relative "guardrails/verdict"
 require_relative "guardrails/context"
 require_relative "guardrails/outside"
+require_relative "guardrails/shell_lex"
 require_relative "guardrails/shell_git_dirs"
 require_relative "guardrails/targets"
 require_relative "guardrails/model_size"
