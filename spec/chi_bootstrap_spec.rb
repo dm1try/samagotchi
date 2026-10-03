@@ -210,6 +210,34 @@ RSpec.describe "chi bootstrap" do
     expect(out).to include("chi bootstrap [HOST[:PORT]|URL]")
   end
 
+  describe "the loading hint on a slow test" do
+    def result_for(target)
+      candidate = Samagotchi::Bootstrap::Probe.candidates(target).first
+      Samagotchi::Bootstrap::Probe::Result.of(:openai, candidate, models: [])
+    end
+
+    # A test request slower than LOADING_AFTER: the hint thread prints while
+    # test_turn is still running.
+    def run_test(target)
+      probe = instance_double(Samagotchi::Bootstrap::Probe)
+      allow(probe).to receive(:test_turn) { sleep(0.15); 0.15 }
+      out = StringIO.new
+      command = Samagotchi::BootstrapCommand.new([], stdout: out, stderr: StringIO.new, probe: probe)
+      command.send(:test, result_for(target), "m", nil)
+      out.string
+    end
+
+    before { stub_const("Samagotchi::BootstrapCommand::LOADING_AFTER", 0.05) }
+
+    it "says it is waiting for a local server" do
+      expect(run_test("127.0.0.1:8080")).to include("test: waiting for an answer (loading the model?)…")
+    end
+
+    it "doesn't say it for a remote provider" do
+      expect(run_test("https://openrouter.ai/api/v1")).not_to include("loading the model?")
+    end
+  end
+
   context "on a terminal" do
     let(:tty) do
       Class.new(StringIO) { def tty? = true }

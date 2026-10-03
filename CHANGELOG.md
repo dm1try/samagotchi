@@ -54,6 +54,8 @@ and commands may change between minor versions. How releases are made:
 - A session that has only context notes so far (`chi note`, `send_note`) is previewed on its card and in the
   lists as `note: …` instead of `—`, until a message is typed.
 - A web turn of images alone names each image once in the transcript a recap is written from, not twice.
+- `chi bootstrap` no longer says "loading the model?" for a slow test on a remote provider (OpenRouter and the
+  like); the hint is for a local server, where a slow answer is a model loading.
 
 ## [0.19.0] - 2026-10-03
 

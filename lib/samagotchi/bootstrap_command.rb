@@ -3,6 +3,7 @@
 require "rbconfig"
 require_relative "config"
 require_relative "model_profile"
+require_relative "host_registry"
 require_relative "bootstrap/probe"
 require_relative "bootstrap/config_writer"
 require_relative "bootstrap/bundles"
@@ -235,9 +236,11 @@ module Samagotchi
 
     def test(result, model, key_env)
       done = Queue.new
-      waiting = Thread.new do
-        @stdout.puts("test: waiting for an answer (loading the model?)…") if done.pop(timeout: LOADING_AFTER).nil?
-      end
+      waiting = if loading_hint?(result)
+                  Thread.new do
+                    @stdout.puts("test: waiting for an answer (loading the model?)…") if done.pop(timeout: LOADING_AFTER).nil?
+                  end
+                end
       seconds = @probe.test_turn(result.candidate, model, key_env: key_env)
       @stdout.puts(format("test: answered in %.1f s", seconds))
       true
@@ -247,6 +250,12 @@ module Samagotchi
     ensure
       done&.push(true)
       waiting&.join
+    end
+
+    # The "loading the model?" hint fits a local server (a llama.cpp loading
+    # weights); a remote provider's slow answer is the network, not a load.
+    def loading_hint?(result)
+      !HostRegistry.remote_address?(result.candidate.scheme, result.candidate.host)
     end
 
     # 0 written, 1 written but not as planned, nil with @exit on a refusal.
