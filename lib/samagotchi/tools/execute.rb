@@ -199,22 +199,23 @@ module Samagotchi
         # thread; the text is safe to read afterwards.
         def finish
           @thread.join(STOP_POLL_INTERVAL_SEC) unless done?
-          Execute.send(:close_quietly, @io)
+          close_quietly
           @thread.kill unless @thread.join(STOP_GRACE_SEC)
         end
 
         def text
           @buffer.dup.force_encoding(@io.external_encoding || Encoding.default_external)
         end
+
+        private
+
+        def close_quietly
+          @io.close unless @io.closed?
+        rescue IOError
+          nil
+        end
       end
       private_constant :OutputReader
-
-      def self.close_quietly(io)
-        io.close unless io.closed?
-      rescue IOError
-        nil
-      end
-      private_class_method :close_quietly
 
       def self.terminate_process_tree(pid)
         signal_process(pid, "TERM")
