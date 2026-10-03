@@ -135,7 +135,9 @@ answers from any local process.
 - `chi send --wait ID` with no message waits past a question already reported
   (the step-limit question too), until someone answers it.
 - An answer to a question that is no longer open (you answered it in the web
-  first) isn't sent; `chi answer` says so and waits for what comes next.
+  first) isn't sent; `chi answer` says so and waits for what comes next. Its
+  JSON then has `"answered_here": false` (absent when the answer went in), so
+  an `answered` status there is someone else's answer's turn, not yours.
 - `chi send --wait` and `chi answer` don't read stdin unless it's a pipe or a
   file. Agent shells usually pass `/dev/null`, which is fine.
 

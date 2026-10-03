@@ -70,8 +70,10 @@ module Samagotchi
 
     # @param session_id [String]
     # @param timeout [Numeric, nil] the wait's --timeout (for the running detail)
+    # @param extra [Hash] more keys for the object (chi answer's
+    #   answered_here: false)
     # @return [Hash] the --format json object
-    def json(result, session_id:, timeout: nil)
+    def json(result, session_id:, timeout: nil, extra: {})
       report = { status: status(result), session_id: session_id }
       case report[:status]
       when "answered" then report[:text] = result.text.to_s
@@ -81,22 +83,23 @@ module Samagotchi
         report[:answer_with] = answer_with(session_id, question)
       else report[:detail] = detail(result, session_id: session_id, timeout: timeout)
       end
-      report
+      report.merge(extra)
     end
 
     # @return [String] the JSON object as one line
-    def json_line(result, session_id:, timeout: nil)
-      JSON.generate(json(result, session_id: session_id, timeout: timeout))
+    def json_line(result, session_id:, timeout: nil, extra: {})
+      JSON.generate(json(result, session_id: session_id, timeout: timeout, extra: extra))
     end
 
     # Print a wait's end the way the commands do: the JSON object on
     # stdout, or the reply on stdout and anything else on stderr (a
     # question in full) after "chi send: ".
     # @param command [String] "chi send", "chi answer"
+    # @param extra [Hash] more keys for the JSON object (#json)
     # @return [Integer] the exit status
-    def report(result, session_id:, stdout:, stderr:, command:, json: false, timeout: nil)
+    def report(result, session_id:, stdout:, stderr:, command:, json: false, timeout: nil, extra: {})
       if json
-        stdout.puts(json_line(result, session_id: session_id, timeout: timeout))
+        stdout.puts(json_line(result, session_id: session_id, timeout: timeout, extra: extra))
       elsif result.status == :done
         stdout.puts(result.text)
       else

@@ -34,7 +34,8 @@ module Samagotchi
         with it), then waits for what comes next and prints it as chi send
         --wait does.
         --question QID  the question's id (chi send --wait prints it); a
-                        question no longer open is not answered
+                        question no longer open is not answered (the JSON
+                        says "answered_here": false)
         --option N|LABEL
                         an option, by number (1-based) or label; repeat
                         on a multi-select question
@@ -215,9 +216,11 @@ module Samagotchi
     end
 
     # The question was answered elsewhere (the web first), or another one
-    # waits now: said, then what comes next is waited for.
+    # waits now: said, then what comes next is waited for (the JSON says
+    # answered_here: false).
     # @return [nil]
     def not_open(qid)
+      @answered_here = false
       error_line("#{command_name}: question #{qid} is no longer open; not answered here, waiting for what comes next")
       nil
     end

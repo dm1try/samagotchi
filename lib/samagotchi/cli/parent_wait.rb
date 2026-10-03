@@ -64,10 +64,11 @@ module Samagotchi
         result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         @reported = true
         ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,
-                                    json: @json, timeout: timeout)
+                                    json: @json, timeout: timeout, extra: report_extra)
       rescue Interrupt
         if @json
-          @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled), session_id: id))
+          @stdout.puts(ParentReport.json_line(ReplyWait::Result.new(status: :canceled), session_id: id,
+                                                                                        extra: report_extra))
           @stdout.flush
           @reported = true
         end
@@ -76,6 +77,12 @@ module Samagotchi
       rescue ArgumentError
         error_line("#{command_name}: the session is gone (deleted while waiting)")
         Exit::FAILED
+      end
+
+      # More keys for the JSON object: answered_here: false when chi
+      # answer's answer didn't go in (the question was no longer open).
+      def report_extra
+        @answered_here == false ? { answered_here: false } : {}
       end
     end
   end

@@ -24,6 +24,9 @@ and commands may change between minor versions. How releases are made:
 - The Continue answer's text keeps its line breaks in the continued turn's steer, and it is dropped (logged
   `steer_dropped why=not_begun`) when the continue turn fails before it begins or a typed `/continue no` answered
   the offer first, instead of joining whatever turn ran next.
+- `chi answer --format json` says `"answered_here": false` when the question was no longer open (answered
+  elsewhere, or another one waits now): it still waits for what comes next, but the JSON no longer reads as if
+  the given answer went in.
 
 ## [0.21.0] - 2026-10-04
 

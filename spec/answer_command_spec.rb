@@ -162,6 +162,32 @@ RSpec.describe Samagotchi::AnswerCommand do
     expect(err.string).to include("chi answer: waiting for an answer (question): And then?")
   end
 
+  it "says in the JSON that the answer didn't go in (409), with what came next" do
+    s = asking(question)
+    replies.replace([[409, { error: "question_not_pending", detail: "question already answered" }]])
+    replies_after_answer(s, "the web's answer won")
+
+    expect(run(s.id, "--question", "q1", "--option", "1", "--format", "json")).to eq(0), err.string
+    expect(json_out).to eq("status" => "answered", "session_id" => s.id, "text" => "the web's answer won",
+                           "answered_here" => false)
+  end
+
+  it "says in the JSON that a question no longer waited on wasn't answered, with the one that waits now" do
+    s = asking({ id: "q2", question: "And then?", options: %w[Stop Go] })
+
+    expect(run(s.id, "--question", "q1", "--option", "1", "--timeout", "1", "--format", "json")).to eq(3)
+    expect(json_out).to include("status" => "question", "answered_here" => false)
+    expect(json_out["question"]).to include("id" => "q2")
+  end
+
+  it "has no answered_here when the answer went in" do
+    s = asking(question)
+    replies_after_answer(s, "Read NOTES.md.")
+
+    expect(run(s.id, "--question", "q1", "--option", "2", "--format", "json")).to eq(0), err.string
+    expect(json_out).not_to have_key("answered_here")
+  end
+
   it "says so when the question is no longer open and nothing runs" do
     s = asking(nil, status: "idle")
 
