@@ -84,14 +84,16 @@ module Samagotchi
       # full output: ok, error, blocked, stopped); a dispatcher that raised
       # left none, an error.
       status = result[:activity].is_a?(Hash) ? result[:activity][:status] : nil
-      fire(:after_tool_call, { type: :after_tool_call, iteration: iteration, tool: call[:name], output: capped,
-                               status: status || "error" })
       completed = { type: :tool_call_completed, iteration: iteration, call_count: call_count, call_index: call_index,
                     tool: call[:name], output: capped, output_truncated: truncated, activity: result[:activity] }
       completed[:images] = images if images&.any?
       completed[:diff] = diff if diff
       completed[:waited_ms] = waited_ms if waited_ms
       emit(on_stream_event, completed)
+      # After the completed event: a hook's card (check-in, skills) prints
+      # under the call's tool row, not before it.
+      fire(:after_tool_call, { type: :after_tool_call, iteration: iteration, tool: call[:name], output: capped,
+                               status: status || "error" })
 
       run = { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }
       run[:images] = images if images&.any?

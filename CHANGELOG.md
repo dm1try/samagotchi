@@ -28,6 +28,8 @@ and commands may change between minor versions. How releases are made:
 - An MCP server that exits without a wait status no longer raises `NoMethodError`; its waiting calls fail with
   "the server exited" instead of hanging.
 - A hook that raises is now logged (`hook_failed`) instead of being swallowed silently; the turn still goes on.
+- A hook's card (check-in, skills) now prints under its tool call's row: `tool_call_completed` is emitted before
+  `after_tool_call` fires.
 
 ## [0.19.0] - 2026-10-03
 

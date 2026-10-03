@@ -68,6 +68,14 @@ RSpec.describe Samagotchi::ToolRunner do
     expect(events.last).not_to have_key(:waited_ms)
   end
 
+  it "emits tool_call_completed before firing after_tool_call" do
+    order = []
+    hooks.register(:after_tool_call) { |_e| order << :after_tool_call }
+    runner.run(call, iteration: 1, call_index: 1, call_count: 1,
+                     on_stream_event: ->(e) { order << e[:type] }, max_tool_output_chars: nil)
+    expect(order).to eq(%i[tool_call_started tool_call_completed after_tool_call])
+  end
+
   it "dispatches an unvetoed call" do
     result = run
     expect(result[:output]).to eq("[execute]\nran")
