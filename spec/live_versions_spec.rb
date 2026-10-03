@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::LiveVersions do
     sidecar("c", port: dead, version: "0.2.0")
 
     expect(described_class.workers(state_dir: state_dir).map(&:to_h))
-      .to eq([{ session_id: "a", version: "0.3.1" }, { session_id: "b", version: nil }])
+      .to eq([{ session_id: "a", version: "0.3.1", restart: false }, { session_id: "b", version: nil, restart: false }])
     expect(described_class.stale_workers("0.3.1", state_dir: state_dir).map(&:session_id)).to eq(["b"])
     expect(File).to exist(File.join(state_dir, "c", "bridge.json"))
   end

@@ -30,10 +30,12 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi update` no longer says running sessions move to the new chi "at idle exit (30 min)": a worker keeps its chi
+  until restarted, and idles out only with nothing attached, after `session.idle_exit_minutes` (never with 0). The
+  workers row names `chi sessions restart ID` (or `stop` for a worker from before restarts).
 - `chi web` no longer leaves exited session workers behind as zombie processes.
 - The web's model picker lists a host added to (or changed in) `hosts:` while `chi web` runs, instead of the hosts
   it started with.
-
 - source-links (0.3.2): a `case_insensitive: true` source no longer lists a ref in its `sources:` note when the ref
   is a markdown link's label whose target names it in another case (`[jira-1](…/JIRA-1)`). Run `chi update` to get it.
 - An `@path` image in a prompt takes backslash escapes, as a Finder drag into the terminal types them:

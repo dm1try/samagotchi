@@ -54,9 +54,10 @@ chi update              # the gem, then the bundles and the desktop helper
 stay installed: running sessions still use them), then brings the rest up to
 the new version: the system bundle, the bundles chi ships that you installed,
 and the macOS helper (rebuilt only when its sources changed). Memory files you
-edited are kept, and the table says which. Running sessions move to the new
-chi when their worker idles out (30 min) or on `chi sessions stop ID`; a
-running `chi web` needs a restart. From a checkout, `git pull` instead. See
+edited are kept, and the table says which. Running sessions keep their chi
+until restarted (`chi sessions restart ID`, or the Restart badge on the web);
+new and woken ones start on the new chi. A running `chi web` needs a restart,
+and its page says so. From a checkout, `git pull` instead. See
 [CLI: Updating](docs/cli.md#updating).
 
 ## Set up

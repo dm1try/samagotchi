@@ -300,7 +300,22 @@ RSpec.describe Samagotchi::UpdateCommand do
         File.write(File.join(state_dir, id, "bridge.json"), JSON.generate(data))
       end
       run
-      expect(line("workers")).to include("2 live on 0.2.0, an older chi", "chi sessions stop aaaaaaaa bbbbbbbb")
+      expect(line("workers")).to include("2 live on 0.2.0, an older chi: they keep it until restarted " \
+                                         "(chi sessions stop aaaaaaaa bbbbbbbb); or they idle out after 30 min " \
+                                         "with nothing attached")
+    end
+
+    it "says chi sessions restart for workers that can, stop for older ones, and never for idle exit 0" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("session.idle_exit_minutes").and_return(0)
+      { "aaaaaaaa-1" => ["restart"], "bbbbbbbb-2" => [] }.each do |id, features|
+        FileUtils.mkdir_p(File.join(state_dir, id))
+        File.write(File.join(state_dir, id, "bridge.json"),
+                   JSON.generate("port" => listener.addr[1], "version" => "0.2.0", "features" => features))
+      end
+      run
+      expect(line("workers")).to include("2 live on 0.2.0: they keep it until restarted (chi sessions restart " \
+                                         "aaaaaaaa; chi sessions stop bbbbbbbb); they never idle out")
     end
 
     it "probes chi web on 127.0.0.1 when web.host is lan or a LAN address" do
@@ -324,7 +339,23 @@ RSpec.describe Samagotchi::UpdateCommand do
       end
       web[1] = server.addr[1]
       run
-      expect(line("chi web :#{server.addr[1]}")).to include("0.2.0", "restart it")
+      expect(line("chi web :#{server.addr[1]}")).to include("0.2.0", "new sessions it starts run 0.2.0 too; restart it")
+    end
+
+    it "says a chi web that starts newest workers only needs a restart" do
+      server = listener
+      Thread.new do
+        client = server.accept
+        client.readpartial(4096)
+        body = JSON.generate(app: "chi-web", version: "0.2.0", features: %w[dir newest_workers])
+        client.write("HTTP/1.1 200 OK\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
+        client.close
+      rescue IOError
+        nil
+      end
+      web[1] = server.addr[1]
+      run
+      expect(line("chi web :#{server.addr[1]}")).to end_with("running old code; restart it")
     end
   end
 end

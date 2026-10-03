@@ -13,8 +13,9 @@ module Samagotchi
   module LiveVersions
     WEB_TIMEOUT = 0.5
 
-    # version is nil for a sidecar written before sidecars carried one.
-    Worker = Struct.new(:session_id, :version, keyword_init: true)
+    # version is nil for a sidecar written before sidecars carried one;
+    # restart: the worker takes `chi sessions restart` (its "restart" feature).
+    Worker = Struct.new(:session_id, :version, :restart, keyword_init: true)
 
     module_function
 
@@ -25,7 +26,8 @@ module Samagotchi
         sidecar = WorkerSidecar.live(session_dir, unlink: false)
         next unless sidecar
 
-        Worker.new(session_id: File.basename(session_dir), version: sidecar.version)
+        Worker.new(session_id: File.basename(session_dir), version: sidecar.version,
+                   restart: sidecar.features.include?("restart"))
       end
     end
 

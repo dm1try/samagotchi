@@ -104,17 +104,19 @@ known-names    0.1.0  0.1.1  updated
 core           0.1.0  0.2.0  updated (+ new-bundle)
 infra_tools    1.0.0         skipped (not from chi)
 Chi Helper     0.2.0         up to date (launch file refreshed)
-workers                      2 live on 0.2.0: they move to 0.3.0 at idle exit (30 min) or chi sessions stop 2ea8c1f0 91b0d2aa
+workers                      2 live on 0.2.0: they keep it until restarted (chi sessions restart 2ea8c1f0 91b0d2aa); or they idle out after 30 min with nothing attached
 Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install NAME)
 done
 ```
 
 - **The gem.** It asks rubygems.org for the newest samagotchi (5 s timeout)
   and, when that's newer, runs `gem install samagotchi` with the gem command
-  of the Ruby chi runs on (the real one, not a mise/rbenv/asdf shim). Then it
+  of the Ruby chi runs on (the real one, not a mise/rbenv/asdf shim; a chi
+  installed under another Ruby is a separate install it doesn't touch). Then it
   hands over to the new chi, which does the rest and prints the table. Old
-  versions stay installed: running workers and an old `chi web` still use
-  them (so don't `gem cleanup` while they run). Offline, the row says
+  versions stay installed: running workers and an old `chi web` still load
+  files from them, so a `gem cleanup` while they run breaks them (a
+  `LoadError`, missing web assets); restart them first. Offline, the row says
   "couldn't check" and the rest still runs; a failed install fails the row
   and the rest runs on the current version. Under Bundler (`bundle exec`)
   the row says `bundle update samagotchi` instead.
@@ -137,9 +139,15 @@ done
 - **The desktop helper** (macOS) is rebuilt and restarted only when its Swift
   sources changed (or the Ruby it runs moved); otherwise only its launch file
   is refreshed. See [Desktop helper](desktop.md).
-- **Running processes** are reported, never stopped: live workers on another
-  version, and a `chi web` on `web.port` running an older chi (sessions it
-  starts run that version too: restart it).
+- **Running processes** are reported, never stopped. A live worker keeps its
+  chi until it is restarted: `chi sessions restart ID` (one from before
+  restarts: `chi sessions stop ID`, and the next prompt starts it on the new
+  chi); it exits on its own only when nothing is attached (no web tab, no
+  terminal, no reminder) and `session.idle_exit_minutes` pass (never with 0).
+  A new or woken worker always starts on the newest chi installed. A `chi web`
+  on `web.port` running an older chi needs a restart (Ctrl-C, then `chi web`):
+  its page says so too. One from before workers started on the newest chi
+  also starts its new sessions on its own version until then (the row says so).
 
 `--dry-run` shows the table with "would update" and changes nothing. It is
 this version's view: bundles that only a newer gem ships newer show up once

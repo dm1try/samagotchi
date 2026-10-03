@@ -34,8 +34,9 @@ module Samagotchi
         --no-gem       don't install a newer gem (config update.gem: false)
         --no-bundles   leave the shipped bundles alone (config update.bundles: false)
         --no-desktop   leave the desktop helper alone (config update.desktop: false)
-        Running sessions keep their chi until they idle out (30 min) or
-        chi sessions stop ID; a running chi web needs a restart.
+        Running sessions keep their chi until restarted (chi sessions
+        restart ID) or until they idle out with nothing attached; a running
+        chi web needs a restart (the sessions it starts run the new chi).
     TEXT
 
     # Help is a flag here: it doesn't stop the parse (an unknown option
@@ -238,20 +239,40 @@ module Samagotchi
     def live_rows
       rows = []
       stale = LiveVersions.stale_workers(VERSION, state_dir: @state_dir)
-      unless stale.empty?
-        versions = stale.map { |w| w.version || "an older chi" }.uniq.join(", ")
-        ids = stale.map { |w| w.session_id[0, 8] }.join(" ")
-        rows << Row.new(component: "workers",
-                        status: "#{stale.size} live on #{versions}: they move to #{VERSION} at idle exit (30 min) " \
-                                "or chi sessions stop #{ids}")
-      end
+      rows << Row.new(component: "workers", status: workers_status(stale)) unless stale.empty?
       host, port = @web
-      web = LiveVersions.web_version(host, port)
-      if web && web != VERSION
+      info = LiveVersions.web_info(host, port)
+      web = info && info["version"].to_s
+      if web && !web.empty? && web != VERSION
+        # Since newest_workers, the sessions it starts run the newest chi.
+        spreads = !Array(info["features"]).include?("newest_workers")
         rows << Row.new(component: "chi web :#{port}", from: web,
-                        status: "running old code: new sessions it starts run #{web} too; restart it")
+                        status: "running old code#{": new sessions it starts run #{web} too" if spreads}; restart it")
       end
       rows
+    end
+
+    # A worker keeps its chi until restarted: `chi sessions restart` for
+    # one that can, a stop for an older one (the next prompt starts it on
+    # the newest). It idles out on its own only with nothing attached.
+    def workers_status(stale)
+      versions = stale.map { |w| w.version || "an older chi" }.uniq.join(", ")
+      restart, stop = stale.partition(&:restart).map { |ws| ws.map { |w| w.session_id[0, 8] }.join(" ") }
+      moves = []
+      moves << "chi sessions restart #{restart}" unless restart.empty?
+      moves << "chi sessions stop #{stop}" unless stop.empty?
+      "#{stale.size} live on #{versions}: they keep it until restarted (#{moves.join("; ")})#{idle_note}"
+    end
+
+    def idle_note
+      minutes = begin
+        Config.get("session.idle_exit_minutes").to_f
+      rescue StandardError
+        30.0
+      end
+      return "; they never idle out (session.idle_exit_minutes: 0)" unless minutes.positive?
+
+      "; or they idle out after #{minutes.round(1).to_s.delete_suffix(".0")} min with nothing attached"
     end
 
     def footers(options)
