@@ -4,29 +4,28 @@ require "samagotchi/client"
 require "samagotchi/kernel_loop"
 
 # Integration test that verifies the omlx transport forwards a *resolved* `model`
-# id to a live oMLX server: a short SAMAGOTCHI_DEFAULT_MODEL selector is resolved, via the
+# id to a live oMLX server: a short model selector is resolved, via the
 # server's own /v1/models, to the exact registered id (which may be prefixed,
 # e.g. "mlx-community--..."), so the completion no longer 400s on a missing model.
 #
-# No stubs: this talks to the real host via SAMAGOTCHI_SERVER_HOST/SAMAGOTCHI_SERVER_PORT/SAMAGOTCHI_DEFAULT_MODEL.
-#
-# Prerequisites:
-#   - An oMLX server must be running (default: 192.0.2.10:8000)
-#   - SAMAGOTCHI_INTEGRATION=1 environment variable must be set
-#
-# Run with:
-#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_SERVER_HOST=192.0.2.10 SAMAGOTCHI_SERVER_PORT=8000 \
-#     SAMAGOTCHI_DEFAULT_MODEL=gemma-3-4b-it-4bit SAMAGOTCHI_SERVER_TRANSPORT=omlx \
-#     bundle exec rspec spec/integration/omlx_spec.rb
-#
-# Verbose output:
-#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_SERVER_HOST=192.0.2.10 SAMAGOTCHI_SERVER_PORT=8000 \
-#     SAMAGOTCHI_DEFAULT_MODEL=gemma-3-4b-it-4bit bundle exec rspec spec/integration/omlx_spec.rb -v
+# No stubs: this talks to the real oMLX server. Against llama.cpp it passes
+# without testing anything (its ids need no resolving), so it runs only with
+# SAMAGOTCHI_INTEGRATION_TRANSPORT=omlx and the oMLX server's host, port and
+# a short model selector (docs/testing.md), e.g.
+#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_INTEGRATION_TRANSPORT=omlx \
+#     SAMAGOTCHI_INTEGRATION_HOST=192.0.2.10 SAMAGOTCHI_INTEGRATION_PORT=8000 \
+#     SAMAGOTCHI_INTEGRATION_MODEL=gemma-3-4b-it-4bit bundle exec rspec spec/integration/omlx_spec.rb
 RSpec.describe "omlx transport - model resolution + forwarding", :integration do
+  before do
+    unless IntegrationServer.settings.transport == "omlx"
+      skip "Needs an oMLX server: set SAMAGOTCHI_INTEGRATION_TRANSPORT=omlx and its host, port and model"
+    end
+  end
+
   # The short selector we expect to resolve to a live /v1/models id.
   let(:selector) { IntegrationServer.model }
 
-  # A real oMLX client built from SAMAGOTCHI_SERVER_HOST / SAMAGOTCHI_SERVER_PORT / SAMAGOTCHI_SERVER_TRANSPORT.
+  # A real oMLX client for the fixture config's server.host/port.
   let(:client) { Samagotchi::Client.new(transport: :omlx) }
 
   # The live /v1/models id list (array of hashes with an "id" key), fetched once.
