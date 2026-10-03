@@ -1556,6 +1556,27 @@ RSpec.describe Samagotchi::Web::App do
       expect(registry.calls).to eq([false])
     end
 
+    it "adds each model's configured sampling, as /model words it, to the models that have some" do
+      registry = FakeModelRegistry.new({
+        "default" => { models: [model_info("Gemma-4B-it")], error: nil },
+        "work" => { models: [model_info("qwen")], error: nil }
+      })
+      entries = { "default" => Samagotchi::HostRegistry::HostEntry.new(name: "default", host: "h", port: 1),
+                  "work" => Samagotchi::HostRegistry::HostEntry.new(name: "work", host: "h", port: 2, sampling: { temperature: 0.6 }) }
+      registry.define_singleton_method(:resolve) do |name|
+        host, bare = name.include?(":") ? name.split(":", 2) : ["default", name]
+        Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entries.fetch(host), bare_model: bare, client: nil)
+      end
+      registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+
+      payload = models_payload(registry)
+
+      expect(payload["models"]).to eq([{ "name" => "Gemma-4B-it", "host" => "default", "id" => "Gemma-4B-it" },
+                                       { "name" => "work:qwen", "host" => "work", "id" => "qwen",
+                                         "sampling" => "temperature=0.6 (hosts.work)" }])
+    end
+
     it "keeps the default in the list when no host lists it, and leaves :batch variants out" do
       registry = FakeModelRegistry.new({ "default" => { models: [model_info("other"), model_info("other:batch")], error: nil } })
 

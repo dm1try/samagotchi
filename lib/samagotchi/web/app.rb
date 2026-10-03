@@ -21,6 +21,7 @@ require_relative "../steer"
 require_relative "../host_registry"
 require_relative "../model_catalog"
 require_relative "../model_profile"
+require_relative "../sampling_settings"
 require_relative "../project_scope"
 require_relative "../prompt_history"
 require_relative "../version"
@@ -440,9 +441,27 @@ module Samagotchi
         if default && models.none? { |m| m[:name].casecmp?(default) }
           models.unshift({ name: default, host: nil, id: default })
         end
+        add_sampling(models, registry)
         payload = { default: default, models: models }
         payload[:warning] = warnings.join("; ") unless warnings.empty?
         json_response(200, payload)
+      end
+
+      # Each model's configured sampling as /model words it ("temperature=0.6
+      # (hosts.work)"), on the models that have some: the picker's tooltip.
+      # A config that can't be read leaves the list as it is.
+      def add_sampling(models, registry)
+        return if registry.nil? || models.empty?
+
+        settings = ConfigFile.model_settings
+        models.each do |model|
+          target = registry.resolve(model[:name])
+          summary = SamplingSettings.summary(target, names: registry.lookup_names(model[:name], target: target),
+                                                     models: settings)
+          model[:sampling] = summary if summary
+        end
+      rescue StandardError
+        nil
       end
 
       # Built again when config.yml's hosts: changed (compared as read: the

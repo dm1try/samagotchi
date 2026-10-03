@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
   edit) as `scope=team (unknown)`, counted as one issue, instead of checking its files in the system memories;
   the shipped-bundle update skips it (upgrade chi or reinstall), and `chi bundle diff` refuses it with a one-line
   error instead of a stack trace.
+- The web model picker shows a model's configured sampling (`temperature=0.6 (hosts.work)`) as its row's tooltip;
+  `GET /api/models` has it as `sampling` on the models that have some.
 
 ### Fixed
 

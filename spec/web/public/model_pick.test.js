@@ -54,6 +54,11 @@ test("modelRows gives name, host, id and whether the row is the default host's",
   assert.deepEqual(modelRows({ models: [{ name: "" }, { name: "a", host: "h", id: "a" }] }).map((r) => r.name), ["a"]);
 });
 
+test("modelRows carries a model's configured sampling", () => {
+  const r = modelRows({ models: [{ name: "work:q", host: "work", id: "q", sampling: "temperature=0.6 (hosts.work)" }] });
+  assert.equal(r[0].sampling, "temperature=0.6 (hosts.work)");
+});
+
 test("modelRows puts the server's unshifted default (host nil) in the default group, shown by its name", () => {
   const r = modelRows({ default: "openrouter:x", models: [
     { name: "openrouter:x", host: null, id: "openrouter:x" },
