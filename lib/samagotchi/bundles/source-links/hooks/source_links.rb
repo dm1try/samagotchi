@@ -321,7 +321,8 @@ class SourceLinks
     links.any? do |link|
       in_target = start >= link[:target][0] && finish <= link[:target][1]
       in_label = start >= link[:label][0] && finish <= link[:label][1]
-      in_target || (in_label && target_names_ref?(link[:target_text], text[start...finish]))
+      in_target || (in_label && target_names_ref?(link[:target_text], text[start...finish],
+                                                   case_insensitive: match.regexp.casefold?))
     end
   end
 
@@ -330,10 +331,12 @@ class SourceLinks
   # the ref. So `[JIRA-1](…/JIRA-12)` is NOT skipped (the target names
   # JIRA-12), while `[JIRA-123](…/JIRA-123)` is. Note this is stricter than
   # the bare-text scan's `\b`, which treats `-` as a boundary: `…/JIRA-1-foo`
-  # would match there but not here.
-  def target_names_ref?(target, ref)
+  # would match there but not here. A case_insensitive source compares
+  # without case too: `[jira-1](…/JIRA-1)` is skipped.
+  def target_names_ref?(target, ref, case_insensitive: false)
     escaped = Regexp.escape(ref)
-    target.match?(/(?<![A-Za-z0-9\-])#{escaped}(?![A-Za-z0-9\-])/)
+    flags = case_insensitive ? Regexp::IGNORECASE : 0
+    target.match?(Regexp.new("(?<![A-Za-z0-9\\-])#{escaped}(?![A-Za-z0-9\\-])", flags))
   end
 
   # A ref glued to URL punctuation is part of a link too, even when the span

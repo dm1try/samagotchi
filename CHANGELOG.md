@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- source-links (0.3.2): a `case_insensitive: true` source no longer lists a ref in its `sources:` note when the ref
+  is a markdown link's label whose target names it in another case (`[jira-1](…/JIRA-1)`). Run `chi update` to get it.
+
 ## [0.18.1] - 2026-10-03
 
 ### Fixed

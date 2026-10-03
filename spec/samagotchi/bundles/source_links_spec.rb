@@ -148,6 +148,19 @@ RSpec.describe "The source-links bundle" do
       expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-1 → https://myjira.com/browse/JIRA-1"])
     end
 
+    it "skips a label ref whose target names it in another case, for a case_insensitive source" do
+      settings.replace("sources" => [{ "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/",
+                                       "case_insensitive" => true }])
+      fire([model("[jira-123](https://x.com/JIRA-123) plus JIRA-10")])
+      expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-10 → https://myjira.com/browse/JIRA-10"])
+    end
+
+    it "keeps the label ref when only the case matches the target, for a case-sensitive pattern" do
+      settings.replace("sources" => [{ "name" => "GH", "pattern" => "gh-(\\d+)", "url" => "https://x/{1}" }])
+      fire([model("[gh-5](https://x.com/GH-5)")])
+      expect(notices.map { |n| n[:text] }).to eq(["sources: GH gh-5 → https://x/5"])
+    end
+
     it "skips a ref in a markdown link's target" do
       fire([model("[the fix](https://x.com/JIRA-123)")])
       expect(notices).to be_empty
