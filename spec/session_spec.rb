@@ -585,4 +585,17 @@ RSpec.describe Samagotchi::Session do
       expect([true, false]).to include(session.test_run)
     end
   end
+
+  describe "#waiting_question" do
+    it "names the step-limit question (kind continue) as its own kind, on an idle session too" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/w")
+      session.status = "idle"
+      session.pending_question = { id: "c1", kind: "continue", question: "Continue it?" }
+
+      expect(session.waiting_question(live: true)).to eq(id: "c1", kind: "continue")
+      expect(session.waiting_question(live: false)).to be_nil
+      session.pending_question = { id: "q1", kind: "other" }
+      expect(session.waiting_question(live: true)).to eq(id: "q1", kind: "question")
+    end
+  end
 end

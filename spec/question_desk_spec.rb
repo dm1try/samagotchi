@@ -200,6 +200,25 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(inputs).to be_empty
     end
 
+    it "refuses a parent agent's Continue with turn.parent_continue: false, and takes its Stop" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("turn.parent_continue").and_return(false)
+      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+
+      expect { desk.answer(id: id, selected: ["Continue"], client_id: "cli:answer") }
+        .to raise_error(described_class::Refused) { |e| expect(e.reason).to eq(:stop_only) }
+      expect(desk.pending).to include(id: id)
+      # A person's Continue is theirs to give.
+      desk.answer(id: id, selected: ["Continue"], client_id: "web:1")
+      expect(answers.map(&:last)).to eq(["web:1"])
+    end
+
+    it "lets a parent agent Continue by default (turn.parent_continue: true)" do
+      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+      desk.answer(id: id, selected: ["Continue"], client_id: "cli:answer")
+      expect(answers.map(&:last)).to eq(["cli:answer"])
+    end
+
     it "refuses Continue with a text (a text goes with Stop), and stays open" do
       id = desk.post(continue_fields, on_answer: on_answer)[:id]
 

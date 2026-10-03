@@ -558,7 +558,7 @@ module Samagotchi
         [{}, 409, { error: "question_not_pending", detail: e.message }]
       rescue QuestionDesk::Refused => e
         Log.info(:bridge, "parent_approval_refused", sid: session_id, id: qid, reason: e.reason)
-        [{}, 403, { error: "parent_approval_refused",
+        [{}, 403, { error: e.reason == :stop_only ? "parent_continue_refused" : "parent_approval_refused",
                     detail: Guardrails::ParentApprovals.message(e.reason) }]
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]

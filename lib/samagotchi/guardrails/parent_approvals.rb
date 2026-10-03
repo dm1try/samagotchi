@@ -5,6 +5,7 @@ require_relative "../paths"
 require_relative "../hooks/loader"
 require_relative "approval"
 require_relative "protected_paths"
+require_relative "parent_continue"
 
 module Samagotchi
   module Guardrails
@@ -115,6 +116,7 @@ module Samagotchi
       def message(reason, typed: false)
         deny = typed ? "deny it (n; WHY), and tell your user" : "deny it (--option Deny --text WHY), and tell your user"
         case reason
+        when :stop_only then ParentContinue.message
         when :protected then "this call changes chi's own config, hooks or guardrails, and only the user can allow it: #{deny}"
         when :off then "allowing a tool call is up to the user: #{deny}"
         else "only Allow once (#{KEY}: once) can be given here: #{deny}"

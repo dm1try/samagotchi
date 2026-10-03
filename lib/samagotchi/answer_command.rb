@@ -6,6 +6,7 @@ require_relative "bridge_client"
 require_relative "reply_wait"
 require_relative "parent_report"
 require_relative "guardrails/parent_approvals"
+require_relative "guardrails/parent_continue"
 require_relative "cli/command"
 require_relative "cli/flags"
 require_relative "cli/parent_wait"
@@ -105,8 +106,10 @@ module Samagotchi
       baseline = ReplyWait.baseline_of(session, question_id: qid)
 
       if pending && pending[:id].to_s == qid
+        return failure(not_dismissable(pending)) if options[:dismiss] && ParentReport.continue?(pending)
+
         selected = selection(pending, options) or return @selection_status
-        refusal = approval_refusal(pending, selected, id)
+        refusal = approval_refusal(pending, selected, id) || continue_refusal(pending, selected)
         return failure(refusal) if refusal
 
         posted = post(id, qid, selected, options)
@@ -154,6 +157,18 @@ module Samagotchi
       reason && Guardrails::ParentApprovals.message(reason)
     end
 
+    # Why a parent may not answer Continue (turn.parent_continue: false in
+    # this process's config.yml), or nil; the worker checks it again.
+    def continue_refusal(pending, selected)
+      Guardrails::ParentContinue.refusal(pending, selected) && Guardrails::ParentContinue.message
+    end
+
+    # A step-limit question can't be left unanswered: the turn waits on it.
+    def not_dismissable(pending)
+      "the step-limit question can't be dismissed: answer #{Array(pending[:options]).join(' or ')} " \
+        "(--option Stop --text WHY stops it)"
+    end
+
     # Post the answer (or the dismissal) to the live worker's Bridge.
     # @return [Integer, nil] an exit status when it didn't go in; nil to
     #   wait (it went in, or the question was no longer open: 409)
@@ -174,7 +189,10 @@ module Samagotchi
 
       case reply.status
       when 200 then nil
-      when 409 then not_open(qid)
+      when 409
+        return failure(reply.json&.dig("detail").to_s) if reply.json&.dig("error") == "not_dismissable"
+
+        not_open(qid)
       when 400 then usage_failure(reply.json&.dig("detail") || "the worker refused the answer")
       # The worker's own guardrails.parent_approvals refused the allow.
       when 403 then failure(reply.json&.dig("detail") || "the worker refused the allow: deny it, and tell your user")

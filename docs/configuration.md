@@ -870,6 +870,7 @@ described in their own sections.
 | `retry.max_delay` | `8.0` | yes | |
 | `retry.empty_answer` | `1` | | Times a turn asks again after an empty answer (at most 3, `0` = off). See "Llama Network Retry Behavior". |
 | `turn.max_iterations` | `100` | | A turn's step limit: model ↔ tool rounds before it stops and asks to continue (an integer ≥ 1). `--no-interrupt` turns get the larger of 1000 and this. See [CLI: Iteration Limit Behavior](cli.md#iteration-limit-behavior). |
+| `turn.parent_continue` | `true` | | Whether a parent agent (`chi answer`) may answer Continue to a session's step-limit question; `false`: Stop only. config.yml only: no environment variable. See [Sub-agent](sub-agent.md) and [Guardrails](guardrails.md#approvals-from-a-parent-agent). |
 | `update.gem` | `true` | | `false`: `chi update` never installs a newer gem (`--no-gem` for one run). See [CLI: Updating](cli.md#updating). |
 | `update.bundles` | `true` | | `false`: `chi update` leaves the shipped bundles to `chi bundle upgrade` (`--no-bundles`). |
 | `update.desktop` | `true` | | `false`: `chi update` leaves the desktop helper alone (`--no-desktop`). |

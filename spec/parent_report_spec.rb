@@ -101,6 +101,29 @@ RSpec.describe Samagotchi::ParentReport do
       .to eq("waiting for an answer: Which file should I read?; open it: chi --attach #{id} or the web")
   end
 
+  describe "a step-limit question (kind continue)" do
+    let(:limit_question) do
+      { id: "c1", kind: "continue", header: "Step limit", question: "The turn ran out of iterations (100 steps) before it answered. Continue it?\nPrompt: fix it",
+        options: %w[Continue Stop], multi_select: false, allow_freeform: true, limit: 100, status: "pending" }
+    end
+    let(:wait) { Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: limit_question) }
+
+    it "reports it with its limit, answered with Continue (exit 3)" do
+      report = json(wait)
+      expect(report).to include("status" => "question", "answer_with" => "chi answer #{id} --question c1 --option Continue")
+      expect(report["question"]).to include("kind" => "continue", "limit" => 100, "options" => %w[Continue Stop])
+      expect(described_class.exit_status(wait)).to eq(3)
+    end
+
+    it "spells out Continue, Stop with a reason, and that a message drops it" do
+      text = described_class.question_text(limit_question, session_id: id)
+      expect(text).to include("waiting for an answer (continue): Step limit")
+      expect(text).to include("  continue: chi answer #{id} --question c1 --option Continue\n")
+      expect(text).to include("  stop: chi answer #{id} --question c1 --option Stop --text WHY")
+      expect(text).to include("a message instead (chi send #{id} -m …) drops it and starts a new turn")
+    end
+  end
+
   describe ".question_text" do
     it "lists the question, its numbered options and the commands that answer it" do
       expect(described_class.question_text(question, session_id: id)).to eq(<<~TEXT)

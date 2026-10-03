@@ -343,6 +343,67 @@ RSpec.describe Samagotchi::AnswerCommand do
     end
   end
 
+  describe "a step-limit question (kind continue)" do
+    let(:limit_question) do
+      { id: "c1", kind: "continue", header: "Step limit", question: "The turn ran out of iterations (100 steps) before it answered. Continue it?",
+        options: %w[Continue Stop], multi_select: false, allow_freeform: true, limit: 100, status: "pending" }
+    end
+
+    before do
+      allow(Samagotchi::Config).to receive(:get).with("turn.parent_continue") { @parent_continue.nil? ? true : @parent_continue }
+    end
+
+    it "continues it, marked as chi answer's, and prints the continued turn's reply" do
+      s = asking(limit_question, status: "idle")
+      replies_after_answer(s, "Done after all.")
+
+      expect(run(s.id, "--question", "c1", "--option", "Continue")).to eq(0), err.string
+      expect(posted).to eq([[:answer, "c1", ["Continue"], nil]])
+      expect(clients).to eq(["cli:answer"])
+      expect(out.string).to eq("Done after all.\n")
+    end
+
+    it "stops it with a reason" do
+      s = asking(limit_question, status: "idle")
+      threads << Thread.new do
+        sleep(0.02) until posted.any?
+        t = Samagotchi::Session.load(s.id, state_dir: tmpdir)
+        t.pending_question = nil
+        t.last_turn = { "outcome" => "not_continued", "ended_at" => "2026-10-03T12:00:00.000+00:00" }
+        t.save(state_dir: tmpdir)
+      end
+
+      expect(run(s.id, "--question", "c1", "--option", "Stop", "--text", "enough", "--format", "json")).to eq(0), err.string
+      expect(posted).to eq([[:answer, "c1", ["Stop"], "enough"]])
+      expect(json_out).to include("status" => "not_continued")
+    end
+
+    it "refuses Continue when turn.parent_continue is false (stop-only parents), before posting" do
+      @parent_continue = false
+      s = asking(limit_question, status: "idle")
+
+      expect(run(s.id, "--question", "c1", "--option", "Continue", "--timeout", "0.3")).to eq(1)
+      expect(posted).to be_empty
+      expect(err.string).to include("may only stop this turn").and include("turn.parent_continue: false")
+    end
+
+    it "won't dismiss it: the turn waits on Continue or Stop" do
+      s = asking(limit_question, status: "idle")
+
+      expect(run(s.id, "--question", "c1", "--dismiss", "--timeout", "0.3")).to eq(1)
+      expect(posted).to be_empty
+      expect(err.string).to include("can't be dismissed: answer Continue or Stop")
+    end
+
+    it "reports the worker's 409 not_dismissable instead of waiting" do
+      s = asking(question, status: "idle")
+      replies.replace([[409, { error: "not_dismissable", detail: "answer Continue or Stop" }]])
+
+      expect(run(s.id, "--question", "q1", "--dismiss", "--timeout", "2")).to eq(1)
+      expect(err.string).to include("answer Continue or Stop")
+    end
+  end
+
   it "needs a session, --question and an answer; --dismiss stands alone" do
     expect(run("--question", "q1", "--option", "1")).to eq(2)
     expect(err.string).to include("give one session id")

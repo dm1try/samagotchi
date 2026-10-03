@@ -8,6 +8,7 @@ require "time"
 require_relative "log"
 require_relative "tools/ask_user_question"
 require_relative "guardrails/parent_approvals"
+require_relative "guardrails/parent_continue"
 
 module Samagotchi
   # An Engine's question flow: the one open question (ask_user_question, a
@@ -33,15 +34,17 @@ module Samagotchi
 
     # Raised by #answer when a parent agent's answer (chi answer's client
     # id) allows an approval further than this worker's
-    # guardrails.parent_approvals lets it (Guardrails::ParentApprovals).
-    # The question stays open; transports map it to 403.
+    # guardrails.parent_approvals lets it (Guardrails::ParentApprovals), or
+    # continues a turn turn.parent_continue keeps it from
+    # (Guardrails::ParentContinue). The question stays open; transports map
+    # it to 403.
     class Refused < StandardError
-      # @return [Symbol] :off or :once_only
+      # @return [Symbol] :off, :once_only, :protected or :stop_only
       attr_reader :reason
 
       def initialize(reason)
         @reason = reason
-        super("a parent may not allow this approval (#{reason})")
+        super(reason == :stop_only ? "a parent may not continue this turn" : "a parent may not allow this approval (#{reason})")
       end
     end
 
@@ -269,6 +272,7 @@ module Samagotchi
       parent_agent = client_id.to_s == Guardrails::ParentApprovals::CLIENT_ID if parent_agent.nil?
       # Read before the lock (config may touch the disk); this worker's own.
       parent_setting = Guardrails::ParentApprovals.setting if parent_agent
+      parent_continue = Guardrails::ParentContinue.allowed? if parent_agent
       standing = nil
       answer = @lock.synchronize do
         pending = @pending
@@ -281,6 +285,9 @@ module Samagotchi
         raise NotPending, "question #{pending[:status]}" unless pending[:status].to_s == "pending"
 
         answer = validated_answer(pending, sel, fm, parent_agent: parent_agent, parent_setting: parent_setting)
+        if parent_agent && (reason = Guardrails::ParentContinue.refusal(pending, sel, allowed: parent_continue))
+          raise Refused, reason
+        end
         if @standing
           # No waiter: cleared here, so a second answer finds none.
           standing = @standing

@@ -100,7 +100,8 @@ module Samagotchi
     end
 
     # The question this session waits on, as the lists show it: {id:, kind:}
-    # with kind "question" (the model's), "approval" or "hook"; nil with
+    # with kind "question" (the model's), "approval", "hook" or "continue"
+    # (the step-limit question, asked between turns); nil with
     # none. Only while a worker runs it (+live+): a question saved by a
     # worker that died waits for no one (the next worker drops it). The
     # web's summaries and `chi sessions list` both ask this.
@@ -113,7 +114,7 @@ module Samagotchi
       kind = pending[:kind].to_s
       relayed = pending[:relayed_to]
       relayed_to = relayed.is_a?(Hash) ? (relayed[:parent_short] || relayed["parent_short"]) : nil
-      { id: pending[:id], kind: %w[approval hook].include?(kind) ? kind : "question", relayed_to: relayed_to }.compact
+      { id: pending[:id], kind: %w[approval hook continue].include?(kind) ? kind : "question", relayed_to: relayed_to }.compact
     end
 
     # The stored project root, else (a file from before the field) the

@@ -121,7 +121,8 @@ module Samagotchi
 
     # A pending question (Session#pending_question) as a parent sees it.
     # kind is "question" for the model's own (the desk stores none),
-    # "hook" or "approval".
+    # "hook", "approval" or "continue" (the step-limit question, with the
+    # turn's limit).
     # @return [Hash]
     def question(pending)
       pending ||= {}
@@ -134,15 +135,18 @@ module Samagotchi
         options: Array(pending[:options]).map(&:to_s),
         multi_select: !!pending[:multi_select],
         allow_freeform: !!pending[:allow_freeform],
+        limit: pending[:limit],
         approval: approval&.slice(*APPROVAL_KEYS)
       }.compact
     end
 
     # The command that answers +question+; N is the parent's to fill in.
     # An approval's is a deny: allowing it is the user's
-    # (Guardrails::ParentApprovals).
+    # (Guardrails::ParentApprovals). A step-limit question's continues the
+    # turn (its Stop form is in #question_text).
     def answer_with(session_id, question)
       return "chi answer #{session_id} --question #{question[:id]} --option Deny --text WHY" if approval?(question)
+      return "chi answer #{session_id} --question #{question[:id]} --option Continue" if continue?(question)
 
       "chi answer #{session_id} --question #{question[:id]} --option N"
     end
@@ -161,6 +165,16 @@ module Samagotchi
       question.is_a?(Hash) && (question[:kind] || question["kind"]).to_s == "approval"
     end
 
+    # The step-limit question (ContinueOffer).
+    def continue?(question)
+      question.is_a?(Hash) && (question[:kind] || question["kind"]).to_s == "continue"
+    end
+
+    # What a message does to a step-limit question.
+    def message_drops(session_id)
+      "a message instead (chi send #{session_id} -m …) drops it and starts a new turn"
+    end
+
     # What a wait that ended without an answer says, one line.
     def detail(result, session_id:, timeout: nil)
       attach = "chi --attach #{session_id}"
@@ -168,6 +182,9 @@ module Samagotchi
       when :waiting_for_answer
         if approval?(result.question)
           "waiting for an approval: #{first_line(result.question[:question])}; #{DENY_AND_TELL}"
+        elsif continue?(result.question)
+          "waiting at the step limit: #{first_line(result.question[:question])}; " \
+            "answer Continue or Stop: chi answer #{session_id} --question #{result.question[:id]} --option Continue"
         else
           "waiting for an answer: #{first_line(result.question&.dig(:question))}; open it: #{attach} or the web"
         end
@@ -193,6 +210,10 @@ module Samagotchi
         lines << "  allowing it is up to your user: #{DENY_AND_TELL}"
         lines << "  deny: #{answer_with(session_id, q)}"
         lines << "  #{leave_open(session_id)}"
+      elsif continue?(q)
+        lines << "  continue: #{answer_with(session_id, q)}"
+        lines << "  stop: chi answer #{session_id} --question #{q[:id]} --option Stop --text WHY (the text is optional; the model reads it)"
+        lines << "  #{message_drops(session_id)}"
       else
         lines << "  more than one allowed: repeat --option" if q[:multi_select]
         lines << "  free text allowed: --text" if q[:allow_freeform]
