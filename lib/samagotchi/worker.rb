@@ -12,6 +12,7 @@ require_relative "session_manager"
 require_relative "archive_store"
 require_relative "log"
 require_relative "turn_flow"
+require_relative "continue_offer"
 require_relative "session_commands"
 require_relative "model_profile"
 
@@ -108,6 +109,8 @@ module Samagotchi
       # an empty session until the first turn.
       @engine.session = @session
       @turn_flow = TurnFlow.new(engine: @engine)
+      @continue_offer = ContinueOffer.new(engine: @engine, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
+                                          max_iterations: method(:max_iterations))
       # A recap written while a continue offer waits says the turn stopped
       # unfinished (before the idle jobs start).
       @engine.recap&.awaiting_continue = -> { @turn_flow.awaiting_continue? }
@@ -330,7 +333,7 @@ module Samagotchi
     # @param images [Array<Hash>] the prompt's image refs ({file:, name:})
     def run_prompt(prompt, origin, no_interrupt: false, images: [])
       user_input(origin&.dig(:client_id))
-      drop_continue_offer(origin)
+      @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn
       @merged_this_turn = []
       run_engine_turn(prompt, origin: origin, max_iterations: max_iterations(no_interrupt),
@@ -339,7 +342,7 @@ module Samagotchi
           # The Engine announced :turn_failed (with the error's one line).
           restore_failed_turn([[prompt, origin, images], *@merged_this_turn], error: error)
         else
-          after_turn(result, no_interrupt: no_interrupt)
+          @continue_offer.after_turn(result, no_interrupt: no_interrupt)
         end
       end
     end
@@ -355,10 +358,10 @@ module Samagotchi
       @engine.clear_due_reminder_names!
       return false unless @engine.reminders_due?
 
-      drop_continue_offer({ client_id: SessionManager::REMINDER_CLIENT_ID })
+      @continue_offer.drop({ client_id: SessionManager::REMINDER_CLIENT_ID })
       # A failure has no prompt to hand back (the Engine announced
       # :turn_failed). The offer went before the turn
-      # (drop_continue_offer); either way the rollback window closes.
+      # (ContinueOffer#drop); either way the rollback window closes.
       run_engine_turn(nil, continue: true, origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
                            max_iterations: DEFAULT_MAX_ITERATIONS) { @turn_flow.after_reminder_turn }
       true
@@ -398,22 +401,20 @@ module Samagotchi
     end
 
     def run_command(command)
-      awaiting = @turn_flow.awaiting_continue?
+      awaiting = @continue_offer.awaiting?
       result, shown = run_command_line(command)
-      resolved = awaiting && result.decision && result.decision != :invalid
+      resolved = @continue_offer.resolved?(awaiting, result)
       @engine.synchronize_events do
-        if resolved
-          @engine.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command[:client_id])
-        end
+        @continue_offer.announce_resolved(result, command) if resolved
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
         shown.each { |event| @engine.announce(event) }
       end
       save_session unless Array(result.changed).empty?
-      user_input(command[:client_id]) if resolved
-      # An offer answered without a turn ("no") is activity: the recap
-      # written at the offer (it says the turn stopped) gets rewritten.
-      @engine.record_activity if resolved && !result.resume
-      run_continue_turn(command) if result.resume
+      if resolved
+        user_input(command[:client_id])
+        @continue_offer.resolved(result)
+      end
+      @continue_offer.run_continue_turn(command) if result.resume
     end
 
     # @return [Array(SessionCommands::Result, Array<Hash>)] the result, and
@@ -466,22 +467,6 @@ module Samagotchi
       @engine.announce(event)
     end
 
-    # The continue offer was answered yes: resume the conversation without a
-    # user message, with the iteration limit the offer's turn had. A failure
-    # keeps the offer, as the REPL does ("continue prompt preserved").
-    def run_continue_turn(command)
-      offer = @turn_flow.offer
-      @turn_flow.before_continue_turn
-      run_engine_turn(nil, continue: true, origin: { client_id: command[:client_id] }.compact,
-                           max_iterations: max_iterations(offer[:no_interrupt])) do |result, error|
-        if error
-          @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
-        else
-          after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
-        end
-      end
-    end
-
     # One Engine turn, the same for a prompt, a reminder and a continue:
     # the session shows as running to readers of the file (the web's
     # session list; the Engine resets it to idle when it ends), commands
@@ -504,29 +489,6 @@ module Samagotchi
       response = result&.output
       SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       save_session
-    end
-
-    # TurnFlow keeps the checkpoint (a cancelled turn's, for !rollback) and
-    # the continue offer of a turn that ran out of iterations, which every
-    # UI hears about.
-    def after_turn(result, continue: false, no_interrupt: false)
-      outcome = @turn_flow.after_turn(result, continue: continue, no_interrupt: no_interrupt)
-      return unless outcome == :continue_offered || outcome == :continue_cancelled
-
-      offer = @turn_flow.offer
-      @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
-    end
-
-    # A prompt (or a reminder turn) taken while a continue is offered
-    # replaces the answer (D2): the offer goes, the partial turn stays.
-    def drop_continue_offer(origin)
-      return unless @turn_flow.awaiting_continue?
-
-      @engine.synchronize_events do
-        @turn_flow.drop_offer!
-        @engine.announce(type: :continue_resolved, decision: "dropped", client_id: origin&.dig(:client_id))
-      end
-      @engine.record_activity
     end
 
     # Back to the conversation before the failed turn, as the REPL does (so
