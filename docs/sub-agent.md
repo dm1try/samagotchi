@@ -59,8 +59,11 @@ A turn that runs out of steps (`turn.max_iterations`, default 100) before it
 answers waits as a question of kind `continue` (`"limit": 100`, options
 `Continue` and `Stop`). `answer_with` continues it:
 `chi answer ID --question QID --option Continue`, and the continued turn's
-reply (or its next question) comes back on that same wait. To stop it:
-`--option Stop`, with `--text "why"` for the model (Continue takes no text);
+reply (or its next question) comes back on that same wait. With
+`--text "…"` the text joins the continued turn as a steer (as a `chi send -m`
+into a running turn does, marked as coming from the parent agent), so one
+answer continues and redirects it. To stop it:
+`--option Stop`, with `--text "why"` for the model;
 that wait ends with `status: not_continued`, exit 0, and the turn's work so far
 stays in the session. A message instead (`chi send ID -m "…"`) drops the
 question and starts a new turn. It can't be dismissed.
@@ -165,7 +168,8 @@ Start a task: `chi send --new --wait --format json --timeout 500 -m "<task>"`
 - `status: running` (exit 4): still working. Wait again:
   `chi send --wait --format json --timeout 500 <session_id>`.
 - `question.kind: continue`: chi ran out of steps before it answered. If it is
-  getting somewhere, continue it (`answer_with`, `--option Continue`); if not,
+  getting somewhere, continue it (`answer_with`, `--option Continue`, with
+  `--text "…"` to steer it on the way); if not,
   stop it (`--option Stop --text "why"`, exit 0, status `not_continued`) or send
   a narrower follow-up instead. Ask your user when unsure.
 - Anything else (exit 1): report `detail` to your user. `chi --attach <session_id>`

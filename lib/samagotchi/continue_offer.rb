@@ -41,6 +41,9 @@ module Samagotchi
       # A question was posted since the last close (it may have been
       # answered or superseded meanwhile).
       @asked = false
+      # The text a Continue answer came with ({text:, source:}): it steers
+      # the continue turn (#run_continue_turn).
+      @continue_steer = nil
     end
 
     attr_writer :queue_command
@@ -62,6 +65,7 @@ module Samagotchi
     def drop(origin)
       return unless awaiting?
 
+      @continue_steer = nil
       close("dropped")
       @engine.synchronize_events do
         @turn_flow.drop_offer!
@@ -107,6 +111,9 @@ module Samagotchi
     def run_continue_turn(command)
       offer = @turn_flow.offer
       close("answered")
+      steer = @continue_steer
+      @continue_steer = nil
+      @engine.steer_next_turn(steer[:text], source: steer[:source]) if steer
       @turn_flow.before_continue_turn
       @run_turn.call(nil, continue: true, origin: { client_id: command[:client_id] }.compact,
                           max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
@@ -164,9 +171,15 @@ module Samagotchi
     end
 
     # The question's answer as the /continue line a typed answer would be:
-    # Continue → yes; Stop → no; a text (with Stop, or alone) → no, <text>.
+    # Continue → yes, and a text with it steers the continue turn (from the
+    # parent agent when the answer says so); Stop → no; a text (with Stop,
+    # or alone) → no, <text>.
     def answered(answer, client_id:)
       text = answer[:freeform].to_s.gsub(/\s+/, " ").strip
+      @continue_steer = nil
+      if Array(answer[:selected]).include?(CONTINUE) && !text.empty?
+        @continue_steer = { text: text, source: answer[:by] == "parent_agent" ? "parent_agent" : "user" }
+      end
       line = if Array(answer[:selected]).include?(CONTINUE) then "/continue yes"
              elsif text.empty? then "/continue no"
              else "/continue no, #{text}"

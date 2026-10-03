@@ -87,5 +87,16 @@ RSpec.describe Samagotchi::TurnState do
       expect(state.take_steers).to eq([])
       expect(state.steer("after", source: "x")).to be(false)
     end
+
+    it "steer_next_turn waits for the turn that begins, then queues like a steer" do
+      expect(state.steer_next_turn("go", source: :parent_agent)).to be(true)
+      expect(state.steer_next_turn(" ", source: "x")).to be(false)
+      expect(state.take_steers).to eq([])
+      state.begin!(controller: controller, sink: nil)
+      expect(state.take_steers).to eq([{ text: "go", source: "parent_agent" }])
+      state.finish!
+      state.begin!(controller: controller, sink: nil)
+      expect(state.take_steers).to eq([])
+    end
   end
 end

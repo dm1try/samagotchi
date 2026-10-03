@@ -1061,6 +1061,30 @@ RSpec.describe Samagotchi::Worker do
           expect(wait_until { saved_messages == ["long task", "r1", "OK"] && saved_session.pending_question.nil? }).to be(true)
         end
 
+        # The continued turn's first boundary, as the kernel reads it.
+        def answer_continue_with(text, client_id:)
+          drained = Queue.new
+          allow(kernel).to receive(:run) do |messages, pending_input:, **|
+            drained << pending_input.call(at_answer: false)
+            Samagotchi::LLM::ModelResult.new(text: "OK", conversation: messages + [{ role: "model", content: "OK" }],
+                                             exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+          end
+          expect(post_answer(["Continue"], freeform: text, client_id: client_id).code).to eq("200")
+          expect(wait_until { events_seen.count { |e| e[:type] == :turn_completed } == 2 }).to be(true)
+          drained.pop
+        end
+
+        it "runs the continue turn on Continue with a text, which joins that turn as a steer from the user" do
+          expect(answer_continue_with("also check the specs", client_id: "web:2"))
+            .to eq([{ text: "also check the specs", source: "user" }])
+          expect(engine.steer("late", source: "x")).to be(false)
+        end
+
+        it "labels the steer as the parent agent's when chi answer sent the Continue" do
+          expect(answer_continue_with("also check the specs", client_id: "cli:answer"))
+            .to eq([{ text: "also check the specs", source: "parent_agent" }])
+        end
+
         it "stops on Stop: no turn runs, last_turn says not_continued, and a wait on it ends" do
           baseline = Samagotchi::ReplyWait.baseline_of(saved_session, question_id: question[:id])
           waited = Thread.new do
@@ -1076,14 +1100,6 @@ RSpec.describe Samagotchi::Worker do
           expect(Samagotchi::ParentReport.exit_status(result)).to eq(0)
           expect(turns.size).to eq(1)
           expect(saved_session.pending_question).to be_nil
-        end
-
-        it "refuses Continue with a text, and keeps the question open" do
-          reply = post_answer(["Continue"], freeform: "and fix the tests")
-
-          expect(reply.code).to eq("400")
-          expect(JSON.parse(reply.body)).to include("error" => "invalid_answer")
-          expect(saved_session.pending_question).to include(id: question[:id])
         end
 
         it "is withdrawn when a new prompt drops the offer, and the prompt runs" do

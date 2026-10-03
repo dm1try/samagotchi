@@ -455,7 +455,7 @@ module Samagotchi
     def settle_standing(standing, answer, client_id)
       clear_saved_question
       emit({ type: :question_answered, id: answer[:id], answer: answer })
-      standing[:on_answer].call(answer.except(:by), client_id: client_id)
+      standing[:on_answer].call(answer, client_id: client_id)
     rescue StandardError => e
       Log.warn(:turn, "standing_answer_failed", error: e.class.name, message: e.message)
     end
@@ -472,12 +472,6 @@ module Samagotchi
       raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})" unless invalid.empty?
       raise ArgumentError, "single-select question: got #{sel.size} selections" if !pending[:multi_select] && sel.size > 1
       raise ArgumentError, "selection required" if pending[:multi_select] == false && sel.empty? && fm.nil?
-      # A step-limit question: Continue resumes the turn as it was; a text
-      # goes with Stop (steering a continue is not a thing).
-      if pending[:kind].to_s == CONTINUE_KIND && sel == [CONTINUE_OPTION] && fm
-        raise ArgumentError, "Continue takes no text (a text goes with Stop)"
-      end
-
       indices = sel.map { |v| opts.index(v) }
       # The one whose answer settles the approval (Approval.settle, by index).
       if parent_setting

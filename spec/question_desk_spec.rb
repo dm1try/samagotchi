@@ -219,13 +219,30 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(answers.map(&:last)).to eq(["cli:answer"])
     end
 
-    it "refuses Continue with a text (a text goes with Stop), and stays open" do
+    it "takes Continue with a text, handed to the poster as the answer's freeform" do
       id = desk.post(continue_fields, on_answer: on_answer)[:id]
 
-      expect { desk.answer(id: id, selected: ["Continue"], freeform: "and also") }
-        .to raise_error(ArgumentError, /Continue takes no text/)
-      expect(desk.pending).to include(id: id)
-      expect(answers).to be_empty
+      answer = desk.answer(id: id, selected: ["Continue"], freeform: "  and also check X ", client_id: "web:1")
+
+      expect(answer).to include(selected: ["Continue"], freeform: "and also check X")
+      expect(answers.first.first).to include(selected: ["Continue"], freeform: "and also check X")
+      expect(desk.pending).to be_nil
+    end
+
+    it "marks a parent agent's Continue with a text, so the poster can label the steer" do
+      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+
+      desk.answer(id: id, selected: ["Continue"], freeform: "and also", client_id: "cli:answer")
+
+      expect(answers.first.first).to include(freeform: "and also", by: "parent_agent")
+    end
+
+    it "still takes Stop with a text" do
+      id = desk.post(continue_fields, on_answer: on_answer)[:id]
+
+      desk.answer(id: id, selected: ["Stop"], freeform: "enough", client_id: "web:1")
+
+      expect(answers.first.first).to include(selected: ["Stop"], freeform: "enough")
     end
 
     it "can't be dismissed: a UI's dismiss raises, a cancel with no id leaves it" do

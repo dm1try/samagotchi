@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `chi answer --option Continue --text "…"` is accepted: the text joins the continued turn as a steer (marked as the parent agent's for `chi answer`), instead of being refused.
+
 ## [0.21.0] - 2026-10-04
 
 ### Added

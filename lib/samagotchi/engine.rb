@@ -325,6 +325,14 @@ module Samagotchi
       @turn_state.steer(text, source: source)
     end
 
+    # Like #steer, for the turn that begins next (a continue turn answered
+    # with a text): it joins that turn at its first boundary. Callable from
+    # any thread; a turn that never begins keeps it for the next one.
+    # @return [Boolean] whether it was queued (false: blank)
+    def steer_next_turn(text, source:)
+      @turn_state.steer_next_turn(text, source: source)
+    end
+
     # The drain a turn's loop gets: the caller's lines (a UI's steering; nil
     # in a --non-interactive run) and the plugin steers. At the after-answer
     # boundary the steers are dropped: the model answered, and a nudge would

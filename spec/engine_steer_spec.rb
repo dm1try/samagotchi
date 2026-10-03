@@ -150,4 +150,34 @@ RSpec.describe Samagotchi::Engine, "#steer" do
 
     expect(result).to be(false)
   end
+
+  describe "#steer_next_turn" do
+    it "queues for the turn that begins next, which drains it at its first boundary (once)" do
+      drains = []
+      allow(kernel).to receive(:run) do |_messages, pending_input:, **|
+        drains << drain_mid(pending_input) << drain_mid(pending_input)
+        kernel_result
+      end
+
+      expect(engine.steer_next_turn("  also X ", source: "parent_agent")).to be(true)
+      expect(engine.steer_next_turn("  ", source: "parent_agent")).to be(false)
+      engine.run_turn(session, nil, continue: true)
+
+      expect(drains).to eq([[{ text: "also X", source: "parent_agent" }], []])
+    end
+
+    it "reaches the model: the next request carries the steer as a steer message" do
+      conversation = nil
+      allow(kernel).to receive(:run) do |messages, pending_input:, **|
+        merge = Samagotchi::Steer.merge(drain_mid(pending_input))
+        conversation = messages + merge.messages
+        kernel_result
+      end
+
+      engine.steer_next_turn("also X", source: "user")
+      engine.run_turn(session, nil, continue: true)
+
+      expect(conversation.last).to include(role: "user", kind: "steer", source: "user", content: "also X")
+    end
+  end
 end

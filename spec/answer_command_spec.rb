@@ -363,6 +363,15 @@ RSpec.describe Samagotchi::AnswerCommand do
       expect(out.string).to eq("Done after all.\n")
     end
 
+    it "continues it with a text, which goes to the desk with the answer (exit 0)" do
+      s = asking(limit_question, status: "idle")
+      replies_after_answer(s, "Done after all.")
+
+      expect(run(s.id, "--question", "c1", "--option", "Continue", "--text", "also check X")).to eq(0), err.string
+      expect(posted).to eq([[:answer, "c1", ["Continue"], "also check X"]])
+      expect(out.string).to eq("Done after all.\n")
+    end
+
     it "stops it with a reason" do
       s = asking(limit_question, status: "idle")
       threads << Thread.new do

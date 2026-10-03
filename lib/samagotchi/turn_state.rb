@@ -23,6 +23,7 @@ module Samagotchi
       @controller = nil
       @sink = nil
       @steers = []
+      @carried_steers = []
     end
 
     # ── Activity clock ──────────────────────────────────────────────────
@@ -69,6 +70,8 @@ module Samagotchi
         @running = true
         @controller = controller
         @sink = sink
+        @steers.concat(@carried_steers)
+        @carried_steers = []
       end
     end
 
@@ -115,6 +118,18 @@ module Samagotchi
 
         @steers << { text: text, source: source.to_s }
       end
+      true
+    end
+
+    # Queue +text+ for the next turn that begins: it is a steer of that turn
+    # from its first boundary on (a continue turn's answer text, which has
+    # no turn running yet to steer). Taken by #begin!.
+    # @return [Boolean] whether it was queued (false: blank)
+    def steer_next_turn(text, source:)
+      text = text.to_s.strip
+      return false if text.empty?
+
+      @lock.synchronize { @carried_steers << { text: text, source: source.to_s } }
       true
     end
 
