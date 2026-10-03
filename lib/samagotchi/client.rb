@@ -31,7 +31,9 @@ module Samagotchi
     CONTEXT_WINDOW_PROBE_READ_TIMEOUT = 2
     # Seconds a probe that got no answer (refused, timed out) is remembered:
     # a down or hung server then costs one probe per window, not one per
-    # generation, and a new turn doesn't ask again at once.
+    # generation, and a new turn doesn't ask again at once. A request to the
+    # host that succeeds drops the remembered failure (see
+    # #clear_props_failures!).
     PROPS_FAILURE_TTL = 30
 
     DEFAULT_TRANSPORT = :llama_cpp
@@ -270,6 +272,10 @@ module Samagotchi
         chunk[:finish_reason] = finish_reason if finish_reason
         on_chunk.call(**chunk)
       end
+      # The host answered: a /props probe that failed while it was down (or
+      # loading) is no longer true, so the next turn asks it again instead
+      # of reusing the failure for the rest of its PROPS_FAILURE_TTL.
+      clear_props_failures!
       result
     rescue LLM::BadRequest => e
       raise unless e.status == 404 && @transport.name == :llama_cpp
@@ -293,6 +299,7 @@ module Samagotchi
     def list_models
       uri = URI("#{@scheme}://#{@host}:#{@port}#{@transport.models_path}")
       response = @http.fetch(uri, Net::HTTP::Get.new(uri), log_fields: { purpose: "models" })
+      clear_props_failures!
       parsed = JSON.parse(response.body.to_s)
       parsed.fetch("data", parsed)
     rescue LLM::ProviderError
@@ -309,7 +316,9 @@ module Samagotchi
     # Whatever the server answers (a non-200 too) is cached per model; a
     # network failure for PROPS_FAILURE_TTL seconds, then the next call asks
     # again. A probe cut by this thread's Client.probe_cancel answers
-    # :cancelled, uncached, and the turn's next request ends it.
+    # :cancelled, uncached, and the turn's next request ends it. A completion
+    # or model list this client gets through clears the failures: a server
+    # that just answered is not the down or hung one the window remembered.
     def server_props(model: nil)
       path = @transport.props_path
       return nil unless path
@@ -362,6 +371,15 @@ module Samagotchi
     private
 
     def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    # The host answered a request: whatever a probe failed with (refused,
+    # timed out, 503 while it loaded) is stale, so the next probe asks it
+    # again rather than serving the failure for the rest of its
+    # PROPS_FAILURE_TTL. A cached answer stays: it was read from the same
+    # running server.
+    def clear_props_failures!
+      @props_mutex.synchronize { @props_failures.clear }
+    end
 
     def probe_props(path, model)
       query = model.empty? ? "" : "?#{URI.encode_www_form(model: model)}"

@@ -1015,6 +1015,43 @@ end
       expect(Net::HTTP).to have_received(:start).once
     end
 
+    it "drops a remembered failure when a later request to the host succeeds" do
+      now = 100.0
+      allow(client).to receive(:monotonic_now) { now }
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+
+      # The server is down: the probe fails and the failure is remembered.
+      expect(client.server_props(model: "m")).not_to be_answered
+      expect(Net::HTTP).to have_received(:start).once
+
+      # A chat request gets through: the server is up again, so the next
+      # probe must ask it, not serve the remembered failure.
+      http = instance_double(Net::HTTP)
+      response = double("response", code: "200")
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) { |_request, &block| block.call(response) }
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+      expect(client.complete("prompt")).to eq("ok")
+
+      stub_probe
+      expect(client.server_props(model: "m")).to be_answered
+      expect(requests).to eq(["/props?model=m"])
+    end
+
+    it "drops a remembered failure when the model list succeeds" do
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+      expect(client.context_window(model: "m")).to be_nil
+
+      http = instance_double(Net::HTTP)
+      response = double("response", code: "200", body: '{"data":[]}')
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) { |_request| response }
+      client.list_models
+
+      stub_probe
+      expect(client.context_window(model: "m")).to eq(128_000)
+    end
+
     it "probes again after invalidate_context_window!" do
       stub_probe
       client.context_window(model: "m")
