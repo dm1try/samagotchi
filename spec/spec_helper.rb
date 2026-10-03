@@ -110,6 +110,10 @@ RSpec.configure do |config|
     end
     # ContextWindow remembers the last server-reported window process-wide.
     Samagotchi::ContextWindow.reset! if defined?(Samagotchi::ContextWindow)
+    # The /props answers and failures are one store per host for the process
+    # (Client.props_entry): a spec's fake server must not serve the next
+    # example's probe.
+    Samagotchi::Client.reset_props_store! if defined?(Samagotchi::Client) && Samagotchi::Client.respond_to?(:reset_props_store!)
     # The log facade is process-wide: unconfigured again, it resolves its
     # file from this example's config (the temp XDG_STATE_HOME by default).
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)

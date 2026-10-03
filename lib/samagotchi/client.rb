@@ -39,6 +39,31 @@ module Samagotchi
     DEFAULT_TRANSPORT = :llama_cpp
     VALID_TRANSPORTS = %i[llama_cpp mlx omlx].freeze
 
+    # One /props cache per host per process. A host has more than one Client
+    # in a run (the registry's, a rebuilt HostRegistry's, the Engines of a
+    # TUI and a spec): with a cache each, every one of them asks /props for
+    # the same server. Keyed by the host's base URL (scheme://host:port), so
+    # two Clients of the same server share the answers their turns read.
+    # Entries live for the process: they are the same small hash per host
+    # (answers by model, failures by model with their timestamps).
+    @props_store = {}
+    @props_store_mutex = Mutex.new
+
+    class << self
+      # The shared props entry for a host's base URL:
+      # { answers: { model => ServerProps }, failures: { model => [props, at] },
+      #   mutex: Mutex }. The caller may hold the entry's own mutex.
+      def props_entry(base_url)
+        @props_store_mutex.synchronize { @props_store[base_url] ||= { answers: {}, failures: {}, mutex: Mutex.new } }
+      end
+
+      # Forget every host's answers and failures. Specs call it per example
+      # (the store outlives one); nothing in a run does.
+      def reset_props_store!
+        @props_store_mutex.synchronize { @props_store.clear }
+      end
+    end
+
     # Wire-format strategy for one server transport. `Client` keeps the
     # transport-agnostic request/retry/stream loop; everything that differs
     # between llama.cpp's native API and the OpenAI-compatible servers
@@ -177,9 +202,13 @@ module Samagotchi
       @open_timeout  = Samagotchi::Config.positive_seconds("server.open_timeout", open_timeout)
       @read_timeout  = Samagotchi::Config.positive_seconds("server.read_timeout", read_timeout)
       @transport = build_transport(resolve_transport(transport))
-      @props_cache = {}
-      @props_failures = {}
-      @props_mutex = Mutex.new
+      # This host's process-wide /props entry (see self.props_entry): its
+      # answers and failures are shared with every other Client of the same
+      # server.
+      @props_entry = self.class.props_entry("#{@scheme}://#{@host}:#{@port}")
+      @props_cache = @props_entry[:answers]
+      @props_failures = @props_entry[:failures]
+      @props_mutex = @props_entry[:mutex]
       @first_token_timeout = first_token_timeout
       @host_name = name
       @label = name.to_s.empty? ? @transport.label : name.to_s
@@ -359,11 +388,12 @@ module Samagotchi
       nil
     end
 
-    # Forget cached /props answers: the server may have restarted with
-    # another -c, or a model switch may have loaded one with a different
-    # window. A recent failure stays until its PROPS_FAILURE_TTL ends: it
-    # holds no stale window, and asking a hung server again at every turn's
-    # start is what it saves.
+    # Forget cached /props answers for this host: the server may have
+    # restarted with another -c, or a model switch may have loaded one with a
+    # different window. The host's entry is shared with every Client of the
+    # same server, so the clear reaches them all. A recent failure stays
+    # until its PROPS_FAILURE_TTL ends: it holds no stale window, and asking
+    # a hung server again at every turn's start is what it saves.
     def invalidate_context_window!
       @props_mutex.synchronize { @props_cache.clear }
     end

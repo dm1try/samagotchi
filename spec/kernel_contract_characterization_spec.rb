@@ -177,6 +177,19 @@ RSpec.describe "Kernel contract (characterization)" do
       expect(body["prompt"]).to end_with(Samagotchi::Thinking::QWEN_EMPTY_THOUGHT)
     end
 
+    # The profile resolution asks the host's Client (the registry's) and the
+    # turn's window probe another (each Engine resolution builds its own):
+    # with a cache each, the turn sent GET /props twice before /completion.
+    it "sends one GET /props for the turn, however many Clients read the host" do
+      server.enqueue("/completion", sse: sse("Hello."))
+      second = Samagotchi::Client.new(host: "127.0.0.1", port: server.port, sleeper: ->(_seconds) {})
+
+      result = Samagotchi::Engine.new(host_registry: registry, client: second).run_turn(session_for("box:Qwen3.6"), "hi")
+
+      expect(result.output).to eq("Hello.")
+      expect(server.requests.count { |request| request.path == "/props" }).to eq(1)
+    end
+
     it "runs the tool flows through the native loop too" do
       engine = Samagotchi::Engine.new(host_registry: registry, muted_memories: ["secret"])
       server.enqueue("/completion", sse: sse(qwen_call("memory_read", name: "secret")))

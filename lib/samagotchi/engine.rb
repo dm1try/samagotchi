@@ -1580,13 +1580,13 @@ module Samagotchi
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 
-      # Ask the server for its window again each turn (one short /props GET,
-      # cached across the turn's generations): a restart with another -c
-      # between turns raises no error that would drop the cache. The
-      # profile may probe too (a first turn, a retry). Both run after
-      # run_turn's probe-cancel swap, so a Stop cuts them, and a failure
-      # ends the turn as turn_failed.
-      @client.invalidate_context_window!
+      # The window and the profile probes run after run_turn's probe-cancel
+      # swap, so a Stop cuts them; a failure ends the turn as turn_failed.
+      # The cache itself was dropped at the previous turn's end, so this
+      # turn's first probe asks the server (a restart with another -c
+      # between turns is noticed), and the answer the session's prompt build
+      # read for its profile (a first turn) is what this turn starts from:
+      # one GET /props per turn, not two.
       refresh_profile!
 
       # Before anything of the turn is kept or a reminder is used up.
@@ -1839,6 +1839,13 @@ module Samagotchi
       # treats the just-finished turn as activity and re-arms its window.
       left = @turn_state.finish!
       Client.swap_probe_cancel(probe_cancel_before)
+      # The next turn's window and served model are asked again: the cache
+      # (this host's, process-wide) is dropped here, at the turn's end,
+      # rather than at its start, so what this turn read (the profile's own
+      # probe included) is not asked for a second time within the turn. A
+      # restart with another -c between turns is still noticed: the next
+      # turn's first probe goes to the server.
+      @client.invalidate_context_window!
       log_dropped_steers(left, "turn_ended")
       record_activity
       # Clear hooks so they remain turn-scoped and never leak into the next turn.

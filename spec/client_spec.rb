@@ -990,6 +990,44 @@ end
       expect(requests.size).to eq(1)
     end
 
+    # The Engine resolves its prompt profile through one Client (the one the
+    # HostRegistry built) and its per-turn window probe through another
+    # (a rebuilt registry's, a TUI's): with a cache each, every turn sent
+    # GET /props twice.
+    it "serves another Client of the same host from this host's one answer" do
+      stub_probe
+      other = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
+
+      expect(client.context_window(model: "m")).to eq(128_000)
+      expect(other.context_window(model: "m")).to eq(128_000)
+      expect(other.server_props(model: "m")).to be_answered
+      expect(requests).to eq(["/props?model=m"])
+    end
+
+    it "keeps another host's answers apart" do
+      response = instance_double(Net::HTTPResponse, code: "200", body: props_body)
+      http = instance_double(Net::HTTP)
+      asked = []
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) { |req| asked << "#{req.uri.host}#{req.path}"; response }
+      other = described_class.new(host: "other.test", port: 8080, sleeper: ->(_seconds) {})
+
+      client.context_window(model: "m")
+      other.context_window(model: "m")
+
+      expect(asked).to eq(["localhost/props?model=m", "other.test/props?model=m"])
+    end
+
+    it "shares a failure with another Client of the same host (one probe, not one each)" do
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+      other = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
+
+      expect(client.server_props(model: "m")).not_to be_answered
+      expect(other.server_props(model: "m")).not_to be_answered
+
+      expect(Net::HTTP).to have_received(:start).once
+    end
+
     it "returns nil without retrying when the probe fails, and asks again once the failure is old" do
       now = 100.0
       allow(client).to receive(:monotonic_now) { now }

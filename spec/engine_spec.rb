@@ -388,7 +388,7 @@ RSpec.describe Samagotchi::Engine do
   describe "context window per turn" do
     before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
 
-    it "drops the cached window before the turn generates (the server may have restarted with another -c)" do
+    it "drops the cached window once the turn is over (the server may have restarted with another -c)" do
       calls = []
       allow(client).to receive(:invalidate_context_window!) { calls << :invalidate }
       allow(kernel).to receive(:run) do
@@ -398,7 +398,23 @@ RSpec.describe Samagotchi::Engine do
 
       build_engine(profile: "gemma4").run_turn(make_session, "hi")
 
-      expect(calls).to eq(%i[invalidate run])
+      expect(calls).to eq(%i[run invalidate])
+    end
+
+    # The turn's own profile probe and window probe read one answer: the
+    # clear must not come between them.
+    it "does not drop the window the turn's probe read before it generates" do
+      calls = []
+      allow(client).to receive(:invalidate_context_window!) { calls << :invalidate }
+      allow(Samagotchi::ContextWindow).to receive(:resolve) { calls << :window_probe; nil }
+      allow(kernel).to receive(:run) do
+        calls << :run
+        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
+      end
+
+      build_engine(profile: "gemma4").run_turn(make_session, "hi")
+
+      expect(calls).to eq(%i[run invalidate])
     end
   end
 
