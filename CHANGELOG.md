@@ -78,6 +78,9 @@ and commands may change between minor versions. How releases are made:
   `chi send --new -m "/model x"`, `chi -p "/model x"` (attached and `--non-interactive`) and the web start page's
   first message went to the model as a prompt. `chi send` says `sent as a session command`; with `--wait` there is
   no reply to wait for (exit 0, `--format json` status `command`). An unknown `/word` still goes to the model.
+- macOS 26: a dead worker's leftover `bridge.json` no longer counts as a live worker. Ruby's `Socket.tcp` with a
+  connect timeout returns the socket of a refused connect there, so the check said live: clients tried its port
+  first, `chi update` listed the dead worker as running, and an approval relay kept watching a parent that was gone.
 
 ## [0.16.0] - 2026-10-03
 

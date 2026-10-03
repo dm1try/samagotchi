@@ -42,7 +42,10 @@ module Samagotchi
       return nil unless sidecar&.port&.positive?
 
       begin
-        Socket.tcp(host, sidecar.port, connect_timeout: timeout).close
+        # Not Socket.tcp: with connect_timeout (Ruby 3.4, macOS 26) it hands
+        # back the socket of a refused connect (SO_ERROR set), so a dead
+        # worker's port read as live. TCPSocket raises ECONNREFUSED.
+        TCPSocket.new(host, sidecar.port, connect_timeout: timeout).close
         sidecar
       rescue StandardError
         FileUtils.rm_f(path(session_dir)) if unlink
