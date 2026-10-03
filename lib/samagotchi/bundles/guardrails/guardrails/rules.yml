@@ -4,7 +4,8 @@
 # earlier or `git -C` variants can get past them.
 #
 # Fields: id, tool (a name, a list, or shell = execute + task_create),
-# command (Ruby regex), path (outside_repo or a glob), verdict (ask|deny),
+# command (Ruby regex), path (outside_repo or a glob), git (outside_repo:
+# a shell call runs commit/add/reset/… in another checkout), verdict (ask|deny),
 # reason, scopes (for an ask: once, session, repo, rule; default all).
 # [^;&|\n]* keeps a match inside one command of a chain; the git rules match
 # the subcommand after optional global options (git -C dir push).
@@ -62,12 +63,26 @@ rules:
     verdict: ask
     reason: runs decoded text as a script
 
-  # ── files outside the repo, and git hooks ──────────────────────────────
+  # ── work outside this session's repo, and git hooks ───────────────────
+  # outside_repo: not in the session's repo (its folder outside a repo);
+  # tmp dirs and memory files don't count.
   - id: write-outside-repo
     tool: [write, edit]
     path: outside_repo
     verdict: ask
-    reason: writes outside the repository
+    reason: writes outside this session's repo
+  # cd/git -C into another checkout, then commit, add, reset, checkout,
+  # switch, rebase, merge, push, stash, rm, mv, cherry-pick, revert, pull,
+  # restore or am. Read-only git (status, log, diff) and tests there run.
+  # "This call in this repo" would never match again (the command holds
+  # the commit message), so it isn't offered: "rule in this repo" is the
+  # always-for-here answer.
+  - id: git-outside-repo
+    tool: shell
+    git: outside_repo
+    verdict: ask
+    scopes: [once, session, rule]
+    reason: runs git that changes another checkout, outside this session's repo
   - id: git-hooks-write
     tool: [write, edit]
     path: '**/.git/hooks/**'

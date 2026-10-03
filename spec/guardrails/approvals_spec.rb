@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "yaml"
+
 require "tmpdir"
 require "samagotchi/guardrails"
 require "samagotchi/hooks"
@@ -190,5 +192,47 @@ RSpec.describe Samagotchi::Guardrails::Gate, "with an approval store" do
     hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no") }
     v = gate.evaluate({ name: "execute", content: "git push" }, iteration: 1, params: "")
     expect(v).to be_deny
+  end
+end
+
+# The guardrails bundle's git-outside-repo rule through the Gate: the ask
+# reaches the approver, and "rule in this repo" stops later asks there.
+RSpec.describe Samagotchi::Guardrails::Gate, "with the bundle's git-outside-repo rule" do
+  let(:base) { File.realpath(Dir.mktmpdir("guard-gate-outside")) }
+  let(:repo) { File.join(base, "wt").tap { |d| FileUtils.mkdir_p(d) && system("git", "-C", d, "init", "-q") } }
+  let(:main) { File.join(base, "main").tap { |d| FileUtils.mkdir_p(d) } }
+  let(:store) { Samagotchi::Guardrails::Approvals.new(dir: File.join(base, "state", "guardrails")) }
+  let(:asked) { [] }
+  let(:rules) do
+    file = File.expand_path("../../lib/samagotchi/bundles/guardrails/guardrails/rules.yml", __dir__)
+    Samagotchi::Guardrails::Rules.new(
+      Samagotchi::Guardrails::Rules.parse(YAML.safe_load(File.read(file))["rules"], source: "bundle guardrails")
+    )
+  end
+  let(:gate) do
+    approver = lambda do |v|
+      asked << [v.call[:content], v.rule, v.scopes]
+      v.settle!(:allow)
+      v.scope = "rule"
+      v
+    end
+    ctx = Samagotchi::Guardrails::Context.new(cwd: repo, session_id: "s1")
+    described_class.new(-> {}, context_lookup: -> { ctx }, approver: approver, approvals_lookup: -> { store },
+                               checks_lookup: -> { [rules] })
+  end
+
+  after { FileUtils.rm_rf(base) }
+
+  def settle(content)
+    v = gate.evaluate({ name: "execute", content: content }, iteration: 1, params: "")
+    v.ask? ? gate.settle_ask(v) : v
+  end
+
+  it "asks once; after rule in this repo, later git there runs unasked" do
+    first = settle("cd #{main} && git add a.rb && git commit -m one")
+    second = settle("cd #{main} && git commit -m two")
+    expect(asked).to eq([["cd #{main} && git add a.rb && git commit -m one", "git-outside-repo", %w[once session rule]]])
+    expect([first.decision, second.decision, second.decided_by]).to eq([:allow, :allow, "approval"])
+    expect(store.entries).to contain_exactly(include("scope" => "rule", "rule" => "git-outside-repo", "repo_root" => repo))
   end
 end

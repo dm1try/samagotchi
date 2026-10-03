@@ -76,6 +76,40 @@ RSpec.describe "The guardrails bundle's rules" do
     expect(verdict_for({ name: "edit", path: "src/a.rb", content: "x" })).to be_allow
   end
 
+  describe "git in another checkout" do
+    let(:other) { File.realpath(Dir.mktmpdir("shipped-rules-other")) }
+
+    after { FileUtils.rm_rf(other) }
+
+    it "asks once, for the session or as a rule in this repo, before mutating git outside the repo" do
+      ["cd #{other} && git add a.rb && git commit -m x", "git -C #{other} commit -am x",
+       "(cd #{other} && git stash) && git commit -m y", "GIT_DIR=#{other}/.git git commit -m x",
+       "cd #{other} && git cherry-pick abc", "cd #{other} 2>/dev/null && git restore a.rb"].each do |command|
+        v = shell(command)
+        expect([v.decision, v.rule, v.scopes]).to eq([:ask, "git-outside-repo", %w[once session rule]]), command
+      end
+      v = verdict_for({ name: "execute", content: "git commit -m x", cwd: other })
+      expect(v.rule).to eq("git-outside-repo")
+    end
+
+    it "lets read-only git, tests and other work there through, and git in the repo" do
+      ["git -C #{other} log --oneline", "cd #{other} && git status && git diff", "cd #{other} && git stash list",
+       "cd #{other} && bundle exec rspec", "cd #{other} && ls", "git commit -m 'cd #{other}'",
+       "git add . && git commit -m x", "git worktree add #{other}/x -b y"].each do |command|
+        expect(shell(command)).to be_allow, command
+      end
+    end
+
+    it "keeps the earlier rule's ask for git push there" do
+      expect(shell("cd #{other} && git push").rule).to eq("git-push")
+    end
+
+    it "asks before a write there, and names the session's repo in the reason" do
+      v = verdict_for({ name: "write", path: File.join(other, "x.rb"), content: "x" })
+      expect([v.rule, v.reason]).to eq(["write-outside-repo", "writes outside this session's repo"])
+    end
+  end
+
   it "denies writes to git hooks" do
     v = verdict_for({ name: "write", path: ".git/hooks/pre-commit", content: "x" })
     expect([v.decision, v.rule]).to eq([:deny, "git-hooks-write"])
@@ -150,13 +184,15 @@ RSpec.describe "The guardrails bundle's small-model rules" do
     expect(shell("git checkout -- app.rb", model: nil)).to be_allow
   end
 
-  # 0.8.0 shipped without the `models:` key: it fails closed on this file and
-  # denies every call, so the bundle must not install there.
-  it "needs a chi that knows models: (0.8.1 or later), which this one is" do
+  # 0.8.0 shipped without the `models:` key and 0.16.x without `git:`: they
+  # fail closed on these files and deny every call, so the bundle must not
+  # install there.
+  it "needs a chi that knows models: and git: (0.17.0 or later), which this one is" do
     manifest = YAML.safe_load(File.read(File.join(bundle_dir, "manifest.yml")))
     requirement = Gem::Requirement.new(manifest["requires_chi"])
     expect(requirement).not_to be_satisfied_by(Gem::Version.new("0.8.0"))
-    expect(requirement).to be_satisfied_by(Gem::Version.new("0.8.1"))
+    expect(requirement).not_to be_satisfied_by(Gem::Version.new("0.16.0"))
+    expect(requirement).to be_satisfied_by(Gem::Version.new("0.17.0"))
     expect(requirement).to be_satisfied_by(Gem::Version.new(Samagotchi::VERSION))
   end
 end
