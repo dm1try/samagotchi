@@ -40,6 +40,37 @@ RSpec.describe Samagotchi::Commands::Registry do
     expect { registry.register("/b", "b") }.to raise_error(FrozenError)
   end
 
+  describe "#unknown_command_word? and #unknown_command_hint" do
+    let(:builtins) { Samagotchi::SessionCommands.builtin_registry }
+
+    it "hints a close name for a typo of a command" do
+      expect(builtins.unknown_command_word?("/modle")).to be(true)
+      expect(builtins.unknown_command_hint("/modle")).to eq("Unknown command /modle. Did you mean /model? /help lists the commands.")
+    end
+
+    it "hints without a name when nothing is close" do
+      expect(builtins.unknown_command_hint("/xyz")).to eq("Unknown command /xyz. /help lists the commands.")
+    end
+
+    it "is nil for a command, a command with arguments, and anything that is a prompt" do
+      expect(builtins.unknown_command_hint("/model")).to be_nil
+      expect(builtins.unknown_command_hint("/model x")).to be_nil
+      expect(builtins.unknown_command_hint("/foo bar")).to be_nil
+      expect(builtins.unknown_command_hint("/usr/bin/env")).to be_nil
+      expect(builtins.unknown_command_hint("!ls")).to be_nil
+      expect(builtins.unknown_command_hint("hello")).to be_nil
+      expect(builtins.unknown_command_hint("")).to be_nil
+    end
+
+    it "is nil for a local command (the UI runs it) and for a bundle's command" do
+      registry.register("/hello", "greet", source: "sample-plugin")
+      registry.register("/stats", "stats", local: true)
+      expect(registry.unknown_command_hint("/hello")).to be_nil
+      expect(registry.unknown_command_hint("/stats")).to be_nil
+      expect(registry.unknown_command_hint("/helo")).to eq("Unknown command /helo. Did you mean /hello? /help lists the commands.")
+    end
+  end
+
   describe "#listing and .from_listing (a snapshot's commands)" do
     it "lists each entry for a UI without an Engine" do
       registry.register("/hello", "greet", anytime: true, source: "sample-plugin")

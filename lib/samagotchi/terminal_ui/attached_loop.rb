@@ -342,6 +342,9 @@ module Samagotchi
           # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
           persist_recent_history(text) if PromptHistory.shell_line?(text)
           send_command(text)
+        elsif (hint = command_registry.unknown_command_hint(text))
+          # A typo of a command (/modle) is not a prompt: say so, send nothing.
+          @screen.commit(hint)
         else
           send_prompt(text)
         end
@@ -951,8 +954,15 @@ module Samagotchi
         return if text.empty?
 
         @screen.commit("#{paint(PROMPT, 92)}#{text}")
-        # As if typed: a session command runs as the command.
-        command_registry.command?(text) ? send_command(text) : send_prompt(text)
+        # As if typed: a session command runs as the command; a typo of one
+        # gets the hint, not a turn.
+        if command_registry.command?(text)
+          send_command(text)
+        elsif (hint = command_registry.unknown_command_hint(text))
+          @screen.commit(hint)
+        else
+          send_prompt(text)
+        end
       end
 
       def render_join_header(messages)

@@ -655,6 +655,9 @@ module Samagotchi
         return
       end
       return if show_local_command(input)
+      # A typo of a command (/modle) is not a prompt: say so, send nothing.
+      hint = command_registry.unknown_command_hint(input)
+      return @surface.commit(hint) if hint
 
       @turn_flow.before_prompt_turn
       persist_recent_history(input)
@@ -941,6 +944,11 @@ module Samagotchi
       # A command, never steering text (/archive waits, back in the prompt).
       return command_during_turn(line) if local || command_registry.command?(line)
       return true if line.strip.empty?
+      # A typo of a command (/modle) is not steering text: say so, take it.
+      if (hint = command_registry.unknown_command_hint(line))
+        @surface.commit(hint)
+        return true
+      end
       # Steering merges text only: a line with images runs as the next turn.
       return image_line_waits if ImageInput.extract(line).any?
 

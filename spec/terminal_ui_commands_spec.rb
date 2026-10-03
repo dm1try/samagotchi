@@ -71,6 +71,32 @@ RSpec.describe Samagotchi::TerminalUI do
     end
   end
 
+  describe "an unknown command word at the prompt" do
+    let(:surface) { RecordingSurface.new }
+    let(:agent) { described_class.new(client: client, surface: surface) }
+    let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: []) }
+
+    it "prints the hint and sends nothing" do
+      allow(agent.engine).to receive(:run_turn)
+
+      agent.send(:run_input_line, session, "/modle")
+
+      expect(surface.lines).to eq(["Unknown command /modle. Did you mean /model? /help lists the commands."])
+      expect(agent.engine).not_to have_received(:run_turn)
+    end
+
+    it "still sends a line that is a prompt (/foo bar)" do
+      result = Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], tool_activity: [])
+      allow(agent.engine).to receive(:run_turn).and_return(result)
+      allow(agent).to receive(:persist_recent_history)
+      allow(agent).to receive(:finish_turn)
+
+      agent.send(:run_input_line, session, "/foo bar")
+
+      expect(agent.engine).to have_received(:run_turn).with(session, "/foo bar", anything)
+    end
+  end
+
   describe "idle activity hook" do
     around do |example|
       saved = Reline.pre_input_hook

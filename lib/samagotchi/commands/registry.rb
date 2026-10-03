@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "did_you_mean"
+
 module Samagotchi
   module Commands
     # The slash (and bang) commands a session knows, in lookup order: the
@@ -73,6 +75,32 @@ module Samagotchi
       end
 
       def command?(line) = !lookup(line).nil?
+
+      # A line that is one word: a slash and a name, no spaces, no second
+      # slash. `/modle` is one; `/foo bar` and `/usr/bin/env` are not (they
+      # are prompts).
+      UNKNOWN_COMMAND_WORD = /\A\/[A-Za-z][A-Za-z0-9_-]*\z/
+
+      # Whether +line+ is a command word no command answers: a typo like
+      # `/modle`, which a UI must not send to the model as a prompt.
+      def unknown_command_word?(line)
+        text = line.to_s.strip
+        return false unless UNKNOWN_COMMAND_WORD.match?(text)
+
+        lookup(text).nil? && lookup_local(text).nil?
+      end
+
+      # What a UI shows for an unknown command word, or nil when +line+ is
+      # not one: `Unknown command /modle. Did you mean /model? /help lists
+      # the commands.` The "Did you mean" part needs a close name among the
+      # entries (DidYouMean::SpellChecker).
+      def unknown_command_hint(line)
+        return nil unless unknown_command_word?(line)
+
+        text = line.to_s.strip
+        close = DidYouMean::SpellChecker.new(dictionary: @entries.map(&:name)).correct(text).first
+        "Unknown command #{text}. #{close ? "Did you mean #{close}? " : ""}/help lists the commands."
+      end
 
       # @return [Entry, nil] the first entry the UI runs itself (local) that
       #   matches +line+, whatever its uis (a UI answers the others' too:

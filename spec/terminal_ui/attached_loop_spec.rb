@@ -640,10 +640,26 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
       expect(client).to have_received(:post_turn).once.with(prompt: "/foo bar", client_id: "tui:1")
     end
 
-    it "sends /hello as a prompt when the snapshot doesn't name it (an older worker)" do
+    it "hints a typo of a command and sends nothing" do
+      run_with(["/modle"], first: joined)
+
+      expect(screen.lines).to include("Unknown command /modle. Did you mean /model? /help lists the commands.")
+      expect(client).not_to have_received(:post_turn)
+      expect(client).not_to have_received(:post_command)
+    end
+
+    it "sends /hello there as a prompt when the snapshot doesn't name it (an older worker)" do
+      run_with(["/hello there"])
+
+      expect(client).to have_received(:post_turn).once.with(prompt: "/hello there", client_id: "tui:1")
+      expect(client).not_to have_received(:post_command)
+    end
+
+    it "hints a bare /hello when the snapshot doesn't name it: one word, no command answers it" do
       run_with(["/hello"])
 
-      expect(client).to have_received(:post_turn).once.with(prompt: "/hello", client_id: "tui:1")
+      expect(screen.lines).to include("Unknown command /hello. Did you mean /help? /help lists the commands.")
+      expect(client).not_to have_received(:post_turn)
       expect(client).not_to have_received(:post_command)
     end
 
