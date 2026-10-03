@@ -26,6 +26,8 @@ and commands may change between minor versions. How releases are made:
   previous turn's number when the previous turn's re-read lands late.
 - `chi sessions list` shows the first message of a session that has no turn yet, such as one started with
   `chi send --new -m "/model x"` or from the web start page; its row was blank.
+- Web: a terminal-only command (`/stats`, `/exit`, `/recap` …) typed as the start page's first message is answered on
+  the start page; it no longer starts a session just to show that reply.
 
 ## [0.17.0] - 2026-10-03
 

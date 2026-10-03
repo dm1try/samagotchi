@@ -191,7 +191,7 @@ test("keepEarlyRestore skips an acked prompt (the usual order), another client's
   assert.equal(restoreOnAck(undefined, early, opts), null);
 });
 
-import { commandView, continueLine, sessionCommandLine, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { commandView, continueLine, sessionCommandLine, startPageReply, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("sessionCommandLine: the session's commands go to the command route, an unknown /word to the model", () => {
   const commands = [{ name: "/model" }, { name: "/models" }, { name: "!rollback" }, { name: "/hello", source: "b" }];
@@ -240,6 +240,14 @@ test("webLocalReply: /archive, /exit and /quit are answered by the page, other c
   assert.equal(webLocalReply("/model x"), null);
   assert.equal(webLocalReply("/archived"), null);
   assert.equal(webLocalReply("!exit"), null);
+});
+
+test("startPageReply: a first message the page answers itself makes no session; a message with images is a prompt", () => {
+  assert.match(startPageReply("/stats"), /^\/stats: not in the web yet/);
+  assert.match(startPageReply(" /exit "), /^\/exit: /);
+  assert.equal(startPageReply("/model x"), null);
+  assert.equal(startPageReply("hello"), null);
+  assert.equal(startPageReply("/stats", { images: 1 }), null);
 });
 
 test("webLocalReply: /stats, /recap and /detach, terminal commands the worker doesn't take, get a page reply", () => {
