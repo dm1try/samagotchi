@@ -16,8 +16,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
-- `chi web` notices a newer chi installed (`chi update`, `gem update`, a `git pull` in a checkout) and says in its
-  terminal to restart it.
+- `chi web` notices a newer chi installed (`chi update`, `gem update`, a `git pull` in a checkout) and says to
+  restart it, in its terminal and once in each open page.
 
 ### Fixed
 

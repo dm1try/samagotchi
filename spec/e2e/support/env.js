@@ -118,7 +118,9 @@ export function privateIPv4() {
 // @param lan chi web with --web-host lan: env.lanURL is its LAN address
 //   (where the token is asked for; the loopback baseURL isn't) and
 //   env.tokenPath its access token's file
-export async function startEnv({ lan = false } = {}) {
+// @param installed the newest chi chi web believes installed
+//   (SAMAGOTCHI_INSTALLED_VERSION; null: what really is)
+export async function startEnv({ lan = false, installed = null } = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "chi-e2e-")));
   const dirs = {
     root,
@@ -168,11 +170,17 @@ export async function startEnv({ lan = false } = {}) {
     const webPort = await freePort();
     const webLog = fs.openSync(path.join(root, "web.log"), "a");
     const webArgs = ["web", "--port", String(webPort), ...(lan ? ["--web-host", "lan"] : [])];
-    const web = spawn(path.join(CHECKOUT, "bin", "chi"), webArgs,
-      { cwd: dirs.project, env: childEnv, stdio: ["ignore", webLog, webLog] });
-    env.procs.push(web);
+    const webEnv = installed ? { ...childEnv, SAMAGOTCHI_INSTALLED_VERSION: installed } : childEnv;
     env.baseURL = `http://127.0.0.1:${webPort}`;
-    await waitFor(`${env.baseURL}/api/models`, "chi web", web);
+    // (Re)starts chi web on the same port: open tabs reconnect to it.
+    env.startWeb = async () => {
+      const web = spawn(path.join(CHECKOUT, "bin", "chi"), webArgs,
+        { cwd: dirs.project, env: webEnv, stdio: ["ignore", webLog, webLog] });
+      env.procs.push(web);
+      env.web = web;
+      await waitFor(`${env.baseURL}/api/models`, "chi web", web);
+    };
+    await env.startWeb();
     if (lan) {
       const info = await (await fetch(`${env.baseURL}/api/info`)).json();
       if (!info.lan) throw new Error("chi web --web-host lan answers without a LAN address");
@@ -203,6 +211,17 @@ export function useTurnLimit(env, limit) {
 // the script again.
 export function useMode(env, mode) {
   fs.writeFileSync(path.join(env.dirs.fake, "mode"), `${mode}\n`);
+}
+
+// Stops chi web (as Ctrl-C does) and starts it again on the same port; the
+// session workers keep running.
+export async function restartWeb(env) {
+  const { web } = env;
+  signal(web.pid, "SIGINT");
+  if (!(await settle(() => web.exitCode !== null || web.signalCode !== null, 5000))) {
+    throw new Error("chi web did not stop on SIGINT");
+  }
+  await env.startWeb();
 }
 
 export async function stopEnv(env) {

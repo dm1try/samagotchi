@@ -12,9 +12,11 @@ export const test = base.extend({
   view: ["stage", { option: true }],
   // The lan project: chi web --web-host lan (lan.spec.js).
   lan: [false, { option: true, scope: "worker" }],
+  // The newest chi chi web believes installed (versions.spec.js).
+  installed: [null, { option: true, scope: "worker" }],
 
-  chi: [async ({ lan }, use) => {
-    const env = await startEnv({ lan });
+  chi: [async ({ lan, installed }, use) => {
+    const env = await startEnv({ lan, installed });
     try {
       await use(env);
     } finally {
