@@ -176,6 +176,9 @@ RSpec.configure do |config|
     # spawned here inherit it too).
     ENV["SAMAGOTCHI_LOG_DISABLE"] = "true"
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
+    # They talk to the live model server; WebMock keeps every other spec off
+    # the network (the after hook above turns it off again).
+    WebMock.allow_net_connect!
     example.run
   ensure
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
