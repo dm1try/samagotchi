@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
   limit, no llama.cpp `/props`), as a public IP address already did. Names without a dot and local suffixes
   (`.local`, `.lan`, `.home.arpa`, `.internal`, `.ts.net`, `fritz.box`, …) stay local; `hosts.<name>.remote` decides
   either way.
+- `chi web` no longer logs `ERROR HTTPRequest#fixup: WEBrick::HTTPStatus::LengthRequired occurred.` after a POST
+  without a body.
 
 ## [0.18.1] - 2026-10-03
 

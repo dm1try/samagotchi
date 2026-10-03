@@ -28,12 +28,16 @@ module Samagotchi
     class Server
       # WEBrick logs every exception out of its request loop as an ERROR with
       # a backtrace, among them a browser dropping a kept-alive connection
-      # (sock.eof? raising ECONNRESET): harmless, so not logged.
+      # (sock.eof? raising ECONNRESET): harmless, so not logged. Nor is the
+      # line it logs after answering a body-less POST (no Content-Length),
+      # when it tries to drain a body nobody read: the response already went.
       class Log < WEBrick::Log
         DROPPED = [Errno::ECONNRESET, Errno::EPIPE, Errno::ECONNABORTED].freeze
+        DROPPED_LINES = ["HTTPRequest#fixup: WEBrick::HTTPStatus::LengthRequired occurred."].freeze
 
         def error(msg)
           return if DROPPED.any? { |klass| msg.is_a?(klass) }
+          return if msg.is_a?(String) && DROPPED_LINES.include?(msg)
 
           super
         end

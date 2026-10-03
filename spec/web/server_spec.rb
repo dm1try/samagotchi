@@ -23,6 +23,14 @@ RSpec.describe Samagotchi::Web::Server::Log do
     expect(out.string).to eq("")
   end
 
+  it "drops the fixup line after a body-less POST (no Content-Length), keeps other fixup errors" do
+    log.error("HTTPRequest#fixup: WEBrick::HTTPStatus::LengthRequired occurred.")
+    expect(out.string).to eq("")
+
+    log.error("HTTPRequest#fixup: WEBrick::HTTPStatus::BadRequest occurred.")
+    expect(out.string).to include("ERROR HTTPRequest#fixup: WEBrick::HTTPStatus::BadRequest occurred.")
+  end
+
   it "keeps real errors and messages" do
     log.error(raised(RuntimeError, "boom"))
     log.error("bad request line")
