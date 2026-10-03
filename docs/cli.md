@@ -285,7 +285,10 @@ In an attached terminal:
   worker, and every UI sees their output; `/stats` and `/recap` work too. The
   Web UI's composer takes the same commands, and so do `-p "/model x"` and
   `chi send -m "/model x"`. A `/word` the session doesn't know (a path, a
-  typo) goes to the model as a prompt.
+  typo) goes to the model as a prompt; a one-word `/word` that no command
+  answers (`/modle`) is not sent: the UI prints `Unknown command /modle. Did
+  you mean /model? /help lists the commands.` (the "Did you mean" part only
+  when a name is close).
 - `!commands` and the model's tools run in the session's directory (where it
   was started), whichever terminal you attach from.
 - `-p` sends its prompt once attached, `--model` switches the worker's model
@@ -397,7 +400,9 @@ REPL alike:
 - `/stats` and `/recap` answer at once, and in an attached terminal so do `/help`
   and a plugin's anytime command (`/btw`). Other commands (`!cmd`, `/model`, `/models`,
   `!rollback`, `/continue`, `/guardrails`) say `busy: wait for the turn to end`
-  and go back into the prompt, so Enter runs them once the turn ends.
+  and go back into the prompt, so Enter runs them once the turn ends. A
+  one-word `/word` no command answers (`/modle`) is not steering text either:
+  the hint prints and the line is dropped.
 - A question (`ask_user_question`, a guardrails approval) turns the prompt into
   a yellow `? ` and lists its choices under it, fitted to the terminal; only a
   line submitted there answers it (a number, `1,3`, a label, `y`/`n` for an

@@ -10,6 +10,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- A one-word `/word` that no command answers (`/modle`) is no longer sent to the model as a prompt: every UI
+  (the REPL, the attached TUI, the web composer) prints `Unknown command /modle. Did you mean /model? /help lists
+  the commands.` instead, with the "Did you mean" part only when a command name is close. Lines that are prompts
+  (`/foo bar`, `/usr/bin/env is missing`) still go to the model.
 - The web page's end-of-turn and card re-reads fetch only what they show: the session's state, the last answer,
   that turn's timings and the cards, from a new light worker read (`GET /session/:id/tail`) instead of the
   whole conversation and timing history, so they stay the same size however long the session runs.
