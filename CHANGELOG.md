@@ -8,37 +8,38 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-10-03
+
 ### Fixed
 
-- `chi -p … --non-interactive` keeps stdout for the answer alone: the `Session:` (or `Resumed session:`) line goes
-  to stderr, before the turn. A failed turn now says after its error that the session is kept with the prompt and
-  how to continue it (`chi --resume ID`).
-- `chi -p … --non-interactive` prints the retry lines on stderr (`↻ empty answer, asking again (1/1)`, `retrying
-  (1/5 in 0.5s): …`), as the REPL shows them, instead of nothing.
-- `chi -p` shows the after_turn hooks' notices (source-links' `sources:`, any notifier), which it lost: with
-  `--non-interactive` on stderr after the answer; attached (input from a pipe) it waits for them and shows them
-  before it detaches.
-- Ctrl-C in `chi -p … --non-interactive` keeps the session: the prompt and a cancel note are saved, so
-  `chi --resume ID` has them, and stderr says so instead of a Ruby backtrace. The exit status stays 130.
-- A running session no longer denies every tool call after an installed bundle's rules are upgraded to a version
-  that needs a newer chi (`requires_chi`): it keeps the rules it loaded before and says once to restart the session
-  (`chi sessions stop ID`, then `chi --resume ID`).
-- The `execute` tool no longer hangs when the command puts a process in the background (`server &`, or
+- The `execute` tool no longer hangs when a command leaves a process in the background (`server &`, or
   `cd DIR && nohup server > log 2>&1 &`) that keeps its output open: after a short grace it stops that process and
   returns the output, with a note to start servers and long jobs with `task_create`. Stop and
   `execute.timeout_sec` work during the wait too.
-- A native turn sends `GET /props` once, not twice: the window cache is dropped at the turn's end instead of
-  its start, and one `/props` store per host serves every client of that server in the process.
-- A server that answered a chat or a model list after a failed `/props` probe is probed again at the next turn,
-  instead of the failure being reused for 30 s.
+- A running session no longer denies every tool call after an installed bundle's rules are upgraded to a version
+  that needs a newer chi (`requires_chi`): it keeps the rules it loaded before and says once to restart the session
+  (`chi sessions stop ID`, then `chi --resume ID`).
+- `chi -p … --non-interactive` keeps stdout for the answer alone: the `Session:` (or `Resumed session:`) line goes
+  to stderr, before the turn. A failed turn now says after its error that the session is kept with the prompt and
+  how to continue it (`chi --resume ID`).
+- Ctrl-C in `chi -p … --non-interactive` keeps the session: the prompt and a cancel note are saved, so
+  `chi --resume ID` has them, and stderr says so instead of a Ruby backtrace. The exit status stays 130.
+- `chi -p` shows the after_turn hooks' notices (source-links' `sources:`, any notifier), which it lost: with
+  `--non-interactive` on stderr after the answer; attached (input from a pipe) it waits for them and shows them
+  before it detaches.
+- `chi -p … --non-interactive` prints the retry lines on stderr (`↻ empty answer, asking again (1/1)`, `retrying
+  (1/5 in 0.5s): …`), as the REPL shows them, instead of nothing.
+- A native llama.cpp turn sends `GET /props` once, not twice.
+- After a failed `/props` probe, a server that then answers is probed again at the next turn, instead of the
+  failure being reused for 30 s.
+- A request to a model server is sent only as many times as chi's own retries say: Ruby's hidden extra retry is off.
 - The served-model notice no longer treats `gpt-4` and `gpt-4o` as the same model: a served name counts as the
   asked one only when what follows starts with `:`, `-`, `@` or `/` (`qwen3` = `qwen3:latest`).
-- A Gemma thought channel (`<|channel>thought` … `<channel|>`) is stripped as a whole block: the model's private
+- A Gemma thought channel (`<|channel>thought` … `<channel|>`) is stripped as a whole block, so the model's
   reasoning no longer shows up in the answer.
-- `ModelProfile.normalize` with an unknown profile name, and `Prompt.format` with no profile, fall back to
-  `qwen36` — the same profile `ModelProfile.resolve` falls back to — instead of `gemma4`.
-- Every HTTP connection chi opens turns Net::HTTP's own hidden retry off (`max_retries: 0`), so a request is sent
-  as many times as chi says it was.
+- An unknown model profile name falls back to `qwen36`, the same default as everywhere else, instead of `gemma4`.
+
+Update with `gem update samagotchi` (or `chi update`); no bundle changed.
 
 ## [0.18.0] - 2026-10-03
 
@@ -1034,7 +1035,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/dm1try/samagotchi/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/dm1try/samagotchi/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/dm1try/samagotchi/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/dm1try/samagotchi/compare/v0.15.0...v0.16.0
