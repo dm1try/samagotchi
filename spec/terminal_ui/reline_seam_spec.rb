@@ -58,6 +58,24 @@ RSpec.describe Samagotchi::TerminalUI::RelineSeam do
     editor.rerender
   end
 
+  describe "a cursor query cut short" do
+    after { described_class.unanswered_query_at = nil }
+
+    it "is noted when a read is stopped while Reline asks the terminal for the cursor row" do
+      allow(Reline::IOGate).to receive(:cursor_pos).and_raise(Interrupt)
+
+      expect { editor.reset("> ") }.to raise_error(Interrupt)
+
+      expect(described_class.unanswered_query_at).to be_within(1).of(Process.clock_gettime(Process::CLOCK_MONOTONIC))
+    end
+
+    it "is not noted once the reply was read" do
+      editor.reset("> ")
+
+      expect(described_class.unanswered_query_at).to be_nil
+    end
+  end
+
   it "holds for the installed Reline" do
     expect(described_class).to be_supported
   end

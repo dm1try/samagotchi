@@ -66,6 +66,12 @@ module Samagotchi
         # @api private
         attr_writer :reading
 
+        # Monotonic time a read's cursor query went out (#reset) when the read
+        # was stopped before Reline took the reply: the reply is still on its
+        # way, and LiveRegion.close waits for it. nil with none.
+        # @return [Float, nil]
+        attr_accessor :unanswered_query_at
+
         # @return [Boolean] this Reline has every method the seam relies on
         def supported?
           defined?(Reline::LineEditor::RenderedScreen) &&
@@ -107,7 +113,11 @@ module Samagotchi
       end
 
       def reset(...)
+        # Reline's reset asks the terminal for the cursor row and waits for
+        # the reply: a Stop raised meanwhile leaves this set.
+        RelineSeam.unanswered_query_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         super
+        RelineSeam.unanswered_query_at = nil
         RelineSeam.reading = true
         @rendered_screen.base_y = 0 if RelineSeam.screen
       end

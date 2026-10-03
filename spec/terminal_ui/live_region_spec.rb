@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "stringio"
+require "pty"
+require "io/console"
 require "samagotchi/terminal_ui/live_region"
 
 RSpec.describe Samagotchi::TerminalUI::LiveRegion do
@@ -49,5 +51,44 @@ RSpec.describe Samagotchi::TerminalUI::LiveRegion do
 
     expect(Samagotchi::TerminalUI::RelineSeam.screen).to be_nil
     expect($stderr).to be(stderr)
+  end
+
+  # Reline asks for the cursor row (ESC[6n) as each read starts: the reply
+  # to one cut short at exit would land at the shell's prompt.
+  it "drops what the terminal sent but nobody read before it hands the terminal back" do
+    PTY.open do |terminal, input|
+      surface = described_class.open(out: tty, input: input, env: { "TERM" => "xterm" })
+      terminal.write("\e[12;1R")
+      terminal.flush
+
+      described_class.close(surface, input: input)
+
+      left = input.raw { input.wait_readable(0.1) && input.read_nonblock(64, exception: false) }
+      expect(left).to be_nil
+    end
+  end
+
+  # A slow terminal (ssh): the read was stopped while Reline waited for the
+  # reply, which comes after the region closed.
+  it "waits for the reply to a cursor query a stopped read left unanswered, and no longer" do
+    PTY.open do |terminal, input|
+      surface = described_class.open(out: tty, input: input, env: { "TERM" => "xterm" })
+      Samagotchi::TerminalUI::RelineSeam.unanswered_query_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      replier = Thread.new do
+        sleep 0.25
+        terminal.write("\e[12;1R")
+        terminal.flush
+      end
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      described_class.close(surface, input: input)
+      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      replier.join
+
+      left = input.raw { input.wait_readable(0.1) && input.read_nonblock(64, exception: false) }
+      expect(left).to be_nil
+      expect(took).to be_between(0.2, 0.45)
+      expect(Samagotchi::TerminalUI::RelineSeam.unanswered_query_at).to be_nil
+    end
   end
 end
