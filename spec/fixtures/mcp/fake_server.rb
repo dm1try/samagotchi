@@ -34,7 +34,8 @@ TOOLS = [
   { name: "changed", description: "Sends notifications/tools/list_changed, then answers.",
     inputSchema: { type: "object", properties: {} } },
   { name: "path", description: "Answers the path it is given (like chrome-devtools-mcp --slim's screenshot).",
-    inputSchema: { type: "object", properties: { path: { type: "string" } } } }
+    inputSchema: { type: "object", properties: { path: { type: "string" } } } },
+  { name: "blob", description: "A resource carrying an image blob.", inputSchema: { type: "object", properties: {} } }
 ].freeze
 
 # spec/fixtures/images/tiny.png (3×2).
@@ -90,6 +91,9 @@ $stdin.each_line do |line|
       $stdout.puts(JSON.generate(jsonrpc: "2.0", method: "notifications/tools/list_changed"))
       reply(id, text("changed"))
     when "path" then reply(id, text(args["path"]))
+    when "blob"
+      reply(id, { content: [{ type: "text", text: "here" },
+                            { type: "resource", resource: { uri: "file:///shot.png", mimeType: "image/png", blob: TINY_PNG } }] })
     else reply(id, error: { code: -32_602, message: "unknown tool" })
     end
   end

@@ -34,6 +34,8 @@ and commands may change between minor versions. How releases are made:
   `ran as: <tool> <args>` line.
 - MCP image content is described with a neutral `[image N: …]` line instead of claiming it was attached, which
   was wrong for a model that can't see images.
+- An MCP `resource` block carrying an image `blob` is now attached like an `image` block instead of being
+  dropped to its URI text.
 
 ## [0.19.0] - 2026-10-03
 

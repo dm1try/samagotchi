@@ -214,7 +214,7 @@ RSpec.describe "The mcp bundle" do
   it "registers each tool as mcp_<server>_<tool>, sanitized, with its inputSchema, label and preview" do
     names = tools.entries.map(&:name).grep(/\Amcp_/)
     expect(names).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_fail mcp_fake_mixed mcp_fake_slow mcp_fake_crash
-                           mcp_fake_weird_name_v2 mcp_fake_changed mcp_fake_path])
+                           mcp_fake_weird_name_v2 mcp_fake_changed mcp_fake_path mcp_fake_blob])
     echo = tools["mcp_fake_echo"]
     expect(echo.schema).to include(name: "mcp_fake_echo", description: "Echo the text back.")
     expect(echo.schema[:parameters]).to include(properties: { text: { type: "string", description: "what to echo" } },
@@ -253,6 +253,14 @@ RSpec.describe "The mcp bundle" do
       result = run_tool("mcp_fake_mixed")
       expect(result[:output]).to include("[image 1: image/png]")
       expect(result[:output]).not_to include("attached")
+    end
+
+    it "attaches a resource block carrying an image blob" do
+      result = run_tool("mcp_fake_blob")
+      expect(result[:output]).to eq("[mcp_fake_blob]\nhere\n[image 1: image/png]")
+      expect(result[:images].map { |ref| ref.slice(:name, :width, :height, :source) })
+        .to eq([{ name: "blob-1.png", width: 3, height: 2, source: "tool" }])
+      expect(File.binread(File.join(session_dir, result[:images].first[:file]))).to eq(File.binread(tiny_png))
     end
 
     it "attaches an image whose path is the whole answer, when it is in the temp dir" do
@@ -395,7 +403,7 @@ RSpec.describe "The mcp bundle" do
       )
       finished = @init_events.select { |e| e[:type] == :plugin_init_finished }
       expect(finished.map { |e| [e[:label], e[:ok], e[:summary]] }).to include(
-        ["Starting MCP server fake (first run, saving its tools)", true, "fake ready, 9 tools"]
+        ["Starting MCP server fake (first run, saving its tools)", true, "fake ready, 10 tools"]
       )
       expect(tools.entries.map(&:name).grep(/\Amcp_/)).to all(start_with("mcp_fake_"))
       expect(call_tool("mcp_fake_echo", { "text" => "ok" })).to eq("echo: ok")
@@ -428,7 +436,7 @@ RSpec.describe "The mcp bundle" do
     expect(engine.command_registry.lookup("/mcp").anytime).to be(true)
     engine.running_anytime { commands.run("/mcp") }
     expect(cards.last).to include(title: "MCP servers", id: "mcp-servers", source: "mcp")
-    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 9 tools\n- `mcp_fake_echo`\n")
+    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 10 tools\n- `mcp_fake_echo`\n")
   end
 
   describe "the tools/list cache (start: lazy)" do

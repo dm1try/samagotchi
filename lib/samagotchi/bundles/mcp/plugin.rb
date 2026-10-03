@@ -669,7 +669,17 @@ class Plugin
       when "audio" then "[audio: #{block["mimeType"] || "unknown type"}]"
       when "resource"
         resource = block["resource"] || {}
-        resource["text"] || "[resource: #{resource["uri"]}]"
+        mime = resource["mimeType"].to_s
+        blob = resource["blob"].to_s
+        if mime.start_with?("image/") && !blob.empty?
+          bytes = blob.unpack1("m")
+          next "[image: #{mime}, empty]" if bytes.empty?
+
+          images << { bytes: bytes, name: "#{tool}-#{images.size + 1}.#{IMAGE_EXT.fetch(mime, "img")}" }
+          "[image #{images.size}: #{mime}]"
+        else
+          resource["text"] || "[resource: #{resource["uri"]}]"
+        end
       when "resource_link" then "[resource link: #{block["uri"]}]"
       else "[#{block["type"] || "unknown"} content]"
       end
