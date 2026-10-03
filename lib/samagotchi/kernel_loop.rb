@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "iteration_limit"
 require_relative "model_profile"
 require_relative "tool_call_parser"
 require_relative "config"
@@ -174,7 +175,7 @@ module Samagotchi
     #   at the conversation tail (prefix KV cache preserved) and a
     #   :pending_input_merged stream event is emitted.
     # @return [LLM::ModelResult] final visible response with continuation metadata
-    def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
+    def run(messages, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
       @turn_settings = @turn_settings.with(model_name: completion_model_name(model_name))
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
                                   pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars))

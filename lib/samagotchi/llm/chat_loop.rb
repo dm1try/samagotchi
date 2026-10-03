@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../iteration_limit"
 require "json"
 require_relative "backend"
 require_relative "model_result"
@@ -56,7 +57,7 @@ module Samagotchi
 
       def provider = :chat
 
-      def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
+      def complete(messages:, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil,
                    model_name: nil, max_tool_output_chars: nil, pending_input: nil)
         raise ArgumentError, "ChatLoop has no adapter" unless @adapter
 

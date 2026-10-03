@@ -5,6 +5,7 @@ require "fileutils"
 require "io/console"
 require "reline"
 
+require_relative "iteration_limit"
 require_relative "model_profile"
 require_relative "turn_note"
 require_relative "config"
@@ -243,7 +244,7 @@ module Samagotchi
           session,
           @prompt,
           on_event: nil,
-          max_iterations: 1000,
+          max_iterations: IterationLimit.for(no_interrupt: true),
           cancel_controller: nil,
           images: ImageInput.extract(@prompt)
         )
@@ -485,7 +486,7 @@ module Samagotchi
     # Run one REPL turn (a prompt, or a continue/reminder turn with nil) through
     # Engine#run_turn, rendering via @renderer.
     # @param images [Array<Hash>] the prompt's `@path` images ({path:})
-    def run_engine_turn(session, prompt, continue: false, max_iterations: 100, images: [])
+    def run_engine_turn(session, prompt, continue: false, max_iterations: IterationLimit.for, images: [])
       cancellation_controller = CancellationController.new
       @active_cancel_controller = cancellation_controller
       @renderer.begin_turn

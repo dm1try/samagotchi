@@ -13,6 +13,7 @@ require_relative "archive_store"
 require_relative "log"
 require_relative "turn_flow"
 require_relative "continue_offer"
+require_relative "iteration_limit"
 require_relative "session_commands"
 require_relative "model_profile"
 
@@ -45,8 +46,6 @@ module Samagotchi
     # How much of a command's output goes into its :command_ran.
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
-    DEFAULT_MAX_ITERATIONS = 100
-    NO_INTERRUPT_MAX_ITERATIONS = 1000 # as Engine::NO_INTERRUPT_MAX_ITERATIONS
 
     # Wakes the worker loop. Whoever queues work writes it first and wakes
     # after, and #wait drains every wake before the loop looks for work: a
@@ -363,11 +362,11 @@ module Samagotchi
       # :turn_failed). The offer went before the turn
       # (ContinueOffer#drop); either way the rollback window closes.
       run_engine_turn(nil, continue: true, origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
-                           max_iterations: DEFAULT_MAX_ITERATIONS) { @turn_flow.after_reminder_turn }
+                           max_iterations: IterationLimit.for) { @turn_flow.after_reminder_turn }
       true
     end
 
-    def max_iterations(no_interrupt) = no_interrupt ? NO_INTERRUPT_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS
+    def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)
 
     # @return [Boolean] whether any command ran
     def run_queued_commands

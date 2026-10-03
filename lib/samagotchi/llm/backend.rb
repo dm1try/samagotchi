@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../iteration_limit"
 require_relative "model_result"
 
 module Samagotchi
@@ -14,7 +15,7 @@ module Samagotchi
     #
     # The raw-prompt KernelLoop is NativeBackend; the chat loop is ChatLoop.
     class ModelBackend
-      def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
+      def complete(messages:, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil,
                    model_name: nil, max_tool_output_chars: nil, pending_input: nil)
         raise NotImplementedError, "#{self.class}#complete must be implemented"
       end

@@ -6,6 +6,7 @@ require "securerandom"
 require "time"
 require "yaml"
 
+require_relative "iteration_limit"
 require_relative "config"
 require_relative "context_note"
 require_relative "context_status"
@@ -84,7 +85,7 @@ module Samagotchi
     # @param profile            [ModelProfile, Symbol, String, nil]
     # @param session_id         [String, nil] resume an existing session
     # @param no_interrupt       [Boolean] --no-interrupt: every turn runs with
-    #   NO_INTERRUPT_MAX_ITERATIONS, whichever loop runs it
+    #   IterationLimit.for(no_interrupt: true), whichever loop runs it
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_DEFAULT_MODEL
     # @param model_typed        [String, nil] the name the model was given as (a session's
     #   model_typed: an alias), for the models: lookup; model_name by default
@@ -93,10 +94,6 @@ module Samagotchi
     #   prompt's index, dropped from the preloads, refused by memory_read); a mute wins over a preload
     # What memory_write answers in a scratch session.
     SCRATCH_MEMORY_WRITE = "Error: scratch session: nothing is saved"
-    # A turn's iteration limit with no_interrupt (the worker's own
-    # --no-interrupt turns pass the same).
-    NO_INTERRUPT_MAX_ITERATIONS = 1000
-
     # @param plugins            [Boolean] false: load no bundle plugins (a throwaway Engine for a prompt)
     # @param scratch            [Boolean] a `chi scratch` session: memory writes are refused, and there is no
     #   delegate (a child would outlive it) nor plugin fork
@@ -1434,7 +1431,7 @@ module Samagotchi
     # @param session  [Session] the session to operate on
     # @param prompt   [String] user input
     # @param on_event [Proc, nil] receives event hashes
-    # @param max_iterations [Integer] max kernel iterations
+    # @param max_iterations [Integer, nil] max kernel iterations (nil: IterationLimit.for)
     # @param cancel_controller [CancellationController, nil]
     # @param max_tool_output_chars [Integer, nil] per-output char cap for the
     #   :tool_call_completed event's `output:` (nil → max_tool_output_chars)
@@ -1463,7 +1460,7 @@ module Samagotchi
     # other error (e.g. an LLM::ProviderError) emits :turn_failed and
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
-    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil,
+    def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil,
                  images: [])
       turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
                                          continue: continue)
@@ -1669,7 +1666,7 @@ module Samagotchi
 
       backend.complete(
         messages: turn.messages,
-        max_iterations: @no_interrupt ? NO_INTERRUPT_MAX_ITERATIONS : max_iterations,
+        max_iterations: @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for,
         on_stream_event: build_stream_event_handler(turn.on_event, cancel_controller: turn.controller),
         cancel_controller: turn.controller,
         model_name: bare_for_backend,
