@@ -28,6 +28,16 @@ RSpec.describe "TerminalUI images" do
       expect(extract(%(compare @"my shot.png" with @'my shot.png'))).to eq([{ path: File.join(@dir, "my shot.png") }])
     end
 
+    it "takes a bare path with backslash-escaped spaces and parens (a Finder drag)" do
+      FileUtils.cp(png, File.join(@dir, "a (1).png"))
+      expect(extract("look at @my\\ shot.png please")).to eq([{ path: File.join(@dir, "my shot.png") }])
+      expect(extract("@#{@dir}/a\\ \\(1\\).png, ok?")).to eq([{ path: File.join(@dir, "a (1).png") }])
+    end
+
+    it "still ends a bare path at an unescaped space" do
+      expect(extract("@my shot.png")).to eq([])
+    end
+
     it "strips trailing punctuation" do
       expect(extract("what's in @shot.png?")).to eq([{ path: File.join(@dir, "shot.png") }])
     end

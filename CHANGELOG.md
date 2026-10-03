@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - source-links (0.3.2): a `case_insensitive: true` source no longer lists a ref in its `sources:` note when the ref
   is a markdown link's label whose target names it in another case (`[jira-1](…/JIRA-1)`). Run `chi update` to get it.
+- An `@path` image in a prompt takes backslash escapes, as a Finder drag into the terminal types them:
+  `@my\ shot.png` and `@a\ \(1\).png` attach the file instead of stopping at the first space.
 
 ## [0.18.1] - 2026-10-03
 
