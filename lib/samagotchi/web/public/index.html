@@ -606,6 +606,13 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   #infoBar .meta .mem-chip{display:inline;order:-1}
   #infoBar .meta .dir{word-break:normal}
   #infoBar button{padding:4px 8px}
+  /* Icon-only buttons (the words stay as the accessible name, the title says more): the meta gets the width. */
+  #infoBar>button{font-size:0;line-height:0;padding:5px 7px}
+  #infoBar>button::before{content:"";display:block;width:14px;height:14px;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
+  #infoBar #infoArchiveBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E")}
+  #infoBar #infoArchiveBtn.archived{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
+  #infoBar #infoStopBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2v5.5M4.6 4.4a5 5 0 1 0 6.8 0'/%3E%3C/svg%3E")}
+  #infoBar #infoDeleteBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5h11M6 4.5V2.75h4V4.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6M6.75 7.25v4.5M9.25 7.25v4.5'/%3E%3C/svg%3E")}
 }
 #empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-muted);padding:24px;text-align:center;background:color-mix(in srgb,var(--bg) 35%,transparent);z-index:1}
 #empty.hidden{display:none !important}

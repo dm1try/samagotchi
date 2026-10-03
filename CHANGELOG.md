@@ -42,6 +42,8 @@ and commands may change between minor versions. How releases are made:
   live list does.
 - Web: a session deleted while the page had lost the session events stream (or between two fetches of the
   list) no longer keeps its question or card counted in the tab title's badge until the tab comes to front.
+- Web on a phone: the session footer's archive, stop and delete buttons are icons (the words stay as their
+  accessible names and tooltips), so the status and `mem N` chips beside them are in sight again.
 - Web: with several chi tabs in the background, a session that needs you shows one OS notification, not one
   per tab (every tab still counts it in its title).
 - chi web: a session stream whose worker took the connection and froze before answering no longer holds the
