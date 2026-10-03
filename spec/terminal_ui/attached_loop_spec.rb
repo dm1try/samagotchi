@@ -756,6 +756,43 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     expect(client).to have_received(:answer).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
 
+  it "reads the continue words at the step-limit question, Enter alone continuing, and draws no second slot or line" do
+    allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+    start
+    limit = { "id" => "c1", "kind" => "continue", "header" => "Step limit", "options" => %w[Continue Stop],
+              "question" => "The turn ran out of iterations (3 steps) before it answered. Continue it?", "allow_freeform" => true }
+    push("type" => "continue_offered", "context" => { "original_prompt" => "task" }, "no_interrupt" => false)
+    push("type" => "question_requested", "pending_question" => limit)
+
+    wait_for { screen.slots[:notes]&.any? { |line| line.include?("Step limit") } }
+    expect(screen.slots[:notes].join("\n")).to include("Enter or yes = Continue")
+    expect(prompts.last).to eq("? ")
+    typed << ""
+    wait_for { screen.lines.any? { |line| line.include?("→ Continue") } }
+    # The worker's events for that answer: the old offer's slot doesn't come back, nor its own line.
+    push("type" => "question_answered", "id" => "c1", "answer" => { "selected" => ["Continue"] })
+    push("type" => "continue_resolved", "decision" => "resume", "client_id" => "tui:1")
+    wait_for { prompts.last == "> " }
+    finish
+
+    expect(client).to have_received(:answer).with(id: "c1", selected: ["Continue"], freeform: nil)
+    expect(screen.slots).not_to have_key(:notes)
+    expect(screen.lines.grep(/Continue it\?/).size).to eq(1)
+  end
+
+  it "stops at the step-limit question with no, <reason>" do
+    allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+    start
+    push("type" => "question_requested", "pending_question" => { "id" => "c1", "kind" => "continue", "options" => %w[Continue Stop],
+                                                                 "question" => "Continue it?", "allow_freeform" => true })
+    wait_for { prompts.last == "? " }
+    typed << "no, it is going in circles"
+    wait_for { screen.lines.any? { |line| line.include?("→ Stop: it is going in circles") } }
+    finish
+
+    expect(client).to have_received(:answer).with(id: "c1", selected: ["Stop"], freeform: "it is going in circles")
+  end
+
 it "puts what was typed at the prompt aside for the question and back after it" do
   allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
   allow_any_instance_of(Samagotchi::TerminalUI::LineReader).to receive(:typed_text).and_return("half typed")

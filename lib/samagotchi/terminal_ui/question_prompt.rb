@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "question_slot"
+require_relative "../turn_flow"
 
 module Samagotchi
   class TerminalUI
@@ -12,7 +13,10 @@ module Samagotchi
     # Bridge). An approval (kind "approval") takes only a number, an exact
     # label, y (the first option, Allow once) or n (the last, Deny), plus
     # an optional "; reason"; a substring would pick the wrong one ("y" is
-    # in "Deny").
+    # in "Deny"). The step-limit question (kind "continue") reads the
+    # continue words (TurnFlow.continue_decision): Enter, yes, y or
+    # /continue continue; no stops; "no, why" stops with the reason; 1 and
+    # 2 pick the options.
     class QuestionPrompt
       DIFF_CODES = { "+" => 32, "-" => 31, "@" => 2, "\\" => 2 }.freeze
 
@@ -51,11 +55,13 @@ module Samagotchi
         @multi = !!field.(:multi_select)
         @free = !!field.(:allow_freeform)
         @approval = field.(:kind).to_s == "approval"
+        @continue = field.(:kind).to_s == "continue"
       end
 
       def multi? = @multi
       def free? = @free
       def approval? = @approval
+      def continue? = @continue
 
       # The relay mark (QuestionDesk#annotate's relayed_to: a Hash, or the
       # short id), or nil when cleared.
@@ -77,6 +83,7 @@ module Samagotchi
       # What a question closed with no answer here says: a relayed approval
       # names where it went; else "(question cancelled)".
       def closed_text(reason)
+        return CONTINUE_CLOSED.fetch(reason.to_s, "(question cancelled)") if continue?
         return "(question cancelled)" unless @delegate
 
         case reason.to_s
@@ -97,6 +104,10 @@ module Samagotchi
                          options: keys.zip(options).map { |key, label| QuestionSlot::Option.new(key, label) },
                          hint: slot_hint, question_code: approval? ? 33 : 94, paint: paint, note: note)
       end
+
+      # Why a step-limit question closed unanswered here.
+      CONTINUE_CLOSED = { "dropped" => "(dropped: a new prompt came)", "answered" => "(answered with /continue)",
+                          "superseded" => "(set aside for another question)", "replaced" => "(asked again)" }.freeze
 
       # The most diff lines #preview_lines prints; the web shows them all.
       PREVIEW_LINES = 40
@@ -138,7 +149,7 @@ module Samagotchi
       # @return [String] "Banana", "Apple, Cherry; ripe ones", "Deny: use a PR"
       def answer_text(answer)
         picked = answer.selected.to_a
-        if approval?
+        if approval? || continue?
           choice = picked.first || options.last
           return answer.freeform ? "#{choice}: #{answer.freeform}" : choice
         end
@@ -150,6 +161,7 @@ module Samagotchi
       # @return [Answer]
       def parse(raw)
         return parse_approval(raw) if approval?
+        return parse_continue(raw) if continue?
 
         raw = raw.to_s.strip
         # "1,3; my text": the first ';' separates the selection from freeform text.
@@ -178,6 +190,9 @@ module Samagotchi
       def mark = approval? ? "! " : "? "
 
       def slot_hint
+        if continue?
+          return "Enter or yes = #{options.first}; no = #{options.last}; no, <reason> = #{options.last} and tell the model why"
+        end
         if approval?
           return "1-#{options.size}, y = #{options.first}, n = #{options.last}; add '; reason' to tell the model why; " \
                  "Enter alone denies"
@@ -187,6 +202,23 @@ module Samagotchi
         hint << "add '; text' for your own answer" if free?
         hint << "Enter alone cancels"
         hint.join("; ")
+      end
+
+      # The continue words, or an option's number. Empty is Continue (Enter
+      # alone, as at the REPL's continue prompt).
+      def parse_continue(raw)
+        text = raw.to_s.strip
+        if text.match?(/\A\d+\z/)
+          idx = text.to_i - 1
+          return Answer.new(selected: [options[idx]]) if idx.between?(0, options.size - 1)
+        end
+        decision, reason = TurnFlow.continue_decision(text)
+        case decision
+        when :resume then Answer.new(selected: [options.first])
+        when :abort then Answer.new(selected: [options.last])
+        when :abort_with_reason then Answer.new(selected: [options.last], freeform: reason)
+        else Answer.new(error: "Answer yes (Enter alone too), no, or no, <reason>.")
+        end
       end
 
       def parse_approval(raw)

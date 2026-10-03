@@ -139,3 +139,32 @@ RSpec.describe Samagotchi::TerminalUI::QuestionPrompt, "approval" do
     end
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::QuestionPrompt, "the step-limit question (kind continue)" do
+  let(:prompt) do
+    described_class.new(id: "c1", kind: "continue", header: "Step limit", question: "Continue it?",
+                        options: %w[Continue Stop], allow_freeform: true)
+  end
+
+  {
+    "" => { selected: ["Continue"] },
+    "yes" => { selected: ["Continue"] },
+    "y" => { selected: ["Continue"] },
+    "/continue" => { selected: ["Continue"] },
+    "1" => { selected: ["Continue"] },
+    "no" => { selected: ["Stop"] },
+    "2" => { selected: ["Stop"] },
+    "no, it loops" => { selected: ["Stop"], freeform: "it loops" },
+    "maybe" => { error: "Answer yes (Enter alone too), no, or no, <reason>." }
+  }.each do |raw, expected|
+    it "reads #{raw.inspect} as the continue prompt does" do
+      expect(prompt.parse(raw).to_h.compact).to eq(expected)
+    end
+  end
+
+  it "says how to answer it, what an answer was, and why it closed unanswered" do
+    expect(prompt.answer_text(prompt.parse("no, done"))).to eq("Stop: done")
+    expect(prompt.answer_text(prompt.parse(""))).to eq("Continue")
+    expect(prompt.closed_text("dropped")).to eq("(dropped: a new prompt came)")
+  end
+end

@@ -525,6 +525,9 @@ module Samagotchi
       # UI's answer shows as its command line (web> /continue yes) instead.
       def continue_resolved(event)
         @continue_offer = nil
+        # Asked as the step-limit question: its line says what became of it.
+        asked = @offer_asked
+        @offer_asked = false
         sync_continue_slot
         who = event[:client_id] ? CLIENT_LABELS.fetch(event[:client_id].to_s.split(":", 2).first, "another UI") : "another UI"
         outcome = if event[:decision] == "dropped"
@@ -533,14 +536,14 @@ module Samagotchi
                     @continue_answer || CONTINUE_DECISIONS.fetch(event[:decision].to_s, event[:decision].to_s)
                   end
         @continue_answer = nil
-        @screen.commit(QuestionSlot.continue_summary(outcome, paint: method(:paint))) if outcome
+        @screen.commit(QuestionSlot.continue_summary(outcome, paint: method(:paint))) if outcome && !asked
         sync_prompt
       end
 
       # The notes slot shows the offer's choices while it waits (a question
       # has the slot while it is open).
       def sync_continue_slot
-        return if @question
+        return if @question || @offer_asked
 
         if @continue_offer
           @screen.set_slot(:notes, QuestionSlot.continue_offer(@continue_offer[:context], paint: method(:paint)))
@@ -695,6 +698,9 @@ module Samagotchi
         @set_aside = @reader&.typed_text unless @question
         @question = QuestionPrompt.new(pending)
         @question_pending = pending
+        # The step-limit question stands for the continue offer's own slot
+        # until the offer is resolved.
+        @offer_asked = true if @question.continue?
         # An edit's diff goes above, into the scrollback, once per question
         # (a join gets it from the snapshot and may get the event too).
         unless @previewed_id == @question.id
@@ -708,7 +714,9 @@ module Samagotchi
       end
 
       def answer_question(text)
-        return dismiss_question if text.empty?
+        # Enter alone at the step-limit question continues (it can't be
+        # dismissed), as at the continue prompt.
+        return dismiss_question if text.empty? && !@question.continue?
 
         answer = @question.parse(text)
         @screen.commit(answer.note) if answer.note
