@@ -708,6 +708,11 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   await send(page, "Look through the README");
   const card = page.locator(`${HC()} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
   await expect(card).toBeVisible();
+  // Its session card waits on the plugin card: a "needs you" pill (its kind,
+  // "card", once made the badge a session card: a 72 px circle).
+  const badge = page.locator("#topStrip .card.waiting .attn");
+  await expect(badge).toHaveText("needs you");
+  expect((await badge.boundingBox()).height).toBeLessThan(24);
   await card.locator(".card-action", { hasText: "Nudge" }).click();
   // The step that answers it shows it (open, live), before the answer (in
   // the stage: in its cloud, which the chip opens; the nudge flashes in the
