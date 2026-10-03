@@ -8,8 +8,27 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The system prompt names the model the session runs on: `Model: this session runs on splash:incoai/Qwen3.8-27B-Splash
+  (host splash, 192.168.1.29:8082; model key incoai-qwen3-8-27b-splash).`, plus a line to answer "which model are you" from
+  it, not from training (a fine-tune often knows only its base model's name), and that model-only guidance goes in
+  `memory_write current_model_only: true` overlays. A local llama.cpp host whose `/props` names another model adds
+  `; the server says it serves <name>`. The line changes only with `/model` (the prompt was rebuilt there already).
+- `execute` and `task_create` export `SAMAGOTCHI_SESSION_MODEL`, the session's model ref (it follows `/model`; the
+  model's `env` can't set it).
+- Plugins: `ctx.model` (the session's model ref, right after `/model` too) and `ctx.model_key` (its memory overlay
+  key).
+- `chi self` has a `model key` row: the memory overlay key of the model it reports.
+
 ### Changed
 
+- `chi self` run by a session's `execute` reports **that session's** model, and its host, loop, profile, thinking and
+  served model: `model  splash:… (this session abcd1234; default main:…)`. Before, it showed the config default
+  (or the `--model` the worker started with), wrong after `/model`, for web-picker and `chi send --new --model`
+  sessions and delegate children. Elsewhere the row reads `main:… (default)`. `chi self --model` is still the default.
+- The identity memory and the preloaded memories (`--memory`, config `memories:`) get their model overlays
+  (`<name>.<key>.md`) in the system prompt, as `memory_read` gives them.
 - A session's live state (what the web and an attached terminal read from its worker) no longer carries every turn's
   and tool call's timing record, only the newest turn's: reads stay the same size however long the session runs. The
   full history stays in the session's `analytics.json`.
@@ -31,6 +50,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi self`'s `served model` row for a chat host (`api: openai`), or a server without `/props`, says
+  `reported per turn (the server has no /props)`; it said `unknown (no answer from the server's /props)`, which a
+  model took to mean the server never said what it served.
 - `chi bundle uninstall` no longer deletes a memory the user had before the install. A bundle now records (and
   so upgrades and removes) only the files it wrote; a same-name file that was already there is reported
   `Skipped` and stays the user's, on install, re-install and upgrade. Before, it was recorded with the user's
