@@ -301,6 +301,8 @@ never pulls from the page: `chi web` runs one `Samagotchi::Web::SessionHub` (a t
 the server, no daemon) that keeps an in-memory projection of the session list and pushes
 changes to every open tab over `GET /api/events` (SSE: a `snapshot` frame on every connect,
 then `session` for an upsert and `session_gone` for a removal, `: ping` while idle, no replay).
+The snapshot names chi's version: a tab served by another one (its `<body data-version>`) offers a
+reload in a toast, since an open tab keeps its old JS across a `chi web` upgrade.
 Files stay the source of truth and workers don't know the hub. Its watcher is a 1 s tick that
 stats the sessions dir (every session writer goes tmp + rename, which bumps the dir's mtime) and
 each `<id>/` folder (recap.json, bridge.json, the stopped and archived markers), re-parsing only the files whose mtime or size

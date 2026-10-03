@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: a tab left open across a `chi web` upgrade says so: when its event stream reconnects to a newer chi, a toast
+  `chi was updated to X` offers a Reload button (it never reloads by itself; ✕ dismisses it).
+
 ### Changed
 
 - A one-word `/word` that no command answers (`/modle`) is no longer sent to the model as a prompt: every UI

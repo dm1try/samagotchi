@@ -666,9 +666,11 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card.archived{opacity:.6}
 .card.archived:hover{opacity:.85}
 .card .archived-badge{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border-strong);color:var(--text-muted)}
-#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;display:flex;gap:12px;align-items:center;padding:8px 14px;border-radius:10px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-strong);box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:13px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;z-index:50;display:flex;gap:12px;align-items:center;padding:8px 14px;border-radius:10px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-strong);box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:13px}
 #toast[hidden]{display:none}
 #toast .toast-action{background:transparent;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:2px 4px}
+#toast .toast-close{background:transparent;border:0;color:var(--text-muted);cursor:pointer;padding:2px 4px;margin-left:-6px}
+#toast .toast-close:hover{color:var(--text)}
 #allList{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;padding:2px}
 .card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
 .card.skeleton .line{height:10px;background:var(--bg-raised);border-radius:6px}

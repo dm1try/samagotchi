@@ -1059,7 +1059,8 @@ module Samagotchi
       end
 
       # GET /api/events: the session list as one SSE stream per tab. The
-      # first frame is the hub's snapshot (scoped by ?dir= as the list is),
+      # first frame is the hub's snapshot (scoped by ?dir= as the list is,
+      # with chi's version),
       # then `session` for an upsert and `session_gone` for a removal, with
       # a `: ping` while idle. Frame ids are the hub's seq, for the log's
       # sake: there is no replay, a reconnect starts with a fresh snapshot.
@@ -1524,7 +1525,9 @@ module Samagotchi
       # folder in a repo, that project's name and root. A bad dir adds
       # nothing here: the list call answers 400 and the page says so.
       def index_data_attributes(req)
-        attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(Dir.pwd) }
+        # version: the chi that served the page; the events snapshot names
+        # the one serving now (an upgraded chi web after a reconnect).
+        attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(Dir.pwd), "version" => Samagotchi::VERSION }
         attrs["view"] = view_name(req.params["view"])
         # Always there: an empty one means no presets, not the default.
         attrs["annotate-presets"] = @annotate_presets
@@ -1597,7 +1600,8 @@ module Samagotchi
         end
 
         def each
-          yield frame(nil, "snapshot", sessions: @snapshot)
+          # version: the page compares it with the one it was served by.
+          yield frame(nil, "snapshot", sessions: @snapshot, version: Samagotchi::VERSION)
           last_write = monotonic
           loop do
             event = @queue.pop([@heartbeat, EVENTS_POLL].min)

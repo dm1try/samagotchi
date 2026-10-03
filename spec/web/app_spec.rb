@@ -324,6 +324,15 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(400)
     end
 
+    it "names chi's version in the snapshot, so an open page sees an upgraded chi web on its reconnect" do
+      hub.scan
+      _, _, body = events_app.call(env_for("/api/events"))
+      collected = Thread.new { frames_of(body) }
+      hub.stop
+
+      expect(collected.value.first).to eq(["snapshot", { "sessions" => [], "version" => Samagotchi::VERSION }])
+    end
+
     it "ends the connection when its queue overflowed: the reconnect's snapshot is the recovery" do
       hub.scan
       app = events_app(events_queue: 2)
@@ -1574,6 +1583,12 @@ RSpec.describe Samagotchi::Web::App do
         expect(app.call(env_for(path, headers: { "HTTP_IF_NONE_MATCH" => '"stale"' }))[0]).to eq(200)
       end
       expect(app.call(env_for("/assets/app.js"))[1]["ETag"]).not_to eq(app.call(env_for("/assets/turn_view.js"))[1]["ETag"])
+    end
+
+    it "tells the page the chi version it was served by" do
+      _status, _headers, body = build_app.call(env_for("/"))
+
+      expect(body.first).to include(%(data-version="#{Samagotchi::VERSION}"))
     end
 
     it "tells the page where the sessions are stored, ~ for the home folder" do
