@@ -103,9 +103,11 @@ for a file another bundle installed.
   and the output names them and the dir:
   `Moved to the trash: notes.md (…/.trash/team-notes-20261003-120000)`. So
   does an upgrade's removal of a file the new version no longer ships. A
-  file you edited still needs `--force`. Nothing empties the trash: delete
-  the dirs when you're sure. Hooks, rules and the plugin live in the
-  bundle's own dir and are deleted with it.
+  file you edited still needs `--force`. `chi bundle trash` lists the trash
+  (oldest first, with file count, size, and age); `--empty` deletes all
+  folders, `--older-than DAYS` keeps only recent ones, and `--dry-run`
+  previews. Hooks, rules and the plugin live in the bundle's own dir and
+  are deleted with it.
 - **A file two bundles list stays** until the last of them is uninstalled
   (`Kept identity.md: bundle samagotchi-system has it too`); its index line
   then names the bundle that still has it.

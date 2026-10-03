@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: a tab left open across a `chi web` upgrade says so: when its event stream reconnects to a newer chi, a toast
   `chi was updated to X` offers a Reload button (it never reloads by itself; ✕ dismisses it).
+- `chi bundle trash` lists the bundle trash (moved files from uninstalls/upgrades) oldest first, with file count,
+  size, and age; `--empty` deletes all folders, `--older-than DAYS` keeps only recent ones, `--dry-run` previews.
 
 ### Changed
 
