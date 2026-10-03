@@ -31,8 +31,8 @@ RSpec.describe "chi scratch" do
                                      "--memory", "identity", server: server)
 
     expect(status.exitstatus).to eq(0), err
-    expect(out).to start_with("Scratch session: nothing is kept, it is deleted when you leave.\n")
-    expect(out).to include("PONG")
+    expect(err).to start_with("Scratch session: nothing is kept, it is deleted when you leave.\n")
+    expect(out).to eq("PONG\n")
     expect(left).to be_empty
     prompt = server.requests.find { |r| r.path == "/completion" }.json["prompt"]
     expect(prompt).to include("**identity**", "memory_write")

@@ -241,14 +241,18 @@ module Samagotchi
       if @prompt && @non_interactive
         # Headless / CI mode: run directly without TTY rendering.
         ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir)
-        result = @engine.run_turn(
-          session,
-          @prompt,
-          on_event: nil,
-          max_iterations: IterationLimit.for(no_interrupt: true),
-          cancel_controller: nil,
-          images: ImageInput.extract(@prompt)
-        )
+        begin
+          result = @engine.run_turn(
+            session,
+            @prompt,
+            on_event: nil,
+            max_iterations: IterationLimit.for(no_interrupt: true),
+            cancel_controller: nil,
+            images: ImageInput.extract(@prompt)
+          )
+        rescue LLM::ProviderError, ImageStore::Error => e
+          return one_shot_failed(session, e)
+        end
         # No answer (the empty-answer retries used up): no text, or the chat
         # loop's placeholder (LLM::ModelResult#empty_answer?).
         if result.empty_answer?
@@ -286,6 +290,18 @@ module Samagotchi
     end
 
     EMPTY_ANSWER_ERROR = "chi: the model gave an empty answer"
+
+    # A -p --non-interactive turn that failed (bin/chi exits 1): the error,
+    # then how to go on. The Engine saved the failed turn with its prompt,
+    # so the session is kept and `chi --resume` takes it up again.
+    # @return [Symbol] :turn_failed
+    def one_shot_failed(session, error)
+      warn "Error: #{error.respond_to?(:summary) ? error.summary : error.message}"
+      if !@scratch && Session.exist?(session.id)
+        warn "chi: the session is kept with your prompt; continue it with: chi --resume #{session.id}"
+      end
+      :turn_failed
+    end
 
     # `chi -p "/models" --non-interactive`: the command's output; a refused
     # one fails the run (bin/chi exits 1). The session is saved only when
@@ -401,17 +417,27 @@ module Samagotchi
       system_message = { role: "system", content: seed_system_prompt }
       if @resume_session
         messages = ContextNote.with_system_head(session.messages.dup, system_message)
-        @surface.commit("Resumed session: #{session.id}")
+        banner("Resumed session: #{session.id}")
         saved = @engine.saved_recap
-        @surface.commit(recap_block(saved[:text], turns_since: saved[:turns_since])) if saved
+        banner(recap_block(saved[:text], turns_since: saved[:turns_since])) if saved
       elsif @scratch
         messages = [system_message]
-        @surface.commit("Scratch session: nothing is kept, it is deleted when you leave.")
+        banner("Scratch session: nothing is kept, it is deleted when you leave.")
       else
         messages = [system_message]
-        @surface.commit("Session: #{session.id}")
+        banner("Session: #{session.id}")
       end
       messages
+    end
+
+    # A line about the session, not the answer: on stderr in a
+    # --non-interactive run, whose stdout is the answer's alone (a script
+    # or a parent agent reads it), and before the turn, so it comes first.
+    def banner(text)
+      return @surface.commit(text) unless @non_interactive
+
+      $stderr.puts(text)
+      $stderr.flush
     end
 
     # Interactive REPL loop. Session seed + messages are built by #run and

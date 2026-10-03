@@ -16,7 +16,7 @@ RSpec.describe "chi -p --non-interactive" do
                          .merge(env)
       out, err, status = super(*args, env: env, chdir: dir)
       sessions = File.join(dir, "state", "samagotchi", "sessions")
-      kept = Dir.exist?(sessions) ? Dir.children(sessions).reject { |name| name.start_with?(".") } : []
+      kept = Dir.glob(File.join(sessions, "*.json")).map { |path| File.basename(path, ".json") }
       [out, err, status, kept]
     end
   end
@@ -25,15 +25,45 @@ RSpec.describe "chi -p --non-interactive" do
     ["data: #{JSON.generate(content: text, stop: true)}\n\n"]
   end
 
-  it "exits 1 with a line on stderr when the answer is empty" do
+  it "prints the answer alone on stdout, and the session line on stderr first" do
+    server = FakeProviderServer.start
+    server.default("/completion", sse: answer("PONG"))
+
+    out, err, status, kept = run_chi("-p", "hi", "--non-interactive", server: server)
+
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to eq("PONG\n")
+    expect(err).to eq("Session: #{kept.first}\n")
+  ensure
+    server&.stop
+  end
+
+  it "exits 1 with a line on stderr and nothing on stdout when the answer is empty" do
     server = FakeProviderServer.start
     server.default("/completion", sse: answer(""))
 
-    _out, err, status, = run_chi("-p", "hi", "--non-interactive", server: server)
+    out, err, status, = run_chi("-p", "hi", "--non-interactive", server: server)
 
     expect(status.exitstatus).to eq(1), err
+    expect(out).to eq("")
     expect(err).to include("chi: the model gave an empty answer\n")
   ensure
     server&.stop
+  end
+
+  # A failed first turn: the session line comes first, then the error, then
+  # how to go on; the session is kept with the prompt, so --resume retries.
+  it "says before the error which session it is, and after it that the session is kept" do
+    out, err, status, kept = run_chi("-p", "hello there", "--non-interactive")
+
+    expect(status.exitstatus).to eq(1)
+    expect(out).to eq("")
+    expect(kept.size).to eq(1)
+    id = kept.first
+    lines = err.lines.map(&:chomp)
+    expect(lines.first).to eq("Session: #{id}")
+    expect(lines[1]).to start_with("Error: can't reach host")
+    expect(lines.last).to eq("chi: the session is kept with your prompt; continue it with: chi --resume #{id}")
+    expect(lines.size).to eq(3)
   end
 end

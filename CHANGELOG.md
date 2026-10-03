@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi -p … --non-interactive` keeps stdout for the answer alone: the `Session:` (or `Resumed session:`) line goes
+  to stderr, before the turn. A failed turn now says after its error that the session is kept with the prompt and
+  how to continue it (`chi --resume ID`).
+
 ## [0.18.0] - 2026-10-03
 
 ### Added

@@ -551,10 +551,36 @@ file2.rb")
       expect(ended).to eq(:turn_failed)
     end
 
-    it "exits normally when the -p --non-interactive turn answers" do
+    # stdout is the answer's alone: the session line goes to stderr.
+    it "exits normally when the -p --non-interactive turn answers: the answer on stdout, the session on stderr" do
       allow(client).to receive(:complete).and_return("done")
       agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
-      expect { agent.run }.not_to output.to_stderr
+      expect do
+        expect { expect(agent.run).to be_nil }.to output("done\n").to_stdout
+      end.to output(/\ASession: \S+\n\z/).to_stderr
+    end
+
+    it "says on stderr that a resumed session is resumed with --non-interactive" do
+      resumed = repl_session
+      resumed.messages = [{ role: "system", content: "system" }]
+      resumed.save
+      allow(client).to receive(:complete).and_return("done")
+      agent = described_class.new(prompt: "next", client: client, non_interactive: true, session_id: resumed.id)
+      expect do
+        expect { agent.run }.to output("done\n").to_stdout
+      end.to output("Resumed session: #{resumed.id}\n").to_stderr
+    end
+
+    it "keeps a failed -p --non-interactive turn's session and says how to go on" do
+      allow(client).to receive(:complete).and_raise(Samagotchi::LLM::ServerError.new("boom", host: "h"))
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
+      ended = nil
+      expect do
+        expect { ended = agent.run }.not_to output.to_stdout
+      end.to output(/\ASession: (\S+)\nError: .+\nchi: the session is kept with your prompt; continue it with: chi --resume \1\n\z/).to_stderr
+      expect(ended).to eq(:turn_failed)
+      saved = Samagotchi::Session.load(agent.engine.session.id)
+      expect(saved.messages).to include(include(role: "user", content: "hi"))
     end
 
     # Scenario 7: --non-interactive with no -p is a harmless no-op exit.

@@ -224,7 +224,10 @@ Notes:
   messages as turn context (a `-p` run on a resumed session never clobbers its
   conversation).
 - Non-interactive runs (`-p` with `--non-interactive`, or bare `--non-interactive`)
-  print only the final result output — no spinner, status line, or REPL.
+  print only the final result output on stdout — no spinner, status line, or REPL.
+  Everything else goes to stderr: the `Session: ID` line first, before the turn,
+  and the error of a failed turn, then `chi: the session is kept with your
+  prompt; continue it with: chi --resume ID` (exit 1).
 
 ### Scratch sessions
 
