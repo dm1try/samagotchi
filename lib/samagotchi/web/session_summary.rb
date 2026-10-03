@@ -31,6 +31,7 @@ module Samagotchi
         used = Array(session.used_memory_names)
         up = bridge_up?(session_dir, owner)
         sidecar = up ? WorkerSidecar.read(session_dir) : nil
+        saved = SessionMetrics.saved_summary(session_dir)
         {
           id: session.id,
           status: status,
@@ -52,8 +53,11 @@ module Samagotchi
           owner: owner&.kind,
           # The saved recap's first sentence, for the session card.
           recap: RecapStore.preview(session_dir),
-          # How full the context was after the last turn (%), or nil.
-          ctx_pct: SessionMetrics.saved_context_pct(session_dir)&.round(1),
+          # How full the context was after the last turn (%), or nil, and
+          # the session's token sums and cost (the card's ctx tooltip), from
+          # one read of analytics.json.
+          ctx_pct: saved&.ctx_pct&.round(1),
+          tokens: saved&.tokens,
           # Hidden from the strip and the list unless "include archived".
           archived: ArchiveStore.archived?(session_dir),
           project_root: session.project_root(cache: root_cache),

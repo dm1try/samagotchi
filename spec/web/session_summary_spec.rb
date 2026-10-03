@@ -26,6 +26,28 @@ RSpec.describe Samagotchi::Web::SessionSummary do
     Samagotchi::Session.session_dir(s.id, state_dir: state_dir)
   end
 
+  describe "the card's ctx and tokens" do
+    it "reads the context's fill and the token totals from the saved analytics" do
+      s = session
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "analytics.json"), JSON.generate(
+        "context" => { "used_tokens" => 250, "window_tokens" => 1000 },
+        "tokens" => { "prompt_sum" => 900, "completion_sum" => 80, "cached_sum" => 600, "reasoning_sum" => 20,
+                      "cost_sum" => 0.42, "source" => "server" }
+      ))
+
+      json = described_class.build(s, owner: nil, session_dir: session_dir(s))
+
+      expect(json[:ctx_pct]).to eq(25.0)
+      expect(json[:tokens]).to eq(prompt_sum: 900, completion_sum: 80, cached_sum: 600, reasoning_sum: 20, cost_sum: 0.42)
+    end
+
+    it "has neither without saved analytics" do
+      s = session
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(ctx_pct: nil, tokens: nil)
+    end
+  end
+
   describe "the notification fields" do
     it "reduces the pending question to its id and kind, and passes last_turn through" do
       s = session
