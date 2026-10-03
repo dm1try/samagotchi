@@ -9,6 +9,7 @@ require "uri"
 require "rack"
 require "rack/request"
 
+require_relative "../answer_tail"
 require_relative "../bridge_client"
 require_relative "../bridge/bounded_queue"
 require_relative "../bridge/card_store"
@@ -1332,14 +1333,10 @@ module Samagotchi
         MessageParts.for_message(list[index], responses, cwd: cwd)
       end
 
-      # The last message messages_for_display shows as an answer, as a list of
-      # at most one: walked backwards so only that one is rendered.
+      # The last message messages_for_display shows as an answer
+      # (AnswerTail), as a list of at most one: only that one is rendered.
       def last_assistant_for_display(msgs)
-        Array(msgs).reverse_each do |m|
-          shown = messages_for_display([m]).first
-          return [shown] if shown && shown[:role] == "assistant"
-        end
-        []
+        messages_for_display([AnswerTail.find(msgs)].compact)
       end
 
       def parse_json(str)
