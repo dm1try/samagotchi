@@ -79,14 +79,24 @@ module Samagotchi
         existing_provenance = provenance.read
         # A plain install over an installed bundle: summary points at upgrade.
         @reinstall = existing_provenance && !@upgrade && !@force && !@dry_run
+        # The bundle owns (records, upgrades, removes) only the files it
+        # wrote: these, from an earlier install, and the ones written now.
+        # A same-name file that was already there is the user's: skipped
+        # and never recorded.
+        owned_before = existing_provenance && existing_provenance[:files].is_a?(Hash) ? existing_provenance[:files].keys.map(&:to_s) : []
+        owned = []
 
         Dir.glob(File.join(normalized_dir, "*.md")).each do |file_path|
           file_key = File.basename(file_path)
           all_files_in_bundle << file_key
           target_path = File.join(target_dir, file_key)
 
-          if @upgrade && existing_provenance && !@force && !@dry_run
+          if @upgrade && existing_provenance && !@force && File.exist?(target_path) && !owned_before.include?(file_key)
+            # Not the bundle's (the user's, or another bundle's): no merge.
+            skip_existing(file_key, file_path, target_path, target_scope)
+          elsif @upgrade && existing_provenance && !@force && !@dry_run
             # 3-way merge path for upgrades
+            owned << file_key
             base_path = provenance.base_path(file_key)
             classification = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
             case classification
@@ -126,16 +136,13 @@ module Samagotchi
             else
               @results[file_key] = { status: "would_install" }
             end
-          elsif File.exist?(target_path) && !@force && FileUtils.identical?(file_path, target_path)
-            @results[file_key] = { status: "skipped", reason: "already up to date" }
-            update_target_index(target_scope, target_path, file_key)
           elsif File.exist?(target_path) && !@force
-            @results[file_key] = { status: "skipped", reason: "already exists" }
-            @warnings << "Skipped #{file_key} (already exists; use --force to overwrite)"
-            # Still update the index for skipped files.
-            update_target_index(target_scope, target_path, file_key)
+            # A re-install keeps what an earlier install wrote.
+            owned << file_key if owned_before.include?(file_key)
+            skip_existing(file_key, file_path, target_path, target_scope)
           else
             FileUtils.cp(file_path, target_path) unless @dry_run
+            owned << file_key
             @results[file_key] = { status: "installed" }
             # Update index for newly installed files.
             update_target_index(target_scope, target_path, file_key) unless @dry_run
@@ -308,7 +315,7 @@ module Samagotchi
         if manifest && !@dry_run
           provenance_files = {}
           if @upgrade && existing_provenance
-            all_files_in_bundle.each do |file_key|
+            owned.each do |file_key|
               target_path = File.join(target_dir, file_key)
               next unless File.exist?(target_path)
               status = @results[file_key] ? @results[file_key][:status].to_s : nil
@@ -344,7 +351,7 @@ module Samagotchi
               end
             end
           else
-            all_files_in_bundle.each do |file_key|
+            owned.each do |file_key|
               target_path = File.join(target_dir, file_key)
               next unless File.exist?(target_path)
 
@@ -427,6 +434,23 @@ module Samagotchi
       end
 
       private
+
+      # A file already in the target dir that the install doesn't write: the
+      # same bytes are "already up to date", others are skipped with a
+      # --force hint (a dry run: would_skip). Its index line is refreshed
+      # (not on a dry run).
+      def skip_existing(file_key, file_path, target_path, scope)
+        if FileUtils.identical?(file_path, target_path)
+          @results[file_key] = { status: "skipped", reason: "already up to date" }
+        elsif @dry_run
+          @results[file_key] = { status: "would_skip" }
+          return
+        else
+          @results[file_key] = { status: "skipped", reason: "already exists" }
+          @warnings << "Skipped #{file_key} (already exists; use --force to overwrite)"
+        end
+        update_target_index(scope, target_path, file_key) unless @dry_run
+      end
 
       # A file the previous version installed that this one doesn't ship is
       # moved to the trash (with its index line removed) when it still

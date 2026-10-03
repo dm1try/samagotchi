@@ -97,6 +97,20 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       expect(installed_identity).to eq("mine\n")
     end
 
+    it "never takes over an identity.md the user had before the first install" do
+      FileUtils.mkdir_p(Samagotchi::MemoryPaths.system_dir)
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"), "mine\n")
+      ship("0.1.6", "old\n")
+      described_class.ensure!
+      ship("0.1.10", "new\n")
+      expect(described_class.sync(dry_run: true).kept).to eq([])
+      described_class.ensure!
+
+      expect(installed_identity).to eq("mine\n")
+      expect(installed_version).to eq("0.1.10")
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME).read[:files]).to eq({})
+    end
+
     describe ".sync" do
       it "reports what it did: installed, up to date, updated with kept edits, newer installed" do
         ship("0.1.6", "old\n")

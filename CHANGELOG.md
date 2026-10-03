@@ -8,6 +8,16 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi bundle uninstall` no longer deletes a memory the user had before the install. A bundle now records (and
+  so upgrades and removes) only the files it wrote; a same-name file that was already there is reported
+  `Skipped` and stays the user's, on install, re-install and upgrade. Before, it was recorded with the user's
+  content as its base, so uninstall removed it without `--force`: a third-party bundle shipping `notes.md`, or
+  `chi bundle build` then installing the result on the same machine. An upgrade no longer reports such a file as
+  a conflict (or `chi update --dry-run` as kept). Bundles installed before this fix may still list such a file;
+  uninstall now moves it to the trash (below) rather than deleting it.
+
 ### Changed
 
 - `chi bundle uninstall` (and an upgrade dropping a file the new version no longer ships) moves the bundle's memory

@@ -89,6 +89,17 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     expect(described_class.plan.first.status).to eq(:up_to_date)
   end
 
+  it "doesn't plan a user's own same-name memory as kept: the bundle never installed it" do
+    FileUtils.mkdir_p(system_dir)
+    File.write(File.join(system_dir, "known_names.md"), "my own\n")
+    install(old_copy("known-names", md: "old words\n"), "known-names")
+
+    rows = described_class.plan
+    expect(rows.first).to have_attributes(status: :would_update, kept: [])
+    described_class.apply(rows)
+    expect(File.read(File.join(system_dir, "known_names.md"))).to eq("my own\n")
+  end
+
   it "reports an edited hook it replaces" do
     install(old_copy("known-names"), "known-names")
     File.write(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "known-names").hooks_dir, "known_names.rb"), "# mine\n")

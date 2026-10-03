@@ -169,11 +169,13 @@ module Samagotchi
         result(:restored, from: version, to: version)
       end
 
-      # The files an upgrade would keep: edited here and changed in the
-      # shipped bundle (a dry run's kept).
+      # The files an upgrade would keep: installed by the bundle, edited
+      # here and changed in the shipped bundle (a dry run's kept).
       def conflicting(gem_manifest)
         provenance = Provenance.new(name: BUNDLE_NAME)
-        gem_manifest.files.keys.map(&:to_s).sort.select do |key|
+        owned = (provenance.read || {})[:files]
+        owned = owned.is_a?(Hash) ? owned.keys.map(&:to_s) : []
+        (gem_manifest.files.keys.map(&:to_s).sort & owned).select do |key|
           Merger.classify(base_path: provenance.base_path(key), current_path: File.join(MemoryPaths.system_dir, key),
                           incoming_path: File.join(GEM_BUNDLE_DIR, key)) == :conflict
         end

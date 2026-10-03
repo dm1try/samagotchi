@@ -143,13 +143,15 @@ module Samagotchi
         row
       end
 
-      # The .md files whose local edits conflict with the shipped version.
+      # The bundle's .md files whose local edits conflict with the shipped
+      # version (a same-name file it didn't install is skipped, not merged).
       def conflicts(row, data)
         provenance = Provenance.new(name: row.name)
         target_dir = Status.resolve_target_dir(row.scope)
-        return [] unless data[:files]
+        return [] unless data[:files].is_a?(Hash)
 
-        Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort.select do |key|
+        owned = data[:files].keys.map(&:to_s)
+        (Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort & owned).select do |key|
           Merger.classify(base_path: provenance.base_path(key), current_path: File.join(target_dir, key),
                           incoming_path: File.join(row.source_dir, key)) == :conflict
         end

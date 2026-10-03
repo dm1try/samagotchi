@@ -116,6 +116,29 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         expect(File.read(File.join(system_memories_dir, "identity.md"))).to eq("# Existing\n")
       end
 
+      it "records only the files it wrote: a skipped file stays the user's" do
+        FileUtils.mkdir_p(system_memories_dir)
+        File.write(File.join(system_memories_dir, "identity.md"), "# Existing\n")
+        File.write(File.join(system_memories_dir, "same.md"), "# Same\n")
+        bundle_dir = write_bundle(tmpdir, { "identity.md" => "# New\n", "same.md" => "# Same\n", "new_file.md" => "# Brand New\n" })
+
+        installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+
+        data = Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle").read
+        expect(data[:files].keys).to eq([:"new_file.md"])
+        expect(Dir.children(File.join(bundles_dir, "test-bundle", "bases"))).to eq(["new_file.md"])
+      end
+
+      it "a re-install keeps the files it installed before, skipped or not" do
+        bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n", "b.md" => "# B\n" })
+        installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+        File.write(File.join(system_memories_dir, "b.md"), "# B\nedited\n")
+
+        installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+        data = Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle").read
+        expect(data[:files].keys).to contain_exactly(:"identity.md", :"b.md")
+      end
+
       it "skips an existing file identical to the bundle's as already up to date, without a warning" do
         FileUtils.mkdir_p(system_memories_dir)
         File.write(File.join(system_memories_dir, "identity.md"), "# Identity\n")
@@ -409,6 +432,45 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       up.run
       expect(up.results["identity.md"][:status]).to eq("kept")
       expect(File.read(target)).to eq("# Identity\nmy edit\n")
+    end
+  end
+
+  describe "upgrade: a file the bundle didn't write" do
+    def upgrade(source, dry_run: false)
+      described_class.new(source: source, name: "up-bundle", scope: "system", strict: true, upgrade: true, dry_run: dry_run).tap(&:run)
+    end
+
+    let(:mine) { File.join(system_memories_dir, "notes.md") }
+
+    before do
+      installer_for(source: write_bundle(File.join(tmpdir, "v1"), { "keep.md" => "# Keep\n" }, name: "up-bundle", version: "0.1.0"),
+                    name: "up-bundle", scope: "system").run
+      File.write(mine, "# my notes\n")
+    end
+
+    it "is skipped, not merged, not recorded, when a new version starts shipping the same name" do
+      v2 = write_bundle(File.join(tmpdir, "v2"), { "keep.md" => "# Keep\n", "notes.md" => "# Theirs\n", "fresh.md" => "# Fresh\n" },
+                        name: "up-bundle", version: "0.2.0")
+      up = upgrade(v2)
+
+      expect(File.read(mine)).to eq("# my notes\n")
+      expect(up.results["notes.md"]).to eq(status: "skipped", reason: "already exists")
+      expect(up.conflicts).to be_empty
+      expect(up.results["fresh.md"][:status]).to eq("installed")
+      data = Samagotchi::MemoryBundle::Provenance.new(name: "up-bundle").read
+      expect(data[:files].keys).to contain_exactly(:"keep.md", :"fresh.md")
+
+      # and stays skipped on the next upgrade (no fast-forward over it)
+      v3 = write_bundle(File.join(tmpdir, "v3"), { "keep.md" => "# Keep\n", "notes.md" => "# Theirs 2\n" }, name: "up-bundle", version: "0.3.0")
+      expect(upgrade(v3).results["notes.md"][:status]).to eq("skipped")
+      expect(File.read(mine)).to eq("# my notes\n")
+    end
+
+    it "is reported as skipped on a dry run, not as a conflict" do
+      v2 = write_bundle(File.join(tmpdir, "v2"), { "keep.md" => "# Keep\n", "notes.md" => "# Theirs\n" }, name: "up-bundle", version: "0.2.0")
+      up = upgrade(v2, dry_run: true)
+      expect(up.results["notes.md"]).to eq(status: "would_skip")
+      expect(up.conflicts).to be_empty
     end
   end
 

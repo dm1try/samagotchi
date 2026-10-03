@@ -9,6 +9,7 @@ require "digest"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/uninstaller"
 require "samagotchi/memory_bundle/provenance"
+require "samagotchi/memory_bundle/builder"
 
 RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
   let(:tmpdir) { Dir.mktmpdir("uninstaller-") }
@@ -121,6 +122,35 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
       install_bundle(src, "hidden")
       described_class.new(name: "hidden").run
       expect(Samagotchi::MemoryBundle::Provenance.each_installed.map(&:first)).to eq([])
+    end
+  end
+
+  describe "a memory the user had before the install" do
+    it "is left alone: the install skipped it, so uninstall doesn't touch it (a bundle shipping the same name)" do
+      File.write(File.join(system_dir, "notes.md"), "# my notes\n")
+      src = write_bundle_with_hooks({ "notes.md" => "# their notes\n", "extra.md" => "# Extra\n" }, {}, name: "third-party")
+      install_bundle(src, "third-party")
+
+      uninstaller = described_class.new(name: "third-party")
+      uninstaller.run
+
+      expect(File.read(File.join(system_dir, "notes.md"))).to eq("# my notes\n")
+      expect(uninstaller.trashed_files).to eq(["extra.md"])
+      expect(File.read(File.join(system_dir, "index.md"))).to include("- **notes** ·")
+    end
+
+    it "is left alone after chi bundle build + install of the user's own memories on the same machine" do
+      File.write(File.join(system_dir, "identity.md"), "# me\n")
+      File.write(File.join(system_dir, "work.md"), "# work\n")
+      out = File.join(tmpdir, "built")
+      Samagotchi::MemoryBundle::Builder.new(scope: "system", out: out).run
+      install_bundle(out, "chi_system_memories")
+
+      described_class.new(name: "chi_system_memories").run
+
+      expect(File.read(File.join(system_dir, "identity.md"))).to eq("# me\n")
+      expect(File.read(File.join(system_dir, "work.md"))).to eq("# work\n")
+      expect(Dir.exist?(File.join(bundles_dir, ".trash"))).to be false
     end
   end
 
