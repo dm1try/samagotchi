@@ -36,7 +36,7 @@ module Samagotchi
         build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
           Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip).
           --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
-          FILES... optional allowlist of *.md basenames to include (default: all).
+          FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones).
     TEXT
 
     # Each subcommand's --help (and only --help: -h and help are taken as
@@ -57,7 +57,7 @@ module Samagotchi
         build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
           Build local memories and installed hooks into a shareable bundle (dir or zip).
           --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
-          FILES... optional allowlist of *.md basenames to include (default: all).
+          FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones).
 
         Examples:
           chi bundle build --scope system
@@ -565,6 +565,7 @@ module Samagotchi
         @stdout.puts "Built #{result[:files].size} file(s) to #{result[:out_path]}"
         @stdout.puts "Bundle: #{result[:name]} v#{result[:version]} scope=#{result[:scope]}"
         @stdout.puts "Files: #{result[:files].join(', ')}" unless result[:files].empty?
+        builder.warnings.each { |w| @stdout.puts w }
         unless result[:placeholder_warnings].empty?
           @stdout.puts "Placeholders:"
           result[:placeholder_warnings].each { |w| @stdout.puts "  #{w}" }

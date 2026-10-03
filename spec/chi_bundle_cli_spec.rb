@@ -41,7 +41,7 @@ RSpec.describe "chi bundle (CLI)" do
       build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
         Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip).
         --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
-        FILES... optional allowlist of *.md basenames to include (default: all).
+        FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones).
   TEXT
 
   INSTALL_USAGE = <<~TEXT
@@ -59,7 +59,7 @@ RSpec.describe "chi bundle (CLI)" do
       build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
         Build local memories and installed hooks into a shareable bundle (dir or zip).
         --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
-        FILES... optional allowlist of *.md basenames to include (default: all).
+        FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones).
 
       Examples:
         chi bundle build --scope system
@@ -260,6 +260,14 @@ Hooks removed: 1\n\z})
       expect([err, code]).to eq(["", 0])
       expect(out).to match(%r{\AUninstalled bundle 'core'\nRemoved: guardrails\nMoved to the trash: guardrails.md \(\S+/\.trash/guardrails-\d{8}-\d{6}\)\n\z})
       expect(File.read(Dir.glob(File.join(memories, ".bundles", ".trash", "guardrails-*", "guardrails.md")).first)).to eq("mine\n")
+    end
+
+    it "builds the user's memories, leaving out the ones an installed bundle owns, and says so" do
+      chi("install", "guardrails")
+      File.write(File.join(memories, "work.md"), "# work\n")
+      out, err, code = chi("build", "--out", "built")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to include("Files: work.md\n", "Left out guardrails.md: installed by bundle guardrails (name it to include it)\n")
     end
 
     it "refuses a bad build scope and a value flag followed by a flag" do

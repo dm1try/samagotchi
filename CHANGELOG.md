@@ -26,6 +26,9 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle uninstall` (and an upgrade dropping a file the new version no longer ships) moves the bundle's memory
   files to `<memories>/.bundles/.trash/<bundle>-<time>/` instead of deleting them, and says where:
   `Moved to the trash: notes.md (…/.trash/notes-bundle-20261003-120000)`. Nothing empties the trash; delete it by hand.
+- `chi bundle build` leaves out the memories an installed bundle owns (the system bundle's `identity.md`, a shipped
+  bundle's memory), one line each: `Left out identity.md: installed by bundle samagotchi-system (name it to include
+  it)`; naming a file in `FILES...` includes it. It now prints the builder's warnings.
 
 ### Fixed
 

@@ -238,7 +238,7 @@ RSpec.describe "chi subcommand argument parsing" do
       allow(Samagotchi::MemoryBundle::Builder).to receive(:new) do |**kwargs|
         builders << kwargs
         instance_double(Samagotchi::MemoryBundle::Builder,
-                        run: { files: [], out_path: "o", name: "n", version: "v", scope: "system", placeholder_warnings: [] })
+                        run: { files: [], out_path: "o", name: "n", version: "v", scope: "system", placeholder_warnings: [] }, warnings: [])
       end
     end
 

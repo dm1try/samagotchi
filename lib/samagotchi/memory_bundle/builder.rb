@@ -67,6 +67,8 @@ module Samagotchi
             raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(', ')}"
           end
           candidates = allow.map { |k| candidates_by_basename[k] }
+        else
+          candidates = leave_out_owned(candidates, resolved_name)
         end
 
         # Compute checksums and detect placeholders
@@ -249,6 +251,26 @@ module Samagotchi
       end
 
       private
+
+      # Without an allowlist, a memory another installed bundle owns (its
+      # record lists it) isn't the user's to share: left out, one line
+      # each. The bundle being built (same name) keeps its own.
+      def leave_out_owned(candidates, name)
+        require_relative "provenance"
+        owners = candidates.to_h do |path|
+          [path, Provenance.claimants(File.basename(path), scope: @scope, except: name)]
+        end
+        left_out = owners.reject { |_, names| names.empty? }
+        left_out.each do |path, names|
+          @warnings << "Left out #{File.basename(path)}: installed by bundle #{names.join(", ")} (name it to include it)"
+        end
+        kept = candidates - left_out.keys
+        if kept.empty?
+          raise BuildError, "No memories to build in #{@scope} scope: every one belongs to an installed bundle " \
+                            "(#{left_out.keys.map { |p| File.basename(p) }.join(", ")}); name the ones to include"
+        end
+        kept
+      end
 
       def normalize_scope(val)
         return nil if val.nil? || val.to_s.strip.empty?
