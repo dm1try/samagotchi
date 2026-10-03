@@ -256,7 +256,13 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
 - `GET  /session/:id/state` — `session_state_snapshot` (JSON).
 - `GET  /session/:id/stats` — `Engine#stats_snapshot` for attached `/stats`: the metrics, with the context window and prompt profile asked from the server before the first turn.
 - `GET  /session/:id/snapshot` — the snapshot frame's content as one request (the web server renders
-  the messages itself, then streams from its `event_seq`).
+  the messages itself, then streams from its `event_seq`). Read by the web's full show
+  (`GET /api/sessions/:id`, `?parts=1`) and the plugin's `list_sessions`; every message is copied.
+- `GET  /session/:id/tail` — the page's light re-read (`Bridge#tail_frame`): `session_state_snapshot`,
+  `answer` (the last message a UI shows as an answer, `AnswerTail`: the one message, copied alone),
+  `cards` (`CardStore#list`), `event_seq`, `event_id`, all taken in one event-log hold; no message
+  list, so it costs the same however long the session is. `?turn_id=` answers that turn's answer
+  (an unknown or missing id: the newest); the only route that reads its query.
 - `OPTIONS *` — CORS preflight (`Access-Control-Allow-Origin: *`).
 
 The metrics in `/state`, `/snapshot`, `/stats` and the SSE `snapshot`/`reset` frames
@@ -264,6 +270,21 @@ The metrics in `/state`, `/snapshot`, `/stats` and the SSE `snapshot`/`reset` fr
 newest turn the worker finished and any it hasn't saved yet (at most 20 turns), with their tool
 calls and the running turn's finished ones. The full history is the session's `analytics.json`,
 which `SessionMetrics#persist` rewrites after each turn; the web server merges the two by id.
+
+The page's frequent reads of `GET /api/sessions/:id` stay light too:
+- `?tail=1&recent=1` (each turn's end, a cancel, an answer display): `{tail, session: {id, status,
+  used_memory_names}, messages: [the answer], markdown_warning, timing}`, from the worker's `/tail`
+  alone (no session file parsed, no `analytics.json`); `timing` carries the worker's recent records
+  and `turn_count` (finished turns). The page merges the records by id (`timing.js mergeTiming`) and
+  finishes the ended turn's own line by its `turn_id` (sent as `&turn_id=`, which also picks that
+  turn's answer). A plain `?tail=1` (a tab opened before this) gets the whole timing.
+- `?timing=1`: the whole timing (`analytics.json` merged with the worker's `/state`) and
+  `turn_count`, when the page's merge came up short.
+- `?cards=1`: the cards, from `/tail`; the session file is only stat'ed for the 404.
+
+A worker without `/tail` (an older chi; `404 not_found`) is read through `/snapshot` in the same
+shape; any other failure (no worker, a 500, a timeout) reads the disk, trimmed to the newest
+turn's records with `recent=1`.
 
 Every route goes through `Bridge#dispatch`: an id other than the bridge's own session is
 `404 unknown_session`, and a handler that raises answers `500 bridge_error` (logged as

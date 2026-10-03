@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- The web page's end-of-turn and card re-reads fetch only what they show: the session's state, the last answer,
+  that turn's timings and the cards, from a new light worker read (`GET /session/:id/tail`) instead of the
+  whole conversation and timing history, so they stay the same size however long the session runs.
+
+### Fixed
+
+- Web: with a prompt queued behind a turn, the next turn's live timing line no longer freezes or takes the
+  previous turn's number when the previous turn's re-read lands late.
+
 ## [0.17.0] - 2026-10-03
 
 ### Added
