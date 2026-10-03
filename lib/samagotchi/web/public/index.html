@@ -559,6 +559,12 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);word-break:break-all}
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:var(--bg-hover);color:var(--text-3)}
 #infoBar .meta .model.served-mismatch{background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border)}
+/* The open session's worker runs an older chi: its version, and Restart when it can. */
+#infoBar .meta .worker-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:2px 2px 2px 6px;border-radius:6px;background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border);white-space:nowrap}
+#infoBar .meta .worker-badge:not(:has(button)){padding-right:6px}
+#infoBar .meta .worker-restart{padding:1px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--warn-bright);border:1px solid var(--warn-border)}
+#infoBar .meta .worker-restart:hover:not(:disabled){background:var(--warn-border);color:#fff}
+#infoBar .meta .worker-restart:disabled{opacity:.7;cursor:default}
 #infoBar .preview-line{font-size:13px;word-break:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;line-height:1.4;max-height:2.8em}
 #infoBar .preview-line .preview, #infoBar .preview-line .mem{word-break:break-word}
 #infoBar .mem{font-size:12px;color:var(--text-muted)}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compareVersions, newerVersion, versionNotice } from "../../../lib/samagotchi/web/public/update_notice.js";
+import { compareVersions, newerVersion, restartConfirmText, versionNotice, workerBadge } from "../../../lib/samagotchi/web/public/update_notice.js";
 
 test("versionNotice: a snapshot from another chi version than the page's asks for a reload", () => {
   assert.deepEqual(versionNotice({ loaded: "0.17.0", served: "0.18.0" }),
@@ -50,4 +50,41 @@ test("compareVersions: Gem::Version's order, prereleases below their release", (
   assert.ok(compareVersions("0.19.0.beta", "0.19.0.alpha") > 0);
   assert.equal(newerVersion("0.19.0", null), false);
   assert.equal(newerVersion("0.19.0", "0.18.1"), true);
+});
+
+test("workerBadge: a worker on an older chi than the newest installed offers Restart when it can", () => {
+  const badge = workerBadge({ workerVersion: "0.18.1", features: ["restart"], installed: "0.19.0", served: "0.18.1",
+                              sessionId: "abcdef123456" });
+  assert.deepEqual(badge, {
+    text: "chi 0.18.1",
+    title: "This session's worker runs chi 0.18.1; chi 0.19.0 is installed. Restart hands the session to a new worker on chi 0.19.0.",
+    newest: "0.19.0",
+    restart: true,
+  });
+});
+
+test("workerBadge: a worker from before restarts gets the stop command, no button", () => {
+  const badge = workerBadge({ workerVersion: "0.18.1", features: [], installed: "0.19.0", sessionId: "abcdef123456" });
+  assert.equal(badge.restart, false);
+  assert.equal(badge.text, "chi 0.18.1 · chi sessions stop abcdef12");
+  assert.match(badge.title, /can't restart itself.*then any message starts it on chi 0\.19\.0/);
+});
+
+test("workerBadge: compares with chi web's own version while the installed one is unknown", () => {
+  assert.equal(workerBadge({ workerVersion: "0.17.0", features: ["restart"], installed: null, served: "0.18.1" }).newest,
+    "0.18.1");
+});
+
+test("workerBadge: nothing for a current worker, an unknown version or nothing to compare with", () => {
+  assert.equal(workerBadge({ workerVersion: "0.19.0", features: ["restart"], installed: "0.19.0", served: "0.18.1" }), null);
+  assert.equal(workerBadge({ workerVersion: "0.20.0", features: ["restart"], installed: "0.19.0" }), null);
+  assert.equal(workerBadge({ workerVersion: null, features: [], installed: "0.19.0" }), null);
+  assert.equal(workerBadge({ workerVersion: "0.18.1", features: [], installed: null, served: null }), null);
+  assert.equal(workerBadge(), null);
+});
+
+test("restartConfirmText: names both versions and what goes", () => {
+  const text = restartConfirmText("0.18.1", "0.19.0");
+  assert.match(text, /^Restart this session's worker on chi 0\.19\.0 \(it runs 0\.18\.1\)\?/);
+  assert.match(text, /kept \/btw answers and plugins' in-memory state/);
 });

@@ -18,6 +18,9 @@ and commands may change between minor versions. How releases are made:
 
 - `chi web` notices a newer chi installed (`chi update`, `gem update`, a `git pull` in a checkout) and says to
   restart it, in its terminal and once in each open page.
+- The web's info bar marks a session whose worker runs an older chi than the newest installed, with a Restart button
+  (or, for a worker from before restarts, the `chi sessions stop ID` to run); the page and the draft in the
+  composer stay as they are and follow the new worker.
 - `chi sessions restart ID...` moves a running session to a new worker on the newest chi installed, keeping its
   attached terminal and web tabs on it; it is refused, with the reason, while a turn, a question, reminders or
   background tasks would be lost.
