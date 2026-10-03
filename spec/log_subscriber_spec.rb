@@ -62,6 +62,20 @@ RSpec.describe Samagotchi::LogSubscriber do
     expect(File.read(path)).not_to include("secret prompt", "the answer", "file body")
   end
 
+  it "names the provider that served a generation, and drops the key when it says none" do
+    feed({ type: :generation_started, iteration: 1 },
+         { type: :generation_completed, iteration: 1, served_model: "Qwen3.6", requested_model: "qwen",
+           served_provider: "Fireworks", content_length: 42, thinking_chars: 900 },
+         { type: :generation_started, iteration: 2 },
+         { type: :generation_completed, iteration: 2, served_model: "Qwen3.6", requested_model: "qwen",
+           content_length: 42, thinking_chars: 900 })
+
+    expect(records.map { |r| r.fields.slice("served_model", "provider") }).to eq([
+      { "served_model" => "Qwen3.6", "provider" => "Fireworks" },
+      { "served_model" => "Qwen3.6" }
+    ])
+  end
+
   it "writes an empty-answer retry and a generation's finish reason" do
     feed({ type: :generation_started, iteration: 1 },
          { type: :generation_completed, iteration: 1, content_length: 0, thinking_chars: 240_000, finish_reason: "length" },

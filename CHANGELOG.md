@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The debug log's generation_completed line names the OpenRouter provider that served it (provider=).
+
 ### Fixed
 - loop-guard 0.3.1: the thinking watch no longer goes blind for the rest of a generation after an empty thinking delta (a FrozenError, logged as plugin_hook_failed).
 

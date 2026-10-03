@@ -101,7 +101,8 @@ module Samagotchi
     def on_generation_completed(event)
       ms = since(@generation_started_at.delete(event[:iteration]))
       log(:info, :generation_completed, iteration: event[:iteration], ms: ms,
-                                        served_model: event[:served_model], requested_model: event[:requested_model],
+                                        served_model: event[:served_model], provider: event[:served_provider],
+                                        requested_model: event[:requested_model],
                                         content_length: event[:content_length],
                                         thinking_chars: event[:thinking_chars], finish_reason: event[:finish_reason],
                                         stopped_by: event[:stopped_by])

@@ -73,6 +73,19 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(response.model).to eq("ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M")
     end
 
+    it "reports the provider the server says served it (OpenRouter), nil when it says none" do
+      server.enqueue("/v1/chat/completions", sse: [
+        %(data: {"choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":"stop"}],"provider":"Fireworks"}\n\n),
+        "data: [DONE]\n\n"
+      ])
+
+      expect(adapter.chat(messages: messages, tools: [], model: "m").provider).to eq("Fireworks")
+
+      replay("text_stream.sse")
+
+      expect(adapter.chat(messages: messages, tools: [], model: "m").provider).to be_nil
+    end
+
     it "sends the chat request: streamed with usage, the tools, temperature 0, no auth header" do
       replay("text_stream.sse")
 
@@ -270,6 +283,17 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       server.enqueue("/v1/chat/completions", json: FakeProviderServer.fixture("text_sync.json"))
 
       expect(adapter.chat(messages: messages, tools: [], model: "m").model).to eq("ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M")
+    end
+
+    it "reports the provider the body names (OpenRouter), nil when it says none" do
+      server.enqueue("/v1/chat/completions",
+                     json: { choices: [{ message: { content: "hi" } }], model: "m", provider: "Fireworks" })
+
+      expect(adapter.chat(messages: messages, tools: [], model: "m").provider).to eq("Fireworks")
+
+      server.enqueue("/v1/chat/completions", json: { choices: [{ message: { content: "hi" } }], model: "m" })
+
+      expect(adapter.chat(messages: messages, tools: [], model: "m").provider).to be_nil
     end
 
     it "raises ProtocolError for a body without a message" do

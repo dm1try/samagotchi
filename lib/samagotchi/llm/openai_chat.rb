@@ -35,10 +35,12 @@ module Samagotchi
     # ([] when none), usage (never nil) and the finish reason.
     # +model+ is the model the server says answered (the body's `model`),
     # which can differ from the one asked for; nil when it says nothing.
+    # +provider+ is the provider that served it (the body's `provider`,
+    # OpenRouter's routing name); nil when the server says nothing.
     # +cut+ is set on the empty response the chat loop makes for a
     # generation a plugin cut (stop_generation): {by:, reason:}.
-    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model, :cut) do
-      def initialize(model: nil, cut: nil, **fields) = super
+    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model, :provider, :cut) do
+      def initialize(model: nil, provider: nil, cut: nil, **fields) = super
     end
 
     # The OpenAI Chat Completions API (llama.cpp's /v1, and any compatible
@@ -248,7 +250,8 @@ module Samagotchi
         ChatResponse.new(text: OpenAIChat.drop_leading_newlines(message["content"].to_s),
                          reasoning: (message["reasoning_content"] || message["reasoning"]).to_s,
                          tool_calls: calls, usage: Usage.from_payload(body) || Usage.none,
-                         finish_reason: body.dig("choices", 0, "finish_reason"), model: served_model(body))
+                         finish_reason: body.dig("choices", 0, "finish_reason"), model: served_model(body),
+                         provider: self.class.served_provider(body))
       end
 
       # Workaround for Splash 1.0.2/1.1.0, which keeps the "\n\n" the model
@@ -264,6 +267,15 @@ module Samagotchi
       end
 
       def served_model(payload) = self.class.served_model(payload)
+
+      # OpenRouter names the provider that served a request (Baseten,
+      # Fireworks, …) in the body's `provider`; other servers send none.
+      def self.served_provider(payload)
+        provider = payload.is_a?(Hash) ? payload["provider"] : nil
+        provider.is_a?(String) && !provider.strip.empty? ? provider : nil
+      end
+
+      def served_provider(payload) = self.class.served_provider(payload)
 
       # The parsed payload of a `data:` line; nil for blank lines, comments
       # and [DONE]. Error events raise their ProviderError.
@@ -352,7 +364,7 @@ module Samagotchi
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       # Streamed deltas put together: text, reasoning, tool calls by index,
-      # the finish reason, the usage chunk and the served model.
+      # the finish reason, the usage chunk, the served model and provider.
       class Assembly
         # The chunk carries part of a tool call.
         def self.tool_call_delta?(payload)
@@ -367,12 +379,14 @@ module Samagotchi
           @finish_reason = nil
           @usage = nil
           @model = nil
+          @provider = nil
         end
 
         # @return [Array(String, String)] this chunk's content and reasoning
         def add(payload)
           @usage = Usage.from_payload(payload) || @usage if payload.key?("usage")
           @model = OpenAIChat.served_model(payload) || @model
+          @provider = OpenAIChat.served_provider(payload) || @provider
           choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
           return ["", ""] unless choice.is_a?(Hash)
 
@@ -392,7 +406,7 @@ module Samagotchi
             ToolCall.new(id: call[:id], name: call[:name].to_s, arguments: OpenAIChat.parse_arguments(call[:arguments]))
           end
           ChatResponse.new(text: @text, reasoning: @reasoning, tool_calls: calls, usage: @usage || Usage.none,
-                           finish_reason: @finish_reason, model: @model)
+                           finish_reason: @finish_reason, model: @model, provider: @provider)
         end
 
         private

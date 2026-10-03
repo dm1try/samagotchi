@@ -152,6 +152,22 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
                                                                                          requested_model: "m")
   end
 
+  it "names the provider the adapter reports in :generation_completed, nil when it says none" do
+    served = FakeChatAdapter.text("hi").with(model: "vendor/served-1", provider: "Fireworks")
+    described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))
+                   .complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
+
+    expect(events.find { |event| event[:type] == :generation_completed }).to include(served_model: "vendor/served-1",
+                                                                                         served_provider: "Fireworks")
+
+    events.clear
+    described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("hi").with(model: "vendor/served-1")))
+                   .complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
+
+    expect(events.find { |event| event[:type] == :generation_completed }).to include(served_model: "vendor/served-1",
+                                                                                         served_provider: nil)
+  end
+
   describe "debug dump" do
     let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
     let(:log_path) { File.join(log_dir, "chi.log") }
