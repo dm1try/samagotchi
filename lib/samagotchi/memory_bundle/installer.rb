@@ -76,7 +76,6 @@ module Samagotchi
           normalized_dir, source_owned, source_commit = SourceNormalizer.normalize(@source)
           @bundle_dir = normalized_dir
           @normalized_dir = normalized_dir
-          @source_owned = source_owned
           manifest = Manifest.read(dir: normalized_dir)
         rescue SourceNormalizer::UnknownSourceError => e
           raise InstallError, "Source normalization failed: #{e.message}"
