@@ -36,6 +36,11 @@ and commands may change between minor versions. How releases are made:
 - `chi web` no longer leaves exited session workers behind as zombie processes.
 - The web's model picker lists a host added to (or changed in) `hosts:` while `chi web` runs, instead of the hosts
   it started with.
+- A bundle's model overlay (`tips.<model-key>.md` next to `tips.md`) stays model-only after `chi bundle install`: it
+  no longer gets an `index.md` line of its own, which showed it to every model as a memory to read.
+  `chi bundle status` reads it `ok (model overlay)` instead of `no-index`, uninstall no longer re-adds its line, and
+  `chi bundle build tips.md` brings `tips.md`'s overlays along. An overlay whose base is nowhere installs with a
+  warning. A line an earlier install wrote goes with the bundle's next upgrade.
 - source-links (0.3.2): a `case_insensitive: true` source no longer lists a ref in its `sources:` note when the ref
   is a markdown link's label whose target names it in another case (`[jira-1](…/JIRA-1)`). Run `chi update` to get it.
 - An `@path` image in a prompt takes backslash escapes, as a Finder drag into the terminal types them:
