@@ -7,6 +7,7 @@ require_relative "context_window"
 require_relative "session"
 require_relative "log_path"
 require_relative "model_profile"
+require_relative "model_overlay"
 require_relative "thinking"
 require_relative "served_model"
 require_relative "host_registry"
@@ -39,7 +40,8 @@ module Samagotchi
     end
 
     def fields(env: ENV)
-      model = model_name
+      default = model_name
+      model = session_model(env) || default
       [
         ["version", "#{VERSION} (ruby #{RUBY_VERSION})"],
         ["source", "#{SOURCE_DIR} (#{install_kind})"],
@@ -49,7 +51,8 @@ module Samagotchi
         ["project memories", Tools::MemoryRead.memories_dir("project", env: env)],
         ["sessions", Session.default_state_dir(env: env)],
         ["log", log_path(env)],
-        ["model", model || "(not configured)"],
+        ["model", model ? model_label(model, default, env) : "(not configured)"],
+        ["model key", model ? model_key_for(model, env) : "-"],
         ["host", model ? host_for(model, env) : "-"],
         ["api key", model ? api_key_for(model, env) : "-"],
         ["loop", model ? loop_for(model, env) : "-"],
@@ -125,6 +128,46 @@ module Samagotchi
       nil
     end
 
+    SESSION_MODEL_ENV = "SAMAGOTCHI_SESSION_MODEL"
+    PARENT_SESSION_ENV = "SAMAGOTCHI_PARENT_SESSION"
+
+    # The model of the session this chi self runs in (its execute exports
+    # SAMAGOTCHI_SESSION_MODEL, the resolved ref, live after /model); nil
+    # outside a session's commands.
+    def session_model(env)
+      name = env[SESSION_MODEL_ENV].to_s.strip
+      name.empty? ? nil : name
+    end
+
+    # "splash:x (this session abcd1234; default main:y)", "main:y (this
+    # session abcd1234, the default)", or outside a session "main:y (default)".
+    def model_label(model, default, env)
+      return "#{model} (default)" unless session_model(env)
+
+      id = env[PARENT_SESSION_ENV].to_s
+      session = id.empty? || id == "chi" ? "this session" : "this session #{id[0, 8]}"
+      return "#{model} (#{session}, the default)" if default && same_model?(model, default, env)
+
+      "#{model} (#{session}; default #{default || "not configured"})"
+    end
+
+    def same_model?(one, other, env)
+      return true if one == other
+
+      ConfigFile.model_ref(one, env: env).ref == ConfigFile.model_ref(other, env: env).ref
+    rescue StandardError
+      false
+    end
+
+    # The memory overlay key (ModelOverlay.key_for the bare id, as the
+    # engine keys memory_write current_model_only): which `<name>.<key>.md`
+    # overlays are this model's.
+    def model_key_for(model, env)
+      ModelOverlay.key_for(HostRegistry.new(env: env).bare_name(model)) || "-"
+    rescue StandardError
+      ModelOverlay.key_for(model) || "-"
+    end
+
     def model_name
       ModelProfile.required_model_name
     rescue ArgumentError
@@ -147,6 +190,8 @@ module Samagotchi
       entry.chat? ? "chat (api: openai)" : "native (raw prompt)"
     end
 
+    NO_PROPS = "reported per turn (the server has no /props)"
+
     # chi self's one server call: a single-model llama.cpp answers any name
     # with the model it loaded, and its /props names it (model_alias). One
     # GET with the probe's short timeouts; a remote host isn't asked.
@@ -157,10 +202,11 @@ module Samagotchi
       bare = target.bare_model
       return "-" unless entry
       return "reported per turn (remote host)" if entry.remote?
+      return NO_PROPS if entry.chat?
 
       client = registry.client_for(entry)
       props = client.server_props(model: bare)
-      return "reported per turn (the server has no /props)" if props.nil?
+      return NO_PROPS if props.nil? || props.status == :http_error
       return "unknown (the server didn't answer; is it running?)" if props.status == :network_error
 
       served = ServedModel.from_props(props)

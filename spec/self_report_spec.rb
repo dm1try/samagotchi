@@ -185,8 +185,60 @@ RSpec.describe Samagotchi::SelfReport do
   it "reports the configured model with its host" do
     write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
     allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model")
-    expect(field("model")).to eq("spec-model")
+    expect(field("model")).to eq("spec-model (default)")
     expect(field("host")).to eq("main 10.0.0.5:8081")
+  end
+
+  describe "the session's model (SAMAGOTCHI_SESSION_MODEL, set for execute children)" do
+    let(:two_hosts) do
+      "hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n" \
+        "  splash:\n    host: 10.0.0.6\n    port: 8082\n    api: openai\n"
+    end
+
+    before do
+      write_config(two_hosts)
+      allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("main:spec-model")
+    end
+
+    it "labels the default outside a session" do
+      expect(field("model")).to eq("main:spec-model (default)")
+    end
+
+    it "names this session's model, with the default, and derived rows follow it" do
+      env.merge!("SAMAGOTCHI_SESSION_MODEL" => "splash:Qwen3.8-27B", "SAMAGOTCHI_PARENT_SESSION" => "abcd1234ef")
+
+      expect(field("model")).to eq("splash:Qwen3.8-27B (this session abcd1234; default main:spec-model)")
+      expect(field("host")).to eq("splash 10.0.0.6:8082 as Qwen3.8-27B")
+      expect(field("loop")).to eq("chat (api: openai)")
+      expect(field("served model")).to eq("reported per turn (the server has no /props)")
+      expect(@probed).to eq([])
+    end
+
+    it "says when the session runs the default" do
+      env.merge!("SAMAGOTCHI_SESSION_MODEL" => "main:spec-model", "SAMAGOTCHI_PARENT_SESSION" => "abcd1234ef")
+      expect(field("model")).to eq("main:spec-model (this session abcd1234, the default)")
+    end
+
+    it "leaves out the session id when there is none (a REPL without a session)" do
+      env.merge!("SAMAGOTCHI_SESSION_MODEL" => "splash:Qwen3.8-27B", "SAMAGOTCHI_PARENT_SESSION" => "chi")
+      expect(field("model")).to eq("splash:Qwen3.8-27B (this session; default main:spec-model)")
+    end
+
+    it "names the memory overlay key of the model it reports" do
+      expect(field("model key")).to eq("spec-model")
+      env["SAMAGOTCHI_SESSION_MODEL"] = "splash:Qwen3.8-27B"
+      expect(field("model key")).to eq("qwen3-8-27b")
+    end
+
+    it "puts the model key right after the model row" do
+      labels = described_class.fields(env: env).map(&:first)
+      expect(labels[labels.index("model") + 1]).to eq("model key")
+    end
+
+    it "keeps chi self --model on the default (what a new session starts on)" do
+      env["SAMAGOTCHI_SESSION_MODEL"] = "splash:Qwen3.8-27B"
+      expect(described_class.model_ref_name(env: env)).to eq("main:spec-model")
+    end
   end
 
   describe "the served model row (one short /props probe)" do
@@ -226,10 +278,26 @@ RSpec.describe Samagotchi::SelfReport do
     context "when the server answers /props with an error" do
       let(:props_answer) { Samagotchi::Client::ServerProps.new(body: nil, status: :http_error) }
 
+      it "says the server reports it per turn (a server without /props, as the engine reads it)" do
+        write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+        expect(field("served model")).to eq("reported per turn (the server has no /props)")
+      end
+    end
+
+    context "when /props answers without a model" do
+      let(:props_answer) { props({}) }
+
       it "says it had no answer there" do
         write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
         expect(field("served model")).to eq("unknown (no answer from the server's /props)")
       end
+    end
+
+    it "says a chat host reports it per turn, without a /props probe" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
+
+      expect(field("served model")).to eq("reported per turn (the server has no /props)")
+      expect(@probed).to eq([])
     end
 
     it "doesn't probe a remote host" do
@@ -315,6 +383,7 @@ RSpec.describe Samagotchi::SelfReport do
     allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_raise(ArgumentError)
     expect(field("model")).to eq("(not configured)")
     expect(field("host")).to eq("-")
+    expect(field("model key")).to eq("-")
     expect(field("profile")).to eq("-")
   end
 
