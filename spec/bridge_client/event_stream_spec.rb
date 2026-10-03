@@ -135,4 +135,37 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
       expect(bridge.requests.size).to eq(1)
     end
   end
+
+  context "when the worker is replaced (a restart) and the stream rediscovers" do
+    let(:scripts) { [->(conn) { conn.write(sse_head + frame(41, { type: :turn_completed, event_seq: 41 })) }] }
+
+    it "follows the new worker from its snapshot, announced by worker_changed, without the old cursor" do
+      second = scripted_bridge([->(conn) { conn.write(sse_head + frame(1, { type: :snapshot, snapshot: {} })); sleep 1 }])
+      looks = 0
+      rediscover = lambda do
+        looks += 1
+        looks < 3 ? nil : Samagotchi::BridgeClient.new(session_id: "s1", port: second.port)
+      end
+      follow(rediscover: rediscover)
+      collect(events, 1)
+      bridge.close.call
+
+      got = collect(events, 3)
+      expect(got.map { |e| e["type"] }).to eq(%w[turn_completed worker_changed snapshot])
+      expect(got[1]).to eq("type" => "worker_changed", "port" => second.port)
+      head = second.requests.pop
+      expect(head).to start_with("GET /session/s1/stream?snapshot=1 HTTP/1.1\r\n")
+      expect(head).not_to include("Last-Event-ID")
+    ensure
+      second&.close&.call
+    end
+
+    it "gives up at once when rediscover says the worker is gone" do
+      follow(rediscover: -> { :gone }, reconnect_delays: [5, 5])
+      collect(events, 1)
+      bridge.close.call
+
+      expect(collect(events, 2).last).to eq("type" => "stream_closed", "reason" => "unreachable")
+    end
+  end
 end

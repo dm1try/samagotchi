@@ -17,8 +17,17 @@ module Samagotchi
     # not serve the session (404), it yields one synthetic
     # `{"type" => "stream_closed", "reason" => ...}` and stops. #close stops
     # it without that event.
+    #
+    # With +rediscover+, a failed connection first looks for the session's
+    # live worker (its sidecar): a new one (a restart) is followed from its
+    # snapshot, announced by a synthetic `{"type" => "worker_changed",
+    # "port" => ...}` first, since its event ids start over. (A new worker
+    # on the old one's port is the plain reconnect: its Bridge can't replay
+    # the old ids and sends a reset.)
     class EventStream
       DEFAULT_RECONNECT_DELAYS = [0.1, 0.25, 0.5, 1.0, 2.0].freeze
+      # Long enough for a restarted worker to boot (its Engine, the plugins).
+      REDISCOVER_DELAYS = [0.1, 0.25, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0].freeze
       HEADER_TIMEOUT = 5.0
 
       # @return [String, nil] the id of the last frame yielded (the reconnect cursor)
@@ -30,9 +39,13 @@ module Samagotchi
       #   tell this client's stream from others' (Bridge#open_streams_except)
       # @param reconnect_delays [Array<Float>] sleeps between failed attempts;
       #   one more failure than there are delays gives up
+      # @param rediscover [#call, nil] → a BridgeClient for the session's live
+      #   worker now, nil when there is none yet, or :gone to give up now
       # @yieldparam event [Hash] string-keyed event
-      def initialize(client, snapshot: true, client_id: nil, reconnect_delays: DEFAULT_RECONNECT_DELAYS, &on_event)
+      def initialize(client, snapshot: true, client_id: nil, reconnect_delays: DEFAULT_RECONNECT_DELAYS, rediscover: nil,
+                     &on_event)
         @client = client
+        @rediscover = rediscover
         params = []
         params << ["snapshot", "1"] if snapshot
         params << ["client_id", client_id] if client_id
@@ -84,6 +97,13 @@ module Samagotchi
           if outcome == :events
             failures = 0
             next
+          end
+
+          case rediscover_worker
+          when :moved
+            failures = 0
+            next
+          when :gone then return finish("unreachable")
           end
 
           failures += 1
@@ -145,6 +165,22 @@ module Samagotchi
         event = JSON.parse(data)
         event.is_a?(Hash) ? event : nil
       rescue JSON::ParserError
+        nil
+      end
+
+      # @return [Symbol, nil] :moved to a new worker's Bridge, :gone, or nil
+      def rediscover_worker
+        return nil unless @rediscover
+
+        found = @rediscover.call
+        return :gone if found == :gone
+        return nil if found.nil? || found.port == @client.port
+
+        @client = found
+        @last_event_id = nil
+        @on_event.call({ "type" => "worker_changed", "port" => found.port }) unless closed?
+        :moved
+      rescue StandardError
         nil
       end
 

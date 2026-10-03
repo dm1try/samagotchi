@@ -213,6 +213,10 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   too-old reconnects, and cursors from another worker's epoch, receive a `reset` marker carrying
   `session_state_snapshot`. `?snapshot=1` joins with a snapshot frame instead of a replay;
   `?client_id=` names whose stream it is (`Bridge#open_streams_except`, used by `POST /exit`).
+  An attached terminal's stream (`EventStream` with `rediscover:`) looks for the session's live
+  worker whenever it drops: a new one (a restart) is followed from its snapshot, and the terminal
+  sends its requests there (`worker_changed`); it gives up after ~12 s, or at once when the session
+  was stopped.
 - `POST /session/:id/turn` — fire-and-forget turn creation; returns `202` with an `enqueued_id`
   (delivery is at-least-once via the worker's file-IPC input path — it never calls `run_turn`
   across the HTTP boundary). Only the bridge's own session: another id, in the path or the body's

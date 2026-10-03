@@ -290,11 +290,13 @@ module Samagotchi
     # Follow the session's events on a reader thread (see EventStream).
     # @param snapshot [Boolean] join with a snapshot frame
     # @param client_id [String, nil] names the stream (see EventStream)
+    # @param rediscover [#call, nil] follows a new worker (see EventStream)
     # @yieldparam event [Hash] string-keyed event
     # @return [EventStream] started
-    def follow(snapshot: true, client_id: nil, reconnect_delays: EventStream::DEFAULT_RECONNECT_DELAYS, &on_event)
+    def follow(snapshot: true, client_id: nil, reconnect_delays: EventStream::DEFAULT_RECONNECT_DELAYS, rediscover: nil,
+               &on_event)
       EventStream.new(self, snapshot: snapshot, client_id: client_id, reconnect_delays: reconnect_delays,
-                            &on_event).start
+                            rediscover: rediscover, &on_event).start
     end
 
     # Open GET /session/:id/stream and read past the response headers.

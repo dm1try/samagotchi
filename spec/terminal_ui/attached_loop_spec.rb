@@ -35,6 +35,30 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).not_to be_running
     end
 
+    it "moves to a new worker (a restart): requests go there, and its snapshot resyncs without repeating the join" do
+      allow(client).to receive(:host).and_return("127.0.0.1")
+      feed(snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello there" }]))
+      feed({ type: "worker_changed", port: 4321 },
+           snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello there" }]))
+
+      moved = attached.instance_variable_get(:@client)
+      expect([moved.session_id, moved.port, moved.host]).to eq(["s-1234", 4321, "127.0.0.1"])
+      expect(screen.lines).to eq(["user> hi", "hello there", "(resynced with the session)"])
+    end
+
+    it "looks for the session's live worker for the stream, and gives up once the session was stopped" do
+      allow(client).to receive(:host).and_return("127.0.0.1")
+      found = instance_double(Samagotchi::BridgeClient)
+      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(found)
+      allow(Samagotchi::Session).to receive(:stopped_marker?).with("s-1234").and_return(false)
+      expect(attached.send(:live_worker)).to be(found)
+      expect(Samagotchi::BridgeClient).to have_received(:discover)
+        .with("s-1234", session_dir: Samagotchi::Session.session_dir("s-1234"), host: "127.0.0.1")
+
+      allow(Samagotchi::Session).to receive(:stopped_marker?).with("s-1234").and_return(true)
+      expect(attached.send(:live_worker)).to eq(:gone)
+    end
+
     it "shows queued prompts and the turn so far, with a tool still running as the status line" do
       turn = { prompt: "check the logs", origin: { client_id: "web:tab1", enqueued_id: "e1" }, continue: false,
                parts: [{ kind: "text", iteration: 1, text: "Looking" },
@@ -1650,7 +1674,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
   it "follows the stream under its client id, so the worker doesn't count its own stream as another UI" do
     run_lines(nil)
 
-    expect(client).to have_received(:follow).with(client_id: "tui:1")
+    expect(client).to have_received(:follow)
+      .with(client_id: "tui:1", rediscover: anything,
+            reconnect_delays: Samagotchi::BridgeClient::EventStream::REDISCOVER_DELAYS)
   end
 
   %w[/exit /quit /QUIT exit].each do |line|

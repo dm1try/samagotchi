@@ -108,6 +108,8 @@ module Samagotchi
         @running = false
         @joined_mid_turn = false
         @attached = false
+        # The stream moved to a new worker; its snapshot resyncs (#switch_worker).
+        @worker_changed = false
         @early_lines = []
         @question = nil
         @answered_ids = Set.new
@@ -158,7 +160,12 @@ module Samagotchi
         RelineSeam.interrupt_handler = method(:note_interrupted_line)
         # Tagged, so the worker doesn't count this stream as another UI
         # when this UI asks it to exit.
-        stream = @client.follow(client_id: @client_id) { |event| queue << [:event, event] }
+        # A new worker (a restart) is followed, not lost: its sidecar is
+        # looked for whenever the stream drops.
+        stream = @client.follow(client_id: @client_id, rediscover: method(:live_worker),
+                                reconnect_delays: BridgeClient::EventStream::REDISCOVER_DELAYS) do |event|
+          queue << [:event, event]
+        end
         @reader = LineReader.new(queue, prompt: method(:prompt_text), read: input || method(:read_input_line),
                                         prefill: default_input_text).start
         loop do
@@ -280,6 +287,7 @@ module Samagotchi
         when :generation_completed
           @status.take_event(event)
           @renderer.call(event)
+        when :worker_changed then switch_worker(event)
         when :stream_closed
           @view.finish_thinking_spinner
           @screen.commit("Lost the session's worker (#{event[:reason]}). " \
@@ -291,6 +299,25 @@ module Samagotchi
       end
 
       private
+
+      # The session's live worker for the stream to follow (EventStream's
+      # rediscover): nil while there is none yet, :gone once the session was
+      # stopped (no worker is coming).
+      def live_worker
+        id = @client.session_id
+        return :gone if Session.stopped_marker?(id)
+
+        BridgeClient.discover(id, session_dir: Session.session_dir(id), host: @client.host)
+      end
+
+      # The stream moved to a new worker (a restart): requests go there too.
+      def switch_worker(event)
+        @client = BridgeClient.new(session_id: @client.session_id, port: event[:port], host: @client.host)
+        @worker_changed = true
+        @view.finish_thinking_spinner
+        Log.info(:attached, "worker_changed", port: event[:port])
+        nil
+      end
 
       def next_item(queue)
         queue.pop
@@ -884,6 +911,9 @@ module Samagotchi
 
       def render_snapshot(snapshot, reset:)
         @view.finish_thinking_spinner
+        # A new worker's first snapshot is the session as it now stands.
+        reset ||= @worker_changed
+        @worker_changed = false
         if @attached
           @screen.commit("(resynced with the session)") if reset
         else
