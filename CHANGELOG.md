@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
 - `chi -p` shows the after_turn hooks' notices (source-links' `sources:`, any notifier), which it lost: with
   `--non-interactive` on stderr after the answer; attached (input from a pipe) it waits for them and shows them
   before it detaches.
+- Ctrl-C in `chi -p … --non-interactive` keeps the session: the prompt and a cancel note are saved, so
+  `chi --resume ID` has them, and stderr says so instead of a Ruby backtrace. The exit status stays 130.
 
 ## [0.18.0] - 2026-10-03
 

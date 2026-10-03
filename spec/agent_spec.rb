@@ -609,6 +609,21 @@ file2.rb")
       expect(both.string.lines.map(&:chomp).drop(1)).to eq(["hook> early", "done", "hook> warning: sources: JIRA-1"])
     end
 
+    # Ctrl-C: the Engine keeps the prompt and a cancel note; the run saves
+    # them, so --resume has the prompt, and says so (bin/chi exits 130).
+    it "saves the session at a Ctrl-C in a -p --non-interactive turn and returns :interrupted" do
+      allow(client).to receive(:complete).and_raise(Interrupt)
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
+      ended = nil
+      expect do
+        expect { ended = agent.run }.not_to output.to_stdout
+      end.to output(/\ASession: (\S+)\nchi: canceled \(Ctrl-C\); the session is kept: continue it with chi --resume \1\n\z/).to_stderr
+      expect(ended).to eq(:interrupted)
+      saved = Samagotchi::Session.load(agent.engine.session.id)
+      expect(saved.messages).to include(include(role: "user", content: "hi"))
+      expect(saved.messages.last[:content]).to include("the previous turn was cancelled (ctrl-c")
+    end
+
     it "keeps a failed -p --non-interactive turn's session and says how to go on" do
       allow(client).to receive(:complete).and_raise(Samagotchi::LLM::ServerError.new("boom", host: "h"))
       agent = described_class.new(prompt: "hi", client: client, non_interactive: true)

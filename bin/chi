@@ -314,6 +314,7 @@ if launch == :attached
   exit Samagotchi::TerminalUI::AttachLauncher.exit_status(ended)
 end
 
+require "samagotchi/cli/exit"
 begin
   ended = Samagotchi::TerminalUI.new(
     prompt: options[:prompt],
@@ -327,8 +328,9 @@ begin
     scratch: scratch
   ).run
   # `chi -p X </dev/null`: the turn failed (nothing was sent again); -p
-  # --non-interactive: the turn ended with no answer.
+  # --non-interactive: the turn ended with no answer, or Ctrl-C cancelled it.
   exit 1 if %i[turn_failed empty_answer].include?(ended)
+  exit Samagotchi::CLI::Exit::INTERRUPTED if ended == :interrupted
 rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel => e
   warn "Error: #{e.message}"
   exit 1

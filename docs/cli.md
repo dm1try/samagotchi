@@ -229,7 +229,8 @@ Notes:
   retry lines and hooks' notices as they come, the after_turn hooks' ones
   (source-links' `sources:`) after the answer; and the error of a failed turn,
   then `chi: the session is kept with your prompt; continue it with: chi
-  --resume ID` (exit 1).
+  --resume ID` (exit 1). Ctrl-C saves the session with the prompt and a
+  cancel note and exits 130.
 
 ### Scratch sessions
 

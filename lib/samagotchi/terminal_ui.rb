@@ -212,7 +212,8 @@ module Samagotchi
     # post-turn conversation.
     # @return [Symbol, nil] :turn_failed when lines came from a pipe and a
     #   turn failed, :empty_answer when a -p --non-interactive turn ended
-    #   with no answer (bin/chi exits 1 on both)
+    #   with no answer (bin/chi exits 1 on both), :interrupted when Ctrl-C
+    #   cancelled that turn (bin/chi exits 130)
     def run
       # --non-interactive with no --prompt is a harmless no-op exit: build
       # nothing and return (no transient session, no banner).
@@ -255,6 +256,8 @@ module Samagotchi
           )
         rescue LLM::ProviderError, ImageStore::Error => e
           return one_shot_failed(session, e)
+        rescue Interrupt
+          return one_shot_interrupted(session)
         end
         # No answer (the empty-answer retries used up): no text, or the chat
         # loop's placeholder (LLM::ModelResult#empty_answer?).
@@ -323,6 +326,19 @@ module Samagotchi
       @surface.commit(result.output) unless result.output.to_s.empty?
       session.save unless Array(result.changed).empty?
       :turn_failed if result.status == :error
+    end
+
+    # Ctrl-C in a -p --non-interactive turn: the Engine kept the prompt and
+    # a cancel note in the session (it saves only a failed turn), so save
+    # it here: `chi --resume` takes it up again. A scratch session goes in
+    # #run's ensure, so there is nothing to keep.
+    # @return [Symbol] :interrupted
+    def one_shot_interrupted(session)
+      return :interrupted if @scratch
+
+      session.save
+      warn "chi: canceled (Ctrl-C); the session is kept: continue it with chi --resume #{session.id}"
+      :interrupted
     end
 
     # Delete the scratch session, the last thing the REPL does. Quiet after
