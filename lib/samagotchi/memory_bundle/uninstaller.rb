@@ -72,7 +72,10 @@ module Samagotchi
           file_key_str = file_key.to_s
           target_path = File.join(target_dir, file_key_str)
           if (others = shared[file_key_str])
-            @warnings << "Kept #{file_key_str}: bundle #{others.join(", ")} has it too" if File.exist?(target_path)
+            next unless File.exist?(target_path)
+
+            @warnings << "Kept #{file_key_str}: bundle #{others.join(", ")} has it too"
+            retag(target_scope, target_path, file_key_str, others.first)
             next
           end
           if File.exist?(target_path)
@@ -115,6 +118,13 @@ module Samagotchi
       end
 
       private
+
+      # A kept shared file's index line names the bundle that still has it.
+      def retag(scope, path, file_key, bundle)
+        IndexUpdater.update_index(scope, file_key.delete_suffix(".md"), File.size(path), source: bundle)
+      rescue StandardError => e
+        @warnings << "index.md: line for #{file_key.delete_suffix(".md")} not updated (#{e.message})"
+      end
 
       def resolve_target_dir(scope)
         MemoryPaths.scope_dir(scope) or raise UninstallError, "invalid scope: #{scope}"

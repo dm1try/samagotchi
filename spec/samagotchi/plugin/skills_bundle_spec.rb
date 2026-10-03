@@ -108,6 +108,9 @@ RSpec.describe "The skills plugin" do
           release · project · #{today} — Release a new version: tag, push
           deploy · system · #{today}
       TEXT
+      # a bundle's skill: its line carries "· from <bundle>"
+      Samagotchi::MemoryBundle::IndexUpdater.update_index("project", "skill_release", 30, nil, source: "team-skills")
+      expect(skill(plugin, "list")).to include("release · project · #{today} — Release a new version: tag, push")
       expect(skill(plugin, "show release")).to eq("skill release · project\n\n# Skill: release\n\n## Steps\n1. tag")
       expect(skill(plugin, "show skill_deploy")).to eq("skill deploy · project\n\n# Skill: deploy (project)")
       expect(skill(plugin, "show nope")).to eq("no skill nope (/skill list shows them)")

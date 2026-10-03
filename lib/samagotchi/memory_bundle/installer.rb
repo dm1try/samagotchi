@@ -139,7 +139,7 @@ module Samagotchi
           elsif File.exist?(target_path) && !@force
             # A re-install keeps what an earlier install wrote.
             owned << file_key if owned_before.include?(file_key)
-            skip_existing(file_key, file_path, target_path, target_scope)
+            skip_existing(file_key, file_path, target_path, target_scope, owned: owned_before.include?(file_key))
           else
             FileUtils.cp(file_path, target_path) unless @dry_run
             owned << file_key
@@ -439,7 +439,7 @@ module Samagotchi
       # same bytes are "already up to date", others are skipped with a
       # --force hint (a dry run: would_skip). Its index line is refreshed
       # (not on a dry run).
-      def skip_existing(file_key, file_path, target_path, scope)
+      def skip_existing(file_key, file_path, target_path, scope, owned: false)
         if FileUtils.identical?(file_path, target_path)
           @results[file_key] = { status: "skipped", reason: "already up to date" }
         elsif @dry_run
@@ -449,7 +449,7 @@ module Samagotchi
           @results[file_key] = { status: "skipped", reason: "already exists" }
           @warnings << "Skipped #{file_key} (already exists; use --force to overwrite)"
         end
-        update_target_index(scope, target_path, file_key) unless @dry_run
+        update_target_index(scope, target_path, file_key, owned: owned) unless @dry_run
       end
 
       # A file the previous version installed that this one doesn't ship is
@@ -550,14 +550,16 @@ module Samagotchi
         dest
       end
 
-      def update_target_index(scope, file_path, file_key)
+      # +owned+: the bundle wrote (owns) the file, so its line says
+      # "· from <bundle>"; a skipped file's line keeps whatever it had.
+      def update_target_index(scope, file_path, file_key, owned: true)
         byte_count = File.exist?(file_path) ? File.size(file_path) : 0
         entry_name = file_key.delete_suffix(".md")
         begin
           # Index lines use the entry name (as memory_write does); drop the
           # legacy "name.md" line older installs wrote.
           IndexUpdater.remove_index(scope, file_key) unless entry_name == file_key
-          IndexUpdater.update_index(scope, entry_name, byte_count)
+          IndexUpdater.update_index(scope, entry_name, byte_count, source: owned ? @name : nil)
         rescue StandardError => e
           # Not fatal (the file is in place): a warning says so.
           @warnings << "index.md: line for #{entry_name} not updated (#{e.message})"

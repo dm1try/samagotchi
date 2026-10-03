@@ -165,13 +165,14 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     end
 
     it "stays (with its index line) while the other bundle is installed, then goes with the last one" do
+      Samagotchi::MemoryBundle::IndexUpdater.update_index("system", "identity", 5, nil, source: "legacy")
       uninstaller = described_class.new(name: "legacy")
       uninstaller.run
 
       expect(File.read(File.join(system_dir, "identity.md"))).to eq("# Id\n")
       expect(uninstaller.trashed_files).to eq([])
       expect(uninstaller.warnings).to eq(["Kept identity.md: bundle first has it too"])
-      expect(File.read(File.join(system_dir, "index.md"))).to include("- **identity** ·")
+      expect(File.read(File.join(system_dir, "index.md"))).to include("- **identity** · system · #{Date.today.iso8601} · 5 · from first\n")
 
       described_class.new(name: "first").run
       expect(File.exist?(File.join(system_dir, "identity.md"))).to be false

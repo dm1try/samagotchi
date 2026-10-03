@@ -10,18 +10,22 @@ module Samagotchi
     module IndexUpdater
       MEMORY_INDEX = "index"
       LOCK_FILE = ".index.lock"
-      def self.update_index(scope, entry_name, byte_count, description = nil)
+      # @param source [String, false, nil] the bundle the memory came from
+      #   ("· from <bundle>"): a name sets it, false drops it, nil keeps the
+      #   line's (memory_write and write/edit pass nil)
+      def self.update_index(scope, entry_name, byte_count, description = nil, source: nil)
         index_path = index_path_for(scope)
         return true unless index_path
         locked_write(File.dirname(index_path)) do |content|
-          new_line = managed_line(entry_name, scope, byte_count, description)
+          new_line = managed_line(entry_name, scope, byte_count, description, source || nil)
           next auto_index_header + "\n\n" + new_line + "\n" if content.nil? || content.strip.empty?
 
           pattern = managed_pattern(entry_name)
           if content.match?(pattern)
-            existing_desc = extract_description(content[pattern].to_s)
-            resolved_desc = description&.to_s&.strip || existing_desc
-            new_line = managed_line(entry_name, scope, byte_count, resolved_desc)
+            existing = content[pattern].to_s.chomp
+            resolved_desc = description&.to_s&.strip || extract_description(existing)
+            resolved_source = source.nil? ? extract_source(existing) : (source || nil)
+            new_line = managed_line(entry_name, scope, byte_count, resolved_desc, resolved_source)
             next content.sub(pattern) { new_line + $1 }
           end
           content.end_with?("\n") ? "#{content}#{new_line}\n" : "#{content}\n#{new_line}\n"
@@ -57,8 +61,9 @@ module Samagotchi
           Samagotchi::AtomicFile.write(index_path, updated) unless updated.nil?
         end
       end
-      def self.managed_line(name, scope, byte_count, description)
+      def self.managed_line(name, scope, byte_count, description, source = nil)
         line = "- **#{name}** · #{scope} · #{date_str} · #{byte_count}"
+        line += " · from #{source}" unless source.to_s.strip.empty?
         desc = description&.to_s&.strip
         line += " — #{desc}" unless desc.to_s.empty?
         line
@@ -70,6 +75,12 @@ module Samagotchi
           $1
         end
       end
+      # The bundle a managed line names ("· from <bundle>", before any
+      # " — description"), or nil.
+      def self.extract_source(line)
+        line.to_s.chomp.split(" — ", 2).first[/ · from (\S+)/, 1]
+      end
+
       def self.auto_index_header
         "# Memory Index\n\n" \
           "Managed entries below are auto-maintained by memory_write " \

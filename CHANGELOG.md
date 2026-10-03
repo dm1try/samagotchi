@@ -23,6 +23,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- A memory a bundle installed says so in its `index.md` line, and so in the prompt's memory index:
+  `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system — …`. `memory_write` and `write`/`edit`
+  keep the tag; a same-name memory the install skipped gets none. Bundles installed earlier get it on their next
+  install or upgrade (the system bundle: with the next chi version).
+
 - `chi bundle uninstall` (and an upgrade dropping a file the new version no longer ships) moves the bundle's memory
   files to `<memories>/.bundles/.trash/<bundle>-<time>/` instead of deleting them, and says where:
   `Moved to the trash: notes.md (…/.trash/notes-bundle-20261003-120000)`. Nothing empties the trash; delete it by hand.

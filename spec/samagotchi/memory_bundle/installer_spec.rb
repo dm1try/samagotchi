@@ -247,6 +247,17 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(index_content).to include("· system ·")
         end
 
+        it "tags the lines of the files it wrote with the bundle, not a skipped file's" do
+          FileUtils.mkdir_p(system_memories_dir)
+          File.write(File.join(system_memories_dir, "mine.md"), "# Mine\n")
+          bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n", "mine.md" => "# Theirs\n" })
+          installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+
+          index_content = File.read(File.join(system_memories_dir, "index.md"))
+          expect(index_content).to include("- **identity** · system · #{Date.today.iso8601} · 11 · from test-bundle\n")
+          expect(index_content).to include("- **mine** · system · #{Date.today.iso8601} · 7\n")
+        end
+
         it "updates index.md for skipped files" do
           FileUtils.mkdir_p(system_memories_dir)
           File.write(File.join(system_memories_dir, "identity.md"), "# Existing\n")
