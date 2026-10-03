@@ -291,6 +291,25 @@ Hooks removed: 1\n\z})
       expect(out).to eq("Built 1 file(s) to #{out_dir.chomp("/")}\nBundle: mine v1.2.3 scope=system\nFiles: identity.md\n")
     end
 
+    it "status NAME says a model overlay is ok, not no-index" do
+      dir = File.join(@root, "ovl")
+      FileUtils.mkdir_p(dir)
+      files = { "tips.md" => "Base\n", "tips.deepseek-v4-1-flash.md" => "DeepSeek\n" }
+      files.each { |f, body| File.write(File.join(dir, f), body) }
+      File.write(File.join(dir, "manifest.yml"), <<~YAML)
+        name: ovl-test
+        version: 0.1.0
+        scope: system
+        files:
+        #{files.map { |f, body| "  #{f}: sha256:#{Digest::SHA256.hexdigest(body)}" }.join("\n")}
+      YAML
+      expect(chi("install", dir)[2]).to eq(0)
+
+      out, err, code = chi("status", "ovl-test")
+      expect([err, code]).to eq(["", 0])
+      expect(out.lines.grep(/^  tips/)).to eq(["  tips.deepseek-v4-1-flash.md: ok (model overlay)\n", "  tips.md: ok\n"])
+    end
+
     it "refuses an unknown subcommand" do
       expect(chi("nope")).to eq(["", "Unknown bundle subcommand: nope. Use: install, upgrade, uninstall, status, diff, list, build, trash\n", 2])
     end

@@ -360,8 +360,9 @@ module Samagotchi
           mods << "conflict (kept your edits over v#{st[:provenance][:version]}: chi bundle diff #{name} #{k})" if info[:conflict]
           mods << "modified" if info[:modified]
           mods << "missing" if info[:missing]
-          mods << "no-index" unless info[:index_present]
+          mods << "no-index" unless info[:index_present] || info[:overlay]
           label = mods.empty? ? "ok" : mods.join(",")
+          label += " (model overlay)" if info[:overlay]
           @stdout.puts "  #{k}: #{label}"
         end
         # Hooks

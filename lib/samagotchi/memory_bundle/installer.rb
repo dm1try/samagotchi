@@ -562,15 +562,14 @@ module Samagotchi
       # An overlay-looking name with no base anywhere is an overlay too,
       # with a warning (a dry run warns as well).
       def note_overlay(file_key, target_dir)
-        base = ModelOverlay.base_file_for(file_key)
-        return unless base
+        @bundle_files ||= Dir.glob(File.join(@bundle_dir, "*.md")).map { |f| File.basename(f) }
+        return unless ModelOverlay.bundle_overlay?(file_key, bundle_files: @bundle_files, target_dir: target_dir)
 
-        if ModelOverlay.overlay_file?(file_key, base_dirs: [@bundle_dir])
-          @overlays << file_key
-        elsif !File.file?(File.join(target_dir, base))
-          @overlays << file_key
-          @warnings << "#{file_key} is a model overlay with no #{base}; it loads only once #{base} exists"
-        end
+        @overlays << file_key
+        base = ModelOverlay.base_file_for(file_key)
+        return if @bundle_files.include?(base)
+
+        @warnings << "#{file_key} is a model overlay with no #{base}; it loads only once #{base} exists"
       end
 
       # +owned+: the bundle wrote (owns) the file, so its line says

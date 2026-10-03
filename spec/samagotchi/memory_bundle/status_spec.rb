@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
+require "yaml"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/status"
 
@@ -40,5 +41,19 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
       .to eq("needs gh [not found]: brew install gh")
     expect(described_class.need_line({ command: "jq", why: nil, hint: nil, found: false }))
       .to eq("needs jq [not found]")
+  end
+  it "marks a model overlay (its base among the bundle's files) and doesn't look for its index line" do
+    src = File.join(tmpdir, "ovl-src")
+    FileUtils.mkdir_p(src)
+    files = { "tips.md" => "Base\n", "tips.qwen3.md" => "Qwen\n", "notes.v2.md" => "Not an overlay\n" }
+    files.each { |f, body| File.write(File.join(src, f), body) }
+    File.write(File.join(src, "manifest.yml"), YAML.dump("name" => "ovl", "version" => "0.1.0",
+                                                         "files" => files.keys.to_h { |f| [f, "sha256:x"] }))
+    Samagotchi::MemoryBundle::Installer.new(source: src, name: "ovl", scope: "system", strict: false).run
+
+    files = described_class.bundle_status("ovl")[:files]
+    expect(files["tips.qwen3.md"]).to include(overlay: true, index_present: nil)
+    expect(files["tips.md"]).to include(overlay: false, index_present: true)
+    expect(files["notes.v2.md"][:overlay]).to be(true) # no base anywhere: an overlay, as the installer took it
   end
 end

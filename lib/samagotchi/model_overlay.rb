@@ -73,5 +73,18 @@ module Samagotchi
       base_names.map { |n| File.basename(n.to_s) }.include?(base) ||
         base_dirs.compact.any? { |dir| File.file?(File.join(dir, base)) }
     end
+
+    # How a bundle's installer, status and uninstaller tell an overlay
+    # (they agree, so a line the installer left out isn't "no-index"): the
+    # base is one of +bundle_files+ (basenames), or it is nowhere in
+    # +target_dir+ (an orphan overlay; it loads once the base exists). A
+    # base only in +target_dir+ (the user's own memory) doesn't count.
+    def self.bundle_overlay?(file_key, bundle_files:, target_dir:)
+      base = base_file_for(file_key)
+      return false unless base
+
+      overlay_file?(file_key, base_dirs: [], base_names: bundle_files) ||
+        !File.file?(File.join(target_dir, base))
+    end
   end
 end

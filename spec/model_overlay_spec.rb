@@ -114,4 +114,16 @@ RSpec.describe Samagotchi::ModelOverlay do
       expect(described_class.overlay_file?("tips.qwen3.md", base_dirs: [], base_names: ["tips.md"])).to be(true)
     end
   end
+  describe ".bundle_overlay?" do
+    let(:target) { Dir.mktmpdir("overlay-target-") }
+    after { FileUtils.rm_rf(target) }
+
+    it "is one when the bundle has the base, or the base is nowhere; not when only the target has it" do
+      expect(described_class.bundle_overlay?("tips.qwen3.md", bundle_files: ["tips.md"], target_dir: target)).to be(true)
+      expect(described_class.bundle_overlay?("tips.qwen3.md", bundle_files: [], target_dir: target)).to be(true)
+      File.write(File.join(target, "tips.md"), "mine")
+      expect(described_class.bundle_overlay?("tips.qwen3.md", bundle_files: [], target_dir: target)).to be(false)
+      expect(described_class.bundle_overlay?("tips.md", bundle_files: ["tips.md"], target_dir: target)).to be(false)
+    end
+  end
 end

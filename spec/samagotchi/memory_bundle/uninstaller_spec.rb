@@ -217,4 +217,20 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     described_class.new(name: "multi-hook", force: false).run
     expect(Dir.exist?(File.join(bundles_dir, "multi-hook"))).to be false
   end
+  it "keeps a shared model overlay without giving it an index line" do
+    files = { "tips.md" => "Base\n", "tips.qwen3.md" => "Qwen\n" }
+    install_bundle(write_bundle_with_hooks(files, name: "ovl-b"), "ovl-b")
+    # A legacy bundle (it recorded every file) claims the same two.
+    Samagotchi::MemoryBundle::Provenance.new(name: "ovl-a").write(
+      files: files.keys.to_h { |f| [f, File.join(system_dir, f)] }, scope: "system", version: "1.0.0", source_path: "/gone"
+    )
+
+    uninstaller = described_class.new(name: "ovl-a")
+    uninstaller.run
+    expect(File.exist?(File.join(system_dir, "tips.qwen3.md"))).to be true
+    index = File.read(File.join(system_dir, "index.md"))
+    expect(index).to include("- **tips** · system")
+    expect(index).to include("from ovl-b")
+    expect(index).not_to include("tips.qwen3")
+  end
 end

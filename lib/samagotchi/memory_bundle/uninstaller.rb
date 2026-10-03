@@ -6,6 +6,7 @@ require_relative "provenance"
 require_relative "index_updater"
 require_relative "merger"
 require_relative "trash"
+require_relative "../model_overlay"
 
 module Samagotchi
   module MemoryBundle
@@ -75,7 +76,9 @@ module Samagotchi
             next unless File.exist?(target_path)
 
             @warnings << "Kept #{file_key_str}: bundle #{others.join(", ")} has it too"
-            retag(target_scope, target_path, file_key_str, others.first)
+            unless ModelOverlay.bundle_overlay?(file_key_str, bundle_files: files.keys.map(&:to_s), target_dir: target_dir)
+              retag(target_scope, target_path, file_key_str, others.first)
+            end
             next
           end
           if File.exist?(target_path)
@@ -119,7 +122,8 @@ module Samagotchi
 
       private
 
-      # A kept shared file's index line names the bundle that still has it.
+      # A kept shared file's index line names the bundle that still has it
+      # (a model overlay has none: the caller skips it).
       def retag(scope, path, file_key, bundle)
         IndexUpdater.update_index(scope, file_key.delete_suffix(".md"), File.size(path), source: bundle)
       rescue StandardError => e

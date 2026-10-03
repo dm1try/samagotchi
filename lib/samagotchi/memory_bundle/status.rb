@@ -6,6 +6,7 @@ require_relative "../version"
 require_relative "index_updater"
 require_relative "../memory_paths"
 require_relative "../bundle_needs"
+require_relative "../model_overlay"
 
 module Samagotchi
   module MemoryBundle
@@ -29,7 +30,9 @@ module Samagotchi
           base_checksum = File.exist?(base_path) ? Digest::SHA256.hexdigest(File.read(base_path)) : nil
           modified = base_checksum && current_checksum && base_checksum != current_checksum
           missing = !File.exist?(target_path)
-          index_present = index_has_entry?(scope, file_key_str)
+          # A model overlay has no index line (Installer#note_overlay).
+          overlay = ModelOverlay.bundle_overlay?(file_key_str, bundle_files: files.keys.map(&:to_s), target_dir: target_dir)
+          index_present = overlay ? nil : index_has_entry?(scope, file_key_str)
           details[file_key_str] = {
             conflict: meta.is_a?(Hash) && meta[:conflict] == true,
             stored_checksum: stored_checksum,
@@ -38,6 +41,7 @@ module Samagotchi
             modified: modified,
             missing: missing,
             index_present: index_present,
+            overlay: overlay,
             target_path: target_path,
             base_path: base_path
           }
