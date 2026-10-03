@@ -412,6 +412,17 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(out).to include("model: Qwen3-14B — not small (small_models: [])", "  1. discard: off for this model — ask")
     end
 
+    it "lists a git: outside_repo rule" do
+      rules = Samagotchi::Guardrails::Rules.parse(
+        [{ "id" => "git-outside-repo", "tool" => "shell", "git" => "outside_repo", "verdict" => "ask", "reason" => "elsewhere" }],
+        source: "bundle guardrails"
+      )
+      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rules))
+      expect(commands.run("/guardrails").output).to include(
+        "  1. git-outside-repo: ask (tool execute,task_create, git outside_repo) — elsewhere [bundle guardrails]"
+      )
+    end
+
     it "lists a tool glob as given" do
       rules = Samagotchi::Guardrails::Rules.parse(
         [{ "id" => "mcp-ask", "tool" => "mcp_*", "verdict" => "ask", "reason" => "an MCP tool" }], source: "config"

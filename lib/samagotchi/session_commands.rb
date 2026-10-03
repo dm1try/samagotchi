@@ -252,6 +252,7 @@ module Samagotchi
           ("tool #{rule.tools.join(",")}" if rule.tools),
           ("command /#{shorten_pattern(rule.command.source)}/" if rule.command),
           ("path #{rule.path}" if rule.path),
+          ("git #{rule.git}" if rule.git),
           ("models #{rule.models.join(",")}" if rule.models)
         ].compact.join(", ")
         off = "disabled (guardrails.disable) — " if rules.disabled?(rule)

@@ -5,6 +5,7 @@ require_relative "../tools/memory"
 require_relative "../log"
 require_relative "model_size"
 require_relative "outside"
+require_relative "shell_git_dirs"
 
 module Samagotchi
   module Guardrails
@@ -137,9 +138,22 @@ module Samagotchi
         @paths.any? { |p| Outside.outside?(p, root: @session_root) }
       end
 
+      # Where a shell call runs mutating git (ShellGitDirs: dirs, and
+      # :unknown for one the text doesn't tell); [] for other tools.
+      def git_dirs
+        @git_dirs ||= shell? ? ShellGitDirs.for(@command, cwd: @cwd) : []
+      end
+
+      # Whether a shell call runs mutating git outside the session's repo
+      # (an :unknown dir doesn't count).
+      def git_outside_repo?
+        git_dirs.any? { |dir| dir.is_a?(String) && Outside.outside?(dir, root: @session_root) }
+      end
+
       # The hook event's targets: hash.
       def to_h
-        { command: @command, paths: @paths, cwd: @cwd, repo_root: @repo_root, outside_repo: outside_repo? }
+        { command: @command, paths: @paths, cwd: @cwd, repo_root: @repo_root, outside_repo: outside_repo?,
+          git_dirs: git_dirs.map(&:to_s) }
       end
     end
   end

@@ -14,6 +14,8 @@ module Samagotchi
     #   path:    "outside_repo", or a glob on the resolved paths (absolute
     #            or "**/…" globs match the absolute path; others the path
     #            relative to the repo root, the cwd outside one)
+    #   git:     "outside_repo": a shell call runs a mutating git
+    #            subcommand outside the session's repo (ShellGitDirs)
     #   models:  "small" (Guardrails::ModelSize, guardrails.small_models),
     #            or a glob on the bare model name or the model key, or a
     #            list of them: the rule only votes for a model that matches
@@ -26,17 +28,19 @@ module Samagotchi
     class Rules
       class ParseError < StandardError; end
 
-      KEYS = %w[id tool command path models verdict reason scopes].freeze
+      KEYS = %w[id tool command path git models verdict reason scopes].freeze
+      MATCH_KEYS = %w[tool command path git].freeze
       VERDICTS = %w[ask deny].freeze
       GLOB_FLAGS = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB
 
-      Rule = Struct.new(:id, :tools, :command, :path, :models, :verdict, :reason, :scopes, :source, keyword_init: true) do
+      Rule = Struct.new(:id, :tools, :command, :path, :git, :models, :verdict, :reason, :scopes, :source, keyword_init: true) do
         def matches?(targets)
           return false unless targets
           return false unless for_model?(targets.model_name, targets.model_key, -> { targets.small_model? })
           return false if tools && !tool_matches?(targets.tool)
           return false if command && !(targets.command && command.match?(targets.command))
           return false if path && !path_matches?(targets)
+          return false if git && !targets.git_outside_repo?
 
           true
         end
@@ -99,12 +103,12 @@ module Samagotchi
 
         verdict = raw["verdict"].to_s
         raise ParseError, "#{label}: verdict must be ask or deny (got #{verdict.inspect})" unless VERDICTS.include?(verdict)
-        unless %w[tool command path].any? { |k| raw.key?(k) }
-          raise ParseError, "#{label}: give at least one of tool, command, path"
+        unless MATCH_KEYS.any? { |k| raw.key?(k) }
+          raise ParseError, "#{label}: give at least one of #{MATCH_KEYS.join(", ")}"
         end
 
         Rule.new(id: id, tools: tools_of(raw["tool"], label), command: regex_of(raw["command"], label),
-                 path: path_of(raw["path"], label), models: models_of(raw["models"], label), verdict: verdict.to_sym,
+                 path: path_of(raw["path"], label), git: git_of(raw["git"], label), models: models_of(raw["models"], label), verdict: verdict.to_sym,
                  reason: (raw["reason"] || "rule #{id}").to_s, scopes: scopes_of(raw["scopes"], label), source: source)
       end
 
@@ -131,6 +135,14 @@ module Samagotchi
       def self.path_of(value, label)
         return nil if value.nil?
         raise ParseError, "#{label}: path must be a string" unless value.is_a?(String) && !value.empty?
+
+        value
+      end
+
+      # Only "outside_repo" for now (room for globs later).
+      def self.git_of(value, label)
+        return nil if value.nil?
+        raise ParseError, "#{label}: git must be outside_repo" unless value == "outside_repo"
 
         value
       end

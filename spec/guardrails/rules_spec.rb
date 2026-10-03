@@ -61,6 +61,32 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(verdict_for({ name: "write", path: "in.txt", content: "" }, set)).to be_allow
     end
 
+    describe "git: outside_repo" do
+      let(:other) { File.realpath(Dir.mktmpdir("guard-rules-other")) }
+      let(:set) { rules({ id: "git-out", git: "outside_repo", verdict: "ask" }) }
+
+      after { FileUtils.rm_rf(other) }
+
+      it "matches a shell call that runs mutating git in another checkout" do
+        expect(verdict_for({ name: "execute", content: "cd #{other} && git commit -m x" }, set)).to be_ask
+        expect(verdict_for({ name: "task_create", content: "git -C #{other} add ." }, set)).to be_ask
+        expect(verdict_for({ name: "execute", content: "git commit -m x", cwd: other }, set)).to be_ask
+      end
+
+      it "lets git in the session's repo, read-only git elsewhere and other tools through" do
+        expect(verdict_for({ name: "execute", content: "git commit -m x" }, set)).to be_allow
+        expect(verdict_for({ name: "execute", content: "git -C #{other} log" }, set)).to be_allow
+        expect(verdict_for({ name: "execute", content: "cd $X && git commit -m x" }, set)).to be_allow
+        expect(verdict_for({ name: "write", path: File.join(other, "x"), content: "" }, set)).to be_allow
+      end
+
+      it "needs every given field to match" do
+        both = rules({ id: "x", tool: "shell", command: "push", git: "outside_repo", verdict: "ask" })
+        expect(verdict_for({ name: "execute", content: "git -C #{other} commit" }, both)).to be_allow
+        expect(verdict_for({ name: "execute", content: "git -C #{other} push" }, both)).to be_ask
+      end
+    end
+
     it "matches absolute, ** and repo-relative globs" do
       hooks = rules({ id: "git-hooks", tool: %w[write edit], path: "**/.git/hooks/**", verdict: "deny" })
       expect(verdict_for({ name: "write", path: ".git/hooks/pre-commit", content: "" }, hooks)).to be_deny
@@ -161,7 +187,9 @@ RSpec.describe Samagotchi::Guardrails::Rules do
 
     it "names the rule and the problem" do
       expect(error_for({ "id" => "x", "verdict" => "block", "tool" => "a" })).to eq('rule x: verdict must be ask or deny (got "block")')
-      expect(error_for({ "id" => "x", "verdict" => "ask" })).to eq("rule x: give at least one of tool, command, path")
+      expect(error_for({ "id" => "x", "verdict" => "ask" })).to eq("rule x: give at least one of tool, command, path, git")
+      expect(error_for({ "id" => "x", "verdict" => "ask", "git" => "anywhere" })).to eq("rule x: git must be outside_repo")
+      expect(error_for({ "id" => "x", "verdict" => "ask", "git" => "outside_repo" })).to be_nil
       expect(error_for({ "id" => "x", "verdict" => "ask", "comand" => "rm" })).to eq("rule x: unknown key(s) comand")
       expect(error_for({ "id" => "x", "verdict" => "ask", "command" => "(" })).to start_with("rule x: command is not a valid regex")
       expect(error_for({ "verdict" => "ask", "tool" => "a" })).to eq("rule 1: id is required")

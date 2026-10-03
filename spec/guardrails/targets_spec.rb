@@ -4,10 +4,10 @@ require "tmpdir"
 require "samagotchi/guardrails"
 require "samagotchi/tools/builtins"
 
-# outside_repo: measured from the session's repo root (the context cwd's),
+# outside_repo? and git_outside_repo?: measured from the session's repo root (the context cwd's),
 # symlinks resolved on both sides, tmp dirs allowed unless the session
 # lives in that tmp dir itself (Guardrails::Outside).
-RSpec.describe "Guardrails::Targets#outside_repo?" do
+RSpec.describe "Guardrails::Targets outside the session's repo" do
   around do |example|
     Dir.mktmpdir("outside-repo") do |dir|
       @base = File.realpath(dir)
@@ -92,5 +92,30 @@ RSpec.describe "Guardrails::Targets#outside_repo?" do
 
   it "gives the session root in the hook event's targets" do
     expect(targets(name: "write", path: "a.txt").to_h).to include(outside_repo: false, repo_root: @repo)
+  end
+
+  describe "git_dirs and git_outside_repo?" do
+    it "reads a shell call's mutating git dirs, from its cwd:" do
+      t = targets(name: "execute", content: "git add . && git -C #{@sibling} commit -m x")
+      expect(t.git_dirs).to eq([@repo, @sibling])
+      expect(t).to be_git_outside_repo
+      expect(t.to_h).to include(git_dirs: [@repo, @sibling])
+      t = targets(name: "task_create", content: "git commit -m x", cwd: @sibling)
+      expect([t.git_dirs, t.git_outside_repo?]).to eq([[@sibling], true])
+    end
+
+    it "is not outside for git in the repo, an unknown dir, or a tmp dir the session doesn't live in" do
+      expect(targets(name: "execute", content: "cd lib && git add .")).not_to be_git_outside_repo
+      t = targets(name: "execute", content: "cd $REPO && git add .")
+      expect([t.git_dirs, t.git_outside_repo?]).to eq([[:unknown], false])
+      other_tmp = File.join(@base, "tmp").tap { |d| FileUtils.mkdir_p(d) }
+      allow(Samagotchi::Guardrails::Outside).to receive(:tmp_roots).and_return([other_tmp])
+      expect(targets(name: "execute", content: "cd #{other_tmp} && git init && git commit")).not_to be_git_outside_repo
+    end
+
+    it "is empty for a tool that isn't a shell tool" do
+      t = targets(name: "write", path: File.join(@sibling, "x"))
+      expect([t.git_dirs, t.git_outside_repo?, t.to_h[:git_dirs]]).to eq([[], false, []])
+    end
   end
 end
