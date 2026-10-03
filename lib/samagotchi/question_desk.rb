@@ -99,23 +99,8 @@ module Samagotchi
     # @return [Hash, String] the answer {id:, selected:, freeform:, selected_indices:},
     #   or {error:, …}; a String when a sync handler returned text itself
     def open_question(fields, watch: nil)
-      id = SecureRandom.uuid
-      pending = { id: id, **fields, status: "pending", created_at: Time.now.iso8601(3) }.compact
-
-      @lock.synchronize do
-        @pending = pending
-        @answer = nil
-      end
-      # Persist to session file for WEB stub + resume (generic for all UIs)
-      if session
-        session.pending_question = pending.dup
-        begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
-      end
-      # Generic emit for all UIs (TUI, WEB, Bridge, future). Observers that
-      # stash this event (e.g. TerminalUI handle_question_event) will
-      # discard it as stale if the synchronous handler below already answers
-      # and clears pending — see drain_pending_question? staleness check.
-      emit({ type: :question_requested, pending_question: pending })
+      pending = publish(fields)
+      id = pending[:id]
 
       # If a synchronous UI handler is registered (TUI), invoke it inline on the
       # SAME thread that called request_question (TerminalUI's REPL thread is the
@@ -212,30 +197,7 @@ module Samagotchi
         raise NotPending, "question already answered" if @answer
         raise NotPending, "question #{pending[:status]}" unless pending[:status].to_s == "pending"
 
-        opts = Array(pending[:options])
-        # Validate selected subset of options (value == label in v1)
-        invalid = sel.reject { |v| opts.include?(v) }
-        unless invalid.empty?
-          raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})"
-        end
-        if !pending[:multi_select] && sel.size > 1
-          raise ArgumentError, "single-select question: got #{sel.size} selections"
-        end
-        if pending[:multi_select] == false && sel.empty? && fm.nil?
-          raise ArgumentError, "selection required"
-        end
-        indices = sel.map { |v| opts.index(v) }
-        # Checked against the question pending now, under the lock: the one
-        # whose answer settles the approval (Approval.settle, by index).
-        if parent_setting
-          reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: parent_setting)
-          raise Refused, reason if reason
-        end
-        # Persist pending cleared elsewhere; just set answer
-        answer = { id: id.to_s, selected: sel, freeform: fm }
-        # Derive indices for convenience
-        answer[:selected_indices] = indices.compact
-        answer[:by] = "parent_agent" if parent_agent
+        answer = validated_answer(pending, sel, fm, parent_agent: parent_agent, parent_setting: parent_setting)
         @answer = answer
         @cv.broadcast
         answer
@@ -329,6 +291,50 @@ module Samagotchi
     end
 
     private
+
+    # Make +fields+ the pending question: set under the lock, saved to the
+    # session file (the web's stub, a resume, the lists) and announced as
+    # :question_requested to every UI. Observers that stash the event (e.g.
+    # TerminalUI handle_question_event) discard it as stale if a sync
+    # handler answers and clears it first (drain_pending_question?).
+    # @return [Hash] the pending question
+    def publish(fields)
+      pending = { id: SecureRandom.uuid, **fields, status: "pending", created_at: Time.now.iso8601(3) }.compact
+      @lock.synchronize do
+        @pending = pending
+        @answer = nil
+      end
+      if session
+        session.pending_question = pending.dup
+        begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+      end
+      emit({ type: :question_requested, pending_question: pending })
+      pending
+    end
+
+    # An answer to +pending+, checked: the selections are its options (value
+    # == label in v1), one for a single-select, one or a text when required,
+    # and a parent agent's within guardrails.parent_approvals. Under the
+    # question lock: checked against the question pending now.
+    # @return [Hash] {id:, selected:, freeform:, selected_indices:, by:}
+    # @raise [ArgumentError, Refused]
+    def validated_answer(pending, sel, fm, parent_agent:, parent_setting:)
+      opts = Array(pending[:options])
+      invalid = sel.reject { |v| opts.include?(v) }
+      raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})" unless invalid.empty?
+      raise ArgumentError, "single-select question: got #{sel.size} selections" if !pending[:multi_select] && sel.size > 1
+      raise ArgumentError, "selection required" if pending[:multi_select] == false && sel.empty? && fm.nil?
+
+      indices = sel.map { |v| opts.index(v) }
+      # The one whose answer settles the approval (Approval.settle, by index).
+      if parent_setting
+        reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: parent_setting)
+        raise Refused, reason if reason
+      end
+      answer = { id: pending[:id].to_s, selected: sel, freeform: fm, selected_indices: indices.compact }
+      answer[:by] = "parent_agent" if parent_agent
+      answer
+    end
 
     # Wait until the question is answered, cancelled or closed by +watch+.
     # @return [String, nil] the watch's close reason
