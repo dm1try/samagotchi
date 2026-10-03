@@ -147,6 +147,38 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
         expect(server.requests.last.json.keys).to contain_exactly("model", "messages", "temperature", "stream",
                                                                   "stream_options", "tools", "tool_choice")
         expect(stream_lines.last.fields).to include("sampling" => "temperature=0.0")
+        expect(stream_lines.last.fields).not_to have_key("cache")
+      end
+
+      describe "prompt-cache breakpoints" do
+        let(:claude) { "anthropic/claude-sonnet-5.5" }
+        let(:marked) { { "type" => "text", "cache_control" => { "type" => "ephemeral" } } }
+
+        def chat_adapter(remote: true, purpose: "chat")
+          described_class.new(base_url: server.base_url, host_name: "box", env: env, sleeper: ->(_seconds) {},
+                              retries: false, remote: remote, purpose: purpose)
+        end
+
+        it "marks the system and the last message of a Claude chat request on a remote host, and logs cache=on" do
+          Samagotchi::Log.configure(path: log_path, level: :info)
+          replay("text_stream.sse")
+
+          chat_adapter.chat(messages: messages, tools: tools, model: claude)
+
+          sent = server.requests.last.json["messages"]
+          expect(sent.map { |m| m["content"] }).to eq([[marked.merge("text" => "sys")], [marked.merge("text" => "hi")]])
+          expect(stream_lines.last.fields).to include("cache" => "on", "model" => claude)
+        end
+
+        it "sends the messages as given for a local host, a side ask or another model" do
+          [[chat_adapter(remote: false), claude], [chat_adapter(purpose: "recap"), claude],
+           [chat_adapter, "deepseek/deepseek-v4.1-flash"]].each do |client, model|
+            replay("text_stream.sse")
+            client.chat(messages: messages, tools: tools, model: model)
+            expect(server.requests.last.json["messages"]).to eq([{ "role" => "system", "content" => "sys" },
+                                                                 { "role" => "user", "content" => "hi" }])
+          end
+        end
       end
     end
 

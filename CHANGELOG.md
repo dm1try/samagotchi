@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Claude models on OpenAI-compatible hosts (OpenRouter) use Anthropic's prompt cache: chat requests mark the
+  system message and the last message with `cache_control`, so each step reads the earlier prompt from the
+  cache (about a tenth of the price) instead of paying for all of it again. The log line shows `cache=on`.
+
 ### Changed
 
 - `chi answer --option Continue --text "…"` is accepted: the text joins the continued turn as a steer (marked as the parent agent's for `chi answer`), instead of being refused.

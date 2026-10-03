@@ -6,6 +6,7 @@ require_relative "../config"
 require_relative "../sampling_settings"
 require_relative "errors"
 require_relative "http"
+require_relative "prompt_cache"
 require_relative "usage"
 require_relative "utf8_scrub"
 
@@ -121,7 +122,8 @@ module Samagotchi
                session_id: nil)
         body = request_body(messages, tools, model, options)
         request = post_request("#{@base_url}/chat/completions", body, session_id: session_id)
-        log_fields = { model: model, purpose: @purpose, sampling: sampling_summary(body) }
+        log_fields = { model: model, purpose: @purpose, sampling: sampling_summary(body),
+                       cache: ("on" if PromptCache.marked?(body[:messages])) }
         return chat_once(request, cancel_controller, log_fields) unless @stream
 
         assembly = Assembly.new
@@ -204,7 +206,7 @@ module Samagotchi
       def request_body(messages, tools, model, options)
         body = {
           model: model,
-          messages: Array(messages).map { |message| wire_message(message) },
+          messages: cache_breakpoints(Array(messages).map { |message| wire_message(message) }, model),
           temperature: 0.0,
           stream: @stream
         }
@@ -215,6 +217,16 @@ module Samagotchi
         end
         # A configured value replaces chi's own (temperature); nil drops it.
         body.merge(options || {}).compact
+      end
+
+      # Prompt-cache breakpoints (PromptCache) on the wire copies, for a
+      # Claude model's chat requests to a remote host: a one-shot side ask
+      # would pay for a cache write nothing reads, and a local model named
+      # after Claude must not get Array content.
+      def cache_breakpoints(messages, model)
+        return messages unless @remote && @purpose == "chat"
+
+        PromptCache.mark(messages, model: model)
       end
 
       # The body's fields beyond the conversation and the stream, for the

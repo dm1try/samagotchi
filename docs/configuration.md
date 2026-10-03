@@ -513,6 +513,12 @@ Every chat request carries the session's id as a `Session-Id` header (next to `U
 gateway that spreads requests over several providers can key on it to keep one conversation on one provider, so
 prompt caches hit and every turn is answered by the same model. Servers that don't know the header ignore it.
 
+Chat requests for a Claude model (an id containing `claude`, such as `anthropic/claude-sonnet-5.5`) on a remote
+OpenAI-compatible host get two prompt-cache breakpoints (`cache_control` on the system message and on the last
+message), so each step reads the earlier prompt from Anthropic's cache instead of paying for it again; the debug
+log's line shows `cache=on`. Nothing to configure. A provider behind a gateway may still not cache: check the
+cached tokens in `/stats`.
+
 ## Llama Model Routing
 
 To explicitly route requests to a named model in llama.cpp, set:
