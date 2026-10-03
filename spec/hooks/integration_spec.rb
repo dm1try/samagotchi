@@ -87,66 +87,63 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
       engine
     end
 
-    # This is an integration test that requires LLM access.
-    # We use the :integration tag so it's skipped unless SAMAGOTCHI_INTEGRATION=1.
+    # Needs a live model server; how to run: docs/testing.md.
     context "with LLM access", :integration do
+      let(:workdir) { Dir.mktmpdir("hooks-integration") }
       let(:session) do
-        Samagotchi::Session.new
-        session = Samagotchi::Session.new
-        session.messages = []
-        session
+        Samagotchi::Session.new_session(mode: "assist", model_name: IntegrationServer.model, working_directory: workdir)
       end
+
+      after { FileUtils.remove_entry(workdir) }
 
       it "fires :before_turn and :after_turn around the turn" do
         engine.run_turn(session, "Hello, are you there?")
 
-        expect(hook_events[:before_turn]).to be_present
-        expect(hook_events[:after_turn]).to be_present
+        expect(hook_events[:before_turn]).not_to be_empty
+        expect(hook_events[:after_turn]).not_to be_empty
         expect(hook_events[:after_turn].last[:type]).to eq(:after_turn)
       end
 
       it "fires :before_generation and :after_generation for each LLM call" do
         engine.run_turn(session, "What is 2+2?")
 
-        expect(hook_events[:before_generation]).to be_present
-        expect(hook_events[:after_generation]).to be_present
+        expect(hook_events[:before_generation]).not_to be_empty
+        expect(hook_events[:after_generation]).not_to be_empty
         hook_events[:after_generation].each do |evt|
           expect(evt[:response]).to be_a(String)
         end
       end
 
       it "fires :before_tool_call and :after_tool_call for each tool call" do
-        engine.run_turn(session, "Run the command: echo hello")
+        engine.run_turn(session, "Use the execute tool to run exactly: echo hello")
 
-        if hook_events[:before_tool_call].any?
-          hook_events[:before_tool_call].each do |evt|
-            expect(evt[:call]).to be_a(Hash)
-            expect(evt[:type]).to eq(:before_tool_call)
-          end
-          hook_events[:after_tool_call].each do |evt|
-            expect(evt[:output]).to be_a(String)
-            expect(evt[:type]).to eq(:after_tool_call)
-          end
+        expect(hook_events[:before_tool_call]).not_to be_empty
+        expect(hook_events[:after_tool_call].size).to eq(hook_events[:before_tool_call].size)
+        hook_events[:before_tool_call].each do |evt|
+          expect(evt[:call]).to include(:name)
+          expect(evt[:type]).to eq(:before_tool_call)
         end
+        hook_events[:after_tool_call].each do |evt|
+          expect(evt[:output]).to be_a(String)
+          expect(evt[:type]).to eq(:after_tool_call)
+        end
+        expect(hook_events[:after_tool_call].map { |evt| evt[:output] }.join).to include("hello")
       end
 
-      it ":before_tool_call can mutate the call params" do
-        # Register a hook that modifies the call hash
+      it ":before_tool_call can replace the call that runs" do
         engine2 = Samagotchi::Engine.new
-        modified_calls = []
+        outputs = []
         engine2.register_hook(:before_tool_call) do |event|
-          # Mutate the call by adding a marker
-          event[:call][:_hook_mutated] = true
-          modified_calls << event[:call][:name]
+          next unless event[:call][:name] == "execute"
+
+          event[:call] = event[:call].merge(content: "echo mutated-by-hook")
         end
+        engine2.register_hook(:after_tool_call) { |event| outputs << event[:output] }
 
-        # This tests that mutations propagate to the dispatch path
-        # The hook will be cleared after the turn
-        engine2.run_turn(session, "Run the command: echo mutated")
+        engine2.run_turn(session, "Use the execute tool to run exactly: echo original")
 
-        # At least some calls should have been marked
-        # We verify the hook ran without crashing
-        expect(modified_calls).not_to be_nil
+        expect(outputs.join).to include("mutated-by-hook")
+        expect(outputs.join).not_to include("original")
       end
     end
   end
