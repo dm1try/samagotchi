@@ -112,7 +112,7 @@ module Samagotchi
     end
 
     def self.default
-      gemma4
+      named(DEFAULT_NAME)
     end
 
     def self.normalize(value)
@@ -124,7 +124,7 @@ module Samagotchi
       when "gemma", "gemma4", "gemma4o"
         gemma4
       else
-        gemma4
+        named(DEFAULT_NAME)
       end
     end
 

@@ -4,11 +4,19 @@ require "samagotchi/model_profile"
 
 RSpec.describe Samagotchi::ModelProfile do
   describe ".default" do
-    it "returns the Gemma 4 profile by default" do
+    it "returns the same profile the resolver falls back to (qwen36)" do
       profile = described_class.default
-      expect(profile.name).to eq("gemma4")
-      expect(profile.turn_start).to eq("<|turn>")
-      expect(profile.turn_end).to eq("<end_of_turn>")
+      expect(described_class::DEFAULT_NAME).to eq("qwen36")
+      expect(profile.name).to eq("qwen36")
+      expect(profile.name).to eq(described_class.named(described_class::DEFAULT_NAME).name)
+    end
+  end
+
+  describe ".normalize" do
+    it "falls back to the resolver's default for an unknown name" do
+      expect(described_class.normalize("something-else").name).to eq(described_class::DEFAULT_NAME)
+      expect(described_class.normalize(nil).name).to eq(described_class::DEFAULT_NAME)
+      expect(described_class.normalize("").name).to eq(described_class::DEFAULT_NAME)
     end
   end
 
