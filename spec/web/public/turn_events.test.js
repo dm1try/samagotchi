@@ -22,15 +22,37 @@ test("turnOutput is empty for a turn with no text", () => {
   assert.equal(turnOutput({ turn_summary: { output: "  " } }), "");
 });
 
-import { clientLabel, isOwn, newClientId, promptOps } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { clientLabel, isOwn, newClientId, CLIENT_ID_KEY, promptOps } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 const ME = "web:me";
 const none = { myId: ME, known: () => false };
 
 test("newClientId is web:<random>, different per call", () => {
-  const a = newClientId();
+  const a = newClientId(null);
   assert.match(a, /^web:[a-z0-9]{8,}$/);
-  assert.notEqual(a, newClientId());
+  assert.notEqual(a, newClientId(null));
+});
+
+// 4.03: the id is kept per tab, so a mid-turn reload still knows this tab's
+// own prompt (a fresh id labelled it "web"). Storage failures fall back to a
+// fresh id rather than throwing.
+test("newClientId is kept in sessionStorage across loads", () => {
+  const store = new Map();
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+
+  const first = newClientId(storage);
+  assert.equal(newClientId(storage), first);
+  assert.equal(store.get(CLIENT_ID_KEY), first);
+
+  // Nonsense in storage (another app's, an old format): a fresh id wins.
+  storage.setItem(CLIENT_ID_KEY, "not-an-id");
+  const fresh = newClientId(storage);
+  assert.match(fresh, /^web:/);
+  assert.notEqual(fresh, "not-an-id");
+
+  // Storage that throws (a refused private window): a fresh id, no throw.
+  const throwing = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); } };
+  assert.match(newClientId(throwing), /^web:/);
 });
 
 test("clientLabel names the sender's kind; own/unknown have none", () => {
