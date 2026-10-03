@@ -257,6 +257,55 @@ RSpec.describe Samagotchi::Guardrails::Rules do
     end
   end
 
+  describe "modes:" do
+    let(:strict_only) { { id: "rebase", tool: "shell", command: "rebase", modes: ["strict"], verdict: "ask" } }
+    let(:untagged) { { id: "push", tool: "shell", command: "push", verdict: "ask" } }
+
+    def set(mode, *raw) = described_class.new(described_class.parse(raw.map { |r| r.transform_keys(&:to_s) }, source: "config"), mode: mode)
+
+    it "leaves a strict-only rule out in auto mode, and votes it in strict mode" do
+      expect(verdict_for({ name: "execute", content: "git rebase main" }, set("auto", strict_only))).to be_allow
+      expect(verdict_for({ name: "execute", content: "git rebase main" }, set("strict", strict_only))).to be_ask
+    end
+
+    it "votes a rule without modes: in every mode" do
+      %w[auto strict].each do |mode|
+        expect(verdict_for({ name: "execute", content: "git push" }, set(mode, untagged))).to be_ask, mode
+      end
+    end
+
+    it "takes a single mode or a list, and is auto by default" do
+      both = strict_only.merge(id: "both", modes: %w[auto strict])
+      auto_only = strict_only.merge(id: "auto-only", modes: "auto")
+      expect(verdict_for({ name: "execute", content: "rebase" }, set("auto", both))).to be_ask
+      expect(verdict_for({ name: "execute", content: "rebase" }, set("strict", auto_only))).to be_allow
+      expect(described_class.new.mode).to eq("auto")
+      expect(verdict_for({ name: "execute", content: "rebase" }, rules(strict_only))).to be_allow
+    end
+
+    it "ANDs modes: with models: (a small-model rule tagged strict votes only for a small model in strict mode)" do
+      both = strict_only.merge(models: ["small"])
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.small_models").and_return("auto")
+      call = { name: "execute", content: "git rebase" }
+      v = ->(mode, model) do
+        verdict = Samagotchi::Guardrails::Verdict.new(call: call)
+        verdict.context = context
+        verdict.targets = Samagotchi::Guardrails::Targets.for(call, context, model_name: model)
+        set(mode, both).check(verdict)
+      end
+      expect(v.("strict", "Ornith-9B")).to be_ask
+      expect(v.("auto", "Ornith-9B")).to be_allow
+      expect(v.("strict", "Llama-3.3-70B")).to be_allow
+    end
+
+    it "rejects a mode that isn't auto or strict" do
+      expect { rules(strict_only.merge(modes: ["strick"])) }
+        .to raise_error(described_class::ParseError, "rule rebase: modes must be auto or strict, or a list of them")
+      expect { rules(strict_only.merge(modes: [])) }.to raise_error(described_class::ParseError, /modes must be/)
+    end
+  end
+
   describe "enabled: false" do
     it "applies no rules and drops a hook's ask, but keeps a deny" do
       set = rules({ id: "all", tool: "shell", verdict: "deny" }, enabled: false)

@@ -279,7 +279,8 @@ module Samagotchi
         @failures.add("rules in config.yml", e.message, required: true, group: :rules)
       end
       Guardrails::Rules.new(rules + bundle_rules, disable: disable,
-                            enabled: Samagotchi::Config.get("guardrails.enabled") != false)
+                            enabled: Samagotchi::Config.get("guardrails.enabled") != false,
+                            mode: Samagotchi::Config.get("guardrails.mode") || "auto")
     end
 
     # The dry-run diff of an edit/write call for its approval; a preview

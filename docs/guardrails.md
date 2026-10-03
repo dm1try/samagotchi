@@ -144,7 +144,7 @@ grants no permission, so a parent may answer it either way by default.
 `turn.parent_continue: false` (config.yml only, like `parent_approvals`)
 makes parents stop-only. See [chi as a sub-agent](sub-agent.md#the-step-limit).
 
-The guardrails settings (`enabled`, `small_models`, `parent_approvals`) are
+The guardrails settings (`enabled`, `mode`, `small_models`, `parent_approvals`) are
 read from config.yml only: they have no environment variable, and a worker
 chi starts unsets every `SAMAGOTCHI_GUARDRAILS_*` it would inherit. What a
 parent's environment does choose is the config dir: `XDG_CONFIG_HOME` picks
@@ -189,6 +189,7 @@ commands that name them.
 ```yaml
 guardrails:
   enabled: true              # false: no rules, and hooks' asks are dropped (a deny still applies); config.yml only
+  mode: auto                 # or strict: also the rules tagged modes: [strict]; config.yml only
   rules:
     - id: git-push
       tool: shell            # execute + task_create; or a tool name, a glob, or a list
@@ -343,6 +344,34 @@ once per bundle version to restart the session (`chi sessions stop ID`, then
 `chi --resume ID`). A chi that never loaded that bundle's rules (it starts
 older than the bundle) denies every tool call, as for a rule that doesn't
 parse, until chi is updated or the bundle uninstalled.
+
+### Modes
+
+`guardrails.mode` (config.yml only) picks how much is asked:
+
+- `auto`, the default: the rules tagged `modes: [strict]` don't vote. Asks
+  are kept for what is hard to undo or reaches chi itself.
+- `strict`: every rule votes.
+
+```yaml
+guardrails:
+  mode: strict
+  rules:
+    - id: no-docker
+      tool: shell
+      command: '\bdocker\b'
+      modes: [strict]        # or auto, or [auto, strict] (the same as leaving it out)
+      verdict: ask
+```
+
+A rule without `modes:` votes in every mode, so a rule you add to config.yml
+always applies unless you tag it. The core checks (protected paths, hooks)
+vote in both modes.
+
+A rule in config.yml that uses a key this chi doesn't know yet (`modes:`,
+`touches:`, `rm:`, `skip_read_only:` before 0.20) doesn't parse, and a rule
+that doesn't parse denies every tool call (see Failing closed). Bundles say
+which chi they need (`requires_chi`), so their rules don't hit this.
 
 ## The guardrails bundle
 

@@ -25,6 +25,9 @@ module Samagotchi
     #            a word that can't be resolved falls back to text)
     #   rm:      "outside_tmp": an rm -rf in a shell command reaches
     #            outside the tmp dirs (RmTargets)
+    #   modes:   "strict", "auto" or a list of them: the rule only votes
+    #            in those guardrails.mode values (missing = every mode;
+    #            a rule from config.yml without it votes in every mode)
     #   skip_read_only: true: a shell command that only reads
     #            (ReadOnlyShell) doesn't match
     # verdict ask|deny, reason, scopes (for an ask; default all).
@@ -35,12 +38,14 @@ module Samagotchi
     class Rules
       class ParseError < StandardError; end
 
-      KEYS = %w[id tool command path git touches rm models skip_read_only verdict reason scopes].freeze
+      KEYS = %w[id tool command path git touches rm models modes skip_read_only verdict reason scopes].freeze
       MATCH_KEYS = %w[tool command path git touches rm].freeze
       VERDICTS = %w[ask deny].freeze
+      # guardrails.mode's values.
+      MODES = %w[auto strict].freeze
       GLOB_FLAGS = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB
 
-      Rule = Struct.new(:id, :tools, :command, :path, :git, :touches, :rm, :models, :skip_read_only, :verdict, :reason,
+      Rule = Struct.new(:id, :tools, :command, :path, :git, :touches, :rm, :models, :modes, :skip_read_only, :verdict, :reason,
                         :scopes, :source, keyword_init: true) do
         def matches?(targets)
           return false unless targets
@@ -55,6 +60,9 @@ module Samagotchi
 
           true
         end
+
+        # Whether the rule votes in guardrails.mode +mode+.
+        def for_mode?(mode) = modes.nil? || modes.include?(mode.to_s)
 
         def tool_matches?(name)
           tools.any? { |tool| Rules.glob?(tool) ? File.fnmatch(tool, name.to_s, File::FNM_EXTGLOB) : tool == name }
@@ -121,6 +129,7 @@ module Samagotchi
         Rule.new(id: id, tools: tools_of(raw["tool"], label), command: regex_of(raw["command"], label),
                  path: path_of(raw["path"], label), git: git_of(raw["git"], label),
                  touches: touches_of(raw["touches"], label), rm: rm_of(raw["rm"], label), models: models_of(raw["models"], label),
+                 modes: modes_of(raw["modes"], label),
                  skip_read_only: flag_of(raw, "skip_read_only", label), verdict: verdict.to_sym,
                  reason: (raw["reason"] || "rule #{id}").to_s, scopes: scopes_of(raw["scopes"], label), source: source)
       end
@@ -176,6 +185,17 @@ module Samagotchi
         value
       end
 
+      def self.modes_of(value, label)
+        return nil if value.nil?
+
+        names = Array(value)
+        unless !names.empty? && names.all? { |n| MODES.include?(n) }
+          raise ParseError, "#{label}: modes must be #{MODES.join(" or ")}, or a list of them"
+        end
+
+        names
+      end
+
       # A true/false key; missing is false.
       def self.flag_of(raw, key, label)
         value = raw.fetch(key, false)
@@ -224,13 +244,19 @@ module Samagotchi
       # @param rules [Array<Rule>] in order: config first, then bundles by name
       # @param enabled [Boolean] false: no rules, and hooks' asks are dropped
       # @param disable [Array<String>] from #parse_disable: rules that don't vote
-      def initialize(rules = [], enabled: true, disable: [])
+      # @param mode [String] guardrails.mode: a rule whose modes: leave it
+      #   out doesn't vote
+      def initialize(rules = [], enabled: true, disable: [], mode: "auto")
         @rules = rules
         @enabled = enabled
         @disable = disable
+        @mode = mode.to_s
       end
 
       def enabled? = @enabled
+
+      # @return [String] guardrails.mode, "auto" or "strict"
+      attr_reader :mode
 
       def disabled?(rule)
         @disable.any? { |entry| disables?(entry, rule) }
@@ -247,6 +273,7 @@ module Samagotchi
 
         @rules.each do |rule|
           next if disabled?(rule)
+          next unless rule.for_mode?(@mode)
           next unless rule.matches?(verdict.targets)
 
           if rule.verdict == :deny

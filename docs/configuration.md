@@ -854,6 +854,7 @@ described in their own sections.
 | `image.max_bytes` | `3750000` | | See "Images". |
 | `image.max_per_request` | `20` | | See "Images". |
 | `guardrails.enabled` | `true` | | `false`: no rules, and hooks' asks are dropped (a deny still applies). config.yml only: a worker unsets any `SAMAGOTCHI_GUARDRAILS_*` it inherits. See [Guardrails](guardrails.md). |
+| `guardrails.mode` | `auto` | | Which rules vote: `auto` leaves out the rules tagged `modes: [strict]` (in the guardrails bundle: `git rebase`, writes and git outside the session's repo); `strict` runs them all. An unknown value warns and is `auto`. config.yml only. See [Guardrails](guardrails.md#modes). |
 | `guardrails.small_models` | `auto` | | Which models get the `models: small` rules: `auto` (32B or less by the size in the name, an MoE's active size), a list of globs, or `[]`. config.yml only. See [Guardrails](guardrails.md#rules-for-some-models). |
 | `guardrails.parent_approvals` | `off` | | What `chi answer` lets a parent agent allow on an approval: `off` (deny only) or `once` ("Allow once", never a wider scope). config.yml only: no environment variable (a parent can still pick the config dir with `XDG_CONFIG_HOME`). A convention for an honest parent, not a security boundary. See [Guardrails](guardrails.md#approvals-from-a-parent-agent). |
 | `log.file` | state dir | yes | See "Debug Log File". |

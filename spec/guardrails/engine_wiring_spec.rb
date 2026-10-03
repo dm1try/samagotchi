@@ -207,4 +207,20 @@ RSpec.describe "Engine guardrail rules reload" do
     expect(verdict(engine, "c")).not_to be_deny
     expect(engine.guardrail_failures.list).to be_empty
   end
+
+  it "reads guardrails.mode from config.yml, auto when unset or unknown" do
+    strict_rule = "  rules:\n    - {id: s, tool: shell, command: 'echo s', modes: [strict], verdict: deny, reason: no}\n"
+    write_config("guardrails:\n#{strict_rule}")
+    engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client))
+    expect(engine.guardrail_rules.mode).to eq("auto")
+    expect(verdict(engine, "s")).not_to be_deny
+
+    write_config("guardrails:\n  mode: strict\n#{strict_rule}", bump: 5)
+    expect(engine.guardrail_rules.mode).to eq("strict")
+    expect(verdict(engine, "s")).to be_deny
+
+    write_config("guardrails:\n  mode: paranoid\n#{strict_rule}", bump: 10)
+    expect { expect(engine.guardrail_rules.mode).to eq("auto") }
+      .to output(/invalid value for guardrails.mode: "paranoid"/).to_stderr
+  end
 end

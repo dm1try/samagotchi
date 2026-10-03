@@ -107,6 +107,9 @@ module Samagotchi
       # The guardrails settings are config.yml only: a parent agent must not switch a child's guardrails off from its
       # own environment (SAMAGOTCHI_GUARDRAILS_ENABLED=false). SessionManager.spawn_options unsets them for a worker too.
       Entry.new(key: "guardrails.enabled",       yaml_path: %w[guardrails enabled],       type: :bool,   default: true,             expose: %i[config]),
+      # Which rules vote: auto (the default) leaves out the rules tagged `modes: [strict]`; strict runs them all. An unknown
+      # value warns and is auto.
+      Entry.new(key: "guardrails.mode",          yaml_path: %w[guardrails mode],          type: :enum,   default: "auto",           expose: %i[config], enum_values: %w[auto strict]),
       # Which models get the rules with `models: small` (Guardrails::ModelSize): auto (32B or less by the name's size, an MoE's
       # active size counting), globs on the bare model name or its key, "|"-separated (a YAML list works too), or "" ([]) for none.
       Entry.new(key: "guardrails.small_models",  yaml_path: %w[guardrails small_models],  type: :string, default: "auto",           expose: %i[config]),
