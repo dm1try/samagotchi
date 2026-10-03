@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "execute",
-      "description": "Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.",
+      "description": "Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata. Don't background with &; use task_create.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -184,7 +184,7 @@
     "type": "function",
     "function": {
       "name": "task_create",
-      "description": "Start a background task for a long-running shell command. Returns task id and output path for later inspection.",
+      "description": "Start a background task for a long-running shell command. Servers and anything meant to keep running belong here, not in execute with &. Returns task id and output path for later inspection.",
       "parameters": {
         "type": "object",
         "properties": {
