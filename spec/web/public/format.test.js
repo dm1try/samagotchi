@@ -129,12 +129,16 @@ test("deleteConfirmText names the session and says it can't be undone", () => {
   );
 });
 
-test("deleteConfirmText cuts a long preview and says a live worker is stopped first", () => {
+test("deleteConfirmText cuts a long preview and says a live worker, if still running, is stopped first", () => {
   const text = deleteConfirmText({
     id: "3fa2b1c4-aaaa", short_id: "3fa2b1c4", first_preview: "x".repeat(80), owner: "worker",
   });
   assert.ok(text.startsWith(`Delete session 3fa2b1c4 — "${"x".repeat(40)}…"?`));
-  assert.ok(text.endsWith("\nIts worker is running and will be stopped first."));
+  assert.ok(text.endsWith("\nIf its worker is still running, it is stopped first."));
+});
+
+test("deleteConfirmText says nothing about a worker the list doesn't show", () => {
+  assert.ok(!/worker/.test(deleteConfirmText({ id: "3fa2b1c4-aaaa", first_preview: "hi" })));
 });
 
 test("deleteConfirmText leaves out an empty preview", () => {

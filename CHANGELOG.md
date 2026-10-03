@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
   either way.
 - `chi web` no longer logs `ERROR HTTPRequest#fixup: WEBrick::HTTPStatus::LengthRequired occurred.` after a POST
   without a body.
+- The web's delete confirm no longer promises a running worker from a stale list: it says the worker is stopped
+  first if it is still running.
 
 ## [0.18.1] - 2026-10-03
 
