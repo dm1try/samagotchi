@@ -11,6 +11,10 @@ module Samagotchi
   #   gemma4  — Gemma 4 format
   class ModelProfile
     MODEL_ENV = "SAMAGOTCHI_DEFAULT_MODEL"
+    # Set beside MODEL_ENV for a worker spawned by a `chi --model X`: X is
+    # that run's default, not one its commands' chi should inherit
+    # (SessionManager.spawn_options, Tools::Builtins.parent_env).
+    MODEL_FROM_CLI_ENV = "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI"
     # No model anywhere (--model, default.model in config.yml, the env): a
     # first run before any config. An ArgumentError, as before.
     MissingModel = Class.new(ArgumentError)

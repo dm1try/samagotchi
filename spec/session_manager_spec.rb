@@ -579,6 +579,26 @@ RSpec.describe Samagotchi::SessionManager do
       Samagotchi::Config.set_cli_overrides({})
     end
 
+    # Its default for this run (the worker's /model reset), marked as the
+    # CLI's so its execute children don't inherit it (Builtins.parent_env).
+    it "hands the worker a --model as its default, marked as the command line's" do
+      spawned = []
+      allow(Process).to receive(:spawn) do |*args, **_opts|
+        spawned << (args.first.is_a?(Hash) ? args.first : {})
+        12_345
+      end
+
+      Samagotchi::Config.set_cli_overrides("default.model" => "gemma4")
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+      Samagotchi::Config.set_cli_overrides({})
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(spawned[0]).to include("SAMAGOTCHI_DEFAULT_MODEL" => "gemma4", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI" => "1")
+      expect(spawned[1].keys).not_to include("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI")
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
+    end
+
     describe "the worker's debug log" do
       def spawned_env
         env = nil

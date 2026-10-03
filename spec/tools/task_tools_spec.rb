@@ -109,6 +109,38 @@ RSpec.describe "task tools" do
         .to eq("Error: env key is reserved: SAMAGOTCHI_SESSION_MODEL")
     end
 
+    # A worker started by `chi --model X` has SAMAGOTCHI_DEFAULT_MODEL=X for
+    # its own run (SessionManager.spawn_options); a chi its commands run
+    # must not take X for the default.
+    describe "a --model the worker was spawned with" do
+      let(:kctx) { Struct.new(:peers).new(Samagotchi::Tools::Peers.new(session_id: "sess-1", model_ref: "main:x", cancelled: false)) }
+      let(:execute) { ->(cmd) { Samagotchi::Tools::Builtins::HANDLERS.fetch("execute").call({ content: cmd }, kctx) } }
+
+      it "is not passed on to execute or task_create commands" do
+        with_env("SAMAGOTCHI_DEFAULT_MODEL" => "x", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI" => "1") do
+          output = execute.call('echo "[${SAMAGOTCHI_DEFAULT_MODEL-unset}|${SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI-unset}]"')
+          expect(output).to include("[unset|unset]")
+
+          created = Samagotchi::Tools::Builtins::HANDLERS.fetch("task_create")
+                                                         .call({ content: 'echo "${SAMAGOTCHI_DEFAULT_MODEL-unset}"' }, kctx)
+          result = wait_for_task(extract_field(created, "task_id"))
+          expect(File.read(extract_field(result, "output_path"))).to eq("unset\n")
+
+          created = Samagotchi::Tools::Builtins::HANDLERS.fetch("task_create")
+                                                         .call({ content: 'echo "$SAMAGOTCHI_DEFAULT_MODEL"',
+                                                                 env: { "SAMAGOTCHI_DEFAULT_MODEL" => "asked" } }, kctx)
+          result = wait_for_task(extract_field(created, "task_id"))
+          expect(File.read(extract_field(result, "output_path"))).to eq("asked\n")
+        end
+      end
+
+      it "leaves a SAMAGOTCHI_DEFAULT_MODEL the user exported alone" do
+        with_env("SAMAGOTCHI_DEFAULT_MODEL" => "mine", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI" => nil) do
+          expect(execute.call('echo "[$SAMAGOTCHI_DEFAULT_MODEL]"')).to include("[mine]")
+        end
+      end
+    end
+
     it "spawns a non-login shell so profile files can't clobber inherited PATH" do
       expect(Process).to receive(:spawn) do |*args, **_kwargs|
         expect(args[1..2]).to eq(["/bin/sh", "-c"])

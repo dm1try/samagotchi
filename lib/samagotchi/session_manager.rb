@@ -19,6 +19,7 @@ require_relative "bridge_client"
 require_relative "worker_sidecar"
 require_relative "log"
 require_relative "log_path"
+require_relative "model_profile"
 require_relative "installed_gem"
 require_relative "installed_versions"
 require_relative "recap_store"
@@ -192,6 +193,7 @@ module Samagotchi
       # A worker gets no CLI args: --model, --thinking, --log-level and the
       # other flags this chi was started with.
       child_env.merge!(Config.cli_env)
+      child_env[ModelProfile::MODEL_FROM_CLI_ENV] = "1" if child_env.key?(ModelProfile::MODEL_ENV)
       # And the spawner's debug log, absolute: a relative log.file would
       # otherwise land in the worker's (the session's) directory.
       log_path = begin LogPath.resolve rescue nil end

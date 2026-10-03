@@ -80,6 +80,9 @@ and commands may change between minor versions. How releases are made:
   `canceled`, so the session's tool totals (`/stats`) count it as the turn did instead of dropping it.
 - A session's `analytics.json` `session_duration_ms` runs from the session's `started_at`, not from when its current
   worker started.
+- A session started with `chi --model X` no longer hands X to the commands it runs as the default model: a `chi
+  self` (or other chi) run there reports and uses the configured default, with X as this session's model. A
+  `SAMAGOTCHI_DEFAULT_MODEL` you export yourself still passes.
 
 ## [0.18.1] - 2026-10-03
 
