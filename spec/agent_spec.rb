@@ -230,7 +230,7 @@ file2.rb")
         "ok"
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", hash_including(scope: nil)).and_return("foo body")
       agent = described_class.new(prompt: "hi", client: client, memories: ["foo"])
       agent.run
       expect(received_prompt).to include("this memory is required by the user in the current context: memory name: foo")
@@ -240,7 +240,7 @@ file2.rb")
     it "names a preloaded --memory entry in the status row" do
       allow(client).to receive(:complete).and_return("ok")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", hash_including(scope: nil)).and_return("foo body")
       agent = described_class.new(prompt: "hi", client: client, memories: ["foo"])
       run_and_render(agent, prompt: "hi")
       expect(agent.instance_variable_get(:@status_row).rows(200).join("\n")).to include("mem: foo")
@@ -255,7 +255,7 @@ file2.rb")
       index = "- **foo** · system · 2026-09-01 · 10 — foo\n- **bar** · system · 2026-09-01 · 10 — bar\n"
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return(index)
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", hash_including(scope: nil)).and_return("foo body")
       agent = described_class.new(prompt: "hi", client: client, memories: ["foo"], muted_memories: ["system/bar.md"])
       run_and_render(agent, prompt: "hi")
 
@@ -268,7 +268,7 @@ file2.rb")
     it "records the --memory and --mute lists on a new REPL session" do
       allow(client).to receive(:complete).and_return("ok")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", hash_including(scope: nil)).and_return("foo body")
       agent = described_class.new(prompt: "hi", client: client, non_interactive: true,
                                   memories: ["foo"], muted_memories: ["system/bar.md"])
       agent.run
@@ -298,7 +298,7 @@ file2.rb")
         "ok"
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: "project").and_return("foo body")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", hash_including(scope: "project")).and_return("foo body")
       agent = described_class.new(prompt: "hi", client: client, memories: ["project/foo"])
       agent.run
       expect(received_prompt).to include("memory name: foo")
@@ -311,7 +311,7 @@ file2.rb")
         "ok"
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("missing", scope: nil).and_return("Error: memory not found: missing")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("missing", hash_including(scope: nil)).and_return("Error: memory not found: missing")
       agent = described_class.new(prompt: "hi", client: client, memories: ["missing"])
       expect { agent.run }.not_to raise_error
       # A missing entry is skipped (see Engine#explicit_memory_section), so its

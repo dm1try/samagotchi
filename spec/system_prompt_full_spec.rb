@@ -58,7 +58,7 @@ RSpec.describe "Full system prompt snapshots" do
     allow(Samagotchi::Tools::MemoryRead).to receive(:memories_dir).and_call_original
     allow(Samagotchi::Tools::MemoryRead).to receive(:memories_dir).with("project")
       .and_return(File.join(Dir.home, ".config", "samagotchi", "memories", "projects", "project_abc"))
-    allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil, **_overlay_keys|
       case name.to_s
       when ""
         "# #{scope} index\n- **cfg_note** · #{scope} · 2026-09-01\n- **hidden** · #{scope} · 2026-09-02\nhidden\n"

@@ -26,7 +26,11 @@ module Samagotchi
     # The model a session runs on, as the prompt names it: the resolved
     # ref, its host ("name, host:port" or url), the memory overlay key, and
     # what a llama.cpp server says it serves when that differs (else nil).
-    ModelIdentity = Data.define(:ref, :host, :key, :served)
+    # fallback_key: the key an alias typed for the model used to key overlays
+    # by (read when +key+ has none, as memory_read does); not shown.
+    ModelIdentity = Data.define(:ref, :host, :key, :served, :fallback_key) do
+      def initialize(ref:, host:, key:, served: nil, fallback_key: nil) = super
+    end
 
     # Always auto-loaded from the system scope unless muted (B-light).
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
@@ -242,7 +246,7 @@ module Samagotchi
       DEFAULT_SYSTEM_MEMORIES.each do |name|
         next if memory_muted?(name)
 
-        body = Tools::MemoryRead.call(name, scope: "system")
+        body = Tools::MemoryRead.call(name, scope: "system", **overlay_keys)
         next if body.start_with?("Error:")
         next if body.strip.empty?
 
@@ -254,6 +258,17 @@ module Samagotchi
     end
 
     # ── Memory helpers ─────────────────────────────────────────────────────────
+
+    # The session model's overlay keys, so the prompt's own memory bodies
+    # (identity, preloads) get `<name>.<key>.md` as memory_read gives it.
+    def overlay_keys
+      model = @model_lookup.call
+      return {} unless model&.key
+
+      { model_key: model.key, fallback_model_key: model.fallback_key }
+    rescue StandardError
+      {}
+    end
 
     # The scope's index text without the muted memories' lines.
     def read_memory_index(scope)
@@ -304,7 +319,7 @@ module Samagotchi
         names = raw.split(",").map(&:strip).reject(&:empty?)
         names.each do |name|
           scope, actual_name = split_memory_scope(name)
-          body = Tools::MemoryRead.call(actual_name, scope: scope)
+          body = Tools::MemoryRead.call(actual_name, scope: scope, **overlay_keys)
           if body.start_with?("Error:")
             source = Array(@config_memories).include?(raw) ? "memory '#{name}' (from config memories:)" : "--memory '#{name}'"
             Log.warn(:memory, "preload_failed", echo: "Warning: #{source} could not be loaded (#{body})", memory: name)

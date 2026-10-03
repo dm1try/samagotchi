@@ -420,7 +420,7 @@ module Samagotchi
       entry = target.entry
       host = entry && "host #{entry.name}, #{entry.url || "#{entry.host}:#{entry.port}"}"
       SystemPrompt::ModelIdentity.new(ref: effective_model_ref, host: host, key: @model_key,
-                                      served: prompt_served_model(target))
+                                      served: prompt_served_model(target), fallback_key: @fallback_model_key)
     end
 
     # +name+'s resolved ref (ModelRef#ref).
@@ -475,8 +475,8 @@ module Samagotchi
     def sync_model_key!
       @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
       typed_key = ModelOverlay.key_for(@host_registry.parse_qualified_model(@typed_model_name).last)
-      fallback = typed_key == @model_key ? nil : typed_key
-      @kernel.sync_model_key!(@model_key, fallback: fallback)
+      @fallback_model_key = typed_key == @model_key ? nil : typed_key
+      @kernel.sync_model_key!(@model_key, fallback: @fallback_model_key)
     end
     private :sync_model_key!
 

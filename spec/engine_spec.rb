@@ -177,7 +177,7 @@ RSpec.describe Samagotchi::Engine do
     end
 
     it "injects requested memories into the system prompt" do
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil, **_overlay_keys|
         name.to_s.empty? ? "" : "BODY-#{name}"
       end
       engine = build_engine(profile: "gemma4", memories: ["my_note"])
@@ -194,7 +194,7 @@ RSpec.describe Samagotchi::Engine do
 
     it "merges the config.yml memories baseline with the --memory list (config first, deduped)" do
       allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[baseline_a baseline_b])
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil, **_overlay_keys|
         name.to_s.empty? ? "" : "BODY-#{name}"
       end
       engine = build_engine(profile: "gemma4", memories: ["baseline_b, cli_only"])
@@ -209,7 +209,7 @@ RSpec.describe Samagotchi::Engine do
 
     it "names where a memory that can't be loaded came from: config memories: or --memory" do
       allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[gone_config])
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil, **_overlay_keys|
         name.to_s.empty? ? "" : "Error: memory '#{name}' not found"
       end
       echoes = []
@@ -226,7 +226,7 @@ RSpec.describe Samagotchi::Engine do
 
     it "uses only the config baseline when --memory is not given" do
       allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[only_from_config])
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil, **_overlay_keys|
         name.to_s.empty? ? "" : "BODY-#{name}"
       end
       engine = build_engine(profile: "gemma4")
