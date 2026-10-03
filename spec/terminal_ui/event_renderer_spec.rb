@@ -266,6 +266,13 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
                                 "✕ turn canceled (stopped) · 400ms"])
     end
 
+    it "says which plugin stopped a turn" do
+      renderer.call({ type: :turn_started, prompt: nil, continue: true })
+      renderer.call({ type: :turn_canceled, cancellation_reason: :hook, cancelled_by: "loop-guard", duration_ms: 400 })
+
+      expect(view.lines).to eq(["✕ turn stopped by loop-guard · 400ms"])
+    end
+
     it "shows a failed turn's summary, else its message (an image that couldn't be used)" do
       renderer.call({ type: :turn_failed, error_class: "Samagotchi::LLM::AuthError", message: "fw: set FW_KEY",
                       summary: "auth failed for host fw: set FW_KEY", duration_ms: 2000 })

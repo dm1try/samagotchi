@@ -10,6 +10,15 @@
       { "reason": "", "expected": null }
     ]
   },
+  "cancelled_by": {
+    "note": "A canceled turn's line with who stopped it (turn_canceled's cancelled_by, the turn record's too): the words after the \u2715 (Formatting#turn_canceled_line: \"\u2715 turn <words>\"; timing.js cancelLineText: \"\u2715 <words>\"). Only a hook's stop names one; no one: the cancel_reasons line.",
+    "cases": [
+      { "reason": "hook", "by": "loop-guard", "expected": "stopped by loop-guard" },
+      { "reason": "hook", "by": null, "expected": "canceled (by a hook)" },
+      { "reason": "hook", "by": "", "expected": "canceled (by a hook)" },
+      { "reason": "user", "by": "loop-guard", "expected": "canceled (stopped)" }
+    ]
+  },
   "client_labels": {
     "note": "The label on a prompt by its sender's client_id prefix (Formatting#prompt_line \"label> prompt\"; turn_events.js clientLabel). No client_id: the TUI's history/own prompt shows user>, the web's own bubble has no label.",
     "cases": [

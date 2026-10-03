@@ -514,6 +514,18 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:turn_records].last).to include(status: "canceled", cancellation_reason: "ctrl_c")
   end
 
+  it "keeps who stopped a turn a plugin stopped" do
+    feed([
+      { type: :turn_started, session_id: "sess-3c", prompt: "x" },
+      { type: :turn_canceled, cancellation_reason: :hook, cancelled_by: "loop-guard" },
+      { type: :turn_started, session_id: "sess-3c", prompt: "y" },
+      { type: :turn_canceled, cancellation_reason: :user }
+    ])
+
+    expect(metrics.snapshot[:turn_records].last(2)).to match([include(cancellation_reason: "hook", cancelled_by: "loop-guard"),
+                                                              satisfy { |r| !r.key?(:cancelled_by) }])
+  end
+
   it "keeps no cancellation reason on a completed turn's record" do
     feed([
       { type: :turn_started, session_id: "sess-3b", prompt: "x" },

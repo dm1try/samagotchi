@@ -50,7 +50,7 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
       result = run_turn(engine)
 
       expect(result).to be_canceled
-      expect(of_type(:turn_canceled).first).to include(cancellation_reason: :hook)
+      expect(of_type(:turn_canceled).first).to include(cancellation_reason: :hook, cancelled_by: "turn hook")
       expect(progress.size).to eq(1)
       expect(completions.size).to eq(1)
       expect(of_type(:hook_notice).map { |e| e[:text] }).to eq(["stopped the turn: enough"])
@@ -76,6 +76,16 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
       expect(of_type(:empty_answer_retry)).to contain_exactly(include(stopped_by: "turn hook"))
       expect(of_type(:hook_notice)).to be_empty
       expect(session.messages.map { |m| m[:content].to_s }.join).not_to include("check the file again")
+    end
+
+    it "ends the turn cancelled, naming the hook, when a cut finds no retry left" do
+      3.times { stream_loop }
+      engine.register_hook(:generation_progress) { |event| event[:stop_generation].call("loops") }
+
+      result = run_turn(engine)
+
+      expect(result).to be_canceled
+      expect(of_type(:turn_canceled).first).to include(cancellation_reason: :hook, cancelled_by: "turn hook")
     end
   end
 

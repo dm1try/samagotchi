@@ -84,7 +84,7 @@ module Samagotchi
           render_turn_summary(event[:turn_summary]) if event[:turn_summary]
         when :turn_canceled
           @view.finish_thinking_spinner
-          @view.print_line(@view.turn_canceled_line(event[:cancellation_reason], event[:duration_ms]))
+          @view.print_line(@view.turn_canceled_line(event[:cancellation_reason], event[:duration_ms], by: event[:cancelled_by]))
           @view.print_line(@view.turn_end_hint(Formatting::ROLLBACK_HINT)) unless @turn_continues
         when :turn_failed
           # A provider error's one-line summary, else the message (an image

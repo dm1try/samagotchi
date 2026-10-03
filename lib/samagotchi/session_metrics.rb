@@ -277,7 +277,7 @@ module Samagotchi
       when :turn_completed
         end_turn(status: "completed")
       when :turn_canceled
-        end_turn(status: "canceled", reason: event[:cancellation_reason])
+        end_turn(status: "canceled", reason: event[:cancellation_reason], by: event[:cancelled_by])
       when :turn_failed
         end_turn(status: "failed")
       end
@@ -457,9 +457,10 @@ module Samagotchi
       end
     end
 
-    # A canceled turn's record keeps why (+reason+: "user", "ctrl_c", ...), so
-    # a reloaded web history can show the cancel line the live one did.
-    def end_turn(status: "completed", reason: nil)
+    # A canceled turn's record keeps why (+reason+: "user", "ctrl_c", ...)
+    # and who stopped it (+by+: a hook's bundle), so a reloaded web history
+    # can show the cancel line the live one did.
+    def end_turn(status: "completed", reason: nil, by: nil)
       @mutex.synchronize do
         if @turn
           # A turn that failed mid-stream never saw its generation end:
@@ -478,6 +479,7 @@ module Samagotchi
             duration_ms: elapsed_ms(@turn.started_monotonic)
           }
           record[:cancellation_reason] = reason.to_s unless reason.nil? || reason.to_s.empty?
+          record[:cancelled_by] = by.to_s unless by.nil? || by.to_s.empty?
           record.merge!(turn_token_fields(@turn))
           @turn_records << record
           count_turn(record)

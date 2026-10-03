@@ -170,7 +170,8 @@ higher-level events so UIs get clean turn boundaries without inferring them:
 
 - `:turn_started` — `{ session_id:, prompt: }`
 - `:turn_completed` — `{ result: }` (the final `LLM::ModelResult`)
-- `:turn_canceled` — `{ cancellation_reason: }`
+- `:turn_canceled` — `{ cancellation_reason:, cancelled_by: }` (`cancelled_by`: the bundle or hook label that
+  stopped it, for `cancellation_reason: :hook`; else nil)
 
 Every event is a `Hash` with a `:type` symbol key; the sink must not raise (the Engine
 rescues sink errors). A new UI (web, API) supplies its own `on_event` and

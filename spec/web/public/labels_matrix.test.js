@@ -26,6 +26,12 @@ test("cancel reasons per the shared labels matrix", () => {
   }
 });
 
+test("who stopped a turn per the shared labels matrix", () => {
+  for (const entry of cases("cancelled_by")) {
+    assert.equal(cancelLineText(entry.reason, entry.by), `✕ ${expected(entry)}`, `${entry.reason} by ${entry.by}`);
+  }
+});
+
 test("client labels per the shared labels matrix", () => {
   for (const entry of cases("client_labels")) {
     assert.equal(clientLabel(entry.client_id), expected(entry), `client ${entry.client_id}`);

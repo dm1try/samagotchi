@@ -203,8 +203,13 @@ module Samagotchi
       # started): its partial progress stays in the conversation.
       ROLLBACK_HINT = "partial progress kept; !rollback restores the pre-turn state"
 
-      # "✕ turn canceled (Ctrl-C) · 3.1s"
-      def turn_canceled_line(reason, duration_ms)
+      # "✕ turn canceled (Ctrl-C) · 3.1s"; a hook's stop that names who
+      # (+by+, turn_canceled's cancelled_by): "✕ turn stopped by loop-guard"
+      def turn_canceled_line(reason, duration_ms, by: nil)
+        if reason.to_s == "hook" && !by.to_s.empty?
+          return "#{paint("✕", 33)} turn stopped by #{by}#{turn_duration_suffix(duration_ms)}"
+        end
+
         label = reason.to_s.empty? ? nil : CANCEL_REASONS.fetch(reason.to_s, reason.to_s)
         "#{paint("✕", 33)} turn canceled#{" (#{label})" if label}#{turn_duration_suffix(duration_ms)}"
       end

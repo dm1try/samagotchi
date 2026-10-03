@@ -82,7 +82,8 @@ module Samagotchi
     end
 
     def on_turn_canceled(event)
-      log(:info, :turn_canceled, ms: since(@turn_started_at), reason: event[:cancellation_reason], **origin(event))
+      log(:info, :turn_canceled, ms: since(@turn_started_at), reason: event[:cancellation_reason], by: event[:cancelled_by],
+                                 **origin(event))
     end
 
     def on_turn_failed(event)

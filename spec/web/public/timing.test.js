@@ -232,6 +232,8 @@ test("cancelLineText / cancelLineHtml: the live line and the one a re-render dra
   assert.equal(cancelLineHtml({ status: "canceled", cancellation_reason: "ctrl_c" }, esc), '<div class="bubble cancel">\u2715 canceled (Ctrl-C)</div>');
   assert.equal(cancelLineHtml({ status: "canceled" }, esc), '<div class="bubble cancel">\u2715 canceled</div>');
   assert.equal(cancelLineHtml({ status: "canceled", cancellation_reason: "<x>" }, esc), '<div class="bubble cancel">\u2715 canceled (&lt;x>)</div>');
+  assert.equal(cancelLineHtml({ status: "canceled", cancellation_reason: "hook", cancelled_by: "loop-guard" }, esc),
+    '<div class="bubble cancel">\u2715 stopped by loop-guard</div>');
   assert.equal(cancelLineHtml({ status: "completed" }, esc), "");
   assert.equal(cancelLineHtml(null, esc), "");
 });

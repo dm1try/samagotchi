@@ -1637,11 +1637,24 @@ module Samagotchi
     def stopped_before_model(turn)
       reason = turn.controller.reason
       end_turn(turn, "canceled") do |seconds|
-        [nil, { type: :turn_canceled, cancellation_reason: reason, duration_ms: (seconds * 1000).round }]
+        [nil, { type: :turn_canceled, cancellation_reason: reason, cancelled_by: cancelled_by(turn),
+                duration_ms: (seconds * 1000).round }]
       end
       LLM::ModelResult.new(text: "", canceled: true, cancellation_reason: reason)
     end
     private :stopped_before_model
+
+    # Who stopped a turn a hook stopped or cut (the controller's detail: the
+    # bundle, or the hook's label), for the UIs' "stopped by loop-guard";
+    # nil for any other cancel.
+    def cancelled_by(turn)
+      return nil unless turn.controller.reason == :hook
+
+      detail = turn.controller.detail
+      by = detail[:by].to_s if detail.is_a?(Hash)
+      by unless by.nil? || by.empty?
+    end
+    private :cancelled_by
 
     # The turn's settings for the kernel (LLM::TurnSettings): vision,
     # sampling and thinking, the thinking resolved before the hooks run.
@@ -1744,7 +1757,7 @@ module Samagotchi
       end_turn(turn, canceled ? "canceled" : "completed", exhausted: !canceled && result.exhausted?) do |seconds|
         kept = kept_messages(turn, result, seconds)
         if canceled
-          [kept, { type: :turn_canceled, cancellation_reason: result.cancellation_reason,
+          [kept, { type: :turn_canceled, cancellation_reason: result.cancellation_reason, cancelled_by: cancelled_by(turn),
                    duration_ms: (seconds * 1000).round }]
         else
           # For a client that attaches later (session_state_snapshot).

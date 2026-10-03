@@ -32,6 +32,12 @@ RSpec.describe "Shared labels matrix (TUI side)" do
     end
   end
 
+  cases(matrix, "cancelled_by").each do |entry|
+    it "names who stopped a #{entry["reason"]} turn: #{entry["by"].inspect}" do
+      expect(fmt.turn_canceled_line(entry["reason"], nil, by: entry["by"])).to eq("✕ turn #{expected(entry)}")
+    end
+  end
+
   cases(matrix, "client_labels").each do |entry|
     it "labels a prompt from #{entry["client_id"].inspect}" do
       expect(fmt.prompt_line(entry["client_id"], "hi")).to eq("#{expected(entry)}> hi")
