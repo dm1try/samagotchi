@@ -50,6 +50,9 @@ and commands may change between minor versions. How releases are made:
 - Web: a composer line is a command only when it names one of the session's commands (or is `!…`); an unknown
   `/word` (a path like `/usr/bin/env …`, a typo) goes to the model as a prompt, as in a terminal, instead of being
   refused with `not a session command`.
+- Web: a window under 700 px tall hides the latest-sessions strip by itself (the `▾ N sessions` pill shows it again
+  until the window is tall), so a question or approval card in the turn's stage has room for its choices and
+  buttons. Taller windows and phones are unchanged.
 
 ### Fixed
 
