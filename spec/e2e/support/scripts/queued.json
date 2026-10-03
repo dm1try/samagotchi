@@ -1,0 +1,11 @@
+{
+  "delay": 0.02,
+  "branches": [
+    {"when_last": "QUEUED-B", "iterations": [
+      {"hold": 7, "text": "Second answer, from the queued turn."}
+    ]}
+  ],
+  "iterations": [
+    {"hold": 2, "text": "First answer with **bold** markdown."}
+  ]
+}

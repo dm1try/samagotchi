@@ -816,3 +816,61 @@ test("check-in in a background tab: one 'needs you' notification; the card resol
   await turnEnded(page, 1);
   expect(await notes(page)).toHaveLength(1);
 });
+
+// A 1×1 PNG: an image prompt runs as its own next turn (steering merges
+// text only), so B queues behind A.
+const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+// A's turn-end re-read (?tail=1) lands after B started: B keeps its own
+// live line ("turn 2", ticking), A's line and answer are A's, and a reload
+// draws the same two lines.
+test("a queued turn keeps its own live timing line when the turn before it re-reads late", { tag: "@turn" }, async ({ page, script }) => {
+  script("queued");
+  let release;
+  const released = new Promise((resolve) => { release = resolve; });
+  let held = 0;
+  await page.route(/\/api\/sessions\/[^/?]+\?tail=1/, async (route) => {
+    if (held++ > 0) return route.continue();
+    const response = await route.fetch();
+    await released;
+    await route.fulfill({ response });
+  });
+  await send(page, "Say first");
+  await expect(page.locator(`${H()} .turn-timing.live`)).toHaveText(/^turn 1 running · /);
+  // B: an image dropped into the composer, sent while A runs.
+  await page.evaluate((b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], "dot.png", { type: "image/png" }));
+    document.querySelector("#composer").dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }, PNG_1PX);
+  await expect(page.locator("#chips .chip")).toHaveCount(1);
+  await send(page, "QUEUED-B what is in this image?");
+  // B started (its live line is there, A's finished) while A's re-read is held.
+  const lines = page.locator(`${H()} .turn-timing`);
+  const live = page.locator(`${H()} .turn-timing.live`);
+  await expect(lines).toHaveCount(2);
+  await expect(live).toHaveCount(1);
+  release();
+  // A's re-read landed: its answer is the rendered markdown.
+  await expect(page.locator(`${H()} .bubble.output strong`)).toHaveText("bold");
+  await expect(live).toHaveCount(1);
+  await expect(live).toHaveText(/^turn 2 running · /);
+  await expect(lines.first()).toHaveText(/^turn 1 · /);
+  const before = await live.textContent();
+  await expect.poll(() => live.textContent(), { timeout: 3000 }).not.toBe(before);
+  await expect(live).toHaveText(/^turn 2 running · /);
+  // B ends: its own line, final.
+  await expect(page.locator(`${H()} .bubble.output`).last()).toHaveText("Second answer, from the queued turn.", { timeout: 15_000 });
+  await turnEnded(page, 2);
+  const final = await page.locator("#history .turn-timing").allTextContents();
+  expect(final).toHaveLength(2);
+  expect(final[0]).toMatch(/^turn 1 · /);
+  expect(final[1]).toMatch(/^turn 2 · /);
+  await page.reload();
+  await turnEnded(page, 2);
+  const reloaded = await page.locator("#history .turn-timing").allTextContents();
+  expect(reloaded).toHaveLength(2);
+  expect(reloaded[0]).toMatch(/^turn 1 · /);
+  expect(reloaded[1]).toMatch(/^turn 2 · /);
+});

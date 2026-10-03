@@ -11,7 +11,8 @@
 # an answer. An iteration's "thinking_file" (a path relative to scripts/, its leading "#" header lines dropped)
 # streams in place of "thinking", "repeat" times over (default 1), and "chunk_chars" streams N chars per chunk
 # instead of word by word (the script's "delay" still applies): a long looping thinking (loop-guard's watch).
-# "branches" pick another iteration list by the first user message (a delegated child's task; see _script).
+# "branches" pick another iteration list by the first user message (a delegated child's task; see _script), or with
+# "when_last" by the last one (a queued turn's prompt).
 # /v1/models lists "fake-script" (or serves <dir>/models.json when there is one, e.g. with
 # "architecture": {"input_modalities": ["text"]} for a text-only model);
 # no upstream needed.
@@ -110,8 +111,12 @@ class H(http.server.BaseHTTPRequestHandler):
         # "branches": [{"when": TEXT, "iterations": [...]}]: a session whose first user message holds TEXT (a
         # delegated child's task) runs its own iterations, so a parent and its child share one script.
         first_user = next((str(msg.get("content") or "") for msg in messages if msg.get("role") == "user"), "")
+        # "when_last" picks by the last user message instead (a queued turn's prompt; an image prompt's content is
+        # a parts list, matched as its JSON).
+        user_msgs = [msg for msg in messages if msg.get("role") == "user"]
+        last_user = json.dumps(user_msgs[-1].get("content")) if user_msgs else ""
         for branch in script.get("branches") or []:
-            if branch.get("when") and branch["when"] in first_user:
+            if (branch.get("when") and branch["when"] in first_user) or (branch.get("when_last") and branch["when_last"] in last_user):
                 its = branch["iterations"]
                 break
         it = its[min(done, len(its) - 1)]
