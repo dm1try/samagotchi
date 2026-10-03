@@ -10,6 +10,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- A session's live state (what the web and an attached terminal read from its worker) no longer carries every turn's
+  and tool call's timing record, only the newest turn's: reads stay the same size however long the session runs. The
+  full history stays in the session's `analytics.json`.
 - A memory a bundle installed says so in its `index.md` line, and so in the prompt's memory index:
   `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system — …`. `memory_write` and `write`/`edit`
   keep the tag; a same-name memory the install skipped gets none. Bundles installed earlier get it on their next

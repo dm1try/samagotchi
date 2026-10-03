@@ -252,6 +252,12 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   the messages itself, then streams from its `event_seq`).
 - `OPTIONS *` — CORS preflight (`Access-Control-Allow-Origin: *`).
 
+The metrics in `/state`, `/snapshot`, `/stats` and the SSE `snapshot`/`reset` frames
+(`SessionMetrics#snapshot`) carry the session's totals and only the recent timing records: the
+newest turn the worker finished and any it hasn't saved yet (at most 20 turns), with their tool
+calls and the running turn's finished ones. The full history is the session's `analytics.json`,
+which `SessionMetrics#persist` rewrites after each turn; the web server merges the two by id.
+
 Every route goes through `Bridge#dispatch`: an id other than the bridge's own session is
 `404 unknown_session`, and a handler that raises answers `500 bridge_error` (logged as
 `handler_failed`) rather than dropping the connection.
