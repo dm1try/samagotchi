@@ -46,11 +46,11 @@ RSpec.describe Samagotchi::TurnNote do
     expect(described_class.failed("HTTP 500", restored: true)[:content]).to end_with("The message went back to the user, who may send it again.]")
   end
 
-  it "says how a cancel ended: nothing shown, or the answer cut off" do
+  it "says how a cancel ended: nothing shown, or the reply (an answer or narration) cut off" do
     expect(described_class.cancelled(:ctrl_c, seconds: 6.4)[:content])
       .to eq("[SYSTEM: the previous turn was cancelled (ctrl-c) after 6s; no answer had been shown.]")
     expect(described_class.cancelled("user", seconds: 40, shown: true)[:content])
-      .to eq("[SYSTEM: the previous turn was cancelled (user) after 40s; the answer above ends where it was cut off.]")
+      .to eq("[SYSTEM: the previous turn was cancelled (user) after 40s; the reply above ends where it was cut off.]")
     expect(described_class.cancelled(nil)[:content]).to eq("[SYSTEM: the previous turn was cancelled; no answer had been shown.]")
   end
 

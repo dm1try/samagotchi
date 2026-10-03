@@ -72,6 +72,8 @@ and commands may change between minor versions. How releases are made:
   approval in memory: no "in this repo" or rule approval from it stays in the approvals store.
 - A message sent (web, `chi send`, a delegate) to a session whose worker is slow to start no longer starts a second
   worker beside it.
+- The note a cancelled turn leaves for the model says "the reply above ends where it was cut off", not "the
+  answer", so narration cut off before a tool call isn't taken for an answer.
 
 ## [0.18.1] - 2026-10-03
 

@@ -263,7 +263,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect(result.conversation.last).to eq(session.messages.last)
   end
 
-  it "says a cancelled answer was cut off when the tail is [interrupted]" do
+  it "says a cancelled reply was cut off when the tail is [interrupted]" do
     allow(kernel).to receive(:run).and_return(
       kernel_result(text: "", conversation: [{ role: "user", content: "hi" }, { role: "model", content: "Riv\n[interrupted]", interrupted: true }],
                     canceled: true, cancellation_reason: :user)
@@ -271,7 +271,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
     engine.run_turn(session, "hi")
 
-    expect(session.messages.last[:content]).to include("cancelled (user)").and include("the answer above ends where it was cut off")
+    expect(session.messages.last[:content]).to include("cancelled (user)").and include("the reply above ends where it was cut off")
   end
 
   it "leaves a turn that can be continued ending at its tool results, with no [No response] placeholder" do

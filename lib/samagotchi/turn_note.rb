@@ -37,7 +37,8 @@ module Samagotchi
     # @param reason [Symbol, String, nil] the cancel reason (:ctrl_c, :user…)
     # @param seconds [Numeric, nil] how long the turn had run
     # @param shown [Boolean] visible text had streamed (an `[interrupted]`
-    #   model message precedes this note)
+    #   model message precedes this note): an answer, or only narration
+    #   before a tool call, so the note says "reply"
     # @param running_tasks [Array<Hash>] {id:, command:} of this session's
     #   background tasks still running: a Stop doesn't end them
     # @param stopped_by [Hash, nil] {by:, reason:} of a hook that stopped
@@ -45,7 +46,7 @@ module Samagotchi
     def cancelled(reason, seconds: nil, shown: false, running_tasks: [], stopped_by: nil)
       why = reason.to_s.empty? ? "" : " (#{reason.to_s.tr("_", "-")}#{stopper(stopped_by)})"
       after = seconds ? " after #{seconds.round}s" : ""
-      what = shown ? "the answer above ends where it was cut off." : "no answer had been shown."
+      what = shown ? "the reply above ends where it was cut off." : "no answer had been shown."
       message("the previous turn was cancelled#{why}#{after}; #{what}#{still_running(running_tasks)}")
     end
 
