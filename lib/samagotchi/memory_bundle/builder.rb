@@ -6,6 +6,7 @@ require "tmpdir"
 require_relative "manifest"
 require_relative "placeholder"
 require_relative "../memory_paths"
+require_relative "../model_overlay"
 
 module Samagotchi
   module MemoryBundle
@@ -66,7 +67,7 @@ module Samagotchi
           unless missing.empty?
             raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(', ')}"
           end
-          candidates = allow.map { |k| candidates_by_basename[k] }
+          candidates = with_overlays(allow, candidates_by_basename).map { |k| candidates_by_basename[k] }
         else
           candidates = leave_out_owned(candidates, resolved_name)
         end
@@ -300,6 +301,28 @@ module Samagotchi
         else
           DEFAULT_SYSTEM_NAME
         end
+      end
+
+      # The named files, each base followed by its model overlays
+      # (<name>.<key>.md next to it, ModelOverlay.overlay_file?; a plain
+      # tips.v2.md with no tips.md isn't one), with a note listing them. An
+      # overlay named without its base is kept, with a warning.
+      def with_overlays(allow, candidates_by_basename)
+        dir = File.dirname(candidates_by_basename.values.first.to_s)
+        overlays = candidates_by_basename.keys.select { |k| ModelOverlay.overlay_file?(File.join(dir, k)) }
+        allow.flat_map do |key|
+          if overlays.include?(key)
+            base = ModelOverlay.base_file_for(key)
+            unless allow.include?(base)
+              @warnings << "#{key} is a model overlay of #{base}, which the bundle leaves out; it loads only where #{base} exists"
+            end
+            next [key]
+          end
+
+          own = overlays.select { |k| ModelOverlay.base_file_for(k) == key && !allow.include?(k) }.sort
+          @warnings << "Included the model overlays of #{key}: #{own.join(", ")}" unless own.empty?
+          [key, *own]
+        end.uniq
       end
 
       def normalize_filter_entry(entry)

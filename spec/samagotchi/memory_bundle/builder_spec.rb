@@ -128,4 +128,29 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     names = [repo, tree].map { |dir| Dir.chdir(dir) { builder.send(:default_name, "project") } }
     expect(names).to eq(%w[chi_my-repo_memories chi_my-repo_memories])
   end
+  describe "model overlays with --files" do
+    before do
+      { "tips.md" => "Base\n", "tips.qwen3.md" => "Qwen\n", "tips.deepseek.md" => "DeepSeek\n",
+        "notes.v2.md" => "dotted\n", "other.md" => "x\n" }.each { |f, body| File.write(File.join(system_dir, f), body) }
+    end
+
+    it "a named base brings its overlays, with a note; a dotted memory without a base isn't one" do
+      builder = described_class.new(scope: "system", out: File.join(tmpdir, "out"), files: %w[tips other])
+      expect(builder.run[:files]).to eq(%w[tips.md tips.deepseek.md tips.qwen3.md other.md])
+      expect(builder.warnings).to eq(["Included the model overlays of tips.md: tips.deepseek.md, tips.qwen3.md"])
+    end
+
+    it "warns about an overlay named without its base" do
+      builder = described_class.new(scope: "system", out: File.join(tmpdir, "out"), files: %w[tips.qwen3 other])
+      expect(builder.run[:files]).to eq(%w[tips.qwen3.md other.md])
+      expect(builder.warnings).to eq(["tips.qwen3.md is a model overlay of tips.md, which the bundle leaves out; " \
+                                      "it loads only where tips.md exists"])
+    end
+
+    it "an unfiltered build is unchanged" do
+      builder = described_class.new(scope: "system", out: File.join(tmpdir, "out"))
+      expect(builder.run[:files]).to eq(%w[notes.v2.md other.md tips.deepseek.md tips.md tips.qwen3.md])
+      expect(builder.warnings).to eq([])
+    end
+  end
 end
