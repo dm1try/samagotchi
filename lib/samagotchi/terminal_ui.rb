@@ -30,6 +30,7 @@ require_relative "terminal_ui/input_support"
 require_relative "terminal_ui/image_input"
 require_relative "terminal_ui/plain_surface"
 require_relative "terminal_ui/live_region"
+require_relative "terminal_ui/one_shot_sink"
 require_relative "terminal_ui/question_prompt"
 require_relative "terminal_ui/repl_input"
 require_relative "terminal_ui/status_row"
@@ -245,7 +246,8 @@ module Samagotchi
           result = @engine.run_turn(
             session,
             @prompt,
-            on_event: nil,
+            # Retry lines on stderr; stdout gets the answer below.
+            on_event: OneShotSink.new,
             max_iterations: IterationLimit.for(no_interrupt: true),
             cancel_controller: nil,
             images: ImageInput.extract(@prompt)

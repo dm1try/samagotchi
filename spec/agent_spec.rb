@@ -571,6 +571,16 @@ file2.rb")
       end.to output("Resumed session: #{resumed.id}\n").to_stderr
     end
 
+    # The retry line goes to stderr, as the REPL prints it in the turn.
+    it "prints an empty answer's retry line on stderr with --non-interactive, the answer alone on stdout" do
+      answers = ["", "done"]
+      allow(client).to receive(:complete) { answers.shift }
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
+      expect do
+        expect { agent.run }.to output("done\n").to_stdout
+      end.to output(/^↻ empty answer, asking again \(1\/1\)$/).to_stderr
+    end
+
     it "keeps a failed -p --non-interactive turn's session and says how to go on" do
       allow(client).to receive(:complete).and_raise(Samagotchi::LLM::ServerError.new("boom", host: "h"))
       agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
