@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-03
+
 ### Added
 
 - `guardrails.mode` (config.yml only): `auto`, the new default, or `strict`. Rules can be tagged `modes: [strict]`
@@ -84,6 +86,8 @@ and commands may change between minor versions. How releases are made:
   already deleted: the extracted source is kept until the agent step is done, then cleaned up.
 - `chi self` now checks a local `api: openai` host's reachability (a `GET <base>/models` with the same short
   probe timeouts) and reports up/down with the ids it serves, instead of always saying "reported per turn".
+
+Update with `chi update`: guardrails moves to 0.5.0 (auto mode and the new rule keys; it needs chi 0.20.0), mcp to 0.4.1 (exit status, image lines, image blobs) and check-in to 0.2.1 (a dropped nudge says so). Restart `chi web` and running sessions afterwards (`chi sessions restart ID`).
 
 ## [0.19.0] - 2026-10-03
 
@@ -1195,7 +1199,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/dm1try/samagotchi/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/dm1try/samagotchi/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/dm1try/samagotchi/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/dm1try/samagotchi/compare/v0.17.0...v0.18.0
