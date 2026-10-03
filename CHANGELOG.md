@@ -62,6 +62,8 @@ and commands may change between minor versions. How releases are made:
   to date" instead of "Updated".
 - `chi bundle upgrade --agent` from a git/zip/tar source no longer hands the agent an `incoming:` path that was
   already deleted: the extracted source is kept until the agent step is done, then cleaned up.
+- `chi self` now checks a local `api: openai` host's reachability (a `GET <base>/models` with the same short
+  probe timeouts) and reports up/down with the ids it serves, instead of always saying "reported per turn".
 
 ## [0.19.0] - 2026-10-03
 

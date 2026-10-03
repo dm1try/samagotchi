@@ -243,7 +243,9 @@ or ending in `localhost`, `.local`, `.lan`, `.home`, `.home.arpa`, `.internal`,
 or `.ts.net` (Tailscale) is local: chi doesn't look names up. A remote
 host keeps its model list for 10 minutes, gets a 120-second first-token limit,
 and isn't asked for llama.cpp's `/props` (its context window and served model
-come from its model list and each turn). `remote: true` or `remote: false` on a
+come from its model list and each turn). A local `api: openai` host has no
+`/props`, so `chi self` GETs its `/models` with the same short probe timeouts
+and reports up/down with the ids it serves. `remote: true` or `remote: false` on a
 host decides it instead, e.g. for a llama.cpp behind an https proxy on the LAN:
 
 ```yaml

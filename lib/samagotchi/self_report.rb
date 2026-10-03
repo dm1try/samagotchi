@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "json"
+require "net/http"
+require "uri"
 require_relative "version"
 require_relative "config"
 require_relative "context_window"
@@ -11,6 +13,8 @@ require_relative "model_overlay"
 require_relative "thinking"
 require_relative "served_model"
 require_relative "host_registry"
+require_relative "llm/http"
+require_relative "llm/api_key"
 require_relative "tools/memory"
 require_relative "hooks/loader"
 require_relative "memory_bundle/provenance"
@@ -194,7 +198,9 @@ module Samagotchi
 
     # chi self's one server call: a single-model llama.cpp answers any name
     # with the model it loaded, and its /props names it (model_alias). One
-    # GET with the probe's short timeouts; a remote host isn't asked.
+    # GET with the probe's short timeouts; a remote host isn't asked. A local
+    # chat host (api: openai) has no /props, so it gets a GET <base>/models
+    # with the same timeouts: up/down and the ids it serves.
     def served_model_for(model, env)
       registry = HostRegistry.new(env: env)
       target = registry.resolve(model)
@@ -202,7 +208,7 @@ module Samagotchi
       bare = target.bare_model
       return "-" unless entry
       return "reported per turn (remote host)" if entry.remote?
-      return NO_PROPS if entry.chat?
+      return chat_served_model_for(entry, bare, env) if entry.chat?
 
       client = registry.client_for(entry)
       props = client.server_props(model: bare)
@@ -215,6 +221,36 @@ module Samagotchi
       ServedModel.differs?(bare, served) ? "#{served} (not #{bare}: the server serves its own model)" : served
     rescue StandardError => e
       "unknown (#{e.class})"
+    end
+
+    # A local chat host's reachability: one GET <base>/models with the
+    # native probe's short timeouts (Client's /props probe), no retry. Up
+    # with the ids it serves, down when it doesn't answer.
+    def chat_served_model_for(entry, bare, env)
+      uri = URI("#{entry.openai_base_url}/models")
+      request = Net::HTTP::Get.new(uri)
+      http = LLM::HTTP.new(label: entry.name, open_timeout: Client::CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
+                           read_timeout: Client::CONTEXT_WINDOW_PROBE_READ_TIMEOUT,
+                           retry_policy: LLM::HTTP::RetryPolicy.none,
+                           api_key: LLM::ApiKey.for(entry.api_key_env, host: entry.host, env: env))
+      response = http.fetch(uri, request, retries: false, check_status: false, log_fields: { purpose: "models" })
+      return "down (HTTP #{response.code})" unless response.code.to_s == "200"
+
+      ids = chat_model_ids(response.body)
+      return "up (no models listed)" if ids.empty?
+
+      note = ids.any? { |id| id.casecmp?(bare.to_s) } ? "" : " (not #{bare})"
+      "up: #{ids.join(", ")}#{note}"
+    rescue StandardError
+      "down (the server didn't answer; is it running?)"
+    end
+
+    def chat_model_ids(body)
+      parsed = JSON.parse(body.to_s)
+      data = parsed.is_a?(Hash) ? parsed["data"] : parsed
+      Array(data).filter_map { |raw| raw.is_a?(Hash) ? (raw["id"] || raw[:id]).to_s : raw.to_s }.reject(&:empty?)
+    rescue JSON::ParserError
+      []
     end
 
     # Offline, so no /props probe: where nothing is configured, a native

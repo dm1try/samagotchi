@@ -34,6 +34,9 @@ RSpec.describe Samagotchi::SelfReport do
       probed << model
       answer.call
     end
+    # A local chat host's /models probe answers nothing unless a spec says
+    # otherwise (no real network in specs).
+    allow_any_instance_of(Samagotchi::LLM::HTTP).to receive(:fetch).and_raise(Errno::ECONNREFUSED)
   end
 
   around { |example| with_env("XDG_CONFIG_HOME" => config_home) { example.run } }
@@ -210,7 +213,7 @@ RSpec.describe Samagotchi::SelfReport do
       expect(field("model")).to eq("splash:Qwen3.8-27B (this session abcd1234; default main:spec-model)")
       expect(field("host")).to eq("splash 10.0.0.6:8082 as Qwen3.8-27B")
       expect(field("loop")).to eq("chat (api: openai)")
-      expect(field("served model")).to eq("reported per turn (the server has no /props)")
+      expect(field("served model")).to eq("down (the server didn't answer; is it running?)")
       expect(@probed).to eq([])
     end
 
@@ -293,10 +296,10 @@ RSpec.describe Samagotchi::SelfReport do
       end
     end
 
-    it "says a chat host reports it per turn, without a /props probe" do
+    it "probes a local chat host's /models instead of /props" do
       write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
 
-      expect(field("served model")).to eq("reported per turn (the server has no /props)")
+      expect(field("served model")).to eq("down (the server didn't answer; is it running?)")
       expect(@probed).to eq([])
     end
 
@@ -305,6 +308,57 @@ RSpec.describe Samagotchi::SelfReport do
 
       expect(field("served model")).to eq("reported per turn (remote host)")
       expect(@probed).to eq([])
+    end
+  end
+
+  describe "the served model row for a local chat host (api: openai)" do
+    before { allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model") }
+
+    # A local chat host has no /props: chi self GETs <base>/models with the
+    # native probe's short timeouts.
+    def stub_models(status: 200, body: nil, raise_error: nil)
+      response = Net::HTTPResponse::CODE_TO_OBJ[status.to_s].new("1.1", status.to_s, "")
+      allow_any_instance_of(Samagotchi::LLM::HTTP).to receive(:fetch) do |_http, uri, _req, **_opts|
+        raise raise_error if raise_error
+
+        allow(response).to receive(:body).and_return(body.to_s)
+        response
+      end
+    end
+
+    it "reports up with the ids it serves" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
+      stub_models(body: JSON.generate(data: [{ id: "spec-model" }, { id: "other" }]))
+
+      expect(field("served model")).to eq("up: spec-model, other")
+    end
+
+    it "marks the configured model when the list doesn't have it" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
+      stub_models(body: JSON.generate(data: [{ id: "other" }]))
+
+      expect(field("served model")).to eq("up: other (not spec-model)")
+    end
+
+    it "reports down when the server doesn't answer" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
+      stub_models(raise_error: Errno::ECONNREFUSED)
+
+      expect(field("served model")).to eq("down (the server didn't answer; is it running?)")
+    end
+
+    it "reports down with the status on an error response" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
+      stub_models(status: 500, body: "boom")
+
+      expect(field("served model")).to eq("down (HTTP 500)")
+    end
+
+    it "says up with no models when the list is empty" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
+      stub_models(body: JSON.generate(data: []))
+
+      expect(field("served model")).to eq("up (no models listed)")
     end
   end
 
