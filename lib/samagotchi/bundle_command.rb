@@ -263,6 +263,10 @@ module Samagotchi
       @stdout.puts "Provenance updated after interactive resolution."
       @stdout.puts "Upgrade resolved interactively."
       0
+    ensure
+      # An owned source (git/zip/tar) was kept for the incoming files above;
+      # the agent step is done with them now.
+      installer.cleanup_source!
     end
 
     def uninstall(rest)

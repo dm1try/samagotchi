@@ -546,6 +546,51 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  describe "an upgrade from an owned source (zip) with a conflict" do
+    # A zip source is extracted to a temp dir the installer owns; the
+    # conflict's incoming: path points into it, so it must outlive #run
+    # until the agent step is done.
+    def zip_of(dir, path)
+      FileUtils.rm_f(path)
+      Dir.chdir(dir) { system("zip", "-r", path, ".") }
+      path
+    end
+
+    it "keeps the incoming file readable after run, and cleans up on cleanup_source!" do
+      v1 = write_bundle(File.join(tmpdir, "z1"), { "a.md" => "one\n" }, name: "zip-up", version: "1.0.0")
+      installer_for(source: v1, name: "zip-up", scope: "system").run
+      File.write(File.join(system_memories_dir, "a.md"), "edited\n")
+
+      v2 = write_bundle(File.join(tmpdir, "z2"), { "a.md" => "two\n" }, name: "zip-up", version: "2.0.0")
+      zip = zip_of(v2, File.join(tmpdir, "z2.zip"))
+
+      up = described_class.new(source: zip, name: "zip-up", scope: "system", strict: true, upgrade: true)
+      up.run
+
+      incoming = up.conflicts["a.md"][:incoming]
+      expect(File.exist?(incoming)).to be(true)
+      expect(File.read(incoming)).to eq("two\n")
+
+      up.cleanup_source!
+      expect(File.exist?(incoming)).to be(false)
+      expect(up.source_dir).to be_nil
+    end
+
+    it "cleans up right away when there is no conflict" do
+      v1 = write_bundle(File.join(tmpdir, "z3"), { "a.md" => "one\n" }, name: "zip-clean", version: "1.0.0")
+      installer_for(source: v1, name: "zip-clean", scope: "system").run
+
+      v2 = write_bundle(File.join(tmpdir, "z4"), { "a.md" => "two\n" }, name: "zip-clean", version: "2.0.0")
+      zip = zip_of(v2, File.join(tmpdir, "z4.zip"))
+
+      up = described_class.new(source: zip, name: "zip-clean", scope: "system", strict: true, upgrade: true)
+      up.run
+
+      expect(up.conflicts).to be_empty
+      expect(up.source_dir).to be_nil
+    end
+  end
+
   describe "upgrade: files the new version no longer ships" do
     def bundle_version(dir, files, version)
       FileUtils.rm_rf(File.join(tmpdir, dir))

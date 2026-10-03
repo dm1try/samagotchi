@@ -60,6 +60,8 @@ and commands may change between minor versions. How releases are made:
   starts with it), instead of silently picking another name.
 - `chi bundle upgrade` reports a hook or plugin file that is byte-identical to the installed one as "already up
   to date" instead of "Updated".
+- `chi bundle upgrade --agent` from a git/zip/tar source no longer hands the agent an `incoming:` path that was
+  already deleted: the extracted source is kept until the agent step is done, then cleaned up.
 
 ## [0.19.0] - 2026-10-03
 
