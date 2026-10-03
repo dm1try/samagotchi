@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   elapsedSince,
   formatDuration,
+  mergeTiming,
   normalizeTiming,
   turnRecordAt,
   timedTurnIndexes,
@@ -319,4 +320,65 @@ test("turnGroups: a prompt with its turn_id pairs with that record, so a failed 
   assert.deepEqual(turnGroups(old, timing).map((g) => g.record?.id), ["A", "B"]);
   // An id with no record yet (the running turn): no record, not another turn's.
   assert.equal(turnGroups([{ role: "user", content: "x", turn_id: "Z" }], timing)[0].record, null);
+});
+
+// mergeTiming: a turn-end re-read's newest records merged by id.
+const T = (id, at, extra = {}) => ({ id, started_at: `2026-10-03T10:0${at}:00.000Z`, duration_ms: at * 1000, ...extra });
+const page = (turns, tools = []) => normalizeTiming({ turn_records: turns, tool_records: tools });
+const ids = (records) => records.map((r) => r.id);
+
+test("mergeTiming appends the newest turn and its tool records; the count matches", () => {
+  const { timing, short } = mergeTiming(page([T("t1", 1)], [{ id: "t1:1:1", turn_id: "t1" }]), {
+    started_at: "2026-10-03T10:00:00.000Z",
+    session_duration_ms: 9000,
+    turn_records: [T("t2", 2)],
+    tool_records: [{ id: "t2:1:1", turn_id: "t2" }, { id: "t2:1:2", turn_id: "t2" }],
+    turn_count: 2,
+  });
+  assert.deepEqual(ids(timing.turnRecords), ["t1", "t2"]);
+  assert.deepEqual(ids(timing.toolRecords), ["t1:1:1", "t2:1:1", "t2:1:2"]);
+  assert.equal(timing.startedAt, "2026-10-03T10:00:00.000Z");
+  assert.equal(timing.sessionDurationMs, 9000);
+  assert.equal(short, false);
+});
+
+test("mergeTiming replaces a known record in place: a duplicate read doesn't grow the lists", () => {
+  const before = page([T("t1", 1), T("t2", 2)], [{ id: "t2:1:1", turn_id: "t2", duration_ms: 1 }]);
+  const reply = { turn_records: [T("t2", 2, { duration_ms: 2500 })], tool_records: [{ id: "t2:1:1", turn_id: "t2", duration_ms: 5 }], turn_count: 2 };
+  const once = mergeTiming(before, reply).timing;
+  const twice = mergeTiming(once, reply);
+  assert.deepEqual(ids(twice.timing.turnRecords), ["t1", "t2"]);
+  assert.equal(twice.timing.turnRecords[1].duration_ms, 2500);
+  assert.deepEqual(twice.timing.toolRecords.map((r) => r.duration_ms), [5]);
+  assert.equal(twice.short, false);
+});
+
+test("mergeTiming inserts an unknown turn by started_at (a late read of an earlier turn); ties and unparsable dates keep arrival order", () => {
+  const inserted = mergeTiming(page([T("t1", 1), T("t3", 3)]), { turn_records: [T("t2", 2)], turn_count: 3 }).timing;
+  assert.deepEqual(ids(inserted.turnRecords), ["t1", "t2", "t3"]);
+  const tie = mergeTiming(page([T("a", 2)]), { turn_records: [T("b", 2)], turn_count: 2 }).timing;
+  assert.deepEqual(ids(tie.turnRecords), ["a", "b"]);
+  const undated = mergeTiming(page([T("t1", 1)]), { turn_records: [{ id: "x", started_at: "nope" }], turn_count: 2 }).timing;
+  assert.deepEqual(ids(undated.turnRecords), ["t1", "x"]);
+});
+
+test("mergeTiming is short when the count says a turn is missing (a queued turn's read came late)", () => {
+  // The page has none; the reply has B's only, and counts A and B.
+  const { timing, short } = mergeTiming(page([]), { turn_records: [T("tB", 2)], turn_count: 2 });
+  assert.deepEqual(ids(timing.turnRecords), ["tB"]);
+  assert.equal(short, true);
+});
+
+test("mergeTiming keeps more records than the count (a worker died before saving a turn the page saw)", () => {
+  const { timing, short } = mergeTiming(page([T("t1", 1), T("t2", 2)]), { turn_records: [], turn_count: 1 });
+  assert.deepEqual(ids(timing.turnRecords), ["t1", "t2"]);
+  assert.equal(short, false);
+});
+
+test("mergeTiming without turn_count (an older server's whole timing) replaces, as normalizeTiming", () => {
+  const { timing, short } = mergeTiming(page([T("old", 1)]), { turn_records: [T("t1", 1), T("t2", 2)], active_turn: { id: "t3" } });
+  assert.deepEqual(ids(timing.turnRecords), ["t1", "t2"]);
+  assert.deepEqual(timing.activeTurn, { id: "t3" });
+  assert.equal(short, false);
+  assert.deepEqual(mergeTiming(page([T("t1", 1)]), undefined).timing, normalizeTiming());
 });

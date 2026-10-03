@@ -179,14 +179,18 @@ module Samagotchi
 
       # API requests at debug level (not the page and its assets): method,
       # path, status, time. Never a body or the query; only a tail=1 read
-      # (the page's end-of-turn re-read) is marked, to tell it from a full one.
+      # (the page's end-of-turn re-read) and a timing=1 one (its fallback
+      # when the merge came up short) are marked, to tell them from a full one.
       def log_request(env, response, started)
         path = env["PATH_INFO"].to_s
         return unless path.start_with?("/api/") && Log.level?(:debug)
 
-        tail = env["QUERY_STRING"].to_s.split("&").include?("tail=1") ? { tail: true } : {}
+        params = env["QUERY_STRING"].to_s.split("&")
+        marks = {}
+        marks[:tail] = true if params.include?("tail=1")
+        marks[:timing] = true if params.include?("timing=1")
         Log.debug(:web, "request", sid: path[%r{\A/api/sessions/([^/]+)}, 1], method: env["REQUEST_METHOD"], path: path,
-                                   status: response[0], **tail,
+                                   status: response[0], **marks,
                                    ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
       end
 

@@ -173,6 +173,35 @@ test("getSession({ cards: true }) asks for the cards alone (their rendered bodie
   assert.deepEqual(calls, [["/api/sessions/abc?cards=1", false]]);
 });
 
+test("getSession({ tail, recent, turnId }) asks for the newest turn's timing and that turn's answer, never passing them to fetch", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push([String(path), ["tail", "recent", "turnId", "timing"].some((k) => k in opts)]);
+    return Promise.resolve(okResponse({ session: { id: "abc" } }));
+  };
+  await getSession("abc", { tail: true, recent: true, fetchImpl });
+  await getSession("abc", { tail: true, recent: true, turnId: "t 1/2", fetchImpl });
+  await getSession("abc", { tail: true, turnId: "", fetchImpl });
+  // Only with tail: a full read ignores them.
+  await getSession("abc", { recent: true, turnId: "t1", fetchImpl });
+  assert.deepEqual(calls, [
+    ["/api/sessions/abc?tail=1&recent=1", false],
+    ["/api/sessions/abc?tail=1&recent=1&turn_id=t%201%2F2", false],
+    ["/api/sessions/abc?tail=1", false],
+    ["/api/sessions/abc", false],
+  ]);
+});
+
+test("getSession({ timing: true }) asks for the whole timing alone, never passing timing to fetch", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push([String(path), "timing" in opts]);
+    return Promise.resolve(okResponse({ timing: {} }));
+  };
+  await getSession("abc", { timing: true, fetchImpl });
+  assert.deepEqual(calls, [["/api/sessions/abc?timing=1", false]]);
+});
+
 test("sendTurn posts the prompt to the turn route", async () => {
   const calls = [];
   await sendTurn("abc", "prompt text", {
