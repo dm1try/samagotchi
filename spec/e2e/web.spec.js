@@ -807,7 +807,6 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
 // generation's step, closed once the retry's step opens.
 test("thinking loop: loop-guard cuts it, asks again, answers", { tag: "@turn" }, async ({ page, script }) => {
   script("thinking_loop");
-  const started = Date.now();
   await send(page, "How many r letters are in strawberry?");
   const rows = page.locator(`${H()} .hook-notice`);
   const cut = rows.filter({ hasText: "thinking repeats itself" });
@@ -826,8 +825,18 @@ test("thinking loop: loop-guard cuts it, asks again, answers", { tag: "@turn" },
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await expect(answer(page)).toHaveText("PONG after the cut.");
   await turnEnded(page, 1);
-  // Well before the loop's own end (~11 s of streaming, then the 3 s hold).
-  expect(Date.now() - started).toBeLessThan(9000);
+  // Well before the loop's own end (~11 s of streaming, then the 3 s hold):
+  // the cut turn takes ~5 s. Timed by the worker (the turn's own seconds),
+  // not from the test's start, which adds the worker's spawn and tipped a
+  // 9 s wall-clock bound over under load.
+  // The list's summary can trail the page's turn end by a moment: polled.
+  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  const turnSeconds = async () => {
+    const list = await (await page.request.get(new URL("/api/sessions", page.url()).href)).json();
+    return Number(list.find((s) => s.id === id)?.last_turn?.seconds) || 0;
+  };
+  await expect.poll(turnSeconds).toBeGreaterThan(0);
+  expect(await turnSeconds()).toBeLessThan(9);
 });
 
 // A warn card in a step (here the e2e-warn-card test bundle's, at the first
