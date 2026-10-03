@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isApproval, approvalView, relayView, resultText, approvalAllowed, nextCardAction, summaryText, truncate } from "../../../lib/samagotchi/web/public/question_card.js";
+import { isApproval, approvalView, relayView, resultText, approvalAllowed, answerErrorText, nextCardAction, summaryText, truncate } from "../../../lib/samagotchi/web/public/question_card.js";
 
 const approval = {
   id: "a1",
@@ -77,6 +77,19 @@ test("resultText for questions is unchanged", () => {
   assert.equal(resultText(q, { cancelled: true }), "Cancelled");
   assert.equal(resultText(q, { cancelled: true, reason: "dismissed" }), "Cancelled (dismissed)");
   assert.equal(approvalAllowed(q, { selected: ["A"] }), null);
+});
+
+// 4.27: only a 503 (no live bridge) means the session isn't running; any
+// other failure shows what the server or the worker said.
+test("answerErrorText: 503 says restart, anything else shows the detail", () => {
+  const err = (message, status) => Object.assign(new Error(message), status ? { status } : {});
+  assert.equal(answerErrorText(err("no live bridge for session s1 (503)", 503)), "Session is not running — restart it to answer.");
+  // The status alone is enough: the message needn't spell it out.
+  assert.equal(answerErrorText(err("no live bridge for session s1", 503)), "Session is not running — restart it to answer.");
+  assert.equal(answerErrorText(err("not_live (503)")), "Session is not running — restart it to answer.");
+  assert.equal(answerErrorText(err("the question desk raised (502)", 502)), "the question desk raised (502)");
+  assert.equal(answerErrorText(err("question already answered (409)", 409)), "question already answered (409)");
+  assert.equal(answerErrorText(err("Failed to fetch")), "Failed to fetch");
 });
 
 test("summaryText pending: header, else a label (the question is in the body)", () => {

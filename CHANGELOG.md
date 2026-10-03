@@ -25,6 +25,9 @@ and commands may change between minor versions. How releases are made:
 - The web's scope links (`all`, `← project`) keep the page's `?view=stage|turn`.
 - An approval card's verdict (`Allowed (scope)` / `Denied`) reads above the command it decided, so it no longer
   looks like part of the tool call when the card's details are expanded.
+- Answering or dismissing a question no longer says "Session is not running" when the worker is live but failed the
+  request: the server answers 502 with the worker's detail and the card shows it. 503 stays for a session with no
+  live worker.
 
 ## [0.18.1] - 2026-10-03
 

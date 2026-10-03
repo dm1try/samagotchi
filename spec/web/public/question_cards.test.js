@@ -169,6 +169,29 @@ test("a send to a stopped session says to restart it", async () => {
   assert.equal(card.classList.contains("submitting"), false);
 });
 
+// 4.27: a live worker that failed the request (the server's 502 bridge_error)
+// is not a session that isn't running: the card shows what the worker said.
+test("a send the worker failed shows its detail, not the restart line", async () => {
+  const { cards } = setup({ fail: "the question desk raised (502)" });
+  cards.renderQuestion(PQ);
+  const card = cards.questionCard();
+  card.querySelectorAll(".question-option input")[0].checked = true;
+  card.querySelector(".question-submit").click();
+  await flush();
+  assert.equal(card.querySelector(".question-error").textContent, "the question desk raised (502)");
+  assert.equal(card.querySelector(".question-submit").disabled, false);
+});
+
+test("a dismissal the worker failed shows its detail too", async () => {
+  const { cards } = setup({ fail: "the question desk raised (502)" });
+  cards.renderQuestion(PQ);
+  const card = cards.questionCard();
+  card.querySelector(".question-dismiss").click();
+  await flush();
+  assert.equal(card.querySelector(".question-error").textContent, "the question desk raised (502)");
+  assert.equal(card.querySelector(".question-dismiss").disabled, false);
+});
+
 test("Dismiss leaves the question unanswered", () => {
   const { cards, calls } = setup();
   cards.renderQuestion(PQ);

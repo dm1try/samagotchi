@@ -785,8 +785,10 @@ module Samagotchi
       # worker_timeout (+what+ didn't happen), a 404 for a route the worker
       # doesn't have → 501 not_supported (it runs an older chi that +cant+;
       # 501, not 503: it is live, and the page reads 503 as "not running"),
-      # and no live bridge, a refused connection or anything else → 503
-      # not_live.
+      # another unmapped status → 502 bridge_error with the worker's detail
+      # (a live worker that failed the request; never 503, which the page
+      # reads as "session not running"), and only no live bridge, a refused
+      # connection or one that says it isn't this session's → 503 not_live.
       # @param request [#call] sends with the client, answers its Response
       def relay(id, client, request, what:, cant:)
         return not_live(id) unless client
@@ -801,7 +803,7 @@ module Samagotchi
           return not_live(id) if reply.json&.dig("error") == "unknown_session"
 
           error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: cant))
-        else not_live(id)
+        else bridge_error(reply, what)
         end
       rescue Errno::ETIMEDOUT
         worker_timeout(what)
@@ -811,6 +813,15 @@ module Samagotchi
 
       def not_live(id)
         error_response(503, "not_live", "no live bridge for session #{id}")
+      end
+
+      # A live worker refused or failed the request (a 500 in its handler, a
+      # status this route doesn't know): 502, with its detail when it sent
+      # one. 503 would have the page say the session isn't running, which is
+      # untrue and sends the user to restart a healthy worker.
+      def bridge_error(reply, what)
+        detail = reply_detail(reply, "#{what}: the session's worker answered #{reply.status}")
+        error_response(502, "bridge_error", detail)
       end
 
       # The Bridge's detail for a refusal, or +fallback+.
