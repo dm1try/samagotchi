@@ -82,7 +82,7 @@ module Samagotchi
       #   lists and GET /api/events streams from (Server always builds one);
       #   without one both routes answer 503
       # @param registry [HostRegistry, nil] the hosts GET /api/models lists
-      #   (built from the config on first use)
+      #   (nil: built from config.yml's hosts:, again when they change)
       # @param models_wait_timeout [Float] bounded seconds GET /api/models
       #   waits for the hosts' lists
       # @param lan [Hash, nil] LAN mode (web.host: lan): { ip:, token: },
@@ -96,6 +96,7 @@ module Samagotchi
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil)
         @manager = manager || SessionManager
         @registry = registry
+        @registry_given = !registry.nil?
         @models_wait_timeout = models_wait_timeout
         @models_mutex = Mutex.new
         @models_thread = nil
@@ -443,8 +444,21 @@ module Samagotchi
         json_response(200, payload)
       end
 
+      # Built again when config.yml's hosts: changed (compared as read: the
+      # YAML read is mtime-cached), so the model picker lists a host added
+      # while chi web runs. An injected registry (specs) stays.
       def host_registry
-        @models_mutex.synchronize { @registry ||= HostRegistry.new }
+        @models_mutex.synchronize do
+          next @registry if @registry_given
+
+          hosts = ConfigFile.hosts_config
+          if @registry.nil? || hosts != @registry_hosts
+            @registry = HostRegistry.new(hosts_config: hosts)
+            @registry_hosts = hosts
+            @models_thread = nil # a listing of the old hosts
+          end
+          @registry
+        end
       end
 
       # The hosts' model lists (cached ones as they are), or the last complete

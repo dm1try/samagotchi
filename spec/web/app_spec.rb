@@ -1513,6 +1513,27 @@ RSpec.describe Samagotchi::Web::App do
   def model_info(id) = Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {})
 
   describe "GET /api/models" do
+    it "follows a hosts: edit made while chi web runs, and keeps the registry while hosts: stay" do
+      a = { "box" => { name: "box", host: "a", port: 1 } }
+      b = a.merge("new" => { name: "new", host: "b", port: 2 })
+      hosts = a
+      allow(Samagotchi::ConfigFile).to receive(:hosts_config) { hosts }
+      built = []
+      allow(Samagotchi::HostRegistry).to receive(:new) do |hosts_config:|
+        built << hosts_config.keys
+        FakeModelRegistry.new(hosts_config.keys.to_h { |k| [k, { models: [model_info("m-#{k}")], error: nil }] },
+                              default_host: "box")
+      end
+      app = described_class.new(manager: FakeResponsesManager.new, session_class: StubSessionLoader)
+      names = -> { JSON.parse(app.call(env_for("/api/models"))[2].first)["models"].map { |m| m["name"] } }
+
+      expect(names.call).to include("m-box")
+      expect(names.call).not_to include("new:m-new")
+      hosts = b
+      expect(names.call).to include("m-box", "new:m-new")
+      expect(built).to eq([%w[box], %w[box new]])
+    end
+
     def models_payload(registry, **opts)
       app = described_class.new(manager: FakeResponsesManager.new, session_class: StubSessionLoader, registry: registry, **opts)
       status, _headers, body = app.call(env_for("/api/models"))

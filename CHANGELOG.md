@@ -21,6 +21,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- The web's model picker lists a host added to (or changed in) `hosts:` while `chi web` runs, instead of the hosts
+  it started with.
+
 - source-links (0.3.2): a `case_insensitive: true` source no longer lists a ref in its `sources:` note when the ref
   is a markdown link's label whose target names it in another case (`[jira-1](…/JIRA-1)`). Run `chi update` to get it.
 - An `@path` image in a prompt takes backslash escapes, as a Finder drag into the terminal types them:
