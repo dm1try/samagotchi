@@ -602,6 +602,87 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
   end
 
+  # The totals are running counters; they must equal the sums over every
+  # record (what #snapshot computed before), mid-turn, after a reload too.
+  describe "the running totals" do
+    def num(records, key) = records.sum { |r| r[key].is_a?(Numeric) ? r[key] : 0 }
+
+    # The totals recomputed over the collector's full record lists and the
+    # running turn (spec-only: reads the private state).
+    def recomputed(metrics)
+      records = metrics.instance_variable_get(:@turn_records)
+      done = metrics.instance_variable_get(:@tool_records)
+      turn = metrics.instance_variable_get(:@turn)
+      tools = done + (turn ? turn.tool_calls_by_id.values : [])
+      kinds = (records.map { |r| r[:token_source] } + (turn&.token_sources || [])).compact.map(&:to_s)
+                                                                                  .flat_map { |k| k == "mixed" ? %w[server estimate] : [k] }.uniq
+      {
+        turns: records.size + (turn ? 1 : 0),
+        cancellations: records.count { |r| r[:status] == "canceled" },
+        tokens: { prompt_sum: num(records, :prompt_tokens_sum) + (turn&.prompt_sum || 0),
+                  completion_sum: num(records, :completion_tokens) + (turn&.completion_sum || 0),
+                  source: kinds.size > 1 ? "mixed" : kinds.first },
+        tool_calls_total: tools.size,
+        tool_calls_by_tool: tools.map { |t| t[:tool].to_s }.reject(&:empty?).tally,
+        tool_errors: done.count { |t| t[:status] == "error" },
+        iterations_total: num(records, :iterations) + (turn&.iteration_count || 0),
+        gen_latency_ms: (num(records, :gen_ms) + (turn&.gen_latency_accum || 0)).round,
+        retries: num(records, :retries) + (turn&.retries || 0)
+      }
+    end
+
+    def totals(snapshot) = snapshot.slice(*recomputed_keys)
+    def recomputed_keys = %i[turns cancellations tokens tool_calls_total tool_calls_by_tool tool_errors
+                             iterations_total gen_latency_ms retries]
+
+    def random_events(rng, turn_id)
+      events = [{ type: :turn_started, session_id: "random", prompt: "p", turn_id: turn_id }]
+      rng.rand(0..3).times do |iteration|
+        events << { type: :generation_started, iteration: iteration + 1 }
+        events << { type: :generation_retrying, attempt: 1 } if rng.rand < 0.2
+        events << if rng.rand < 0.7
+                    { type: :generation_chunk, iteration: iteration + 1, content: "a",
+                      payload: { "usage" => { "prompt_tokens" => rng.rand(1..500), "completion_tokens" => rng.rand(1..50) } } }
+                  else
+                    { type: :generation_chunk, iteration: iteration + 1, content: "x" * rng.rand(1..80), payload: nil }
+                  end
+        events << { type: :generation_completed, iteration: iteration + 1 }
+        calls = rng.rand(0..3)
+        next if calls.zero?
+
+        events << { type: :tool_dispatch_started, iteration: iteration + 1, call_count: calls }
+        calls.times do |index|
+          tool = %w[read execute grep].sample(random: rng)
+          events << { type: :tool_call_started, iteration: iteration + 1, call_index: index + 1, tool: tool }
+          events << { type: :tool_call_completed, iteration: iteration + 1, call_index: index + 1, tool: tool,
+                      status: %w[ok ok error blocked].sample(random: rng) }
+        end
+      end
+      events << [{ type: :turn_completed }, { type: :turn_failed },
+                 { type: :turn_canceled, cancellation_reason: :user }].sample(random: rng)
+    end
+
+    it "equal the sums over every record after each event, across a reload" do
+      rng = Random.new(20_261_003)
+      state_dir = Dir.mktmpdir
+      metrics = described_class.new.tap { |m| m.state_dir = state_dir }
+      30.times do |n|
+        if n == 15
+          metrics.persist
+          metrics = described_class.new.tap { |m| m.state_dir = state_dir }
+          metrics.session_id = "random"
+          expect(totals(metrics.snapshot)).to eq(recomputed(metrics))
+        end
+        random_events(rng, "t#{n}").each do |event|
+          metrics.call(event)
+          expect(totals(metrics.snapshot)).to eq(recomputed(metrics)), "turn #{n}, after #{event[:type]}"
+        end
+        metrics.persist if n.even?
+      end
+      expect(metrics.snapshot[:turns]).to eq(30)
+    end
+  end
+
   it "is error-isolated and never raises on bad input" do
     expect { metrics.call(nil) }.not_to raise_error
     expect { metrics.call("not a hash") }.not_to raise_error

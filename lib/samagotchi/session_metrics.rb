@@ -17,8 +17,9 @@ module Samagotchi
   #
   # Each finished turn leaves a record (status, timings, model, prompt and
   # completion tokens, tool calls, iterations, retries); session totals are
-  # sums over the records, so a worker that stops and wakes again (a new
-  # collector) keeps counting: #session_id= loads the records already saved.
+  # sums over the records, kept as running counters as records are added, so
+  # a worker that stops and wakes again (a new collector) keeps counting:
+  # #session_id= loads the records already saved.
   # Only prompt and completion counts, which every backend reports the same
   # way, are kept.
   #
@@ -130,6 +131,7 @@ module Samagotchi
       # and how many were loaded (a woken collector's live records start empty).
       @persisted_turns = 0
       @loaded_turns = 0
+      reset_totals
     end
 
     # /model: the window and prompt profile a turn reported were the old
@@ -269,30 +271,29 @@ module Samagotchi
     # Caller holds the mutex. +records+: :recent (the live snapshot) or :all
     # (analytics.json).
     def build_snapshot(records_mode)
-      records = @turn_records
+      totals = @totals
       turn = @turn
       in_flight = turn ? turn.tool_calls_by_id.values : []
-      tools = @tool_records + in_flight
       {
         session_id: @session_id,
-        turns: records.size + (turn ? 1 : 0),
-        cancellations: records.count { |record| record[:status] == "canceled" },
+        turns: @turn_records.size + (turn ? 1 : 0),
+        cancellations: totals[:cancellations],
         tokens: {
-          prompt_sum: sum(records, :prompt_tokens_sum) + (turn&.prompt_sum || 0),
-          completion_sum: sum(records, :completion_tokens) + (turn&.completion_sum || 0),
-          source: combined_source(records.map { |record| record[:token_source] } + (turn&.token_sources || []))
+          prompt_sum: totals[:prompt_sum] + (turn&.prompt_sum || 0),
+          completion_sum: totals[:completion_sum] + (turn&.completion_sum || 0),
+          source: combined_source(totals[:token_sources] + (turn&.token_sources || []))
         },
-        context: context_block(records),
+        context: context_block(@turn_records),
         profile: @profile,
         profile_source: @profile_source,
         served_model: @served_model,
         served_model_for: @served_model_for,
-        tool_calls_total: tools.size,
-        tool_calls_by_tool: tools.map { |tool| tool[:tool].to_s }.reject(&:empty?).tally,
-        tool_errors: @tool_records.count { |tool| tool[:status] == "error" },
-        iterations_total: sum(records, :iterations) + (turn&.iteration_count || 0),
-        gen_latency_ms: (sum(records, :gen_ms) + (turn&.gen_latency_accum || 0)).round,
-        retries: sum(records, :retries) + (turn&.retries || 0),
+        tool_calls_total: @tool_records.size + in_flight.size,
+        tool_calls_by_tool: tally_into(totals[:by_tool].dup, in_flight),
+        tool_errors: totals[:tool_errors],
+        iterations_total: totals[:iterations] + (turn&.iteration_count || 0),
+        gen_latency_ms: (totals[:gen_ms] + (turn&.gen_latency_accum || 0)).round,
+        retries: totals[:retries] + (turn&.retries || 0),
         started_at: @started_at,
         last_activity_at: @last_activity_at,
         session_duration_ms: elapsed_ms(@session_started_monotonic),
@@ -374,6 +375,7 @@ module Samagotchi
           record[:cancellation_reason] = reason.to_s unless reason.nil? || reason.to_s.empty?
           record.merge!(turn_token_fields(@turn))
           @turn_records << record
+          count_turn(record)
         end
         @turn = nil
       end
@@ -485,7 +487,7 @@ module Samagotchi
         return unless active
 
         finished_at = now
-        @tool_records << active.slice(
+        record = active.slice(
           :id, :turn_id, :iteration, :call_index, :tool, :started_at
         ).merge(
           status: status.empty? ? "ok" : status,
@@ -493,6 +495,8 @@ module Samagotchi
           # Less a guardrail approval wait (ToolRunner's waited_ms).
           duration_ms: [elapsed_ms(active[:started_monotonic]) - event[:waited_ms].to_i, 0].max
         )
+        @tool_records << record
+        count_tool(record)
       end
     end
 
@@ -598,6 +602,11 @@ module Samagotchi
       @turn_records = loaded_turns + @turn_records
       @tool_records = loaded_records(prior["tool_records"]) + @tool_records
       @persisted_turns = @loaded_turns = loaded_turns.size
+      # Once per collector: recount in record order (the tally's key order
+      # stays first-seen).
+      reset_totals
+      @turn_records.each { |record| count_turn(record) }
+      @tool_records.each { |record| count_tool(record) }
       @started_at = earliest_timestamp(prior["started_at"], @started_at)
       @last_activity_at ||= prior["last_activity_at"]
       # The window last seen, until this process's first generation reports.
@@ -627,8 +636,40 @@ module Samagotchi
       }
     end
 
-    def sum(records, key)
-      records.sum { |record| record[key].is_a?(Numeric) ? record[key] : 0 }
+    # The session totals over the finished records, as running counters
+    # (#snapshot adds the running turn). Caller holds the mutex.
+    def reset_totals
+      @totals = { cancellations: 0, prompt_sum: 0, completion_sum: 0, token_sources: [], iterations: 0,
+                  gen_ms: 0, retries: 0, by_tool: {}, tool_errors: 0 }
+    end
+
+    def count_turn(record)
+      totals = @totals
+      totals[:cancellations] += 1 if record[:status] == "canceled"
+      totals[:prompt_sum] += number(record[:prompt_tokens_sum])
+      totals[:completion_sum] += number(record[:completion_tokens])
+      totals[:iterations] += number(record[:iterations])
+      totals[:gen_ms] += number(record[:gen_ms])
+      totals[:retries] += number(record[:retries])
+      source = record[:token_source]
+      totals[:token_sources] |= [source.to_s] unless source.nil?
+    end
+
+    def count_tool(record)
+      @totals[:tool_errors] += 1 if record[:status] == "error"
+      tally_into(@totals[:by_tool], [record])
+    end
+
+    def tally_into(counts, tools)
+      tools.each do |tool|
+        name = tool[:tool].to_s
+        counts[name] = counts.fetch(name, 0) + 1 unless name.empty?
+      end
+      counts
+    end
+
+    def number(value)
+      value.is_a?(Numeric) ? value : 0
     end
 
     # server, estimate, or mixed when both kinds of counts (or a turn that
