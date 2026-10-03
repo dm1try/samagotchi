@@ -381,7 +381,7 @@ module Samagotchi
       root = MemoryPaths.project_root(cwd)
       lines = ["Current working directory:", cwd]
       unless root == cwd
-        lines << "Project root (project memories are shared by all worktrees and subdirectories of this repository):"
+        lines << "Project root (only where shared project memories come from; read, edit, run and commit in the current working directory above):"
         lines << root
       end
       home = Dir.home

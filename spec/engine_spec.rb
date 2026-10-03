@@ -136,7 +136,7 @@ RSpec.describe Samagotchi::Engine do
       expect(project_prompt_in(tree)).to include(<<~TEXT.chomp)
         Current working directory:
         #{tree}
-        Project root (project memories are shared by all worktrees and subdirectories of this repository):
+        Project root (only where shared project memories come from; read, edit, run and commit in the current working directory above):
         #{repo}
         Home directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)
         Project memories folder:

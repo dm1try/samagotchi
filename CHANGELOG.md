@@ -31,6 +31,9 @@ and commands may change between minor versions. How releases are made:
 - `read` with only `end_line` reads from line 1 instead of failing with "start_line must be provided". A range
   `edit` with only `end_line` still refuses (it would overwrite the top of the file) and now says what to pass:
   `pass start_line too (1-based, the first line to replace)`.
+- In a worktree or subfolder, the system prompt's "Project root" line now says it is only where shared project
+  memories come from, and to read, edit, run and commit in the current working directory; a model took the root for
+  its workspace and committed to the main checkout.
 
 ### Fixed
 
