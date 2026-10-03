@@ -49,5 +49,29 @@ module Samagotchi
     # Regex matching overlay file names: /<something>.<lowercase-dashed-key>.md\z
     # Useful for tooling, tests, and future index suppression.
     OVERLAY_SUFFIX_PATTERN = /\.([a-z0-9\-]+)\.md\z/
+
+    # The base file name (`tips.md`) an overlay-looking name
+    # (`tips.qwen3.md`) would belong to, or nil when it doesn't match the
+    # suffix pattern.
+    def self.base_file_for(path)
+      match = File.basename(path.to_s).match(OVERLAY_SUFFIX_PATTERN)
+      return nil unless match
+
+      stem = File.basename(path.to_s).delete_suffix(match[0])
+      stem.empty? ? nil : "#{stem}.md"
+    end
+
+    # Whether +path+ is a model overlay: its name matches the suffix pattern
+    # and its base `<stem>.md` exists in one of +base_dirs+ (default: the
+    # file's own dir) or is one of +base_names+. A memory whose name has a
+    # dot and a sibling of the same stem reads as an overlay too (a
+    # leftover ambiguity).
+    def self.overlay_file?(path, base_dirs: [File.dirname(path.to_s)], base_names: [])
+      base = base_file_for(path)
+      return false unless base
+
+      base_names.map { |n| File.basename(n.to_s) }.include?(base) ||
+        base_dirs.compact.any? { |dir| File.file?(File.join(dir, base)) }
+    end
   end
 end

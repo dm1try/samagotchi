@@ -29,7 +29,7 @@ module Samagotchi
         return false unless scope && File.file?(path)
 
         name = File.basename(path, ".md")
-        return false if overlay?(path, name)
+        return false if ModelOverlay.overlay_file?(path)
 
         IndexUpdater.update_index(scope, name, File.size(path), nil)
       rescue StandardError => e
@@ -53,14 +53,6 @@ module Samagotchi
         SCOPES.find { |s| real(Tools::MemoryRead.memories_dir(s)) == dir }
       rescue StandardError
         nil
-      end
-
-      def self.overlay?(path, name)
-        match = File.basename(path).match(ModelOverlay::OVERLAY_SUFFIX_PATTERN)
-        return false unless match
-
-        base = name.delete_suffix(".#{match[1]}")
-        File.file?(File.join(File.dirname(path), "#{base}.md"))
       end
 
       def self.real(dir)

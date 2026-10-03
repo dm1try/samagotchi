@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
+require "fileutils"
 require_relative "../lib/samagotchi/model_overlay"
 
 RSpec.describe Samagotchi::ModelOverlay do
@@ -77,6 +79,39 @@ RSpec.describe Samagotchi::ModelOverlay do
       project_path = described_class.overlay_path_for("test", "key1", "project")
       system_path = described_class.overlay_path_for("test", "key1", "system")
       expect(project_path).to_not eq(system_path)
+    end
+  end
+  describe ".overlay_file?" do
+    let(:dir) { Dir.mktmpdir("overlay-file-") }
+    after { FileUtils.rm_rf(dir) }
+
+    it "is an overlay when <stem>.md is next to it (the default base dir)" do
+      File.write(File.join(dir, "tips.md"), "base")
+      expect(described_class.overlay_file?(File.join(dir, "tips.qwen3.md"))).to be(true)
+    end
+
+    it "isn't one without a base, or without the suffix pattern" do
+      expect(described_class.overlay_file?(File.join(dir, "tips.qwen3.md"))).to be(false)
+      File.write(File.join(dir, "tips.md"), "base")
+      expect(described_class.overlay_file?(File.join(dir, "tips.md"))).to be(false)
+      expect(described_class.overlay_file?(File.join(dir, "tips.QWEN.md"))).to be(false)
+      expect(described_class.overlay_file?(File.join(dir, "index.md"))).to be(false)
+    end
+
+    it "finds the base in any of base_dirs, or among base_names" do
+      other = Dir.mktmpdir("overlay-base-")
+      File.write(File.join(other, "tips.md"), "base")
+      path = File.join(dir, "tips.qwen3.md")
+      expect(described_class.overlay_file?(path, base_dirs: [dir])).to be(false)
+      expect(described_class.overlay_file?(path, base_dirs: [dir, other])).to be(true)
+      expect(described_class.overlay_file?(path, base_dirs: [], base_names: ["tips.md"])).to be(true)
+      expect(described_class.overlay_file?(path, base_dirs: [], base_names: ["other.md"])).to be(false)
+    ensure
+      FileUtils.rm_rf(other)
+    end
+
+    it "takes a bare file name too" do
+      expect(described_class.overlay_file?("tips.qwen3.md", base_dirs: [], base_names: ["tips.md"])).to be(true)
     end
   end
 end
