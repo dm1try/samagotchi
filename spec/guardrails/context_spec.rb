@@ -33,6 +33,31 @@ RSpec.describe Samagotchi::Guardrails::Context do
     expect(described_class.new(cwd: @dir).repo_root).to eq(@dir)
   end
 
+  describe "hooks_dir" do
+    def commit = git("-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "x")
+
+    it "is the repo's .git/hooks, from a subdirectory too, and nil outside a repo" do
+      expect(described_class.new(cwd: @dir).hooks_dir).to be_nil
+      git("init", "-q")
+      sub = File.join(@dir, "a").tap { |d| FileUtils.mkdir_p(d) }
+      expect(described_class.new(cwd: sub).hooks_dir).to eq(File.join(@dir, ".git", "hooks"))
+    end
+
+    it "is the main checkout's hooks in a linked worktree (.git is a file there)" do
+      git("init", "-q")
+      commit
+      worktree = File.join(@dir, "wt")
+      git("worktree", "add", "-q", worktree)
+      expect(described_class.new(cwd: worktree).hooks_dir).to eq(File.join(@dir, ".git", "hooks"))
+    end
+
+    it "follows core.hooksPath" do
+      git("init", "-q")
+      git("config", "core.hooksPath", "my-hooks")
+      expect(described_class.new(cwd: @dir).hooks_dir).to eq(File.join(@dir, "my-hooks"))
+    end
+  end
+
   it "asks git once per directory" do
     gitinfo = Samagotchi::Guardrails::GitInfo.new
     allow(Open3).to receive(:capture2e).and_call_original

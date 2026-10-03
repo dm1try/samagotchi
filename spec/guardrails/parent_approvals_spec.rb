@@ -137,6 +137,11 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
       end
     end
 
+    it "lists the config, hooks, approval store and installed bundles dirs as chi's" do
+      expect(described_class.chi_dirs).to include(File.join(config_home, "samagotchi"),
+                                                  Samagotchi::MemoryPaths.bundles_dir.chomp("/"))
+    end
+
     it "covers a hooks_dir set in config.yml" do
       hooks = Dir.mktmpdir("pa-hooks")
       FileUtils.mkdir_p(File.join(config_home, "samagotchi"))

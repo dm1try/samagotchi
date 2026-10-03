@@ -2,6 +2,7 @@
 
 require_relative "../config"
 require_relative "../paths"
+require_relative "../memory_paths"
 require_relative "../hooks/loader"
 require_relative "approval"
 require_relative "protected_paths"
@@ -42,9 +43,12 @@ module Samagotchi
       # Rules that ask about chi's own config and hooks: the core
       # ProtectedPaths asks and the guardrails bundle's shell rule.
       PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi].freeze
-      # A shell command naming chi's config, hooks or guardrails (the
-      # guardrails bundle's shell-touches-chi, less .git/hooks).
+      # A shell command naming chi's config, hooks or guardrails as text
+      # (broad: a parent may not allow what only looks like one).
       CHI_TEXT = %r{\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|memories/\.bundles}
+      # The guardrails bundle's shell-touches-chi, for a word it can't
+      # resolve to a path (Guardrails::ShellPaths): CHI_TEXT and .git/hooks.
+      CHI_SHELL_TEXT = Regexp.union(CHI_TEXT, %r{\.git/hooks})
 
       module_function
 
@@ -101,10 +105,12 @@ module Samagotchi
         command.match?(CHI_TEXT) || dirs.any? { |dir| command.include?(dir) || command.include?(ProtectedPaths.real(dir)) }
       end
 
-      # chi's config dir, the hooks dir and the approval store's dir.
+      # chi's config dir, the hooks dir, the approval store's dir and the
+      # installed bundles' dir.
       def chi_dirs
         hooks = begin Hooks::Loader.hooks_dir rescue nil end
-        [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails")]
+        bundles = begin MemoryPaths.bundles_dir rescue nil end
+        [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails"), bundles]
           .compact.map { |dir| dir.to_s.chomp("/") }.reject(&:empty?).uniq
       end
 

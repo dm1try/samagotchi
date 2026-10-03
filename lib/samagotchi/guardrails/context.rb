@@ -24,6 +24,8 @@ module Samagotchi
       end
 
       def repo_root(dir = @cwd) = @git.root(dir)
+      # The git hooks dir of +dir+'s repo (core.hooksPath honoured), or nil.
+      def hooks_dir(dir = @cwd) = @git.hooks(dir)
       def branch(dir = @cwd) = @git.branch(dir)
 
       # The hook event's context: hash.
@@ -41,6 +43,7 @@ module Samagotchi
       end
 
       def root(dir) = info(dir)[:root]
+      def hooks(dir) = info(dir)[:hooks]
       def branch(dir) = info(dir)[:branch]
 
       private
@@ -53,16 +56,15 @@ module Samagotchi
       def probe(dir)
         return {} unless File.directory?(dir)
 
-        out, status = Open3.capture2e("git", "-C", dir, "rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD")
-        lines = out.lines.map(&:strip)
-        # A repo with no commits yet has no HEAD: only the root answers.
-        unless status.success?
-          out, status = Open3.capture2e("git", "-C", dir, "rev-parse", "--show-toplevel")
-          return {} unless status.success?
+        paths = ["--show-toplevel", "--git-path", "hooks"]
+        out, status = Open3.capture2e("git", "-C", dir, "rev-parse", *paths, "--abbrev-ref", "HEAD")
+        # A repo with no commits yet has no HEAD: only the paths answer.
+        out, status = Open3.capture2e("git", "-C", dir, "rev-parse", *paths) unless status.success?
+        return {} unless status.success?
 
-          lines = [out.strip]
-        end
-        { root: lines[0], branch: lines[1] }
+        lines = out.lines.map(&:strip)
+        # --git-path is relative to dir (core.hooksPath too).
+        { root: lines[0], hooks: lines[1] && File.expand_path(lines[1], dir), branch: lines[2] }
       rescue SystemCallError
         {}
       end

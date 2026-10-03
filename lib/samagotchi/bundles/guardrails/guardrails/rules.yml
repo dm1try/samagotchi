@@ -5,7 +5,8 @@
 #
 # Fields: id, tool (a name, a list, or shell = execute + task_create),
 # command (Ruby regex), path (outside_repo or a glob), git (outside_repo:
-# a shell call runs commit/add/reset/… in another checkout), skip_read_only
+# a shell call runs commit/add/reset/… in another checkout), touches
+# (chi_dirs: a shell command names a path in chi's own dirs), skip_read_only
 # (true: a command that only reads, ls/cat/rg/sed -n/git log…, doesn't
 # match), verdict (ask|deny), reason, scopes (for an ask: once, session,
 # repo, rule; default all).
@@ -92,10 +93,14 @@ rules:
     reason: git hooks run code on every git command
 
   # ── chi's own config, hooks, rules and approvals, from the shell ───────
-  # A command that only reads them (ls, cat, rg, sed -n) isn't asked about.
+  # The real dirs (config.yml's dir, hooks, the approval store, installed
+  # bundles, this repo's git hooks), not a look-alike under /tmp or chi's
+  # own lib/samagotchi/hooks source; a word that can't be resolved ($VAR,
+  # $(…), a glob) is matched as text. A command that only reads them (ls,
+  # cat, rg, sed -n) isn't asked about.
   - id: shell-touches-chi
     tool: shell
-    command: '(\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|memories/\.bundles|\.git/hooks)'
+    touches: chi_dirs
     skip_read_only: true
     verdict: ask
     reason: the command names chi's config, hooks, guardrails or git hooks

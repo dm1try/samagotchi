@@ -7,6 +7,7 @@ require_relative "model_size"
 require_relative "outside"
 require_relative "shell_git_dirs"
 require_relative "read_only_shell"
+require_relative "shell_paths"
 
 module Samagotchi
   module Guardrails
@@ -70,7 +71,8 @@ module Samagotchi
           args = call[:args] if entry && !entry.core? && call[:args].is_a?(Hash)
         end
         new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd), args: args,
-            model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base)
+            model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base,
+            chi_dirs: -> { chi_dirs(context, base) })
       end
 
       # What a plugin tool's targets: callable says the call acts on:
@@ -93,6 +95,13 @@ module Samagotchi
         none
       end
 
+      # chi's own dirs (ParentApprovals.chi_dirs) and the session repo's
+      # git hooks dir.
+      def self.chi_dirs(context, base)
+        require_relative "parent_approvals"
+        ParentApprovals.chi_dirs + [context.hooks_dir(base)].compact
+      end
+
       def self.absolute(path, base)
         path = Tools::ToolPath.normalize(path)
         path.empty? ? nil : File.expand_path(path, base)
@@ -110,8 +119,10 @@ module Samagotchi
         nil
       end
 
+      # @param chi_dirs [#call, nil] → the dirs touches_chi? looks for
       def initialize(tool:, command:, paths:, cwd:, repo_root:, args: nil, model_name: nil, model_key: nil,
-                     session_root: nil)
+                     session_root: nil, chi_dirs: nil)
+        @chi_dirs = chi_dirs
         @session_root = session_root || repo_root || cwd
         @args = args
         @model_name = model_name
@@ -150,6 +161,19 @@ module Samagotchi
         return @read_only if defined?(@read_only)
 
         @read_only = !@command.nil? && ReadOnlyShell.read_only?(@command)
+      end
+
+      # Whether the command names a path in chi's own dirs (ShellPaths:
+      # resolved paths; the text CHI_SHELL_TEXT for a word that can't be
+      # resolved); false without a command.
+      def touches_chi?
+        return @touches_chi if defined?(@touches_chi)
+
+        @touches_chi = !@command.nil? && begin
+          require_relative "parent_approvals"
+          ShellPaths.touches?(@command, dirs: @chi_dirs ? @chi_dirs.call : ParentApprovals.chi_dirs,
+                                        text: ParentApprovals::CHI_SHELL_TEXT, cwd: @cwd, tmp_roots: Outside.tmp_roots)
+        end
       end
 
       # Whether a shell call runs mutating git outside the session's repo

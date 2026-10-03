@@ -208,7 +208,8 @@ RSpec.describe Samagotchi::Guardrails::Rules do
 
     it "names the rule and the problem" do
       expect(error_for({ "id" => "x", "verdict" => "block", "tool" => "a" })).to eq('rule x: verdict must be ask or deny (got "block")')
-      expect(error_for({ "id" => "x", "verdict" => "ask" })).to eq("rule x: give at least one of tool, command, path, git")
+      expect(error_for({ "id" => "x", "verdict" => "ask" })).to eq("rule x: give at least one of tool, command, path, git, touches")
+      expect(error_for({ "id" => "x", "verdict" => "ask", "touches" => "home" })).to eq("rule x: touches must be chi_dirs")
       expect(error_for({ "id" => "x", "verdict" => "ask", "git" => "anywhere" })).to eq("rule x: git must be outside_repo")
       expect(error_for({ "id" => "x", "verdict" => "ask", "git" => "outside_repo" })).to be_nil
       expect(error_for({ "id" => "x", "verdict" => "ask", "comand" => "rm" })).to eq("rule x: unknown key(s) comand")

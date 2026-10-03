@@ -201,7 +201,21 @@ guardrails:
       scopes: [once, session, rule]
 ```
 
-A rule gives at least one of `tool`, `command`, `path` and `git`.
+A rule gives at least one of `tool`, `command`, `path`, `git` and `touches`.
+
+`touches: chi_dirs` (shell tools) matches a command that names a path in chi's
+own folders: the config folder (`config.yml`, `memories/`), the hooks folder,
+the approval store, installed bundles (`memories/.bundles`), the session repo's
+git hooks (`core.hooksPath` honoured) or any `.git/hooks` outside a tmp folder.
+Each word is read as a path against the folder the command is in by then
+(`cd`, `pushd`/`popd` and `( … )` followed), with `~`, `$HOME` and
+`$XDG_CONFIG_HOME`/`$XDG_STATE_HOME` expanded and symlinks resolved. So
+`/tmp/x/config/samagotchi/config.yml` and chi's own source
+(`lib/samagotchi/hooks/…`) don't match. A word it can't resolve (another
+`$VAR`, `$(…)`, a glob, a relative path after `cd $X`) or one that reads as a
+script (`sh -c '…'`, `ruby -e '…'`) is matched as text instead (`.config/samagotchi`,
+`samagotchi/config.yml`, `samagotchi/hooks`, `samagotchi/guardrails`,
+`memories/.bundles`, `.git/hooks`).
 
 `skip_read_only: true` lets a shell command through when it only reads:
 every command in it (split at `;`, `&&`, `||`, `|`) is `ls`, `cat`, `head`,
@@ -328,8 +342,9 @@ route around a deny. It asks before `git push`, `reset --hard`, `clean -f`,
 session's repo (`write-outside-repo`) and git that changes another checkout
 (`git-outside-repo`: `cd ../main && git commit`, `git -C ../main add .`; it
 offers once, this session and "rule in this repo", the last stored for later
-sessions in that repo); shell commands that name chi's config, hooks or guardrails or
-`.git/hooks`, unless they only read (`skip_read_only`); and answering chi's questions around `chi answer`: `chi --attach`
+sessions in that repo); shell commands that name a path in chi's config, hooks,
+approvals or bundles or a `.git/hooks` (`shell-touches-chi`, `touches: chi_dirs`),
+unless they only read (`skip_read_only`); and answering chi's questions around `chi answer`: `chi --attach`
 or `chi -p` with stdin from a pipe, a here-string or a file
 (`chi-answer-piped`), and `curl`/`wget` to a session's `/answer` route
 (`chi-answer-http`), both once or for the session. `chi answer` itself isn't
