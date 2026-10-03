@@ -14,6 +14,13 @@ and commands may change between minor versions. How releases are made:
   `chi was updated to X` offers a Reload button (it never reloads by itself; ✕ dismisses it).
 - `chi bundle trash` lists the bundle trash (moved files from uninstalls/upgrades) oldest first, with file count,
   size, and age; `--empty` deletes all folders, `--older-than DAYS` keeps only recent ones, `--dry-run` previews.
+- A turn that runs out of iterations now waits as a question (kind `continue`, the step-limit question):
+  `chi send --wait` exits 3 with it, `chi answer --option Continue|Stop` answers it, and the web badge and bell show
+  it. The web draws it as a card with Continue, Stop and a reason for Stop; `chi --attach` reads the continue words
+  at its prompt (Enter continues). A parent agent may Continue unless `turn.parent_continue: false` (config.yml only);
+  a delegate's goes back to the parent model.
+- `turn.max_iterations` (default 100, env `SAMAGOTCHI_TURN_MAX_ITERATIONS`) sets the per-turn step limit;
+  `--no-interrupt` turns get the larger of 1000 and it.
 
 ### Changed
 
@@ -21,6 +28,10 @@ and commands may change between minor versions. How releases are made:
   (the REPL, the attached TUI, the web composer) prints `Unknown command /modle. Did you mean /model? /help lists
   the commands.` instead, with the "Did you mean" part only when a command name is close. Lines that are prompts
   (`/foo bar`, `/usr/bin/env is missing`) still go to the model.
+- `chi send --wait` reports `limit` instead of `no_answer` when a turn ran out of iterations and nobody can answer
+  (an older worker), with how to continue it.
+- Stop at the step limit (`/continue no`) keeps the turn's work, with a note for the model, instead of erasing the
+  prompt and everything the turn did; `!rollback` still erases it. Reminder turns follow `turn.max_iterations`.
 - The web page's end-of-turn and card re-reads fetch only what they show: the session's state, the last answer,
   that turn's timings and the cards, from a new light worker read (`GET /session/:id/tail`) instead of the
   whole conversation and timing history, so they stay the same size however long the session runs.

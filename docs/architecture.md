@@ -177,7 +177,7 @@ rescues sink errors). A new UI (web, API) supplies its own `on_event` and
 renders whatever it needs from the stream + final `Result`. The public Engine API:
 
 ```ruby
-engine.run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil)
+engine.run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil) # nil: turn.max_iterations
 engine.run(session: nil, prompt: "...", on_event: nil)   # create/resume session + run
 engine.system_prompt     # fully built system prompt string
 engine.session           # current session (Engine owns create/resume)

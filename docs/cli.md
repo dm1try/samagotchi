@@ -808,8 +808,29 @@ Behavior notes:
 
 ## Iteration Limit Behavior
 
-- `max_iterations` remains a hard safety cap on tool-call rounds.
-- Tool side effects that already ran before the cap are not rolled back.
-- `Samagotchi::KernelLoop#run` now returns a resumable result object with the visible output plus the accumulated conversation.
-- If the cap is reached while tool calls are still pending, the result is marked resumable so callers can continue from the saved conversation instead of restarting from scratch.
-- In assist mode, the CLI then asks at the `? ` prompt, with the choices listed under it: `yes` (Enter alone, or `/continue`) resumes, `no` cancels, and `no, <explanation>` cancels while keeping the reason in conversation context. Once answered, one line stays: `? The turn ran out of iterations. Continue it? → no, too slow`.
+- A turn's step limit (model ↔ tool rounds) is `turn.max_iterations` in config.yml (env
+  `SAMAGOTCHI_TURN_MAX_ITERATIONS`, default `100`, an integer of 1 or more). `--no-interrupt` and
+  `--non-interactive` turns get the larger of 1000 and it. Reminder turns follow it too.
+- Tool side effects that already ran before the limit are not rolled back.
+- `Samagotchi::KernelLoop#run` returns a resumable result object with the visible output plus the accumulated
+  conversation. If the limit is reached while tool calls are still pending, the result is marked resumable so callers
+  can continue from the saved conversation instead of restarting from scratch. The session's `last_turn` records it
+  (`"exhausted": true, "limit": N`).
+- In a session's worker (plain `chi`, the web, `chi send`) the offer waits as a question between turns, the
+  **step-limit question** (kind `continue`, header "Step limit", options Continue / Stop): the session reads
+  `waiting` in the lists, the web shows a card with Continue and Stop and a reason box (a reason goes with Stop), the
+  session card's badge reads `out of steps` and the bell rings ("hit its step limit"). `chi send --wait` exits 3 with
+  it and `chi answer --option Continue|Stop` answers it (see [chi as a sub-agent](sub-agent.md)). It can't be
+  dismissed. A new message instead (or a due reminder) drops it and the partial turn stays; a typed `/continue …`
+  answers it too. If the worker exits (a stop, a crash), the offer goes with it.
+- In the attached terminal (`chi --attach`) the question's prompt reads the continue words: Enter alone, `yes`, `y`
+  or `/continue` continue; `no` stops; `no, <reason>` stops and tells the model why; `1` and `2` pick the options.
+- In the plain REPL (`--no-shared`) the CLI asks at the `? ` prompt, with the choices listed under it: `yes` (Enter
+  alone, or `/continue`) resumes, `no` stops, and `no, <explanation>` stops while keeping the reason in conversation
+  context. Once answered, one line stays: `? The turn ran out of iterations. Continue it? → no, too slow`.
+- Stop keeps the interrupted turn's work in the conversation, as a Ctrl-C or a new prompt does, with a note for the
+  model that it wasn't continued (or your reason); `!rollback` still erases it.
+- `--non-interactive` (`chi -p`) has nobody to ask: the turn ends there. A `chi send --wait` on a session nobody can
+  answer (an older worker) reports `limit` (exit 1) with how to continue it: `chi send ID -m '/continue yes'`.
+- The check-in bundle's card closes as the turn ends, before the step-limit question opens, so the two never stand
+  together; with check-in's default `after: 50` and the limit of 100 a long turn usually shows a check-in card first.

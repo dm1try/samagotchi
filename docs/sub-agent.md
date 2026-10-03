@@ -34,9 +34,10 @@ Exit codes, both commands:
 |---|---|---|
 | 0 | `answered` | `text` is chi's reply |
 | 0 | `command` | (`chi send`) the message was a session command (`/model x`): it ran as one, no reply comes |
+| 0 | `not_continued` | (`chi answer`) a Stop answered the step-limit question; the turn's work so far stays |
 | 3 | `question` | chi waits for an answer: `question`, `answer_with` |
 | 4 | `running` | `--timeout` passed; the turn goes on, wait again |
-| 1 | `failed`, `canceled`, `no_answer`, `error`, `worker_gone`, `stopped` | `detail` says what happened |
+| 1 | `failed`, `canceled`, `limit`, `no_answer`, `error`, `worker_gone`, `stopped` | `detail` says what happened (`limit`: the turn ran out of steps and nobody can be asked, e.g. an older worker; `chi send ID -m '/continue yes'` continues it) |
 | 2 | (no JSON) | usage error, or an option the question doesn't offer |
 | 130 | `running` | Ctrl-C; the turn goes on |
 
@@ -49,8 +50,33 @@ With `--format json` stdout is one JSON object (see
   "allow_freeform":false},"answer_with":"chi answer 297da360-… --question 3f1c… --option N"}
 ```
 
-`kind` is `question` (the model's), `hook`, or `approval`, which adds the tool,
-command, folder, rule and reason.
+`kind` is `question` (the model's), `hook`, `approval`, which adds the tool,
+command, folder, rule and reason, or `continue`, the step-limit question below.
+
+## The step limit
+
+A turn that runs out of steps (`turn.max_iterations`, default 100) before it
+answers waits as a question of kind `continue` (`"limit": 100`, options
+`Continue` and `Stop`). `answer_with` continues it:
+`chi answer ID --question QID --option Continue`, and the continued turn's
+reply (or its next question) comes back on that same wait. To stop it:
+`--option Stop`, with `--text "why"` for the model (Continue takes no text);
+that wait ends with `status: not_continued`, exit 0, and the turn's work so far
+stays in the session. A message instead (`chi send ID -m "…"`) drops the
+question and starts a new turn. It can't be dismissed.
+
+A parent may Continue by default: Continue grants no permission (every tool
+call still meets the guardrails), it only spends time and tokens. With
+`turn.parent_continue: false` in chi's config.yml (config.yml only, no
+environment variable) a parent may only Stop: `chi answer` and the worker
+refuse a Continue (exit 1, `a parent agent may only stop this turn here`), and
+the user continues it from the web or the terminal.
+
+A chi parent's `delegate_result` gets a child's step-limit question back as a
+`question` with these commands, for its model to decide: continue it (the
+`chi answer` command, through `execute`), send a narrower follow-up with
+`delegate session:` (which drops the question), or report back. It isn't
+relayed to the parent's user the way approvals are.
 
 ## Approvals
 
@@ -96,7 +122,11 @@ answers from any local process.
   `chi answer` then exits 1 and says to send the task again
   (`chi send --wait -m "…" ID`); a wait ends with `worker_gone` (exit 1).
 - A follow-up (`chi send --wait -m "…" ID`) to a session waiting for an answer
-  isn't sent: it exits 1 with the `chi answer` command for the question.
+  isn't sent: it exits 1 with the `chi answer` command for the question. The
+  step-limit question is the exception: it waits between turns, so a message
+  goes in, drops it and starts a new turn.
+- `chi send --wait ID` with no message waits past a question already reported
+  (the step-limit question too), until someone answers it.
 - An answer to a question that is no longer open (you answered it in the web
   first) isn't sent; `chi answer` says so and waits for what comes next.
 - `chi send --wait` and `chi answer` don't read stdin unless it's a pipe or a
@@ -130,6 +160,10 @@ Start a task: `chi send --new --wait --format json --timeout 500 -m "<task>"`
   `chi answer`, a piped `chi --attach` or chi's web API.
 - `status: running` (exit 4): still working. Wait again:
   `chi send --wait --format json --timeout 500 <session_id>`.
+- `question.kind: continue`: chi ran out of steps before it answered. If it is
+  getting somewhere, continue it (`answer_with`, `--option Continue`); if not,
+  stop it (`--option Stop --text "why"`, exit 0, status `not_continued`) or send
+  a narrower follow-up instead. Ask your user when unsure.
 - Anything else (exit 1): report `detail` to your user. `chi --attach <session_id>`
   shows the session.
 

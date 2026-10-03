@@ -126,6 +126,11 @@ config.yml rewrite would allow everything from then on, so those stay with the
 user: `chi answer` and the worker refuse the allow with `only the user can
 allow it`.
 
+A turn's step-limit question (kind `continue`) isn't an approval: Continue
+grants no permission, so a parent may answer it either way by default.
+`turn.parent_continue: false` (config.yml only, like `parent_approvals`)
+makes parents stop-only. See [chi as a sub-agent](sub-agent.md#the-step-limit).
+
 The guardrails settings (`enabled`, `small_models`, `parent_approvals`) are
 read from config.yml only: they have no environment variable, and a worker
 chi starts unsets every `SAMAGOTCHI_GUARDRAILS_*` it would inherit. What a

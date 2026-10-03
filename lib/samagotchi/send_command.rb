@@ -66,7 +66,8 @@ module Samagotchi
                     (--wait) one JSON object on stdout, whatever the end:
                     status answered (text), question (question,
                     answer_with), running, or failed, canceled,
-                    no_answer, error, worker_gone, stopped, command (detail)
+                    limit, no_answer, error, worker_gone, stopped,
+                    command (detail)
         Exit with --wait: 0 answered, 1 failed or gone, 2 usage, 3 a
         question waits, 4 still running (--timeout), 130 Ctrl-C.
         Only sessions on this machine. Answers show in the attached TUI

@@ -47,6 +47,9 @@ module Samagotchi
         An approval (a guardrail's ask) can be denied here: deny it, and
         tell your user; allowing it is the user's. With
         guardrails.parent_approvals: once, "Allow once" is let through.
+        A step-limit question (kind continue): --option Continue, or
+        --option Stop [--text WHY] (exit 0, status not_continued); it
+        can't be dismissed.
         Exit: 0 answered, 1 failed, refused or the worker is gone, 2
         usage or an option the question doesn't offer, 3 a question waits,
         4 still running (--timeout), 130 Ctrl-C.
