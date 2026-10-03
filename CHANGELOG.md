@@ -10,6 +10,13 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- `guardrails.mode` (config.yml only): `auto`, the new default, or `strict`. Rules can be tagged `modes: [strict]`
+  to vote only in strict mode; a rule without `modes:` (every rule you wrote in config.yml) votes in both.
+  `/guardrails` shows the mode and marks the rules it leaves out `(strict only)`. See docs/guardrails.md#modes.
+- New guardrail rule keys: `skip_read_only: true` (a shell command that only reads, such as `ls`, `cat`, `rg`,
+  `sed -n` or `git log`, doesn't match), `touches: chi_dirs` (a shell command names a path in chi's real config,
+  hooks, approvals or bundles dir, or a `.git/hooks`) and `rm: outside_tmp` (an `rm -rf` reaches outside the tmp
+  dirs). A config.yml rule that uses one fails closed on an older chi.
 - Model speed and token stats. `/stats` has a speed line (the last generation's decode speed and the
   session's average: exact from llama.cpp, estimated and marked `~` elsewhere), cached and reasoning
   tokens, and the cost when the provider reports it (OpenRouter). The web's info bar shows the speed
@@ -18,6 +25,19 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- [BEHAVIOUR] Guardrails ask less by default (auto mode). The guardrails bundle (0.5.0) no longer asks before
+  `git rebase`, writes outside the session's repo (`write-outside-repo`) or git in another checkout
+  (`git-outside-repo`); `guardrails: { mode: strict }` in config.yml brings those back. Everything else still asks
+  in both modes, as do the small-model rules and chi's own protected paths.
+- [BEHAVIOUR] `shell-touches-chi` matches chi's real folders instead of text, and lets read-only commands through:
+  `ls ~/.config/samagotchi`, `rg samagotchi/hooks lib` and a scratch copy under `/tmp` no longer ask; `echo x >>
+  <config dir>/config.yml` and `cp hook .git/hooks/pre-commit` still do. A word it can't resolve falls back to the
+  old text match.
+- [BEHAVIOUR] `rm-rf-wide` no longer asks when every `rm -rf` target is inside a tmp dir (`rm -rf /tmp/x`);
+  `/tmp` itself, `/tmp/*`, a `$VAR` and a link out of tmp still ask.
+- [BEHAVIOUR] "Allow … in this repo" approvals hold for the whole repository, in every worktree of it, and the
+  ask names the repository (`in this repo (samagotchi)`) instead of the worktree folder. Approvals stored
+  before keep matching their exact folder.
 - `chi bundle status` shows a bundle whose recorded scope this chi doesn't know (one a newer chi wrote, or a hand
   edit) as `scope=team (unknown)`, counted as one issue, instead of checking its files in the system memories;
   the shipped-bundle update skips it (upgrade chi or reinstall), and `chi bundle diff` refuses it with a one-line
