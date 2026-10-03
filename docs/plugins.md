@@ -831,16 +831,22 @@ minutes, until the provider's output cap ends it with no answer. loop-guard
 watches the thinking while it streams ([Watching the
 stream](hooks.md#watching-the-stream)) and cuts it:
 
-- The thinking is cut into sentences; short ones (under `min_words`) are
-  skipped. Two sentences count as the same when their words and word pairs
-  mostly match (`similarity`), so a reworded round ("Hmm, …", a synonym, a
-  swapped clause) still counts.
+- The thinking is cut into sentences. Two sentences of `min_words` or more
+  count as the same when their words and word pairs mostly match
+  (`similarity`), so a reworded round ("Hmm, …", a synonym, a swapped
+  clause) still counts.
 - A loop is a cycle of 1 to `max_period` sentences seen `repeats` times in a
   row, over at least `min_span_sentences` sentences and `min_span_chars`
   chars; or one sentence `max_same` times anywhere in the generation. One
   sentence over and over must be near-identical (`similarity` + 0.4), and a
   longer cycle must hold different sentences: a list of templated sentences
   ("Now I need to open the file <path> and …" for 14 paths) is no loop.
+- Short sentences (under `min_words`) are a loop of their own when
+  `short_run` of them come in a row with at most `short_distinct` different
+  ones among them ("I'll write it. Go. OK. Writing. Go. OK."). Normal
+  thinking has short sentences too ("Hmm.", "Fine."), but spread out or all
+  different (code lines); a longer sentence ends the run, and lines inside a
+  ```` ``` ```` code block don't count.
 - Nothing triggers before `min_chars` of thinking. The watch sees a loop
   within one batch (2000 chars, or a second) of its third cycle.
 
@@ -851,11 +857,16 @@ What happens (`action: retry`, the default):
    `loop-guard> thinking repeats itself (3 sentences ×3, 4k chars, 8 s): cut`
    and `↻ cut by loop-guard, asking again (1/1)`.
 2. If the retry loops too, the turn is stopped ("stopped the turn: …", "✕
-   turn canceled (hook)") with a card that quotes the repeated sentences.
+   turn stopped by loop-guard") with a card that quotes the repeated
+   sentences.
+3. A loop is forgotten after `forget_after` good steps in a row (generations
+   with no loop): a model that recovered and made progress gets its next
+   loop cut and retried again, not the turn stopped. `forget_after: 0`
+   never forgets: the turn's second loop stops it.
 
 The cut uses the `retry.empty_answer` budget: with `retry.empty_answer: 0`
-the first loop ends the turn as cancelled (hook), with the notice and no
-card. `action: stop` stops the turn at the first loop; `action: notify` only
+the first loop ends the turn as stopped by loop-guard, with the notice and
+no card. `action: stop` stops the turn at the first loop; `action: notify` only
 warns, once per generation.
 
 ```yaml
@@ -871,7 +882,10 @@ bundles:
       min_span_sentences: 6   # a loop spans at least this many sentences…
       min_span_chars: 600     # …and this many chars
       max_same: 8             # one sentence this many times in one generation is a loop
-      min_words: 5            # shorter sentences are ignored
+      min_words: 5            # shorter sentences only count toward a short run
+      short_run: 24           # this many short sentences in a row…
+      short_distinct: 6       # …with at most this many different ones is a loop
+      forget_after: 10        # good steps in a row that forget a loop; 0: never
 ```
 
 Not watched:

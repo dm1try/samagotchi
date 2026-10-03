@@ -10,6 +10,13 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- loop-guard (bundle 0.3.0) cuts thinking that loops in short sentences ("I'll write it. Go. OK. Writing."),
+  which it skipped before: such a loop ran for minutes to the provider's output cap. New settings
+  `thinking.short_run` (24) and `thinking.short_distinct` (6).
+- loop-guard no longer stops a whole turn for a thinking loop that comes long after the model recovered from
+  its first one: after `thinking.forget_after` (10) steps with no loop, the next loop is cut and retried again.
+- A turn a plugin stopped now says who did it, `✕ turn stopped by loop-guard` (the web: `✕ stopped by
+  loop-guard`), instead of `✕ canceled (by a hook)`, also after a reload of the web page.
 - An attached `/exit` the worker reads only after the TUI stopped waiting (a frozen or sleeping worker) no
   longer stops it later: the request is dropped, as late turns and commands are.
 - The attached `/exit` (and `/exit --delete`, `/archive`) in an empty session no longer claims the session is
