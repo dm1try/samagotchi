@@ -882,7 +882,7 @@ described in their own sections.
 | `execute.truncate_at_bytes` | `65536` | yes | The same for `execute` output. |
 | `execute.preview_bytes` | `12288` | yes | |
 | `execute.telemetry_threshold_pct` | `80` | yes | |
-| `execute.timeout_sec` | `30` | yes | Seconds one `execute` command may run before it is stopped. |
+| `execute.timeout_sec` | `120` | yes | Seconds one `execute` command may run before it is stopped. |
 | `web.port` | `4567` | `--port` | `chi web`'s port. See [CLI](cli.md). |
 | `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`; `lan` (this machine's private IPv4 address) or one of its IPv4 addresses also opens `chi web` to the network, with an access token (`chi web --new-token` replaces it). Anything else binds `127.0.0.1` with a warning. See [CLI: chi web on your phone](cli.md#chi-web-on-your-phone). |
 | `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |

@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
 - The web page's end-of-turn and card re-reads fetch only what they show: the session's state, the last answer,
   that turn's timings and the cards, from a new light worker read (`GET /session/:id/tail`) instead of the
   whole conversation and timing history, so they stay the same size however long the session runs.
+- `execute` gives a command 120 s by default (was 30 s) before it is killed; `execute.timeout_sec` /
+  `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC` still set it.
 
 ### Fixed
 

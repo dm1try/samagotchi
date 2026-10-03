@@ -178,6 +178,16 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(result).to eq("Error: command timed out after 1s")
     end
 
+    it "gives a command 120 s by default, the same as the config default" do
+      ENV.delete("SAMAGOTCHI_EXECUTE_TIMEOUT_SEC")
+      Dir.mktmpdir do |dir|
+        with_env("XDG_CONFIG_HOME" => dir) do
+          expect(described_class.send(:timeout_seconds)).to eq(120)
+        end
+      end
+      expect(Samagotchi::Config::ENTRIES.find { |e| e.key == "execute.timeout_sec" }.default).to eq(described_class::TIMEOUT_SEC)
+    end
+
     it "takes the timeout from config.yml's execute.timeout_sec" do
       ENV.delete("SAMAGOTCHI_EXECUTE_TIMEOUT_SEC")
       Dir.mktmpdir do |dir|

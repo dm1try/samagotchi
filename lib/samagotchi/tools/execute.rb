@@ -15,7 +15,7 @@ module Samagotchi
     #   <tool name="execute">ruby path/to/script.rb</tool>
     class Execute
       NAME        = "execute"
-      TIMEOUT_SEC = 30
+      TIMEOUT_SEC = 120
       STOP_GRACE_SEC = 1.0
       STOP_POLL_INTERVAL_SEC = 0.05
       WAIT_SLICE_SEC = 0.2
