@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::ParentReport do
     )
   end
 
-  it "maps every other end to its status and a detail line, exit 4 only while it still runs" do
+  it "maps every other end to its status and a detail line, exit 4 only while it still runs, 0 for a Stop carried out" do
     cases = {
       Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", text: "boom") => ["failed", "the turn failed: boom; chi --attach #{id} shows it", 1],
       Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "canceled") => ["canceled", "the turn was canceled; chi --attach #{id} shows it", 1],
@@ -84,6 +84,8 @@ RSpec.describe Samagotchi::ParentReport do
       Samagotchi::ReplyWait::Result.new(status: :stopped) => ["stopped", "the session was stopped (chi sessions stop)", 1],
       Samagotchi::ReplyWait::Result.new(status: :timeout) => ["running", "still running after 2.5 s: chi --attach #{id}", 4]
     }
+    cases[Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "not_continued")] =
+      ["not_continued", "the turn was not continued (Stop); its work so far stays; chi --attach #{id} shows it", 0]
     cases.each do |result, (status, detail, code)|
       expect(json(result, timeout: 2.5)).to eq("status" => status, "session_id" => id, "detail" => detail)
       expect(described_class.exit_status(result)).to eq(code)

@@ -263,8 +263,11 @@ module Samagotchi
     # (its first prompt, an input file): queued and announced as a POST
     # /command's is (#handle_command).
     # @return [String] its command_id
-    def queue_command(line, client_id: nil)
+    def queue_command(line, client_id: nil, card: false)
       command = { command_id: SecureRandom.uuid, client_id: client_id, line: line.to_s.strip }
+      # A card's action (the step-limit question's answer): the UIs leave
+      # its line out.
+      command[:card] = true if card
       @engine.synchronize_events { queue_command_locked(command) }
       command[:command_id]
     end

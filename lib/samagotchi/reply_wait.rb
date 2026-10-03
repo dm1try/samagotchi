@@ -26,9 +26,10 @@ module Samagotchi
     # @!attribute question [Hash, nil] the pending question
     #   (:waiting_for_answer)
     # @!attribute outcome [String, nil] how the turn ended when it left no
-    #   reply (:no_reply): "failed", "canceled", "completed" (empty) or
+    #   reply (:no_reply): "failed", "canceled", "completed" (empty),
     #   "exhausted" (it ran out of iterations, with nobody asked whether to
-    #   continue), from the session's last_turn; nil when unknown. With
+    #   continue) or "not_continued" (a Stop answered the step-limit
+    #   question; no turn ran), from the session's last_turn; nil when unknown. With
     #   "failed", text is the failure's summary when the turn note has one.
     # @!attribute limit [Integer, nil] the iteration limit an "exhausted"
     #   turn ran out at

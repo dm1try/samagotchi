@@ -32,8 +32,9 @@ module Samagotchi
 
     # @param result [ReplyWait::Result]
     # @return [String] answered, question, failed, canceled, limit (the
-    #   turn ran out of iterations, nobody asked), no_answer, error,
-    #   worker_gone, stopped or running
+    #   turn ran out of iterations, nobody asked), not_continued (a Stop
+    #   answered the step-limit question), no_answer, error, worker_gone,
+    #   stopped or running
     def status(result)
       case result.status
       when :done then "answered"
@@ -43,6 +44,7 @@ module Samagotchi
         when "failed" then "failed"
         when "canceled" then "canceled"
         when "exhausted" then "limit"
+        when "not_continued" then "not_continued"
         else "no_answer"
         end
       when :error then "error"
@@ -54,11 +56,12 @@ module Samagotchi
       end
     end
 
-    # @return [Integer] 0 answered, 3 a question waits, 4 still running,
-    #   1 anything else
+    # @return [Integer] 0 answered (or not continued: the Stop asked for
+    #   was carried out), 3 a question waits, 4 still running, 1 anything
+    #   else
     def exit_status(result)
       case status(result)
-      when "answered" then CLI::Exit::OK
+      when "answered", "not_continued" then CLI::Exit::OK
       when "question" then CLI::Exit::QUESTION
       when "running" then CLI::Exit::RUNNING
       else CLI::Exit::FAILED
@@ -204,6 +207,7 @@ module Samagotchi
       when "failed" then result.text.to_s.strip.empty? ? "the turn failed" : "the turn failed: #{result.text.strip}"
       when "canceled" then "the turn was canceled"
       when "completed" then "the turn ended with no visible answer"
+      when "not_continued" then "the turn was not continued (Stop); its work so far stays"
       when "exhausted"
         "the turn ran out of iterations#{" (#{result.limit} steps)" if result.limit} before it answered; " \
           "chi send #{session_id} -m '/continue yes' continues it, a message drops it"

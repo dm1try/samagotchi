@@ -962,6 +962,142 @@ RSpec.describe Samagotchi::Worker do
           expect(seen.map { |e| e[:type] }).not_to include(:continue_resolved)
         end
       end
+
+      # The offer as a question on the desk (kind continue): what chi send
+      # --wait, chi answer, the lists and the web's badge read.
+      describe "the step-limit question" do
+        before do
+          start_worker(poll_interval: 5)
+          post_turn("long task")
+          expect(wait_until { events_seen.any? { |e| e[:type] == :question_requested } }).to be(true)
+        end
+
+        def saved_session = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        def question = seen.find { |e| e[:type] == :question_requested }[:pending_question]
+
+        def post_answer(selected, freeform: nil, client_id: "web:2", id: question[:id])
+          Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/answer"),
+                         JSON.generate(id: id, selected: selected, freeform: freeform, client_id: client_id),
+                         "Content-Type" => "application/json")
+        end
+
+        def continue_ran(line)
+          wait_until { events_seen.any? { |e| e[:type] == :command_ran && e[:line] == line } }
+          seen.find { |e| e[:type] == :command_ran && e[:line] == line }
+        end
+
+        it "is pending in the file as the session goes idle, with the turn's limit, and no reply is written" do
+          expect(question).to include(kind: "continue", header: "Step limit", options: %w[Continue Stop], limit: 100,
+                                      allow_freeform: true)
+          expect(question[:question]).to start_with("The turn ran out of iterations (100 steps) before it answered. Continue it?")
+          expect(question[:question]).to include("Prompt: long task")
+          expect(seen.find { |e| e[:type] == :question_requested }).to include(standing: true)
+          # Every save from the turn's end on has it: no idle write without it.
+          expect(wait_until { saved_session.status == "idle" }).to be(true)
+          expect(saved_session.pending_question).to include(id: question[:id], kind: "continue")
+          expect(saved_session.last_turn).to include("exhausted" => true, "limit" => 100)
+          expect(Samagotchi::ReplyWait.newest_reply(session.id, state_dir: tmpdir)).to be_nil
+        end
+
+        it "runs the continue turn on Continue, as a card's /continue yes for whoever answered" do
+          expect(post_answer(["Continue"]).code).to eq("200")
+
+          done = continue_ran("/continue yes")
+          expect(done).to include(status: "ok", client_id: "web:2", card: true)
+          expect(wait_until { events_seen.count { |e| e[:type] == :turn_completed } == 2 }).to be(true)
+          expect(seen.find { |e| e[:type] == :continue_resolved }).to include(decision: "resume", client_id: "web:2")
+          expect(seen.select { |e| e[:type] == :turn_started }.last).to include(continue: true, origin: { client_id: "web:2" })
+          expect(wait_until { saved_messages == ["long task", "r1", "OK"] && saved_session.pending_question.nil? }).to be(true)
+        end
+
+        it "stops on Stop: no turn runs, last_turn says not_continued, and a wait on it ends" do
+          baseline = Samagotchi::ReplyWait.baseline_of(saved_session, question_id: question[:id])
+          waited = Thread.new do
+            Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 5, poll_interval: 0.02,
+                                                   baseline: baseline)
+          end
+          expect(post_answer(["Stop"], freeform: "enough for now", client_id: "cli:answer").code).to eq("200")
+
+          expect(continue_ran("/continue no, enough for now")).to include(status: "ok")
+          result = waited.value
+          expect(result.to_h).to include(status: :no_reply, outcome: "not_continued")
+          expect(Samagotchi::ParentReport.status(result)).to eq("not_continued")
+          expect(Samagotchi::ParentReport.exit_status(result)).to eq(0)
+          expect(turns.size).to eq(1)
+          expect(saved_session.pending_question).to be_nil
+        end
+
+        it "refuses Continue with a text, and keeps the question open" do
+          reply = post_answer(["Continue"], freeform: "and fix the tests")
+
+          expect(reply.code).to eq("400")
+          expect(JSON.parse(reply.body)).to include("error" => "invalid_answer")
+          expect(saved_session.pending_question).to include(id: question[:id])
+        end
+
+        it "is withdrawn when a new prompt drops the offer, and the prompt runs" do
+          post_turn("something else")
+
+          expect(wait_until { events_seen.count { |e| e[:type] == :turn_completed } == 2 }).to be(true)
+          expect(seen.find { |e| e[:type] == :question_cancelled }).to include(id: question[:id], reason: "dropped")
+          expect(saved_session.pending_question).to be_nil
+          expect(post_answer(["Continue"]).code).to eq("409")
+        end
+
+        it "is withdrawn when a typed /continue answers the offer" do
+          ran(JSON.parse(post_command("/continue no").body)["command_id"])
+
+          expect(wait_until { events_seen.any? { |e| e[:type] == :question_cancelled } }).to be(true)
+          expect(seen.find { |e| e[:type] == :question_cancelled }).to include(id: question[:id], reason: "answered")
+          expect(engine.pending_question).to be_nil
+        end
+
+        it "lets the first of an answer and a prompt win: the answer queued first runs before the prompt" do
+          expect(post_answer(["Continue"]).code).to eq("200")
+          post_turn("something else")
+
+          expect(wait_until { events_seen.count { |e| e[:type] == :turn_completed } == 3 }).to be(true)
+          started = seen.select { |e| e[:type] == :turn_started }
+          expect(started[1]).to include(continue: true)
+          expect(started[2]).to include(prompt: "something else")
+          expect(continue_ran("/continue yes")).to include(status: "ok")
+        end
+
+        it "is withdrawn when a reminder turn drops the offer" do
+          allow(engine).to receive(:reminders_due?).and_return(true)
+          @reminder_callback.call(["stretch"])
+
+          expect(wait_until { events_seen.count { |e| e[:type] == :turn_completed } == 2 }).to be(true)
+          expect(seen.find { |e| e[:type] == :question_cancelled }).to include(reason: "dropped")
+          expect(engine.pending_question).to be_nil
+        end
+
+        it "gives way to a plugin's question asked meanwhile, and comes back once that is answered" do
+          box = {}
+          asker = Thread.new { box[:answer] = engine.open_question(question: "Which?", options: %w[A B], multi_select: false) }
+          expect(wait_until { engine.pending_question&.dig(:question) == "Which?" }).to be(true)
+          expect(events_seen.find { |e| e[:type] == :question_cancelled }).to include(id: question[:id], reason: "superseded")
+
+          engine.answer_question(id: engine.pending_question[:id], selected: ["A"])
+          asker.join(2)
+
+          expect(wait_until { engine.pending_question&.dig(:kind) == "continue" }).to be(true)
+          expect(saved_session.pending_question).to include(kind: "continue")
+          expect(post_answer(["Continue"], id: engine.pending_question[:id]).code).to eq("200")
+          expect(continue_ran("/continue yes")).to include(status: "ok")
+        end
+
+        it "is asked again after a continue turn that failed, once" do
+          allow(kernel).to receive(:run).and_raise(Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500))
+          expect(post_answer(["Continue"]).code).to eq("200")
+
+          expect(wait_until { events_seen.count { |e| e[:type] == :question_requested } == 2 }).to be(true)
+          sleep(0.2)
+          expect(events_seen.count { |e| e[:type] == :question_requested }).to eq(2)
+          expect(engine.pending_question).to include(kind: "continue")
+          expect(saved_session.pending_question).to include(kind: "continue")
+        end
+      end
     end
   end
 end

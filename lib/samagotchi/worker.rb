@@ -108,8 +108,13 @@ module Samagotchi
       # an empty session until the first turn.
       @engine.session = @session
       @turn_flow = TurnFlow.new(engine: @engine)
+      # Its question's answer is queued as the matching /continue (the
+      # Bridge exists by the time anyone answers).
       @continue_offer = ContinueOffer.new(engine: @engine, turn_flow: @turn_flow, run_turn: method(:run_engine_turn),
-                                          max_iterations: method(:max_iterations))
+                                          max_iterations: method(:max_iterations),
+                                          queue_command: lambda { |line, client_id:|
+                                            @bridge.queue_command(line, client_id: client_id, card: true)
+                                          })
       # A recap written while a continue offer waits says the turn stopped
       # unfinished (before the idle jobs start).
       @engine.recap&.awaiting_continue = -> { @turn_flow.awaiting_continue? }
@@ -205,7 +210,10 @@ module Samagotchi
       ensure
         # The anytime commands finish and the plugins' services stop (a
         # server process), whatever the way out; the Bridge last, so a
-        # command's command_ran still reaches its UI on a crash.
+        # command's command_ran still reaches its UI on a crash. A
+        # step-limit question stays in the file (a save here would write
+        # over a stop's status): with no live worker the lists don't read
+        # it as waiting, and the next worker drops it (drop_dead_question).
         @engine&.shutdown
         @bridge&.stop
       end
@@ -409,10 +417,8 @@ module Samagotchi
         shown.each { |event| @engine.announce(event) }
       end
       save_session unless Array(result.changed).empty?
-      if resolved
-        user_input(command[:client_id])
-        @continue_offer.resolved(result)
-      end
+      user_input(command[:client_id]) if resolved
+      @continue_offer.after_command(result, resolved: resolved)
       @continue_offer.run_continue_turn(command) if result.resume
     end
 
@@ -486,7 +492,12 @@ module Samagotchi
       end
       yield result, error
       response = result&.output
-      SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
+      # A turn that ran out of iterations and asks whether to continue left
+      # no reply: its text is what came before its last tool calls, and a
+      # wait (chi send --wait) gets the question instead.
+      unless response.nil? || response.strip.empty? || @continue_offer.awaiting?
+        SessionInbox.write_output(@session_dir, response)
+      end
       save_session
     end
 
