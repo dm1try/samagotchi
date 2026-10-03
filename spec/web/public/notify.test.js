@@ -112,6 +112,19 @@ test("a gone session closes its open question; one without a question closes not
   assert.deepEqual(trackAttention(state, "session_gone", { id: "nope" }).closed, []);
 });
 
+// Gone while the hub was away (or between two fetches of the list): the
+// next snapshot is the whole list, so a session missing from it is gone.
+test("a snapshot closes what the sessions missing from it had open, and forgets them", () => {
+  const open = { ...base, pending_question: { id: "q1", kind: "approval" } };
+  const card = { ...base, id: "s2", status: "running", pending_card: { id: "c1", bundle: "check-in" } };
+  const { state } = trackAttention(initialAttentionState(), "snapshot", { sessions: [open, card, { ...base, id: "s3" }] });
+  const later = trackAttention(state, "snapshot", { sessions: [{ ...base, id: "s3" }] });
+  assert.deepEqual(later.closed, ["s1:q1", "s2:card:c1"]);
+  assert.deepEqual(Object.keys(later.state.byId), ["s3"]);
+  // Back with the question still open: it was forgotten, so it is new again.
+  assert.deepEqual(trackAttention(later.state, "snapshot", { sessions: [open] }).attentions.map((a) => a.key), ["s1:q1"]);
+});
+
 // A running turn's card with actions (check-in's) asks like a question: the
 // hub's summary carries pending_card {id, bundle} while it is open.
 test("a new card with actions needs you, once per card id", () => {

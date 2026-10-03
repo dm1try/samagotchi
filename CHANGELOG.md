@@ -40,6 +40,8 @@ and commands may change between minor versions. How releases are made:
   that worker's earlier turns a second time: the page re-reads the session instead.
 - Web without the session events stream (fetched list): a re-fetched list now badges and notifies like the
   live list does.
+- Web: a session deleted while the page had lost the session events stream (or between two fetches of the
+  list) no longer keeps its question or card counted in the tab title's badge until the tab comes to front.
 - Web: with several chi tabs in the background, a session that needs you shows one OS notification, not one
   per tab (every tab still counts it in its title).
 - chi web: a session stream whose worker took the connection and froze before answering no longer holds the
