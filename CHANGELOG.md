@@ -64,8 +64,6 @@ and commands may change between minor versions. How releases are made:
   already deleted: the extracted source is kept until the agent step is done, then cleaned up.
 - `chi self` now checks a local `api: openai` host's reachability (a `GET <base>/models` with the same short
   probe timeouts) and reports up/down with the ids it serves, instead of always saying "reported per turn".
-- `chi --resume` with a `default.model` naming an unconfigured host runs the resumed session's own model (the
-  bad default is only a fallback); a spec now pins that.
 
 ## [0.19.0] - 2026-10-03
 
