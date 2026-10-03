@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-03
+
 ### Changed
 
 - A new or woken session worker runs the newest chi installed, whoever starts it: a `chi web`, `chi send` or
@@ -27,6 +29,8 @@ and commands may change between minor versions. How releases are made:
 - `chi sessions restart ID...` moves a running session to a new worker on the newest chi installed, keeping its
   attached terminal and web tabs on it; it is refused, with the reason, while a turn, a question, reminders or
   background tasks would be lost.
+- A bundle can ship per-model memory overlays (`tips.<model-key>.md` beside `tips.md`): they load only for that
+  model, as a `memory_write current_model_only` overlay does, and `chi bundle build tips.md` brings them along.
 
 ### Fixed
 
@@ -36,11 +40,10 @@ and commands may change between minor versions. How releases are made:
 - `chi web` no longer leaves exited session workers behind as zombie processes.
 - The web's model picker lists a host added to (or changed in) `hosts:` while `chi web` runs, instead of the hosts
   it started with.
-- A bundle's model overlay (`tips.<model-key>.md` next to `tips.md`) stays model-only after `chi bundle install`: it
-  no longer gets an `index.md` line of its own, which showed it to every model as a memory to read.
-  `chi bundle status` reads it `ok (model overlay)` instead of `no-index`, uninstall no longer re-adds its line, and
-  `chi bundle build tips.md` brings `tips.md`'s overlays along. An overlay whose base is nowhere, or only among your
-  installed memories, installs with a warning. A line an earlier install wrote goes with the bundle's next upgrade.
+- A bundle's model overlay no longer gets an `index.md` line of its own after `chi bundle install`, which showed it
+  to every model as a memory to read; `chi bundle status` reads it `ok (model overlay)`, uninstall no longer re-adds
+  its line, and an overlay whose base is nowhere, or only among your installed memories, installs with a warning. A
+  line an earlier install wrote goes with the bundle's next upgrade.
 - source-links (0.3.2): a `case_insensitive: true` source no longer lists a ref in its `sources:` note when the ref
   is a markdown link's label whose target names it in another case (`[jira-1](…/JIRA-1)`). Run `chi update` to get it.
 - An `@path` image in a prompt takes backslash escapes, as a Finder drag into the terminal types them:
@@ -85,6 +88,8 @@ and commands may change between minor versions. How releases are made:
   `SAMAGOTCHI_DEFAULT_MODEL` you export yourself still passes.
 - A preloaded memory that can't be loaded is warned about once, not again each time the prompt is rebuilt (another
   thinking level, a `/model` switch).
+
+Update with `chi update`: source-links moves to 0.3.2 (case-insensitive link targets). Restart `chi web` afterwards; from now on it tells you when a newer chi is installed.
 
 ## [0.18.1] - 2026-10-03
 
@@ -1113,7 +1118,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/dm1try/samagotchi/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/dm1try/samagotchi/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/dm1try/samagotchi/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/dm1try/samagotchi/compare/v0.16.0...v0.17.0
