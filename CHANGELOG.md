@@ -28,6 +28,8 @@ and commands may change between minor versions. How releases are made:
 - Answering or dismissing a question no longer says "Session is not running" when the worker is live but failed the
   request: the server answers 502 with the worker's detail and the card shows it. 503 stays for a session with no
   live worker.
+- A turn that failed to send no longer leaves its prompt waiting to be restored into the composer later; and text
+  typed while a fast-failed turn's prompt was coming back is kept, with the restored prompt going under it.
 
 ## [0.18.1] - 2026-10-03
 

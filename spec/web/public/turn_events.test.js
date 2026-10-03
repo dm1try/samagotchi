@@ -155,7 +155,7 @@ test("restoreAction never refills a prompt this page didn't send (a replay after
   assert.deepEqual(restoreAction(initial, opts), { refill: null, own: false, label: null });
 });
 
-import { keepEarlyRestore, restoreOnAck } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { keepEarlyRestore, restoreOnAck, dropEarlyRestores, restoreInto } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("a prompt_restored before its /turn ack is kept, and the ack gets the prompt back", () => {
   const event = { type: "prompt_restored", prompt: "boom", origin: { client_id: ME, enqueued_id: "e1" } };
@@ -190,6 +190,33 @@ test("keepEarlyRestore skips an acked prompt (the usual order), another client's
   assert.equal(restoreOnAck("e3", early, opts), null);
   assert.equal(restoreOnAck(undefined, early, opts), null);
 });
+
+// 4.13: the POST /turn failed, so no ack ever takes the early restore back.
+// Left in the map, that entry waits for an ack that never comes (and a later
+// turn reusing the id would get the wrong prompt back).
+test("a /turn that failed drops its early restore", () => {
+  const early = new Map();
+  const sentIds = new Set();
+  keepEarlyRestore({ prompt: "boom", origin: { client_id: ME, enqueued_id: "e1" } }, early, { myId: ME, sentIds });
+
+  assert.equal(dropEarlyRestores(early), 1);
+  assert.equal(early.size, 0);
+  assert.equal(restoreOnAck("e1", early, { myId: ME, sentIds: new Set(["e1"]) }), null);
+  assert.equal(dropEarlyRestores(early), 0);
+});
+
+// 4.13: text typed between the restore and the ack must survive it. An empty
+// composer takes the restored text; one with text keeps it and the restored
+// prompt goes under it.
+test("restoreInto puts the restored prompt back without replacing what was typed", () => {
+  assert.equal(restoreInto("boom", ""), "boom");
+  assert.equal(restoreInto("boom", "   "), "boom");
+  assert.equal(restoreInto("boom", "why not"), "why not\nboom");
+  assert.equal(restoreInto("", "why not"), "why not");
+  assert.equal(restoreInto(null, "why not"), "why not");
+  assert.equal(restoreInto(null, ""), "");
+});
+
 
 import { commandView, continueLine, sessionCommandLine, startPageReply, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
 
