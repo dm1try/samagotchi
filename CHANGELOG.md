@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
   was read as an answer and refused as an unknown option.
 - Attached TUI: joining a turn while a tool call runs (a long `delegate`, a slow command), its row's duration counts
   from the call's start, not from the join.
+- Web: in a short window a question or approval card that opens in the turn's stage is scrolled into view (its
+  choices and buttons); it sat below the prompt and headline, out of sight.
 
 ## [0.16.0] - 2026-10-03
 
