@@ -2277,6 +2277,51 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions/:id/tasks/:task_id/stop" do
+    let(:task_id) { "20261004120000-0a1b2c3d" }
+    let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+    let(:app) do
+      build_app(state_dir: Dir.mktmpdir).tap { |app| allow(app).to receive(:bridge_client).with("s1").and_return(bridge) }
+    end
+
+    def stop(id = task_id)
+      status, _headers, out = app.call(env_for("/api/sessions/s1/tasks/#{id}/stop", method: "POST"))
+      [status, JSON.parse(out.first)]
+    end
+
+    def reply(status, body) = Samagotchi::BridgeClient::Response.new(status: status, body: JSON.generate(body))
+
+    it "relays the stop to the worker and answers with the task's final status" do
+      allow(bridge).to receive(:stop_task).with(task_id)
+                                          .and_return(reply(200, status: "stopped", stop_reason: "stopped_by_user", task_id: task_id))
+
+      expect(stop).to eq([200, { "status" => "stopped", "stop_reason" => "stopped_by_user", "task_id" => task_id,
+                                 "session_id" => "s1" }])
+    end
+
+    it "keeps the worker's 404 task_not_found and 409 not_running apart from a stale worker's 404" do
+      allow(bridge).to receive(:stop_task).and_return(reply(404, error: "task_not_found", task_id: task_id))
+      expect(stop).to match([404, hash_including("error" => "task_not_found")])
+
+      allow(bridge).to receive(:stop_task).and_return(reply(409, error: "not_running", status: "completed", task_id: task_id))
+      expect(stop).to match([409, hash_including("error" => "not_running", "status" => "completed")])
+
+      allow(bridge).to receive(:stop_task).and_return(reply(404, error: "not_found"))
+      expect(stop).to match([501, hash_including("error" => "not_supported")])
+    end
+
+    it "answers 503 not_live with no worker" do
+      allow(app).to receive(:bridge_client).with("s1").and_return(nil)
+      expect(stop).to match([503, hash_including("error" => "not_live")])
+    end
+
+    it "answers 400 for an id that isn't a task's, without asking the worker" do
+      allow(bridge).to receive(:stop_task)
+      ["nope", "20261004120000-0a1b2c3", "..%2F..%2Fx"].each { |bad| expect(stop(bad)).to match([400, hash_including("error" => "invalid_task_id")]) }
+      expect(bridge).not_to have_received(:stop_task)
+    end
+  end
+
   describe "POST /api/sessions/:id/answer" do
     it "returns 400 when the question id is missing" do
       app = build_app(state_dir: Dir.mktmpdir)
@@ -2554,7 +2599,8 @@ RSpec.describe Samagotchi::Web::App do
       "a command" => ["command", '{"line":"!echo hi"}', :post_command, "the command was not run"],
       "an answer" => ["answer", '{"id":"q-1","selected":["A"]}', :answer, "the answer was not sent"],
       "a dismissal" => ["question/dismiss", '{"id":"q-1"}', :dismiss_question, "the question was not dismissed"],
-      "a cancel" => ["cancel", '{"reason":"user"}', :cancel, "the turn was not cancelled"]
+      "a cancel" => ["cancel", '{"reason":"user"}', :cancel, "the turn was not cancelled"],
+      "a task stop" => ["tasks/20261004120000-0a1b2c3d/stop", "", :stop_task, "the task was not stopped"]
     }.each do |what, (path, body, call, said)|
       it "answers 504 for #{what} the worker timed out on" do
         allow(bridge).to receive(call).and_raise(Errno::ETIMEDOUT)

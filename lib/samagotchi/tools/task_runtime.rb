@@ -110,17 +110,23 @@ module Samagotchi
       # A native tool_response joins its calls' results with "---".
       # @return [Array<Hash>] {id:, command:}, oldest first
       def running_created_in(messages)
-        ids = Array(messages).flat_map do |message|
+        created_ids_in(messages).filter_map do |id|
+          record, _error = get_record(id)
+          { id: id, command: record["command"].to_s } if record&.fetch("status") == "running"
+        end
+      end
+
+      # The ids of every task this conversation's task_create calls started,
+      # whatever their status now, oldest first.
+      # @return [Array<String>]
+      def created_ids_in(messages)
+        Array(messages).flat_map do |message|
           next [] unless (message[:role] || message["role"]).to_s == "tool_response"
 
           (message[:content] || message["content"]).to_s.split("\n\n---\n\n").filter_map do |block|
             block[/\A\[task_create\]\ntask_id: (\S+)/, 1]
           end
-        end
-        ids.uniq.filter_map do |id|
-          record, _error = get_record(id)
-          { id: id, command: record["command"].to_s } if record&.fetch("status") == "running"
-        end
+        end.uniq
       end
 
       def stopped_by_user?(record) = record["stop_reason"] == "stopped_by_user"

@@ -187,6 +187,15 @@ module Samagotchi
       post("cancel", { reason: reason }, read_body: true)
     end
 
+    # POST /session/:id/tasks/stop: stop a background task this session's
+    # conversation created, as the user (Bridge#handle_task_stop). 200 with
+    # its final status, 404 task_not_found, 409 not_running. Synchronous:
+    # the worker answers once the task is gone (up to its 3 s grace).
+    # @return [Response]
+    def stop_task(task_id)
+      post("tasks/stop", { task_id: task_id }, read_body: true)
+    end
+
     # How long the approval relay's calls wait for a reply: a parent's Stop
     # isn't held for READ_TIMEOUT by a child that doesn't answer.
     RELAY_TIMEOUT = 5

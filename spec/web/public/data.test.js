@@ -8,6 +8,7 @@ import {
   sendTurn,
   cancelTurn,
   stopSession,
+  stopTask,
   deleteSession,
   archiveSession,
   unarchiveSession,
@@ -267,6 +268,17 @@ test("cancelTurn posts a user reason", async () => {
     "POST",
     JSON.stringify({ reason: "user" }),
   ]);
+});
+
+test("stopTask posts to the task's stop route", async () => {
+  const calls = [];
+  await stopTask("abc", "20261004120000-0a1b2c3d", {
+    fetchImpl: (path, opts) => {
+      calls.push([path, opts.method, opts.body]);
+      return Promise.resolve(okResponse({}));
+    },
+  });
+  assert.deepEqual(calls[0], ["/api/sessions/abc/tasks/20261004120000-0a1b2c3d/stop", "POST", "{}"]);
 });
 
 test("stopSession posts to the stop route", async () => {

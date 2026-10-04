@@ -438,6 +438,7 @@ RSpec.describe "task tools" do
       ]
 
       expect(Samagotchi::Tools::TaskRuntime.running_created_in(messages)).to eq([{ id: live, command: "sleep 30" }])
+      expect(Samagotchi::Tools::TaskRuntime.created_ids_in(messages)).to eq([live, done])
     ensure
       [live, other].compact.each { |id| Samagotchi::Tools::TaskStop.call(id) }
     end

@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
   end
   let(:handlers) do
     %i[handle_cancel handle_answer handle_dismiss_question handle_post_turn handle_command handle_exit_request
-       handle_recap handle_relay handle_relay_status handle_state handle_stats handle_snapshot]
+       handle_recap handle_relay handle_relay_status handle_task_stop handle_state handle_stats handle_snapshot]
   end
 
   before do
@@ -69,6 +69,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
       %w[POST recap] => "handle_recap",
       %w[POST relay] => "handle_relay",
       ["POST", "relay/status"] => "handle_relay_status",
+      ["POST", "tasks/stop"] => "handle_task_stop",
       %w[GET state] => "handle_state",
       %w[GET stats] => "handle_stats",
       %w[GET snapshot] => "handle_snapshot"
@@ -84,7 +85,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
   end
 
   it "answers another session's id with 404 before any handler, and a handler that raises with 500" do
-    table = { "POST" => %w[cancel answer question/dismiss turn command exit recap relay relay/status], "GET" => %w[state stats snapshot] }
+    table = { "POST" => %w[cancel answer question/dismiss turn command exit recap relay relay/status tasks/stop], "GET" => %w[state stats snapshot] }
     table.each do |method, actions|
       actions.each do |action|
         status, _, body = request(method, "/session/other/#{action}", body: method == "POST" ? "{}" : nil)

@@ -62,9 +62,15 @@ RSpec.describe Samagotchi::ToolView do
   end
 
   it "has no view for the other tools" do
-    %w[read write edit memory_read task_wait web_fetch jira_search].each do |tool|
+    %w[read write edit memory_read task_get web_fetch jira_search].each do |tool|
       expect(described_class.for(tool, { name: tool, content: "x", path: "a.rb" })).to be_nil
     end
+  end
+
+  it "carries a task_wait's task id (the web's stop-task button), and nothing for a blank one" do
+    expect(described_class.for("task_wait", { name: "task_wait", content: " 20261004120000-0a1b2c3d " }).to_h)
+      .to eq(task_id: "20261004120000-0a1b2c3d")
+    expect(described_class.for("task_wait", { name: "task_wait", content: " " })).to be_nil
   end
 
   it "has no view for an empty command" do

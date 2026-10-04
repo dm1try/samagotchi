@@ -27,6 +27,8 @@ require_relative "version"
 require_relative "worker_sidecar"
 require_relative "relay_verifier"
 require_relative "relay_watcher"
+require_relative "tools/task_create"
+require_relative "tools/task_runtime"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -461,7 +463,8 @@ module Samagotchi
     # sidecar (WorkerSidecar#features): a client checks a name here rather
     # than a version.
     # restart: POST /exit takes "restart": true (WorkerIdleExit#hold_for_restart).
-    FEATURES = ["restart"].freeze
+    # task_stop: POST tasks/stop (#handle_task_stop), the web's stop-task button.
+    FEATURES = %w[restart task_stop].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -477,6 +480,7 @@ module Samagotchi
       %w[POST recap] => :handle_recap,
       %w[POST relay] => :handle_relay,
       %w[POST relay/status] => :handle_relay_status,
+      %w[POST tasks/stop] => :handle_task_stop,
       %w[GET state] => :handle_state,
       %w[GET stats] => :handle_stats,
       %w[GET snapshot] => :handle_snapshot,
@@ -537,6 +541,38 @@ module Samagotchi
       else
         [{}, 409, { error: "not_running", detail: "no active turn to cancel", session_id: @session_id }]
       end
+    end
+
+    # POST /session/:id/tasks/stop {task_id}: stop a background task as the
+    # user (TaskRuntime.stop_task by: "user"); a task_wait on it returns, and
+    # the turn goes on. Only a task this conversation created: records in
+    # tmp/tasks are shared by every session in the cwd. Those are in the
+    # saved conversation, or, created in the running turn, only in the
+    # accumulator's task_create parts. 200 {status, stop_reason, task_id},
+    # 404 task_not_found, 409 not_running (it already ended), 400 no id.
+    # Answers once the task is gone: up to STOP_GRACE_SEC.
+    def handle_task_stop(_session_id, body)
+      parsed = parse_json(body)
+      task_id = (fetched(parsed, "task_id") if parsed.is_a?(Hash)).to_s.strip
+      return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "task_id required" }] if task_id.empty?
+      return [{}, 404, { error: "task_not_found", task_id: task_id }] unless own_task_ids.include?(task_id)
+
+      record, error = Tools::TaskRuntime.get_record(task_id)
+      return [{}, 404, { error: "task_not_found", task_id: task_id }] if error
+      return [{}, 409, { error: "not_running", status: record["status"], task_id: task_id }] unless record["status"] == "running"
+
+      Log.info(:bridge, "task_stop", task_id: task_id)
+      record, error = Tools::TaskRuntime.stop_task(task_id, by: "user")
+      return [{}, 500, { error: "bridge_error", detail: error }] if error
+
+      [{}, 200, { status: record["status"], stop_reason: record["stop_reason"], task_id: task_id }]
+    end
+
+    def own_task_ids
+      running = Array(@accumulator.current_turn&.dig(:parts)).filter_map do |part|
+        part[:output].to_s[/\A(?:\[task_create\]\n)?task_id: (\S+)/, 1] if part[:kind] == "tool" && part[:tool] == Tools::TaskCreate::NAME
+      end
+      Tools::TaskRuntime.created_ids_in(@engine.messages_checkpoint) | running
     end
 
     # Answer the pending question. A past +deadline+ (see #handle_post_turn):

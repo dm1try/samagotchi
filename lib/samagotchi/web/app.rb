@@ -139,6 +139,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream],
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output],
         ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel],
+        ["POST", %r{\A/api/sessions/([^/]+)/tasks/([^/]+)/stop\z}, :handle_task_stop],
         ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop],
         ["POST", %r{\A/api/sessions/([^/]+)/restart\z}, :handle_restart],
         ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive],
@@ -1013,6 +1014,30 @@ module Samagotchi
             json_response(202, { status: "cancel_requested", session_id: id, reason: reply.json&.dig("reason"), via: "bridge" })
           # No active turn to cancel.
           when 409 then json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id })
+          end
+        end
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      # A task id as TaskRuntime.generate_task_id makes it.
+      TASK_ID = /\A\d{14}-\h{8}\z/
+
+      # The stop-task button: the worker stops the task as the user
+      # (Bridge#handle_task_stop) and its task_wait returns. Its own 404
+      # (not this conversation's task) and 409 (already ended) pass through;
+      # a 404 from a worker without the route is the stale worker's 501.
+      def handle_task_stop(_req, id, task_id)
+        return error_response(400, "invalid_task_id", "not a task id: #{task_id.to_s[0, 80]}") unless TASK_ID.match?(task_id)
+
+        @session_class.load(id, state_dir: default_state_dir)
+        request = ->(client) { client.stop_task(task_id) }
+        relay(id, bridge_client(id), request, what: "the task was not stopped", cant: "stop tasks") do |reply|
+          body = reply.json || {}
+          case reply.status
+          when 200 then json_response(200, { status: body["status"], stop_reason: body["stop_reason"], task_id: task_id, session_id: id })
+          when 404 then (error_response(404, "task_not_found", "no task #{task_id} in this conversation") if body["error"] == "task_not_found")
+          when 409 then json_response(409, { error: "not_running", status: body["status"], task_id: task_id, session_id: id })
           end
         end
       rescue ArgumentError => e

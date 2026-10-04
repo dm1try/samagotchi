@@ -389,6 +389,76 @@ RSpec.describe Samagotchi::Bridge do
     end
   end
 
+  describe "POST tasks/stop" do
+    let(:engine) { make_engine }
+    let(:bridge) { described_class.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1") }
+    let(:created) { [] }
+
+    around do |example|
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          example.run
+        ensure
+          created.each { |id| Samagotchi::Tools::TaskRuntime.stop_task(id, by: "model") }
+        end
+      end
+    end
+
+    def start(command = "sleep 30")
+      record, = Samagotchi::Tools::TaskRuntime.create_task(command)
+      created << record["id"]
+      record["id"]
+    end
+
+    def created_by_tool(id) = "[task_create]\ntask_id: #{id}\nstatus: running"
+
+    def stop(task_id) = bridge.send(:handle_task_stop, "s1", JSON.generate(task_id: task_id))
+
+    before { allow(bridge.instance_variable_get(:@accumulator)).to receive(:current_turn).and_return(nil) }
+
+    it "stops a task an earlier turn of this conversation created, as the user" do
+      id = start
+      allow(engine).to receive(:messages_checkpoint).and_return([{ role: "tool_response", content: created_by_tool(id) }])
+
+      _, status, body = stop(id)
+
+      expect([status, body]).to eq([200, { status: "stopped", stop_reason: "stopped_by_user", task_id: id }])
+      expect(Samagotchi::Tools::TaskRuntime.get_record(id).first).to include("status" => "stopped")
+    end
+
+    it "stops a task the running turn created" do
+      id = start
+      allow(engine).to receive(:messages_checkpoint).and_return([])
+      # The part's output as the tool runner emits it: "[task_create]" first.
+      turn = { parts: [{ kind: "tool", tool: "task_create", output: "[task_create]\ntask_id: #{id}\nstatus: running" }] }
+      allow(bridge.instance_variable_get(:@accumulator)).to receive(:current_turn).and_return(turn)
+
+      expect(stop(id)[1]).to eq(200)
+    end
+
+    it "answers 404 for another conversation's task and an unknown one, and leaves them running" do
+      foreign = start
+      allow(engine).to receive(:messages_checkpoint).and_return([{ role: "user", content: "task_id: #{foreign}" }])
+
+      expect(stop(foreign).drop(1)).to eq([404, { error: "task_not_found", task_id: foreign }])
+      expect(stop("20261004120000-0a1b2c3d")[1]).to eq(404)
+      expect(Samagotchi::Tools::TaskRuntime.get_record(foreign).first).to include("status" => "running")
+    end
+
+    it "answers 409 not_running, with its status, for a task that already ended" do
+      id = start("true")
+      allow(engine).to receive(:messages_checkpoint).and_return([{ role: "tool_response", content: created_by_tool(id) }])
+      sleep 0.05 while Samagotchi::Tools::TaskRuntime.get_record(id).first["status"] == "running"
+
+      expect(stop(id).drop(1)).to eq([409, { error: "not_running", status: "completed", task_id: id }])
+    end
+
+    it "answers 400 without a task id" do
+      expect(bridge.send(:handle_task_stop, "s1", "{}")[1]).to eq(400)
+      expect(bridge.send(:handle_task_stop, "s1", "nope")[1]).to eq(400)
+    end
+  end
+
   describe "cancel reasons" do
     let(:engine) { make_engine }
     let(:bridge) { described_class.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1") }

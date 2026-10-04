@@ -3,6 +3,7 @@
 require_relative "command_steps"
 require_relative "tools/execute"
 require_relative "tools/task_create"
+require_relative "tools/task_wait"
 
 module Samagotchi
   # What a richer UI shows of a tool call beyond its one-line params: the
@@ -18,8 +19,9 @@ module Samagotchi
   # can't (the fallback: the UI shows the command itself) or the command
   # is cut. +description+: what the model said the command does (execute's
   # optional description), whitespace collapsed, a trailing period gone;
-  # nil when it gave none.
-  ToolView = Data.define(:command, :cwd, :truncated, :chars, :cd, :steps, :description) do
+  # nil when it gave none. +task_id+: the task a task_wait waits on (its
+  # only field), for the web's stop-task button.
+  ToolView = Data.define(:command, :cwd, :truncated, :chars, :cd, :steps, :description, :task_id) do
     def to_h = super.merge(steps: steps&.map(&:to_h)).compact.reject { |_key, value| value == false }
   end
 
@@ -37,6 +39,7 @@ module Samagotchi
     # @return [ToolView, nil] nil for a tool without a view and for an
     #   empty command
     def self.for(tool_name, call)
+      return task_wait(call) if tool_name == Tools::TaskWait::NAME && call.is_a?(Hash)
       return nil unless TOOLS.include?(tool_name) && call.is_a?(Hash)
 
       command = call[:content].to_s
@@ -47,8 +50,16 @@ module Samagotchi
       parsed = truncated ? nil : CommandSteps.parse(command)
       new(command: truncated ? command[0, COMMAND_LIMIT] : command, cwd: cwd.empty? ? nil : cwd,
           truncated: truncated, chars: truncated ? command.length : nil, cd: parsed&.cd, steps: parsed&.steps,
-          description: description(call))
+          description: description(call), task_id: nil)
     end
+
+    def self.task_wait(call)
+      task_id = call[:content].to_s.strip
+      return nil if task_id.empty?
+
+      new(command: nil, cwd: nil, truncated: false, chars: nil, cd: nil, steps: nil, description: nil, task_id: task_id)
+    end
+    private_class_method :task_wait
 
     # The call's description as a view shows it, nil for none.
     def self.description(call)
