@@ -67,19 +67,19 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     expect(backend.adapter.requests.map { |r| r[:options] }).to eq([{ temperature: 0.6 }, { temperature: 0.6 }])
   end
 
-  it "sends a positive default.n_predict as max_tokens, sampling's other keys next to it, none when unset or 0" do
-    original = ENV.fetch("SAMAGOTCHI_DEFAULT_N_PREDICT", nil)
+  it "sends a positive default.max_tokens as max_tokens, sampling's other keys next to it, none when unset or 0" do
+    original = ENV.fetch("SAMAGOTCHI_DEFAULT_MAX_TOKENS", nil)
     fake_kernel.turn_settings = fake_kernel.turn_settings.with(sampling: { temperature: 0.6 })
-    ENV["SAMAGOTCHI_DEFAULT_N_PREDICT"] = "4096"
+    ENV["SAMAGOTCHI_DEFAULT_MAX_TOKENS"] = "4096"
     run
-    ENV["SAMAGOTCHI_DEFAULT_N_PREDICT"] = "0"
+    ENV["SAMAGOTCHI_DEFAULT_MAX_TOKENS"] = "0"
     backend.adapter = FakeChatAdapter.new(text("done"))
     run
 
     expect(adapter.requests.last[:options]).to eq(max_tokens: 4096, temperature: 0.6)
     expect(backend.adapter.requests.last[:options]).to eq(temperature: 0.6)
   ensure
-    original.nil? ? ENV.delete("SAMAGOTCHI_DEFAULT_N_PREDICT") : ENV["SAMAGOTCHI_DEFAULT_N_PREDICT"] = original
+    original.nil? ? ENV.delete("SAMAGOTCHI_DEFAULT_MAX_TOKENS") : ENV["SAMAGOTCHI_DEFAULT_MAX_TOKENS"] = original
   end
 
   describe "thinking level" do

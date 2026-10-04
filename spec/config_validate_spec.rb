@@ -30,6 +30,10 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
     ])
   end
 
+  it "warns about the old default.n_predict (renamed default.max_tokens, no alias)" do
+    expect(problems("default: {n_predict: 4096}\n").first).to start_with("config: unknown key 'default.n_predict'")
+  end
+
   it "keeps the free-form maps silent and checks host and model entries against the keys their readers take" do
     expect(problems(<<~YAML)).to eq(["config: unknown key 'hosts.other.hots' (did you mean 'hosts.other.host'?)"])
       hosts:

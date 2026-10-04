@@ -837,7 +837,7 @@ described in their own sections.
 |---|---|---|---|
 | `default.model` | (required) | `--model` | The model a new session starts with; `host:model` pins a host. |
 | `default.input` | none | | Text pre-filled at the first prompt (a trailing space is kept); `--no-default-input` skips it. See [CLI](cli.md). |
-| `default.n_predict` | server's | yes | Most tokens one generation may produce: `n_predict` on native hosts, `max_tokens` on OpenAI-compatible ones (OpenRouter: 32768 when unset). |
+| `default.max_tokens` | server's | yes | Most tokens one generation may produce (`n_predict` on a native llama.cpp host; OpenRouter: 32768 when unset). |
 | `model.profile` | none | `--profile` | Prompt profile for every model (`qwen36`, `gemma4`); env and CLI only. See "Prompt profile". |
 | `server.transport` | `llama_cpp` | yes | `llama_cpp`, `mlx` or `omlx`; see "Model Server Transport". |
 | `server.host` | `localhost` | yes | The model server when there is no `hosts:` map. |

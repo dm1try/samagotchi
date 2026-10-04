@@ -564,15 +564,13 @@ module Samagotchi
       kwargs[:on_retry] = on_retry if on_retry
       kwargs[:cancel_controller] = cancel_controller if cancel_controller
       kwargs[:stop] = @profile.stop_sequences
-      n_predict = completion_n_predict
-      kwargs[:n_predict] = n_predict if n_predict
+      max_tokens = Samagotchi::Config.max_tokens
+      kwargs[:n_predict] = max_tokens if max_tokens
       resolved_model_name = completion_model_name(model_name)
       kwargs[:model] = resolved_model_name if resolved_model_name
       kwargs[:sampling] = sampling if sampling && !sampling.empty?
       kwargs
     end
-
-    def completion_n_predict = Samagotchi::Config.n_predict
 
     def completion_model_name(override = nil)
       ModelProfile.required_model_name(override)

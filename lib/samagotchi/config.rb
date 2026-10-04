@@ -136,7 +136,7 @@ module Samagotchi
       # the flag and the env, above config.yml's value.
       Entry.new(key: "thinking.level",           yaml_path: %w[thinking level],           type: :string, default: "default",       expose: %i[env config]),
 
-      Entry.new(key: "default.n_predict",        yaml_path: %w[default n_predict],        type: :integer, default: nil,              expose: %i[env config cli]),
+      Entry.new(key: "default.max_tokens",       yaml_path: %w[default max_tokens],       type: :integer, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli]),
 
       Entry.new(key: "retry.max",                yaml_path: %w[retry max],                type: :integer, default: 5,               expose: %i[env config cli]),
@@ -404,10 +404,10 @@ module Samagotchi
         get_with_origin(key).first
       end
 
-      # default.n_predict: the most tokens one generation may produce, or
+      # default.max_tokens: the most tokens one generation may produce, or
       # nil when unset or not positive (the server's own limit).
-      def n_predict
-        value = get("default.n_predict").to_i
+      def max_tokens
+        value = get("default.max_tokens").to_i
         value if value.positive?
       end
 

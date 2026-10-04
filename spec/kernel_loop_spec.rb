@@ -19,11 +19,11 @@ RSpec.describe Samagotchi::KernelLoop do
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
       "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS" => ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"],
       "SAMAGOTCHI_CONTEXT_STATUS_CADENCE" => ENV["SAMAGOTCHI_CONTEXT_STATUS_CADENCE"],
-      "SAMAGOTCHI_DEFAULT_N_PREDICT" => ENV["SAMAGOTCHI_DEFAULT_N_PREDICT"]
+      "SAMAGOTCHI_DEFAULT_MAX_TOKENS" => ENV["SAMAGOTCHI_DEFAULT_MAX_TOKENS"]
     }
 
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV.delete("SAMAGOTCHI_DEFAULT_N_PREDICT")
+    ENV.delete("SAMAGOTCHI_DEFAULT_MAX_TOKENS")
 
     example.run
   ensure
@@ -2032,7 +2032,7 @@ end
       expect(seen.map { |kwargs| kwargs[:sampling] }).to eq([nil, { temperature: 0.6 }, nil])
     end
 
-    it "returns nil when no default.n_predict is configured" do
+    it "returns nil when no default.max_tokens is configured" do
       original_xdg = ENV["XDG_CONFIG_HOME"]
       Dir.mktmpdir("samagotchi-empty") do |dir|
         ENV["XDG_CONFIG_HOME"] = dir
@@ -2052,13 +2052,13 @@ end
       end
     end
 
-    it "uses default.n_predict from config" do
+    it "uses default.max_tokens from config" do
       original_xdg = ENV["XDG_CONFIG_HOME"]
       Dir.mktmpdir("samagotchi-npredict") do |dir|
         ENV["XDG_CONFIG_HOME"] = dir
         config_path = File.join(dir, "samagotchi", "config.yml")
         FileUtils.mkdir_p(File.dirname(config_path))
-        File.write(config_path, "default:\n  n_predict: 4096\n")
+        File.write(config_path, "default:\n  max_tokens: 4096\n")
 
         captured_kwargs = nil
         allow(client).to receive(:complete) do |_prompt, **kwargs|
@@ -2074,9 +2074,9 @@ end
       end
     end
 
-    it "respects SAMAGOTCHI_DEFAULT_N_PREDICT env var" do
+    it "respects SAMAGOTCHI_DEFAULT_MAX_TOKENS env var" do
       captured_kwargs = nil
-      ENV["SAMAGOTCHI_DEFAULT_N_PREDICT"] = "2048"
+      ENV["SAMAGOTCHI_DEFAULT_MAX_TOKENS"] = "2048"
       allow(client).to receive(:complete) do |_prompt, **kwargs|
         captured_kwargs = kwargs
         "done"
@@ -2086,7 +2086,7 @@ end
 
       expect(captured_kwargs[:n_predict]).to eq(2048)
     ensure
-      ENV.delete("SAMAGOTCHI_DEFAULT_N_PREDICT")
+      ENV.delete("SAMAGOTCHI_DEFAULT_MAX_TOKENS")
     end
 
     it "passes model from environment when configured" do

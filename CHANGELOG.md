@@ -15,9 +15,11 @@ and commands may change between minor versions. How releases are made:
 - Requests to OpenRouter send `max_tokens: 32768` (a request's own limit, as a recap's, still wins). OpenRouter
   holds each running request's estimated cost against the balance, counting the output `max_tokens` allows (a
   fixed per-request cap without one), so concurrent requests hit "would exceed your available credits given your
-  current in-flight requests" (402) sooner without a limit. `default.n_predict` raises or lowers that limit.
-- `default.n_predict` applies to chat turns on OpenAI-compatible hosts too, sent as `max_tokens` on any host; it
-  was used only by native hosts.
+  current in-flight requests" (402) sooner without a limit. `default.max_tokens` raises or lowers that limit.
+- `default.n_predict` is renamed `default.max_tokens` (env `SAMAGOTCHI_DEFAULT_MAX_TOKENS`, flag
+  `--default-max-tokens`), with no alias: an old `n_predict:` in config.yml warns as an unknown key. It now
+  limits chat turns on OpenAI-compatible hosts too, sent as `max_tokens` on any host; it was used only by native
+  hosts (where it is still sent as llama.cpp's `n_predict`).
 
 ### Fixed
 
