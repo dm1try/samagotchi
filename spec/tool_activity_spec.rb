@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
+require "fileutils"
+require "json"
 require "samagotchi/tool_activity"
 require "samagotchi/tools/builtins"
 require "samagotchi/kernel_loop"
@@ -180,6 +183,55 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(title("task_list")).to be_nil
       expect(title("jira_search", query: "x")).to be_nil
       expect(title("read", content: "  ")).to be_nil
+    end
+
+    describe "for the task tools" do
+      let(:root) { Dir.mktmpdir }
+
+      after { FileUtils.rm_rf(root) }
+
+      def task(id, command)
+        dir = File.join(root, "tmp", "tasks", id)
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "task.json"), JSON.generate("id" => id, "command" => command))
+      end
+
+      it "names a task_wait's task by its command (its leading cd gone) and how long it waits" do
+        task("20261004-ab12", "cd /p/app && bundle exec parallel_rspec -n 8 spec")
+        expect(title("task_wait", cwd: root, content: "20261004-ab12", timeout: "120")).to eq("bundle exec parallel_rspec -n 8 spec · up to 120s")
+        expect(title("task_wait", cwd: root, content: " 20261004-ab12 ")).to eq("bundle exec parallel_rspec -n 8 spec · up to 600s")
+      end
+
+      it "names a task_get's and a task_stop's task by its command" do
+        task("t1", "npm test && npm run e2e")
+        expect(title("task_get", cwd: root, content: "t1")).to eq("npm test +1")
+        expect(title("task_stop", cwd: root, content: "t1")).to eq("npm test +1")
+      end
+
+      it "cuts a long command so the wait still fits 80" do
+        task("t1", "y" * 100)
+        cut = title("task_wait", cwd: root, content: "t1", timeout: "600")
+        expect(cut).to eq("#{"y" * 66}… · up to 600s")
+        expect(cut.length).to eq(80)
+      end
+
+      it "has none (the row keeps its id) for a missing, unreadable or odd task" do
+        expect(title("task_wait", cwd: root, content: "nope")).to be_nil
+        dir = File.join(root, "tmp", "tasks", "bad")
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "task.json"), "{not json")
+        expect(title("task_get", cwd: root, content: "bad")).to be_nil
+        task("blank", "  ")
+        expect(title("task_get", cwd: root, content: "blank")).to be_nil
+        task("t1", "ls")
+        expect(title("task_get", cwd: File.join(root, "tmp", "tasks", "x"), content: "../t1")).to be_nil
+        expect(title("task_wait", cwd: root, content: "")).to be_nil
+      end
+
+      it "reads the process's directory when no cwd is given" do
+        task("t1", "make")
+        Dir.chdir(root) { expect(title("task_get", cwd: nil, content: "t1")).to eq("make") }
+      end
     end
 
     it "rides on the completed activity when there is one (cwd: the process's)" do

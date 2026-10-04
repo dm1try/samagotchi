@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
   An open step's body sits indented under its summary.
 - Web: a step with a failed call says so in its collapsed label, `3 tool calls (1 failed)`, with a red chevron; the
   turn's summary counts failed calls below 3 calls too.
+- Web: a `task_wait`, `task_get` or `task_stop` row names its task by the task's command instead of its id, a wait with
+  how long it waits (`bundle exec rspec · up to 600s`), also for a task started in an earlier turn; the id line stays
+  on hover.
 
 ## [0.28.0] - 2026-10-04
 

@@ -303,3 +303,13 @@ test("turnHistoryHtml with parts: a failed call's row keeps its word after the p
   // The step says so, with the red-chevron class, and the block's bare count too (under 3 calls).
   assert.match(html, /<details class="turn-work done"><summary>1 step · 1 tool call \(1 failed\)<\/summary><details class="gen has-failed"><summary>working with execute · 1 tool call \(1 failed\)<\/summary>/);
 });
+
+test("turnHistoryHtml: a task_wait titled by its task's command shows it, its id line on hover", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "", parts: { tools: [{ tool: "task_wait", params: 'id="t1" timeout="600"', title: "bundle exec rspec · up to 600s", output: "[task_wait]\nstatus: completed", view: { task_id: "t1" } }] } },
+    { role: "assistant", content: "Done." },
+  ];
+  const html = turnHistoryHtml(items, timing, { thumbs });
+  assert.match(html, /<span class="activity-tool">task_wait<\/span><span class="activity-params" title="id=&quot;t1&quot; timeout=&quot;600&quot;">bundle exec rspec · up to 600s<\/span>/);
+});

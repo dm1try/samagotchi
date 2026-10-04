@@ -12,6 +12,7 @@ require_relative "tools/edit"
 require_relative "tools/task_create"
 require_relative "tools/task_get"
 require_relative "tools/task_list"
+require_relative "tools/task_runtime"
 require_relative "tools/task_stop"
 require_relative "tools/task_wait"
 require_relative "tools/web_fetch"
@@ -62,11 +63,13 @@ module Samagotchi
     # command without its "cd … &&"): a file tool's path relative to +cwd+
     # when it is under it, a command's description (the model's few words),
     # else its first step and how many more (CommandSteps; its first line
-    # when it has no steps), a memory's name;
-    # nil for the other tools (a plugin's row keeps its preview, the
+    # when it has no steps), a memory's name, a task tool's task command
+    # (task_title); nil for the other tools (a plugin's row keeps its preview, the
     # params). +params+ stays the full key=value line (the TUI, the
     # guardrails).
     def tool_title(tool_name, call, cwd: nil)
+      return task_title(tool_name, call, cwd) if TASK_TOOLS.include?(tool_name)
+
       if [Tools::Execute::NAME, Tools::TaskCreate::NAME].include?(tool_name)
         title = command_description(tool_name, call) || steps_title(call[:content])
         return title if title
@@ -90,19 +93,42 @@ module Samagotchi
       end
     end
 
+    TASK_TOOLS = [Tools::TaskWait::NAME, Tools::TaskGet::NAME, Tools::TaskStop::NAME].freeze
+
+    # A task_wait / task_get / task_stop row's title: the task's command
+    # (its record under +cwd+, the process's directory when nil) as a
+    # command's title, and for a wait how long it waits ("npm test · up to
+    # 600s"). nil when there is no record: the row keeps its id.
+    def task_title(tool_name, call, cwd)
+      command = Tools::TaskRuntime.command_of(call[:content], root: cwd)
+      return nil unless command
+
+      suffix = ""
+      if tool_name == Tools::TaskWait::NAME
+        timeout = call[:timeout].to_s.strip
+        suffix = " · up to #{timeout.empty? ? Tools::TaskWait::TIMEOUT_DEFAULT : timeout.to_i}s"
+      end
+      room = TOOL_ACTIVITY_PREVIEW_LIMIT - suffix.length
+      text = steps_title(command, room) || command_title(command).gsub(/\s+/, " ")
+      return nil if text.empty?
+
+      text = "#{text[0, room - 1]}…" if text.length > room
+      "#{text}#{suffix}"
+    end
+
     # A leading "cd <dir> &&" / "cd <dir>;" goes: the model's habit, and it
     # eats the line.
     LEADING_CD = /\Acd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/
 
-    # "<first step> +N" (N the steps after it), cut to fit
-    # TOOL_ACTIVITY_PREVIEW_LIMIT; nil when the command has no steps.
-    def steps_title(command)
+    # "<first step> +N" (N the steps after it), cut to fit +limit+
+    # (TOOL_ACTIVITY_PREVIEW_LIMIT); nil when the command has no steps.
+    def steps_title(command, limit = TOOL_ACTIVITY_PREVIEW_LIMIT)
       steps = CommandSteps.parse(command)&.steps
       return nil unless steps
 
       first = steps.first.text.gsub(/\s+/, " ")
       more = steps.size > 1 ? " +#{steps.size - 1}" : ""
-      room = TOOL_ACTIVITY_PREVIEW_LIMIT - more.length
+      room = limit - more.length
       first = "#{first[0, room - 1]}…" if first.length > room
       "#{first}#{more}"
     end

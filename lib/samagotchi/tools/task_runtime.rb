@@ -129,6 +129,27 @@ module Samagotchi
         end.uniq
       end
 
+      # A task id as task_create makes them: no path parts.
+      TASK_ID = /\A[A-Za-z0-9_-]+\z/
+
+      # The command of the task +task_id+ under +root+ (a session's working
+      # directory) as its record has it, for a UI row's title; nil for no
+      # such task or an unreadable record. Reads the record only (no
+      # refresh), so it is cheap and never fails.
+      # @return [String, nil]
+      def command_of(task_id, root: Dir.pwd)
+        id = task_id.to_s.strip
+        return nil unless id.match?(TASK_ID)
+
+        path = File.join(root || Dir.pwd, TASKS_DIR, id, METADATA_FILENAME)
+        return nil unless File.file?(path)
+
+        command = JSON.parse(File.read(path))["command"]
+        command.is_a?(String) && !command.strip.empty? ? command : nil
+      rescue StandardError
+        nil
+      end
+
       def stopped_by_user?(record) = record["stop_reason"] == "stopped_by_user"
 
       def get_record(task_id)

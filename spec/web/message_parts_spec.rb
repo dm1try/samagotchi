@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
+require "fileutils"
+require "json"
 require "samagotchi/web/message_parts"
 
 RSpec.describe Samagotchi::Web::MessageParts do
@@ -232,6 +235,18 @@ RSpec.describe Samagotchi::Web::MessageParts do
       tools = described_class.for_message({ content: content }, [], cwd: "/p/app")[:tools]
       expect(tools.map { |t| t[:title] }).to eq(["rspec", "lib/a.rb"])
       expect(tools.first[:params]).to eq('command="cd /p/app && rspec"')
+    end
+
+    it "names a task_wait's task by its command from the session's task record" do
+      Dir.mktmpdir do |cwd|
+        dir = File.join(cwd, "tmp", "tasks", "t1")
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "task.json"), JSON.generate("id" => "t1", "command" => "bundle exec rspec"))
+        content = "#{qwen_call("task_wait", id: "t1", timeout: 300)}#{qwen_call("task_wait", id: "t2")}"
+        tools = described_class.for_message({ content: content }, [], cwd: cwd)[:tools]
+        expect(tools.map { |t| t[:title] }).to eq(["bundle exec rspec · up to 300s", nil])
+        expect(tools.first[:params]).to eq('id="t1" timeout="300"')
+      end
     end
 
     it "leaves the title out where there is none (a plugin tool)" do
