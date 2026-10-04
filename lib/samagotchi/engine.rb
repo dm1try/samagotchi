@@ -1751,13 +1751,7 @@ module Samagotchi
     # Who stopped a turn a hook stopped or cut (the controller's detail: the
     # bundle, or the hook's label), for the UIs' "stopped by loop-guard";
     # nil for any other cancel.
-    def cancelled_by(turn)
-      return nil unless turn.controller.reason == :hook
-
-      detail = turn.controller.detail
-      by = detail[:by].to_s if detail.is_a?(Hash)
-      by unless by.nil? || by.empty?
-    end
+    def cancelled_by(turn) = turn.controller.stopped_by
     private :cancelled_by
 
     # The turn's settings for the kernel (LLM::TurnSettings): vision,

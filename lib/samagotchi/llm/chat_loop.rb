@@ -595,7 +595,7 @@ module Samagotchi
         # The text streamed before the cancel stays, marked [interrupted],
         # as the native loop's salvage does.
         def canceled(iteration, reason, partial = "")
-          emit(type: :generation_cancelled, iteration: iteration, reason: reason)
+          emit(type: :generation_cancelled, iteration: iteration, reason: reason, stopped_by: @cancel_controller&.stopped_by)
           visible = @loop.strip_model_thought(partial.to_s).strip
           @conversation << { role: "model", content: "#{visible}\n[interrupted]", interrupted: true } unless visible.empty?
           conversation = @loop.plain(@conversation)

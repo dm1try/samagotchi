@@ -93,6 +93,13 @@ RSpec.describe Samagotchi::CancellationController do
     end
   end
 
+  it "names who stopped it only when a hook did and said so" do
+    expect(described_class.new.tap { |c| c.cancel!(:hook, { by: "loop-guard", reason: "loops" }) }.stopped_by).to eq("loop-guard")
+    expect(described_class.new.tap { |c| c.cancel!(:hook, { reason: "loops" }) }.stopped_by).to be_nil
+    expect(described_class.new.tap { |c| c.cancel!(:user, { by: "x" }) }.stopped_by).to be_nil
+    expect(described_class.new.stopped_by).to be_nil
+  end
+
   it "is still reachable as Client::CancellationController" do
     expect(Samagotchi::Client::CancellationController).to be(described_class)
   end

@@ -54,6 +54,14 @@ module Samagotchi
       @mutex.synchronize { @detail }
     end
 
+    # Who stopped it when a hook did: the detail's +by+ (the bundle, or the
+    # hook's label); nil for any other cancel.
+    def stopped_by
+      reason, detail = @mutex.synchronize { [@reason, @detail] }
+      by = detail[:by].to_s if reason == :hook && detail.is_a?(Hash)
+      by unless by.nil? || by.empty?
+    end
+
     # Yields a child controller for one generation: it is cancelled when
     # this one is, and #cancel_generation! cancels it alone. Gone after the
     # block.

@@ -55,8 +55,9 @@ module Samagotchi
       when :generation_chunk then add(event[:thinking].to_s)
       when :generation_completed then completed(event)
       when :generation_cancelled
-        # A plugin's stop_turn mid-generation; a user's Stop is not kept.
-        keep(event, finish_reason: "cancelled", stopped_by: "hook") if event[:reason].to_s == "hook"
+        # A plugin's stop_turn mid-generation (the bundle that stopped it,
+        # "hook" when unknown); a user's Stop is not kept.
+        keep(event, finish_reason: "cancelled", stopped_by: (event[:stopped_by] || "hook").to_s) if event[:reason].to_s == "hook"
       end
     rescue StandardError
       nil

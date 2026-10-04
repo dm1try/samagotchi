@@ -186,7 +186,8 @@ module Samagotchi
         return outcome if outcome.is_a?(LLM::ModelResult)
         break if outcome == :answer
       rescue Client::RequestCancelled => e
-        emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: e.reason)
+        emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: e.reason,
+                   stopped_by: turn.cancel_controller&.stopped_by)
         return cancelled_result(turn.conversation, tool_activity: turn.tool_activity, reason: e.reason,
                                                    partial_assistant_text: turn.buffer)
       end
@@ -433,7 +434,7 @@ module Samagotchi
       end
       turn.empty_retry.drop_nudge!(turn.conversation)
       turn.cancel_controller.cancel!(:hook, cut)
-      emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: :hook)
+      emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: :hook, stopped_by: cut[:by])
       cancelled_result(turn.conversation, tool_activity: turn.tool_activity, reason: :hook, partial_assistant_text: "")
     end
 

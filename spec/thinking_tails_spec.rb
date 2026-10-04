@@ -50,12 +50,14 @@ RSpec.describe Samagotchi::ThinkingTails do
   end
 
   it "keeps a generation a plugin's stop_turn ended, once on the native loop's cut and cancel" do
-    generation(["Let me write. "], { type: :generation_cancelled, reason: :hook })
+    generation(["Let me write. "], { type: :generation_cancelled, reason: :hook, stopped_by: "loop-guard" })
     generation(["Writing. "], { type: :generation_completed, finish_reason: "stopped", stopped_by: "loop-guard" }, iteration: 2)
-    tails.call(type: :generation_cancelled, iteration: 2, reason: :hook)
+    tails.call(type: :generation_cancelled, iteration: 2, reason: :hook, stopped_by: "loop-guard")
+    generation(["Hmm. "], { type: :generation_cancelled, reason: :hook }, iteration: 3)
 
     expect(records.map { |r| r.values_at("iteration", "finish_reason", "stopped_by", "tail") })
-      .to eq([[1, "cancelled", "hook", "Let me write. "], [2, "stopped", "loop-guard", "Writing. "]])
+      .to eq([[1, "cancelled", "loop-guard", "Let me write. "], [2, "stopped", "loop-guard", "Writing. "],
+              [3, "cancelled", "hook", "Hmm. "]])
   end
 
   it "keeps nothing of a finished generation, a user's Stop, or a cut with no thinking" do
