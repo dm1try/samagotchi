@@ -20,3 +20,9 @@ group :test do
   gem "webmock"
   gem "parallel_tests"
 end
+
+group :lint do
+  gem "rubocop", "~> 1.91", require: false
+  gem "rubocop-performance", require: false
+  gem "rubocop-rspec", require: false
+end

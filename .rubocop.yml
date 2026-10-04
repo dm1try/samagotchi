@@ -1,0 +1,207 @@
+# RuboCop for samagotchi. Agents write most of this code, so the rules are
+# there to keep it consistent, not to guard it: every enabled Style/Layout
+# cop follows the code's own majority style and is safely autocorrectable
+# (`bundle exec rubocop -a` fixes it, no hand re-editing). A cop that is not
+# autocorrectable stays on only when it finds real bugs (Lint, Security, the
+# RSpec checks for specs that can't fail). Line length, Metrics and naming
+# taste are off. Run `bundle exec rake lint` (CI does).
+
+plugins:
+  - rubocop-performance
+  - rubocop-rspec
+
+AllCops:
+  TargetRubyVersion: 3.3
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - node_modules/**/*
+    - tmp/**/*
+    - vendor/**/*
+    - pkg/**/*
+
+# -- The house style ---------------------------------------------------------
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+# Endless defs, multi-line ones included, are the house idiom.
+Style/EndlessMethod:
+  EnforcedStyle: allow_always
+
+Layout/FirstArrayElementIndentation:
+  EnforcedStyle: consistent
+
+Layout/FirstHashElementIndentation:
+  EnforcedStyle: consistent
+
+Layout/MultilineMethodCallIndentation:
+  EnforcedStyle: indented
+
+# A Struct/Data member named count, length, method or drop is meant.
+Lint/StructNewOverride:
+  Enabled: false
+
+# ModelBackend is an abstract base without an initialize.
+Lint/MissingSuper:
+  AllowedParentClasses:
+    - ModelBackend
+
+# -- Off: a refactor or taste, not lint, and not autocorrectable ----------------
+
+Layout/LineLength:
+  Enabled: false
+
+Metrics:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
+Style/IfUnlessModifier:
+  Enabled: false
+
+Style/FetchEnvVar:
+  Enabled: false
+
+Style/RescueModifier:
+  Enabled: false
+
+Style/StringConcatenation:
+  Enabled: false
+
+Style/MultilineBlockChain:
+  Enabled: false
+
+Style/GlobalVars:
+  Enabled: false
+
+Style/SafeNavigationChainLength:
+  Enabled: false
+
+Style/OneClassPerFile:
+  Enabled: false
+
+Style/OptionalBooleanParameter:
+  Enabled: false
+
+# `!!x` is deliberate boolean coercion; the autocorrect (`!x.nil?`) turns
+# false into true.
+Style/DoubleNegation:
+  Enabled: false
+
+Naming/MethodParameterName:
+  Enabled: false
+
+Naming/PredicateMethod:
+  Enabled: false
+
+Naming/PredicatePrefix:
+  Enabled: false
+
+Naming/VariableNumber:
+  Enabled: false
+
+Naming/AccessorMethodName:
+  Enabled: false
+
+Naming/MemoizedInstanceVariableName:
+  Enabled: false
+
+Performance/CollectionLiteralInLoop:
+  Enabled: false
+
+# Constants after `private` and spec helper classes: no bug.
+Lint/UselessConstantScoping:
+  Enabled: false
+
+Lint/ConstantDefinitionInBlock:
+  Enabled: false
+
+# Parallel branches (rescue arms, parsers) are intentional.
+Lint/DuplicateBranch:
+  Enabled: false
+
+Lint/NoReturnInBeginEndBlocks:
+  Enabled: false
+
+Lint/EmptyBlock:
+  Exclude:
+    - spec/**/*
+
+# -- RSpec: taste off, the checks for broken specs on ----------------------------
+
+RSpec/MultipleExpectations:
+  Enabled: false
+
+RSpec/ExampleLength:
+  Enabled: false
+
+RSpec/InstanceVariable:
+  Enabled: false
+
+RSpec/MultipleMemoizedHelpers:
+  Enabled: false
+
+RSpec/SpecFilePathFormat:
+  Enabled: false
+
+RSpec/DescribeClass:
+  Enabled: false
+
+RSpec/VerifiedDoubles:
+  Enabled: false
+
+RSpec/NamedSubject:
+  Enabled: false
+
+RSpec/MessageSpies:
+  Enabled: false
+
+RSpec/ReceiveMessages:
+  Enabled: false
+
+RSpec/DescribeMethod:
+  Enabled: false
+
+RSpec/AnyInstance:
+  Enabled: false
+
+RSpec/MultipleDescribes:
+  Enabled: false
+
+RSpec/ContextWording:
+  Enabled: false
+
+RSpec/NestedGroups:
+  Enabled: false
+
+RSpec/IndexedLet:
+  Enabled: false
+
+RSpec/ExpectOutput:
+  Enabled: false
+
+RSpec/BeforeAfterAll:
+  Enabled: false
+
+RSpec/StubbedMock:
+  Enabled: false
+
+RSpec/ExpectInHook:
+  Enabled: false
+
+RSpec/LeakyConstantDeclaration:
+  Enabled: false
+
+RSpec/LeakyLocalVariable:
+  Enabled: false
+
+RSpec/RemoveConst:
+  Enabled: false
+
+RSpec/Output:
+  Enabled: false
