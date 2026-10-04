@@ -43,6 +43,18 @@ namespace :gem do
   task install: [:validate, "rake:install:local"]
 end
 
+desc "RuboCop over the repo: must report no offenses (CI runs it)"
+task :lint do
+  sh "bundle exec rubocop"
+end
+
+namespace :lint do
+  desc "RuboCop's safe autocorrect (rubocop -a): what an offense usually needs"
+  task :fix do
+    sh "bundle exec rubocop -a"
+  end
+end
+
 namespace :bundles do
   desc "Refresh the sha256 lines of the shipped bundles' manifests"
   task :sha do
@@ -104,6 +116,9 @@ namespace :release do
 
     step.call("bundles")
     Rake::Task["bundles:check"].invoke
+
+    step.call("lint")
+    Rake::Task["lint"].invoke
 
     step.call("specs")
     sh "bundle exec rspec --format progress"
