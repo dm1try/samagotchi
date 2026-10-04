@@ -10,6 +10,17 @@ test("commandBlockHtml: the command as written, escaped, with a copy button", ()
     `<div class="activity-command code-wrap"><pre><code>cd /p &amp;&amp; rg -n '&lt;a&gt;' lib |\n  head -5</code></pre>${COPY}</div>`);
 });
 
+test("commandBlockHtml: the whole description first when the row's title cut it, never in place of the command", () => {
+  const view = { command: "ls", description: "List <the> files in the project root and count them, then a little more" };
+  assert.equal(commandBlockHtml(view, "List <the> files in the project root and count them, then…"),
+    `<div class="activity-command code-wrap"><div class="activity-command-desc">List &lt;the&gt; files in the project root and count them, then a little more</div>` +
+    `<pre><code>ls</code></pre>${COPY}</div>`);
+  assert.equal(commandBlockHtml({ command: "ls", description: "List files" }, "List files"),
+    `<div class="activity-command code-wrap"><pre><code>ls</code></pre>${COPY}</div>`);
+  assert.match(commandBlockHtml({ ...view, steps: [{ text: "ls" }] }, "List…"),
+    /^<div class="activity-command code-wrap has-steps"><div class="activity-command-desc">List &lt;the&gt;[^<]*<\/div><div class="activity-command-head">/);
+});
+
 test("commandBlockHtml: the call's cwd as given, above the command", () => {
   assert.equal(commandBlockHtml({ command: "npm test", cwd: "web/<x>" }),
     `<div class="activity-command code-wrap"><div class="activity-command-cwd">in <span>web/&lt;x&gt;</span></div>` +

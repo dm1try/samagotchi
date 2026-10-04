@@ -67,6 +67,9 @@ test("a multi-step turn shows its steps, tool rows and the markdown answer", { t
   const rows = work.locator(".activity-row");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator(".activity-tool")).toHaveText("execute");
+  // The model's description is the row's title; the command is its hover.
+  await expect(rows.nth(0).locator(".activity-params")).toHaveText("See that the shell answers");
+  await expect(rows.nth(0).locator(".activity-params")).toHaveAttribute("title", "true");
   await expect(rows.nth(0).locator(".activity-status")).toHaveText("done");
   await expect(rows.nth(1).locator(".activity-tool")).toHaveText("read");
   await expect(rows.nth(1).locator(".activity-output")).toContainText("# e2e project");
@@ -83,6 +86,7 @@ test("a reload after the turn shows the same turn and answer", { tag: "@turn" },
     user: await page.locator("#history .bubble.user").allTextContents(),
     summary: await page.locator("#history .turn-work > summary").allTextContents(),
     tools: await page.locator("#history .activity-tool").allTextContents(),
+    titles: await page.locator("#history .activity-params").allTextContents(),
     answer: await answer(page).innerHTML(),
   };
   await page.reload();
@@ -90,6 +94,8 @@ test("a reload after the turn shows the same turn and answer", { tag: "@turn" },
   await expect(page.locator("#history .bubble.user")).toHaveText(before.user);
   await expect(page.locator("#history .turn-work > summary")).toHaveText(before.summary);
   await expect(page.locator("#history .activity-tool")).toHaveText(before.tools);
+  await expect(page.locator("#history .activity-params")).toHaveText(before.titles);
+  expect(before.titles[0]).toBe("See that the shell answers");
   expect(await answer(page).innerHTML()).toBe(before.answer);
 });
 
