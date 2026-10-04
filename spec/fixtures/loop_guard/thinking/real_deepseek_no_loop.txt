@@ -1,0 +1,84 @@
+# P6 live replay baseline-p95-7ad3ec (2026-10-04 DeepSeek loop spike): a whole real thinking that ended in a tool call, no loop (44 distinct in its lowest 48-sentence window); paths, hosts and key names scrubbed
+Confirmed: the chat loop sends `content: reasoning + content`, so a reasoning chunk DOES start the clock (shape A). But wait — the task says the estimate runs high. Let me reconsider.
+
+Actually in shape A, the clock starts at the first reasoning chunk. So the theory "reasoning chunks don't start it" is FALSE for the chat loop path. Hmm, but the task says "reasoning chunks don't start it" — the code checks `event[:content]`, and the chat loop sets content = reasoning + content, so it does start.
+
+But wait — what about the native KernelLoop path? For openrouter, the host has `api: openai`, so it uses ChatLoop. So content includes reasoning. So the clock starts on the first reasoning chunk already.
+
+Hmm, but then why is the estimate high? Let me reconsider. The real data: completion_tokens=252298, decode_ms_sum=... let me compute. Actually the estimate is completion / (now - first_chunk). The completion count includes reasoning tokens. The clock starts at the first reasoning chunk. So the time includes reasoning time. That should be roughly right...
+
+Wait, but there's a subtlety: `note_first_chunk` is called with `payload` and `event`. It checks `!event[:content].to_s.empty? || tool_call_delta?(payload)`. In the chat loop, content = reasoning + content. So reasoning starts it. So the theory doesn't hold for the chat loop.
+
+Hmm, but the task explicitly says to verify first and if the theory doesn't hold, don't guess. Let me check more carefully. Maybe the issue is different: the completion count is a MAX across chunks, and the final usage chunk arrives... Actually let me look at the real numbers.
+
+Real: completion_tokens=252298, decode_ms_sum=?, decode_tokens=?. From the earlier output: `eb2a8875 352.8 estimate 252298 216125   284.9` — that's last_decode_tps=352.8, tps_source=estimate, completion_sum=252298, reasoning_sum=216125, decode_ms=(blank), decode_tokens=(blank), avg_decode_tps=284.9.
+
+Hmm decode_ms_sum blank? Let me re-read: the row was [f[0,8], t["last_decode_tps"], t["tps_source"], t["completion_sum"], t["reasoning_sum"], t["decode_ms"], t["decode_tokens"], t["avg_decode_tps"]] = eb2a8875 352.8 estimate 252298 216125 (blank) (blank) 284.9. So decode_ms and decode_tokens are nil in the tokens block? That's odd. Let me check the tokens snapshot fields.
+
+Actually the snapshot tokens block may not include decode_ms_sum/decode_tokens_sum. Let me check.
+
+Anyway, the key question: does the reasoning theory hold? For the chat loop, content = reasoning + content, so reasoning DOES start the clock. So the theory as stated ("reasoning chunks don't start it") is FALSE.
+
+But wait — maybe there's a different path. Let me check: is the openrouter host using ChatLoop? `api: openai` → chat? Let me verify `entry.chat?`.
+
+Actually, let me reconsider the real numbers. The turn record: completion_tokens=50477, reasoning_tokens=28186, decode_ms=146085, decode_tokens=50477, decode_tps=352.8. So decode_ms_sum=146085 ms = 146 s, decode_tokens=50477. 50477/146.085 = 345.5 ≈ 352.8 (last generation). And gen_ms=216824 (216 s). So the estimate's decode_ms (146s) is less than gen_ms (216s) — that's expected since gen_ms includes prefill/queueing.
+
+The real figure is ~136 tok/s per the task. Hmm. 50477 tokens / 216.8s = 232.8. Not 136 either. Hmm.
+
+Actually the task says "~377 tok/s shown, the real figure is ~136". Let me not over-index on the exact numbers. The task's hypothesis: reasoning chunks don't start the clock. But I've shown for the chat loop they DO (content = reasoning + content).
+
+Wait — but maybe the issue is the opposite: the clock starts on the first reasoning chunk, but the completion count is a MAX that includes reasoning, and... no.
+
+Hmm, let me reconsider. Actually maybe the issue is that `note_first_chunk` is called BEFORE the usage is noted, and the first chunk that has content... Let me re-read the real data more carefully. Actually, let me look at whether there's a case where reasoning arrives but content is empty in the event. In the chat loop, `content: reasoning + content`. So if reasoning is non-empty, content is non-empty. So it starts.
+
+Unless... the reasoning arrives in a chunk where `delta["reasoning"]` is present but the adapter's `add` returns content="" and reasoning="..."? No, content = reasoning + content in the emit.
+
+Hmm wait, let me re-read: `emit(type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content, thinking: reasoning, payload: payload)`. Yes.
+
+So the theory is FALSE for the chat loop. But the task says the estimate runs high. Let me think about what else could cause it.
+
+Actually — maybe the issue is that the completion count includes reasoning tokens, but the clock starts at the first reasoning chunk, so the time DOES include reasoning. So the estimate should be roughly right. Unless the reasoning is streamed but the first chunk with reasoning is delayed...
+
+Hmm, let me reconsider. Actually maybe the real issue: the estimate uses `completion` = gen_completion_max, which is the MAX completion_tokens across chunks. For OpenRouter, the usage chunk arrives at the END with the full completion count. The clock starts at the first chunk. So decode_ms = time from first chunk to the final usage chunk. That includes reasoning + answer. So it should be fine.
+
+Wait, but the task says the real figure is ~136 and shown is ~377. Let me compute from the real data: 50477 tokens over 146s = 345. Over 216s = 233. Neither is 136. Hmm, but maybe the "real figure" is from a different measurement.
+
+Actually, let me reconsider: maybe the issue is that the clock starts on the first chunk, but the completion count is the MAX, and for a reasoning model the reasoning tokens are counted but the reasoning time is NOT included because... hmm.
+
+Let me actually check: does the chat loop's first chunk have content? In my probe, yes. But maybe in reality, OpenRouter sends the first chunk with `delta: {role: "assistant"}` and no content/reasoning. Then the clock starts on the first reasoning chunk. That's still fine.
+
+Hmm. Let me look at this from a different angle: maybe the bug is that `note_first_chunk` is called with the event, and for the chat loop the reasoning is in `content`, so it starts. But the task's hypothesis is about the native loop where reasoning might be separate. But openrouter uses the chat loop.
+
+Wait, actually — let me re-read the task: "The comment says 'content, reasoning or a tool call', but reasoning chunks don't start it." Maybe the task author is wrong, and I should verify. My probe shows reasoning DOES start it (via content). So the theory doesn't hold.
+
+But hold on — let me double check by looking at whether the real session used the chat loop. The session eb2a8875 used deepseek-v4.1-flash on openrouter. Let me check the session's model/host.
+
+Actually, let me reconsider the numbers once more. The task says "~377 tok/s shown, the real figure is ~136". Let me look for a turn with 377. Hmm, the real data shows 352.8. Close-ish.
+
+Let me compute what the estimate would be if the clock started at the first CONTENT chunk (not reasoning). For the turn: reasoning_tokens=28186, completion=50477. If reasoning took most of the time... Actually if the clock started only at the first content chunk, decode_ms would be smaller, so tps would be HIGHER. So the estimate would be even higher. That's the opposite of the fix.
+
+Hmm wait, the task says the estimate runs HIGH (377 vs real 136). If reasoning doesn't start the clock, the clock starts later (after reasoning), so decode_ms is smaller, so tps is higher. So fixing it (starting on reasoning) would LOWER the tps. That matches the task's direction: fix → lower estimate.
+
+But my probe shows reasoning DOES start the clock (content = reasoning + content). So the fix wouldn't change anything for the chat loop.
+
+Unless... the reasoning arrives in a chunk where the adapter's `add` returns content="" and reasoning="..."? Let me check the adapter again: `content = delta["content"].to_s` and `reasoning = (delta["reasoning_content"] || delta["reasoning"]).to_s`. Then `on_delta&.call(content: content, reasoning: reasoning, payload: payload)`. And the chat loop emits `content: reasoning + content`. So yes, reasoning is in content.
+
+Hmm, so the theory is false. But wait — maybe the real session used the NATIVE loop? Let me check: the host `openrouter` has `api: openai`. Does that mean chat? Let me check `entry.chat?`.
+
+Let me verify. Actually, I should just check the session's host config and whether chat? is true.
+
+Actually, let me step back. The task says: "c. If the reasoning theory doesn't hold (reasoning already starts the clock), don't guess. Write what you found in the final answer and leave the code alone."
+
+So I need to determine definitively. My probe with the chat loop shows reasoning starts the clock. But let me also check the native KernelLoop path, and check whether the real session used chat or native.
+
+Let me check `entry.chat?` for openrouter.
+
+Actually, I realize I should be efficient here. Let me check the host entry chat? logic and the session's host.
+
+Let me also reconsider: maybe the real issue is different. Let me look at the actual numbers again: decode_ms=146085 for completion=50477 → 345 tps. But the task says real is 136. 50477/136 = 371s. Hmm, gen_ms=216824 = 216s. So 136 tps would need 371s, more than gen_ms. That doesn't fit either.
+
+Hmm, maybe the "real figure" is measured differently (e.g., from the server's own timing). Let me not chase the exact number.
+
+Let me focus: does reasoning start the clock? For the chat loop: YES. Let me verify the native loop too, and check which loop openrouter uses.
+
+Let me check `chat?`.

@@ -12,7 +12,9 @@ require "support/plugin_handler_ctx"
 # header) must trigger within one batch of the loop's third cycle,
 # negatives never. A loop of short sentences (write_loop.txt, a loop_start
 # and run_chars header) must trigger within one batch of its short_run-th
-# sentence.
+# sentence. The real DeepSeek loops (real_deepseek_*_loop.txt, a loop_start
+# header: where the terminal cycle begins) must trigger within its first
+# window_sentences sentences.
 RSpec.describe "The loop-guard thinking watch" do
   let(:source) { File.expand_path("../../../lib/samagotchi/bundles/loop-guard/plugin.rb", __dir__) }
   let(:fixtures) { File.expand_path("../../fixtures/loop_guard/thinking", __dir__) }
@@ -81,8 +83,58 @@ RSpec.describe "The loop-guard thinking watch" do
       expect(found.sentences).to eq(["I'll write it.", "Go.", "OK."])
     end
 
+    # The 2026-10-04 spike's live replays at temperature 0.0: each a cycle
+    # of 5-9 sentences, most short. All but the output loop hold a sentence
+    # of min_words or more that ends every short run; the window sees them.
+    {
+      "real_deepseek_reset_loop.txt" => 12, "real_deepseek_stop_loop.txt" => 12,
+      "real_deepseek_run_loop.txt" => 12, "real_deepseek_output_loop.txt" => 5
+    }.each do |name, distinct|
+      it "cuts #{name} within the first window_sentences sentences of its cycle" do
+        text, header = fixture(name)
+        start = header.fetch("loop_start")
+
+        offset, found = first_loop(text)
+
+        # 48 sentences of the cycle are 400-600 chars.
+        expect(offset).to be_between(start, start + 1000)
+        expect(found.period).to eq(distinct)
+      end
+    end
+
+    # The cycle 0.3.2 missed: "I'll write the spec file now." (6 words)
+    # ends each short run, and no sentence of min_words or more comes 8
+    # times before the provider's cap.
+    it "cuts the real reset loop only through the window" do
+      text, = fixture("real_deepseek_reset_loop.txt")
+
+      _offset, found = first_loop(text)
+
+      expect(first_loop(text, { "window_sentences" => 10_000 })).to be_nil
+      expect(found).to have_attributes(period: 12, times: 4)
+      expect(found.sentences).to eq(["OK.", "Let me write.", "Writing."])
+    end
+
+    # 8 different short sentences, over short_distinct (6): the short run
+    # never fires on it.
+    it "cuts a cycle of 8 short sentences after a real lead-in" do
+      lead, = fixture("real_deepseek_short_spread.txt")
+      cycle = "Let me write. Go. OK. Writing. I'll do it. Let me go. Now. Done deliberating. "
+
+      offset, found = first_loop("#{lead}\n\n#{cycle * 12}")
+
+      expect(first_loop("#{lead}\n\n#{cycle * 12}", { "window_sentences" => 10_000 })).to be_nil
+      expect(offset).to be_between(lead.length, lead.length + (cycle.length * 7))
+      expect(found).to have_attributes(period: 12, times: 4) # the window still holds 4 lead-in sentences
+    end
+
+    # The false-positive margin: the lowest count of distinct sentences in
+    # any 48-sentence window of a real thinking with no loop is 41 (72
+    # thinkings, 872k chars: the 52 long ones in archived DeepSeek session
+    # bbd7560c, the other archived sessions' and the negative fixtures here),
+    # and 42-48 in the spike's 37 non-loop live replays. A loop holds 4-9.
     %w[calm_long.txt enumeration.txt real_runaway_numbers.txt real_deepseek_short_spread.txt real_deepseek_code_run.txt
-       real_deepseek_bullets.txt].each do |name|
+       real_deepseek_bullets.txt real_deepseek_no_loop.txt].each do |name|
       it "never triggers on #{name}" do
         expect(first_loop(fixture(name).first)).to be_nil
       end
@@ -320,11 +372,12 @@ RSpec.describe "The loop-guard thinking watch" do
     it "reads its settings, keeping the defaults for bad values" do
       settings = mod::ThinkingWatch.settings("action" => "explode", "similarity" => "0.6", "repeats" => "1",
                                              "min_chars" => "-3", "max_same" => "12", "short_run" => "40",
-                                             "short_distinct" => "nope", "forget_after" => "-1")
+                                             "short_distinct" => "nope", "forget_after" => "-1",
+                                             "window_sentences" => "60", "window_distinct" => "0")
 
       expect(settings).to include("action" => "retry", "similarity" => 0.6, "repeats" => 2, "min_chars" => 2000,
                                   "max_same" => 12, "watch" => true, "short_run" => 40, "short_distinct" => 6,
-                                  "forget_after" => 10)
+                                  "window_sentences" => 60, "window_distinct" => 12, "forget_after" => 10)
       expect(mod::ThinkingWatch.settings("forget_after" => "0")).to include("forget_after" => 0)
     end
   end

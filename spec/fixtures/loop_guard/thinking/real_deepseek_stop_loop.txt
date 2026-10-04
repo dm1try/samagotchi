@@ -1,0 +1,289 @@
+# P6 live replay keep_reasoning-p95-9a3199 (2026-10-04 DeepSeek loop spike, deepseek-v4.1-flash at temperature 0.0): the last 5k chars, a 9-sentence cycle with "(Stop.)" and the 6-word "Let me run the commands now."; paths, hosts and key names scrubbed
+# loop_start: 4068
+Hmm, 345 vs 232. The estimate excludes prefill, so it's higher. Is 345 the real decode speed? Maybe.
+
+Hmm, the user says the real figure is 136. That's much lower. Hmm.
+
+Wait — maybe the user's "real figure" is computed from the *content* tokens only, excluding reasoning, over the *full* generation time: 22291/216.824 = 102.8. Hmm, not 136.
+
+Or maybe the user computed it from a specific generation.
+
+Hmm, let me look at the current session's log. Let me compute.
+
+OK let me just run the script.
+
+Let me do it now, for real.
+
+I'll compute for the current session (bbd7560c) all generations: ms, ttft, content, thinking, and the estimate proxy.
+
+Let me go.
+
+Hmm, actually, let me reconsider: maybe the "377" is from the *web UI* for the current session, and the current session's generations have short answers. Let me look at the log for the current session's generations with content_length > 0.
+
+From the earlier grep: iteration=1 content_length=70 thinking_chars=0; iteration=54 content_length=79 thinking_chars=5160. Hmm.
+
+Let me get all of them.
+
+Let me run the script.
+
+OK.
+
+Let me also consider: maybe the issue is that the estimate uses the *max* completion_tokens, but for OpenRouter the usage chunk arrives at the end, and the *first* chunk that starts the clock is a reasoning chunk. So the estimate includes reasoning time. Correct.
+
+Hmm, so the estimate should be correct. Unless the reasoning is NOT streamed as chunks but arrives in the *final* message only. Let me check: does OpenRouter stream reasoning for deepseek? The log shows thinking_chars > 0, so yes, reasoning is streamed.
+
+Hmm, but wait — maybe the reasoning is streamed in a chunk where `delta.reasoning` is set, but the chat loop's `content: reasoning + content`... yes.
+
+OK. Let me look at the real data to find the discrepancy. Let me compute the estimate for the current session's generations and compare with the real speed.
+
+Let me run the script.
+
+Let me go.
+
+I'll write it now.
+
+def estimate: (content+thinking)/4 / ((ms-ttft)/1000)
+
+Let me run.
+
+Hmm, but the server's completion tokens for reasoning are often ~1.3x chars/4. So the estimate would be ~1.3x my proxy.
+
+Let me just run it and see if any generation gives ~377.
+
+Let me go.
+
+OK, running now.
+
+Let me also check the log for the current session's last generation.
+
+Let me run.
+
+I'll do it.
+
+Let me write the command.
+
+Actually, let me reconsider the possibility that the real cause is: the estimate uses `completion` = the server's completion_tokens, which for OpenRouter includes reasoning tokens, but the clock starts at the first chunk. For a *short answer* with *long reasoning*, the estimate = (reasoning + content) / (reasoning_time + content_time). That's correct.
+
+Hmm, so no bug. Unless the reasoning is not streamed.
+
+Hmm, wait. Let me check: maybe for OpenRouter, the reasoning arrives in a chunk where `delta` has `reasoning` but the Assembly's `add` returns `[content, reasoning]` and the chat loop emits `content: reasoning + content`. But what if the reasoning arrives in a chunk with `choices: []`? Then `add` returns `["", ""]` and no chunk is emitted... no, `on_delta` is called with content="" and reasoning="", and the chat loop emits a chunk with content="". That doesn't start the clock. But that's an empty chunk.
+
+Hmm.
+
+OK, let me just look at the real data. Let me run the script.
+
+Let me go.
+
+I'll run it now.
+
+Let me write the command.
+
+OK.
+
+Let me do it.
+
+(Enough deliberation.)
+
+Let me run the script to compute estimates from the log for the current session.
+
+Then I'll decide.
+
+Let me go.
+
+Actually, let me first check whether the log records the raw chunks. Let me grep for "generation_chunk" in the log.
+
+Let me run both.
+
+OK.
+
+Let me run.
+
+I'll do it.
+
+Let me write the command.
+
+OK, running.
+
+Let me go.
+
+(Stop deliberating.)
+
+Let me run the commands.
+
+I'll do:
+1. `rg -c "generation_chunk" ~/.local/state/samagotchi/samagotchi.log`
+2. compute estimates for the current session.
+
+Let me go.
+
+OK.
+
+Let me run.
+
+I'll do it now.
+
+Let me write the command.
+
+OK.
+
+Let me run.
+
+(Enough.)
+
+Let me run the commands.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands now.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write the command.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands now.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write the command.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands now.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write the command.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands now.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write the command.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write.
+
+OK.
+
+Let me run.
+
+(Stop.)
+
+Let me run the commands now.
+
+OK.
+
+Let me go.
+
+I'll run.
+
+Let me write the command.
+
+OK.
+
+Let me run

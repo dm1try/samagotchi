@@ -56,12 +56,20 @@ require "digest"
 #   too ("Hmm.", "Fine."), but spread out, or in runs of different ones
 #   (code lines); a sentence of min_words or more ends the run, one with no
 #   letters or digits neither counts nor ends it. Lines inside a ``` code
-#   block are not short sentences.
+#   block are not short sentences;
+# - a low-diversity window: among the last window_sentences sentences of any
+#   length, at most window_distinct different ones (exact, normalized). It
+#   sees a cycle too long for the short run (7-8 short sentences), or one
+#   where a longer sentence keeps ending the run ("Go. OK. I'll write the
+#   spec file now. Go."). Real thinking holds 40+ different sentences in
+#   any 48 (the lowest seen: 42); a loop holds under 10. Lines inside a ```
+#   code block don't count.
 # Nothing triggers before min_chars of thinking. O(new chars) per feed.
 class ThinkingWatch
   DEFAULTS = { "watch" => true, "action" => "retry", "min_chars" => 2000, "repeats" => 3, "max_period" => 6,
                "similarity" => 0.5, "min_span_sentences" => 6, "min_span_chars" => 600, "max_same" => 8,
-               "min_words" => 5, "short_run" => 24, "short_distinct" => 6, "forget_after" => 10 }.freeze
+               "min_words" => 5, "short_run" => 24, "short_distinct" => 6, "window_sentences" => 48,
+               "window_distinct" => 12, "forget_after" => 10 }.freeze
   ACTIONS = %w[retry stop notify].freeze
   MAX_CARRY = 400
   # One sentence again and again needs this much more alike than a cycle.
@@ -81,7 +89,7 @@ class ThinkingWatch
     out["watch"] = !%w[false no off 0].include?(raw["watch"].to_s.downcase) if raw.key?("watch")
     out["action"] = raw["action"].to_s if ACTIONS.include?(raw["action"].to_s)
     %w[min_chars repeats max_period min_span_sentences min_span_chars max_same min_words short_run
-       short_distinct].each do |key|
+       short_distinct window_sentences window_distinct].each do |key|
       number = Integer(raw[key].to_s, exception: false)
       out[key] = number if number&.positive?
     end
@@ -104,6 +112,8 @@ class ThinkingWatch
     @min_words = settings["min_words"]
     @short_run = settings["short_run"]
     @short_distinct = settings["short_distinct"]
+    @window_sentences = settings["window_sentences"]
+    @window_distinct = settings["window_distinct"]
     @same_similarity = [@similarity + SAME_MARGIN, 0.95].min
     @carry = +""
     @window = [] # the last max_period + 1 sentences
@@ -112,6 +122,8 @@ class ThinkingWatch
     @counts = Hash.new(0)
     @short_count = 0  # short sentences in a row
     @short_window = [] # the last short_run of them, [key, text]
+    @recent = [] # the last window_sentences sentences, [key, text]
+    @recent_counts = Hash.new(0) # key => times in @recent
     @in_code = false
     @thinking_chars = 0
   end
@@ -153,7 +165,8 @@ class ThinkingWatch
     end
     words = text.downcase.gsub(/[^[:alnum:]]+/, " ").split
     short = short_loop(text.strip, words) unless @in_code
-    return (short if @thinking_chars >= @min_chars) if words.length < @min_words
+    window = window_loop(text.strip, words) unless @in_code
+    return (@thinking_chars >= @min_chars ? short || window : nil) if words.length < @min_words
 
     key = words.join(" ")
     sentence = Sentence.new(text: text.strip, words: words.map(&:hash).uniq,
@@ -164,7 +177,27 @@ class ThinkingWatch
     @window.shift if @window.length > @max_period + 1
     return nil if @thinking_chars < @min_chars
 
-    cycle || (same >= @max_same ? Loop.new(period: 1, times: same, sentences: [sentence.text], chars: nil) : nil)
+    cycle || (same >= @max_same ? Loop.new(period: 1, times: same, sentences: [sentence.text], chars: nil) : nil) || window
+  end
+
+  # The last window_sentences sentences (any length) hold at most
+  # window_distinct different ones: a loop. Its sentences are the most
+  # frequent first.
+  def window_loop(text, words)
+    return nil if words.empty?
+
+    key = words.join(" ")
+    @recent << [key, text]
+    @recent_counts[key] += 1
+    if @recent.length > @window_sentences
+      old, = @recent.shift
+      @recent_counts.delete(old) if (@recent_counts[old] -= 1).zero?
+    end
+    return nil if @recent.length < @window_sentences || @recent_counts.size > @window_distinct
+
+    texts = @recent.to_h # key => its last text
+    top = @recent_counts.sort_by { |_key, n| -n }.first(3).map { |key, _n| texts[key] }
+    Loop.new(period: @recent_counts.size, times: @window_sentences / @recent_counts.size, sentences: top, chars: nil)
   end
 
   def short_loop(text, words)
