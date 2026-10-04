@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   from the install shell no longer stick to the helper and the chi it runs until a relaunch; run `chi desktop upgrade`.
 - Desktop: ⌘⏎ on the panel's "New session" row says "A note needs a session" instead of only beeping, and the Note
   button is off on that row; run `chi desktop upgrade`.
+- Desktop: the panel lists live sessions in the order they started, so ⌘1…⌘9 no longer shift when a session runs a
+  turn (a new session comes last); run `chi desktop upgrade`.
 
 ## [0.27.0] - 2026-10-04
 

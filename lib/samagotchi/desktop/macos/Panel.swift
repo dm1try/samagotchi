@@ -74,8 +74,9 @@ final class PanelModel: ObservableObject {
   }
   var live: [LiveSession] { sessions.filter { !$0.recent } }
 
-  /// One list for rows, ⌘ numbers and selection: live sessions, then kitty
-  /// windows, then recent sessions.
+  /// One list for rows, ⌘ numbers and selection: live sessions (oldest
+  /// started first: their numbers stay put), then kitty windows, then
+  /// recent sessions.
   var targets: [Target] { live.map(Target.chi) + kittyWindows.map(Target.kitty) + recent.map(Target.chi) }
 
   /// Up to maxImages; the rest is dropped (and its temp files deleted).
