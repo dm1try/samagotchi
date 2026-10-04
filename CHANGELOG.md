@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-04
+
 ### Added
 
 - Claude models on OpenAI-compatible hosts (OpenRouter) use Anthropic's prompt cache: chat requests mark the
@@ -31,6 +33,8 @@ and commands may change between minor versions. How releases are made:
   (the provider error's kind, e.g. `credits`, `server`) and `retryable`, a canceled one `cancel_reason` (`user`,
   `hook`, `ctrl_c`, `manual`) and `stopped_by` (the hook, e.g. `loop-guard`), when known. The session's
   `last_turn` records them.
+
+Update with `chi update` (no bundle versions moved). Restart `chi web` and running sessions afterwards (`chi sessions restart ID`).
 
 ## [0.21.0] - 2026-10-04
 
@@ -1269,7 +1273,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/dm1try/samagotchi/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/dm1try/samagotchi/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/dm1try/samagotchi/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/dm1try/samagotchi/compare/v0.18.1...v0.19.0
