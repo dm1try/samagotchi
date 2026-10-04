@@ -43,9 +43,9 @@ right-hand column happens.
  shared by every turn of this session ─────────────────────────────────────
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ history      user / assistant / tool messages, APPEND-ONLY               │  !rollback, a failed or
-│              (images: the newest N, ImagePlan)                           │  cancelled turn's tail,
-│                         ◄── remote Claude: breakpoint #2 on the last     │  the image window
-│                             non-system message                           │  sliding, history
+│              (images: up to the newest N, cut in batches; ImagePlan)     │  cancelled turn's tail,
+│                         ◄── remote Claude: breakpoint #2 on the last     │  the image cut moving
+│                             non-system message                           │  a batch, history
 ├──────────────────────────────────────────────────────────────────────────┤  sanitizing (thinking
 │ tail notes   reminders, turn notes, steers (system/user messages)        │  stripped per spec)
 │ new prompt   this turn's user message                                    │
@@ -83,7 +83,39 @@ user message starts (`KernelLoop#warmup_prompt`) and sends it in a thread (`Clie
   server has since cleared skips its prompt cache and prefills everything (measured 0.5 s → 12 s). For the same
   reason `id_slot` is a reserved sampling key.
 - What breaks it (the warm-up simply misses): a system-prompt rebuild (`/thinking`, `/model`, a tool change),
-  the image window sliding, `!rollback`.
+  the image cut moving a batch, `!rollback`.
+
+## The image window
+
+A request sends at most `image.max_per_request` images (20 by default); older ones become placeholder lines
+(`[image a.png 1280×800 not sent: an older image (chi sends up to the newest 20)]`). If the window slid by one
+image per new image, every new image would turn the oldest sent one into a placeholder and rewrite history from
+there. So the cut is a pure function of the image count (`ImagePlan.dropped_count`): nothing is dropped up to
+the limit, then the oldest in whole steps of half the limit (21–30 images drop 10, 31–40 drop 20). Between two
+step boundaries the earlier messages stay byte-identical; at a boundary the history from the newly cut image on
+is prefilled once. The native and the chat loop use the same plan.
+
+## Remote caches: TTL and routing
+
+- **TTL.** Anthropic keeps a breakpoint 5 minutes after its last read; a session the user comes back to later
+  writes its prompt again. `cache.ttl: 1h` sends `cache_control: {type: "ephemeral", ttl: "1h"}` on both
+  breakpoints (the log line shows `cache=1h`). Off by default: a 1h write costs 2× the input price, a 5m write
+  1.25×, a read 0.1× either way, so 1h pays off only when pauses of 5–60 minutes are common.
+- **Routing.** Every chat request carries a `Session-Id` header, which OpenRouter uses to keep a conversation on
+  one provider. `cache.key: session` also sends the session id as `prompt_cache_key` in the body, the field
+  OpenAI's API routes and caches by (OpenRouter honours it too); the log line shows `cache_by=session`. Only
+  `api.openai.com` and OpenRouter get it, and only the session's own chat requests (not recap or `/btw`): a local
+  llama.cpp, Splash or another gateway may reject an unknown field. Off by default.
+
+## Reading the numbers
+
+- The debug log's `generation_completed` line: `prompt=` (the request's prompt tokens), `cached=` (read from the
+  server's cache) and `cache_write=` (written to it, where the provider reports writes). The `http` line of a
+  remote Claude request shows `cache=on` (or `cache=1h`) when it carried breakpoints.
+- The warm-up logs `model warmup` with `cached=`, `prefilled=` and `prefill_ms=`.
+- `/stats`: "cached N (P%)" and "cache writes" for the session.
+- A healthy session: from the second request on `cached=` is close to `prompt=`; a second fresh session in the
+  same project reads everything up to the volatile tail.
 
 ## Rules for changes
 
@@ -114,7 +146,6 @@ user message starts (`KernelLoop#warmup_prompt`) and sends it in a thread (`Clie
   a slot (`id_slot`) is the hazard. With `--cache-ram 0` or an old single-slot build, a recap does evict the
   session. `--ctx-checkpoints` controls how many restore points a hybrid model keeps. chi sends
   `cache_prompt: true` on every native request.
-- **OpenRouter / Anthropic:** the default cache TTL is 5 minutes. Provider routing (which upstream serves a
-  request) also decides whether a cache is there to hit.
+- **OpenRouter / Anthropic:** the default cache TTL is 5 minutes (`cache.ttl: 1h` for an hour, see above).
+  Provider routing (which upstream serves a request) also decides whether a cache is there to hit.
 
-Still to come: image-window batches and longer remote TTLs.
