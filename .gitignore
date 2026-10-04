@@ -6,3 +6,6 @@ tmp/
 .samagotchi_memories/
 .claude/
 node_modules
+# Playwright run without -c spec/e2e (e.g. `npx playwright test spec/e2e/x.spec.js`)
+test-results/
+playwright-report/
