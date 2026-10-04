@@ -1,418 +1,478 @@
 # Engine: the core agent loop
 
-The Engine is the heart of Samagotchi. It owns everything from session lifecycle to the model↔tool interaction cycle, exposing an event-based API (`on_event`) so any UI (TerminalUI, Web UI, workers, CLI commands) can run turns without being coupled to rendering.
+The Engine (`lib/samagotchi/engine.rb`) runs a session's turns. It owns the turn lifecycle, the hooks and
+plugins, and the model↔tool cycle, and it reports what happens as events, so every UI (the REPL, a worker
+behind the web and the attached TUI, one-shot CLI runs) runs turns the same way without the Engine knowing how
+they render.
 
 ```
-User → Engine#run_turn → Backend.complete(...) → KernelLoop#run / ChatLoop#complete
-       → ToolRunner#run (per call) → ToolResponse#run_batch (per iteration)
-       → Model → ToolRunner → Tool calls → results → repeat
+Engine#run_turn → backend.complete(...) → KernelLoop#run (native) or ChatLoop#complete (chat)
+  → per iteration: one generation, then ToolResponse.run_batch over the calls
+      → ToolRunner#run per call → Guardrails::Gate → KernelLoop#dispatch_tool_call
+  → repeat until the model answers without tool calls, or the iteration limit
 ```
 
 ## Quick reference: the turn lifecycle
 
 ```
-Engine#run_turn(session, prompt, on_event:, cancel_controller:, pending_input:, continue:, origin:, images:)
+Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:, max_tool_output_chars:,
+                pending_input:, continue:, origin:, images:)
   │
   ├── begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:)
-  │     # Sets @session, session.status = RUNNING, TurnState.begin!(controller:, sink:),
-  │     # clears @recap, guardrail_wiring.begin_turn(origin)
-  │     # Returns a Turn {session, prompt, continue, on_event, controller, origin,
-  │     #                   started_at, messages, ended, settings, id, limit}
+  │     # @session = session, session.status = RUNNING, used memories absorbed,
+  │     # TurnState#begin!(controller:, sink:) (a new CancellationController when none is given),
+  │     # a recap in flight invalidated, GuardrailWiring#begin_turn(origin)
+  │     # Returns a Turn {session, prompt (nil on a continue), continue, on_event, controller,
+  │     #                 origin, started_at, id}
+  │
+  ├── Client.swap_probe_cancel(turn.controller)   # a Stop cuts this turn's /props probes
   │
   ├── prepare_turn(turn, images)
-  │     # Emits :turn_started (session_id, prompt, turn_id, images)
-  │     # probes /props for this session (window, served model, vision)
-  │     # sets turn.settings (LLM::TurnSettings: vision, sampling, thinking, model_name)
-  │     # fires :session_start on first turn, :before_turn (read-only history copy)
-  │     # runs plugin init tasks (slow setup: first MCP server start), awaits completion
-  │     # applies staged tools (changed since last turn), drops them from staged
-  │     # builds turn.messages: system head + history + reminders + prompt
-  │     # Returns false if cancelled (turn ends before model is asked), true otherwise
+  │     # Emits :turn_started {session_id, prompt, turn_id, continue: true (only on a continue),
+  │     #                      images (only when there are any)}
+  │     # refresh_profile! (may ask the server's /props once)
+  │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name is set in generate)
+  │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools
+  │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
+  │     #   (a frozen copy of the history, and the prompt)
+  │     # turn_messages: system head + history + due reminders (:reminder_injected) + the user message
+  │     # Returns false when a Stop came during the probes or the init wait, else true
   │
   ├── generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
-  │     # Routes to backend.complete(...) — either NativeBackend (wraps KernelLoop#run)
-  │     # or ChatLoop#complete
-  │     # Copies turn.settings into @kernel.turn_settings (model_name, window_setting)
-  │     # Sets turn.limit (IterationLimit), wraps pending_input (drained per-loop)
-  │     # Returns LLM::ModelResult (text, conversation, tool_calls, canceled, exhausted)
+  │     # sync_kernel_client!, then @kernel.turn_settings = turn.settings with model_name and window_setting
+  │     # turn.limit = max_iterations or IterationLimit.for
+  │     # backend.complete(messages: turn.messages, ..., pending_input: turn_drain(pending_input))
+  │     # Returns LLM::ModelResult (text, conversation, canceled?, exhausted?, tool_activity,
+  │     #                          context_status, empty_steps, empty_retries)
+  │
+  ├── publish_used_memories(session, on_event)    # :used_memories_updated when there are any
   │
   ├── complete_turn(turn, result)
-  │     # Emits :turn_completed (result, turn_summary, display_pending)
-  │     # Fires :after_turn (with AnswerDisplay presenter) — hooks may present the answer
-  │     # Fires :session_end
-  │     # Stores answer display for late-attaching clients (web re-reads then)
-  │     # Calls end_turn(turn, outcome) { yield seconds → (kept, event) }
-  │     │     # Synchronizes events, replaces session.messages with kept messages,
-  │     │     # session.status = STATUS_IDLE, records last_turn, emits event
-  │     │     # turn.ended = true, saves session if save: true
+  │     # end_turn(turn, "completed" | "canceled"): under the event lock the session gets the kept
+  │     #   messages, goes IDLE, records last_turn, and :turn_completed {result, turn_summary,
+  │     #   display_pending} or :turn_canceled {cancellation_reason, cancelled_by, duration_ms} is emitted
+  │     # then the :after_turn hook (status, messages, present: the AnswerDisplay presenter)
+  │     # store_answer_display (:answer_display to the observers when a hook changed the answer,
+  │     #   or display: nil when the web was told to wait for it)
+  │     # then the :session_end hook
+  │
+  ├── warm_up_next_turn(turn, result)
+  │     # local llama.cpp on the native loop only: prefills the next turn's prompt while the user
+  │     # reads (PromptWarmup; see prompt-caching.md, "The turn-end warm-up"). Never fails the turn.
   │
   └── ensure: release_turn(probe_cancel_before)
-        # TurnState.finish! (turn flag off, controller/sink/steers cleared)
-        # GenerationPhase.finished!, WaitingSteer.clear!
-        # Restores probe-cancel (swaps back before-state)
-        # Drops context window cache (so next turn probes fresh, doesn't double-read)
-        # Records activity (advances idle window)
-        # Logs dropped steers, clears turn-scoped hooks (persistent hooks survive)
+        # TurnState#finish! (turn flag off, controller, sink and steers cleared)
+        # GenerationPhase#finished!, WaitingSteer#clear!
+        # probe cancel swapped back
+        # the context window cache dropped, so the next turn asks the server again
+        # steers left logged as dropped, activity recorded, turn-scoped hooks cleared
 ```
 
 ### Error paths
 
 ```
 StandardError in run_turn:
-  → if turn.ended (after turn hooks): log as post_turn_error, re-raise
+  → if turn.ended (it came from the after_turn/session_end hooks): logged as post_turn_error, re-raised
   → else: end_turn(turn, "failed", save: true)
-     # FailedTurn.attach(e, conversation) stores partial_conversation on the error.
-     # failed_messages reads error.partial_conversation (or turn.messages as fallback)
-     # → [kept_messages (partial conversation with TurnNote.failed),
-     #    :turn_failed event (error_class, message, duration_ms)]
-     # Conversation kept with a TurnNote.failed(summary, continued: turn.continue)
+     # Both loops call LLM::FailedTurn.attach(e, conversation) before re-raising, so
+     # failed_messages keeps the loop's partial conversation (tool iterations included),
+     # else turn.messages, with TurnNote.failed(summary, continued: turn.continue) at the tail.
+     # :turn_failed {error_class, message, duration_ms}; a provider error adds
+     # error_kind, retryable, host and summary.
+  → re-raised
 
 Interrupt (Ctrl-C):
-  → if turn.ended: re-raise (already ended by turn hooks)
+  → if turn.ended: re-raised only
   → turn.controller.cancel!(:ctrl_c)
-  → end_turn(turn, "canceled")
-  → [ctrl_c_messages (turn.messages so far with cancel note,
-      *not* the loop's finished tool iterations — the loop copies conversation
-      internally, so only pre-loop history + prompt survives),
-     :turn_canceled (reason: :ctrl_c)]
-  → Re-raised (caller handles it)
-  # NOTE: the turn.messages is the pre-loop history only; the loop's internal
-  # Turn struct holds the full conversation, which is NOT visible from the Engine
-  # on a Ctrl-C (no FailedTurn.attach, as Interrupt is not a StandardError).
+  → end_turn(turn, "canceled"): ctrl_c_messages keeps turn.messages with TurnNote.cancelled(:ctrl_c)
+     # Both loops work on their own copy of the conversation, and Interrupt is not a
+     # StandardError, so nothing attaches the loop's conversation: only what the Engine
+     # built before the loop (system head, history, reminders, the prompt) survives.
+     # Tasks the turn started are missed in the cancel note for the same reason.
+  → :turn_canceled {cancellation_reason: :ctrl_c, duration_ms}
+  → re-raised (the caller decides whether to exit)
 
-A "Stop" (cancel from another process or a plugin hook):
-  → not an error; the loop returns LLM::ModelResult(canceled: true, conversation: …)
-  → Engine proceeds to complete_turn, which saves what the loop's conversation
-     provides (tool iterations included). This path is the "normal" completion
-     for cancellations from outside a Ctrl-C.
+A Stop (Engine#cancel_current_turn!, e.g. the Bridge's POST cancel) or a hook's stop_turn:
+  → not an error: the loop returns LLM::ModelResult(canceled: true, conversation: ...)
+  → complete_turn keeps the loop's conversation (tool iterations included) with a
+     TurnNote.cancelled note; a text streamed before the cancel stays, marked [interrupted]
 
-Pre-model cancellation (prepare_turn returns false):
+Stopped before the model was asked (prepare_turn returned false):
   → stopped_before_model(turn) → end_turn(turn, "canceled")
-  → [nil (no conversation kept), :turn_canceled (reason from controller)]
+  → nothing kept, :turn_canceled {cancellation_reason, cancelled_by, duration_ms}
   → LLM::ModelResult(text: "", canceled: true, cancellation_reason: reason)
 ```
 
 ## The model↔tool loop
 
-Engine does not talk to models directly. It delegates to **backends**:
+The Engine does not talk to models directly. `Engine#backend` picks the loop the effective model's host speaks:
 
 ```
-Engine.backend
-  → if chat_model? (entry.chat?): ChatLoop (LLM::ChatLoop)
-  → else: NativeBackend (LLM::NativeBackend) wrapping KernelLoop (Samagotchi::KernelLoop)
+Engine#backend → backend_for(@host_registry.resolve(@effective_model_name))
+  → host entry chat? (api: openai): LLM::ChatLoop (one per Engine, built on first use)
+  → else:                           LLM::NativeBackend wrapping the Engine's KernelLoop
 ```
 
-Both implement the `LLM::Backend` contract (`#complete(...)`), but the native path uses a wrapper:
+Both implement the `LLM::ModelBackend` contract (`#complete(messages:, max_iterations:, on_stream_event:,
+cancel_controller:, model_name:, max_tool_output_chars:, pending_input:)`). `NativeBackend#complete` only calls
+`KernelLoop#run` with the same arguments. `ChatLoop` runs its own loop but is built with the same KernelLoop,
+whose tools, hooks, gate and dispatch it uses.
 
-```
-NativeBackend
-  # complete(messages, max_iterations:, on_stream_event:, cancel_controller:,
-  #          model_name:, max_tool_output_chars:, pending_input:)
-  → @kernel.run(messages, ...)  (KernelLoop#run)
-  → LLM::ModelResult (returned by KernelLoop)
-```
+### KernelLoop (the native, raw-prompt loop)
 
-The ChatLoop implements `#complete` directly and also uses the same KernelLoop instance (shared with the NativeBackend) for tool dispatch.
-
-### KernelLoop (native/raw-prompt loop)
-
-Runs locally-hosted models (Gemma 4, Qwen 3.6, etc.) that speak a tool-calling format in raw text.
+Runs models whose server takes a raw prompt (llama.cpp `/completion`, or `/v1/completions` on an
+OpenAI-compatible completions server). chi formats the prompt itself, per model profile (Gemma 4, Qwen 3.6), and
+parses tool calls out of the generated text.
 
 ```
 KernelLoop#run(messages, max_iterations:, on_stream_event:, cancel_controller:,
                model_name:, max_tool_output_chars:, pending_input:)
   │
-  │ turn.conversation = prepare_conversation(messages)  (sanitized copy)
-  │ iteration 1, 2, 3...
-  │ 1. Format conversation as prompt text (Prompt.format_with_images)
+  │ turn = start_turn(...)   # turn.conversation = prepare_conversation(messages): a copy,
+  │                          # old model messages without their thought blocks
+  │ each iteration:
+  │ 1. Queued input (user lines, plugin steers) goes in at the boundary (Steer.inject!)
+  │ 2. Format the conversation as prompt text (Prompt.format_with_images); a context
+  │    guidance line goes on the tail when the window fills past a threshold
+  │ 3. Stream one generation (:generation_started, :generation_chunk, :generation_completed)
+  │ 4. Parse tool calls (ToolCallParser for the profile):
   │    → Gemma 4:  <|tool_call>call:NAME{params}<tool_call|>
-  │    → Qwen 3.6: ���<function=NAME><parameter=KEY>VALUE</parameter></function>�
-  │ 2. Send to model (llama.cpp /completion)
-  │ 3. Parse response for tool-call blocks (ToolCallParser, with Qwen
-  │    unterminated-block recovery)
-  │ 4. For each call: dispatch_calls → collect results
-  │ 5. Inject results into turn.conversation (in-place mutation)
-  │ 6. Repeat from step 1 until model emits no tool calls or max_iterations reached
+  │    → Qwen 3.6: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
+  │    A Qwen block left open is asked to be finished (QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2)
+  │ 5. Calls: dispatch_calls → ToolResponse.run_batch; one tool_response entry for the batch
+  │ 6. No calls: an answer, an empty answer to retry (EmptyAnswerRetry), or queued input to answer
   │
-  └──→ LLM::ModelResult(text, conversation, tool_calls, canceled?, exhausted?)
+  └──→ LLM::ModelResult(text, conversation, exhausted, canceled, tool_activity, ...)
 ```
 
-Key: `turn.conversation` is a **copy** (created in `start_turn` via `prepare_conversation`), not `Engine#turn.messages`. On a failure, the loop stores it on `FailedTurn.attach(e, conversation)` so `Engine#failed_messages` can retrieve it. On a Ctrl-C, the Engine only sees `turn.messages` (pre-loop), because `Interrupt` is not a `StandardError` and doesn't get `FailedTurn.attach`'d.
+`turn.conversation` is the loop's own copy, not the Engine's `turn.messages`. A failure attaches it to the error
+(`LLM::FailedTurn.attach`), so `Engine#failed_messages` can keep it; a Ctrl-C does not (see Error paths).
 
-### ChatLoop (OpenAI chat API)
+### ChatLoop (the OpenAI chat API)
 
-Runs remote models (Claude, others via OpenRouter) that natively support tool schemas in `/v1/chat/completions`.
+Runs hosts with `api: openai`: remote providers such as OpenRouter (Claude and others) and any OpenAI-compatible
+chat server. The model gets the tools as JSON schemas and returns structured tool calls.
 
 ```
 ChatLoop#complete(messages:, max_iterations:, on_stream_event:, cancel_controller:,
                   model_name:, max_tool_output_chars:, pending_input:)
   │
-  │ conversation = Array(messages).map(&:dup)  (sanitized copy)
+  │ conversation = Array(messages).map(&:dup)   # a shallow copy of each message
   │ Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input)
   │    .call(max_iterations: max_iterations || 1, cap: KernelLoop.resolve_output_char_cap(max_tool_output_chars))
   │
-  └──→ LLM::ModelResult(text, conversation, tool_calls, canceled?, exhausted?)
+  └──→ LLM::ModelResult(text, conversation, exhausted, canceled, tool_activity, ...)
 ```
 
-The ChatLoop uses the shared KernelLoop for tool dispatch (via `@kernel`) — it doesn't reinvent `KernelLoop#run`. The ChatLoop passes `stable_length` to get Anthropic cache breakpoint splits (`cache_split:`).
+The differences from the native loop:
 
-The difference:
+- The tools go in each request's `tools` field (`tool_definitions`), not in the system prompt.
+- The conversation is converted to the OpenAI wire format (`wire_messages`).
+- The first system message carries `cache_split:` (from `SystemPrompt#stable_length`, which the Engine passes in
+  as `stable_length:`), where the prompt's stable part ends. For remote Claude, `LLM::PromptCache` puts the
+  first cache breakpoint there; see prompt-caching.md.
+- Each call's result is its own tool message, paired by `tool_call_id`.
 
-- Tools are sent as JSON schemas in each request (`tools` field), not in the system prompt.
-- The engine's conversation format (internal messages with role, content, tool_call_id, etc.) is converted to OpenAI wire format (`wire_messages`).
-- The system prompt's stable part gets a `cache_split:` hint for Anthropic's prompt cache (breakpoint #1).
+### Shared: ToolResponse (per batch) and ToolRunner (per call)
 
-### Shared: ToolRunner (per-call) and ToolResponse (per-iteration)
-
-Both loops dispatch tool calls through `ToolRunner` (per-call policy) which delegates to `KernelLoop#dispatch_tool_call`, and each iteration uses a per-iteration `ToolResponse` to build tool messages for the next loop round:
+Both loops run a batch of calls the same way:
 
 ```
-One iteration:
-  KernelLoop / ChatLoop
-    → ToolResponse.run_batch(calls, iteration, call_count, on_stream_event, cap)
-      → for each call: KernelLoop#dispatch_tool_call(call)
-        → ToolRunner.run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
-          → evaluate (Guardrails::Gate) → tool_call_started event
-          → handle ask verdict (wait for approval)
-          → dispatch or deny
-          → emit tool_call_completed event
-          → fire :after_tool_call hook
-          → return run result (output:, capped_output:, truncated:, activity:, images:,
-                              shown_params:, shown_label:, diff:)
-    → build tool_response message(s) for the next iteration
+One iteration with tool calls:
+  KernelLoop#dispatch_calls / ChatLoop::Run#dispatch
+    → ToolResponse.run_batch(runner, calls, iteration:, emit:, on_stream_event:, cap:)
+      → :tool_dispatch_started {iteration, call_count}
+      → for each call: ToolRunner#run(call, iteration:, call_index:, call_count:,
+                                      on_stream_event:, max_tool_output_chars:)
+          → Guardrails::Gate#evaluate (the before_tool_call hooks, then the core checks)
+          → :tool_call_started
+          → an ask verdict: Gate#settle_ask (asks the user, records waited_ms)
+          → KernelLoop#dispatch_tool_call, or the denial text
+          → :tool_call_completed, then the :after_tool_call hook
+          → returns {output:, capped_output:, truncated:, activity:, images:, shown_params:,
+                     shown_label:, diff:}
+      → :tool_dispatch_completed {iteration, call_count}
+    → native: ToolResponse.joined(runs), one entry with the full outputs
+      chat:   ToolResponse.single(run, tool_call_id:) per call, with the capped output
 ```
 
-**ToolRunner responsibilities:**
-- Runs the guardrail gate first (before `:tool_call_started`). If the gate denies, that call's output is replaced with denial text.
-- Emits `:tool_call_started` (iteration, call_count, call_index, tool, call, params, label, view).
-- Handles the "ask" verdict: waits for approval (records `waited_ms`).
-- Dispatches the call to KernelLoop, or writes the denial text.
-- For edit/write tools: takes diffs and refreshes the memory index (via MemoryBundle::IndexSync).
-- Attaches images (at most 4 per result).
-- Scrubs bad UTF-8 bytes, applies the output cap (returns `capped_output:`, `truncated:` flag).
-- Emits `:tool_call_completed`, then fires `:after_tool_call` hook.
+**ToolRunner** (`ToolRunner#run`):
+- Runs the gate first, so `:tool_call_started` shows the call that will run (a before_tool_call hook may
+  replace it; known-names corrects a misspelled name this way, and the model gets one line saying what ran).
+- Emits `:tool_call_started` {iteration, call_count, call_index, tool, call, params, label (plugin tools),
+  title, view}.
+- Settles an ask verdict after `:tool_call_started`, so a UI shows the tool line and then the approval.
+- Dispatches through `KernelLoop#dispatch_tool_call`, or writes the denial text. Unknown tools are answered in
+  `KernelLoop#dispatch` ("Error: unknown tool ...").
+- For edit and write: diffs the file before and after, and refreshes a memory's index line
+  (`MemoryBundle::IndexSync`).
+- Attaches returned images, at most `MAX_IMAGES_PER_RESULT` (4) per result.
+- Scrubs bytes that aren't UTF-8, and caps the event's output at `max_tool_output_chars`.
+- Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, activity,
+  images, diff, waited_ms, view}, then fires `:after_tool_call` {iteration, tool, output, status}.
 
-**What ToolRunner does NOT do:**
-- Validate calls. Unknown tools are handled in `KernelLoop#dispatch_tool_call`.
-- Handle the hook runtime (other than `:after_tool_call`).
-- Build tool_response messages for the conversation — each loop does that.
-
-**What ToolResponse does (per-iteration):**
-- Emits `:tool_dispatch_started` and `:tool_dispatch_completed`.
-- Native loop: one `tool_response` entry for the whole batch (full outputs joined via `ToolResponse.joined`).
-- Chat loop: one tool message per call, paired by `tool_call_id`, carrying capped output (`ToolResponse.single`).
-- A deny replaces only that one call's output (the rest of the batch continues running).
+A denied call gets denial text in place of its output; the rest of the batch still runs. After a hook's
+`stop_turn`, the gate denies every remaining call of the batch.
 
 ## State management
 
-### TurnState (cross-thread synchronization)
+### TurnState (cross-thread)
 
-A single `Monitor`-guarded object shared between the turn thread and all other threads:
+One object, guarded by a `Monitor`, that the turn thread writes (`begin_turn`, `release_turn`) and other threads
+read: the idle scheduler, the Bridge's request threads, plugin threads, the UIs.
 
 ```
 TurnState
-  ├── running? (Boolean)
-  ├── controller (CancellationController)
-  ├── sink (Proc — per-turn event callback)
-  ├── steers (Array<Hash> — queued for current turn boundary)
-  ├── carried_steers (Array<Hash> — queued for next turn's first boundary)
-  └── Activity clock (last_activity_at, activity_seq)
+  ├── running?
+  ├── controller        (the running turn's CancellationController)
+  ├── sink              (the turn's on_event)
+  ├── steers            (plugin steers for the running turn's next boundary)
+  ├── carried_steers    (for the next turn that begins)
+  └── activity clock    (last_activity_at, activity_seq)
 ```
 
-- `begin!(controller:, sink:)`: sets running=true, controller, sink, moves carried_steers to steers.
-- `finish!`: sets running=false, nils controller/sink, returns steers (for logging as dropped).
-- `steer(text, source:)`: queues a steer for the current turn's next iteration boundary.
-- `steer_next_turn(text, source:)`: queues a steer for the next turn's first boundary.
+- `begin!(controller:, sink:)`: running, with controller and sink, in one step; carried steers become steers.
+- `finish!`: not running, controller and sink cleared; returns the steers never taken (logged as dropped).
+- `steer(text, source:)`: queues a steer for the running turn (false with no turn).
+- `steer_next_turn(text, source:)`: queues a steer for the next turn that begins.
 
-Nothing is called *out* while the lock is held, so external callbacks never deadlock.
+The lock is a leaf: nothing is called out while it is held.
 
 ### Turn (Engine::Turn)
 
-The session's turn as seen by the Engine (not the KernelLoop's internal Turn struct):
+The turn as the Engine sees it (the KernelLoop has its own `Turn` struct):
 
 ```ruby
-Turn = Struct.new(
-  :session, :prompt, :continue, :on_event,
-  :controller, :origin, :started_at, :messages,
-  :ended, :settings, :id, :limit
-) do
-  attr_reader :elapsed  # seconds
-  def tag(event)  # helper adding turn metadata
+Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
+                  :settings, :id, :limit) do
+  def tag(event) = origin ? event.merge(origin: origin) : event   # boundary events carry the origin
+  def elapsed = ...                                               # seconds since started_at
 end
 ```
 
-Key properties:
-- `messages` is the pre-loop messages (history + system head + prompt). After the loop, the Engine reads what the loop's `ModelResult.conversation` provides (on failure/stop).
-- `controller` is cross-process (a file flag) for canceling from another process.
-- `on_event` is the per-turn sink (REPL prints, Web updates).
+- `messages` is what the Engine sends: system head, history, reminders, the prompt. The loop works on its own
+  copy; the Engine keeps `result.conversation` after a normal end or a Stop, and the error's partial
+  conversation after a failure.
+- `controller` is the turn's `CancellationController`, an in-process signal. Another process stops a worker's
+  turn through the Bridge (`POST cancel` → `Engine#cancel_current_turn!`).
+- `on_event` is the turn's sink.
 - `ended` is set by `end_turn`.
 
 ### GenerationPhase
 
-Tracks whether a generation is in progress (to determine if a steer may cut the generation).
-
-```
-GenerationPhase
-  ├── in_progress? (Boolean)
-  ├── finished! (called at turn end)
-  └── Clock (monotonic seconds)
-```
+What the running generation streams, fed by the Engine's stream handler: whether a user's steer may cut it.
+A generation is cuttable while it has streamed only thinking, is still thinking, and has thought for at least
+`steer.cut_after` seconds (`cuttable?(min_age)`). It has `started!`, `chunk!`, `retrying!` and `finished!`.
 
 ### WaitingSteer
 
-A steer that arrived too early (during prompt building, before the generation started). It's queued and replayed at the next turn boundary.
+A message that may cut the generation but came too early (the generation hadn't been thinking long enough). It
+waits until the thinking passes `steer.cut_after` (the Engine checks on each thinking chunk), until a drain hands
+the message to the model at a boundary, or until the turn ends (`clear!` in `release_turn`).
 
 ## Events
 
-### Per-turn sink (`on_event`)
+### The turn's sink (`on_event`) and the observers
 
-The primary event path: emitted synchronously during a turn, received by:
+`Engine#emit_event` sends each turn event to the turn's sink (`on_event`, the REPL's renderer) and then to the
+persistent observers (`Engine#subscribe`), which get a copy with a monotonic `event_seq`. The observers are the
+metrics, the debug log, the thinking tails, and in a worker the Bridge, which streams to the web and the attached
+TUI. Errors in the sink or an observer are caught; they never break the turn.
 
-- **TerminalUI**: prints the answer, renders tool steps, question cards.
-- **Web UI**: receives via SSE (Server-Sent Events).
-- **Bridge**: relays to attached remote sessions.
+`Engine#announce` puts an event that belongs to no turn (`ANNOUNCEABLE_EVENTS`: `turn_enqueued`, `card`,
+`hook_notice`, `guardrail_warning`, `plugin_init_started`, and more) to the observers only.
 
-Events emitted during a turn:
+Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 
-| Event | When emitted | Payload |
+| Event | When | Payload |
 |---|---|---|
-| `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, images}` |
-| `:generation_started` | Model request begins | `{model, window, duration_ms}` |
-| `:generation_chunk` | Each model token | `{text, thinking?, tokens, delta}` |
-| `:generation_completed` | Model finishes | `{text, conversation, tokens, tool_calls?, canceled?, exhausted?, context_status}` |
-| `:generation_retrying` | Provider retry | `{attempt, message}` |
-| `:generation_cancelled` | Cancel mid-stream | `{reason, stopped_by}` |
-| `:tool_dispatch_started` | ToolResponse batch starts | `{iteration, call_count}` |
-| `:tool_dispatch_completed` | ToolResponse batch done | `{iteration, call_count}` |
-| `:tool_call_started` | Before tool runs | `{iteration, call_count, call_index, tool, call, params, label?, view?}` |
-| `:tool_call_completed` | After tool runs | `{iteration, call_count, call_index, tool, output, output_truncated, activity, images?, diff?, waited_ms?, view?}` |
-| `:used_memories_updated` | After `publish_used_memories` | `{used_memory_names, read_names}` |
-| `:answer_display` | After answer stored | `{display: text, nil}` |
-| `:hook_notice` | Plugin notices | `{hook, text, level}` |
-| `:reminder_injected` | Reminders injected | `{reminders}` |
-| `:pending_input_merged` | Steering drained | `{message}` |
-| `:guardrail_warning` | Guardrail failures | `{message}` |
-| `:turn_completed` | Normal completion | `{result, turn_summary, display_pending}` |
-| `:turn_canceled` | Cancel/failure | `{cancellation_reason, cancelled_by, duration_ms}` |
-| `:turn_failed` | Error path | `{error_class, message, error_kind?, retryable?, host?}` |
-| `:session_start` | First turn | `{session_id}` |
-| `:before_turn` | Before generation | `{session_id, prompt, messages}` |
-| `:after_turn` | After completion | `{status, messages, present: presenter}` |
-| `:session_end` | After turn lifecycle | `{session_id}` |
+| `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, images?}` |
+| `:reminder_injected` | due reminders went into the turn | `{reminders}` |
+| `:context_status` | the window's fill crossed a bucket | `{iteration, ...}` |
+| `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source}` (native adds `profile`, `profile_source`) |
+| `:generation_chunk` | each streamed chunk | `{iteration, content, text, thinking, payload, tool_call?}` |
+| `:generation_retrying` | the transport retries the request | `{iteration, ...}` (the retry's fields) |
+| `:generation_completed` | a generation ended, or was cut | `{iteration, content_length, thinking_chars, served_model, requested_model, finish_reason, ...}`; a cut adds `stopped_by`, `stop_reason`; the Engine adds `speed`, `tokens` |
+| `:generation_cancelled` | the turn was cancelled mid-loop | `{iteration, reason, stopped_by}` |
+| `:empty_answer_retry` | an empty or cut answer is asked again | `{iteration, attempt, of, finish_reason, thinking_chars, ...}` |
+| `:steer_cut` | a steer cut the generation | `{iteration, source}` |
+| `:pending_input_merged` | queued input joined the conversation | `{iteration, count, content, steers?, answer}` |
+| `:tool_dispatch_started` / `:tool_dispatch_completed` | around a batch | `{iteration, call_count}` |
+| `:tool_call_started` | before a call runs | see ToolRunner |
+| `:tool_call_completed` | after a call ran | see ToolRunner |
+| `:used_memories_updated` | a memory was read, and after the loop | `{used_memory_names, read_names?}` |
+| `:hook_notice` | a hook's or plugin's notify during a turn | `{hook, text, level}` (announced with `between_turns: true` outside a turn) |
+| `:guardrail_warning` | a guardrails line during a turn | `{message}` |
+| `:turn_completed` | normal end | `{result, turn_summary, display_pending}` |
+| `:turn_canceled` | Stop, hook stop, Ctrl-C | `{cancellation_reason, cancelled_by?, duration_ms}` |
+| `:turn_failed` | an error | `{error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
+| `:answer_display` | after the after_turn hooks (observers only, not the sink) | `{display}` (a string, or nil) |
 
-### Persistent subscribers (`session_observer`)
+The boundary events (`:turn_started`, `:turn_completed`, `:turn_canceled`, `:turn_failed`) also carry `origin`
+when the turn was queued with one.
 
-After per-turn emission, a copy with monotonic `event_seq` is sent to persistent subscribers (session observer for web streaming). Errors in subscribers are isolated — they never break the turn.
+### Hook points (not events)
+
+`:session_start`, `:before_turn`, `:after_turn` and `:session_end` are hook points: the Engine fires them on the
+hook registry (`@hooks.fire`), not on the sink or the observers. The other hook points are `:before_generation`,
+`:after_generation`, `:generation_progress` (Hooks::StreamWatch, in batches while the response streams),
+`:before_tool_call` (the guardrail gate) and `:after_tool_call` (ToolRunner). docs/hooks.md lists their payloads.
 
 ## Session lifecycle
 
 ```
-Engine initialization:
-  @turn_state = TurnState.new(clock: monotonic_now)
-  @generation_phase = GenerationPhase.new(clock: monotonic_now)
-  @waiting_steer = WaitingSteer.new
-  @client = @host_registry.resolve(@effective_model_name).client
-  @given_profile = profile (or nil, resolved on first use)
-  @hooks = Hooks::Registry.new (loaded from bundle plugins)
-  @kernel = KernelLoop.new(client:, profile:, hooks:, ...)
+Engine initialization (in this order, among other things):
+  @turn_state, @generation_phase, @waiting_steer
+  @host_registry, @effective_model_name; @client = @host_registry.resolve(...).client
+  @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
+  @guardrail_wiring, @question_desk
+  @hooks = load_hooks_from_config (config.yml hooks), then load_hooks_from_bundles
+  @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins)
+  @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
+  @kernel.guardrail_gate = @guardrail_wiring.gate; @kernel.warmup = PromptWarmup.new
+  @hooks.runtime = hook_runtime
+  @native_backend = LLM::NativeBackend.new(kernel: @kernel)
+  @prompt_builder = SystemPrompt.new(...)
+  @session_observer with the metrics, the log subscriber and the thinking tails subscribed
 
-Model switching:
-  Engine#switch_model!(model_name)
-    → updates @effective_model_name, resolves client from HostRegistry
-    → @chat_backend.reset! (clears ChatLoop cache)
-    → @native_backend = nil (new NativeBackend wrapping fresh KernelLoop)
-    → profile_resolution resolves a new ModelProfile
-    → hooks are reloaded (tools_changed! → apply_staged_tools!)
-    → system prompt is rebuilt (prompt_builder.reset!)
+Model switching, Engine#switch_model!(model_name, persist_default:, typed:):
+  → checks the host (ModelProfile.check_host!), sets @effective_model_name
+  → drops the given profile and the profile resolution (resolved again on first need)
+  → sync_model_key!, @prompt_builder.reset! (the system prompt is built again)
+  → sync_kernel_client! (the kernel talks to the new host), the context window cache dropped
+  → the kernel is never rebuilt; the next turn's backend follows the new host's api
 
-Model probe (per turn):
-  Engine probes /props for window, served_model, vision
-  Cache is dropped at turn end, not start (so probes during a turn are consistent)
-  A Stop (other-process cancel) can cut the probes early
+Model probes (per turn):
+  The profile, window, served model and vision are asked from the server's /props as needed.
+  The cache is dropped at the turn's end, not its start, so one turn doesn't ask twice.
+  A Stop cuts the probes early (Client.swap_probe_cancel).
 ```
 
 ## Hooks
 
-Plugins register hooks that fire at lifecycle points. The Engine provides a **hook runtime** (`Hooks::Runtime`) with five capabilities:
+Plugins and hook files register hooks on hook points (see "Hook points" above, and docs/hooks.md). Every fire
+puts the hook runtime on the event: `event[:hook]` (the hook's label) and five helpers, which call the Engine's
+`Hooks::Runtime`. A plugin's `ctx` has the same ones (`ctx.notify`, `ctx.steer`, ...).
 
-| Hook capability | What it does | Example |
+| Helper | What it does | Used by |
 |---|---|---|
-| `notify(text:, level:, hook:)` | Post a notice (to the user) | "Loading bundle X..." |
-| `ask_user(question:, options:, header:, allow_freeform:, hook:)` | Ask a structured question | Source-links asks which issues to fetch |
-| `stop_turn(reason:, hook:)` | Cancel the current turn | Guardrails blocks a tool call |
-| `stop_generation(reason:, hook:)` | Cut a running generation | Source-links stops model during prompt building |
-| `steer(text:, hook:)` | Queue steering for the next boundary | Idle reminder fires |
+| `event[:notify].call(text, level:)` | One line to the user (`:hook_notice`) | mcp (a server didn't start), loop-guard |
+| `event[:ask_user].call(question:, options:, header:, allow_freeform:)` | A single-select question through the question flow; nil when there is no one to ask | known-names (a near-miss name: correct it?) |
+| `event[:stop_turn].call(reason)` | Cancel the running turn (reason `:hook`), with a warn notice | loop-guard (repeated calls), check-in (`/checkin stop`) |
+| `event[:stop_generation].call(reason)` | Cut the streaming generation; the turn goes on | loop-guard (thinking repeats itself) |
+| `event[:steer].call(text)` | Queue text for the running turn's next boundary | check-in (nudge mode), skills |
 
-Hooks fire at: `:session_start`, `:before_turn`, `:after_turn`, `:session_end`, and plugin-specific points (`:tool_call_started`, `:generation_started`, etc.).
+From `:after_turn` and `:session_end` there is no turn left: `stop_turn` and `steer` return false.
 
 ### Hook lifecycle
 
-- **Persistent hooks** (registered via `register_persistent` from config.yml or bundle defaults) survive across turns.
-- **Turn-scoped hooks** (added with `register` during a turn) are cleared by `clear_hooks` at `release_turn`.
-- A hook loaded during a turn can steer/stop that turn (if the turn is running).
-- A hook loaded during plugin loading (between turns) is announced with `between_turns: true` (cards shown to the user).
-- Plugin init tasks are slow setup (MCP server start) — the turn waits for them, and a Ctrl-C cancels the wait.
+- **Bundle hooks** (`Registry#register_bundle`) and **config hooks** (`register_persistent`, from config.yml)
+  live for the process: `clear_all` leaves them, so they apply to every turn.
+- **Turn-scoped hooks** (`Engine#register_hook`, `Registry#register`) are cleared by `clear_hooks` in
+  `release_turn`.
+- Order of a fire: bundle hooks (by priority, bundle, hook name), then config hooks, then turn-scoped hooks.
+- A hook that raises is logged; it never breaks the turn.
+- A notice from a hook goes to the running turn's sink and the observers. Outside a turn it is announced with
+  `between_turns: true`; while the plugins load it is held and announced after.
+- Plugin init tasks (`chi.init`, slow setup such as an MCP server's first start): a turn waits for the ones that
+  provide tools before it builds its messages, and a Stop or Ctrl-C ends the wait.
 
 ## Guardrails
 
-The Guardrails::Gate runs before each tool call (`:before_tool_call` hook). It can:
+`ToolRunner` asks the kernel's `Guardrails::Gate` (set by the Engine from `GuardrailWiring`) before each call;
+the gate is not itself a hook. `Gate#evaluate` fires the `:before_tool_call` hooks (the voters, e.g. the
+known-names bundle or a config hook), which vote through `event[:guardrail]` (`deny!`, `ask!`) or the legacy
+`event[:blocked]` flag. A deny stays a deny for the hooks after it. Then the core checks run on the final call:
+protected paths, then the rules (config and bundles, e.g. the guardrails bundle's `rules.yml`; a rule can match
+the tool, its targets and the model). A gate that raises denies the call.
 
-- **Allow** the call through
-- **Block** the call (replaces that one call's output with denial text; the rest of the batch continues)
-- **Ask for approval** (requires action turn)
+The verdict is one of:
 
-The gate checks rules based on the tool name, args, and the model's identity.
+- **allow**: the call runs.
+- **deny**: that call's output is replaced with denial text; the rest of the batch still runs.
+- **ask**: `Gate#settle_ask` first looks for a stored approval that covers the call. Otherwise
+  `Engine#request_approval` asks the user through the question flow (REPL, attached TUI, web). A
+  `--non-interactive` run has no one to ask, so the call is denied. An approval wider than this once is stored.
 
-## Background/anytime execution
+docs/guardrails.md covers the rules and the approval scopes.
+
+## Anytime commands
+
+A slash command a plugin registers with `anytime: true` (the btw bundle's `/btw`) runs on its own thread, even
+while a turn runs:
 
 ```
 Engine
-  ├── spawn_anytime { ... }  → starts a thread with any-time hooks
-  ├── add_init_task(bundle:, label:, plugin_label:, provides_tools:, ...)
+  ├── spawn_anytime { ... }          # a thread #shutdown waits for
+  ├── running_anytime { ... }        # cards and notices on this thread are announced at once,
+  │                                  # marked anytime: true, never as the running turn's events
+  ├── add_init_task(bundle:, label:, plugin_label:, provides_tools:, quiet:, timeout:, failed:)
   └── await_init_tasks(controller, on_event)
 ```
 
-Any-time hooks run in separate threads outside the turn flow:
-
-- They cannot steer a turn (no turn running).
-- They can notify, ask_user, and stop_generation (but not stop_turn).
-- Results are captured via a Desk (RelayDesk) or callbacks.
+`add_init_task` and `await_init_tasks` belong to plugin init tasks (`PluginTasks`), not to anytime commands.
 
 ## Shared loop behaviors
 
-Both loops share these behaviors:
+Both loops:
 
-- **Empty-answer retry**: `EmptyAnswerRetry` adjusts sampling when the model returns empty text (retry with lower temperature).
-- **After-cut handling**: `after_cut` when a plugin cuts a generation, keeping the partial streamed text marked `[interrupted]`.
-- **Same stream events**: `:generation_started`, `:generation_chunk`, `:generation_completed`, `:generation_retrying`, `:generation_cancelled`.
-- **Same tool call flow**: `:tool_dispatch_started`, `:tool_dispatch_completed`, `:tool_call_started`, `:tool_call_completed`, `:after_tool_call`.
-- **Qwen-specific**: unterminated tool-call block recovery (up to `QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT`), thinking preamble injection, prefill text, context-guidance line when filling up.
+- **Empty-answer retry** (`EmptyAnswerRetry`): a generation with no visible text and no tool calls is asked
+  again, up to `retry.empty_answer` times (at most 3), with a hidden nudge (`TurnNote.empty_retry`) on the tail.
+  The retry request runs at temperature 0.6 when the configured sampling sets no temperature; a configured one
+  is kept. A length stop with the context at least 90% full is not retried. When the retries run out, the
+  Engine keeps a `TurnNote.empty` note as the turn's end.
+- **A cut generation** (`after_cut`): a generation a plugin cut (`stop_generation`) spends the same retry budget
+  with its own nudge; when it is used up, the turn ends cancelled (`:hook`). A steer's cut asks again with the
+  steer and spends nothing.
+- **Steering**: queued input goes in at iteration boundaries (`Steer.inject!`, `:pending_input_merged`).
+- **Context status**: an estimate of the window's fill before each request (`:context_status`), with a guidance
+  line on the tail when it rises far enough.
+- **Cancel**: text streamed before a cancel stays, marked `[interrupted]`.
+- **The same events**: generation events, tool dispatch and tool call events, and the before/after generation
+  and tool call hooks.
+
+Native loop only: the Qwen open-block recovery, and the thinking prefill (Qwen with thinking off gets an empty
+thought after the cue, kept in the model message so the next prompt starts with what the server has cached).
 
 ## Key design principles
 
-1. **Turn state is cross-thread safe.** TurnState uses a single Monitor — no callbacks while the lock is held.
-2. **Hooks: turn-scoped vs persistent.** Hooks added with `register` are cleared at `release_turn`. Hooks registered with `register_persistent` (from config.yml or bundle defaults, including Guardrails) survive across turns.
-3. **Each loop copies the conversation** in `start_turn` (`prepare_conversation`). The Engine's `turn.messages` is the pre-loop history. The loop's internal `Turn.conversation` (KernelLoop) or `conversation` (ChatLoop) is what the Engine retrieves on failure via `FailedTurn.attach(e, conversation)`.
-4. **Events are the contract.** UIs subscribe to events, not internal state. The `on_event` sink is per-turn; `session_observer` is persistent.
-5. **Stable system prompt for cache.** The SystemPrompt is built once per loop, with a stable prefix (tools, identity, memories) and a volatile tail (model, location, session). The prompt cache document covers this in detail.
+1. **Turn state is cross-thread safe.** TurnState uses one Monitor and calls nothing out while it is held.
+2. **Turn-scoped and process-wide hooks.** `register_hook` hooks are cleared at `release_turn`; bundle hooks
+   and config.yml hooks survive.
+3. **Each loop works on its own copy of the conversation.** The Engine's `turn.messages` is what it sent. After
+   a normal end or a Stop it keeps `result.conversation`; after a failure, the copy attached with
+   `FailedTurn.attach`; after a Ctrl-C, only `turn.messages`.
+4. **Events are the contract.** UIs read events, not internal state. `on_event` is per turn; observers are
+   persistent.
+5. **A stable system prompt for the cache.** `SystemPrompt#build` caches the prompt per Engine (per chat/native
+   and thinking level) and is reset only on a model switch, a tools change or a profile change. The stable part
+   (base prompt, identity, memories, AGENT.md, memory indexes) comes before the volatile tail (model, working
+   directory, session). prompt-caching.md covers this in detail.
 
 ## Key files
 
+Paths are under `lib/samagotchi/`.
+
 | File | Role |
 |---|---|
-| `engine.rb` | Engine class: turn lifecycle, event emission, hooks, plugins |
-| `turn_state.rb` | Cross-thread state (running, controller, sink, steers) |
-| `kernel_loop.rb` | Native loop: `#run` (format, model, parse, dispatch, iterate) |
-| `llm/chat_loop.rb` | OpenAI chat API: `#complete` (tool schemas per-request, wire conversion) |
-| `llm/backend.rb` | Backend contract (`#complete(...)`) |
-| `llm/native_backend.rb` | Wraps KernelLoop as a backend (implements `#complete` by delegating to `#run`) |
-| `tool_runner.rb` | Per-call tool policy (gate, start/complete events, output cap, images, diffs) |
-| `tool_response.rb` | Per-iteration tool batching (joined for native, single for chat) |
-| `tools/registry.rb` | Tool registry, resolution, execution |
-| `system_prompt.rb` | System prompt construction (stable/volatile split) |
-| `hooks.rb` | Hook registry, runtime (notify, ask_user, stop_turn, steer, stop_generation) |
-| `guardrails.rb` | Guardrail system (gate, approvals) |
-| `events.rb` | Event types, emission helpers |
-| `cancellation_controller.rb` | Cross-process cancellation (file flag) |
+| `engine.rb` | Engine: turn lifecycle, event emission, hooks runtime, plugins, model switching |
+| `turn_state.rb` | Cross-thread turn state (running, controller, sink, steers, activity clock) |
+| `generation_phase.rb`, `waiting_steer.rb` | Whether a steer may cut the running generation, and the steer that waits to |
+| `steer.rb` | Queued input and steers at iteration boundaries |
+| `kernel_loop.rb` | Native loop: `#run` (format, generate, parse, dispatch, iterate) |
+| `llm/chat_loop.rb` | Chat loop: `#complete` (tool schemas per request, wire conversion) |
+| `llm/backend.rb` | The `LLM::ModelBackend` contract (`#complete(...)`) |
+| `llm/native_backend.rb` | Wraps KernelLoop as a backend (`#complete` calls `#run`) |
+| `llm/model_result.rb` | `LLM::ModelResult`, what a backend returns |
+| `tool_runner.rb` | Per-call path (gate, start/complete events, output cap, images, diffs) |
+| `tool_response.rb` | Per-batch dispatch and tool_response entries (joined for native, single for chat) |
+| `empty_answer_retry.rb` | The empty-answer and cut retry budget |
+| `prompt_warmup.rb` | The turn-end warm-up |
+| `tools/registry.rb` | The tools a session offers: schemas, handlers, order |
+| `system_prompt.rb` | System prompt construction (stable part, volatile tail) |
+| `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
+| `guardrail_wiring.rb`, `guardrails/gate.rb` | The gate's context and approvals; the verdict per call |
+| `events.rb` | Event type sets shared by the Worker, the Bridge, the TUI and the web |
+| `cancellation_controller.rb` | A turn's cancel signal, and a generation's child controller |
 | `session.rb` | Session model (status, messages, persistence) |
-| `session_manager.rb` | Session CRUD, retention, session hub |
+| `session_manager.rb` | Background session processes (workers) and their IPC |
