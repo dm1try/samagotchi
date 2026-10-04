@@ -8,10 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-04
+
 ### Changed
 
-- Bundles btw 0.1.2, check-in 0.2.2, known-names 0.1.5, loop-guard 0.3.2, mcp 0.4.2, skills 0.1.6 and
-  source-links 0.3.3: code style only, no behaviour change.
 - chi no longer strips the blank lines Splash before 1.2.0 put at the start of an answer (incoai/splash#254, fixed
   in Splash 1.2.0): upgrade Splash with `brew upgrade incoai/tap/splash`.
 - Requests to OpenRouter send `max_tokens: 32768` (a request's own limit, as a recap's, still wins). OpenRouter
@@ -34,6 +34,10 @@ and commands may change between minor versions. How releases are made:
   inside the model's turn as `response:NAME{value:…}` blocks, one per call; tools are declared in the
   template's compact form at the end of the system turn; an answer's thought is dropped once the next
   user turn starts; and thinking off prefills Gemma's empty thought channel.
+
+Update with `chi update`: btw 0.1.2, check-in 0.2.2, known-names 0.1.5, loop-guard 0.3.2, mcp 0.4.2, skills 0.1.6 and
+source-links 0.3.3 move (code style only, no behaviour change). If your config.yml has `default: n_predict:`, rename it
+to `max_tokens:`. Restart `chi web` and running sessions afterwards (`chi sessions restart ID`).
 
 ## [0.22.0] - 2026-10-04
 
@@ -1300,7 +1304,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/dm1try/samagotchi/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/dm1try/samagotchi/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/dm1try/samagotchi/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/dm1try/samagotchi/compare/v0.19.0...v0.20.0
