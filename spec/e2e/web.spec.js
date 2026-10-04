@@ -821,7 +821,7 @@ test("thinking loop: loop-guard cuts it, asks again, answers", { tag: "@turn" },
   }
   await expect(cut).toHaveCount(1);
   await expect(again).toHaveCount(1);
-  await expect(cut).toContainText("(3 sentences ×3");
+  await expect(cut).toContainText("(\"Wait, the count of the letter r in the word might be three,…\", 3 sentences ×3");
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await expect(answer(page)).toHaveText("PONG after the cut.");
   await turnEnded(page, 1);

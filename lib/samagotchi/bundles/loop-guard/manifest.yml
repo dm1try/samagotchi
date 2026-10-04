@@ -6,5 +6,5 @@ description: "Breaks loops: the same tool call with the same result again and ag
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:4adf55951d98686d890fc1e7fa06bc8e0e4dee8a37425e6ce72f5c45b7f37d05
+  sha256: sha256:8cf255cd1cc0846a759fcf70144af53bfc634c9d5c766981ce0ef5e476749e0a
 requires_chi: ">= 0.6.0"

@@ -273,7 +273,8 @@ RSpec.describe "The loop-guard thinking watch" do
       generation(hooks, looping)
 
       expect(acts).to eq([[:stop_generation, "its thinking kept repeating itself"]])
-      expect(notices).to eq([["thinking repeats itself (3 sentences ×3, 4k chars, 8 s): cut", :warn]])
+      expect(notices).to eq([["thinking repeats itself (\"Wait, the count of the letter r in the word might be three,…\", " \
+                              "3 sentences ×3, 4k chars, 8 s): cut", :warn]])
 
       generation(hooks, looping, iteration: 2)
 
@@ -283,6 +284,22 @@ RSpec.describe "The loop-guard thinking watch" do
       expect(cards.first).to include(title: "loop-guard stopped the turn", level: :warn)
       expect(cards.first[:body]).to include("- \"Wait, the count of the letter r in the word might be three, not two.\"")
                                 .and include("`sampling:` in config.yml")
+    end
+
+    it "quotes the looping sentence on one line, cut short" do
+      hooks = plugin
+      fire(hooks, { type: :before_turn })
+      generation(hooks, random_thinking(3000) + ("I keep going round the very same idea,\tagain and again and again and again. " * 12))
+
+      expect(notices.first.first).to start_with("thinking repeats itself (\"I keep going round the very same idea, again and again and …\", one sentence ×")
+    end
+
+    it "quotes a cycle of short sentences whole" do
+      hooks = plugin
+      fire(hooks, { type: :before_turn })
+      generation(hooks, fixture("real_deepseek_reset_loop.txt").first * 2)
+
+      expect(notices.first.first).to start_with("thinking repeats itself (\"OK. Let me write. Writing.\", 12 sentences ×4")
     end
 
     it "starts each turn with no loops counted" do
@@ -350,7 +367,7 @@ RSpec.describe "The loop-guard thinking watch" do
       generation(hooks, looping * 3)
       generation(hooks, looping, iteration: 2)
 
-      expect(notices.map(&:first)).to all(start_with("thinking repeats itself (3 sentences ×3"))
+      expect(notices.map(&:first)).to all(start_with("thinking repeats itself (\"Wait, the count"))
       expect(notices.size).to eq(2)
       expect(acts).to be_empty
     end

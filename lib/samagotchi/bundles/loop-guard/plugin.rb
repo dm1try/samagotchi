@@ -309,14 +309,17 @@ class Plugin
     @watch_done = true
     what = "#{found.period == 1 ? "one sentence" : "#{found.period} sentences"} ×#{found.times}, " \
            "#{(@watch.thinking_chars / 1000.0).round}k chars, #{(event[:elapsed_ms].to_i / 1000.0).round} s"
+    # The notices quote the loop's sentences on one line (a short cycle
+    # whole), as the stop card does.
+    quoted = "\"#{cut(found.sentences.first(3).join(" ").gsub(/\s+/, " "))}\", #{what}"
     case @thinking["action"]
     when "notify"
-      ctx.notify("thinking repeats itself (#{what})", level: :warn)
+      ctx.notify("thinking repeats itself (#{quoted})", level: :warn)
     when "retry"
       @thinking_loops += 1
       return stop_thinking(ctx, found, what) if @thinking_loops > 1
 
-      ctx.notify("thinking repeats itself (#{what}): cut", level: :warn) if ctx.stop_generation("its thinking kept repeating itself")
+      ctx.notify("thinking repeats itself (#{quoted}): cut", level: :warn) if ctx.stop_generation("its thinking kept repeating itself")
     else
       stop_thinking(ctx, found, what)
     end
