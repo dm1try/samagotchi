@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
+require_relative "thinking_tails"
 
 module Samagotchi
   # The one-line system note a turn leaves in the conversation when it ends
@@ -23,7 +24,8 @@ module Samagotchi
     EMPTY_ANSWER = :empty_answer
     # An empty step's thinking kept on the marker: its tail, so a model
     # that thought for minutes doesn't put megabytes in the session file.
-    STEP_CHARS = 20_000
+    # The same cap as ThinkingTails' saved tails.
+    STEP_CHARS = ThinkingTails::TAIL_CHARS
     # A step's native thinking starts with one of these; the cut keeps it,
     # so the UIs still find the thinking (MessageParts).
     THINK_OPENS = ["<think>", ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN].freeze

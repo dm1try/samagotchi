@@ -23,7 +23,7 @@ module Samagotchi
   class ThinkingTails
     FILE = "thinking_tails.jsonl"
     # The last chars of a generation's thinking kept: a loop's cycle and
-    # some of its lead-in.
+    # some of its lead-in. TurnNote cuts an empty step's thinking to it too.
     TAIL_CHARS = 20_000
     MAX_RECORDS = 10
 
