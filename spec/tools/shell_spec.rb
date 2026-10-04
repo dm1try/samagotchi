@@ -31,7 +31,10 @@ RSpec.describe Samagotchi::Tools::Shell do
       expect(result).to include("it's done").and end_with("exit: 0")
     end
 
+    # The zsh mode's promise; Linux's /bin/sh (dash on CI) has none of these.
     it "keeps bash habits: brace ranges, [[ ]] with =~ groups, arrays, $'..', &>" do
+      skip "only where commands run in zsh emulating sh (macOS)" unless described_class.program.first.end_with?("zsh")
+
       result = run(<<~'SH')
         echo {1..3}
         [[ abc =~ ^a(b) ]] && echo "m:${BASH_REMATCH[1]}"
