@@ -1,0 +1,40 @@
+# frozen_string_literal: true
+
+require_relative "tools/execute"
+require_relative "tools/task_create"
+
+module Samagotchi
+  # What a richer UI shows of a tool call beyond its one-line params: the
+  # full command of an execute / task_create (whitespace kept), and the
+  # call's own cwd: argument. Built by the server on every path (the live
+  # tool_call_started, the bridge's snapshot and replay, a reload from the
+  # saved call), so the UIs never parse the call themselves. params and its
+  # 80-char cut stay as they are (the guardrails, "ran as:", the TUI).
+  #
+  # +truncated+: the command was longer than COMMAND_LIMIT and is cut to it;
+  # +chars+ is then its full length.
+  ToolView = Data.define(:command, :cwd, :truncated, :chars) do
+    def to_h = super.compact.reject { |_key, value| value == false }
+  end
+
+  class ToolView
+    # The longest command a view carries (the spike's longest was 3,799).
+    COMMAND_LIMIT = 8_000
+
+    TOOLS = [Tools::Execute::NAME, Tools::TaskCreate::NAME].freeze
+
+    # @return [ToolView, nil] nil for a tool without a view and for an
+    #   empty command
+    def self.for(tool_name, call)
+      return nil unless TOOLS.include?(tool_name) && call.is_a?(Hash)
+
+      command = call[:content].to_s
+      return nil if command.strip.empty?
+
+      cwd = call[:cwd].to_s.strip
+      truncated = command.length > COMMAND_LIMIT
+      new(command: truncated ? command[0, COMMAND_LIMIT] : command, cwd: cwd.empty? ? nil : cwd,
+          truncated: truncated, chars: truncated ? command.length : nil)
+    end
+  end
+end
