@@ -120,6 +120,15 @@ test("turnGroups with parts (?parts=1): one step per saved message, its thinking
   });
 });
 
+test("turnGroups with parts: a reloaded row keeps its call's view (the full command)", () => {
+  const view = { command: "cd /p && rg -n foo lib |\n  head -5", cwd: "lib" };
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Checking.", parts: { tools: [{ ...EXECUTE, view }] } },
+  ];
+  assert.deepEqual(turnGroups(items, TIMING)[0].steps[0].tools[0].view, view);
+});
+
 test("turnGroups with parts: a turn that ended on a call has no answer; a call with no record shows done", () => {
   const items = [
     { role: "user", content: "p" },

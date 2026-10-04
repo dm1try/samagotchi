@@ -89,7 +89,7 @@ RSpec.describe "Tool call outcomes per model format" do
     end
     let(:outputs) { ["[execute]\nok", "[edit]\nEdited", "[echo_args]\nhi"] }
     let(:rows) do
-      { tools: [{ tool: "execute", params: 'command="ls"', title: "ls", output: "[execute]\nok" },
+      { tools: [{ tool: "execute", params: 'command="ls"', title: "ls", view: { command: "ls", cwd: "web" }, output: "[execute]\nok" },
                 { tool: "edit", params: 'path="a.rb"', title: "a.rb", output: "[edit]\nEdited" },
                 { tool: "echo_args", params: 'text="hi"', output: "[echo_args]\nhi" }] }
     end

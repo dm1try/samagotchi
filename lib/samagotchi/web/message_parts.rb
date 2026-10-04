@@ -3,6 +3,7 @@
 require_relative "../model_profile"
 require_relative "../tool_call_parser"
 require_relative "../tool_activity"
+require_relative "../tool_view"
 require_relative "../llm/native_tool_normalizer"
 require_relative "../tools/builtins"
 require_relative "../image_store"
@@ -158,6 +159,10 @@ module Samagotchi
         part = { tool: name, params: params.to_s }
         title = ToolActivity.tool_title(name, call, cwd: cwd)
         part[:title] = title if title
+        # Built from the saved call (never saved itself), so older sessions
+        # get it too.
+        view = ToolView.for(name, call)&.to_h
+        part[:view] = view if view
         part[:label] = label if label.is_a?(String) && !label.empty?
         unless output.nil?
           part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output

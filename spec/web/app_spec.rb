@@ -1154,7 +1154,8 @@ RSpec.describe Samagotchi::Web::App do
         steps = payload["messages"].select { |m| m["role"] == "assistant" }
         expect(steps.map { |m| m["content"] }).to eq(["Let me look.", "", "It says **hello**."])
         expect(steps.map { |m| m["parts"] }).to eq([
-          { "thinking" => "look", "tools" => [{ "tool" => "execute", "params" => 'command="ls"', "title" => "ls", "output" => "[execute]\na.txt" }] },
+          { "thinking" => "look", "tools" => [{ "tool" => "execute", "params" => 'command="ls"', "title" => "ls", "view" => { "command" => "ls" },
+                                                "output" => "[execute]\na.txt" }] },
           { "tools" => [{ "tool" => "read", "params" => 'path="a.txt"', "title" => "a.txt", "output" => "[read]\nhello" }] },
           { "thinking" => "done" }
         ])
