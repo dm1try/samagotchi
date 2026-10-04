@@ -15,6 +15,18 @@ bug) or a broken spec: fix it, or disable that line with the reason (`# rubocop:
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
 
+## Worktrees
+
+Each fix or feature gets its own worktree next to the main checkout:
+
+```sh
+script/worktree NAME [-b BRANCH]   # ../samagotchi-NAME off main, branch NAME unless -b; prints the path
+```
+
+It runs `git worktree add ../samagotchi-NAME -b BRANCH main`, then `npm ci --prefer-offline` in it, so
+`npm test` and `npm run e2e` work there right away (Ruby gems and Playwright's browsers are shared: nothing else
+to install). It refuses when the folder or the branch already exists.
+
 ## Integration specs
 
 Examples tagged `:integration` (`spec/integration/`, the "with LLM access" part of `spec/hooks/integration_spec.rb`)

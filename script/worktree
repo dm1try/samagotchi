@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# A new worktree next to the main checkout, ready for specs and e2e:
+#
+#   script/worktree NAME [-b BRANCH]
+#
+# runs `git worktree add ../samagotchi-NAME -b BRANCH main` (BRANCH defaults
+# to NAME) and `npm ci --prefer-offline` in it, then prints the path. Ruby
+# gems and Playwright's browsers are shared, so `bundle exec rspec` and
+# `npm run e2e` work in it right away. Refuses when the folder or the branch
+# already exists.
+set -euo pipefail
+
+usage() {
+  echo "usage: script/worktree NAME [-b BRANCH]" >&2
+  exit 2
+}
+
+name="${1:-}"
+[[ -n "$name" && "$name" != -* ]] || usage
+shift
+branch="$name"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -b)
+      [[ $# -ge 2 && -n "$2" ]] || usage
+      branch="$2"
+      shift 2
+      ;;
+    *) usage ;;
+  esac
+done
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The main checkout: the common git dir's parent, wherever this runs from.
+common_dir="$(git -C "$script_dir" rev-parse --path-format=absolute --git-common-dir)"
+main_checkout="$(dirname "$common_dir")"
+dir="$(dirname "$main_checkout")/samagotchi-$name"
+
+if [[ -e "$dir" ]]; then
+  echo "script/worktree: $dir already exists" >&2
+  exit 1
+fi
+if git -C "$main_checkout" show-ref --verify --quiet "refs/heads/$branch"; then
+  echo "script/worktree: branch $branch already exists" >&2
+  exit 1
+fi
+
+git -C "$main_checkout" worktree add "$dir" -b "$branch" main >&2
+(cd "$dir" && npm ci --prefer-offline >&2)
+echo "$dir"
