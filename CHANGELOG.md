@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-05
+
 ### Added
 
 - Web: a session card shows `looped` when loop-guard stopped its last turn (`stopped by <name>` for another hook),
@@ -1498,7 +1500,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/dm1try/samagotchi/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/dm1try/samagotchi/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/dm1try/samagotchi/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/dm1try/samagotchi/compare/v0.25.0...v0.26.0
