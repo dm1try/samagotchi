@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-04
+
 ### Added
 
 - Desktop: the panel's footer says where its text and images came from, "from clipboard" (the hotkey) or "from
@@ -15,21 +17,29 @@ and commands may change between minor versions. How releases are made:
 - `cache.ttl: 1h` keeps a Claude model's prompt-cache breakpoints for an hour instead of 5 minutes (a write costs 2×
   the input price instead of 1.25×; off by default), and `cache.key: session` sends the session id as
   `prompt_cache_key` to OpenAI's API and OpenRouter (off by default).
+- `chi sessions list` marks a session whose last turn loop-guard stopped with `[looped]` (another hook:
+  `[stopped by <name>]`); `--format json` carries `stopped_by`.
 
 ### Changed
 
 - Past `image.max_per_request` images, the oldest are left out in batches of half the limit instead of one per new
   image, so the earlier conversation stays a cacheable prefix; the placeholder reads "an older image (chi sends up
   to the newest N)".
+- After loop-guard cuts a runaway reply, chi's retry note tells the model to continue the task with its next tool
+  call (or answer if it's done) instead of "answer briefly", which made models wrap up in the middle of a task.
 
 ### Fixed
 
+- REPL: a line typed ahead during a turn no longer starts a turn-end warm-up that the next turn throws away.
+- Web: when one of a task's stop buttons is clicked, the other one (the stage's step list) disables too.
 - Desktop: `chi desktop install` starts the helper with a bare env, so `SAMAGOTCHI_*` settings (and anything else)
   from the install shell no longer stick to the helper and the chi it runs until a relaunch; run `chi desktop upgrade`.
 - Desktop: ⌘⏎ on the panel's "New session" row says "A note needs a session" instead of only beeping, and the Note
   button is off on that row; run `chi desktop upgrade`.
 - Desktop: the panel lists live sessions in the order they started, so ⌘1…⌘9 no longer shift when a session runs a
   turn (a new session comes last); run `chi desktop upgrade`.
+
+Update with `chi update`, then `chi desktop upgrade` if you use the desktop helper.
 
 ## [0.27.0] - 2026-10-04
 
@@ -1461,7 +1471,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/dm1try/samagotchi/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/dm1try/samagotchi/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/dm1try/samagotchi/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/dm1try/samagotchi/compare/v0.24.0...v0.25.0
