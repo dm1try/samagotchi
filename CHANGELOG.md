@@ -18,6 +18,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- On macOS, `execute`, `task_create` and `!cmd` run commands in `/bin/zsh` emulating sh (with bash's `{1..3}`,
+  `[[ =~ ]]` groups and echo escapes kept) instead of `/bin/sh`, which is bash 3.2 there and failed on an apostrophe
+  in a heredoc inside `"$( )"`: `git commit -m "$(cat <<'EOF' … it's … EOF )"` now works. Linux keeps
+  `/bin/sh`; see [background tasks](docs/internals/background-tasks.md).
 - loop-guard's cut notice (bundle 0.3.3) quotes the looping sentence: `thinking repeats itself ("Let me write the
   tool call.", one sentence ×8, 33k chars, 63 s): cut`.
 

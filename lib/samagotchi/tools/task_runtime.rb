@@ -6,6 +6,7 @@ require "securerandom"
 require "shellwords"
 require "time"
 require_relative "../atomic_file"
+require_relative "shell"
 
 module Samagotchi
   module Tools
@@ -49,11 +50,10 @@ module Samagotchi
         output_io.sync = true
 
         wrapped_command = wrapped_shell_command(normalized_command, exit_code_path)
-        # Non-login shell (matches Execute): a login shell re-sources profile
-        # files, which can rebuild PATH and shadow the inherited toolchain.
+        # Non-login, the shell Execute uses too (Shell).
         pid = Process.spawn(
           spawn_env,
-          "/bin/sh", "-c", wrapped_command,
+          *Shell.argv(wrapped_command),
           chdir: resolved_cwd,
           out: output_io,
           err: output_io,

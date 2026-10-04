@@ -17,6 +17,7 @@ Recommended workflow:
 
 Behavior:
 
+- `execute`, `task_create` and the `!cmd` shell bang run the command in a non-login shell: `/bin/sh -c` on Linux; on macOS, when `/bin/zsh` is there, `/bin/zsh --emulate sh +o ignore_braces +o sh_glob -o bash_rematch +o bsd_echo -c` (macOS's `/bin/sh` is bash 3.2, which can't parse an apostrophe in a heredoc inside `"$( )"`, the usual commit message shape). That mode reads no rc files and keeps POSIX word splitting, unmatched globs left as is, `{1..3}`, `[[ … =~ (…) ]]` with `BASH_REMATCH`, arrays, `$'…'`, `&>` and echo expanding `\t`. Bash-only builtins and variables (`shopt`, `BASH_VERSION`, `${!prefix*}`, `read -p`) are not there.
 - Task metadata and output are persisted under `tmp/tasks/`.
 - Task listing is workspace-scoped (current project only).
 - `task_get` returns metadata and `output_path`; use `read` for output contents.

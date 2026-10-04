@@ -141,9 +141,9 @@ RSpec.describe "task tools" do
       end
     end
 
-    it "spawns a non-login shell so profile files can't clobber inherited PATH" do
+    it "spawns a non-login shell (Shell, as execute) so profile files can't clobber inherited PATH" do
       expect(Process).to receive(:spawn) do |*args, **_kwargs|
-        expect(args[1..2]).to eq(["/bin/sh", "-c"])
+        expect(args[1..-2]).to eq([*Samagotchi::Tools::Shell.program, "-c"])
         fork { exit! }
       end
 

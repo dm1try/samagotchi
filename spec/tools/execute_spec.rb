@@ -327,10 +327,11 @@ RSpec.describe Samagotchi::Tools::Execute do
         end
       end
 
-      # Seen live (macOS): the `cd && nohup …` list is backgrounded as a
-      # subshell, and the subshell keeps the pipes although nohup's own output
-      # is redirected. dash (Linux /bin/sh) execs the list's last command
-      # instead, so nothing holds the pipes there and the server keeps running.
+      # Seen live (macOS /bin/sh, bash 3.2): the `cd && nohup …` list is
+      # backgrounded as a subshell, and the subshell keeps the pipes although
+      # nohup's own output is redirected. dash (Linux /bin/sh) and zsh (macOS,
+      # Shell) exec the list's last command instead, so nothing holds the pipes
+      # there and the server keeps running.
       it "ends a backgrounded `cd && nohup … > f 2>&1` list too, stopping the server" do
         Dir.mktmpdir do |dir|
           started = now
@@ -339,7 +340,8 @@ RSpec.describe Samagotchi::Tools::Execute do
             expect(now - started).to be < described_class::BACKGROUND_GRACE_SEC + 3
             expect(result).to include("hi")
             if result.end_with?("exit: 0")
-              expect(RUBY_PLATFORM).not_to include("darwin") # the subshell holds the pipes on macOS
+              # not held: only bash 3.2 (macOS /bin/sh) holds them
+              expect(Samagotchi::Tools::Shell.program).not_to eq(["/bin/sh"]) if RUBY_PLATFORM.include?("darwin")
             else
               expect(result).to end_with("exit: 0\n#{described_class::BACKGROUND_HINT}")
               expect(alive?(pid_from(result))).to be(false)

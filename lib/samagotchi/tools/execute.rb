@@ -2,6 +2,7 @@
 
 require "open3"
 require_relative "output_guardrails"
+require_relative "shell"
 
 module Samagotchi
   module Tools
@@ -90,7 +91,7 @@ module Samagotchi
         started = monotonic_time
         deadline = started + timeout_sec
 
-        Open3.popen3(env || {}, command, chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
+        Open3.popen3(env || {}, *Shell.argv(command), chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
           stdin.close
           readers = [OutputReader.new(stdout), OutputReader.new(stderr)]
 
