@@ -22,6 +22,21 @@ RSpec.describe Samagotchi::TurnNote do
       expect(described_class.empty(retries: 1)[:content]).to eq(described_class.empty[:content])
     end
 
+    it "keeps only the tail of a long step's thinking, marking the cut and keeping the opening tag" do
+      limit = described_class::STEP_CHARS
+      long = ("a" * 5) + ("b" * limit)
+      steps = [{ role: "model", content: "<think>#{long}", thinking: long },
+               { role: "model", content: "short", thinking: nil }]
+      kept = described_class.empty(steps: steps)[:empty_answer][:steps]
+      expect(kept[0][:thinking]).to eq("[… 5 earlier characters cut]\n#{"b" * limit}")
+      expect(kept[0][:content]).to eq("<think>[… 12 earlier characters cut]\n#{"b" * limit}")
+      expect(kept[1]).to eq(role: "model", content: "short", thinking: nil)
+
+      gemma = "<|channel>thought#{"c" * limit}<channel|>"
+      expect(described_class.empty(steps: [{ role: "model", content: gemma }])[:empty_answer][:steps][0][:content])
+        .to start_with("<|channel>thought[… ").and end_with("c<channel|>")
+    end
+
     it "finds the marker with either key type, and nil on other messages" do
       expect(described_class.empty_answer(described_class.empty(retries: 1))).to eq({ retries: 1 })
       expect(described_class.empty_answer({ "role" => "system", "kind" => "turn_note", "empty_answer" => { "retries" => 2 } }))

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "model_profile"
+
 module Samagotchi
   # The one-line system note a turn leaves in the conversation when it ends
   # without an answer: failed before the model replied, cancelled, or over
@@ -19,6 +21,12 @@ module Samagotchi
     TASK_COMMAND_CHARS = 60
     RETRY_NUDGE = :retry_nudge
     EMPTY_ANSWER = :empty_answer
+    # An empty step's thinking kept on the marker: its tail, so a model
+    # that thought for minutes doesn't put megabytes in the session file.
+    STEP_CHARS = 20_000
+    # A step's native thinking starts with one of these; the cut keeps it,
+    # so the UIs still find the thinking (MessageParts).
+    THINK_OPENS = ["<think>", ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN].freeze
 
     module_function
 
@@ -75,14 +83,30 @@ module Samagotchi
     # UIs, which draw the turn's notice and steps from it after a reload:
     # +retries+ the empty-answer retries spent, +steps+ the empty
     # generations as model messages (their thinking; the loops keep them out
-    # of the conversation, where they'd be empty assistant turns). Never
+    # of the conversation, where they'd be empty assistant turns), each
+    # text cut to its last STEP_CHARS. Never
     # sent: the payload builders send a system message's content, and the
     # copies for hooks, plugins and the recap drop it (AnswerDisplay.strip).
     def empty(retries: 0, steps: [])
       marker = { retries: retries.to_i }
-      marker[:steps] = steps.map { |step| step.slice(:role, :content, :thinking) } unless steps.empty?
+      marker[:steps] = steps.map { |step| capped_step(step) } unless steps.empty?
       message("the previous turn ended with no visible answer (thinking only, or nothing). The user's last message is still unanswered.")
         .merge(EMPTY_ANSWER => marker)
+    end
+
+    def capped_step(step)
+      step.slice(:role, :content, :thinking).to_h do |key, value|
+        [key, key == :role || !value.is_a?(String) ? value : tail_of(value)]
+      end
+    end
+
+    # The last STEP_CHARS of +text+ after a line saying how much was cut
+    # (and the thinking's opening tag when it had one); short text as is.
+    def tail_of(text)
+      return text if text.length <= STEP_CHARS
+
+      open = THINK_OPENS.find { |tag| text.start_with?(tag) }
+      "#{open}[… #{text.length - STEP_CHARS} earlier characters cut]\n#{text[-STEP_CHARS..]}"
     end
 
     # The empty-answer marker of +entry+ (either key type), or nil.
