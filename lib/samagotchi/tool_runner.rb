@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "tool_activity"
+require_relative "tool_view"
 require_relative "guardrails"
 require_relative "vision_context"
 require_relative "log"
@@ -55,6 +56,9 @@ module Samagotchi
       # The worker runs in its session's working directory.
       title = ToolActivity.tool_title(call[:name], call, cwd: Dir.pwd)
       started[:title] = title if title
+      # The full command for a richer UI (params stays cut at 80).
+      view = ToolView.for(call[:name], call)&.to_h
+      started[:view] = view if view
       emit(on_stream_event, started)
 
       # The ask comes after tool_call_started: the UI shows the tool line,
@@ -95,6 +99,9 @@ module Samagotchi
       completed[:images] = images if images&.any?
       completed[:diff] = diff if diff
       completed[:waited_ms] = waited_ms if waited_ms
+      # Also here: a UI that missed the start (a replay gap) builds its row
+      # from this event.
+      completed[:view] = view if view
       emit(on_stream_event, completed)
       # After the completed event: a hook's card (check-in, skills) prints
       # under the call's tool row, not before it.

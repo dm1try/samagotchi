@@ -243,6 +243,26 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(events.first).not_to have_key(:title)
     end
 
+    it "carries an execute's full command as its view, on tool_call_completed too" do
+      command = "cd /tmp && #{"rg -n foo lib | " * 10}head -5"
+      run({ name: "execute", content: command, cwd: "lib" })
+      expect(events.first[:params].length).to be < command.length
+      expect(events.first[:view]).to eq(command: command, cwd: "lib")
+      expect(events.last).to include(type: :tool_call_completed, view: { command: command, cwd: "lib" })
+      expect(events.last[:activity]).not_to have_key(:view)
+    end
+
+    it "carries the view of the call the hooks replaced" do
+      hooks.register(:before_tool_call) { |e| e[:call] = { name: "execute", content: "pwd" } }
+      run
+      expect(events.map { |e| e[:view] }).to eq([{ command: "pwd" }] * 2)
+    end
+
+    it "carries no view for a tool without one" do
+      run({ name: "read", content: "lib/a.rb" })
+      expect(events).to all(satisfy { |e| !e.key?(:view) })
+    end
+
     it "is emitted for a denied call too, before tool_call_completed" do
       hooks.register(:before_tool_call) { |e| e[:blocked] = true }
       run
