@@ -155,11 +155,11 @@ module Samagotchi
               response.read_body do |chunk|
                 buffer << chunk
                 while (newline_index = buffer.index("\n"))
-                  on_line.call(buffer.slice!(0, newline_index + 1).strip, shown)
+                  yield(buffer.slice!(0, newline_index + 1).strip, shown)
                 end
               end
               # A body that doesn't end in a newline still has a last line.
-              on_line.call(buffer.strip, shown) unless buffer.strip.empty?
+              yield(buffer.strip, shown) unless buffer.strip.empty?
             end
           end
         end

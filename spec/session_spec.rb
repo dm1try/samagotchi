@@ -307,7 +307,7 @@ RSpec.describe Samagotchi::Session do
     end
 
     it "supports limit and offset" do
-      sessions = 3.times.map { described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| sleep(0.01); s.save(state_dir: tmpdir) } }
+      sessions = Array.new(3) { described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| sleep(0.01); s.save(state_dir: tmpdir) } }
       listed = described_class.list(state_dir: tmpdir, sort: "created_at", order: "asc", limit: 2, offset: 1)
       expect(listed.map(&:id)).to eq(sessions[1..2].map(&:id))
     end

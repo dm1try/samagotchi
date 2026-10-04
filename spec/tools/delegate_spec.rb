@@ -81,7 +81,7 @@ RSpec.describe "delegate tools" do
   def later(delay = 0.15, &block)
     Thread.new do
       sleep(delay)
-      block.call
+      yield
     end.tap { |t| threads << t }
   end
 

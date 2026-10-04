@@ -55,7 +55,7 @@ module Samagotchi
       def content?(content)
         case content
         when String then !content.empty?
-        when Array then content.any? { |part| part.is_a?(Hash) }
+        when Array then content.any?(Hash)
         else false
         end
       end

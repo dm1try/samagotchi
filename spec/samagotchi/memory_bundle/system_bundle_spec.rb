@@ -206,7 +206,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         ENV["XDG_CONFIG_HOME"] = File.join(@tmp, "config-#{round}")
         gate_r, gate_w = IO.pipe
         err_r, err_w = IO.pipe
-        pids = 8.times.map do
+        pids = Array.new(8) do
           fork do
             gate_w.close
             err_r.close

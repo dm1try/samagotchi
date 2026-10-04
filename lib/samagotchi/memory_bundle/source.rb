@@ -28,7 +28,7 @@ module Samagotchi
         lower = path.downcase
         if lower.end_with?(".zip")
           normalize_zip(path)
-        elsif lower.end_with?(".tar.gz") || lower.end_with?(".tgz") || lower.end_with?(".tar")
+        elsif lower.end_with?(".tar.gz", ".tgz", ".tar")
           normalize_tar(path)
         else
           ext = File.extname(path).downcase

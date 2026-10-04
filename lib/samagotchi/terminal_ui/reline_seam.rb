@@ -216,7 +216,7 @@ module Samagotchi
       # The prompt and the text as render_finished writes them: one line per
       # input line, with a trailing space when a line fills the width exactly.
       def seam_final_lines
-        @buffer_of_lines.size.times.map do |i|
+        Array.new(@buffer_of_lines.size) do |i|
           line = Reline::Unicode.strip_non_printing_start_end(prompt_list[i]) + modified_lines[i]
           split_line_by_width(line, screen_width).last.empty? ? "#{line} " : line
         end

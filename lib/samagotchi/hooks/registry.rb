@@ -66,7 +66,7 @@ module Samagotchi
     def self.wrap(label:, event:, policy:, log: [:hooks, "hook_failed"], echo: true, fields: {}, &block)
       log_failure = failure_log_gate(event)
       lambda do |payload|
-        block.call(payload)
+        yield(payload)
       rescue Exception => e # rubocop:disable Lint/RescueException -- :deny fails closed on anything
         raise unless policy == :deny || e.is_a?(StandardError) || e.is_a?(ScriptError)
 

@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::ReplyWait do
   def later(delay = 0.1, &block)
     threads << Thread.new do
       sleep(delay)
-      block.call
+      yield
     end
   end
 

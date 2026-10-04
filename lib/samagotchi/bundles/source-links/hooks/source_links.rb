@@ -84,7 +84,7 @@ class SourceLinks
     return nil unless match
 
     host = match[1]
-    repo = match[2].to_s.sub(%r{\A/+}, "").sub(%r{/+\z}, "").sub(/\.git\z/, "").sub(%r{/+\z}, "")
+    repo = match[2].to_s.sub(%r{\A/+}, "").sub(%r{/+\z}, "").delete_suffix(".git").sub(%r{/+\z}, "")
     segments = repo.split("/", -1)
     return nil if host.empty? || segments.empty? || segments.any? { |segment| ["", ".", ".."].include?(segment) }
 

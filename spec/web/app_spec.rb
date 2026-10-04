@@ -432,7 +432,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "lists from the projection: Session.list's order, pagination and total, with owner, status and recap" do
-      sessions = 3.times.map { saved_session(status: "running") }
+      sessions = Array.new(3) { saved_session(status: "running") }
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(sessions[0].id, state_dir: state_dir), kind: "worker")
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(sessions[1].id, state_dir: state_dir))
       File.write(File.join(Samagotchi::Session.session_dir(sessions[1].id, state_dir: state_dir), "recap.json"),

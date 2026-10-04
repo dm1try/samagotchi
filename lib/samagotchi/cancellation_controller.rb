@@ -97,7 +97,7 @@ module Samagotchi
       end
 
       if immediate_reason
-        block.call(immediate_reason)
+        yield(immediate_reason)
         nil
       else
         listener_id

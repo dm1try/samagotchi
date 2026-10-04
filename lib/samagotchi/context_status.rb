@@ -64,7 +64,7 @@ module Samagotchi
     def self.last_bucket(conversation)
       message = conversation.reverse.find do |entry|
         content = entry[:content].to_s
-        entry[:role] == "system" && (content.start_with?(STATUS_PREFIX) || content.start_with?(LINE_PREFIX))
+        entry[:role] == "system" && content.start_with?(STATUS_PREFIX, LINE_PREFIX)
       end
       return nil unless message
 

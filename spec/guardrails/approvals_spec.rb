@@ -132,7 +132,7 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
 
   it "keeps every entry from concurrent writers (processes)" do
     store && repo # memoized before the forks share them
-    pids = 4.times.map do |i|
+    pids = Array.new(4) do |i|
       fork do
         s = described_class.new(dir: File.join(state, "guardrails"))
         5.times { |j| s.add(ask(command: "cmd #{i}-#{j}"), "repo") }

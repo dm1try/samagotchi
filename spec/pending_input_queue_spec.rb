@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::PendingInputQueue do
   end
 
   it "is thread-safe under concurrent push and drain" do
-    producers = 4.times.map do |i|
+    producers = Array.new(4) do |i|
       Thread.new do
         50.times { |n| queue.push("msg-#{i}-#{n}") }
       end

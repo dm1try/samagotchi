@@ -32,10 +32,7 @@ module Samagotchi
 
       key = model_name.to_s
         .downcase
-        .gsub(/[^a-z0-9]+/, "-")
-        .gsub(/-+/, "-")
-        .sub(/\A-/, "")
-        .sub(/-\z/, "")
+        .gsub(/[^a-z0-9]+/, "-").squeeze("-").delete_prefix("-").delete_suffix("-")
       key.empty? ? nil : key
     end
 

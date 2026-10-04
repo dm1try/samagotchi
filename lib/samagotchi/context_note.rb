@@ -42,7 +42,7 @@ module Samagotchi
 
     # The note's own text, without its frame.
     def text_of(message)
-      fetch(message, :content).to_s.sub(/\A\[CONTEXT NOTE[^\n]*\n/, "").sub(/\n\[END NOTE\]\z/, "")
+      fetch(message, :content).to_s.sub(/\A\[CONTEXT NOTE[^\n]*\n/, "").delete_suffix("\n[END NOTE]")
     end
 
     def fetch(message, key)

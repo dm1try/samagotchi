@@ -176,7 +176,7 @@ RSpec.describe Samagotchi::ReminderStore do
   describe "thread safety" do
     it "handles concurrent registration and due_reminders" do
       store.register({ name: "health", description: "test", interval_minutes: 1 })
-      threads = 10.times.map do |i|
+      threads = Array.new(10) do |i|
         Thread.new do
           store.due_reminders
           store.mark_fired("health") if i.even?

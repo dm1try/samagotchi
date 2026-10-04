@@ -150,7 +150,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     def change(&block)
-      block.call(session)
+      yield(session)
       session.save(state_dir: tmpdir)
     end
 

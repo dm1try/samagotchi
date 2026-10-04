@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::Web::QR do
     rows = described_class.matrix(link)
 
     expect(plain.size).to eq((rows.size + 1) / 2)
-    expect(plain.map { |l| l.chars.size }.uniq).to eq([rows.first.size])
+    expect(plain.map { |l| l.size }.uniq).to eq([rows.first.size])
     expect(plain.join).to match(/\A[ ▀▄█]+\z/)
     expect(plain.first).to eq(" " * rows.first.size)
     expect(plain[1][2]).to eq("█") # rows 2 and 3: the finder's top edge

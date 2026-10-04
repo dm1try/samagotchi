@@ -156,6 +156,51 @@ Naming/MemoizedInstanceVariableName:
 Performance/CollectionLiteralInLoop:
   Enabled: false
 
+# Off: wrong here. ConstantRegexp adds /o, which freezes a regexp built
+# from a constant a spec may stub (VERSION). StringIdentifierArgument turns
+# the plugin API's sessions.send("id", text) into a symbol. MapCompact's
+# filter_map also drops false; Detect, RedundantMerge and Count read worse
+# and only autocorrect with -A.
+Performance/ConstantRegexp:
+  Enabled: false
+
+Performance/StringIdentifierArgument:
+  Enabled: false
+
+Performance/MapCompact:
+  Enabled: false
+
+Performance/Detect:
+  Enabled: false
+
+Performance/RedundantMerge:
+  Enabled: false
+
+Performance/Count:
+  Enabled: false
+
+# Reviewed: exact equivalents (\z and \A only, with the default
+# SafeMultiline), so `rubocop -a` applies them.
+Performance/TimesMap:
+  Safe: true
+  SafeAutoCorrect: true
+
+Performance/DeleteSuffix:
+  Safe: true
+  SafeAutoCorrect: true
+
+Performance/DeletePrefix:
+  Safe: true
+  SafeAutoCorrect: true
+
+Performance/EndWith:
+  Safe: true
+  SafeAutoCorrect: true
+
+Performance/RedundantEqualityComparisonBlock:
+  Safe: true
+  SafeAutoCorrect: true
+
 # Constants after `private` and spec helper classes: no bug.
 Lint/UselessConstantScoping:
   Enabled: false

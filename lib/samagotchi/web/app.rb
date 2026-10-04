@@ -1257,7 +1257,7 @@ module Samagotchi
       def serve_static(req)
         # Serve files under public_dir for /assets/* and bare paths
         rel = req.path_info.sub(%r{\A/(assets|public)/}, "")
-        rel = req.path_info.sub(%r{\A/}, "") if rel == req.path_info
+        rel = req.path_info.delete_prefix("/") if rel == req.path_info
         # Prevent directory traversal
         rel = rel.split("/").reject { |p| p == ".." || p.empty? }.join("/")
         full = File.join(@public_dir, rel)

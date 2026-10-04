@@ -322,7 +322,7 @@ RSpec.describe Samagotchi::Web::Server do
         FileUtils.mkdir_p(File.join(repo, ".git"))
 
         expect(described_class.scope_url("127.0.0.1", 4567, dir: repo))
-          .to eq("http://127.0.0.1:4567/?dir=#{repo.gsub(" ", "+")}")
+          .to eq("http://127.0.0.1:4567/?dir=#{repo.tr(" ", "+")}")
         expect(described_class.scope_url("127.0.0.1", 4567, dir: repo, scope: "all")).to eq("http://127.0.0.1:4567/")
         expect(described_class.scope_url("::1", 4567, dir: tmp)).to eq("http://[::1]:4567/")
       end

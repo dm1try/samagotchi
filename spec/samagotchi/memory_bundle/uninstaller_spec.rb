@@ -100,7 +100,7 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     it "gives two uninstalls in the same second their own dirs" do
       now = Time.new(2026, 10, 3, 12, 0, 0)
       allow(Time).to receive(:now).and_return(now)
-      dirs = 2.times.map do
+      dirs = Array.new(2) do
         install_bundle(write_bundle_with_hooks({ "notes.md" => "# Notes\n" }, {}, name: "twice"), "twice")
         described_class.new(name: "twice").tap(&:run).trash_dir
       end

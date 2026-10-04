@@ -142,7 +142,7 @@ module Samagotchi
         # >, >>, 2>&1, &>, <, <<: kept in the word (the walk drops them).
         def redirection
           special(@s[@i])
-          add(@s[@i], 1) while @i < @s.size && @s[@i].match?(/[&\d>-]/) && @word.match?(/>\z/)
+          add(@s[@i], 1) while @i < @s.size && @s[@i].match?(/[&\d>-]/) && @word.end_with?(">")
         end
 
         def operator_or_char(char)
