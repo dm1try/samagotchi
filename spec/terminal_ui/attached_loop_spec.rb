@@ -390,7 +390,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     cut = plain.index("↻ cut by loop-guard, asking again (1/1)")
     expect(first).not_to be_nil
     expect(cut).to be > first
-    expect(plain[first + 1...cut].join("\n")).to include("read")
+    expect(plain[(first + 1)...cut].join("\n")).to include("read")
     expect(plain.join("\n")).not_to include("Which?")
   end
 
@@ -2036,7 +2036,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
       Samagotchi::BridgeClient::Response.new(status: status, body: body || %({"enqueued_id":"e#{posts.size}"}))
     end
     ended = Queue.new
-    @thread = Thread.new { attached.run(input: ->(_prompt, _prefill) { ended << true && nil }) }
+    @thread = Thread.new { attached.run(input: ->(_prompt, _prefill) { (ended << true) && nil }) }
     @push = events.pop(timeout: 2)
     ended.pop(timeout: 2)
     @push.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 })

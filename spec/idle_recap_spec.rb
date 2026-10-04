@@ -274,7 +274,7 @@ RSpec.describe Samagotchi::IdleRecap do
       end
 
       it "keeps the tail of an overlong transcript, marking the cut" do
-        long = ("a" * 100 + "\n\n") * 300
+        long = (("a" * 100) + "\n\n") * 300
         user = described_class.build(long + "THE END").last[:content]
         expect(user).to include("(earlier part omitted)", "THE END")
         expect(user.size).to be < Samagotchi::IdleRecap::MAX_NEW_CHARS + 1_000

@@ -81,7 +81,7 @@ module Samagotchi
       @mutex.synchronize do
         return "No active reminders." if @reminders.empty?
 
-        lines = @reminders.map do |name, r|
+        lines = @reminders.map do |_name, r|
           "  #{r[:name]} (interval: #{r[:interval_minutes]}m, id: #{r[:id]})"
         end
         "Active reminders:\n" + lines.join("\n")

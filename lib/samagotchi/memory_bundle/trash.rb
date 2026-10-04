@@ -44,7 +44,7 @@ module Samagotchi
       def self.empty!(bundles_dir: MemoryPaths.bundles_dir, older_than_days: nil, now: Time.now, dry_run: false)
         entries = self.entries(bundles_dir: bundles_dir, now: now)
         if older_than_days
-          cutoff = now - older_than_days.to_i * 86_400
+          cutoff = now - (older_than_days.to_i * 86_400)
           entries = entries.select { |e| e.time < cutoff }
         end
         return entries if dry_run
@@ -98,7 +98,7 @@ module Samagotchi
         File.directory?(path) && !File.symlink?(path)
       end
 
-      def self.entry_for(trash_dir, name, now)
+      def self.entry_for(trash_dir, name, _now)
         path = File.join(trash_dir, name)
         time = parse_timestamp(name) || File.mtime(path)
         files, bytes = count_files(path)

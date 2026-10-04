@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
-
 require_relative "config"
 require_relative "model_profile"
 require_relative "served_model"

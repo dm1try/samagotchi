@@ -121,7 +121,7 @@ RSpec.describe Samagotchi::Engine, "turn state" do
       threads.each(&:join)
       # Half drained now, the rest left for the turn's end.
       drained.concat(pending_input.call(at_answer: false))
-      4.times { |t| engine.steer("s", source: "late-#{t}") && accepted << "late-#{t}" }
+      4.times { |t| engine.steer("s", source: "late-#{t}") && (accepted << "late-#{t}") }
       kernel_result
     end
 

@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     engine = described_class.new(client: client)
     # Stub the kernel that Engine created internally
     k = engine.instance_variable_get(:@kernel)
-    allow(k).to receive(:run) do |_messages, **kwargs|
+    allow(k).to receive(:run) do |_messages, **_kwargs|
       Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
     end
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)

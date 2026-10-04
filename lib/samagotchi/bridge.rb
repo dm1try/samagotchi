@@ -509,7 +509,7 @@ module Samagotchi
     # /recap in an attached TUI: the saved recap, and a new one asked for at
     # once (it arrives as :recap_ready). Answers mid-turn too.
     # 200 {enabled:, saved:, request:, min_user_turns:}. Returns [headers, status, body].
-    def handle_recap(session_id, _body = nil)
+    def handle_recap(_session_id, _body = nil)
       recap = @engine.recap
       return [{}, 200, { enabled: false }] unless recap
 
@@ -519,7 +519,7 @@ module Samagotchi
 
     # Cancel the active turn on this session's engine, if any.
     # Returns [headers, status, body].
-    def handle_cancel(session_id, body)
+    def handle_cancel(_session_id, body)
       # Optional reason from JSON body
       reason = :manual
       if body && !body.strip.empty?
@@ -748,7 +748,7 @@ module Samagotchi
     # dropped with 408 deadline_passed. It is checked with the event log held,
     # right before the write, so nothing that holds the log (an exit check)
     # can delay an accepted turn past it. No deadline (an older client): taken.
-    def handle_post_turn(session_id, body)
+    def handle_post_turn(_session_id, body)
       parsed = parse_json(body)
       unless parsed.is_a?(Hash)
         return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }]
@@ -804,7 +804,7 @@ module Samagotchi
 
     # Read-only snapshot surface. AC #4: too-old reconnects re-derive state
     # from here.
-    def handle_state(session_id, _body = nil)
+    def handle_state(_session_id, _body = nil)
       state = @engine.session_state_snapshot
       [{}, 200, { session_id: @session_id, session_state_snapshot: state.merge(event_id: event_id(state[:event_seq])) }]
     end
@@ -812,7 +812,7 @@ module Samagotchi
     # /stats for an attached client: the metrics, with the window and prompt
     # profile asked from the server when no turn has reported them yet (so,
     # unlike /state, it may wait on one short /props GET).
-    def handle_stats(session_id, _body = nil)
+    def handle_stats(_session_id, _body = nil)
       [{}, 200, { session_id: @session_id, metrics: @engine.stats_snapshot }]
     end
 
@@ -820,7 +820,7 @@ module Samagotchi
     # the messages elsewhere (the web server strips and formats them): it then
     # streams from the snapshot's event_seq, and the ring replays what came
     # after (or the stream resets). Returns [headers, status, body].
-    def handle_snapshot(session_id, _body = nil)
+    def handle_snapshot(_session_id, _body = nil)
       [{}, 200, snapshot_frame]
     end
 
@@ -828,7 +828,7 @@ module Samagotchi
     # that turn's answer (a queued turn's page re-reads late). The one
     # handler that gets the query (#dispatch); an older worker's route
     # ignores it and sends the newest answer.
-    def handle_tail(session_id, _body = nil, query = nil)
+    def handle_tail(_session_id, _body = nil, query = nil)
       turn_id = query && URI.decode_www_form(query).to_h["turn_id"].to_s
       [{}, 200, tail_frame(turn_id: turn_id.to_s.empty? ? nil : turn_id)]
     rescue ArgumentError

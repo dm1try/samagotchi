@@ -26,7 +26,7 @@ RSpec.describe "Session archive" do
     if days_old.positive?
       path = File.join(tmpdir, "#{session.id}.json")
       data = JSON.parse(File.read(path))
-      data["updated_at"] = data["created_at"] = (Time.now - days_old * 86_400).iso8601(3)
+      data["updated_at"] = data["created_at"] = (Time.now - (days_old * 86_400)).iso8601(3)
       File.write(path, JSON.generate(data))
     end
     locks << Samagotchi::OwnerLock.acquire(dir_of(session), kind: owner) if owner

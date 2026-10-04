@@ -260,7 +260,7 @@ RSpec.describe "The skills plugin" do
   describe "the nudge" do
     let(:steered) { [] }
     let(:path) { File.join(project_dir, "skill_release.md") }
-    let(:steer) { ->(text) { steered << text && true } }
+    let(:steer) { ->(text) { (steered << text) && true } }
 
     def read_skill(p, names = "skill_release")
       fire(p, :before_tool_call, call: { name: "memory_read", content: names }, targets: { paths: [] })

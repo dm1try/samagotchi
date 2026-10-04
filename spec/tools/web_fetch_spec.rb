@@ -161,7 +161,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
 
   describe "truncation" do
     it "produces valid UTF-8 after truncation with multi-byte characters" do
-      long_text = "Hello " + "\u{00e9}" * 20_000
+      long_text = "Hello " + ("\u{00e9}" * 20_000)
       stub_request(:get, "https://long.example.com").to_return(
         status: 200,
         body: "<html><body>#{long_text}</body></html>",

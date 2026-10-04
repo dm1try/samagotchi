@@ -16,9 +16,9 @@ group :development do
 end
 
 group :test do
+  gem "parallel_tests"
   gem "rspec", "~> 3"
   gem "webmock"
-  gem "parallel_tests"
 end
 
 group :lint do

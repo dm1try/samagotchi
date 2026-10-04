@@ -157,7 +157,7 @@ module Samagotchi
             next if files.key?(old_key_str) || files.key?(old_key)
 
             old_base = File.join(bases_dir, old_key_str)
-            FileUtils.rm_f(old_base) if File.exist?(old_base)
+            FileUtils.rm_f(old_base)
             merged_entries.delete(old_key_str)
           end
         end
@@ -192,7 +192,7 @@ module Samagotchi
             old_key_str = old_key.to_s
             unless normalized_hooks.key?(old_key_str) || normalized_hooks.key?(old_key_str.to_sym)
               old_base = File.join(bases_dir, old_key_str)
-              FileUtils.rm_f(old_base) if File.exist?(old_base)
+              FileUtils.rm_f(old_base)
             end
           end
         end

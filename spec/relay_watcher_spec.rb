@@ -11,7 +11,7 @@ RSpec.describe Samagotchi::RelayWatcher do
     allow(engine).to receive(:pending_question) { pending[0] }
     allow(engine).to receive(:annotate_question) do |_id, relayed_to:, reason:|
       pending[0] = pending[0].except(:relayed_to) if relayed_to.nil?
-      [relayed_to, reason] && true
+      true
     end
   end
 

@@ -138,7 +138,7 @@ module Samagotchi
         end
       end
 
-      def stream_attempt(uri, request, current, &on_line)
+      def stream_attempt(uri, request, current, &)
         # Time to first token is the answering attempt's, not the retries'.
         current[:attempt_started_at] = monotonic_now
         shown = lambda do

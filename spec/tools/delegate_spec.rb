@@ -78,7 +78,7 @@ RSpec.describe "delegate tools" do
   def session_files = Dir.glob(File.join(tmpdir, "*.json")).map { |p| File.basename(p, ".json") }
 
   # The child's turn as its worker plays it, on another thread.
-  def later(delay = 0.15, &block)
+  def later(delay = 0.15, &)
     Thread.new do
       sleep(delay)
       yield

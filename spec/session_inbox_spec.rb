@@ -75,14 +75,14 @@ RSpec.describe Samagotchi::SessionInbox do
     end
 
     it "rejects a note over 16 KiB instead of cutting it" do
-      big = "a" * (16 * 1024 + 1)
+      big = "a" * ((16 * 1024) + 1)
       expect { described_class.write_note(session.id, text: big, state_dir: tmpdir) }
         .to raise_error(described_class::NoteRejected, /16 KiB/)
       expect(described_class.write_note(session.id, text: "a" * (16 * 1024), state_dir: tmpdir)).to be_a(String)
     end
 
     it "counts bytes, not characters" do
-      expect { described_class.write_note(session.id, text: "ж" * (8 * 1024 + 1), state_dir: tmpdir) }
+      expect { described_class.write_note(session.id, text: "ж" * ((8 * 1024) + 1), state_dir: tmpdir) }
         .to raise_error(described_class::NoteRejected)
     end
 

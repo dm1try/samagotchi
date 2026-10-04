@@ -152,7 +152,7 @@ RSpec.describe Samagotchi::NoteCommand do
 
     expect(run(a.id, stdin: StringIO.new("  \n"))).to eq(1)
     expect(err.string).to include("empty")
-    expect(run("-m", "x" * (16 * 1024 + 1), a.id)).to eq(1)
+    expect(run("-m", "x" * ((16 * 1024) + 1), a.id)).to eq(1)
     expect(err.string).to include("16 KiB")
     expect(notes_of(a)).to be_empty
   end

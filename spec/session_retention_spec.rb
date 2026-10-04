@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::SessionRetention do
       s_old = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       s_old.save(state_dir: tmpdir)
       # fake old updated_at
-      old_time = (Time.now - 20 * 86_400).iso8601(3)
+      old_time = (Time.now - (20 * 86_400)).iso8601(3)
       path_old = File.join(tmpdir, "#{s_old.id}.json")
       data = JSON.parse(File.read(path_old))
       data["updated_at"] = old_time
@@ -69,7 +69,7 @@ RSpec.describe Samagotchi::SessionRetention do
       s.save(state_dir: tmpdir)
       path = File.join(tmpdir, "#{s.id}.json")
       data = JSON.parse(File.read(path))
-      data["updated_at"] = (Time.now - days_old * 86_400).iso8601(3)
+      data["updated_at"] = (Time.now - (days_old * 86_400)).iso8601(3)
       data["created_at"] = data["updated_at"]
       File.write(path, JSON.generate(data))
       [s, path]
@@ -115,7 +115,7 @@ RSpec.describe Samagotchi::SessionRetention do
       s.save(state_dir: tmpdir)
       path = File.join(tmpdir, "#{s.id}.json")
       data = JSON.parse(File.read(path))
-      data["updated_at"] = (Time.now - 20 * 86_400).iso8601(3)
+      data["updated_at"] = (Time.now - (20 * 86_400)).iso8601(3)
       File.write(path, JSON.generate(data))
       result = described_class.apply(state_dir: tmpdir, days: 14, dry_run: true)
       expect(result[:deleted]).to include(s.id)
@@ -161,7 +161,7 @@ RSpec.describe Samagotchi::SessionRetention do
       [s_test, s_real].each do |s|
         p = File.join(tmpdir, "#{s.id}.json")
         d = JSON.parse(File.read(p))
-        d["updated_at"] = (Time.now - 20 * 86_400).iso8601(3)
+        d["updated_at"] = (Time.now - (20 * 86_400)).iso8601(3)
         File.write(p, JSON.generate(d))
       end
       result = described_class.apply(state_dir: tmpdir, days: 14, test_only: true)
@@ -263,7 +263,7 @@ RSpec.describe Samagotchi::SessionRetention do
       session.save(state_dir: tmpdir)
       path = File.join(tmpdir, "#{session.id}.json")
       data = JSON.parse(File.read(path))
-      data["updated_at"] = data["created_at"] = (Time.now - days_old * 86_400).iso8601(3)
+      data["updated_at"] = data["created_at"] = (Time.now - (days_old * 86_400)).iso8601(3)
       File.write(path, JSON.generate(data))
       session
     end
@@ -339,7 +339,7 @@ RSpec.describe Samagotchi::SessionRetention do
       session.save(state_dir: tmpdir)
       path = File.join(tmpdir, "#{session.id}.json")
       data = JSON.parse(File.read(path))
-      data["updated_at"] = (Time.now - 30 * 86_400).iso8601(3)
+      data["updated_at"] = (Time.now - (30 * 86_400)).iso8601(3)
       File.write(path, JSON.generate(data))
       session
     end
@@ -355,7 +355,7 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(described_class.sweep_if_due(state_dir: tmpdir)).to be_nil
       expect(Samagotchi::Session.exist?(again.id, state_dir: tmpdir)).to be(true)
 
-      File.utime(Time.now - 25 * 3600, Time.now - 25 * 3600, marker)
+      File.utime(Time.now - (25 * 3600), Time.now - (25 * 3600), marker)
       expect(described_class.sweep_if_due(state_dir: tmpdir)[:deleted]).to eq([again.id])
     end
 
@@ -363,7 +363,7 @@ RSpec.describe Samagotchi::SessionRetention do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("session.sweep_interval_hours").and_return(1)
       FileUtils.touch(marker)
-      File.utime(Time.now - 2 * 3600, Time.now - 2 * 3600, marker)
+      File.utime(Time.now - (2 * 3600), Time.now - (2 * 3600), marker)
       old = old_session
 
       expect(described_class.sweep_if_due(state_dir: tmpdir)[:deleted]).to eq([old.id])

@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
 
       def print_line(text) = @lines << text
 
-      def method_missing(name, *args)
+      def method_missing(name, *_args)
         @calls << name
       end
 

@@ -56,7 +56,7 @@ module Samagotchi
         return "Error: old text matches #{count} times in #{path}; make it unique" if count > 1
 
         idx     = source.index(old_text)
-        updated = source[0, idx] + new_text + source[idx + old_text.length..]
+        updated = source[0, idx] + new_text + source[(idx + old_text.length)..]
         [updated, "Edited #{path}: replaced #{old_text.bytesize} bytes with #{new_text.bytesize} bytes"]
       rescue StandardError => e
         "Error: #{e.message}"

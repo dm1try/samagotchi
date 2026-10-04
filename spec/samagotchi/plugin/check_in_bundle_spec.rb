@@ -68,7 +68,7 @@ RSpec.describe "The check-in plugin" do
 
   def tools(p, *names)
     names.each do |name|
-      fire(p, :after_tool_call, tool: name, output: "x", steer: ->(text) { steered << text && true })
+      fire(p, :after_tool_call, tool: name, output: "x", steer: ->(text) { (steered << text) && true })
     end
   end
 
@@ -373,7 +373,7 @@ RSpec.describe "The check-in bundle, installed" do
     expect(session.messages).to include(role: "user", kind: "steer", source: "check-in",
                                         content: a_string_starting_with("You've made 2 tool calls in this turn"))
     steer_at = session.messages.index { |m| m[:kind] == "steer" }
-    expect(session.messages[steer_at + 1..].map { |m| m[:role] }).to include("model")
+    expect(session.messages[(steer_at + 1)..].map { |m| m[:role] }).to include("model")
     expect(events.find { |e| e[:type] == :pending_input_merged && e[:steers] })
       .to include(count: 0, steers: [{ source: "check-in", text: a_string_starting_with("You've made 2") }])
     expect(cards.last).to include(id: cards.first[:id], title: "check-in", body: "Nudged the model at 2 tool calls.")

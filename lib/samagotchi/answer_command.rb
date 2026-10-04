@@ -157,7 +157,7 @@ module Samagotchi
     # (Guardrails::ParentApprovals, with this process's config.yml). A
     # Deny, text alone or a dismissal always passes: each one denies. The
     # worker checks it again with its own config.
-    def approval_refusal(pending, selected, id)
+    def approval_refusal(pending, selected, _id)
       offered = Array(pending[:options]).map(&:to_s)
       indices = selected.map { |label| offered.index(label) }
       reason = Guardrails::ParentApprovals.refusal(pending, indices, setting: Guardrails::ParentApprovals.setting)

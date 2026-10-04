@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
 require_relative "event_renderer"
 require_relative "formatting"
 require_relative "../prompt_history"

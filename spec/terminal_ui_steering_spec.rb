@@ -150,7 +150,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     it "keeps an anytime command's output for the prompt's flush once the turn has ended" do
       engine.command_registry.register("/side", "side", anytime: true, source: "b") { |_args| "later" }
       thread = nil
-      allow(Thread).to receive(:new).and_wrap_original { |original, &block| thread = original.call(&block) }
+      allow(Thread).to(receive(:new).and_wrap_original { |original, &block| thread = original.call(&block) })
       allow(engine).to receive(:turn_running?).and_return(false)
 
       agent.send(:start_anytime_command, "/side")

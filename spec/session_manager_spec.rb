@@ -149,7 +149,7 @@ RSpec.describe Samagotchi::SessionManager do
       described_class.empty_session?(session.id, state_dir: tmpdir, default_model: default_model)
     end
 
-    def change(&block)
+    def change(&)
       yield(session)
       session.save(state_dir: tmpdir)
     end
@@ -757,7 +757,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "starts the worker in its own process group, so a Ctrl-C on `chi web` does not reach it" do
       spawned_opts = nil
-      allow(Process).to receive(:spawn) do |*args, **opts|
+      allow(Process).to receive(:spawn) do |*_args, **opts|
         spawned_opts = opts
         12_345
       end

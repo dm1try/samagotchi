@@ -45,7 +45,7 @@ module Samagotchi
       marker.is_a?(String) && !marker.empty? ? marker : nil
     end
 
-    def self.configured(target, entry, models, names)
+    def self.configured(_target, entry, models, names)
       models ||= begin
         ConfigFile.model_settings
       rescue StandardError
@@ -58,7 +58,7 @@ module Samagotchi
       Answer.new(value: entry.vision, reason: entry.vision ? nil : "hosts.#{entry.name} sets vision: false")
     end
 
-    def self.native(target, entry, profile, trust_config:)
+    def self.native(target, _entry, profile, trust_config:)
       client = target.client
       transport = client.transport.name
       return no("#{transport} hosts take no images (only llama.cpp does)") unless transport == :llama_cpp

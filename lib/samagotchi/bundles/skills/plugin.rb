@@ -340,7 +340,7 @@ class Plugin
     return "" if changed.empty?
 
     # Group changes whose context would touch into one hunk.
-    groups = changed.slice_when { |x, y| y - x > 2 * CONTEXT + 1 }.to_a
+    groups = changed.slice_when { |x, y| y - x > (2 * CONTEXT) + 1 }.to_a
     old_at = new_at = 0
     positions = ops.map do |op, _|
       at = [old_at, new_at]

@@ -143,7 +143,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
       end
 
       it "is off without a limit" do
-        server.enqueue("/v1/chat/completions", sse: [": PROCESSING\n\n"] * 6 + ["data: ok\n\n"], delay: 0.1)
+        server.enqueue("/v1/chat/completions", sse: ([": PROCESSING\n\n"] * 6) + ["data: ok\n\n"], delay: 0.1)
         lines = []
 
         http.stream_lines(uri, post_request) { |line| lines << line }

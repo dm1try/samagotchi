@@ -183,7 +183,7 @@ module Samagotchi
             end
           end
 
-          hook_entries.each do |basename, meta|
+          hook_entries.each do |basename, _meta|
             next unless basename.is_a?(String) && !basename.empty?
 
             all_hooks_in_bundle << basename
@@ -251,7 +251,7 @@ module Samagotchi
             if File.exist?(old_dest) && !@force
               @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
             end
-            FileUtils.rm_f(old_dest) if File.exist?(old_dest)
+            FileUtils.rm_f(old_dest)
           end
         end
 

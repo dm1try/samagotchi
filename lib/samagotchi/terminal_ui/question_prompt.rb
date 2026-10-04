@@ -166,7 +166,7 @@ module Samagotchi
         raw = raw.to_s.strip
         # "1,3; my text": the first ';' separates the selection from freeform text.
         sel_part, free_part = raw.include?(";") ? raw.split(";", 2).map(&:strip) : [raw, nil]
-        free_part = nil if free_part&.empty?
+        free_part = nil if free_part && free_part.empty?
         # Models forget to flag freeform: accept it anyway, with a note.
         note = free_part && !free? ? "(note: freeform not flagged but accepting '#{free_part}')" : nil
 

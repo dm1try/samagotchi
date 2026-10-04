@@ -25,7 +25,7 @@ module Samagotchi
       result = text.to_s
       while (open_pos = result.index(open))
         close_pos = result.index(close, open_pos + open.length)
-        result = result[0...open_pos] + (close_pos ? result[close_pos + close.length..] : "")
+        result = result[0...open_pos] + (close_pos ? result[(close_pos + close.length)..] : "")
       end
       result.strip
     end
@@ -102,7 +102,7 @@ module Samagotchi
         while (open_pos = result.index(THOUGHT_CHANNEL_OPEN))
           close_pos = result.index(THOUGHT_CHANNEL_CLOSE, open_pos)
           result = if close_pos
-                     result[0...open_pos] + result[close_pos + THOUGHT_CHANNEL_CLOSE.length..]
+                     result[0...open_pos] + result[(close_pos + THOUGHT_CHANNEL_CLOSE.length)..]
                    else
                      result[0...open_pos]
                    end
@@ -212,7 +212,7 @@ module Samagotchi
             e = params_raw.index(@string_delim, s + @string_delim.length)
             break unless e
 
-            arr << params_raw[s + @string_delim.length...e]
+            arr << params_raw[(s + @string_delim.length)...e]
             pos = e + @string_delim.length
           end
           unless arr.empty?

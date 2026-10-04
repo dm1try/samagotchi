@@ -46,8 +46,8 @@ module Samagotchi
       a_mid = a[pre...(a.size - suf)]
       b_mid = b[pre...(b.size - suf)]
       middle = myers(a_mid, b_mid) ||
-               a_mid.each_index.map { |i| [:del, i, nil] } + b_mid.each_index.map { |j| [:add, nil, j] }
-      middle.each { |t, i, j| ops << [t, i && i + pre, j && j + pre] }
+               (a_mid.each_index.map { |i| [:del, i, nil] } + b_mid.each_index.map { |j| [:add, nil, j] })
+      middle.each { |t, i, j| ops << [t, i && (i + pre), j && (j + pre)] }
       (0...suf).each { |s| ops << [:eq, a.size - suf + s, b.size - suf + s] }
       ops
     end
@@ -64,13 +64,13 @@ module Samagotchi
       n = a.size
       m = b.size
       off = n + m + 1
-      v = Array.new(2 * off + 1, 0)
+      v = Array.new((2 * off) + 1, 0)
       trace = []
       (0..(n + m)).each do |d|
         return nil if d > max_d
 
         # Round d reads k-1 and k+1 for k in -d..d: keep -(d+1)..d+1.
-        trace << v[off - d - 1, 2 * d + 3]
+        trace << v[off - d - 1, (2 * d) + 3]
         k = -d
         while k <= d
           x = if k == -d || (k != d && v[off + k - 1] < v[off + k + 1])
@@ -144,7 +144,7 @@ module Samagotchi
           line = t == :add ? b[j] : a[i]
           mark = { eq: " ", del: "-", add: "+" }[t]
           # Only the "\n": chomp("\n") would take a CRLF's "\r" too.
-          lines << mark + (line.end_with?("\n") ? line[0...-1] : line)
+          lines << (mark + (line.end_with?("\n") ? line[0...-1] : line))
           lines << NO_NEWLINE unless line.end_with?("\n")
         end
       end

@@ -56,7 +56,7 @@ module Samagotchi
         end.reject { |_, others| others.empty? }
 
         blocked = []
-        files.each do |file_key, meta|
+        files.each do |file_key, _meta|
           file_key_str = file_key.to_s
           target_path = File.join(target_dir, file_key_str)
           base_path = provenance.base_path(file_key_str)
@@ -110,9 +110,10 @@ module Samagotchi
             end
           end
           # Remove hooks dir if empty, else rm_rf will clean
-          FileUtils.rm_rf(hooks_dir) if Dir.exist?(hooks_dir)
-        elsif Dir.exist?(provenance.hooks_dir)
-          # Ensure stale hooks dir removed even if provenance has no hooks map but dir exists
+          FileUtils.rm_rf(hooks_dir)
+        else
+          # A stale hooks dir goes even when provenance has no hooks map
+          # (rm_rf ignores a missing dir).
           FileUtils.rm_rf(provenance.hooks_dir)
         end
 

@@ -61,7 +61,7 @@ RSpec.describe "approval relay, two hops" do
     engine
   end
 
-  def in_thread(&block)
+  def in_thread(&)
     box = {}
     @threads << Thread.new { box[:value] = yield }
     box

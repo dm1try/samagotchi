@@ -1646,7 +1646,7 @@ RSpec.describe Samagotchi::Bridge do
 
       it "asks the worker with the event log held and answers exiting" do
         asked = []
-        start_bridge(on_exit_request: ->(client_id, **) { asked << client_id && nil })
+        start_bridge(on_exit_request: ->(client_id, **) { (asked << client_id) && nil })
         allow(@engine).to receive(:synchronize_events).and_call_original
 
         expect(post_exit(JSON.generate(client_id: "tui:1"))).to eq([200, { "status" => "exiting", "session_id" => @session.id }])
@@ -1656,7 +1656,7 @@ RSpec.describe Samagotchi::Bridge do
 
       it "tells the worker when the exit is to delete the session" do
         asked = []
-        start_bridge(on_exit_request: ->(client_id, delete: false) { asked << [client_id, delete] && nil })
+        start_bridge(on_exit_request: ->(client_id, delete: false) { (asked << [client_id, delete]) && nil })
         post_exit(JSON.generate(client_id: "tui:1", delete: true))
         post_exit(JSON.generate(client_id: "tui:2"))
         expect(asked).to eq([["tui:1", true], ["tui:2", false]])
@@ -1664,7 +1664,7 @@ RSpec.describe Samagotchi::Bridge do
 
       it "asks for a restart with restart: true and answers restarting, never discard" do
         asked = []
-        start_bridge(on_exit_request: ->(client_id, **opts) { asked << [client_id, opts] && nil },
+        start_bridge(on_exit_request: ->(client_id, **opts) { (asked << [client_id, opts]) && nil },
                      exit_discards: -> { raise "must not be called" })
 
         expect(post_exit(JSON.generate(client_id: "web:1", restart: true)))

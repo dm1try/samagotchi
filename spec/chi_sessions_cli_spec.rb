@@ -57,7 +57,7 @@ RSpec.describe "chi sessions (CLI)" do
 
       path = File.join(state_dir, "#{s.id}.json")
       data = JSON.parse(File.read(path))
-      data["updated_at"] = (Time.now - days_old * 86_400).iso8601(3)
+      data["updated_at"] = (Time.now - (days_old * 86_400)).iso8601(3)
       File.write(path, JSON.generate(data))
     end
   end

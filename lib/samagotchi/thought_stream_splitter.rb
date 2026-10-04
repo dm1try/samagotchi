@@ -74,7 +74,7 @@ module Samagotchi
           end
           body = @carry[0...close_pos]
           route_body(body, thinking)
-          @carry = @carry[close_pos + @active[:close].length..].to_s
+          @carry = @carry[(close_pos + @active[:close].length)..].to_s
           @active = nil
           @state = :normal
         end
@@ -119,7 +119,7 @@ module Samagotchi
     def flush_normal(text)
       partial = @blocks.map { |block| longest_suffix_prefix_of(@carry, block[:open]) }.max.to_i
       text << @carry[0...(@carry.length - partial)]
-      @carry = @carry[@carry.length - partial..].to_s
+      @carry = @carry[(@carry.length - partial)..].to_s
     end
 
     # In-block state: emit the body seen so far to the active lane, retaining a
@@ -128,7 +128,7 @@ module Samagotchi
       close = @active[:close]
       partial = longest_suffix_prefix_of(@carry, close)
       route_body(@carry[0...(@carry.length - partial)], thinking)
-      @carry = @carry[@carry.length - partial..].to_s
+      @carry = @carry[(@carry.length - partial)..].to_s
     end
 
     # Route a body fragment to the active block's lane (:thinking or :drop).

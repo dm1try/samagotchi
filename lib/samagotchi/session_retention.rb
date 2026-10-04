@@ -171,7 +171,7 @@ module Samagotchi
       end
 
       now = Time.now
-      cutoff = days.to_i.positive? ? now - days.to_i * 86_400 : nil
+      cutoff = days.to_i.positive? ? now - (days.to_i * 86_400) : nil
       max = max_count.to_i
 
       deleted = []
@@ -249,7 +249,7 @@ module Samagotchi
           begin
             FileUtils.rm_f(path)
             sidecar = File.join(state_dir, session.id)
-            FileUtils.rm_rf(sidecar) if File.exist?(sidecar)
+            FileUtils.rm_rf(sidecar)
             PluginSessionState.remove(session.id)
             deleted << session.id
           rescue StandardError

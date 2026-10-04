@@ -215,6 +215,32 @@ Lint/DuplicateBranch:
 Lint/NoReturnInBeginEndBlocks:
   Enabled: false
 
+# Dir.glob already sorts, but per directory as it walks, which is not the
+# order of .sort on whole paths ("a-b" < "a/b").
+Lint/RedundantDirGlobSort:
+  Enabled: false
+
+# No fiber scheduler here, and wait_readable returns something else.
+Lint/IncompatibleIoSelectWithFiberScheduler:
+  Enabled: false
+
+# Reviewed: the parentheses change nothing, and rm_f/rm_rf already ignore a
+# missing path, so `rubocop -a` applies them.
+Lint/AmbiguousRange:
+  Safe: true
+  SafeAutoCorrect: true
+
+Lint/NonAtomicFileOperation:
+  Safe: true
+  SafeAutoCorrect: true
+
+# An unused keyword in a stub's block pins the stubbed signature.
+Lint/UnusedBlockArgument:
+  AllowUnusedKeywordArguments: true
+
+Lint/UnusedMethodArgument:
+  AllowUnusedKeywordArguments: true
+
 Lint/EmptyBlock:
   Exclude:
     - spec/**/*

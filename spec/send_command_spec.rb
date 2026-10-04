@@ -225,7 +225,7 @@ RSpec.describe Samagotchi::SendCommand do
   it "refuses a message over 16 KiB before sending any" do
     a = make(owner: "worker")
 
-    expect(run("-m", "x" * (16 * 1024 + 1), a.id)).to eq(1)
+    expect(run("-m", "x" * ((16 * 1024) + 1), a.id)).to eq(1)
     expect(err.string).to include("chi send: the message is 16385 bytes; the limit is 16 KiB")
     expect(inputs_of(a)).to be_empty
   end

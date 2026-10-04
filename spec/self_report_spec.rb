@@ -317,7 +317,7 @@ RSpec.describe Samagotchi::SelfReport do
     # native probe's short timeouts.
     def stub_models(status: 200, body: nil, raise_error: nil)
       response = Net::HTTPResponse::CODE_TO_OBJ[status.to_s].new("1.1", status.to_s, "")
-      allow_any_instance_of(Samagotchi::LLM::HTTP).to receive(:fetch) do |_http, uri, _req, **_opts|
+      allow_any_instance_of(Samagotchi::LLM::HTTP).to receive(:fetch) do |_http, _uri, _req, **_opts|
         raise raise_error if raise_error
 
         allow(response).to receive(:body).and_return(body.to_s)

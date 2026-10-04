@@ -10,7 +10,7 @@ module Samagotchi
 
       def self.name        = NAME
 
-      def self.call(content, reminder_store: nil)
+      def self.call(_content, reminder_store: nil)
         return "Error: reminder_store not configured" unless reminder_store
 
         reminder_store.list

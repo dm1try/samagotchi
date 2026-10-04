@@ -442,7 +442,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "checks the question pending now: a stale id is not pending, whatever it asked" do
       setting("once")
       engine = build_engine
-      thread, result, qid = open_approval(engine)
+      thread, _, qid = open_approval(engine)
       engine.answer_question(id: qid, selected: ["Deny"])
       thread.join(2)
       thread, result, = open_approval(engine)

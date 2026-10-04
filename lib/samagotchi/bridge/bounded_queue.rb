@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "thread"
-
 module Samagotchi
   class Bridge
     # A thread-safe bounded FIFO used to decouple the turn thread (which

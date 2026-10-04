@@ -495,12 +495,12 @@ Hooks removed: 1\n\z})
     after { FileUtils.rm_rf(@root) }
 
     it "prints usage error for --dry-run without --empty" do
-      out, err, code = chi("trash", "--dry-run")
+      _, err, code = chi("trash", "--dry-run")
       expect([err, code]).to eq(["Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]\n", 2])
     end
 
     it "prints usage error for --older-than without --empty" do
-      out, err, code = chi("trash", "--older-than", "7")
+      _, err, code = chi("trash", "--older-than", "7")
       expect([err, code]).to eq(["Usage: chi bundle trash [--empty] [--dry-run] [--older-than DAYS]\n", 2])
     end
 

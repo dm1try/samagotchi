@@ -52,7 +52,7 @@ RSpec.describe Samagotchi::Tools::Read do
 
       Dir.mktmpdir do |dir|
         path = File.join(dir, "large.txt")
-        content = "A" * 40 + "B" * 40 + "C" * 40
+        content = ("A" * 40) + ("B" * 40) + ("C" * 40)
         File.write(path, content)
 
         result = described_class.call(path)

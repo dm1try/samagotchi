@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::TerminalUI::ReplInput, "#during_turn" do
 
   it "offers each line to the turn first; what it leaves over comes next, before the inbox" do
     taken = []
-    input.during_turn(->(line) { line.start_with?("steer") && taken << line }, leftovers: -> { ["late"] }) do
+    input.during_turn(->(line) { line.start_with?("steer") && (taken << line) }, leftovers: -> { ["late"] }) do
       input << [:line, "steer me"] << [:line, "/stats"] << [:interrupt, nil]
     end
     input << [:line, "after"]

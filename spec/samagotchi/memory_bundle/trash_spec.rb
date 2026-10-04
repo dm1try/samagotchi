@@ -10,7 +10,7 @@ RSpec.describe Samagotchi::MemoryBundle::Trash do
   describe "#move" do
     it "moves a file into the trash dir" do
       Dir.mktmpdir do |bundles_dir|
-        trash_dir = File.join(bundles_dir, ".trash")
+        File.join(bundles_dir, ".trash")
         file = File.join(bundles_dir, "original.md")
         File.write(file, "hello")
 
@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::MemoryBundle::Trash do
         old_dir = File.join(trash_dir, "old-stuff")
         FileUtils.mkdir_p(old_dir)
         File.write(File.join(old_dir, "x.md"), "x")
-        old_time = Time.now - 86_400 * 10
+        old_time = Time.now - (86_400 * 10)
         File.utime(old_time, old_time, old_dir)
 
         new_dir = File.join(trash_dir, "new-stuff")

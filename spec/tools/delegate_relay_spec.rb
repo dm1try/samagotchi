@@ -105,7 +105,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
   def wait(timeout: 5) = Timeout.timeout(10) { described_class.call(child.id, peers: peers, timeout: timeout, owner_grace: 0.3) }
 
   def user_answers(label, index, freeform: nil)
-    relay.answer = ->(fields, _watch) { { id: "pq", selected: [label], freeform: freeform, selected_indices: [index] } }
+    relay.answer = ->(_fields, _watch) { { id: "pq", selected: [label], freeform: freeform, selected_indices: [index] } }
   end
 
   it "relays the approval to the parent's user and returns the child's reply with the outcome line" do

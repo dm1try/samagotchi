@@ -285,7 +285,7 @@ RSpec.describe Samagotchi::TerminalUI::Screen do
       screen.start
       screen.set_slot(:status, ["ctx 12%"])
       redrawn = Queue.new
-      allow(screen).to receive(:redraw).and_wrap_original { |original| original.call.tap { redrawn << true } }
+      allow(screen).to(receive(:redraw).and_wrap_original { |original| original.call.tap { redrawn << true } })
 
       Process.kill("WINCH", Process.pid)
 
