@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `/mcp` lists each server's tools alphabetically, not in the order the server sent them (mcp bundle 0.4.3).
+
+### Fixed
+
+- Code blocks in the web follow the light theme too: their highlighting comes from the page's palette instead of one
+  fixed dark theme.
+
+Update with `chi update` (mcp 0.4.3).
+
 ## [0.26.0] - 2026-10-04
 
 ### Added
