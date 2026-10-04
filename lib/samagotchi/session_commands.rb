@@ -5,6 +5,7 @@ require_relative "model_profile"
 require_relative "served_model"
 require_relative "turn_flow"
 require_relative "tools/execute"
+require_relative "tools/builtins"
 require_relative "commands/registry"
 
 module Samagotchi
@@ -207,12 +208,15 @@ module Samagotchi
     end
 
     # The output goes into the conversation for the next turn. Not saved
-    # here (as in the REPL, the next turn saves it).
+    # here (as in the REPL, the next turn saves it). No parent-session
+    # marker: the user runs this, not the model. A worker's `chi --model X`
+    # default is unset, though: it was that run's, not the default of a chi
+    # run here (Tools::Builtins.cli_model_unset).
     def shell(text)
       command = text.delete_prefix(SHELL_BANG_PREFIX).strip
       return reply("!: please provide a shell command after '!'", status: :error) if command.empty?
 
-      output = Samagotchi::Tools::Execute.call(command)
+      output = Samagotchi::Tools::Execute.call(command, env: Samagotchi::Tools::Builtins.cli_model_unset)
       @engine.append_messages([{ role: "user", content: "!(#{command})\n#{output}" }])
       # Rolling back past this would silently drop the command output.
       @turn_flow.note_conversation_changed

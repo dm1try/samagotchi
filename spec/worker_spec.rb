@@ -198,6 +198,40 @@ RSpec.describe Samagotchi::Worker do
       expect(engine.due_reminder_names).to be_empty
     end
 
+    # Disk full or a permission error on the post-turn save: the turn itself
+    # ended fine, and its messages are in memory (the next save writes them).
+    it "keeps running when the post-turn save fails, and runs the next queued prompt" do
+      failed_saves = []
+      allow(Samagotchi::Log).to receive(:exception).and_wrap_original do |original, *args, **kwargs|
+        failed_saves << args[1] if args[1] == "save_failed"
+        original.call(*args, **kwargs)
+      end
+      failing = false
+      allow_any_instance_of(Samagotchi::Session).to receive(:save).and_wrap_original do |original, **kwargs|
+        raise Errno::ENOSPC if failing
+
+        original.call(**kwargs)
+      end
+      allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+        turns << [prompt, mono, kwargs]
+        failing = true
+        result
+      end
+      start_worker(poll_interval: 5)
+
+      post_turn("one")
+      expect(next_turn&.first).to eq("one")
+
+      expect(wait_until { !failed_saves.empty? }).to be(true)
+      expect(failed_saves).to eq(["save_failed"])
+      expect(@thread).to be_alive
+
+      failing = false
+      post_turn("two")
+      expect(next_turn&.first).to eq("two")
+      expect(@thread).to be_alive
+    end
+
     describe "an archived session (ArchiveStore)" do
       def archived? = Samagotchi::ArchiveStore.archived?(session_dir)
 
@@ -847,7 +881,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "runs !cmd in the worker and keeps its output for the next turn" do
-        allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
+        allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi", env: {}).and_return("hi\n")
         start_worker(poll_interval: 5)
 
         done = ran(JSON.parse(post_command("!echo hi").body)["command_id"])

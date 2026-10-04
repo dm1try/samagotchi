@@ -307,7 +307,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
   describe "!cmd" do
     it "runs the command, adds its output to the conversation and ends the rollback window" do
-      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
+      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi", env: {}).and_return("hi\n")
       cancelled_turn
 
       result = commands.run("!echo hi")
@@ -317,6 +317,21 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("!rollback").output).to eq("nothing to rollback")
       # As in the REPL, the next turn saves it.
       expect(saved).to be_empty
+    end
+
+    # A worker started with --model X has it in its env marked as the CLI's
+    # (SessionManager.spawn_options); a chi run from here must not take it
+    # for its default.
+    it "doesn't pass a --model worker's model on as the default" do
+      with_env("SAMAGOTCHI_DEFAULT_MODEL" => "beta:Qwen3-14B", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI" => "1") do
+        expect(commands.run("!printenv SAMAGOTCHI_DEFAULT_MODEL").output).not_to include("beta:Qwen3-14B")
+      end
+    end
+
+    it "keeps a default model that isn't the command line's" do
+      with_env("SAMAGOTCHI_DEFAULT_MODEL" => "beta:Qwen3-14B", "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI" => nil) do
+        expect(commands.run("!printenv SAMAGOTCHI_DEFAULT_MODEL").output).to include("beta:Qwen3-14B")
+      end
     end
   end
 

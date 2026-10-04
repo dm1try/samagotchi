@@ -117,13 +117,16 @@ module Samagotchi
         peers = kctx.peers
         id = peers.respond_to?(:session_id) ? peers.session_id.to_s : ""
         model = peers.respond_to?(:model_ref) ? peers.model_ref.to_s : ""
-        vars = { Guardrails::ParentApprovals::PARENT_SESSION_ENV => id.empty? ? "chi" : id,
-                 SESSION_MODEL_ENV => model.empty? ? nil : model }
-        if env[ModelProfile::MODEL_FROM_CLI_ENV]
-          vars[ModelProfile::MODEL_ENV] = nil
-          vars[ModelProfile::MODEL_FROM_CLI_ENV] = nil
-        end
-        vars
+        { Guardrails::ParentApprovals::PARENT_SESSION_ENV => id.empty? ? "chi" : id,
+          SESSION_MODEL_ENV => model.empty? ? nil : model }.merge(cli_model_unset(env))
+      end
+
+      # The unsets that keep a `chi --model X` worker's default from passing
+      # for the default of a chi run here (nothing when it wasn't the CLI's).
+      def cli_model_unset(env = ENV)
+        return {} unless env[ModelProfile::MODEL_FROM_CLI_ENV]
+
+        { ModelProfile::MODEL_ENV => nil, ModelProfile::MODEL_FROM_CLI_ENV => nil }
       end
 
       SESSION_MODEL_ENV = "SAMAGOTCHI_SESSION_MODEL"

@@ -270,7 +270,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     end
 
     it "keeps !cmd output in the next turn's context" do
-      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
+      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi", env: {}).and_return("hi\n")
 
       output = run_session(model: "Qwen3-14B", prompts: ["!echo hi", "what did it print?"], turns: [answer_turn])
 
@@ -292,7 +292,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     end
 
     it "has nothing to roll back once !cmd output followed the Ctrl-C" do
-      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
+      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi", env: {}).and_return("hi\n")
       cancel = lambda do |messages|
         Samagotchi::LLM::ModelResult.new(
           text: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
