@@ -1100,6 +1100,9 @@ RSpec.describe Samagotchi::Worker do
         it "runs the continue turn on Continue with a text, which joins that turn as a steer from the user" do
           expect(answer_continue_with("also check the specs", client_id: "web:2"))
             .to eq([{ text: "also check the specs", source: "user" }])
+          # turn_completed goes out before the turn lets go (release_turn):
+          # a steer is refused once no turn runs.
+          expect(wait_until { !engine.turn_running? }).to be(true)
           expect(engine.steer("late", source: "x")).to be(false)
         end
 
