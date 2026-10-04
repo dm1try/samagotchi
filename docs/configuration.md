@@ -519,8 +519,20 @@ OpenAI-compatible host get two prompt-cache breakpoints (`cache_control` on the 
 message), so each step reads the earlier prompt from Anthropic's cache instead of paying for it again. The system
 prompt goes as two text parts, the breakpoint after the first: everything sessions share, then the model, working
 directory and session lines, so a new session reads the shared part from the cache as well; the debug
-log's line shows `cache=on`. Nothing to configure. A provider behind a gateway may still not cache: check the
-cached tokens in `/stats`. Each request's own counts are in the debug log's `generation_completed` line:
+log's line shows `cache=on`. A provider behind a gateway may still not cache: check the cached tokens in `/stats`.
+
+Anthropic drops a cache entry 5 minutes after its last read, so a session you come back to after a longer pause
+writes its prompt again. `cache.ttl: 1h` keeps the breakpoints an hour (the log shows `cache=1h`); a write then
+costs 2× the input price instead of 1.25×, so it pays off when you often pause 5–60 minutes between turns.
+`cache.key: session` sends the session id as `prompt_cache_key` (OpenAI's API and OpenRouter only; the log shows
+`cache_by=session`), which OpenAI uses to route a conversation to the machine that holds its cache:
+
+```yaml
+cache:
+  ttl: 1h        # 5m (default) or 1h
+  key: session   # off (default) or session
+```
+ Each request's own counts are in the debug log's `generation_completed` line:
 `prompt=` (its prompt tokens), `cached=` (read from the server's cache) and `cache_write=` (written to it, when the
 server reports writes); recap and side requests log theirs as `recap request_usage`.
 
@@ -899,6 +911,8 @@ described in their own sections.
 | `hosts.<name>.remote` | by address | | `true`/`false`: treat the host as a remote provider or a local server. See "Remote or local". |
 | `max_tool_output_chars` | `10000` | yes | Tool output kept in the conversation; a top-level key (see below). |
 | `cache.warmup` | `auto` | | `auto`: after a turn, send the next turn's prompt (up to the next message) to a local llama.cpp host on the native loop, so the next turn prefills only its message; never a remote or `api: openai` host. `off`: never. See [prompt caching](internals/prompt-caching.md#the-turn-end-warm-up). |
+| `cache.ttl` | `5m` | | How long Anthropic keeps the prompt-cache breakpoints of a Claude model on a remote host: `5m` (Anthropic's default) or `1h`. A 1h cache write costs 2× the input price (5m: 1.25×), a read the same 0.1×. See "Remote or local". |
+| `cache.key` | `off` | | `session`: send the session id as `prompt_cache_key` to OpenAI's API and OpenRouter, which route and cache by it; no other host gets it. `off`: none. |
 | `retry.max` | `5` | yes | See "Llama Network Retry Behavior". |
 | `retry.base_delay` | `0.5` | yes | |
 | `retry.max_delay` | `8.0` | yes | |

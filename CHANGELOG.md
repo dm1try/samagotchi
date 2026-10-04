@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - Desktop: the panel's footer says where its text and images came from, "from clipboard" (the hotkey) or "from
   selection" (Send to chi); run `chi desktop upgrade`.
+- `cache.ttl: 1h` keeps a Claude model's prompt-cache breakpoints for an hour instead of 5 minutes (a write costs 2×
+  the input price instead of 1.25×; off by default), and `cache.key: session` sends the session id as
+  `prompt_cache_key` to OpenAI's API and OpenRouter (off by default).
 
 ### Changed
 

@@ -142,6 +142,14 @@ module Samagotchi
       # prompt on a local llama.cpp host while the user reads; off never
       # does. A :string, since YAML reads an unquoted off as false.
       Entry.new(key: "cache.warmup",             yaml_path: %w[cache warmup],             type: :string, default: "auto",           expose: %i[env config]),
+      # How long Anthropic keeps a cache breakpoint (PromptCache): 5m, or
+      # 1h for long reading gaps (a 1h write costs 2x the input price, a 5m
+      # one 1.25x, so it's opt-in).
+      Entry.new(key: "cache.ttl",                yaml_path: %w[cache ttl],                type: :string, default: "5m",             expose: %i[env config]),
+      # session sends the session id as `prompt_cache_key` to OpenAI's API
+      # and OpenRouter (OpenAIChat), which route and cache by it; off sends
+      # none. A :string, since YAML reads an unquoted off as false.
+      Entry.new(key: "cache.key",                yaml_path: %w[cache key],                type: :string, default: "off",            expose: %i[env config]),
 
       Entry.new(key: "retry.max",                yaml_path: %w[retry max],                type: :integer, default: 5,               expose: %i[env config cli]),
       Entry.new(key: "retry.base_delay",         yaml_path: %w[retry base_delay],         type: :float,   default: 0.5,             expose: %i[env config cli]),

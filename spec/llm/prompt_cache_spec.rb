@@ -153,4 +153,37 @@ RSpec.describe Samagotchi::LLM::PromptCache do
     expect(described_class.marked?(plain)).to be(false)
     expect(described_class.marked?(described_class.mark(plain, model: claude))).to be(true)
   end
+
+  describe "cache.ttl" do
+    let(:hour) { { type: "ephemeral", ttl: "1h" } }
+
+    it "marks both breakpoints with a 1h ttl when cache.ttl is 1h, the split system prompt too" do
+      messages = deep_freeze([{ role: "system", content: "base\nModel: m", cache_split: 5 }, { role: "user", content: "hi" }])
+
+      with_env("SAMAGOTCHI_CACHE_TTL" => "1h") do
+        expect(described_class.mark(messages, model: claude)).to eq([
+          { role: "system", content: [{ type: "text", text: "base\n", cache_control: hour }, { type: "text", text: "Model: m" }] },
+          { role: "user", content: [{ type: "text", text: "hi", cache_control: hour }] }
+        ])
+      end
+    end
+
+    it "sends Anthropic's default (no ttl) for 5m, unset, or an unknown value, which warns once" do
+      messages = deep_freeze([{ role: "user", content: "hi" }])
+      [nil, "5m", " 5M "].each do |value|
+        with_env("SAMAGOTCHI_CACHE_TTL" => value) do
+          expect(described_class.mark(messages, model: claude).first[:content]).to eq([text_part("hi", marked: true)])
+        end
+      end
+
+      described_class.instance_variable_set(:@warned_ttl, nil)
+      allow(Samagotchi::Log).to receive(:warn)
+      with_env("SAMAGOTCHI_CACHE_TTL" => "2h") do
+        2.times { expect(described_class.control).to eq(control) }
+      end
+      expect(Samagotchi::Log).to have_received(:warn).with(:config, "invalid_value", hash_including(key: "cache.ttl")).once
+    ensure
+      described_class.instance_variable_set(:@warned_ttl, nil)
+    end
+  end
 end

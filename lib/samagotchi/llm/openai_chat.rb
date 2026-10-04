@@ -80,6 +80,17 @@ module Samagotchi
         false
       end
 
+      # true when +url+ is OpenAI's own API (api.openai.com).
+      def self.openai?(url)
+        URI(url.to_s).host.to_s.downcase == "api.openai.com"
+      rescue URI::Error
+        false
+      end
+
+      # Whether cache.key asks for the session id as `prompt_cache_key`
+      # (session; off, the default, or anything else sends none).
+      def self.cache_key? = Samagotchi::Config.get("cache.key").to_s.strip.downcase == "session"
+
       # Tool arguments as a Hash; "" is {}, invalid JSON stays a String.
       def self.parse_arguments(raw)
         return raw if raw.is_a?(Hash)
@@ -141,10 +152,10 @@ module Samagotchi
       # @return [ChatResponse]
       def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {},
                session_id: nil)
-        body = request_body(messages, tools, model, options)
+        body = request_body(messages, tools, model, options, session_id)
         request = post_request("#{@base_url}/chat/completions", body, session_id: session_id)
         log_fields = { model: model, purpose: @purpose, sampling: sampling_summary(body),
-                       cache: ("on" if PromptCache.marked?(body[:messages])) }
+                       cache: cache_summary(body[:messages]), cache_by: ("session" if body.key?(:prompt_cache_key)) }
         return chat_once(request, cancel_controller, log_fields) unless @stream
 
         assembly = Assembly.new
@@ -236,7 +247,7 @@ module Samagotchi
         [[open_timeout, timeout].min, timeout]
       end
 
-      def request_body(messages, tools, model, options)
+      def request_body(messages, tools, model, options, session_id)
         body = {
           model: model,
           messages: cache_breakpoints(Array(messages).map { |message| wire_message(message) }, model),
@@ -244,6 +255,7 @@ module Samagotchi
         }
         body[:stream_options] = { include_usage: true } if @stream
         body[:max_tokens] = @default_max_tokens if @default_max_tokens
+        body[:prompt_cache_key] = session_id.to_s if prompt_cache_key?(session_id)
         unless Array(tools).empty?
           body[:tools] = tools
           body[:tool_choice] = "auto"
@@ -264,10 +276,34 @@ module Samagotchi
         PromptCache.mark(messages, model: model)
       end
 
+      # The session id as `prompt_cache_key` (cache.key: session) goes only
+      # to the APIs that document it, OpenAI's and OpenRouter's (which also
+      # routes by it), for the session's own chat requests: a local server or
+      # another gateway may reject an unknown field.
+      def prompt_cache_key?(session_id)
+        return false if session_id.to_s.empty? || !@remote || @purpose != "chat"
+        return false unless self.class.openai?(@base_url) || self.class.openrouter?(@base_url)
+
+        self.class.cache_key?
+      rescue StandardError
+        false
+      end
+
+      # The log line's cache= : on for breakpoints with Anthropic's default
+      # TTL, 1h for cache.ttl 1h, nil for none.
+      def cache_summary(messages)
+        return nil unless PromptCache.marked?(messages)
+
+        hour = Array(messages).any? do |message|
+          Array(message[:content]).any? { |part| part.is_a?(Hash) && part.dig(:cache_control, :ttl) == "1h" }
+        end
+        hour ? "1h" : "on"
+      end
+
       # The body's fields beyond the conversation and the stream, for the
       # log line: "temperature=0.6 presence_penalty=1.5", nil for none.
       def sampling_summary(body)
-        SamplingSettings.log_text(body.except(:model, :messages, :stream, :stream_options, :tools, :tool_choice))
+        SamplingSettings.log_text(body.except(:model, :messages, :stream, :stream_options, :tools, :tool_choice, :prompt_cache_key))
       end
 
       # A String stays a String, an Array of parts an Array; both scrubbed

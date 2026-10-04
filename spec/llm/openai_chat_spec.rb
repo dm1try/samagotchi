@@ -195,6 +195,62 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
             expect(server.requests.last.json["messages"].first).to eq({ "role" => "system", "content" => "stable\nModel: m" })
           end
         end
+
+        it "marks with a 1h ttl under cache.ttl 1h, and logs cache=1h" do
+          Samagotchi::Log.configure(path: log_path, level: :info)
+          replay("text_stream.sse")
+
+          with_env("SAMAGOTCHI_CACHE_TTL" => "1h") { chat_adapter.chat(messages: messages, tools: tools, model: claude) }
+
+          hour = { "type" => "text", "cache_control" => { "type" => "ephemeral", "ttl" => "1h" } }
+          expect(server.requests.last.json["messages"].map { |m| m["content"] })
+            .to eq([[hour.merge("text" => "sys")], [hour.merge("text" => "hi")]])
+          expect(stream_lines.last.fields).to include("cache" => "1h")
+        end
+      end
+
+      describe "prompt_cache_key (cache.key)" do
+        def chat_adapter(remote: true, purpose: "chat")
+          described_class.new(base_url: server.base_url, host_name: "box", env: env, sleeper: ->(_seconds) {},
+                              retries: false, remote: remote, purpose: purpose)
+        end
+
+        def sent_body(client, session_id: "s-1", key: "session")
+          replay("text_stream.sse")
+          with_env("SAMAGOTCHI_CACHE_KEY" => key) do
+            client.chat(messages: messages, tools: tools, model: "openai/gpt-5.6", session_id: session_id)
+          end
+          server.requests.last.json
+        end
+
+        it "sends the session id to OpenRouter or OpenAI when cache.key is session, and logs cache_by=session" do
+          Samagotchi::Log.configure(path: log_path, level: :info)
+          allow(described_class).to receive(:openrouter?).and_return(true)
+
+          body = sent_body(chat_adapter)
+
+          expect(body["prompt_cache_key"]).to eq("s-1")
+          expect(stream_lines.last.fields).to include("cache_by" => "session")
+          expect(stream_lines.last.fields).not_to have_key("sampling")
+        end
+
+        it "sends none by default, without a session, for a side ask, a local host or another gateway" do
+          allow(described_class).to receive(:openrouter?).and_return(true)
+          expect(sent_body(chat_adapter, key: nil)).not_to have_key("prompt_cache_key")
+          expect(sent_body(chat_adapter, key: "off")).not_to have_key("prompt_cache_key")
+          expect(sent_body(chat_adapter, session_id: nil)).not_to have_key("prompt_cache_key")
+          expect(sent_body(chat_adapter(purpose: "recap"))).not_to have_key("prompt_cache_key")
+          expect(sent_body(chat_adapter(remote: false))).not_to have_key("prompt_cache_key")
+
+          allow(described_class).to receive(:openrouter?).and_return(false)
+          expect(sent_body(chat_adapter)).not_to have_key("prompt_cache_key")
+        end
+
+        it "knows OpenAI's own API by its host" do
+          expect(described_class.openai?("https://api.openai.com/v1")).to be(true)
+          expect(described_class.openai?("https://api.example.com/v1")).to be(false)
+          expect(described_class.openai?("http://192.168.1.29:8081/v1")).to be(false)
+        end
       end
     end
 
