@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { turnHistoryHtml } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+import { commandBlockHtml } from "../../../lib/samagotchi/web/public/command_view.js";
 
 const timing = normalizeTiming({
   turn_records: [{ id: "T1", status: "completed", duration_ms: 18503 }],
@@ -262,4 +263,17 @@ test("turnHistoryHtml: a turn with no answer after tool steps shows no step's te
   assert.doesNotMatch(html, /bubble output/);
   assert.match(html, /<div class="gen-text">Looking\.<\/div>/);
   assert.match(html, /<div class="bubble hook-notice empty-answer">no answer: the model returned nothing \(after 1 retry\)<\/div><div class="turn-timing">/);
+});
+
+test("turnHistoryHtml with parts: an execute's reloaded row shows its full command above the output, its hover the command", () => {
+  const view = { command: "cd /p && rg -n foo lib |\n  head -5", cwd: "lib" };
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "", parts: { tools: [{ tool: "execute", params: 'command="cd /p && rg -n foo lib | head -5"', title: "rg -n foo lib |", output: "[execute]\na", view }] } },
+    { role: "assistant", content: "Done." },
+  ];
+  const html = turnHistoryHtml(items, timing, { thumbs });
+  assert.ok(html.includes(
+    '<span class="activity-params" title="cd /p &amp;&amp; rg -n foo lib |\n  head -5">rg -n foo lib |</span><span class="activity-duration">7ms</span>' +
+    `${commandBlockHtml(view)}<div class="activity-output" title="a">a</div>`), html);
 });

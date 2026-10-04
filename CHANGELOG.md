@@ -10,6 +10,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- The web shows an `execute` / `task_create` call's full command: an expanded tool row has it as a block above the
+  output (whitespace kept, a copy button, `in <cwd>` when the call gave one), and the row's and the stage's hovers
+  show the whole command instead of the 80-character `command="…"` line. The terminal is unchanged.
+
 - A message that joins a running turn (a line typed in the terminal or the web, `chi send -m`, a delegate's
   follow-up, `chi answer --option Continue --text`, a plugin's `ctx.steer`) reaches the model with a one-line
   header naming its sender and asking it to follow the message, or carry on if it asks for nothing, so the model

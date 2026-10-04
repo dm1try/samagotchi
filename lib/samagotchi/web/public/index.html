@@ -134,10 +134,18 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .activity-diff>summary{cursor:pointer;font-size:12px;color:var(--text-muted);width:max-content;font-variant-numeric:tabular-nums}
 .activity-diff>summary:hover{color:var(--text-2)}
 .activity-diff[open]>summary{margin-bottom:4px}
+/* An execute/task_create's full command, above its output and lined up with it: as written, its own scroll. */
+.activity-row>.activity-command{flex:1 1 100%;min-width:0;margin:4px 0 2px 60px}
+.activity-command pre{margin:0;max-height:160px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.45;color:var(--text-2);background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;padding:6px 34px 6px 8px}
+.activity-command-cwd,.activity-command-cut{font-size:11px;color:var(--text-faint)}
+.activity-command-cwd{margin-bottom:2px}
+.activity-command-cwd>span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted)}
+.activity-command-cut{margin-top:2px}
 @media(max-width:600px){
   .activity-params{flex:1 1 0}
   .activity-output{margin-left:0}
   .activity-diff{margin-left:0}
+  .activity-row>.activity-command{margin-left:0}
 }
 .bubble.thinking{border-left:3px solid var(--think);background:color-mix(in srgb,var(--think) 6%,var(--bg-panel));padding:8px 12px}
 .bubble.thinking:not([open]),.bubble.activity:not([open]){padding:3px 10px;background:transparent;border-color:transparent;align-self:flex-start;border-radius:6px;transition:background .12s ease}
