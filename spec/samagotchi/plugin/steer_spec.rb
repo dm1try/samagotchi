@@ -45,7 +45,7 @@ RSpec.describe "ctx.steer, ctx.stop_turn and ctx.stop_generation" do
     results = []
     allow(client).to receive(:complete) do |_prompt, **kwargs|
       ctrl = kwargs[:cancel_controller]
-      raise Samagotchi::Client::RequestCancelled.new(ctrl.reason) if ctrl&.cancelled?
+      raise Samagotchi::Client::RequestCancelled, ctrl.reason if ctrl&.cancelled?
 
       2.times { results << ctx.stop_turn("stopped from check-in") }
       %(<|tool_call>call:execute{command: "true"}<tool_call|>)
@@ -70,7 +70,7 @@ RSpec.describe "ctx.steer, ctx.stop_turn and ctx.stop_generation" do
 
       2.times { results << ctx.stop_generation("its thinking kept repeating itself") }
       ctrl = kwargs[:cancel_controller]
-      raise Samagotchi::Client::RequestCancelled.new(ctrl.reason) if ctrl&.cancelled?
+      raise Samagotchi::Client::RequestCancelled, ctrl.reason if ctrl&.cancelled?
 
       "never"
     end

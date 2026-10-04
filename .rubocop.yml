@@ -19,6 +19,9 @@ AllCops:
     - tmp/**/*
     - vendor/**/*
     - pkg/**/*
+    # Test data: fixture bundles carry recorded sha256s, some code is broken
+    # on purpose.
+    - spec/fixtures/**/*
 
 # -- The house style ---------------------------------------------------------
 
@@ -170,6 +173,96 @@ Lint/NoReturnInBeginEndBlocks:
 Lint/EmptyBlock:
   Exclude:
     - spec/**/*
+
+# -- Off: unsafe autocorrect ----------------------------------------------------
+# These only autocorrect with -A, and the rewrite changes behaviour when the
+# receiver is not the type the cop assumes: `x&.foo` for `x && x.foo` when x
+# can be false, `lambda(&:save)` (an error since Ruby 3.3), Hash#slice on an
+# array of pairs, `join` flattening nested arrays, `cond ? true : false`
+# losing its boolean, STDIN vs $stdin. An agent's `rubocop -a` can't fix them,
+# so they would only mean hand edits.
+
+Style/AccessModifierDeclarations:
+  Enabled: false
+
+Style/ArrayIntersect:
+  Enabled: false
+
+Style/ComparableBetween:
+  Enabled: false
+
+Style/ConcatArrayLiterals:
+  Enabled: false
+
+Style/EnvHome:
+  Enabled: false
+
+Style/FileNull:
+  Enabled: false
+
+Style/GlobalStdStream:
+  Enabled: false
+
+Style/HashEachMethods:
+  Enabled: false
+
+Style/HashExcept:
+  Enabled: false
+
+Style/HashSlice:
+  Enabled: false
+
+Style/IfWithBooleanLiteralBranches:
+  Enabled: false
+
+Style/InverseMethods:
+  Enabled: false
+
+Style/MapJoin:
+  Enabled: false
+
+Style/MapToHash:
+  Enabled: false
+
+Style/MutableConstant:
+  Enabled: false
+
+Style/NumericPredicate:
+  Enabled: false
+
+Style/PredicateWithKind:
+  Enabled: false
+
+Style/ReduceToHash:
+  Enabled: false
+
+Style/RedundantArgument:
+  Enabled: false
+
+Style/RedundantEach:
+  Enabled: false
+
+Style/SafeNavigation:
+  Enabled: false
+
+Style/SelectByKind:
+  Enabled: false
+
+Style/SelectByRange:
+  Enabled: false
+
+Style/SelectByRegexp:
+  Enabled: false
+
+Style/SpecialGlobalVars:
+  Enabled: false
+
+Style/SymbolProc:
+  Enabled: false
+
+# Reviewed: safe here, so `rubocop -a` applies them.
+Style/RaiseArgs:
+  SafeAutoCorrect: true
 
 # -- RSpec: taste off, the checks for broken specs on ----------------------------
 

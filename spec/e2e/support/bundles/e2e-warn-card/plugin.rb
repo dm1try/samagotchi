@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # The e2e suite's warn card: a read of e2e-warn-card.txt shows a :warn card
 # in the running step (the turn goes on), for the warn_card scenario.
 class Plugin

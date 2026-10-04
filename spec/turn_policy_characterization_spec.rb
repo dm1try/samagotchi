@@ -38,7 +38,7 @@ RSpec.describe "Turn policy characterization" do
     def context_window(model: nil) = nil
 
     def complete(prompt, on_chunk: nil, cancel_controller: nil, sampling: nil, images: [], **)
-      raise Samagotchi::LLM::RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
+      raise Samagotchi::LLM::RequestCancelled, cancel_controller.reason if cancel_controller&.cancelled?
 
       @requests << { prompt: prompt, sampling: sampling, images: images }
       step = @steps.length > 1 ? @steps.shift : @steps.first
@@ -79,7 +79,7 @@ RSpec.describe "Turn policy characterization" do
       if kind == :cut
         on_chunk&.call(content: loop_name == :gemma ? "<|channel>thought\nloop " : "<think>loop ", payload: {})
         controller.cancel_generation!(:hook, cut)
-        raise Samagotchi::LLM::RequestCancelled.new(:hook)
+        raise Samagotchi::LLM::RequestCancelled, :hook
       end
       text = native_text(loop_name, step)
       on_chunk&.call(content: text, payload: { "content" => text })
@@ -114,7 +114,7 @@ RSpec.describe "Turn policy characterization" do
       lambda do |on_delta:, **|
         on_delta&.call(content: "", reasoning: "loop ", payload: {})
         controller.cancel_generation!(:hook, cut)
-        raise Samagotchi::LLM::RequestCancelled.new(:hook)
+        raise Samagotchi::LLM::RequestCancelled, :hook
       end
     end
   end

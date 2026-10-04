@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with a hung /props" do
   let(:events) { [] }
   let(:adapter) do
     FakeChatAdapter.new(lambda { |cancel_controller:, **|
-      raise Samagotchi::LLM::RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
+      raise Samagotchi::LLM::RequestCancelled, cancel_controller.reason if cancel_controller&.cancelled?
 
       FakeChatAdapter.text("PONG")
     })

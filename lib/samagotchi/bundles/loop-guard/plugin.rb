@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # The loop-guard bundle (docs/plugins.md, The loop-guard bundle): a model
 # that runs the same tool call again and again in one turn, getting the
 # same result each time, is told to stop (a guardrail deny with advice),

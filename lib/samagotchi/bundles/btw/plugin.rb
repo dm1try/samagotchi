@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # The btw bundle (docs/plugins.md, The btw bundle): /btw <question> asks the
 # session's model a side question about the conversation. The answer shows
 # as a card in every UI and goes nowhere else: the conversation, the saved

@@ -6,5 +6,5 @@ description: "/btw <question>: a side answer about the conversation, as a card i
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:d12a970e7e5ada617fc7d55ee1de80b576835092d268af620f3f7241188e3297
+  sha256: sha256:226a251865695a86cdb05d6b6318fc062e0ab54518bb25733699db964cbed80b
 requires_chi: ">= 0.1.30"

@@ -63,7 +63,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
     controller = Samagotchi::CancellationController.new
     adapter = FakeChatAdapter.new(FakeChatAdapter.text(""), lambda { |**|
       controller.cancel!(:user)
-      raise Samagotchi::LLM::RequestCancelled.new(:user)
+      raise Samagotchi::LLM::RequestCancelled, :user
     })
     allow(engine).to receive(:backend_for).and_return(Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter))
 

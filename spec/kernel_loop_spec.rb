@@ -1577,7 +1577,7 @@ Need to inspect the filesystem first.
     it "appends the partial visible reply marked interrupted to the conversation" do
       allow(client).to receive(:complete) do |*_args, **kwargs|
         kwargs[:on_chunk]&.call(content: "Let me check the fi", payload: {})
-        raise Samagotchi::Client::RequestCancelled.new(:ctrl_c)
+        raise Samagotchi::Client::RequestCancelled, :ctrl_c
       end
 
       result = kernel.run([{ role: "user", content: "hi" }])
@@ -1594,7 +1594,7 @@ Need to inspect the filesystem first.
         # Visible prose followed by an OPEN tool_call block that never closes:
         # the splitter must not route any of the fragment into the text lane.
         kwargs[:on_chunk]&.call(content: "checking now. <|tool_call>call:execute{command: \"rm", payload: {})
-        raise Samagotchi::Client::RequestCancelled.new(:ctrl_c)
+        raise Samagotchi::Client::RequestCancelled, :ctrl_c
       end
 
       result = kernel.run([{ role: "user", content: "hi" }])
@@ -1613,7 +1613,7 @@ Need to inspect the filesystem first.
           %(<|tool_call>call:execute{command: "true"}<tool_call|>)
         else
           kwargs[:on_chunk]&.call(content: "partial", payload: {})
-          raise Samagotchi::Client::RequestCancelled.new(:ctrl_c)
+          raise Samagotchi::Client::RequestCancelled, :ctrl_c
         end
       end
 

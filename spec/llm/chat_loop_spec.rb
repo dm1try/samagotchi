@@ -832,7 +832,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     it "keeps the text streamed before a cancel, marked interrupted" do
       backend.adapter = FakeChatAdapter.new(lambda { |on_delta:, **|
         on_delta.call(content: "Let me check the fi", reasoning: "", payload: {})
-        raise Samagotchi::LLM::RequestCancelled.new(:ctrl_c)
+        raise Samagotchi::LLM::RequestCancelled, :ctrl_c
       })
 
       result = run(cancel_controller: controller)

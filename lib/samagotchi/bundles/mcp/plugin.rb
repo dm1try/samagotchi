@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # The mcp bundle (docs/plugins.md, The mcp bundle): tools from MCP servers.
 # Each server in config.yml runs as a child process (stdio only in v1) for
 # the session's life; its tools are the model's as mcp_<server>_<tool>.

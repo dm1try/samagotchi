@@ -381,7 +381,7 @@ module Samagotchi
     # after the cut is a plain cancel. Returns :next or the turn's result.
     def after_cut(turn, generation)
       cut = generation.cut
-      raise Client::RequestCancelled.new(turn.cancel_controller.reason) if turn.cancel_controller.cancelled?
+      raise Client::RequestCancelled, turn.cancel_controller.reason if turn.cancel_controller.cancelled?
 
       if turn.empty_retry.left?
         return :next if inject_pending_input!(turn)

@@ -6,5 +6,5 @@ description: "Checks on a long turn: after N tool calls with no answer, a card a
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:afbd0ecf5a41eefe79786e089aa918728ebb0fed0e3b75f84d754a47ec6ade18
+  sha256: sha256:52fcb0a3beccfee1e70e7d73162eace603da11bee43e535b1bc17d55eae98334
 requires_chi: ">= 0.3.0"

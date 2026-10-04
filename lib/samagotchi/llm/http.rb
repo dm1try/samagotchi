@@ -192,7 +192,7 @@ module Samagotchi
           cancellable(cancel_controller, current) do
             attempt.call(current.merge!(attempts: 1))
           rescue StandardError => e
-            raise RequestCancelled.new(cancel_controller.reason) if !e.is_a?(RequestCancelled) && cancel_controller&.cancelled?
+            raise RequestCancelled, cancel_controller.reason if !e.is_a?(RequestCancelled) && cancel_controller&.cancelled?
 
             raise
           end
@@ -236,7 +236,7 @@ module Samagotchi
       def cancellable(cancel_controller, current)
         requesting_thread = Thread.current
         listener_id = cancel_controller&.on_cancel { |reason| abort_request(current, requesting_thread, reason) }
-        raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
+        raise RequestCancelled, cancel_controller.reason if cancel_controller&.cancelled?
 
         yield
       ensure
@@ -257,7 +257,7 @@ module Samagotchi
           rescue RequestCancelled
             raise
           rescue ProviderError => e
-            raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
+            raise RequestCancelled, cancel_controller.reason if cancel_controller&.cancelled?
 
             e.attempts = attempts
             raise if !e.retryable? || current[:streamed]
@@ -267,7 +267,7 @@ module Samagotchi
 
             retry_after(e, attempts, delay, on_retry, cancel_controller, current)
           rescue StandardError => e
-            raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
+            raise RequestCancelled, cancel_controller.reason if cancel_controller&.cancelled?
             raise first_token_timeout if current[:first_token_expired]
             raise unless self.class.network_error?(e)
 
@@ -432,7 +432,7 @@ module Samagotchi
 
         remaining = seconds
         while remaining.positive?
-          raise RequestCancelled.new(cancel_controller.reason) if cancel_controller.cancelled?
+          raise RequestCancelled, cancel_controller.reason if cancel_controller.cancelled?
 
           slice = [remaining, WAIT_TICK].min
           @sleeper.call(slice)

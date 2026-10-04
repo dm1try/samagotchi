@@ -129,7 +129,7 @@ RSpec.describe "The hook runtime through the Engine" do
     before do
       allow(client).to receive(:complete) do |_prompt, **kwargs|
         ctrl = kwargs[:cancel_controller]
-        raise Samagotchi::Client::RequestCancelled.new(ctrl.reason) if ctrl&.cancelled?
+        raise Samagotchi::Client::RequestCancelled, ctrl.reason if ctrl&.cancelled?
 
         batch
       end
