@@ -6,6 +6,7 @@ require "tmpdir"
 require "samagotchi/guardrails"
 require "samagotchi/hooks"
 require "samagotchi/session"
+require "samagotchi/tools/registry"
 
 RSpec.describe Samagotchi::Guardrails::Approvals do
   let(:state) { Dir.mktmpdir("guard-store") }
