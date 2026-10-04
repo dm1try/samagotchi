@@ -194,6 +194,8 @@ what every session shares first, what changes least before what changes more, th
 per-session lines last, so a new session reuses everything above them. It is built
 once per loop and rebuilt only by a model switch (or changed tools), so the model
 line costs no KV churn.
+The full request layout, what breaks the cache and the rules for changes:
+[internals/prompt-caching.md](internals/prompt-caching.md).
 
 #### Subscribing to the live stream (and the bridge)
 
