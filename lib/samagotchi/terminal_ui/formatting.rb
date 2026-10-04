@@ -395,6 +395,9 @@ module Samagotchi
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"
         lines << "retries:          #{snapshot[:retries]}"
+        # A looped session: loop-guard's cuts, or thinking that ran to the cap.
+        lines << "thinking cuts:    #{snapshot[:cuts].to_i}"
+        lines << "output cap hits:  #{snapshot[:capped].to_i}"
         context = snapshot[:context] || {}
         if context[:used_tokens]
           pct = context[:window_tokens].to_i.positive? ? format(" (%.1f%%)", context[:used_tokens] * 100.0 / context[:window_tokens]) : ""

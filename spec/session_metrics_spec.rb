@@ -246,7 +246,8 @@ RSpec.describe Samagotchi::SessionMetrics do
 
       expect(metrics.snapshot[:turn_records].last).to include(
         model: "ornith", generations: 2, prompt_tokens: 130, prompt_tokens_sum: 230, completion_tokens: 30,
-        context_used_tokens: 150, token_source: "server", tool_calls: 1, tool_errors: 1, iterations: 1, retries: 0
+        context_used_tokens: 150, token_source: "server", tool_calls: 1, tool_errors: 1, iterations: 1, retries: 0,
+        cuts: 0, capped: 0
       )
       expect(metrics.snapshot[:turn_records].last[:gen_ms]).to be_a(Integer)
     end
@@ -512,6 +513,30 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:retries]).to eq(1)
     expect(snap[:cancellations]).to eq(1)
     expect(snap[:turn_records].last).to include(status: "canceled", cancellation_reason: "ctrl_c")
+  end
+
+  # `retries` counts the network's; a looped turn is found by these.
+  it "counts generations a plugin cut and ones the output cap ended, apart from retries" do
+    feed([
+      { type: :turn_started, session_id: "sess-cut", prompt: "x" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_completed, iteration: 1, finish_reason: "stopped", stopped_by: "loop-guard" },
+      { type: :generation_started, iteration: 2 },
+      { type: :generation_completed, iteration: 2, finish_reason: "stopped", stopped_by: "steer" },
+      { type: :generation_started, iteration: 3 },
+      { type: :generation_completed, iteration: 3, finish_reason: "length" },
+      { type: :turn_completed },
+      { type: :turn_started, session_id: "sess-cut", prompt: "y" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_completed, iteration: 1, finish_reason: "stopped", stopped_by: "loop-guard" }
+    ])
+
+    expect(metrics.snapshot[:turn_records].last).to include(cuts: 1, capped: 1, retries: 0)
+    expect(metrics.snapshot).to include(cuts: 2, capped: 1, retries: 0)
+
+    metrics.call(type: :turn_completed)
+    expect(metrics.snapshot[:turn_records].last).to include(cuts: 1, capped: 0)
+    expect(metrics.snapshot).to include(cuts: 2, capped: 1)
   end
 
   it "keeps who stopped a turn a plugin stopped" do

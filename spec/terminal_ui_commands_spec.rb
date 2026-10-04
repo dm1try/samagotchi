@@ -71,6 +71,12 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("context window:   128000 tokens (server)")
     end
 
+    it "shows the generations plugins cut and the output cap ended in /stats" do
+      output = agent.send(:format_session_metrics, agent.engine.metrics.snapshot.merge(cuts: 2, capped: 1))
+
+      expect(output).to include("retries:          0\nthinking cuts:    2\noutput cap hits:  1")
+    end
+
     it "shows the served model in /stats, with the name asked for when they differ" do
       metrics = agent.engine.metrics
       output = ->(snapshot) { agent.send(:format_session_metrics, metrics.snapshot.merge(snapshot)) }

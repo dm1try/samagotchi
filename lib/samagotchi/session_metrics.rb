@@ -16,7 +16,7 @@ module Samagotchi
   # paths and SessionManager background workers.
   #
   # Each finished turn leaves a record (status, timings, model, prompt and
-  # completion tokens, tool calls, iterations, retries); session totals are
+  # completion tokens, tool calls, iterations, retries, cuts); session totals are
   # sums over the records, kept as running counters as records are added, so
   # a worker that stops and wakes again (a new collector) keeps counting:
   # #session_id= loads the records already saved.
@@ -110,6 +110,11 @@ module Samagotchi
       :last_prefill_tps,
       :tps_source,
       :retries,
+      # Generations a plugin cut (stop_generation: loop-guard's thinking
+      # watch), not a steer's cut; and ones that ended at the output cap
+      # (finish_reason length). `retries` counts the network's only.
+      :cuts,
+      :capped,
       :model,
       :id,
       :started_at,
@@ -265,6 +270,7 @@ module Samagotchi
         end
       when :generation_completed, :generation_cancelled
         record_served_model(event)
+        count_cut(event)
         record_generation_completed
       when :generation_retrying
         # The retry streams from the start: its counts replace the ones so far.
@@ -364,6 +370,8 @@ module Samagotchi
         iterations_total: totals[:iterations] + (turn&.iteration_count || 0),
         gen_latency_ms: (totals[:gen_ms] + (turn&.gen_latency_accum || 0)).round,
         retries: totals[:retries] + (turn&.retries || 0),
+        cuts: totals[:cuts] + (turn&.cuts || 0),
+        capped: totals[:capped] + (turn&.capped || 0),
         started_at: @started_at,
         last_activity_at: @last_activity_at,
         # From the session's first start (an earlier process's too), to now.
@@ -448,6 +456,8 @@ module Samagotchi
           decode_ms_sum: 0,
           decode_tokens_sum: 0,
           retries: 0,
+          cuts: 0,
+          capped: 0,
           model: nil,
           id: event[:turn_id] || SecureRandom.uuid,
           started_at: now.iso8601(3),
@@ -497,6 +507,15 @@ module Samagotchi
         @served_model = event[:served_model]
         @served_model_for = event[:requested_model]
         @turn.model = event[:served_model] if @turn
+      end
+    end
+
+    def count_cut(event)
+      @mutex.synchronize do
+        next unless @turn
+
+        @turn.cuts += 1 if event[:stopped_by] && event[:stopped_by].to_s != "steer"
+        @turn.capped += 1 if event[:finish_reason].to_s == "length"
       end
     end
 
@@ -605,7 +624,9 @@ module Samagotchi
         tool_calls: turn.tool_calls,
         tool_errors: turn.tool_errors,
         iterations: turn.iteration_count,
-        retries: turn.retries
+        retries: turn.retries,
+        cuts: turn.cuts,
+        capped: turn.capped
       }.merge(turn_usage_fields(turn))
     end
 
@@ -857,7 +878,7 @@ module Samagotchi
     # (#snapshot adds the running turn). Caller holds the mutex.
     def reset_totals
       @totals = { cancellations: 0, prompt_sum: 0, completion_sum: 0, token_sources: [], iterations: 0,
-                  gen_ms: 0, retries: 0, by_tool: {}, tool_errors: 0, cached_sum: 0, reasoning_sum: 0,
+                  gen_ms: 0, retries: 0, cuts: 0, capped: 0, by_tool: {}, tool_errors: 0, cached_sum: 0, reasoning_sum: 0,
                   cost_sum: 0, decode_ms_sum: 0, decode_tokens_sum: 0, last_decode_tps: nil,
                   last_prefill_tps: nil, tps_source: nil }
     end
@@ -870,6 +891,8 @@ module Samagotchi
       totals[:iterations] += number(record[:iterations])
       totals[:gen_ms] += number(record[:gen_ms])
       totals[:retries] += number(record[:retries])
+      totals[:cuts] += number(record[:cuts])
+      totals[:capped] += number(record[:capped])
       totals[:cached_sum] += number(record[:cached_tokens_sum])
       totals[:reasoning_sum] += number(record[:reasoning_tokens])
       totals[:cost_sum] += number(record[:cost])
