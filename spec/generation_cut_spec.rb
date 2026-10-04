@@ -6,6 +6,8 @@ require "samagotchi/kernel_loop"
 require "samagotchi/cancellation_controller"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/llm/openai_chat"
+require "samagotchi/thinking_tails"
+require "tmpdir"
 require_relative "support/fake_provider_server"
 require_relative "support/test_kernel"
 
@@ -195,6 +197,23 @@ RSpec.describe "A cut generation" do
       expect(result).to be_canceled
       expect(result.cancellation_reason).to eq(:user)
       expect(completions.size).to eq(2)
+    end
+
+    # The loops' own events carry what ThinkingTails keeps.
+    it "leaves the cut thinking for ThinkingTails, the retry's not" do
+      stream_loop
+      stream_answer("PONG")
+      run_turn(sink(after: 4))
+
+      Dir.mktmpdir do |dir|
+        tails = Samagotchi::ThinkingTails.new(session_dir: -> { dir })
+        events.each { |event| tails.call(event) }
+        records = Samagotchi::ThinkingTails.read(dir)
+
+        expect(records.size).to eq(1)
+        expect(records.first).to include("iteration" => 1, "finish_reason" => "stopped", "stopped_by" => "loop-guard")
+        expect(records.first["tail"]).to include(loop_sentence).and(satisfy { |tail| !tail.include?("short") })
+      end
     end
 
     it "drops visible text the cut generation had streamed" do

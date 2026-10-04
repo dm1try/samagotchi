@@ -22,6 +22,7 @@ require_relative "session_commands"
 require_relative "plugin/loader"
 require_relative "log"
 require_relative "log_subscriber"
+require_relative "thinking_tails"
 require_relative "client"
 require_relative "host_registry"
 require_relative "llm/backend"
@@ -282,6 +283,10 @@ module Samagotchi
       @session_observer.subscribe(observer: @metrics)
       # And the event trail in the debug log (`turn` records).
       @session_observer.subscribe(observer: LogSubscriber.new(session_id: -> { @session&.id }))
+      # The thinking of cut and capped generations, kept in the session dir.
+      @session_observer.subscribe(observer: ThinkingTails.new(session_dir: lambda {
+        @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir)
+      }))
     end
 
     # A monotonically-increasing clock (wall clock can jump backwards; the idle

@@ -38,6 +38,19 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
     expect(events.count { |e| e[:type] == :generation_started }).to eq(2)
   end
 
+  # The capped generation's thinking is in no message: ThinkingTails keeps
+  # its tail next to the session's file.
+  it "keeps a length-capped empty generation's thinking in the session dir" do
+    capped = Samagotchi::LLM::ChatResponse.new(text: "", reasoning: "Let me write. Go. OK. ", tool_calls: [],
+                                               usage: Samagotchi::LLM::Usage.none, finish_reason: "length")
+
+    chat_turn(capped, FakeChatAdapter.text("PONG"))
+
+    records = Samagotchi::ThinkingTails.read(Samagotchi::Session.session_dir(session.id))
+    expect(records).to contain_exactly(include("iteration" => 1, "finish_reason" => "length", "tail" => "Let me write. Go. OK. "))
+    expect(session.messages.map { |m| m[:content].to_s }.join).not_to include("Let me write. Go.")
+  end
+
   it "presents the retried answer to after_turn hooks, not the empty one" do
     seen = nil
     engine.instance_variable_get(:@hooks).register(:after_turn) do |event|
