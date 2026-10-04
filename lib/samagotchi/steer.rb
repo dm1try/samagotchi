@@ -109,6 +109,15 @@ module Samagotchi
       (message[:kind] || message["kind"]).to_s == KIND
     end
 
+    # The sources of a steer a person sent (a continue card's text, from the
+    # user or a parent agent's chi answer), not a plugin's prod.
+    PERSON_SOURCES = %w[user parent_agent].freeze
+
+    # A steer a person sent: what a recap and a side question keep.
+    def person?(message)
+      steer?(message) && PERSON_SOURCES.include?((message[:source] || message["source"]).to_s)
+    end
+
     # A user message that is a prompt or the user's steering, not a steer:
     # what "the last prompt" and "user turns" count.
     def prompt?(message)

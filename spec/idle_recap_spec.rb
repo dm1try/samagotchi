@@ -65,6 +65,14 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(described_class.build(messages)).to eq("Hello\n\nHi")
       end
 
+      it "keeps a continue steer from the user or the parent agent: it was an instruction" do
+        messages = [{ "role" => "user", "content" => "fix the tests" },
+                    { "role" => "user", "kind" => "steer", "source" => "parent_agent", "content" => "leave div alone" },
+                    { "role" => "user", "kind" => "steer", "source" => "user", "content" => "skip the docs" },
+                    { "role" => "model", "content" => "Done" }]
+        expect(described_class.build(messages)).to eq("fix the tests\n\nleave div alone\n\nskip the docs\n\nDone")
+      end
+
       it "names a user message's images, and never carries their bytes" do
         ref = { "file" => "images/0123456789abcdef.png", "name" => "shot.png", "mime" => "image/png", "width" => 3, "height" => 2 }
         messages = [{ "role" => "user", "content" => "what is this?", "images" => [ref] },

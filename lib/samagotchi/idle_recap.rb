@@ -63,8 +63,10 @@ module Samagotchi
 
           case message["role"]
           when "user"
-            # A plugin's steer is a prod to the model, not what the user said.
-            next nil if Steer.steer?(message)
+            # A plugin's steer is a prod to the model, not what the user said;
+            # a continue steer from the user or the parent agent is an
+            # instruction, kept.
+            next nil if Steer.steer?(message) && !Steer.person?(message)
 
             # An image is a line naming it (refs only, never its bytes), unless
             # the text is only the web's placeholder naming it already.

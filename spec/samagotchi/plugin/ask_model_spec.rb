@@ -41,6 +41,16 @@ RSpec.describe "ctx.ask_model" do
     expect(options).to eq(timeout: 120.0, max_tokens: Samagotchi::Plugin::Context::ASK_MAX_TOKENS, cancel_controller: nil)
   end
 
+  it "shows a continue steer from the user or the parent agent as a User line, never a plugin's steer" do
+    messages = [{ role: "user", content: "fix it" },
+                { role: "user", kind: "steer", source: "parent_agent", content: "leave div alone" },
+                { role: "user", kind: "steer", source: "check-in", content: "status?" }]
+    user = Samagotchi::Plugin::SideQuestion.request(messages: messages, prompt: "q").last[:content]
+
+    expect(user).to include("User: fix it\n\nUser: leave div alone\n</conversation>")
+    expect(user).not_to include("status?")
+  end
+
   it "takes its own system text, limit, timeout and cancel controller" do
     controller = Object.new
     ctx.ask_model(messages: [], prompt: "q", system: "be terse", timeout: 5, max_tokens: 50, cancel: controller)

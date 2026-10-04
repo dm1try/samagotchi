@@ -174,6 +174,13 @@ RSpec.describe Samagotchi::Steer do
     end
   end
 
+  it ".person? is a steer from the user or the parent agent, with either key kind" do
+    expect(described_class.person?({ kind: "steer", source: "user" })).to be(true)
+    expect(described_class.person?({ "kind" => "steer", "source" => "parent_agent" })).to be(true)
+    expect(described_class.person?({ "kind" => "steer", "source" => "check-in" })).to be(false)
+    expect(described_class.person?({ kind: "steer", source: "" })).to be(false)
+  end
+
   it ".turn_prompt? is a prompt that started a turn: not a steer, not input merged into a running turn" do
     merged = described_class.merge(["also this"]).messages.first
     expect(described_class.input?(merged)).to be(true)
