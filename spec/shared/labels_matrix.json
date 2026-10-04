@@ -61,11 +61,12 @@
     ]
   },
   "steer_senders": {
-    "note": "Who a steer row names as its sender (Formatting#steer_sender, the TUI's \"<who>> nudged: …\"; format.js steerSender, the web's \"<who> nudged the model\"): a plugin's label as is, chi's sender ids in words. No source: the TUI says \"plugin\", the web names no one.",
+    "note": "Who a steer row names as its sender (Formatting#steer_sender, the TUI's \"<who>> nudged: …\"; format.js steerSender, the web's \"<who> nudged the model\"): a plugin's label as is, chi's sender ids in words (plugin_send, ctx.sessions.send: \"plugin\"; user stays as is). No source: the TUI says \"plugin\", the web names no one.",
     "cases": [
       { "source": "check-in", "expected": "check-in" },
       { "source": "parent_agent", "expected": "parent agent" },
       { "source": "chi_send", "expected": "chi send" },
+      { "source": "plugin_send", "expected": "plugin" },
       { "source": "", "expected": "" }
     ]
   },

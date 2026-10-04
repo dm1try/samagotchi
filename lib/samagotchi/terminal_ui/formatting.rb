@@ -43,7 +43,7 @@ module Samagotchi
       # Who a steer names as its sender: a plugin's own label, chi's sender
       # ids in words (the web's format.js steerSender agrees;
       # spec/shared/labels_matrix.json). "": no one named.
-      STEER_SENDERS = { "parent_agent" => "parent agent", "chi_send" => "chi send" }.freeze
+      STEER_SENDERS = { "parent_agent" => "parent agent", "chi_send" => "chi send", "plugin_send" => "plugin" }.freeze
 
       def steer_sender(source)
         STEER_SENDERS.fetch(source.to_s, source.to_s)

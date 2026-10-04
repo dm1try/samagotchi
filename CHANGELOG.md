@@ -32,7 +32,7 @@ and commands may change between minor versions. How releases are made:
   sentence ("I'll write the spec file now.") in the cycle: 48 sentences in a row with 12 or fewer different ones are
   a loop. New settings `thinking.window_sentences` (48) and `thinking.window_distinct` (12).
 - A steer row names chi's senders in words: the web's row and trail flash and the terminal's nudged line say
-  `parent agent` and `chi send` instead of the raw `parent_agent` / `chi_send`.
+  `parent agent`, `chi send` and `plugin` instead of the raw `parent_agent` / `chi_send` / `plugin_send`.
 - Thinking off on Gemma 4 no longer warns that off wasn't honoured: its empty thought (whitespace alone) is not
   counted as thinking.
 - An OpenRouter 402 whose `metadata.reason` is `weight_exceeds_budget` (the request alone is larger than the
