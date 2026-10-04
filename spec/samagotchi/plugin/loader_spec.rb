@@ -130,6 +130,18 @@ RSpec.describe Samagotchi::Plugin::Loader do
       expect_not_loaded(eng, /SyntaxError/)
     end
 
+    it "reports a plugin that calls exit as it loads" do
+      install_plugin("marker", "exit 1\n")
+      eng = nil
+      expect { eng = engine }.to output(/not loaded: SystemExit/).to_stderr
+      expect_not_loaded(eng, /SystemExit/)
+    end
+
+    it "lets a signal raised as a plugin loads reach chi" do
+      install_plugin("marker", "raise SignalException, \"TERM\"\n")
+      expect { engine }.to raise_error(SignalException, "SIGTERM")
+    end
+
     it "reports a class without #register" do
       install_plugin("marker", "class Plugin; end\n")
       eng = nil

@@ -73,7 +73,7 @@ module Samagotchi
         true
       rescue Exception => e # rubocop:disable Lint/RescueException -- a plugin's SyntaxError or exit must not stop chi
         api&.abort!
-        raise if e.is_a?(Interrupt)
+        raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 
         failed(bundle_name, basename, "#{e.class}: #{e.message}", failures)
       end

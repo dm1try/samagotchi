@@ -44,6 +44,18 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
     described_class.new(client: client)
   end
 
+  # Engine's own rescues around bundle hook loading: a Ctrl-C reaches the
+  # caller, a hook's exit is reported and chi goes on.
+  it "lets a Ctrl-C while bundle hooks load reach the caller, and contains an exit" do
+    stub_config({})
+    installed("k")
+    allow(Samagotchi::Hooks::BundleLoader).to receive(:load).and_raise(Interrupt)
+    expect { described_class.new(client: client) }.to raise_error(Interrupt)
+
+    allow(Samagotchi::Hooks::BundleLoader).to receive(:load).and_raise(SystemExit)
+    expect { described_class.new(client: client) }.to output(/bundle 'k' failed to load hooks: SystemExit/).to_stderr
+  end
+
   it "ignores a bundles: section that is not a mapping, with one warning" do
     stub_config({ "bundles" => ["known-names"] })
     installed("known-names")

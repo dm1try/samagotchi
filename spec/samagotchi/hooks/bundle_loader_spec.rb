@@ -326,5 +326,27 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       end.to output(/failed to load: SyntaxError/).to_stderr
       expect(failures2.required.first.reason).to start_with("SyntaxError")
     end
+
+    # A hook's exit is a failure like any other; Ctrl-C and signals are the
+    # user's, so they reach chi.
+    it "contains a hook that calls exit as it loads" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "quits.rb", "exit 1\n")
+      registry = Samagotchi::Hooks::Registry.new
+      expect do
+        described_class.load(bundle_name: "exit-bundle", hooks_dir: hooks_dir, registry: registry,
+                             metadata: { "quits.rb" => { "event" => "before_tool_call" } })
+      end.to output(/quits\.rb' failed to load: SystemExit/).to_stderr
+      expect(registry.size).to eq(0)
+    end
+
+    it "lets an Interrupt raised as a hook loads reach chi" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "ctrl_c.rb", "raise Interrupt\n")
+      expect do
+        described_class.load(bundle_name: "int-bundle", hooks_dir: hooks_dir, registry: Samagotchi::Hooks::Registry.new,
+                             metadata: { "ctrl_c.rb" => { "event" => "before_tool_call" } })
+      end.to raise_error(Interrupt)
+    end
   end
 end

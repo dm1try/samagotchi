@@ -96,7 +96,9 @@ module Samagotchi
                                    fields: { bundle: bundle_name }) { |event| plugin.call(event) }
               registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: priority, &handler)
               loaded += 1
-            rescue Exception => e
+            rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
+              raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
+
               Log.error(:hooks, "bundle_hook_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' failed to load: #{e.class}: #{e.message}", bundle: bundle_name, hook: basename.to_s, error: e.class.name)
               failures&.add(what, "#{e.class}: #{e.message}", required: fail_closed)
             end

@@ -2147,11 +2147,15 @@ module Samagotchi
           Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: data[:hooks], registry: @hooks,
                                    failures: @guardrail_failures, settings: settings[bundle_name.to_s] || {},
                                    requires_chi: data[:requires_chi])
-        rescue Exception => e
+        rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
+          raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
+
           Log.error(:hooks, "bundle_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}", bundle: bundle_name, error: e.class.name)
         end
       end
-    rescue Exception => e
+    rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
+      raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
+
       Log.error(:hooks, "bundles_load_failed", echo: "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}", error: e.class.name)
     end
 
