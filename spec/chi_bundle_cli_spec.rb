@@ -42,7 +42,8 @@ RSpec.describe "chi bundle (CLI)" do
       build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
         Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip).
         --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
-        FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones).
+        FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones);
+        a named memory brings its model overlays (<name>.<model-key>.md).
 
       trash [--empty] [--dry-run] [--older-than DAYS]
         List bundle trash (moved files from uninstalls/upgrades).
@@ -64,7 +65,8 @@ RSpec.describe "chi bundle (CLI)" do
       build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
         Build local memories and installed hooks into a shareable bundle (dir or zip).
         --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
-        FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones).
+        FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones);
+        a named memory brings its model overlays (<name>.<model-key>.md).
 
       Examples:
         chi bundle build --scope system
