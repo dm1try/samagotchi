@@ -369,9 +369,9 @@ after an idle exit) gets that process's environment, so put a lasting choice in 
 
 ## Sampling
 
-chi asks chat hosts (`api: openai`) for greedy decoding (`temperature: 0.0`) and sends native hosts no sampling
-fields, so their server's defaults apply (llama.cpp: temperature 0.8). `sampling:` on a `hosts:` entry or a `models:`
-entry sets request fields for the model's turns:
+chi sends no sampling fields by default, to chat hosts (`api: openai`) or native ones, so each model runs at its
+provider's defaults (llama.cpp: temperature 0.8; vLLM takes them from the model's `generation_config.json`).
+`sampling:` on a `hosts:` entry or a `models:` entry sets request fields for the model's turns:
 
 ```yaml
 hosts:
@@ -394,15 +394,16 @@ models:
 - A `models:` entry's fields win over its host's, field by field (the host can set a penalty and the model move only
   the temperature). The entry is found the way `profile:` is (the name as typed, alias-resolved or without its host
   prefix).
-- `temperature: null` (or `~`) sends no temperature, so the provider's default applies (vLLM takes it from the
-  model's `generation_config.json`).
+- `temperature: null` (or `~`) in a model's entry takes back a host's temperature, so the provider's default applies;
+  it also keeps the empty-answer retry (below) at that default.
 - Fields chi sets itself are refused with a warning: `model`, `messages`, `prompt`, `stream`, `stream_options`,
   `tools`, `tool_choice`, `stop`, `n_predict`, `max_tokens`, `n`, `parallel_tool_calls`, `response_format`,
   `cache_prompt`. A `sampling:` that isn't a map warns and is skipped.
-- Greedy decoding can make a heavily quantized thinking model loop in its reasoning ("Let me write the reply…"
-  for minutes) or end with an empty answer. Qwen's own advice for its thinking models is `temperature: 0.6,
-  top_p: 0.95` (not greedy), with `presence_penalty` between 0 and 2 against endless repetition.
-- The idle recap and side questions keep their own short, deterministic settings.
+- Greedy decoding (`temperature: 0`) can make a thinking model loop in its reasoning ("Let me write the reply…"
+  for minutes) or end with an empty answer; set it only for a model you have watched. Qwen's own advice for its
+  thinking models is `temperature: 0.6, top_p: 0.95`, with `presence_penalty` between 0 and 2 against endless
+  repetition.
+- The idle recap and side questions don't use `sampling:`; they send their own short output cap and no temperature.
 
 `/model` shows what applies (`sampling: temperature=0.6 presence_penalty=1.5 (hosts.work)`), and each request's
 `stream` line in the debug log carries a `sampling=` field with what was sent. The fields are read every turn, so a

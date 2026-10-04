@@ -666,8 +666,9 @@ module Samagotchi
     # A `sampling:` setting (hosts entry or models: entry): request parameters
     # passed through to the provider as written (keys symbolized, nested maps
     # too, so e.g. chat_template_kwargs works). A null value means "don't
-    # send it" (drops chi's own temperature default). Not a map: warns once,
-    # nil. Reserved keys warn once and are dropped. nil when nothing is left.
+    # send it" (a null temperature also keeps the empty-answer retry from
+    # setting one). Not a map: warns once, nil. Reserved keys warn once and
+    # are dropped. nil when nothing is left.
     def sampling_map(value, where)
       return nil if value.nil?
 

@@ -13,8 +13,8 @@ module Samagotchi
   # when the retries run out.
   class EmptyAnswerRetry
     MAX = 3
-    # Greedy decoding on a near-identical prompt would likely loop again:
-    # the retry runs at this temperature unless one is configured.
+    # The same (or greedy) decoding on a near-identical prompt would likely
+    # loop again: the retry runs at this temperature unless one is configured.
     TEMPERATURE = 0.6
     # A generation cut at the provider's output cap (finish_reason length)
     # is retried unless the context is this full.

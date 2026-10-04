@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Chat hosts (`api: openai`) are no longer asked for `temperature: 0.0`: chi sends no temperature unless one is
+  configured, so each model runs at its provider's default (as native llama.cpp hosts already did). Greedy decoding
+  made DeepSeek v4.1-flash loop in its thinking. The idle recap and `/btw` follow suit. Set `sampling: {temperature:
+  …}` on a `hosts:` or `models:` entry to pin one; the empty-answer retry still runs at 0.6 unless one is set.
+
 ### Fixed
 
 - A steer row names chi's senders in words: the web's row and trail flash and the terminal's nudged line say

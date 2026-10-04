@@ -84,7 +84,7 @@ RSpec.describe "A cut generation" do
       expect(completions[1].body).to include(Samagotchi::Steer::USER_HEADER, "skip the tests")
       expect(completions[1].body).not_to include("check the file again")
       expect(completions[1].body).not_to include(nudge[:content])
-      expect(completions.last.json["temperature"]).not_to eq(0.6)
+      expect(completions.map(&:json)).to all(satisfy { |json| !json.key?("temperature") })
       expect(of_type(:empty_answer_retry)).to be_empty
       expect(of_type(:generation_completed).first).to include(iteration: 1, stopped_by: "steer")
       expect(of_type(:pending_input_merged)).to contain_exactly(include(iteration: 1, count: 1))
@@ -136,6 +136,7 @@ RSpec.describe "A cut generation" do
       expect(completions.size).to eq(2)
       expect(last_input(completions[1])).to eq(nudge[:content])
       expect(completions[1].body).not_to include("check the file again")
+      expect(completions.first.json).not_to have_key("temperature")
       expect(completions.last.json["temperature"]).to eq(0.6)
       expect(result.conversation.first(2)).to eq([{ role: "user", content: "hi" }, nudge])
       expect(result.conversation.map { |m| m[:role] }).to eq(%w[user system model])

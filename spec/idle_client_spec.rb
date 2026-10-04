@@ -86,14 +86,14 @@ RSpec.describe Samagotchi::IdleClient do
       expect(request_body["stream"]).to be(false)
     end
 
-    it "sends a zero-temperature user message with the configured model, bounded output and no tools" do
+    it "sends a user message with the configured model, bounded output, no tools and no temperature" do
       reply(content: "ok")
 
       client.summarize("summarize this")
 
-      expect(request_body).to include("model" => "gemma-small", "temperature" => 0.0, "max_tokens" => 512,
+      expect(request_body).to include("model" => "gemma-small", "max_tokens" => 512,
                                       "messages" => [{ "role" => "user", "content" => "summarize this" }])
-      expect(request_body).not_to include("tools")
+      expect(request_body).not_to include("tools", "temperature")
     end
 
     # A reasoning model spent a 256-token budget on thinking and the recap

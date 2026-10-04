@@ -240,7 +240,6 @@ module Samagotchi
         body = {
           model: model,
           messages: cache_breakpoints(Array(messages).map { |message| wire_message(message) }, model),
-          temperature: 0.0,
           stream: @stream
         }
         body[:stream_options] = { include_usage: true } if @stream
@@ -249,7 +248,9 @@ module Samagotchi
           body[:tools] = tools
           body[:tool_choice] = "auto"
         end
-        # A configured value replaces chi's own (temperature, max_tokens); nil drops it.
+        # No temperature unless configured: each model runs at its provider's
+        # default (greedy decoding made thinking models loop). A configured
+        # value replaces chi's own (max_tokens); nil drops it.
         body.merge(options || {}).compact
       end
 
@@ -264,7 +265,7 @@ module Samagotchi
       end
 
       # The body's fields beyond the conversation and the stream, for the
-      # log line: "temperature=0.6 presence_penalty=1.5".
+      # log line: "temperature=0.6 presence_penalty=1.5", nil for none.
       def sampling_summary(body)
         SamplingSettings.log_text(body.except(:model, :messages, :stream, :stream_options, :tools, :tool_choice))
       end

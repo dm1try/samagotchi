@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(adapter.chat(messages: messages, tools: [], model: "m").provider).to be_nil
     end
 
-    it "sends the chat request: streamed with usage, the tools, temperature 0, no auth header" do
+    it "sends the chat request: streamed with usage, the tools, no temperature, no auth header" do
       replay("text_stream.sse")
 
       adapter.chat(messages: messages, tools: tools, model: "m")
@@ -95,9 +95,10 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(request.path).to eq("/v1/chat/completions")
       expect(request.json).to include(
         "model" => "m", "stream" => true, "stream_options" => { "include_usage" => true },
-        "tool_choice" => "auto", "temperature" => 0.0,
+        "tool_choice" => "auto",
         "messages" => [{ "role" => "system", "content" => "sys" }, { "role" => "user", "content" => "hi" }]
       )
+      expect(request.json).not_to have_key("temperature")
       expect(request.json["tools"].first.dig("function", "name")).to eq("execute")
       expect(request.header("authorization")).to be_nil
     end
@@ -115,7 +116,7 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
         File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.event == "stream" } }
       end
 
-      it "sends configured keys, a configured temperature replacing 0.0 (one temperature key), and logs them" do
+      it "sends configured keys, a configured temperature (one temperature key), and logs them" do
         Samagotchi::Log.configure(path: log_path, level: :info)
         replay("text_stream.sse")
 
@@ -139,15 +140,15 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
         expect(server.requests.last.json).not_to have_key("temperature")
       end
 
-      it "sends and logs temperature 0.0 without options" do
+      it "sends no sampling fields without options (the model's own default temperature), and logs none" do
         Samagotchi::Log.configure(path: log_path, level: :info)
         replay("text_stream.sse")
 
         adapter.chat(messages: messages, tools: tools, model: "m")
 
-        expect(server.requests.last.json.keys).to contain_exactly("model", "messages", "temperature", "stream",
+        expect(server.requests.last.json.keys).to contain_exactly("model", "messages", "stream",
                                                                   "stream_options", "tools", "tool_choice")
-        expect(stream_lines.last.fields).to include("sampling" => "temperature=0.0")
+        expect(stream_lines.last.fields).not_to have_key("sampling")
         expect(stream_lines.last.fields).not_to have_key("cache")
       end
 
