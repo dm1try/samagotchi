@@ -310,7 +310,11 @@ module Samagotchi
         # type may otherwise show only after a re-login).
         @runner.run([LSREGISTER, "-f", app_path])
         @runner.run([PBS, "-update"])
-        @runner.run(["open", "-g", app_path])
+        # open hands the app its own env, so the install shell's
+        # (SAMAGOTCHI_* knobs, tokens) would stay in the helper and in every
+        # chi it runs until a relaunch. Through env -i the app gets launchd's
+        # bare env, as at login; launch.json carries what chi needs.
+        @runner.run(["/usr/bin/env", "-i", "HOME=#{@env["HOME"] || Dir.home}", "/usr/bin/open", "-g", app_path])
       end
 
       def quit

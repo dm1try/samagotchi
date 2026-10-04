@@ -57,6 +57,9 @@ RSpec.describe Samagotchi::Desktop::MacOS do
   let(:register) { true }
   let(:app) { File.join(app_dir, "Chi Helper.app") }
   let(:launch_file) { File.join(support_dir, "launch.json") }
+  # open hands its env to the app: started through env -i, the app gets
+  # launchd's bare one, as at login, not the install shell's.
+  let(:open_app) { ["/usr/bin/env", "-i", "HOME=#{tmp}", "/usr/bin/open", "-g", app] }
 
   before do
     File.write(File.join(sources_dir, "App.swift"), "// app")
@@ -140,7 +143,7 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(swiftc.last).to end_with(".chi-helper-build/Contents/MacOS/ChiHelper")
       expect(runner.calls).to include(["codesign", "--force", "--sign", "-", File.join(app_dir, ".chi-helper-build")])
       expect(runner.calls).to include([described_class::PBS, "-update"], [described_class::LSREGISTER, "-f", app],
-                                      ["open", "-g", app])
+                                      open_app)
       expect(runner.programs.first).to eq("xcrun")
       # The app registered first, so pbs reads the Service types it has now.
       expect(runner.calls.index([described_class::LSREGISTER, "-f", app]))
@@ -158,7 +161,7 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       runner.calls.clear
       macos.install(force: true)
       expect(runner.programs.index("pkill")).to be < runner.programs.index("codesign")
-      expect(runner.calls.last).to eq(["open", "-g", app])
+      expect(runner.calls.last).to eq(open_app)
     end
 
     it "refuses an existing copy without --force, touching nothing" do
@@ -274,7 +277,7 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       macos.upgrade
       expect(runner.calls.first).to eq([File.join(app, "Contents", "MacOS", "ChiHelper"), "--login", "status"])
       expect(runner.programs.index("pkill")).to be < runner.programs.index("codesign")
-      expect(runner.calls.last).to eq(["open", "-g", app])
+      expect(runner.calls.last).to eq(open_app)
     end
 
     it "installs when nothing is there yet" do

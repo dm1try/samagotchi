@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Desktop: `chi desktop install` starts the helper with a bare env, so `SAMAGOTCHI_*` settings (and anything else)
+  from the install shell no longer stick to the helper and the chi it runs until a relaunch; run `chi desktop upgrade`.
+
 ## [0.27.0] - 2026-10-04
 
 ### Added
