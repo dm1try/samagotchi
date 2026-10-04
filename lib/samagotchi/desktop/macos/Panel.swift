@@ -20,6 +20,9 @@ final class PanelModel: ObservableObject {
   /// The selection or clipboard: the quoted context of a message, or a note.
   @Published var text = ""
   @Published var source = ""
+  /// The path the opening text and images took: "clipboard" (the hotkey)
+  /// or "selection" (the Service); "" when the panel opened empty.
+  @Published var origin = ""
   /// Sent as `--image` with a message; notes are text only.
   @Published var images: [PanelImage] = []
   /// The thumbnail under the pointer (shows its ✕). Kept here, not in a
@@ -535,9 +538,17 @@ struct PanelView: View {
       .padding(.horizontal, 8).padding(.vertical, 4)
       .background(Capsule().fill(Color.primary.opacity(0.07)))
 
-      Text(byteLabel)
-        .font(.system(size: 11).monospacedDigit())
-        .foregroundColor(model.bytes > noteCap ? .red : .secondary)
+      HStack(spacing: 0) {
+        if !model.origin.isEmpty {
+          Text("from \(model.origin) · ").foregroundColor(.secondary)
+            .help(model.origin == "clipboard" ? "opened with the hotkey: the text and images are the clipboard's"
+                                              : "opened with Send to chi: the text and images are the selection")
+        }
+        Text(byteLabel).foregroundColor(model.bytes > noteCap ? .red : .secondary)
+      }
+      .font(.system(size: 11).monospacedDigit())
+      .lineLimit(1)
+      .fixedSize()
 
       Text(model.message)
         .font(.system(size: 11))
@@ -755,8 +766,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     return true
   }
 
+  /// @param origin "clipboard" or "selection": where text and images came from
   /// @param returnTo the app to give focus back to on close
-  func show(text: String, images: [PanelImage] = [], source: String, returnTo app: NSRunningApplication?) {
+  func show(text: String, images: [PanelImage] = [], origin: String, source: String, returnTo app: NSRunningApplication?) {
     returnTo = app
     // A show on an open panel resets it without a close.
     dropImages()
@@ -764,6 +776,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     model.images = []
     model.add(images)
     model.text = text
+    model.origin = text.isEmpty && images.isEmpty ? "" : origin
     model.source = source
     model.message = ""
     model.newSelected = false

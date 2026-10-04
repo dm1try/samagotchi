@@ -18,7 +18,7 @@ final class ServiceProvider: NSObject {
       error.pointee = "No text or image in the selection" as NSString
       return
     }
-    app?.open(text: text, images: images)
+    app?.open(text: text, images: images, origin: "selection")
   }
 }
 
@@ -60,12 +60,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// The hotkey doesn't activate us, so the frontmost app is the source.
   func openFromClipboard() {
     let (text, images) = ImageIntake.read(NSPasteboard.general)
-    open(text: text, images: images)
+    open(text: text, images: images, origin: "clipboard")
   }
 
-  func open(text: String, images: [PanelImage] = []) {
+  /// @param origin "clipboard" (the hotkey) or "selection" (the Service)
+  func open(text: String, images: [PanelImage] = [], origin: String) {
     let from = sourceApp
-    panel.show(text: text, images: images, source: from?.localizedName?.lowercased() ?? "desktop", returnTo: from)
+    panel.show(text: text, images: images, origin: origin, source: from?.localizedName?.lowercased() ?? "desktop",
+               returnTo: from)
   }
 }
 

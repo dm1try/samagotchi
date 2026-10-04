@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Desktop: the panel's footer says where its text and images came from, "from clipboard" (the hotkey) or "from
+  selection" (Send to chi); run `chi desktop upgrade`.
+
 ### Fixed
 
 - Desktop: `chi desktop install` starts the helper with a bare env, so `SAMAGOTCHI_*` settings (and anything else)
