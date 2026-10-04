@@ -1007,10 +1007,12 @@ module Samagotchi
       # Steering merges text only: a line with images runs as the next turn.
       return image_line_waits if ImageInput.extract(line).any?
 
+      epoch = @engine.input_epoch
       @pending_input_queue.push(line.strip)
-      # The user's line cuts a generation that has only been thinking for
-      # long (steer.cut_after): the model starts the step again with it.
-      @engine.cut_for_steer(nil)
+      # The user's line cuts a generation that has streamed only thinking
+      # for long (steer.cut_after), now or once it has: the model starts the
+      # step again with it.
+      @engine.cut_for_steer(nil, epoch: epoch)
       true
     end
 

@@ -11,7 +11,8 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - `steer.cut_after` (default 20 s, `0` = never): a message for a running turn from you, `chi send` or a parent
-  agent cuts a generation that has streamed only thinking for that long (counted from its first thinking token).
+  agent cuts a generation that has streamed only thinking for that long (counted from its first thinking token;
+  a message that came earlier cuts once the thinking gets there).
   The model starts the step again with the message, and a `↪ cut in for your message` row marks it. Plugins'
   steers never cut. Only the cut thinking is lost (llama.cpp re-reads the few tokens after its cached prompt).
 

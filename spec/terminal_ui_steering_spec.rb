@@ -49,7 +49,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
 
     agent.run_engine_turn(session, "go")
 
-    expect(engine).to have_received(:cut_for_steer).with(nil).once
+    expect(engine).to have_received(:cut_for_steer).with(nil, epoch: 0).once
   end
 
   it "runs a line that came after the last iteration as the next turn" do

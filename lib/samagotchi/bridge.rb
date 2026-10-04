@@ -781,6 +781,8 @@ module Samagotchi
       end
 
       enqueued_id = SecureRandom.uuid
+      # Before it is queued: a drain after this may have taken it (#cut_for_steer).
+      epoch = @engine.input_epoch
       # Write and announce with the event log held: the worker can't emit
       # this turn's :turn_started (or merge it mid-turn) before
       # :turn_enqueued, and a failed write announces nothing.
@@ -803,7 +805,7 @@ module Samagotchi
       # Queued (outside the event lock): a running generation that has only
       # been thinking for long is cut for it, unless a plugin sent it. An
       # image input never merges mid-turn, so it never cuts.
-      @engine.cut_for_steer(Steer.source_for_client(client_id)) if images.empty?
+      @engine.cut_for_steer(Steer.source_for_client(client_id), epoch: epoch) if images.empty?
       [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id }]
     end
 

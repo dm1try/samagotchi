@@ -277,7 +277,7 @@ of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 a prompt, also while a turn runs (it merges into that turn as steering: the model
 is told it is a steer and who sent it). Steering waits for the model's next step,
 unless the model has streamed only thinking for `steer.cut_after` seconds (default
-20): then that generation is cut and the step starts again with your message, marked
+20), now or while your message waits: then that generation is cut and the step starts again with your message, marked
 `↪ cut in for your message` (see
 [configuration.md](configuration.md#llama-network-retry-behavior)). The
 first answer to an `ask_user_question` wins; the other UIs close their widget.

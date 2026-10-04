@@ -650,7 +650,8 @@ A message for a running turn waits for the next step, unless the model's generat
 `steer.cut_after` seconds (default `20`, env `SAMAGOTCHI_STEER_CUT_AFTER`, `0` = never; counted from its first
 thinking token, so the wait for a busy server doesn't count) and still does: then a message from you (the terminal,
 the web), `chi send` or a parent agent cuts that generation, and the model starts the step again with the message
-(`↪ cut in for your message`). Such a cut spends no `retry.empty_answer` attempt and sends no
+(`↪ cut in for your message`). A message that comes earlier cuts once the thinking passes `steer.cut_after`, unless
+the step ends first and the message goes in there. Such a cut spends no `retry.empty_answer` attempt and sends no
 hidden note; only the cut thinking is lost. A generation that has streamed visible text or a tool call is never cut,
 and a plugin's steer (`ctx.steer`, `ctx.sessions.send`) never cuts.
 

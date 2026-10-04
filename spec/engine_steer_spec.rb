@@ -257,4 +257,100 @@ RSpec.describe Samagotchi::Engine, "#steer" do
       expect(cut_during(nil, between: true)).to eq([false, nil])
     end
   end
+
+  # A cut-eligible message that came before the generation had thought for
+  # steer.cut_after waits (WaitingSteer) and cuts once the thinking passes it.
+  describe "a message that came too early to cut" do
+    let(:now) { [1000.0] }
+    let(:steer_cut) { ->(source) { { by: "steer", steer: true, source: source, reason: "a new message" } } }
+
+    before { allow(engine).to receive(:monotonic_now) { now.first } }
+
+    # Plays +steps+ inside one turn; returns {answers:, cuts:} (each
+    # generation's cut detail, nil when it wasn't cut).
+    #   [:gen] a generation starts (the previous one ends)
+    #   [:think, seconds] time passes, then a thinking chunk
+    #   [:chunk, lanes] a chunk with +lanes+ (text:, tool_call:)
+    #   [:steer, source] Engine#cut_for_steer(source), its epoch read first
+    #   [:steer_stale, source] the same, with a drain between the epoch and it
+    #   [:drain] the loop drains input at a boundary
+    def play(*steps, pending: -> { ["a line"] })
+      answers = []
+      cuts = []
+      allow(kernel).to receive(:run) do |_messages, on_stream_event:, cancel_controller:, pending_input:, **|
+        steps.slice_before([:gen]).each do |generation|
+          cancel_controller.generation do |child|
+            generation.each do |kind, arg|
+              case kind
+              when :gen then on_stream_event.call({ type: :generation_started, iteration: cuts.size + 1 })
+              when :think
+                now[0] += arg
+                on_stream_event.call({ type: :generation_chunk, iteration: 1, content: "x", text: "", thinking: "x" })
+              when :chunk then on_stream_event.call({ type: :generation_chunk, iteration: 1, content: "", thinking: "" }.merge(arg))
+              when :steer then answers << engine.cut_for_steer(arg, epoch: engine.input_epoch)
+              when :steer_stale
+                epoch = engine.input_epoch
+                pending_input.call(at_answer: false)
+                answers << engine.cut_for_steer(arg, epoch: epoch)
+              when :drain then pending_input.call(at_answer: false)
+              end
+            end
+            cuts << (child.cancelled? ? child.detail : nil)
+            on_stream_event.call({ type: :generation_completed, iteration: cuts.size })
+          end
+        end
+        kernel_result
+      end
+      engine.run_turn(session, "hi", pending_input: pending)
+      { answers: answers, cuts: cuts }
+    end
+
+    it "cuts once the thinking passes steer.cut_after, with the message's source, and only once" do
+      result = play([:gen], [:think, 0], [:think, 5], [:steer, "chi_send"], [:think, 5], [:think, 9], [:think, 2], [:think, 2])
+      expect(result).to eq(answers: [false], cuts: [steer_cut.call("chi_send")])
+    end
+
+    it "logs the deferred cut as one that waited" do
+      allow(Samagotchi::Log).to receive(:info).and_call_original
+      play([:gen], [:think, 0], [:think, 5], [:steer, nil], [:think, 16])
+      expect(Samagotchi::Log).to have_received(:info).with(:turn, "steer_cut", source: "", age: 21.0, waited: true)
+    end
+
+    it "waits across a generation that ends with text into the next one, and cuts there" do
+      result = play([:gen], [:think, 0], [:steer, nil], [:chunk, { text: "Answer" }], [:think, 30],
+                    [:gen], [:think, 0], [:think, 21])
+      expect(result[:cuts]).to eq([nil, steer_cut.call("")])
+    end
+
+    it "doesn't cut once a drain took the message to the model" do
+      result = play([:gen], [:think, 0], [:steer, nil], [:drain], [:gen], [:think, 0], [:think, 30])
+      expect(result[:cuts]).to eq([nil, nil])
+    end
+
+    it "keeps waiting when a drain finds nothing (the message isn't in yet)" do
+      result = play([:gen], [:think, 0], [:steer, nil], [:drain], [:think, 25], pending: -> { [] })
+      expect(result[:cuts]).to eq([steer_cut.call("")])
+    end
+
+    it "doesn't wait when a drain took input after the message was queued (it may be delivered)" do
+      result = play([:gen], [:think, 0], [:steer_stale, nil], [:think, 30])
+      expect(result[:cuts]).to eq([nil])
+    end
+
+    it "never waits for a plugin's message, nor with steer.cut_after 0" do
+      expect(play([:gen], [:think, 0], [:steer, "plugin_send"], [:think, 30])[:cuts]).to eq([nil])
+      with_env("SAMAGOTCHI_STEER_CUT_AFTER" => "0") do
+        expect(play([:gen], [:think, 0], [:steer, nil], [:think, 30])[:cuts]).to eq([nil])
+      end
+    end
+
+    it "doesn't cut a generation that streams a tool call or text, however long it thought" do
+      expect(play([:gen], [:think, 0], [:steer, nil], [:chunk, { tool_call: true }], [:think, 30])[:cuts]).to eq([nil])
+    end
+
+    it "stops waiting when the turn ends" do
+      play([:gen], [:think, 0], [:steer, nil])
+      expect(play([:gen], [:think, 0], [:think, 30], pending: -> { [] })[:cuts]).to eq([nil])
+    end
+  end
 end

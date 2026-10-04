@@ -48,6 +48,7 @@ require_relative "muted_memories"
 require_relative "used_memories"
 require_relative "turn_state"
 require_relative "generation_phase"
+require_relative "waiting_steer"
 require_relative "bundle_needs"
 require_relative "model_overlay"
 require_relative "served_model"
@@ -106,6 +107,8 @@ module Samagotchi
       @turn_state = TurnState.new(clock: -> { monotonic_now })
       # What the running generation streams: whether a steer may cut it.
       @generation_phase = GenerationPhase.new(clock: -> { monotonic_now })
+      # A message that may cut it but came too early: it cuts later.
+      @waiting_steer = WaitingSteer.new
       @scratch = scratch
       @no_interrupt = no_interrupt
       @chat_backend = nil
@@ -331,27 +334,65 @@ module Samagotchi
     # A message for the running turn from +source+ (Steer.source_for_client:
     # nil for the user, "chi_send", "parent_agent") cuts the streaming
     # generation when it has streamed only thinking for steer.cut_after
-    # seconds (GenerationPhase): the loops' cut path then starts the step again with
-    # the message, no nudge, no retry spent. A plugin's message never cuts.
-    # Call it after the message is queued. Outside any lock; a cut that
-    # lands just after the generation ended is harmless (the loop re-asks).
+    # seconds (GenerationPhase): the loops' cut path then starts the step
+    # again with the message, no nudge, no retry spent. Too early, the
+    # message waits (WaitingSteer) and cuts once the thinking passes it
+    # (#recheck_waiting_steer, on each thinking chunk), unless a boundary
+    # hands it to the model first. A plugin's message never cuts.
+    # Call it after the message is queued, with the #input_epoch read
+    # before queueing it. Outside any lock; a cut that lands just after the
+    # generation ended is harmless (the loop re-asks).
     # @return [Boolean] whether a generation was cut now
-    def cut_for_steer(source)
+    def cut_for_steer(source, epoch: nil)
       return false unless Steer.cuts?(source)
 
       after = Config.get("steer.cut_after").to_i
       return false unless after.positive?
 
       ctrl = active_cancel_controller
-      return false unless ctrl && @generation_phase.cuttable?(after)
+      return false unless ctrl
+      return steer_cut!(ctrl, source.to_s) if @generation_phase.cuttable?(after)
 
-      age = @generation_phase.age
-      cut = ctrl.cancel_generation!(:steer, { by: "steer", steer: true, source: source.to_s, reason: "a new message" })
-      Log.info(:turn, "steer_cut", source: source.to_s, age: age&.round(1)) if cut
-      cut
+      Log.info(:turn, "steer_cut_waits", source: source.to_s) if @waiting_steer.wait!(source, epoch: epoch)
+      false
     rescue StandardError
       false
     end
+
+    # The drains that took input so far (WaitingSteer#epoch): read it before
+    # queueing a message for #cut_for_steer.
+    def input_epoch
+      @waiting_steer.epoch
+    end
+
+    # A thinking chunk streamed: a waiting message cuts once the thinking
+    # passes steer.cut_after.
+    def recheck_waiting_steer
+      return unless @waiting_steer.waiting?
+
+      after = Config.get("steer.cut_after").to_i
+      return unless after.positive? && @generation_phase.cuttable?(after)
+
+      source = @waiting_steer.take
+      ctrl = active_cancel_controller
+      steer_cut!(ctrl, source, waited: true) if source && ctrl
+    rescue StandardError
+      nil
+    end
+    private :recheck_waiting_steer
+
+    def steer_cut!(ctrl, source, waited: false)
+      age = @generation_phase.age
+      cut = ctrl.cancel_generation!(:steer, { by: "steer", steer: true, source: source, reason: "a new message" })
+      if cut
+        @waiting_steer.clear!
+        fields = { source: source, age: age&.round(1) }
+        fields[:waited] = true if waited
+        Log.info(:turn, "steer_cut", **fields)
+      end
+      cut
+    end
+    private :steer_cut!
 
     # Like #steer, for the turn that begins next (a continue turn answered
     # with a text): it joins that turn at its first boundary. Callable from
@@ -377,6 +418,8 @@ module Samagotchi
     def turn_drain(pending_input)
       lambda do |at_answer: false|
         lines = pending_input ? Array(pending_input.call) : []
+        # The input went to the model: a message that waited to cut is in.
+        @waiting_steer.delivered! unless lines.empty?
         lines + take_steers(at_answer)
       end
     end
@@ -1913,6 +1956,7 @@ module Samagotchi
       # treats the just-finished turn as activity and re-arms its window.
       left = @turn_state.finish!
       @generation_phase.finished!
+      @waiting_steer.clear!
       Client.swap_probe_cancel(probe_cancel_before)
       # The next turn's window and served model are asked again: the cache
       # (this host's, process-wide) is dropped here, at the turn's end,
@@ -2368,6 +2412,7 @@ module Samagotchi
           text = event.key?(:text) ? event[:text] : event[:content]
           progress = { thinking: event[:thinking].to_s, text: text.to_s }
           @generation_phase.chunk!(**progress, tool_call: event[:tool_call])
+          recheck_waiting_steer unless progress[:thinking].empty?
         when :generation_retrying then @generation_phase.retrying!
         when :generation_completed, :generation_cancelled then @generation_phase.finished!
         end

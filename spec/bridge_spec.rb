@@ -495,10 +495,10 @@ RSpec.describe Samagotchi::Bridge do
         post("from the parent", "delegate:abcd1234")
         post("from a plugin", "plugin")
 
-        expect(@engine).to have_received(:cut_for_steer).with(nil).ordered
-        expect(@engine).to have_received(:cut_for_steer).with("chi_send").ordered
-        expect(@engine).to have_received(:cut_for_steer).with("parent_agent").ordered
-        expect(@engine).to have_received(:cut_for_steer).with("plugin_send").ordered
+        expect(@engine).to have_received(:cut_for_steer).with(nil, epoch: 0).ordered
+        expect(@engine).to have_received(:cut_for_steer).with("chi_send", epoch: 0).ordered
+        expect(@engine).to have_received(:cut_for_steer).with("parent_agent", epoch: 0).ordered
+        expect(@engine).to have_received(:cut_for_steer).with("plugin_send", epoch: 0).ordered
       end
 
       it "does not for a command, an input with images, or an input it could not queue" do
