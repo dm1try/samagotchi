@@ -216,7 +216,6 @@ module Samagotchi
           preview[:tail]
         ].join("\n")
       end
-
     end
   end
 end

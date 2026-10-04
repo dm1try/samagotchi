@@ -278,22 +278,22 @@ RSpec.describe "delegate tools" do
 
     it "returns early while the child waits for an approval or a question, with the whole question" do
       set_status(child, "running", pending_question: { id: "q1", kind: "approval", question: "Run rm?" })
-      expect(wait).to eq("session: #{child.id}\nstatus: question\nChild #{child.id} is waiting for an answer (approval): Run rm?\n" \
-                         "  allowing it is up to your user: deny it, and tell your user\n" \
-                         "  deny: chi answer #{child.id} --question q1 --option Deny --text WHY\n" \
-                         "  or leave it open: tell your user it waits in chi web (session #{child.id[0, 8]}); " \
+      expect(wait).to eq("session: #{child.id}\nstatus: question\nChild #{child.id} is waiting for an answer (approval): Run rm?\n  " \
+                         "allowing it is up to your user: deny it, and tell your user\n  " \
+                         "deny: chi answer #{child.id} --question q1 --option Deny --text WHY\n  " \
+                         "or leave it open: tell your user it waits in chi web (session #{child.id[0, 8]}); " \
                          "chi send --wait --format json #{child.id} waits until they answer\n" \
                          "delegate_result #{child.id} waits again once it is answered.")
 
       set_status(child, "running", pending_question: { id: "q2", question: "Which one?", options: %w[A B] })
-      expect(wait).to include("status: question\nChild #{child.id} is waiting for an answer (question): Which one?\n" \
-                              "    1. A\n    2. B\n  answer: chi answer #{child.id} --question q2 --option N\n")
+      expect(wait).to include("status: question\nChild #{child.id} is waiting for an answer (question): Which one?\n    " \
+                              "1. A\n    2. B\n  answer: chi answer #{child.id} --question q2 --option N\n")
     end
 
     it "hands a child's step-limit question back to the parent model (not relayed): continue, follow up or report" do
       set_status(child, "idle", pending_question: { id: "c1", kind: "continue", header: "Step limit",
-                                                     question: "The turn ran out of iterations (100 steps) before it answered. Continue it?",
-                                                     options: %w[Continue Stop], allow_freeform: true, limit: 100 })
+                                                    question: "The turn ran out of iterations (100 steps) before it answered. Continue it?",
+                                                    options: %w[Continue Stop], allow_freeform: true, limit: 100 })
       out = wait
       expect(out).to start_with("session: #{child.id}\nstatus: question\nChild #{child.id} is waiting for an answer (continue): Step limit\n")
       expect(out).to include("  continue: chi answer #{child.id} --question c1 --option Continue\n")

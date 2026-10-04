@@ -38,6 +38,7 @@ module Samagotchi
       def fork(messages:, title: nil, prompt: nil)
         parent_id = @host.session_id.call or raise Error, "this session has no id yet"
         raise Error, "a scratch session starts no other sessions: they would outlive it" if @host.scratch&.call
+
         state_dir = self.state_dir
         prompt = prompt.to_s.strip.empty? ? nil : prompt.to_s
         check_children(parent_id, state_dir) if prompt

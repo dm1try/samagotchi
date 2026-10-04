@@ -431,9 +431,11 @@ module Samagotchi
       # Nothing new said (only notes, tool traffic, or no messages at all):
       # the recap still stands, so no request.
       return :nothing_new if transcript.strip.empty?
+
       prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(fresh), previous: previous&.dig(:text),
                                                      sentences: @sentences, offer: offer_open?)
       return :nothing_new if prompt.nil?
+
       asked = target
       @in_flight = { thread: spawn_summarize(client_for(asked), prompt), generation: gen, deadline: @clock.call + @timeout,
                      covered: parsed.size, covered_digest: self.class.digest(parsed.last), model: asked[:label] }
@@ -459,6 +461,7 @@ module Samagotchi
       @in_flight = nil
       recap = safe_value(job[:thread])
       return if recap.nil? || recap.to_s.strip.empty?
+
       # An IdleClient::Summary names the model that answered; a plain String
       # (a stubbed client) doesn't, and the asked label stands in.
       served = recap.model if recap.respond_to?(:model)

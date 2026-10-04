@@ -895,6 +895,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
 
     def recomputed_token_keys = %i[prompt_sum completion_sum cached_sum reasoning_sum cost_sum source]
+
     def recomputed_keys = %i[turns cancellations tokens tool_calls_total tool_calls_by_tool tool_errors
                              iterations_total gen_latency_ms retries]
 
@@ -1007,11 +1008,11 @@ RSpec.describe Samagotchi::TokenUsage do
 
     it "reads one turn's saved tool records in call order" do
       save("tool_records" => [
-             { "turn_id" => "t1", "iteration" => 2, "call_index" => 1, "tool" => "read", "duration_ms" => 30 },
-             { "turn_id" => "t0", "iteration" => 1, "call_index" => 1, "tool" => "read", "duration_ms" => 99 },
-             { "turn_id" => "t1", "iteration" => 1, "call_index" => 2, "tool" => "grep", "duration_ms" => 20 },
-             { "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "execute", "duration_ms" => 10 }
-           ])
+        { "turn_id" => "t1", "iteration" => 2, "call_index" => 1, "tool" => "read", "duration_ms" => 30 },
+        { "turn_id" => "t0", "iteration" => 1, "call_index" => 1, "tool" => "read", "duration_ms" => 99 },
+        { "turn_id" => "t1", "iteration" => 1, "call_index" => 2, "tool" => "grep", "duration_ms" => 20 },
+        { "turn_id" => "t1", "iteration" => 1, "call_index" => 1, "tool" => "execute", "duration_ms" => 10 }
+      ])
       records = Samagotchi::SessionMetrics.saved_tool_records(dir, "t1")
       expect(records.map { |r| [r["tool"], r["duration_ms"]] }).to eq([["execute", 10], ["grep", 20], ["read", 30]])
     end

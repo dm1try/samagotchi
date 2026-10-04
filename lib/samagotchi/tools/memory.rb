@@ -1,4 +1,3 @@
-
 # frozen_string_literal: true
 
 require "fileutils"
@@ -46,6 +45,7 @@ module Samagotchi
         if names.empty?
           return "Error: no memory names provided"
         end
+
         bad = names.find { |name| invalid_name?(name) }
         return invalid_name_error(bad) if bad
 
@@ -157,6 +157,7 @@ module Samagotchi
         return MemoryRead.invalid_name_error(entry_name) if MemoryRead.invalid_name?(entry_name)
         return "Error: scope is required" if scope.to_s.strip.empty?
         return "Error: content is required" if body.empty?
+
         resolved_scope = MemoryRead.normalize_scope(scope)
 
         if current_model_only

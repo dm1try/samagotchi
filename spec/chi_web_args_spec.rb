@@ -8,7 +8,6 @@ require "spec_helper"
 # plain stray word after web. Bounded: a case that got past the checks would
 # start the server.
 RSpec.describe "chi web arguments" do
-
   def run_chi(*args, env: {})
     out, err, status = super(*args, env: env, timeout: 10)
     [out, err, status.exitstatus]

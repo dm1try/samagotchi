@@ -67,6 +67,7 @@ module Samagotchi
           unless missing.empty?
             raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(', ')}"
           end
+
           candidates = with_overlays(allow, candidates_by_basename).map { |k| candidates_by_basename[k] }
         else
           candidates = leave_out_owned(candidates, resolved_name)
@@ -107,6 +108,7 @@ module Samagotchi
             src = File.join(prov.hooks_dir, basename)
             # Skip if hook file missing on disk
             next unless File.exist?(src)
+
             # meta may be symbol-keyed
             m = meta.is_a?(Hash) ? meta.transform_keys(&:to_s) : {}
             sha = (m["sha256"] || m["checksum"] || "").to_s
@@ -275,6 +277,7 @@ module Samagotchi
 
       def normalize_scope(val)
         return nil if val.nil? || val.to_s.strip.empty?
+
         v = val.to_s.strip.downcase
         %w[project system].include?(v) ? v : nil
       end
@@ -356,6 +359,7 @@ module Samagotchi
           if File.exist?(expanded) && !File.directory?(expanded)
             raise BuildError, "Output path exists and is not a directory: #{expanded}"
           end
+
           [expanded, :dir]
         end
       end
@@ -365,6 +369,7 @@ module Samagotchi
         if File.exist?(out_path)
           raise BuildError, "Output file already exists: #{out_path} — remove it or choose different --out"
         end
+
         # Use zip CLI like source.rb does with unzip
         Dir.chdir(staging) do
           result = system("zip", "-r", out_path, ".")
@@ -377,6 +382,7 @@ module Samagotchi
         if File.exist?(out_path)
           raise BuildError, "Output file already exists: #{out_path} — remove it or choose different --out"
         end
+
         # Use tar CLI
         Dir.chdir(staging) do
           cmd = case format

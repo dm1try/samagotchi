@@ -124,6 +124,7 @@ module Samagotchi
 
         start_num = parse_positive_line_number(start_line, "start_line")
         return start_num if start_num.is_a?(String)
+
         # end_line alone reads from the top of the file.
         start_num ||= 1
 

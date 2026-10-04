@@ -195,5 +195,4 @@ RSpec.configure do |config|
   ensure
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
   end
-
 end

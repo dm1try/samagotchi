@@ -246,7 +246,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       events = events_of(origin: origin)
 
       expect(events.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", origin: origin,
-                                 turn_id: a_string_matching(/\A\h{8}-/))
+                                    turn_id: a_string_matching(/\A\h{8}-/))
       expect(events.find { |e| e[:type] == :turn_completed }).to include(origin: origin)
     end
 
@@ -370,45 +370,45 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect(events.last.keys).to contain_exactly(:type, :error_class, :message, :duration_ms)
   end
 
-describe "a failed turn" do
-  it "keeps the prompt and the loop's completed iterations in the session, and saves it" do
-    partial = [{ role: "system", content: "sys" }, { role: "user", content: "hi" },
-               { role: "model", content: "calling" }, { role: "tool_response", content: "[execute]\nok" }]
-    error = Samagotchi::LLM::FailedTurn.attach(RuntimeError.new("boom"), partial)
-    allow(kernel).to receive(:run).and_raise(error)
-    allow(session).to receive(:save)
+  describe "a failed turn" do
+    it "keeps the prompt and the loop's completed iterations in the session, and saves it" do
+      partial = [{ role: "system", content: "sys" }, { role: "user", content: "hi" },
+                 { role: "model", content: "calling" }, { role: "tool_response", content: "[execute]\nok" }]
+      error = Samagotchi::LLM::FailedTurn.attach(RuntimeError.new("boom"), partial)
+      allow(kernel).to receive(:run).and_raise(error)
+      allow(session).to receive(:save)
 
-    expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError, "boom")
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError, "boom")
 
-    expect(session.messages.first(4)).to eq(partial)
-    expect(session.messages.last).to eq({ role: "system", kind: "turn_note",
-                                          content: "[SYSTEM: the previous turn failed before any answer: boom. The user's last message was not answered.]" })
-    expect(session).to have_received(:save)
+      expect(session.messages.first(4)).to eq(partial)
+      expect(session.messages.last).to eq({ role: "system", kind: "turn_note",
+                                            content: "[SYSTEM: the previous turn failed before any answer: boom. The user's last message was not answered.]" })
+      expect(session).to have_received(:save)
+    end
+
+    it "keeps at least the prompt when the loop hands nothing back" do
+      allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+      allow(session).to receive(:save)
+
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+
+      expect(session.messages.map { |m| m[:role] }).to eq(%w[system user system])
+      expect(session.messages[-2][:content]).to eq("hi")
+    end
+
+    it "leaves one note when the turn fails again, and says so for a continue turn" do
+      allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+      allow(session).to receive(:save)
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+      session.messages = session.messages.dup
+
+      expect { engine.run_turn(session, nil, continue: true) }.to raise_error(RuntimeError)
+
+      notes = session.messages.select { |m| Samagotchi::TurnNote.note?(m) }
+      expect(notes.length).to eq(1)
+      expect(notes.first[:content]).to include("The continued turn stopped there.")
+    end
   end
-
-  it "keeps at least the prompt when the loop hands nothing back" do
-    allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
-    allow(session).to receive(:save)
-
-    expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
-
-    expect(session.messages.map { |m| m[:role] }).to eq(%w[system user system])
-    expect(session.messages[-2][:content]).to eq("hi")
-  end
-
-  it "leaves one note when the turn fails again, and says so for a continue turn" do
-    allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
-    allow(session).to receive(:save)
-    expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
-    session.messages = session.messages.dup
-
-    expect { engine.run_turn(session, nil, continue: true) }.to raise_error(RuntimeError)
-
-    notes = session.messages.select { |m| Samagotchi::TurnNote.note?(m) }
-    expect(notes.length).to eq(1)
-    expect(notes.first[:content]).to include("The continued turn stopped there.")
-  end
-end
 
   describe "system prompt stability" do
     it "reuses the first turn's system prompt even when the memory index changes" do

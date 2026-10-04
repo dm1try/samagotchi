@@ -188,7 +188,7 @@ module Samagotchi
         Array(event[:steers]).each { |steer| @view.print_line(@view.format_steer_line(source: steer[:source], text: steer[:text])) }
       end
 
-private
+      private
 
       def render_streamed_tool_activity(activity, duration_ms:, images: nil, diff: nil)
         return if activity.nil?

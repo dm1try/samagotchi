@@ -87,6 +87,7 @@ module Samagotchi
       # Expand a path that may start with ~.
       def self.expand_path(path, env = ENV)
         return path unless path.start_with?("~")
+
         home = env["HOME"] || Dir.home
         File.join(home, path[1..])
       end
@@ -97,8 +98,10 @@ module Samagotchi
         definitions = []
         hooks_config.each do |event_type, configs|
           next unless event_type.to_s != "hooks_dir" && configs.is_a?(Array)
+
           configs.each do |cfg|
             next unless cfg.is_a?(Hash) && cfg["path"]
+
             definitions << {
               event_type: event_type.to_s,
               path: cfg["path"],
@@ -133,6 +136,7 @@ module Samagotchi
           instance = Hooks.build_plugin(klass, settings)
           # Validate that the instance responds to #call
           raise ArgumentError, "Plugin #{klass.name} does not respond to #call" unless instance.respond_to?(:call)
+
           instance
         end
       end

@@ -67,7 +67,6 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
     expect(File.exist?(seen[:incoming])).to be(false)
   end
 
-
   it "removes the extracted temp dir when the upgrade fails before the agent step" do
     v1 = make_bundle(File.join(tmpdir, "v1"), name: "demo", version: "1.0.0", content: "one\n")
     run("install", v1)

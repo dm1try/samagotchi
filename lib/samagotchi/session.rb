@@ -35,8 +35,8 @@ module Samagotchi
     SORT_ORDERS = %w[asc desc].freeze
 
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
-                   :created_at, :updated_at, :status, :last_prompt, :first_preview, :test_run,
-                   :pending_question, :used_memory_names
+                  :created_at, :updated_at, :status, :last_prompt, :first_preview, :test_run,
+                  :pending_question, :used_memory_names
     # Memories the session was started with (--memory) and memories hidden
     # from it (--mute): the worker rebuilds the same prompt on a respawn.
     # Names as given; the engine normalizes them.

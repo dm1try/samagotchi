@@ -876,7 +876,6 @@ file2.rb")
 
       expect { agent.run }.not_to output(/status> /).to_stdout
     end
-
   end
 
   describe "assist-mode continuation" do
@@ -1335,7 +1334,6 @@ file2.rb")
       expect(persisted).not_to include("no")
       expect(persisted).not_to include("yes")
     end
-
   end
 
   describe "Profile-aware tool declarations" do

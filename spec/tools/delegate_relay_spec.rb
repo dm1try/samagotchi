@@ -123,7 +123,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     expect(client.posts.map { |p| p[:action] }).to eq(%w[opened answered])
     relay_id = client.posts.first[:relay_id]
     expect(relay.relay_desk.status(relay_id)).to include(state: "answered", by: "user",
-                                                          answer: { selected_indices: [0], freeform: nil, dismissed: false })
+                                                         answer: { selected_indices: [0], freeform: nil, dismissed: false })
   end
 
   it "says denied with the user's reason, and a dismiss as dismissed (denied)" do

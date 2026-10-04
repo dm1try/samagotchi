@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require "digest"
 
 module Samagotchi
@@ -45,6 +46,7 @@ module Samagotchi
 
       def self.current_modified?(base_path, current_path)
         return true unless base_path && File.exist?(base_path) && File.exist?(current_path)
+
         Digest::SHA256.hexdigest(File.read(base_path)) != Digest::SHA256.hexdigest(File.read(current_path))
       end
     end

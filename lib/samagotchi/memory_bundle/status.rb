@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require "digest"
 require_relative "provenance"
 require_relative "manifest"
@@ -108,6 +109,7 @@ module Samagotchi
       def self.index_has_entry?(scope, file_key)
         path = IndexUpdater.index_path_for(scope)
         return false unless path && File.exist?(path)
+
         content = File.read(path)
         [file_key.delete_suffix(".md"), file_key].uniq.any? { |name| content.match?(IndexUpdater.managed_pattern(name)) }
       end

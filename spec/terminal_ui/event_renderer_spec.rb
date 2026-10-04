@@ -83,6 +83,7 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     let(:view) do
       Class.new do
         include Samagotchi::TerminalUI::Formatting
+
         attr_reader :lines
 
         def initialize = @lines = []
@@ -215,7 +216,7 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
         { type: :generation_completed, iteration: 1 },
         *tool_events(activity),
         { type: :turn_completed, turn_summary: { tool_activity: [activity], output: "done", resumable: true,
-                                                  context_status: { est_pct: 12, bucket: :low } } }
+                                                 context_status: { est_pct: 12, bucket: :low } } }
       ]
       local = view.class.new
       wired = view.class.new
@@ -295,7 +296,7 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
       started = { "type" => "plugin_init_started", "bundle" => "mcp", "id" => "mcp-1", "label" => "Starting x" }
       expect(described_class.init_line(described_class.symbolize(started))).to eq("mcp> Starting x…")
       expect(described_class.init_line({ type: :plugin_init_finished, bundle: "mcp", label: "Starting x", ok: true,
-                                          summary: "x ready, 2 tools" })).to eq("mcp> ✓ x ready, 2 tools")
+                                         summary: "x ready, 2 tools" })).to eq("mcp> ✓ x ready, 2 tools")
       expect(described_class.init_line({ type: :plugin_init_finished, bundle: "b", label: "Indexing", ok: true }))
         .to eq("b> ✓ Indexing: done")
       expect(described_class.init_line({ type: :plugin_init_finished, bundle: "b", label: "x", ok: false, error: "e" })).to be_nil

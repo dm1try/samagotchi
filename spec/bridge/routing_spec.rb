@@ -76,7 +76,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
     table.each do |(method, action), handler|
       status, headers, body = request(method, "/session/s1/#{action}", body: method == "POST" ? '{"x":1}' : nil)
       expect([status, headers["x-route"], body]).to eq([200, handler, { "handler" => handler, "sid" => "s1" }]),
-                                                     "#{method} #{action}"
+                                                    "#{method} #{action}"
     end
     expect(@bridge).to have_received(:handle_post_turn).with("s1", '{"x":1}')
     expect(@bridge).to have_received(:handle_cancel).with("s1", '{"x":1}')
@@ -116,7 +116,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
     ].each do |method, path|
       status, headers, body = request(method, path, body: method == "GET" ? nil : "{}")
       expect([status, headers["allow"], body]).to eq([404, "GET, POST", { "error" => "not_found", "path" => path }]),
-                                                   "#{method} #{path}"
+                                                  "#{method} #{path}"
     end
     handlers.each { |name| expect(@bridge).not_to have_received(name) }
   end

@@ -108,6 +108,7 @@ module Samagotchi
       @blocks.each do |block|
         pos = @carry.index(block[:open])
         next if pos.nil?
+
         best = { pos: pos, block: block } if best.nil? || pos < best[:pos]
       end
       best
@@ -133,6 +134,7 @@ module Samagotchi
     # Route a body fragment to the active block's lane (:thinking or :drop).
     def route_body(body, thinking)
       return if body.nil? || body.empty?
+
       thinking << body if @active && @active[:lane] == :thinking
     end
 
@@ -141,6 +143,7 @@ module Samagotchi
     def longest_suffix_prefix_of(str, marker)
       mlen = marker.length
       return 0 if mlen.zero? || str.empty?
+
       [str.length, mlen].min.downto(1) do |n|
         return n if str[-n..] == marker[0, n]
       end

@@ -92,6 +92,7 @@ module Samagotchi
     # passes down may never close: waiting on either would hang a script.
     def read_stdin
       return nil if @stdin.respond_to?(:tty?) && @stdin.tty?
+
       if @stdin.respond_to?(:stat)
         stat = @stdin.stat
         return nil unless stat.pipe? || stat.file?

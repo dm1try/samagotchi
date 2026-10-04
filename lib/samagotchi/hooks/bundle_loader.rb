@@ -127,6 +127,7 @@ module Samagotchi
           klass = Hooks.class_for(basename, ns)
           instance = Hooks.build_plugin(klass, settings)
           raise ArgumentError, "plugin #{klass.name.split("::").last} does not respond to #call" unless instance.respond_to?(:call)
+
           instance
         end
 

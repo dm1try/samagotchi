@@ -227,9 +227,9 @@ RSpec.describe "Plugin init tasks" do
       engine.instance_variable_get(:@guardrail_failures).add("hook x.rb", "missing", required: true)
       engine.instance_variable_get(:@plugin_failures).add("plugin plugin.rb (bundle b)", "boom", required: false)
       engine.instance_variable_set(:@plugin_load_events, [
-                                     { type: :hook_notice, hook: "plugin.rb (bundle b)", text: "loaded", level: :info },
-                                     { type: :card, id: "c", source: "b", title: "hi", body: "", level: :info, actions: [], in_turn: true }
-                                   ])
+        { type: :hook_notice, hook: "plugin.rb (bundle b)", text: "loaded", level: :info },
+        { type: :card, id: "c", source: "b", title: "hi", body: "", level: :info, actions: [], in_turn: true }
+      ])
       expect(engine.guardrail_warning).to be_nil
       engine.announce_load_events!
       engine.announce_load_events!

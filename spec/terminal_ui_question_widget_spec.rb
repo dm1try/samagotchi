@@ -37,8 +37,8 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     result, out = answer_with("2\n")
 
     expect(result).to be(true)
-    expect(out).to eq("Fruit\n? Which one?\n  1) Apple\n  2) Banana\n  3) Cherry\n" \
-                      "  [Select one (e.g. 2); Enter alone cancels]\n? 2\n? Which one? → Banana\n")
+    expect(out).to eq("Fruit\n? Which one?\n  1) Apple\n  2) Banana\n  3) Cherry\n  " \
+                      "[Select one (e.g. 2); Enter alone cancels]\n? 2\n? Which one? → Banana\n")
     expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
 
@@ -175,7 +175,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     agent.send(:use_surface, surface)
     agent.instance_variable_set(:@continue_slot, true)
     invalid = Samagotchi::SessionCommands::Result.new(status: :error, output: "answer yes, no, or no, <reason>", changed: [],
-                                                     model_name: "m", resume: false, shell: false)
+                                                      model_name: "m", resume: false, shell: false)
     invalid.decision = :invalid
     agent.instance_variable_set(:@commands, double("commands", continue_answer: invalid))
 
@@ -216,8 +216,8 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       allow(engine).to receive(:answer_question)
       result, out = answer_with("y\n", approval)
       expect(result).to be(true)
-      expect(out).to start_with("Approve tool call?\n! execute: git push\n  in /r (repo r, branch main)\n" \
-                                "  why: publishes (rule git-push, config)\n  1) Allow once\n")
+      expect(out).to start_with("Approve tool call?\n! execute: git push\n  in /r (repo r, branch main)\n  " \
+                                "why: publishes (rule git-push, config)\n  1) Allow once\n")
       expect(out).to include("Enter alone denies]\n", "! execute: git push → Allow once\n")
       expect(engine).to have_received(:answer_question).with(id: "a1", selected: ["Allow once"], freeform: nil)
     end

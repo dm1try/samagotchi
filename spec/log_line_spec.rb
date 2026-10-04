@@ -8,7 +8,7 @@ RSpec.describe Samagotchi::LogLine do
 
   def record(**overrides)
     described_class::Record.new(ts: time, level: "INFO", tag: "worker", pid: 42, sid: "abcd1234",
-                                 event: "idle_exit", fields: { "idle_s" => 1800 }, payload: nil, **overrides)
+                                event: "idle_exit", fields: { "idle_s" => 1800 }, payload: nil, **overrides)
   end
 
   describe ".format" do

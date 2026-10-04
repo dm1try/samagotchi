@@ -194,8 +194,8 @@ RSpec.describe Samagotchi::SelfReport do
 
   describe "the session's model (SAMAGOTCHI_SESSION_MODEL, set for execute children)" do
     let(:two_hosts) do
-      "hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n" \
-        "  splash:\n    host: 10.0.0.6\n    port: 8082\n    api: openai\n"
+      "hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n  " \
+        "splash:\n    host: 10.0.0.6\n    port: 8082\n    api: openai\n"
     end
 
     before do

@@ -90,6 +90,7 @@ module Samagotchi
           begin
             parsed = JSON.parse(s)
             return parsed.dup if parsed.is_a?(Array)
+
             # If parsed is a String like "a, b", fall through to split
             if parsed.is_a?(String)
               s = parsed

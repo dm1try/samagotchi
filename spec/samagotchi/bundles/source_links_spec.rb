@@ -244,9 +244,9 @@ RSpec.describe "The source-links bundle" do
 
     it "skips a ref whose numbered or named group did not take part" do
       settings.replace("sources" => [
-                         { "name" => "N", "pattern" => '\bN(?:-(\d+))?!', "url" => "https://n.test/{1}" },
-                         { "name" => "M", "pattern" => '\bM(?:-(?<id>\d+))?!', "url" => "https://m.test/{id}" }
-                       ])
+        { "name" => "N", "pattern" => '\bN(?:-(\d+))?!', "url" => "https://n.test/{1}" },
+        { "name" => "M", "pattern" => '\bM(?:-(?<id>\d+))?!', "url" => "https://m.test/{id}" }
+      ])
       fire([model("N! and M! but N-3! and M-4!")])
       expect(texts).to eq(["sources: N N-3! → https://n.test/3, M M-4! → https://m.test/4"])
     end
@@ -299,9 +299,9 @@ RSpec.describe "The source-links bundle" do
 
     it "lets another source link a ref the first one left unlinked" do
       settings.replace("sources" => [
-                         { "name" => "Opt", "pattern" => '\bX(?:-(\d+))?\b', "url" => "https://opt.test/{1}" },
-                         { "name" => "Any", "pattern" => '\bX\b', "url" => "https://any.test/{match}" }
-                       ])
+        { "name" => "Opt", "pattern" => '\bX(?:-(\d+))?\b', "url" => "https://opt.test/{1}" },
+        { "name" => "Any", "pattern" => '\bX\b', "url" => "https://any.test/{match}" }
+      ])
       fire([model("just X")])
       expect(texts).to eq(["sources: Any X → https://any.test/X"])
     end
@@ -507,9 +507,9 @@ RSpec.describe "The source-links bundle" do
       # The Evil source matches EVIL-1 early, then times out on the long run:
       # its partial hit must not be reported.
       settings.replace("sources" => [
-                         { "name" => "Evil", "pattern" => "EVIL-\\d+|(a{0,10}){10}$", "url" => "https://x/{match}" },
-                         { "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" }
-                       ])
+        { "name" => "Evil", "pattern" => "EVIL-\\d+|(a{0,10}){10}$", "url" => "https://x/{match}" },
+        { "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" }
+      ])
       fire([model("EVIL-1 JIRA-123 #{"a" * 20_000}")])
       expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123"])
     end
@@ -535,11 +535,11 @@ RSpec.describe "The source-links bundle" do
   describe "invalid entries" do
     it "skips an entry with neither prefix nor pattern, a bad regex and a non-mapping, without raising" do
       settings.replace("sources" => [
-                         { "name" => "Empty" },
-                         { "name" => "Bad", "pattern" => "(" },
-                         "not a mapping",
-                         { "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" }
-                       ])
+        { "name" => "Empty" },
+        { "name" => "Bad", "pattern" => "(" },
+        "not a mapping",
+        { "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" }
+      ])
       expect { fire([model("JIRA-123")]) }.not_to raise_error
       expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123"])
     end

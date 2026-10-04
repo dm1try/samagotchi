@@ -16,10 +16,10 @@ RSpec.describe Samagotchi::Engine, "reminders" do
     fired_names = fired
     holder = {}
     built = described_class.new(client: client, kernel: kernel, profile: "gemma4",
-                                 reminders: { callback: lambda { |names|
-                                   fired_names << names
-                                   holder[:engine].note_due_reminders(names)
-                                 } })
+                                reminders: { callback: lambda { |names|
+                                  fired_names << names
+                                  holder[:engine].note_due_reminders(names)
+                                } })
     holder[:engine] = built
   end
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }

@@ -98,6 +98,7 @@ module Samagotchi
       @mutex.synchronize do
         @reminders.each_value.filter_map do |r|
           next unless r[:next_fire_at] && now >= r[:next_fire_at]
+
           { name: r[:name], description: r[:description], interval_minutes: r[:interval_minutes] }
         end.freeze
       end

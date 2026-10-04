@@ -2128,6 +2128,7 @@ module Samagotchi
       config_path = Samagotchi::ConfigFile.global_path
       data = Samagotchi::ConfigFile.read_yaml(path: config_path)
       return Hooks::Loader.load(data, failures: @guardrail_failures) if data.is_a?(Hash)
+
       Hooks::Registry.new
     end
 
@@ -2277,7 +2278,6 @@ module Samagotchi
       @bundle_settings ||= Samagotchi::ConfigFile.bundle_settings
     end
     private :bundle_settings
-
 
     # The session's current model as a recap target: its host's OpenAI API
     # (native llama.cpp hosts serve /v1/chat/completions too), key variable

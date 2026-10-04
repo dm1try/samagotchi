@@ -23,6 +23,7 @@ RSpec.describe "chi --mute" do
       _out, err, status = Open3.capture3(env, RbConfig.ruby, chi, *args, "--non-interactive", "-p", "hi", stdin_data: "",
                                          chdir: dir)
       raise "chi failed: #{err}" unless status.success?
+
       [server.requests.find { |r| r.path == "/completion" }.json["prompt"], err]
     end
   ensure

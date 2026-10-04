@@ -100,8 +100,8 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
 
       writer.write(name: "lan", fields: lan, model: "m")
 
-      expect(File.read(path)).to eq("hosts:\n  main:\n    host: a\n    # port: 9000\n  lan:\n    host: \"192.168.1.29\"\n" \
-                                    "    port: 8081\n# --- models ---\n\nmodels: {}\ndefault:\n  model: \"lan:m\"\n")
+      expect(File.read(path)).to eq("hosts:\n  main:\n    host: a\n    # port: 9000\n  lan:\n    host: \"192.168.1.29\"\n    " \
+                                    "port: 8081\n# --- models ---\n\nmodels: {}\ndefault:\n  model: \"lan:m\"\n")
     end
 
     it "inserts into an all-commented hosts: block" do
@@ -119,8 +119,8 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
       outcome = writer.write(name: "lan", fields: lan, model: "m")
 
       expect(outcome.kind).to eq(:appended)
-      expect(File.read(path)).to end_with("hosts:\n  default:\n    host: \"box.lan\"\n    port: 9090\n  lan:\n" \
-                                          "    host: \"192.168.1.29\"\n    port: 8081\n")
+      expect(File.read(path)).to end_with("hosts:\n  default:\n    host: \"box.lan\"\n    port: 9090\n  lan:\n    " \
+                                          "host: \"192.168.1.29\"\n    port: 8081\n")
       registry = Samagotchi::HostRegistry.new(hosts_config: hosts)
       expect(registry.default_entry).to have_attributes(name: "default", host: "box.lan", port: 9090)
     end
@@ -139,8 +139,8 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
 
       writer.write(name: "lan", fields: lan, model: "m")
 
-      expect(File.binread(path)).to eq("hosts:\r\n  main:\r\n    host: a\r\n  lan:\r\n    host: \"192.168.1.29\"\r\n" \
-                                       "    port: 8081\r\ndefault:\r\n  model: main:x\r\n")
+      expect(File.binread(path)).to eq("hosts:\r\n  main:\r\n    host: a\r\n  lan:\r\n    host: \"192.168.1.29\"\r\n    " \
+                                       "port: 8081\r\ndefault:\r\n  model: main:x\r\n")
     end
 
     it "writes through a symlink, which stays a symlink" do

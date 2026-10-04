@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require "fileutils"
 require "digest"
 require_relative "../memory_paths"
@@ -61,6 +62,7 @@ module Samagotchi
           base_path = provenance.base_path(file_key_str)
           next unless File.exist?(target_path)
           next if shared.key?(file_key_str)
+
           if !@force && File.exist?(base_path) && Merger.current_modified?(base_path, target_path)
             blocked << file_key_str
             @warnings << "Skipped #{file_key_str}: local edits detected (use --force to remove)"

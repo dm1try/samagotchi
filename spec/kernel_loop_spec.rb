@@ -1435,7 +1435,7 @@ Need to inspect the filesystem first.
       expect(final_model).to be > follow_up
     end
 
-it "leaves input queued after a cancel instead of merging it into the dying turn" do
+    it "leaves input queued after a cancel instead of merging it into the dying turn" do
       controller = Samagotchi::CancellationController.new
       responses = [%(<|tool_call>call:execute{command: "true"}<tool_call|>)]
       allow(client).to receive(:complete) do
@@ -1634,32 +1634,32 @@ it "leaves input queued after a cancel instead of merging it into the dying turn
     end
   end
 
-describe "failed turn" do
-  it "hands the conversation built so far back on the error" do
-    call_count = 0
-    allow(client).to receive(:complete) do |*_args, **kwargs|
-      call_count += 1
-      next %(<|tool_call>call:execute{command: "true"}<tool_call|>) if call_count == 1
+  describe "failed turn" do
+    it "hands the conversation built so far back on the error" do
+      call_count = 0
+      allow(client).to receive(:complete) do |*_args, **kwargs|
+        call_count += 1
+        next %(<|tool_call>call:execute{command: "true"}<tool_call|>) if call_count == 1
 
-      kwargs[:on_chunk]&.call(content: "partial", payload: {})
-      raise Samagotchi::LLM::RetryExhausted.new(attempts: 2, last_error: Errno::ECONNREFUSED.new)
+        kwargs[:on_chunk]&.call(content: "partial", payload: {})
+        raise Samagotchi::LLM::RetryExhausted.new(attempts: 2, last_error: Errno::ECONNREFUSED.new)
+      end
+
+      expect { kernel.run([{ role: "user", content: "hi" }]) }
+        .to raise_error(Samagotchi::LLM::RetryExhausted) { |error|
+          conversation = error.partial_conversation
+          expect(conversation.map { |m| m[:role] }).to eq(%w[user model tool_response])
+          expect(conversation.none? { |m| m[:content].to_s.include?("partial") }).to be(true)
+        }
     end
 
-    expect { kernel.run([{ role: "user", content: "hi" }]) }
-      .to raise_error(Samagotchi::LLM::RetryExhausted) { |error|
-        conversation = error.partial_conversation
-        expect(conversation.map { |m| m[:role] }).to eq(%w[user model tool_response])
-        expect(conversation.none? { |m| m[:content].to_s.include?("partial") }).to be(true)
-      }
-  end
+    it "hands back the inbound conversation when the first generation fails" do
+      allow(client).to receive(:complete).and_raise(RuntimeError, "boom")
 
-  it "hands back the inbound conversation when the first generation fails" do
-    allow(client).to receive(:complete).and_raise(RuntimeError, "boom")
-
-    expect { kernel.run([{ role: "user", content: "hi" }]) }
-      .to raise_error(RuntimeError) { |error| expect(error.partial_conversation).to eq([{ role: "user", content: "hi" }]) }
+      expect { kernel.run([{ role: "user", content: "hi" }]) }
+        .to raise_error(RuntimeError) { |error| expect(error.partial_conversation).to eq([{ role: "user", content: "hi" }]) }
+    end
   end
-end
 
   describe "debug dumps" do
     let(:log_dir) { Dir.mktmpdir("samagotchi-debug-log") }

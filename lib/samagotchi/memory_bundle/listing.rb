@@ -30,8 +30,10 @@ module Samagotchi
 
         Dir.children(dir).sort.filter_map do |source|
           next unless File.file?(File.join(dir, source, "manifest.yml"))
+
           m = Manifest.read(dir: File.join(dir, source))
           next if m.name == SystemBundle::BUNDLE_NAME
+
           Shipped.new(name: m.name, source: source, version: m.version, description: m.description, includes: m.includes)
         rescue Manifest::ValidationError, Psych::Exception
           nil
@@ -72,6 +74,7 @@ module Samagotchi
       def newer?(candidate, current)
         candidate, current = candidate.to_s, current.to_s
         return false unless Gem::Version.correct?(candidate) && Gem::Version.correct?(current)
+
         Gem::Version.new(candidate) > Gem::Version.new(current)
       end
     end

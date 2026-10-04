@@ -126,7 +126,7 @@ module Samagotchi
       Entry.new(key: "context.status",           yaml_path: %w[context status],           type: :bool,   default: true,             expose: %i[env config cli]),
       Entry.new(key: "context.window_tokens",    yaml_path: %w[context window_tokens],    type: :integer, default: nil,             expose: %i[env config cli]),
       Entry.new(key: "context.chars_per_token",  yaml_path: %w[context chars_per_token],  type: :float,   default: 4.0,             expose: %i[env config cli]),
-      Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds],type: :string, default: "20,40,60,80",    expose: %i[env config cli]),
+      Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds], type: :string, default: "20,40,60,80",    expose: %i[env config cli]),
       Entry.new(key: "context.status_cadence",   yaml_path: %w[context status_cadence],   type: :integer, default: 0,               expose: %i[env config cli]),
 
       Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
@@ -228,11 +228,13 @@ module Samagotchi
       # Coercion helpers
       def coerce(entry, raw)
         return nil if raw.nil?
+
         # For string, preserve as-is (including trailing spaces like "Please ")
         if entry.type == :string
           # A YAML list for a "|"-separated setting (web.annotate_presets).
           str = raw.is_a?(Array) ? raw.join("|") : raw.to_s
           return nil if str.empty? && entry.type != :string
+
           return str
         end
         str = raw.to_s.strip
@@ -296,6 +298,7 @@ module Samagotchi
           raw = cli_overrides[entry.key]
           # cli_overrides may already be coerced; detect by type
           return [raw, :cli] if already_coerced?(entry, raw)
+
           return [coerce(entry, raw), :cli]
         end
         if cli_overrides.key?(entry.cli_flag)
@@ -343,6 +346,7 @@ module Samagotchi
         cur = data
         yaml_path.each_with_index do |seg, idx|
           return nil unless cur.is_a?(Hash)
+
           last = idx == yaml_path.size - 1
           if last
             candidates = [seg, seg.to_sym]
@@ -361,6 +365,7 @@ module Samagotchi
             # also try kebab alias for section (should not exist per spec, but be lenient)
             nxt ||= cur[seg.tr("_", "-")] || cur[seg.tr("_", "-").to_sym]
             return nil if nxt.nil?
+
             cur = nxt
           end
         end
@@ -426,6 +431,7 @@ module Samagotchi
       def get_with_origin(key)
         entry = find_by_key(key)
         raise ArgumentError, "unknown config key: #{key}" unless entry
+
         # Live resolve so ENV changes (as in specs) are reflected without explicit reload
         # Use current ENV and file (via ConfigFile's cached reader), plus any CLI
         # overrides captured via reload!
@@ -589,6 +595,7 @@ module Samagotchi
     # parsed Hash or nil (missing file / parse error / non-mapping top level).
     def read_yaml(env: ENV, path: global_path(env: env))
       return nil if path.nil?
+
       cache = @yaml_cache ||= {}
       unless File.file?(path)
         cache.delete(path)
@@ -660,6 +667,7 @@ module Samagotchi
     # nil. Reserved keys warn once and are dropped. nil when nothing is left.
     def sampling_map(value, where)
       return nil if value.nil?
+
       unless value.is_a?(Hash)
         warn_once "Warning: #{where}: sampling must be a map of request parameters; ignored"
         return nil
@@ -668,6 +676,7 @@ module Samagotchi
       result = value.each_with_object({}) do |(raw_key, raw_value), acc|
         key = raw_key.to_s.strip
         next if key.empty?
+
         if SAMPLING_RESERVED_KEYS.include?(key)
           warn_once "Warning: #{where}: sampling.#{key} is set by chi; ignored"
           next
@@ -694,6 +703,7 @@ module Samagotchi
     def clear_yaml_cache!(path = nil)
       cache = @yaml_cache
       return if cache.nil?
+
       if path
         cache.delete(path)
       else
@@ -741,6 +751,7 @@ module Samagotchi
         raw_hosts.each do |raw_name, raw_cfg|
           name = raw_name.to_s.strip
           next if name.empty?
+
           unless name.match?(HOST_NAME_RE)
             warn_once "Warning: ignoring hosts entry '#{name}': must match /[a-z0-9][a-z0-9._-]*/i"
             next
@@ -966,6 +977,7 @@ module Samagotchi
       # Only serialize if non-default or explicitly configured hosts:
       # include when hosts file exists with hosts: section or when workers need propagation
       return nil if hosts.nil? || hosts.empty?
+
       # Serialize to JSON with string keys
       simple = hosts.transform_values do |v|
         # A url entry travels as its url (host/port come from it); the API
@@ -997,6 +1009,7 @@ module Samagotchi
     def bundle_settings(env: ENV, path: global_path(env: env))
       raw = section("bundles", env: env, path: path)
       return {} if raw.nil?
+
       unless raw.is_a?(Hash)
         Log.warn(:hooks, "bundles_section_invalid", echo: "[samagotchi:hooks] config.yml bundles: must be a mapping of bundle name to settings; ignored")
         return {}
@@ -1032,6 +1045,7 @@ module Samagotchi
       raw.each_with_object({}) do |(k, v), result|
         key = k.to_s.strip
         next if key.empty?
+
         val = v.to_s.strip
         next if val.empty?
 

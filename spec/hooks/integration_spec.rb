@@ -12,7 +12,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
     let(:engine) { Samagotchi::Engine.new }
 
     it "registers a hook and tracks it" do
-      engine.register_hook(:before_turn) { }
+      engine.register_hook(:before_turn) {}
       # After registration the hook exists (it will be cleared at end of run_turn)
       expect(engine).to respond_to(:register_hook)
       expect(engine).to respond_to(:unregister_hook)
@@ -20,7 +20,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
     end
 
     it "unregisters a hook" do
-      engine.register_hook(:test_hook) { }
+      engine.register_hook(:test_hook) {}
       result = engine.unregister_hook(:test_hook)
       expect(result).to be true
     end
@@ -42,7 +42,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
       # state, we verify the behavior indirectly: registering a hook and
       # calling run_turn should not raise.
       expect do
-        engine.register_hook(:before_turn) { }
+        engine.register_hook(:before_turn) {}
       end.not_to raise_error
     end
   end

@@ -104,7 +104,6 @@ RSpec.describe "Images in transport" do
       status, body = post(JSON.generate(session_id: session.id, prompt: "x" * 1_100_000))
       expect([status, body["error"]]).to eq([413, "too_large"])
     end
-
   end
 
   describe "the worker" do

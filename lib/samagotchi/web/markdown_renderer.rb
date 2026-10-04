@@ -71,6 +71,7 @@ module Samagotchi
       def sanitize_attributes(node)
         node.attribute_nodes.each do |attribute|
           next if allowed_attribute?(node, attribute.name)
+
           node.remove_attribute(attribute.name)
         end
         return unless node.name == "a"

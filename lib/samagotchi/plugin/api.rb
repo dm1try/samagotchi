@@ -51,6 +51,7 @@ module Samagotchi
       #   it runs as other commands do)
       def command(name, description, anytime: false, &block)
         raise ArgumentError, "command #{name.inspect} needs a block" unless block
+
         name = name.to_s
         raise ArgumentError, "command name #{name.inspect} must look like /name (a-z, 0-9, _ and -)" unless name.match?(COMMAND_NAME)
         if (taken = @registries.commands.entries.find { |entry| entry.name == name })
@@ -159,6 +160,7 @@ module Samagotchi
       # @return [Service]
       def service(name, eager: false, &block)
         raise ArgumentError, "service #{name.inspect} needs a block" unless block
+
         name = "#{@bundle}:#{name}"
         raise ArgumentError, "service #{name} is registered twice" if @services.any? { |svc| svc.name == name }
         raise ArgumentError, "this chi has no services (plugins: false)" unless @registries.services
@@ -249,6 +251,7 @@ module Samagotchi
       # @return [Hash] {name:, schema:, label:, preview:, targets:, block:}
       def self.tool_spec(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
         raise ArgumentError, "tool #{name.inspect} needs a block" unless block
+
         name = name.to_s
         raise ArgumentError, "tool name #{name.inspect} must be a-z, 0-9 and _ (at most 48)" unless name.match?(TOOL_NAME)
         raise ArgumentError, "tool #{name}: preview must respond to #call" if preview && !preview.respond_to?(:call)

@@ -38,14 +38,14 @@ RSpec.describe Samagotchi::SessionCommands do
     turn_flow.before_prompt_turn
     engine.append_messages([{ role: "user", content: "go" }, { role: "model", content: "Partial\n[interrupted]" }])
     turn_flow.after_turn(Samagotchi::LLM::ModelResult.new(text: "", conversation: session.messages, exhausted: false,
-                                                             pending_tool_calls: false, tool_activity: [], canceled: true))
+                                                          pending_tool_calls: false, tool_activity: [], canceled: true))
   end
 
   def offered_continue
     turn_flow.before_prompt_turn
     engine.append_messages([{ role: "user", content: "the task" }, { role: "tool_response", content: "r1" }])
     turn_flow.after_turn(Samagotchi::LLM::ModelResult.new(text: "", conversation: session.messages, exhausted: true,
-                                                             pending_tool_calls: true, tool_activity: [], canceled: false))
+                                                          pending_tool_calls: true, tool_activity: [], canceled: false))
   end
 
   describe ".builtin_registry" do

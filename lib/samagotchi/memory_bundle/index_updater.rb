@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require "fileutils"
 require "digest"
 require_relative "../atomic_file"
@@ -16,6 +17,7 @@ module Samagotchi
       def self.update_index(scope, entry_name, byte_count, description = nil, source: nil)
         index_path = index_path_for(scope)
         return true unless index_path
+
         locked_write(File.dirname(index_path)) do |content|
           new_line = managed_line(entry_name, scope, byte_count, description, source || nil)
           next auto_index_header + "\n\n" + new_line + "\n" if content.nil? || content.strip.empty?
@@ -32,20 +34,25 @@ module Samagotchi
         end
         true
       end
+
       def self.managed_pattern(name)
         /^- \*\*#{Regexp.escape(name)}\*\*[ \t]*(?:[·•].*|:.*)?(\r?\n|\z)/
       end
+
       def self.remove_index(scope, entry_name)
         index_path = index_path_for(scope)
         return true unless index_path && File.exist?(index_path)
+
         locked_write(File.dirname(index_path)) do |content|
           pattern = managed_pattern(entry_name)
           next nil unless content&.match?(pattern)
+
           # Clean up extra blank lines: collapse 3+ newlines to 2
           content.gsub(pattern, "").gsub(/\n{3,}/, "\n\n")
         end
         true
       end
+
       # Read-modify-write of <dir>/index.md under an exclusive flock on a sidecar
       # <dir>/.index.lock, so sessions in several worktrees of one repository
       # (one shared project folder) don't drop each other's lines. Yields the
@@ -61,6 +68,7 @@ module Samagotchi
           Samagotchi::AtomicFile.write(index_path, updated) unless updated.nil?
         end
       end
+
       def self.managed_line(name, scope, byte_count, description, source = nil)
         line = "- **#{name}** · #{scope} · #{date_str} · #{byte_count}"
         line += " · from #{source}" unless source.to_s.strip.empty?
@@ -68,6 +76,7 @@ module Samagotchi
         line += " — #{desc}" unless desc.to_s.empty?
         line
       end
+
       def self.extract_description(line)
         if line =~ /\s—\s(.*)\s*\z/
           $1
@@ -75,6 +84,7 @@ module Samagotchi
           $1
         end
       end
+
       # The bundle a managed line names ("· from <bundle>", before any
       # " — description"), or nil.
       def self.extract_source(line)
@@ -86,10 +96,12 @@ module Samagotchi
           "Managed entries below are auto-maintained by memory_write " \
           "(name, scope, last-written date, size). Free-form sections are preserved."
       end
+
       def self.date_str
         require "date"
         Date.today.iso8601
       end
+
       def self.index_path_for(scope)
         base_dir = MemoryPaths.scope_dir(scope.to_s.strip)
         base_dir && File.join(base_dir, "#{MEMORY_INDEX}.md")

@@ -165,6 +165,7 @@ module Samagotchi
       if !parsed.host_name && (disabled = disabled_host_prefix(ref, hosts, env))
         raise UnknownHost, "host '#{disabled}' is disabled (enabled: false in config.yml)"
       end
+
       warn_host_slash(ref, hosts) unless parsed.host_name
       host = Samagotchi::ConfigFile.unknown_host_prefix(ref, hosts: hosts)
       return model_name unless host

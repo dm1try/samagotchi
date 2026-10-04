@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 module Samagotchi
   # OutputFormatter strips model wire-format tokens from raw engine output at
   # render time, so downstream renderers (web UI, terminal UI) never show the
@@ -64,6 +65,7 @@ module Samagotchi
     # Qwen tool_call XML blocks that survive when a tool call is rendered as text
     # e.g. <tool_call>\n<function=list_reminders>\n</function>\n</tool_call>
     QWEN_TOOL_CALL_RE = /<tool_call>.*?<\/tool_call>/m.freeze
+
     module_function
 
     # Remove both control-token and prompt-literal token families from +text+.

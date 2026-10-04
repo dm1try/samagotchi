@@ -1,4 +1,3 @@
-
 # frozen_string_literal: true
 
 require_relative "task_runtime"
@@ -48,6 +47,7 @@ module Samagotchi
           return cancelled_response(task_id, tail_lines, started) if cancelled.call
 
           break if monotonic_time > deadline
+
           sleep(POLL_INTERVAL)
         end
 
@@ -125,4 +125,3 @@ module Samagotchi
     end
   end
 end
-

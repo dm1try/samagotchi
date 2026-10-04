@@ -23,9 +23,9 @@ RSpec.describe Samagotchi::Web::App, "routing" do
 
   let(:handlers) do
     %i[serve_index handle_list handle_create handle_info handle_models handle_events handle_stream
-      handle_output handle_cancel handle_stop handle_archive handle_unarchive handle_turn
-      handle_question_answer handle_question_dismiss handle_command handle_image_upload handle_image
-      handle_show handle_delete]
+       handle_output handle_cancel handle_stop handle_archive handle_unarchive handle_turn
+       handle_question_answer handle_question_dismiss handle_command handle_image_upload handle_image
+       handle_show handle_delete]
   end
 
   before do

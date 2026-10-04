@@ -172,6 +172,7 @@ module Samagotchi
           hooks.each do |k, v|
             next unless k.is_a?(String) && !k.empty?
             next unless v.is_a?(Hash)
+
             hv = v.transform_keys(&:to_sym)
             sha = (hv[:sha256] || "").to_s
             sha = sha.start_with?("sha256:") ? sha : "sha256:#{sha}" unless sha.empty?
@@ -256,6 +257,7 @@ module Samagotchi
         conflicts.each do |file_key, info|
           key = file_key.to_s
           next unless raw["files"].key?(key)
+
           src = [info[:incoming], info[:current]].find { |p| p && File.exist?(p) }
           next unless src
 
@@ -270,6 +272,7 @@ module Samagotchi
       def read
         manifest_path = File.join(@bundle_dir, "manifest.json")
         return nil unless File.exist?(manifest_path)
+
         JSON.parse(File.read(manifest_path), symbolize_names: true)
       end
 

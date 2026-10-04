@@ -72,6 +72,7 @@ cli_overrides = {}
 # Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
 ARGV.each do |arg|
   next unless arg.start_with?("--") && arg.include?("_")
+
   # Allow --no-interrupt etc. already dash; underscore is always rejected for config flags
   # We check raw ARGV before OptionParser normalizes
   base = arg.split("=", 2).first
@@ -133,6 +134,7 @@ parser = OptionParser.new do |opts|
     next if entry.key == "web.port" # already handled as --port
     next if entry.key == "default.model" # alias --model above
     next if entry.key == "web.markdown" # handled below with explicit inverse flags
+
     case entry.type
     when :bool
       # --[no-]: a bool that defaults to on is only useful switched off.

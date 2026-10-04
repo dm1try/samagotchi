@@ -229,6 +229,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         Array(turn_thread.backtrace).any? { |l| l.include?("session_observer.rb") && l.include?("notify") }
       end
       raise "turn thread never reached SessionObserver#notify" unless parked
+
       go << true
 
       begin

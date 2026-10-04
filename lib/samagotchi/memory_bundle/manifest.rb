@@ -64,6 +64,7 @@ module Samagotchi
       def self.read(dir:)
         manifest_path = File.join(dir, "manifest.yml")
         raise ValidationError, "manifest.yml not found in #{dir}" unless File.exist?(manifest_path)
+
         new(path: manifest_path)
       end
 
@@ -72,6 +73,7 @@ module Samagotchi
       def checksum_for(file_key)
         raw = @files[file_key]
         return nil unless raw
+
         raw.start_with?("sha256:") ? raw[7..] : raw
       end
 
@@ -79,8 +81,10 @@ module Samagotchi
       def checksum_for_hook(basename)
         raw = @hooks[basename]
         return nil unless raw
+
         sha = raw[:sha256] || raw["sha256"]
         return nil unless sha
+
         sha.to_s.start_with?("sha256:") ? sha.to_s[7..] : sha.to_s
       end
 
@@ -167,19 +171,23 @@ module Samagotchi
       def require_str(hash, key)
         val = hash[key]
         return val if val.is_a?(String) && !val.empty?
+
         raise ValidationError, "manifest missing required field: #{key}"
       end
 
       def normalize_scope(val)
         return nil if val.nil?
+
         v = val.to_s.strip.downcase
         %w[project system].include?(v) ? v : nil
       end
 
       def parse_files(raw)
         return {} unless raw.is_a?(Hash)
+
         raw.each_with_object({}) do |(k, v), acc|
           next unless k.is_a?(String) && !k.empty?
+
           str = v.to_s
           acc[k] = if str.start_with?("sha256:")
                      str
@@ -234,9 +242,11 @@ module Samagotchi
 
       def parse_hooks(raw)
         return {} unless raw.is_a?(Hash)
+
         raw.each_with_object({}) do |(k, v), acc|
           next unless k.is_a?(String) && !k.empty?
           next unless v.is_a?(Hash)
+
           sha = (v["sha256"] || v[:sha256] || "").to_s
           sha = sha.start_with?("sha256:") ? sha : "sha256:#{sha}" unless sha.empty?
           event = (v["event"] || v[:event] || "").to_s.strip

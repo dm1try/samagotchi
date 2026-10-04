@@ -38,8 +38,22 @@ Layout/FirstArrayElementIndentation:
 Layout/FirstHashElementIndentation:
   EnforcedStyle: consistent
 
+# Keyword arguments line up with the first argument (ArgumentAlignment),
+# not with the first key.
+Layout/HashAlignment:
+  EnforcedLastArgumentHashStyle: ignore_implicit
+
+# A first argument on its own line is indented one step, like the rest.
+Layout/FirstArgumentIndentation:
+  EnforcedStyle: consistent
+
+# Chains and continued strings are both aligned and indented here: no
+# majority to follow.
 Layout/MultilineMethodCallIndentation:
-  EnforcedStyle: indented
+  Enabled: false
+
+Layout/LineEndStringConcatenationIndentation:
+  Enabled: false
 
 # A Struct/Data member named count, length, method or drop is meant.
 Lint/StructNewOverride:
@@ -53,6 +67,11 @@ Lint/MissingSuper:
 # -- Off: a refactor or taste, not lint, and not autocorrectable ----------------
 
 Layout/LineLength:
+  Enabled: false
+
+# Hand-aligned tables and trailing comments are kept loosely; the autocorrect
+# flattens single rows and leaves them worse.
+Layout/ExtraSpacing:
   Enabled: false
 
 Metrics:

@@ -157,6 +157,7 @@ module Samagotchi
         req = Rack::Request.new(env)
         return forbidden unless local_host_header?(env)
         return cross_origin if cross_site?(env)
+
         if @lan && !LOOPBACK_PEERS.include?(env["REMOTE_ADDR"].to_s)
           denied = token_gate(req)
           return denied if denied
@@ -506,13 +507,16 @@ module Samagotchi
 
       def sanitize_limit(val)
         return nil if val.nil? || val.to_s.strip.empty?
+
         n = val.to_i
         return nil if n <= 0
+
         [n, 1000].min
       end
 
       def sanitize_offset(val)
         return 0 if val.nil? || val.to_s.strip.empty?
+
         n = val.to_i
         n.positive? ? n : 0
       end
@@ -522,6 +526,7 @@ module Samagotchi
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
+
         prompt = body["prompt"] || body[:prompt]
         # idle: a session with no first turn, for a first message with
         # images (the page uploads them into it, then sends the turn).
@@ -529,6 +534,7 @@ module Samagotchi
         if prompt.to_s.strip.empty? && !idle
           return error_response(400, "missing_fields", "prompt is required")
         end
+
         # dir: the folder the chat starts in (the page's scope); without it,
         # the server's own cwd.
         dir, error = scope_dir(body["dir"])
@@ -891,11 +897,13 @@ module Samagotchi
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
+
         prompt = body["prompt"] || body[:prompt]
         client_id = body["client_id"] || body[:client_id]
         if prompt.to_s.strip.empty?
           return error_response(400, "missing_fields", "prompt is required")
         end
+
         images = turn_images(id, body["images"])
         return error_response(400, "bad_images", images) if images.is_a?(String)
 
@@ -1173,7 +1181,7 @@ module Samagotchi
         lambda do |io|
           query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
           body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env,
-                                    server_running: @server_running)
+                                     server_running: @server_running)
           body.each { |chunk| io.write(chunk) }
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
           nil # client went away — end the stream quietly
@@ -1643,7 +1651,6 @@ module Samagotchi
       def error_response(status, code, detail)
         json_response(status, { error: code, detail: detail })
       end
-
 
       def not_found(path:)
         error_response(404, "not_found", "not found: #{path}")

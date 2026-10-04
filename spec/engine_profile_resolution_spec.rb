@@ -189,7 +189,7 @@ RSpec.describe "Engine#stats_snapshot" do
   it "keeps what a turn reported" do
     engine = engine_with(FakeResolvingClient.new(nil))
     engine.metrics.call(type: :generation_started, iteration: 1, context_window_tokens: 4096, context_window_source: :server,
-                          profile: "gemma4", profile_source: "env")
+                        profile: "gemma4", profile_source: "env")
 
     expect(engine.stats_snapshot).to include(profile: "gemma4", profile_source: "env")
     expect(engine.stats_snapshot[:context]).to include(window_tokens: 4096)

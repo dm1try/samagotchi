@@ -148,7 +148,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel)
       meta = chat.tool_definitions.last[:function][:parameters][:properties][:meta]
       expect(meta).to include(additionalProperties: false, properties: { tags: { type: "array", items: { type: "string" } },
-                                                                          priority: { type: "integer" } })
+                                                                         priority: { type: "integer" } })
     end
 
     it "saves a note, its meta typed from a Qwen call's JSON text" do
@@ -166,7 +166,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
 
     it "tells guardrail path rules the file save_note writes" do
       rule = Samagotchi::Guardrails::Rules.parse([{ "id" => "no-secrets", "path" => "**/secret*", "verdict" => "deny",
-                                                   "reason" => "secrets stay put" }], source: "config")
+                                                    "reason" => "secrets stay put" }], source: "config")
       allow(engine.instance_variable_get(:@guardrail_wiring)).to receive(:rules).and_return(Samagotchi::Guardrails::Rules.new(rule))
       run = lambda do |call|
         Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,

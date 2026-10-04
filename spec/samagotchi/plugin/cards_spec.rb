@@ -128,7 +128,7 @@ RSpec.describe "Cards" do
       %w[a b c d].each { |id| store.call(card(id)) }
       expect(store.list.map { |c| c[:id] }).to eq(%w[b c d])
       expect(store.list.first).to eq(type: :card, id: "b", source: "b", title: "b", body: "", level: :info, actions: [],
-                                      in_turn: false, turns_since: 0, current: false)
+                                     in_turn: false, turns_since: 0, current: false)
     end
 
     it "caps notices apart from cards and questions, so a burst of notices evicts only older notices" do

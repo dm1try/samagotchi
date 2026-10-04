@@ -78,7 +78,7 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     before do
       allow_any_instance_of(Samagotchi::LLM::OpenAIChat).to receive(:chat).and_return(
         Samagotchi::LLM::ChatResponse.new(text: "ok", reasoning: "", tool_calls: [], usage: Samagotchi::LLM::Usage.none,
-                                                      finish_reason: "stop")
+                                          finish_reason: "stop")
       )
       allow_any_instance_of(Samagotchi::LLM::OpenAIChat).to receive(:list_models).and_return([])
     end

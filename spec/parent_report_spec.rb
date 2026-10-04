@@ -8,7 +8,6 @@ require "samagotchi/reply_wait"
 # What a parent agent reads when chi's wait ends: chi send --wait and
 # chi answer, as JSON or as text on stderr.
 RSpec.describe Samagotchi::ParentReport do
-
   let(:id) { "297da360-0000-4000-8000-000000000001" }
 
   let(:question) do

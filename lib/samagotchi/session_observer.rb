@@ -70,6 +70,7 @@ module Samagotchi
     #   already-unsubscribed never raises)
     def unsubscribe(handle:)
       return false unless handle.is_a?(SubscribedObserver)
+
       @mutex.synchronize { !!@observers.delete(handle) }
     end
 

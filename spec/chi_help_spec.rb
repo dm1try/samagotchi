@@ -57,7 +57,7 @@ RSpec.describe "chi --help" do
 
   it "refuses an unknown command instead of starting a session" do
     _out, err, status = BoundedCapture.capture3({ "SAMAGOTCHI_SESSION_SHARED" => "0" }, RbConfig.ruby, chi,
-                                               "bogus", "--non-interactive", stdin_data: "", timeout: 10)
+                                                "bogus", "--non-interactive", stdin_data: "", timeout: 10)
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: unknown command bogus (see chi --help)\n")
@@ -65,7 +65,7 @@ RSpec.describe "chi --help" do
 
   it "refuses a stray argument after web" do
     _out, err, status = BoundedCapture.capture3(RbConfig.ruby, chi, "web", "extra", "--port", "45898",
-                                               stdin_data: "", timeout: 10)
+                                                stdin_data: "", timeout: 10)
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: unexpected argument extra (see chi --help)\n")

@@ -496,7 +496,6 @@ module Samagotchi
       nil
     end
 
-
     # ── Hook dispatch helper ───────────────────────────────────────────────────
 
     # Fire a named hook on the registry (if present).
@@ -508,6 +507,7 @@ module Samagotchi
 
     def fire_hook(name, event)
       return unless @hooks
+
       @hooks.fire(name, event)
     rescue StandardError
       # A failing hook must not break the turn.
@@ -633,6 +633,7 @@ module Samagotchi
       @parser_profile = @profile
       @parser
     end
+
     private
 
     # The generation's thinking: what the stream split into the thinking
@@ -680,6 +681,7 @@ module Samagotchi
     end
 
     public
+
     # Public entry point for executing an ALREADY-NORMALIZED internal tool call
     # (the {name:, content:, path:, scope:, …} shape).
     #
@@ -694,6 +696,7 @@ module Samagotchi
     end
 
     private
+
     def dispatch(call)
       entry = @tools[call[:name]]
       unless entry

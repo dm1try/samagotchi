@@ -101,8 +101,8 @@ module Samagotchi
     # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
     # @return [String] normalized answer JSON
     def request(payload)
-      result = open_question({ **payload.slice(:question, :options, :header),
-                               multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform] })
+      result = open_question(payload.slice(:question, :options, :header)
+                                    .merge(multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform]))
       # Dismissed (the card's dismiss, Esc): an answer of its own, not a
       # tool failure the model learns to avoid the tool from.
       result = { dismissed: true, id: result[:id], note: DISMISSED_NOTE } if result.is_a?(Hash) && result[:error] == "no answer"
@@ -288,6 +288,7 @@ module Samagotchi
         if parent_agent && (reason = Guardrails::ParentContinue.refusal(pending, sel, allowed: parent_continue))
           raise Refused, reason
         end
+
         if @standing
           # No waiter: cleared here, so a second answer finds none.
           standing = @standing
@@ -472,6 +473,7 @@ module Samagotchi
       raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})" unless invalid.empty?
       raise ArgumentError, "single-select question: got #{sel.size} selections" if !pending[:multi_select] && sel.size > 1
       raise ArgumentError, "selection required" if pending[:multi_select] == false && sel.empty? && fm.nil?
+
       indices = sel.map { |v| opts.index(v) }
       # The one whose answer settles the approval (Approval.settle, by index).
       if parent_setting

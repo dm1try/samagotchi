@@ -353,7 +353,7 @@ RSpec.describe Samagotchi::TerminalUI do
         ms = case_entry["ms"]
         expected = case_entry["expected"]
         expect(agent.send(:format_elapsed_duration, ms)).to eq(expected),
-          "timing for #{ms}ms expected #{expected.inspect}"
+                                                            "timing for #{ms}ms expected #{expected.inspect}"
       end
     end
   end

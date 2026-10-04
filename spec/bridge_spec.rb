@@ -157,11 +157,11 @@ class ControllableIO
   attr_reader :buffer
   attr_accessor :write_sleep
 
-    def initialize
-      @buffer = +""
-      @write_sleep = 0.0
-      @mutex = Monitor.new
-    end
+  def initialize
+    @buffer = +""
+    @write_sleep = 0.0
+    @mutex = Monitor.new
+  end
 
   def write(data)
     @mutex.synchronize { @buffer << data }
@@ -1828,16 +1828,16 @@ RSpec.describe Samagotchi::Bridge do
     get_state_for(@session.id)
   end
 
-    def get_state_for(sid)
-      uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{sid}/state")
-      res = Net::HTTP.get_response(uri)
-      [res.code.to_i, JSON.parse(res.body)]
-    end
+  def get_state_for(sid)
+    uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{sid}/state")
+    res = Net::HTTP.get_response(uri)
+    [res.code.to_i, JSON.parse(res.body)]
+  end
 
-    def options_request
-      uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/turn")
-      req = Net::HTTP::Options.new(uri)
-      res = Net::HTTP.start(uri.host, uri.port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
-      [res.code.to_i, res.to_hash, res.body]
-    end
+  def options_request
+    uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/turn")
+    req = Net::HTTP::Options.new(uri)
+    res = Net::HTTP.start(uri.host, uri.port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
+    [res.code.to_i, res.to_hash, res.body]
+  end
 end

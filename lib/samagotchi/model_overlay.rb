@@ -43,6 +43,7 @@ module Samagotchi
     # Respects MemoryBundle overrides (delegates to Tools::MemoryRead.memories_dir).
     def self.overlay_path_for(name, key, scope)
       return nil unless key && !key.to_s.strip.empty?
+
       File.join(Tools::MemoryRead.memories_dir(scope), "#{name}.#{key.to_s.strip}.md")
     end
 

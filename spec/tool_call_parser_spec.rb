@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require "samagotchi/tool_call_parser"
 require "samagotchi/model_profile"
 require "samagotchi/llm/native_tool_normalizer"

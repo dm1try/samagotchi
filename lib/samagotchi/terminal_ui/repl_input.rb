@@ -43,6 +43,7 @@ module Samagotchi
       def <<(item)
         @lock.synchronize do
           next @answers << item if @answers
+
           taken = @turn && item.first == :line && @turn.call(item.last)
           # Not now: the line goes back into the prompt.
           next @reader&.prefill_next(item.last) if taken == :back

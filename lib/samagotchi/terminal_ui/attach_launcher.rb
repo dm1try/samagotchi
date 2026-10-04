@@ -46,10 +46,10 @@ module Samagotchi
         first_command = model && (attach || resume) ? "/model #{model}" : nil
         surface = open_surface
         attached = AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
-                                first_command: first_command, no_interrupt: no_interrupt,
-                                default_input: default_input && !prompt && !attach && !resume,
-                                wait_at_eof: !$stdin.tty?,
-                                parent_answers: Guardrails::ParentApprovals.parent_process?)
+                                    first_command: first_command, no_interrupt: no_interrupt,
+                                    default_input: default_input && !prompt && !attach && !resume,
+                                    wait_at_eof: !$stdin.tty?,
+                                    parent_answers: Guardrails::ParentApprovals.parent_process?)
         ended = begin
           attached.run
         ensure

@@ -134,6 +134,7 @@ class KnownNames
     names = @names + derived_names(event)
     names.each_with_object({}) do |name, acc|
       next if name.length < @min_length
+
       down = name.downcase
       next if @ignore.include?(down) || acc.key?(down)
 

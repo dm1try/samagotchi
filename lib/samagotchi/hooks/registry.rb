@@ -130,6 +130,7 @@ module Samagotchi
       def register(name, &block)
         raise ArgumentError, "hook name must be a Symbol" unless name.is_a?(Symbol)
         raise ArgumentError, "hook block is required" unless block_given?
+
         @mutex.synchronize { (@hooks[name] ||= []) << block }
       end
 
@@ -144,6 +145,7 @@ module Samagotchi
       def register_persistent(name, label: nil, &block)
         raise ArgumentError, "hook name must be a Symbol" unless name.is_a?(Symbol)
         raise ArgumentError, "hook block is required" unless block_given?
+
         label = label.to_s.strip
         label = CONFIG_HOOK_LABEL if label.empty?
         @mutex.synchronize { (@persistent_hooks[name] ||= []) << { label: label, proc: block } }
@@ -160,6 +162,7 @@ module Samagotchi
       # @return [void]
       def register_bundle(bundle_name, event_name, hook_name:, priority: 100, &block)
         raise ArgumentError, "hook block is required" unless block_given?
+
         @mutex.synchronize do
           (@bundle_hooks[event_name] ||= []) << {
             bundle: bundle_name,
@@ -180,6 +183,7 @@ module Samagotchi
           if event_name
             arr = @bundle_hooks[event_name]
             return 0 unless arr
+
             before = arr.size
             @bundle_hooks[event_name] = arr.reject { |h| h[:bundle] == bundle_name }
             removed = before - @bundle_hooks[event_name].size

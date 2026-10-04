@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
          { type: :generation_started, iteration: 2 },
          { type: :generation_completed, iteration: 2 },
          { type: :turn_completed, turn_summary: { tool_activity: [activity], output: "It says hi.", resumable: false,
-                                                   context_status: { est_pct: 7, bucket: "low" } } })
+                                                  context_status: { est_pct: 7, bucket: "low" } } })
 
     # Whole seconds apart: the spinner (4 frames a second) is on "|" each time.
     expect(screen.statuses.compact).to eq(["| thinking…", "| thinking · Let me look.", "| running read…", "| thinking…"])

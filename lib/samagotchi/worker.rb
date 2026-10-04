@@ -166,6 +166,7 @@ module Samagotchi
         # A session stopped before this worker took the lock (e.g. a stop
         # right after create) must not run its initial prompt.
         return :stopped if stopped_on_disk?
+
         # Plugins' slow setup (chi.init: an MCP server's first start), in
         # the background, shown by the UIs; a turn waits only for the ones
         # that bring tools.

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
@@ -48,9 +49,8 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
     context "zip files" do
       it "extracts a zip to a clean directory with owned=true" do
         bundle_dir = write_bundle_dir(tmpdir,
-          "identity.md" => "# Identity\n",
-          "commit_preferences.md" => "# Commit Preferences\n"
-        )
+                                      "identity.md" => "# Identity\n",
+                                      "commit_preferences.md" => "# Commit Preferences\n")
         zip_path = File.join(tmpdir, "bundle.zip")
         Dir.chdir(bundle_dir) { system("zip", "-r", zip_path, ".") }
         path, owned = described_class.normalize(zip_path)
@@ -63,8 +63,7 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
 
       it "handles zip with top-level directory" do
         bundle_dir = write_bundle_dir(tmpdir,
-          "identity.md" => "# Identity\n"
-        )
+                                      "identity.md" => "# Identity\n")
         zip_path = File.join(tmpdir, "bundle2.zip")
         Dir.chdir(tmpdir) { system("zip", "-r", zip_path, File.basename(bundle_dir)) }
         path, owned = described_class.normalize(zip_path)
@@ -77,9 +76,8 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
     context "tar.gz files" do
       it "extracts a tar.gz to a clean directory" do
         bundle_dir = write_bundle_dir(tmpdir,
-          "identity.md" => "# Identity\n",
-          "commit_preferences.md" => "# Commit Preferences\n"
-        )
+                                      "identity.md" => "# Identity\n",
+                                      "commit_preferences.md" => "# Commit Preferences\n")
         tar_path = File.join(tmpdir, "bundle.tar.gz")
         Dir.chdir(tmpdir) { system("tar", "-czf", tar_path, File.basename(bundle_dir)) }
         path, owned = described_class.normalize(tar_path)
@@ -91,8 +89,7 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
 
       it "handles .tgz extension" do
         bundle_dir = write_bundle_dir(tmpdir,
-          "test.md" => "# Test\n"
-        )
+                                      "test.md" => "# Test\n")
         tgz_path = File.join(tmpdir, "bundle.tgz")
         Dir.chdir(tmpdir) { system("tar", "-czf", tgz_path, File.basename(bundle_dir)) }
         path, owned = described_class.normalize(tgz_path)

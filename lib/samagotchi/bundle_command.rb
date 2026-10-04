@@ -142,6 +142,7 @@ module Samagotchi
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
         return install_profile(expanded_source, scope: scope, force: force, dry_run: false, word: "Install")
       end
+
       bundle_name = bundle_name_or_fail(expanded_source, "Install") or return 1
       run_installer(installer_for(expanded_source, bundle_name, scope: scope, force: force), failed: "Install") do |manifest|
         print_hooks_and_plugin(manifest)
@@ -166,6 +167,7 @@ module Samagotchi
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
         return install_profile(expanded_source, scope: scope, force: force, dry_run: dry_run, word: "Upgrade")
       end
+
       bundle_name = bundle_name_or_fail(expanded_source, "Upgrade") or return 1
       unless Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).installed?
         @stderr.puts "Bundle '#{bundle_name}' not installed — falling back to install"
@@ -552,6 +554,7 @@ module Samagotchi
         @stdout.puts "Installed:"
         installed.each do |b|
           next @stdout.puts("  #{b.name.ljust(name_w)}  (#{b.error})") if b.error
+
           line = "  #{b.name.ljust(name_w)}  #{"v#{b.version || "?"}".ljust(ver_w)}  scope=#{b.scope || "?"}  " \
                  "#{b.includes ? profile_members(b.includes, installed) : "files=#{b.files}"}  installed=#{b.installed_at || "?"}"
           line += "  (shipped v#{b.upgrade.version}: chi bundle upgrade #{b.upgrade.source})" if b.upgrade
@@ -686,6 +689,7 @@ module Samagotchi
     # Format bytes as human-readable (B, KB, MB with one decimal)
     def format_bytes(bytes)
       return "0 B" if bytes == 0
+
       if bytes < 1024
         "#{bytes} B"
       elsif bytes < 1_048_576
@@ -731,6 +735,7 @@ module Samagotchi
     # helpers for bundle_name derivation
     def expand_source(src)
       return src if Samagotchi::MemoryBundle::SourceNormalizer.git_url?(src)
+
       Samagotchi::MemoryBundle::SourceNormalizer.shipped_bundle_dir(src) || File.expand_path(src)
     end
 
@@ -785,6 +790,7 @@ module Samagotchi
             preview = []
             max.times do |i|
               break if preview.size >= 30
+
               c = cur_lines[i]
               n = inc_lines[i]
               if c != n

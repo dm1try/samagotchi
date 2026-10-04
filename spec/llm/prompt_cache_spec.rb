@@ -30,7 +30,7 @@ RSpec.describe Samagotchi::LLM::PromptCache do
 
   it "marks a last tool message and leaves the assistant tool_calls message alone" do
     call = { role: "assistant", content: nil, tool_calls: [{ id: "c1", type: "function",
-                                                            function: { name: "execute", arguments: "{}" } }] }
+                                                             function: { name: "execute", arguments: "{}" } }] }
     messages = deep_freeze([{ role: "system", content: "sys" }, { role: "user", content: [text_part("go")] },
                             call, { role: "tool", tool_call_id: "c1", content: "out" }])
 

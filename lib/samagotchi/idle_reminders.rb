@@ -46,6 +46,7 @@ module Samagotchi
     def should_check?
       return false if @engine.turn_running?
       return false unless last_idle_seconds >= @inactivity
+
       true
     end
 
@@ -57,8 +58,10 @@ module Samagotchi
 
     def check_due_reminders
       return unless @queue
+
       due_names = @queue.due.map { |r| r[:name] }
       return if due_names.empty?
+
       # Signal the engine to create a synthetic turn via callback.
       # The callback is responsible for triggering a turn (e.g. SessionManager
       # writes a file, TerminalUI queues input). The engine's run_turn or

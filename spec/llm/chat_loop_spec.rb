@@ -164,7 +164,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
                    .complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
 
     expect(events.find { |event| event[:type] == :generation_completed }).to include(served_model: "vendor/served-1",
-                                                                                         requested_model: "m")
+                                                                                     requested_model: "m")
   end
 
   it "names the provider the adapter reports in :generation_completed, nil when it says none" do
@@ -173,14 +173,14 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
                    .complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
 
     expect(events.find { |event| event[:type] == :generation_completed }).to include(served_model: "vendor/served-1",
-                                                                                         served_provider: "Fireworks")
+                                                                                     served_provider: "Fireworks")
 
     events.clear
     described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("hi").with(model: "vendor/served-1")))
                    .complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
 
     expect(events.find { |event| event[:type] == :generation_completed }).to include(served_model: "vendor/served-1",
-                                                                                         served_provider: nil)
+                                                                                     served_provider: nil)
   end
 
   describe "debug dump" do
@@ -542,7 +542,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       result = run
 
       expect(result.conversation[1]).to eq(role: "model", content: "",
-                                            tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "echo hi" } }])
+                                           tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "echo hi" } }])
       expect(result.conversation[2]).to include(role: "tool_response", tool_call_id: "c1")
     end
 
@@ -642,7 +642,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       kernel = Samagotchi::KernelLoop.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
       adapter = FakeChatAdapter.new(text("  \n "), text("PONG"))
       result = described_class.new(kernel: kernel, adapter: adapter).complete(messages: [{ role: "user", content: "hi" }],
-                                                                             model_name: "m")
+                                                                              model_name: "m")
 
       expect(result.text).to eq("PONG")
       expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG" }])
@@ -650,7 +650,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       with_limit(0) do
         adapter = FakeChatAdapter.new(text("  \n "))
         result = described_class.new(kernel: kernel, adapter: adapter).complete(messages: [{ role: "user", content: "hi" }],
-                                                                               model_name: "m")
+                                                                                model_name: "m")
       end
       expect(result).to be_empty_answer
       expect(result.conversation).to eq([{ role: "user", content: "hi" }])

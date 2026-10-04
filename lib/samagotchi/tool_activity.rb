@@ -229,6 +229,7 @@ module Samagotchi
     def registry_params(entry, call)
       return nil if entry&.core?
       return nil if entry.nil? && !call[:args].is_a?(Hash)
+
       if entry&.preview
         begin
           return entry.preview.call(call)

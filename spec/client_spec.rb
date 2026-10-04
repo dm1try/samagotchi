@@ -812,135 +812,135 @@ RSpec.describe Samagotchi::Client do
     end
   end
 
-# The raw path against a real (fake) server: statuses and llama.cpp's
-# mid-stream error event now fail the turn instead of ending it as "".
-describe "server errors" do
-  around { |example| FakeProviderServer.without_webmock { example.run } }
+  # The raw path against a real (fake) server: statuses and llama.cpp's
+  # mid-stream error event now fail the turn instead of ending it as "".
+  describe "server errors" do
+    around { |example| FakeProviderServer.without_webmock { example.run } }
 
-  let(:server) { FakeProviderServer.start }
-  let(:client) { described_class.new(host: "127.0.0.1", port: server.port, sleeper: ->(_seconds) {}) }
+    let(:server) { FakeProviderServer.start }
+    let(:client) { described_class.new(host: "127.0.0.1", port: server.port, sleeper: ->(_seconds) {}) }
 
-  after { server.stop }
+    after { server.stop }
 
-  it "raises BadRequest for llama.cpp's context overflow, without retrying" do
-    server.default("/completion", status: 400, json: FakeProviderServer.fixture("error_400.json"))
+    it "raises BadRequest for llama.cpp's context overflow, without retrying" do
+      server.default("/completion", status: 400, json: FakeProviderServer.fixture("error_400.json"))
 
-    expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::BadRequest) { |error|
-      expect(error).to be_context_overflow
-      expect(error.host).to eq("llama.cpp")
-    }
-    expect(server.requests.size).to eq(1)
+      expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::BadRequest) { |error|
+        expect(error).to be_context_overflow
+        expect(error.host).to eq("llama.cpp")
+      }
+      expect(server.requests.size).to eq(1)
+    end
+
+    it "retries a 500, then raises ServerError with the attempts" do
+      server.default("/completion", status: 500, json: FakeProviderServer.fixture("error_500.hand-written.json"))
+
+      expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::ServerError) { |error|
+        expect(error.attempts).to eq(6)
+      }
+    end
+
+    it "raises the error llama.cpp sends mid-stream" do
+      server.default("/completion", sse: "data: {\"content\":\"Hel\"}\n\nerror: {\"code\":500,\"message\":\"slot unavailable\",\"type\":\"server_error\"}\n\n")
+      chunks = []
+
+      expect { client.complete("prompt", on_chunk: ->(event) { chunks << event[:content] }) }
+        .to raise_error(Samagotchi::LLM::ServerError, /slot unavailable/)
+      expect(chunks).to eq(["Hel"])
+      expect(server.requests.size).to eq(1)
+    end
+
+    it "retries an error event sent before any content, then answers" do
+      server.enqueue("/completion", sse: "error: {\"code\":503,\"message\":\"loading model\",\"type\":\"unavailable_error\"}\n\n")
+      server.enqueue("/completion", sse: "data: {\"content\":\"Hi\"}\n\ndata: {\"content\":\"\",\"stop\":true}\n\n")
+
+      expect(client.complete("prompt")).to eq("Hi")
+      expect(server.requests.size).to eq(2)
+    end
+
+    it "raises AuthError when listing models is refused" do
+      server.default("/models", status: 401, json: FakeProviderServer.fixture("error_401.hand-written.json"))
+
+      expect { client.list_models }.to raise_error(Samagotchi::LLM::AuthError)
+    end
   end
 
-  it "retries a 500, then raises ServerError with the attempts" do
-    server.default("/completion", status: 500, json: FakeProviderServer.fixture("error_500.hand-written.json"))
+  # A llama.cpp server started with --api-key wants `Authorization: Bearer`
+  # on every route; the key comes from the host's api_key_env, as on the
+  # OpenAI path.
+  describe "API keys" do
+    around { |example| FakeProviderServer.without_webmock { example.run } }
 
-    expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::ServerError) { |error|
-      expect(error.attempts).to eq(6)
-    }
+    let(:server) { FakeProviderServer.start }
+    let(:env) { {} }
+    let(:keyed) do
+      described_class.new(host: "127.0.0.1", port: server.port, name: "box", api_key_env: "BOX_KEY", env: env,
+                          sleeper: ->(_seconds) {})
+    end
+
+    after { server.stop }
+
+    it "sends the key as a bearer token on /completion, /props and /models" do
+      env["BOX_KEY"] = "sk-box-1"
+      server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
+      server.default("/props", json: { default_generation_settings: { n_ctx: 4096 } })
+      server.default("/models", json: { data: [] })
+
+      expect(keyed.complete("prompt")).to eq("Hi")
+      expect(keyed.context_window(model: "m")).to eq(4096)
+      keyed.list_models
+
+      expect(server.requests.map { |request| [request.path.split("?").first, request.header("Authorization")] })
+        .to eq([["/completion", "Bearer sk-box-1"], ["/props", "Bearer sk-box-1"], ["/models", "Bearer sk-box-1"]])
+    end
+
+    it "is given the key by a hosts: entry with api_key_env" do
+      env["BOX_KEY"] = "sk-box-1"
+      server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
+      registry = Samagotchi::HostRegistry.new(
+        hosts_config: { "box" => { host: "127.0.0.1", port: server.port, api_key_env: "BOX_KEY" } }, env: env
+      )
+
+      expect(registry.entries["box"].client.complete("prompt")).to eq("Hi")
+      expect(server.requests.last.header("Authorization")).to eq("Bearer sk-box-1")
+    end
+
+    it "raises AuthError naming the variable when it is not set, without a request" do
+      expect { keyed.complete("prompt") }
+        .to raise_error(Samagotchi::LLM::AuthError, /BOX_KEY/) { |error| expect(error.host).to eq("box") }
+      expect(server.requests).to be_empty
+    end
+
+    it "sends no header for a host without api_key_env" do
+      server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
+      client = described_class.new(host: "127.0.0.1", port: server.port, name: "box")
+
+      client.complete("prompt")
+
+      expect(server.requests.last.header("Authorization")).to be_nil
+    end
+
+    it "says how to give a key when a host without api_key_env answers 401" do
+      server.default("/completion", status: 401, json: { error: { code: 401, message: "Invalid API Key", type: "authentication_error" } })
+      client = described_class.new(host: "127.0.0.1", port: server.port, name: "box")
+
+      expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::AuthError) { |error|
+        expect(error.summary).to include("Invalid API Key")
+        expect(error.summary).to include("api_key_env")
+        expect(error.summary).to include("host box")
+      }
+    end
+
+    it "names the variable to check when a keyed host answers 401, never the key" do
+      env["BOX_KEY"] = "sk-box-1"
+      server.default("/completion", status: 401, json: { error: { code: 401, message: "Invalid API Key", type: "authentication_error" } })
+
+      expect { keyed.complete("prompt") }.to raise_error(Samagotchi::LLM::AuthError) { |error|
+        expect(error.summary).to include("BOX_KEY")
+        expect(error.summary).not_to include("sk-box-1")
+      }
+    end
   end
-
-  it "raises the error llama.cpp sends mid-stream" do
-    server.default("/completion", sse: "data: {\"content\":\"Hel\"}\n\nerror: {\"code\":500,\"message\":\"slot unavailable\",\"type\":\"server_error\"}\n\n")
-    chunks = []
-
-    expect { client.complete("prompt", on_chunk: ->(event) { chunks << event[:content] }) }
-      .to raise_error(Samagotchi::LLM::ServerError, /slot unavailable/)
-    expect(chunks).to eq(["Hel"])
-    expect(server.requests.size).to eq(1)
-  end
-
-  it "retries an error event sent before any content, then answers" do
-    server.enqueue("/completion", sse: "error: {\"code\":503,\"message\":\"loading model\",\"type\":\"unavailable_error\"}\n\n")
-    server.enqueue("/completion", sse: "data: {\"content\":\"Hi\"}\n\ndata: {\"content\":\"\",\"stop\":true}\n\n")
-
-    expect(client.complete("prompt")).to eq("Hi")
-    expect(server.requests.size).to eq(2)
-  end
-
-  it "raises AuthError when listing models is refused" do
-    server.default("/models", status: 401, json: FakeProviderServer.fixture("error_401.hand-written.json"))
-
-    expect { client.list_models }.to raise_error(Samagotchi::LLM::AuthError)
-  end
-end
-
-# A llama.cpp server started with --api-key wants `Authorization: Bearer`
-# on every route; the key comes from the host's api_key_env, as on the
-# OpenAI path.
-describe "API keys" do
-  around { |example| FakeProviderServer.without_webmock { example.run } }
-
-  let(:server) { FakeProviderServer.start }
-  let(:env) { {} }
-  let(:keyed) do
-    described_class.new(host: "127.0.0.1", port: server.port, name: "box", api_key_env: "BOX_KEY", env: env,
-                        sleeper: ->(_seconds) {})
-  end
-
-  after { server.stop }
-
-  it "sends the key as a bearer token on /completion, /props and /models" do
-    env["BOX_KEY"] = "sk-box-1"
-    server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
-    server.default("/props", json: { default_generation_settings: { n_ctx: 4096 } })
-    server.default("/models", json: { data: [] })
-
-    expect(keyed.complete("prompt")).to eq("Hi")
-    expect(keyed.context_window(model: "m")).to eq(4096)
-    keyed.list_models
-
-    expect(server.requests.map { |request| [request.path.split("?").first, request.header("Authorization")] })
-      .to eq([["/completion", "Bearer sk-box-1"], ["/props", "Bearer sk-box-1"], ["/models", "Bearer sk-box-1"]])
-  end
-
-  it "is given the key by a hosts: entry with api_key_env" do
-    env["BOX_KEY"] = "sk-box-1"
-    server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
-    registry = Samagotchi::HostRegistry.new(
-      hosts_config: { "box" => { host: "127.0.0.1", port: server.port, api_key_env: "BOX_KEY" } }, env: env
-    )
-
-    expect(registry.entries["box"].client.complete("prompt")).to eq("Hi")
-    expect(server.requests.last.header("Authorization")).to eq("Bearer sk-box-1")
-  end
-
-  it "raises AuthError naming the variable when it is not set, without a request" do
-    expect { keyed.complete("prompt") }
-      .to raise_error(Samagotchi::LLM::AuthError, /BOX_KEY/) { |error| expect(error.host).to eq("box") }
-    expect(server.requests).to be_empty
-  end
-
-  it "sends no header for a host without api_key_env" do
-    server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
-    client = described_class.new(host: "127.0.0.1", port: server.port, name: "box")
-
-    client.complete("prompt")
-
-    expect(server.requests.last.header("Authorization")).to be_nil
-  end
-
-  it "says how to give a key when a host without api_key_env answers 401" do
-    server.default("/completion", status: 401, json: { error: { code: 401, message: "Invalid API Key", type: "authentication_error" } })
-    client = described_class.new(host: "127.0.0.1", port: server.port, name: "box")
-
-    expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::AuthError) { |error|
-      expect(error.summary).to include("Invalid API Key")
-      expect(error.summary).to include("api_key_env")
-      expect(error.summary).to include("host box")
-    }
-  end
-
-  it "names the variable to check when a keyed host answers 401, never the key" do
-    env["BOX_KEY"] = "sk-box-1"
-    server.default("/completion", status: 401, json: { error: { code: 401, message: "Invalid API Key", type: "authentication_error" } })
-
-    expect { keyed.complete("prompt") }.to raise_error(Samagotchi::LLM::AuthError) { |error|
-      expect(error.summary).to include("BOX_KEY")
-      expect(error.summary).not_to include("sk-box-1")
-    }
-  end
-end
 
   describe "#context_window" do
     # Recorded from llama.cpp started with `-c 128000 --parallel 4`: /props

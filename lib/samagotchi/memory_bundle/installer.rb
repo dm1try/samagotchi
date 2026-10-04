@@ -187,6 +187,7 @@ module Samagotchi
 
           hook_entries.each do |basename, meta|
             next unless basename.is_a?(String) && !basename.empty?
+
             all_hooks_in_bundle << basename
             src = File.join(normalized_dir, "hooks", basename)
             next unless File.exist?(src)
@@ -249,6 +250,7 @@ module Samagotchi
           existing_provenance[:hooks].keys.each do |old_key|
             old_key_str = old_key.to_s
             next if all_hooks_in_bundle.include?(old_key_str)
+
             old_dest = File.join(hooks_target, old_key_str)
             if File.exist?(old_dest) && !@force
               @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
@@ -261,10 +263,12 @@ module Samagotchi
         if manifest && @strict
           all_hooks_in_bundle.each do |basename|
             next if @conflicts.key?(basename)
+
             expected = manifest.checksum_for_hook(basename)
             if expected
               dest = File.join(hooks_target, basename)
               next unless File.exist?(dest)
+
               actual = Digest::SHA256.hexdigest(File.read(dest))
               if actual != expected
                 @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
@@ -313,12 +317,15 @@ module Samagotchi
         if manifest && @strict
           all_files_in_bundle.each do |file_key|
             next if @conflicts.key?(file_key)
+
             status = @results[file_key] ? @results[file_key][:status].to_s : nil
             # skipped: not copied, so a local edit isn't a bad download.
             next if %w[kept kept_pruned fast_forward updated skipped].include?(status)
+
             # For dry-run, fast_forward would appear as "fast_forward", updated not yet
             target_path = File.join(target_dir, file_key)
             next unless File.exist?(target_path)
+
             expected = manifest.checksum_for(file_key)
             if expected
               actual = Digest::SHA256.hexdigest(File.read(target_path))
@@ -342,6 +349,7 @@ module Samagotchi
             owned.each do |file_key|
               target_path = File.join(target_dir, file_key)
               next unless File.exist?(target_path)
+
               status = @results[file_key] ? @results[file_key][:status].to_s : nil
               if %w[kept noop conflict kept_pruned].include?(status)
                 # Keep old base snapshot — do not overwrite with edited current
@@ -364,6 +372,7 @@ module Samagotchi
               existing_provenance[:files].keys.each do |old_key|
                 old_key_str = old_key.to_s
                 next if all_files_in_bundle.include?(old_key_str)
+
                 # If it was kept_pruned, include it with base content to prevent pruning
                 if @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
                   base_path = provenance.base_path(old_key_str)
@@ -393,6 +402,7 @@ module Samagotchi
           elsif hooks_files_for_provenance.any?
             hooks_files_for_provenance.each do |basename, path|
               next unless File.exist?(path)
+
               sha = Digest::SHA256.hexdigest(File.read(path))
               hooks_for_provenance[basename] = { "sha256" => "sha256:#{sha}", "event" => "", "on_error" => "skip", "priority" => 100 }
             end
@@ -418,6 +428,7 @@ module Samagotchi
         all_files_in_bundle.each do |file_key|
           file_path = File.join(target_dir, file_key)
           next unless File.exist?(file_path)
+
           names = Placeholder.detect_in_file(file_path)
           if names.any?
             @placeholder_warnings << "#{file_key}: {{#{names.join("}}, {{")}}}"
@@ -494,6 +505,7 @@ module Samagotchi
         previous_files.each do |old_key, meta|
           key = old_key.to_s
           next if bundle_files.include?(key)
+
           target = File.join(target_dir, key)
           next unless File.exist?(target)
 
@@ -504,6 +516,7 @@ module Samagotchi
           elsif @force || installed_unchanged?(target, meta, provenance.base_path(key))
             @results[key] = { status: @dry_run ? "would_remove" : "removed", reason: "no longer in the bundle" }
             next if @dry_run
+
             @trash.move(target)
             remove_target_index(scope, key)
           else
@@ -518,6 +531,7 @@ module Samagotchi
       def installed_unchanged?(target, meta, base_path)
         recorded = meta.is_a?(Hash) ? meta[:checksum] || meta["checksum"] : nil
         return Provenance.sha_matches?(target, recorded) unless Provenance.recorded_sha(recorded).empty?
+
         File.exist?(base_path) && Provenance.file_sha(target) == Provenance.file_sha(base_path)
       end
 
@@ -577,12 +591,12 @@ module Samagotchi
         FileUtils.mkdir_p(provenance.plugin_dir)
         FileUtils.cp(src, dest)
         @results[plugin[:file]] = if unchanged
-                                   { status: "skipped", reason: "already up to date" }
-                                 elsif @upgrade && provenance.read
-                                   { status: "updated" }
-                                 else
-                                   { status: "installed" }
-                                 end
+                                    { status: "skipped", reason: "already up to date" }
+                                  elsif @upgrade && provenance.read
+                                    { status: "updated" }
+                                  else
+                                    { status: "installed" }
+                                  end
         expected = manifest.checksum_for_plugin
         actual = Digest::SHA256.hexdigest(File.binread(dest))
         if @strict && expected && actual != expected

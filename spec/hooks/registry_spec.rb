@@ -6,12 +6,12 @@ require "samagotchi/guardrails"
 RSpec.describe Samagotchi::Hooks::Registry do
   describe "#register" do
     it "stores a hook under the given name" do
-      subject.register(:test_hook) { }
+      subject.register(:test_hook) {}
       expect(subject.size).to eq(1)
     end
 
     it "raises for non-Symbol names" do
-      expect { subject.register("not_a_symbol") { } }.to raise_error(ArgumentError, /hook name must be a Symbol/)
+      expect { subject.register("not_a_symbol") {} }.to raise_error(ArgumentError, /hook name must be a Symbol/)
     end
 
     it "raises when no block is given" do
@@ -75,7 +75,7 @@ RSpec.describe Samagotchi::Hooks::Registry do
 
   describe "#unregister" do
     it "removes a hook and returns true" do
-      subject.register(:to_remove) { }
+      subject.register(:to_remove) {}
       expect(subject.unregister(:to_remove)).to be true
       expect(subject.size).to eq(0)
     end
@@ -88,8 +88,8 @@ RSpec.describe Samagotchi::Hooks::Registry do
 
   describe "#clear_all" do
     it "removes all hooks" do
-      subject.register(:a) { }
-      subject.register(:b) { }
+      subject.register(:a) {}
+      subject.register(:b) {}
       subject.clear_all
       expect(subject.size).to eq(0)
     end
@@ -133,7 +133,7 @@ RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
     labels = []
     subject.register_bundle("b", :before_tool_call, hook_name: "g.rb") { |e| labels << e[:hook] }
     subject.register(:before_tool_call) { |e| labels << e[:hook] }
-    subject.fire_each(:before_tool_call, { type: :before_tool_call }) { }
+    subject.fire_each(:before_tool_call, { type: :before_tool_call }) {}
     expect(labels).to eq(["g.rb (bundle b)", "turn hook"])
   end
 
@@ -203,7 +203,7 @@ RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
     it "stop_turn from before_tool_call also denies the call" do
       verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "ls" })
       subject.register_bundle("kn", :before_tool_call, hook_name: "k.rb") { |e| e[:stop_turn].call("bad call") }
-      subject.fire_each(:before_tool_call, { type: :before_tool_call, guardrail: verdict }) { }
+      subject.fire_each(:before_tool_call, { type: :before_tool_call, guardrail: verdict }) {}
       expect(verdict).to be_deny
       expect(verdict.reason).to eq("the turn was stopped by k.rb (bundle kn): bad call")
       expect(calls.map(&:first)).to eq([:stop])

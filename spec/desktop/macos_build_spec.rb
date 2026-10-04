@@ -263,7 +263,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
 
     it "reads the exit-1 payload (no host listed): the default alone, and a remembered pick kept" do
       result, = pick("--stored", "gemma-4", input: JSON.generate("default" => "gemma-4", "default_typed" => nil, "default_host" => nil,
-                                                                  "models" => [], "aliases" => [], "warnings" => ["main: refused"]))
+                                                                 "models" => [], "aliases" => [], "warnings" => ["main: refused"]))
 
       expect(result["rows"]).to eq([{ "kind" => "default", "name" => "gemma-4", "label" => "Default (gemma-4)" }])
       expect(result["pick"]).to be_nil

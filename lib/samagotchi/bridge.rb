@@ -546,6 +546,7 @@ module Samagotchi
       unless parsed.is_a?(Hash)
         return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }]
       end
+
       qid = fetched(parsed, "id")
       selected = fetched(parsed, "selected")
       freeform = fetched(parsed, "freeform")
@@ -556,6 +557,7 @@ module Samagotchi
       if qid.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }]
       end
+
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
       return deadline_passed("answer") if expired?("answer_expired", deadline, sid: session_id, id: qid)
@@ -722,6 +724,7 @@ module Samagotchi
         @on_exit_request.call(client_id, **options)
       end
       return deadline_passed("exit request") if reason == :expired
+
       if reason.nil?
         return [{}, 200, { status: "restarting", session_id: @session_id }] if restart
 

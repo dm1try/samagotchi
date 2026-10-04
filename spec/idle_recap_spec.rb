@@ -828,6 +828,7 @@ RSpec.describe Samagotchi::IdleRecap do
     let(:store_class) do
       Class.new do
         attr_accessor :key, :saved, :loads
+
         def initialize(key, saved = nil) = (@key = key; @saved = saved; @loads = 0)
         def load = (@loads += 1; @saved&.dup)
         def save(state) = @saved = state.dup
@@ -900,6 +901,7 @@ RSpec.describe Samagotchi::IdleRecap do
     let(:store) do
       Class.new do
         attr_reader :saved
+
         def key = "s1"
         def load = nil
         def save(state) = @saved = state

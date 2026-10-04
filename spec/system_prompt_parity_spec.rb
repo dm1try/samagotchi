@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require "samagotchi/terminal_ui"
 require "samagotchi/engine"
 require "samagotchi/session"
@@ -18,7 +19,7 @@ RSpec.describe "Engine/TerminalUI system-prompt parity" do
 
   it "TerminalUI fully-built system prompt == Engine#system_prompt" do
     session = ui.send(:messages_for,
-      Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd))
+                      Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd))
     expect(session[0][:content]).to eq(engine.system_prompt)
   end
 

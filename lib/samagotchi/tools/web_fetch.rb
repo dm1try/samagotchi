@@ -1,4 +1,3 @@
-
 # frozen_string_literal: true
 
 require "net/http"
@@ -160,4 +159,3 @@ module Samagotchi
     end
   end
 end
-

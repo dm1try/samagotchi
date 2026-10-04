@@ -237,7 +237,7 @@ Hooks removed: 1\n\z})
       out, err, code = chi("status", "core")
       expect([err, code]).to eq(["", 0])
       expect(out.lines.grep(/includes /)).to eq(["  includes loop-guard [installed]\n", "  includes check-in [not installed: chi bundle install check-in]\n",
-                                                "  includes guardrails [installed]\n"])
+                                                 "  includes guardrails [installed]\n"])
       expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.1.0 scope=system files=0 includes=loop-guard,check-in,guardrails issues=0\n"])
     end
 
@@ -377,8 +377,8 @@ Hooks removed: 1\n\z})
 
     it "status lists both" do
       expect(chi("status")).to eq([
-        "  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n" \
-        "  sample-plugin v1.0.0 scope=system files=0 plugin=plugin.rb issues=0\n", "", 0
+        "  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n  " \
+        "sample-plugin v1.0.0 scope=system files=0 plugin=plugin.rb issues=0\n", "", 0
       ])
     end
 
@@ -483,8 +483,8 @@ Hooks removed: 1\n\z})
       out, err, code = chi("status", "sample-hooks-bundle")
 
       expect([err, code]).to eq(["", 0])
-      expect(out).to include("    guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]\n" \
-                             "    requires_chi: >= 99.0\n    not loaded: #{failure}\n")
+      expect(out).to include("    guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]\n    " \
+                             "requires_chi: >= 99.0\n    not loaded: #{failure}\n")
       expect(chi("status")[0]).to eq("  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n")
     end
   end

@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_event("read", call, "ok", registry: tools))
         .to eq(action: "reading file", tool: "read", params: 'path="lib/a.rb"', status: "ok", title: "lib/a.rb")
       expect(described_class.tool_activity_event("register_reminder", { name: "register_reminder", content: "x" }, "ok",
-                                                  registry: tools))
+                                                 registry: tools))
         .to include(action: "calling tool", params: nil)
     end
   end

@@ -118,6 +118,7 @@ module Samagotchi
         return usage_error("unknown format #{format.inspect}: use --format text|json|tsv")
       end
       return usage_error("unknown scope #{scope.inspect}: use --scope=project|all") unless scope.nil? || %w[project all].include?(scope)
+
       # The current git project's sessions (Samagotchi::ProjectScope), like
       # chi web's; --scope=all, a folder in no repo or an explicit --cwd: every
       # project's.

@@ -589,4 +589,3 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     end
   end
 end
-

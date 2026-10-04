@@ -84,12 +84,14 @@ module Samagotchi
       options = parsed.options
       return usage_error("give one session id") unless parsed.args.size == 1
       return usage_error("--question QID is required (chi send --wait prints it)") if options[:question].to_s.strip.empty?
+
       if options[:dismiss]
         return usage_error("--dismiss takes no --option or --text") if !options[:options].empty? || options[:text]
       elsif options[:options].empty? && options[:text].nil?
         return usage_error("nothing to answer with: --option, --text or --dismiss")
       end
       return usage_error("--format takes text or json") if options[:format] && !FORMATS.include?(options[:format])
+
       if options[:timeout]
         options[:timeout] = Float(options[:timeout], exception: false)
         return usage_error("--timeout takes seconds") unless options[:timeout]&.positive?

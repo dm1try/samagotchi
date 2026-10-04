@@ -302,8 +302,8 @@ RSpec.describe "chi bootstrap" do
 
         def install(name, dry_run: false)
           Samagotchi::MemoryBundle::Profile::InstallResult.new(name: name, version: "0.1.0", installed: %w[loop-guard], already: [],
-                                                                skipped: { "guardrails" => "it requires chi >= 9" },
-                                                                failed: { "check-in" => "boom" })
+                                                               skipped: { "guardrails" => "it requires chi >= 9" },
+                                                               failed: { "check-in" => "boom" })
         end
       end
 

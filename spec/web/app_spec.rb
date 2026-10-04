@@ -102,7 +102,6 @@ RSpec.describe Samagotchi::Web::App do
     )
   end
 
-
   describe "log lines (tag web)" do
     let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
     let(:log_path) { File.join(log_dir, "chi.log") }
@@ -1108,7 +1107,7 @@ RSpec.describe Samagotchi::Web::App do
         store.call({ type: :generation_started, iteration: 3 })
         store.call({ type: :hook_notice, hook: "loop-guard", text: "loop: repeated, denied", level: :warn })
         store.call({ type: :card, id: "stop", source: "loop-guard", title: "Stopped", body: "some **bold**", level: :warn,
-                    actions: [], in_turn: true })
+                     actions: [], in_turn: true })
         store.call({ type: :turn_canceled })
         app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, markdown: true)
 
@@ -1163,7 +1162,7 @@ RSpec.describe Samagotchi::Web::App do
         app = build_app(state_dir: Dir.mktmpdir)
         messages = [{ "role" => "user", "content" => "check" },
                     { "role" => "model", "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "read",
-                                                                               "arguments" => { "path" => "#{Dir.pwd}/lib/x.rb" } }] },
+                                                                             "arguments" => { "path" => "#{Dir.pwd}/lib/x.rb" } }] },
                     { "role" => "tool_response", "content" => "[read]\nx", "tool_call_id" => "c1" }]
         allow(app).to receive(:bridge_get_json).with("s1", "snapshot")
                                                .and_return(live.merge("snapshot" => { "messages" => messages }))

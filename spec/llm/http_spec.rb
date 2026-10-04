@@ -508,8 +508,10 @@ RSpec.describe Samagotchi::LLM::HTTP do
                  retries: false, check_status: false, log_fields: { purpose: "probe" })
       http.fetch(URI("#{server.base_url}/models"), Net::HTTP::Get.new(URI("#{server.base_url}/models")),
                  log_fields: { purpose: "models" })
-      expect { http.fetch(URI("http://127.0.0.1:#{closed_port}/props"), Net::HTTP::Get.new(URI("http://127.0.0.1:1/props")),
-                          retries: false, log_fields: { purpose: "probe" }) }.to raise_error(Errno::ECONNREFUSED)
+      expect {
+        http.fetch(URI("http://127.0.0.1:#{closed_port}/props"), Net::HTTP::Get.new(URI("http://127.0.0.1:1/props")),
+                   retries: false, log_fields: { purpose: "probe" })
+      }.to raise_error(Errno::ECONNREFUSED)
 
       expect(http_records.map { |r| [r.level, r.event, r.fields["status"]] })
         .to eq([["DEBUG", "fetch", "404"], ["DEBUG", "fetch", "200"], ["DEBUG", "failed", nil]])
@@ -561,14 +563,14 @@ RSpec.describe Samagotchi::LLM::HTTP do
     end
 
     it "raises the mapped error for a failed status, or returns it with check_status: false" do
-  models = URI("#{server.base_url}/models")
-  server.default("/v1/models", status: 401, json: { error: { message: "bad key" } })
+      models = URI("#{server.base_url}/models")
+      server.default("/v1/models", status: 401, json: { error: { message: "bad key" } })
 
-  expect { http.fetch(models, Net::HTTP::Get.new(models)) }.to raise_error(Samagotchi::LLM::AuthError)
-  expect(http.fetch(models, Net::HTTP::Get.new(models), check_status: false).code).to eq("401")
-end
+      expect { http.fetch(models, Net::HTTP::Get.new(models)) }.to raise_error(Samagotchi::LLM::AuthError)
+      expect(http.fetch(models, Net::HTTP::Get.new(models), check_status: false).code).to eq("401")
+    end
 
-it "makes one attempt with retries: false" do
+    it "makes one attempt with retries: false" do
       dead = URI("http://127.0.0.1:#{closed_port}/props")
 
       expect { http.fetch(dead, Net::HTTP::Get.new(dead), retries: false) }.to raise_error(Errno::ECONNREFUSED)

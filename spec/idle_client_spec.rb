@@ -28,7 +28,7 @@ RSpec.describe Samagotchi::IdleClient do
 
     it "names the model that answered, as the server reports it" do
       server.enqueue("/v1/chat/completions", json: { model: "served/model-Q4.gguf",
-                                                      choices: [{ message: { content: "Recap." }, finish_reason: "stop" }] })
+                                                     choices: [{ message: { content: "Recap." }, finish_reason: "stop" }] })
       summary = client.summarize("summarize this")
       expect(summary).to have_attributes(text: "Recap.", model: "served/model-Q4.gguf")
       expect(summary.to_s).to eq("Recap.")

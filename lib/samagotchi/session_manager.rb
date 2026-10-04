@@ -1,4 +1,3 @@
-
 # frozen_string_literal: true
 
 require "fileutils"
@@ -272,7 +271,7 @@ module Samagotchi
       root = cwd && folder_path(cwd)
       roots = {}
       summaries = Session.list(state_dir: sd, sort: sort || "updated_at", order: order || "desc", project_root: project_root,
-                                           include_archived: include_archived).lazy
+                               include_archived: include_archived).lazy
                          .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
                          .select { |s| root.nil? || in_folder?(s.working_directory, root) }
                          .filter_map do |s|
@@ -1054,4 +1053,3 @@ module Samagotchi
     end
   end
 end
-

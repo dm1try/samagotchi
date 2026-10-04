@@ -57,6 +57,7 @@ module Samagotchi
       def self.git_url?(str)
         s = str.to_s.strip
         return false if s.empty?
+
         s.match?(%r{\A(?:https?://|git@|ssh://|git://|file://).+})
       end
 
@@ -78,6 +79,7 @@ module Samagotchi
           args += [url, clone_dir]
           result = system(*args)
           raise UnknownSourceError, "git clone failed for #{git_url}" unless result && File.directory?(clone_dir)
+
           # Capture HEAD commit before stripping .git (audit trail)
           commit = nil
           begin
@@ -109,6 +111,7 @@ module Samagotchi
         Dir.mktmpdir("samagotchi-zip-") do |extract_dir|
           result = system("unzip", "-o", zip_path, "-d", extract_dir)
           raise UnknownSourceError, "unzip failed for #{zip_path}" unless result
+
           clean_copy_of(extract_dir)
         end
       end
@@ -119,6 +122,7 @@ module Samagotchi
           cmd = is_gz ? ["tar", "-xzf"] : ["tar", "-xf"]
           result = system(*cmd, tar_path, "-C", extract_dir)
           raise UnknownSourceError, "tar extraction failed for #{tar_path}" unless result
+
           clean_copy_of(extract_dir)
         end
       end

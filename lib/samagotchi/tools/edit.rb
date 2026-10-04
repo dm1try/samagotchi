@@ -107,6 +107,7 @@ module Samagotchi
           unless OutputGuardrails.env_bool("SAMAGOTCHI_EDIT_END_OPTIONAL", default: true)
             return "Error: start_line and end_line must both be provided for range edits"
           end
+
           end_value = total_lines
         end
 
@@ -136,6 +137,7 @@ module Samagotchi
         while (i = haystack.index(needle, pos))
           count += 1
           break if count > 1  # early exit — we only care whether it's 0, 1, or >1
+
           pos = i + needle.length
         end
         count

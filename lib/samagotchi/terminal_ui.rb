@@ -90,7 +90,7 @@ module Samagotchi
       # As typed: the Engine applies an alias where it resolves the model.
       flag_model_name = model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(model_name)
       @effective_model_name = flag_model_name || @default_model_name
-      @host_registry  = host_registry || Samagotchi::HostRegistry.new
+      @host_registry = host_registry || Samagotchi::HostRegistry.new
       # An injected client (specs) stands in for every host's client.
       @host_registry.client_override = client if client
       @client = @host_registry.resolve(@effective_model_name).client
@@ -101,6 +101,7 @@ module Samagotchi
       if session_id && !Session.exist?(session_id)
         raise SessionNotFound, "Session not found: #{session_id}"
       end
+
       claim_session!(session_id) if session_id
       @resume_session = session_id ? Session.load(session_id) : nil
       if @resume_session
@@ -146,7 +147,7 @@ module Samagotchi
       @between_turns = BetweenTurns.new(surface: @surface, view: @view, renderer: @renderer,
                                         turn_running: -> { @engine.turn_running? }, quiet: @non_interactive)
       @render_event = ->(event) { handle_stream_event(event) }
-      @engine         = Engine.new(
+      @engine = Engine.new(
         client: client,
         host_registry: @host_registry,
         profile: profile,
@@ -504,6 +505,7 @@ module Samagotchi
           end
         end
         break if input.nil?
+
         local = local_command(input)
         if local == :exit
           @delete_on_exit ||= SessionCommands.delete_on_exit?(input)
@@ -705,6 +707,7 @@ module Samagotchi
         return
       end
       return if show_local_command(input)
+
       # A typo of a command (/modle) is not a prompt: say so, send nothing.
       hint = command_registry.unknown_command_hint(input)
       return @surface.commit(hint) if hint
@@ -849,6 +852,7 @@ module Samagotchi
     # #cancel_turn_from_prompt.
     def poll_input_with_reminder_check(awaiting_continue:)
       return :due unless @engine.due_reminder_names.empty?
+
       # Specs and pipes: a plain blocking read.
       unless @repl_input
         @between_turns.flush_cards
@@ -994,6 +998,7 @@ module Samagotchi
       # A command, never steering text (/archive waits, back in the prompt).
       return command_during_turn(line) if local || command_registry.command?(line)
       return true if line.strip.empty?
+
       # A typo of a command (/modle) is not steering text: say so, take it.
       if (hint = command_registry.unknown_command_hint(line))
         @surface.commit(hint)
@@ -1091,7 +1096,6 @@ module Samagotchi
     def recap_config
       ConfigFile.recap_config
     end
-
 
     # Reset the Engine's shared inactivity clock when a prompt opens (a
     # Reline.pre_input_hook) and on each key typed (RelineSeam.key_handler). This is the

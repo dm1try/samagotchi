@@ -49,8 +49,8 @@ RSpec.describe Samagotchi::Guardrails::Approval do
     it "says everything in plain text, outside a repo" do
       payload = described_class.payload(ask)
       expect(payload[:question]).to eq(
-        "execute: git push origin main\n  in #{dir} (not in a repo)\n" \
-        "  why: git push publishes commits (rule git-push, bundle guardrails)"
+        "execute: git push origin main\n  in #{dir} (not in a repo)\n  " \
+        "why: git push publishes commits (rule git-push, bundle guardrails)"
       )
       expect(payload[:options]).to eq(["Allow once", "Allow this call for the session", "Allow this call in this directory",
                                        "Allow rule git-push in this directory", "Deny"])

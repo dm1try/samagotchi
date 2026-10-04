@@ -197,6 +197,7 @@ module Samagotchi
       return usage_error("--wait takes one session") if options[:wait] && options[:ids].uniq.size > 1
       return usage_error("at most #{MAX_IMAGES} images") if options[:images].size > MAX_IMAGES
       return new_options(options) if options[:new]
+
       %i[dir model].each { |key| return usage_error("--#{key} needs --new") if options[key] }
       return usage_error("give session ids") if options[:ids].empty?
 
@@ -229,6 +230,7 @@ module Samagotchi
     # caller never closes still hangs, as it would for cat.)
     def read_stdin
       return nil if @stdin.respond_to?(:tty?) && @stdin.tty?
+
       if @stdin.respond_to?(:stat)
         stat = @stdin.stat
         return nil unless stat.pipe? || stat.file?

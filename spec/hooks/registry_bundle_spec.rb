@@ -22,8 +22,8 @@ RSpec.describe Samagotchi::Hooks::Registry do
     end
 
     it "unregister_bundle removes only that bundle" do
-      subject.register_bundle("keep", :ev, hook_name: "k.rb") { }
-      subject.register_bundle("remove", :ev, hook_name: "r.rb") { }
+      subject.register_bundle("keep", :ev, hook_name: "k.rb") {}
+      subject.register_bundle("remove", :ev, hook_name: "r.rb") {}
       expect(subject.size).to eq(2)
       removed = subject.unregister_bundle("remove")
       expect(removed).to eq(1)
@@ -32,8 +32,8 @@ RSpec.describe Samagotchi::Hooks::Registry do
     end
 
     it "unregister_bundle with event restricts to one event" do
-      subject.register_bundle("b", :ev1, hook_name: "h.rb") { }
-      subject.register_bundle("b", :ev2, hook_name: "h.rb") { }
+      subject.register_bundle("b", :ev1, hook_name: "h.rb") {}
+      subject.register_bundle("b", :ev2, hook_name: "h.rb") {}
       subject.unregister_bundle("b", :ev1)
       expect(subject.size).to eq(1)
       subject.fire(:ev1, {})
@@ -41,14 +41,14 @@ RSpec.describe Samagotchi::Hooks::Registry do
     end
 
     it "size covers both plain and bundle hooks" do
-      subject.register(:plain) { }
-      subject.register_bundle("b", :ev, hook_name: "h.rb") { }
+      subject.register(:plain) {}
+      subject.register_bundle("b", :ev, hook_name: "h.rb") {}
       expect(subject.size).to eq(2)
     end
 
     it "clear_all clears plain hooks but SPARES bundle hooks (Policy 4)" do
-      subject.register(:plain) { }
-      subject.register_bundle("b", :ev, hook_name: "h.rb") { |e| e[:bundle]=true }
+      subject.register(:plain) {}
+      subject.register_bundle("b", :ev, hook_name: "h.rb") { |e| e[:bundle] = true }
       subject.clear_all
       expect(subject.size).to eq(1)
       e = {}
@@ -61,7 +61,7 @@ RSpec.describe Samagotchi::Hooks::Registry do
     end
 
     it "bundle hooks survive multiple clear_all (turn-2 regression)" do
-      subject.register_bundle("b", :before_tool_call, hook_name: "g.rb", priority: 10) { |e| e[:blocked]=true }
+      subject.register_bundle("b", :before_tool_call, hook_name: "g.rb", priority: 10) { |e| e[:blocked] = true }
       2.times do
         e = {}
         subject.fire(:before_tool_call, e)
@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Hooks::Registry do
     end
 
     it "unregister_bundle removes bundle hooks after clear_all" do
-      subject.register_bundle("b", :ev, hook_name: "h.rb") { }
+      subject.register_bundle("b", :ev, hook_name: "h.rb") {}
       subject.clear_all
       expect(subject.size).to eq(1)
       subject.unregister_bundle("b")

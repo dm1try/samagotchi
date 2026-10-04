@@ -800,7 +800,7 @@ RSpec.describe Samagotchi::Worker do
 
         wait_until(timeout: 2) { events_seen.any? { |e| e[:type] == :command_ran } }
         expect(seen.find { |e| e[:type] == :command_ran }).to include(line: "/model Qwen3-14B", client_id: "cli:send",
-                                                                     status: "ok")
+                                                                      status: "ok")
         expect(turns).to be_empty
       end
 

@@ -322,7 +322,7 @@ class SourceLinks
       in_target = start >= link[:target][0] && finish <= link[:target][1]
       in_label = start >= link[:label][0] && finish <= link[:label][1]
       in_target || (in_label && target_names_ref?(link[:target_text], text[start...finish],
-                                                   case_insensitive: match.regexp.casefold?))
+                                                  case_insensitive: match.regexp.casefold?))
     end
   end
 

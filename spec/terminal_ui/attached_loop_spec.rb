@@ -91,7 +91,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       feed(snapshot(current_turn: turn, queued: [{ enqueued_id: "e2", client_id: "web:tab2", prompt: "next one" }]))
 
       expect(screen.lines).to eq(["web> check the logs", "tool> read path=log: ok", "input> also errors",
-                                          "queued web> next one"])
+                                  "queued web> next one"])
       expect(screen.statuses.last).to eq("| running grep…")
       expect(attached).to be_running
     end
@@ -405,7 +405,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     it "prints a live card as a block, and one shown again marked (updated)" do
       feed(snapshot, card("c1", "Hello"), card("c1", "Hello 2"))
       expect(lines).to include("┌ Hello · sample-plugin", "│ b", "│ → /hello again  Again", "└",
-                                      "┌ Hello 2 (updated) · sample-plugin")
+                               "┌ Hello 2 (updated) · sample-plugin")
     end
 
     it "shows a snapshot's cards and notices since the last turn when joining, the running turn's after it" do
@@ -849,20 +849,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     expect(client).to have_received(:answer).with(id: "c1", selected: ["Stop"], freeform: "it is going in circles")
   end
 
-it "puts what was typed at the prompt aside for the question and back after it" do
-  allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
-  allow_any_instance_of(Samagotchi::TerminalUI::LineReader).to receive(:typed_text).and_return("half typed")
-  start
-  push("type" => "question_requested", "pending_question" => question)
+  it "puts what was typed at the prompt aside for the question and back after it" do
+    allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+    allow_any_instance_of(Samagotchi::TerminalUI::LineReader).to receive(:typed_text).and_return("half typed")
+    start
+    push("type" => "question_requested", "pending_question" => question)
 
-  wait_for { prompts.last == "? " }
-  expect(prefills.last).to be_nil
-  typed << "2"
-  wait_for { prompts.last == "> " }
-  finish
+    wait_for { prompts.last == "? " }
+    expect(prefills.last).to be_nil
+    typed << "2"
+    wait_for { prompts.last == "> " }
+    finish
 
-  expect(prefills.last).to eq("half typed")
-end
+    expect(prefills.last).to eq("half typed")
+  end
 
   describe "an approval" do
     let(:approval) do
@@ -1175,24 +1175,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
     expect(attached.model_name).to eq("m1")
   end
 
-it "says a command waits for the turn to end, and puts ours back into the prompt" do
-  reader = double("reader", prefill: true)
-  attached.instance_variable_set(:@reader, reader)
+  it "says a command waits for the turn to end, and puts ours back into the prompt" do
+    reader = double("reader", prefill: true)
+    attached.instance_variable_set(:@reader, reader)
 
-  feed(ran(status: "busy", line: "!ls", output: "busy: wait for the turn to end"),
-       ran(status: "busy", client_id: "web:tab", line: "/model x", output: "busy: wait for the turn to end"))
+    feed(ran(status: "busy", line: "!ls", output: "busy: wait for the turn to end"),
+         ran(status: "busy", client_id: "web:tab", line: "/model x", output: "busy: wait for the turn to end"))
 
-  expect(screen.lines.last(2)).to eq(["web> /model x", "busy: wait for the turn to end"])
-  expect(reader).to have_received(:prefill).once.with("!ls")
-end
+    expect(screen.lines.last(2)).to eq(["web> /model x", "busy: wait for the turn to end"])
+    expect(reader).to have_received(:prefill).once.with("!ls")
+  end
 
-it "points to the history when the prompt already holds text" do
-  attached.instance_variable_set(:@reader, double("reader", prefill: false))
+  it "points to the history when the prompt already holds text" do
+    attached.instance_variable_set(:@reader, double("reader", prefill: false))
 
-  feed(ran(status: "busy", line: "!ls", output: "busy: wait for the turn to end"))
+    feed(ran(status: "busy", line: "!ls", output: "busy: wait for the turn to end"))
 
-  expect(screen.lines.last).to eq("(the command is in the input history: ↑)")
-end
+    expect(screen.lines.last).to eq("(the command is in the input history: ↑)")
+  end
 
   it "asks at the ? prompt, its choices in the notes slot, while an offer is pending, from the join too" do
     expect(attached.send(:prompt_text)).to eq("> ")
@@ -1650,26 +1650,26 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "Ctrl-C and exit at an idle
     expect(screen.lines.count("Ctrl-D to detach, /exit stops the worker")).to eq(1)
   end
 
-it "cancels a running turn on Ctrl-C and leaves the typed text in the prompt (the read goes on)" do
-  allow(client).to receive(:follow) do |&block|
-    block.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => { "prompt" => "p", "parts" => [] },
-                                                      "queued" => [], "event_seq" => 1 })
-    double("stream", close: nil)
+  it "cancels a running turn on Ctrl-C and leaves the typed text in the prompt (the read goes on)" do
+    allow(client).to receive(:follow) do |&block|
+      block.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => { "prompt" => "p", "parts" => [] },
+                                                       "queued" => [], "event_seq" => 1 })
+      double("stream", close: nil)
+    end
+    handled = nil
+
+    attached.run(input: lambda do |_prompt, _prefill|
+      # The read starts on its own thread as the loop takes the snapshot in.
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+      sleep 0.01 until attached.running? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      allow(Reline).to receive(:line_buffer).and_return("half typed")
+      handled = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
+      nil # then Ctrl-D, in the same read
+    end)
+
+    expect(handled).to be(true)
+    expect(client).to have_received(:cancel).with(reason: "ctrl_c")
   end
-  handled = nil
-
-  attached.run(input: lambda do |_prompt, _prefill|
-    # The read starts on its own thread as the loop takes the snapshot in.
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
-    sleep 0.01 until attached.running? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-    allow(Reline).to receive(:line_buffer).and_return("half typed")
-    handled = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
-    nil # then Ctrl-D, in the same read
-  end)
-
-  expect(handled).to be(true)
-  expect(client).to have_received(:cancel).with(reason: "ctrl_c")
-end
 
   it "asks the worker to exit on a bare exit, any case, as the REPL exits" do
     allow(client).to receive(:request_exit).and_return(Samagotchi::BridgeClient::Response.new(status: 200, body: '{"status":"exiting"}'))

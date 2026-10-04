@@ -126,6 +126,7 @@ module Samagotchi
         bytes = 0
         Dir.glob(File.join(dir, "**", "*"), File::FNM_DOTMATCH).each do |f|
           next if File.directory?(f)
+
           files += 1
           bytes += File.size(f) rescue 0
         end

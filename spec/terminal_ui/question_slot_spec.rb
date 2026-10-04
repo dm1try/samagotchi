@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::TerminalUI::QuestionSlot do
 
   it "wraps a long question while there is room, one row when short" do
     prompt = Samagotchi::TerminalUI::QuestionPrompt.new("id" => "q", "question" => "Which of these fruits do you like best?",
-                                                         "options" => %w[Apple Pear])
+                                                        "options" => %w[Apple Pear])
     expect(prompt.slot.fit(width: 20, height: nil).first(3)).to eq(["? Which of these", "  fruits do you like", "  best?"])
     expect(prompt.slot.fit(width: 20, height: 3)).to eq(["? Which of these", "  1) Apple", "  2) Pear"])
   end

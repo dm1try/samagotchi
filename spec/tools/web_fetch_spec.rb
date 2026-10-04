@@ -1,5 +1,5 @@
-
 # frozen_string_literal: true
+
 require "samagotchi/tools/web_fetch"
 
 RSpec.describe Samagotchi::Tools::WebFetch do

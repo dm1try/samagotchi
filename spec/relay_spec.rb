@@ -37,8 +37,8 @@ RSpec.describe Samagotchi::Relay do
     expect(card[:approval][:preview]).to eq(added: 1, removed: 0, diff: "+x")
     expect(card[:header]).to eq("Approve delegate #{short}'s tool call?")
     expect(card[:question]).to eq(
-      "delegate #{short} (\"fix the flaky spec in spec/foo_spec.rb and run it until it passes ten times in …\") asks:\n" \
-      "  execute: git push origin main\n    in /w (repo w, branch main)\n    why: publishes (rule git-push, bundle guardrails)"
+      "delegate #{short} (\"fix the flaky spec in spec/foo_spec.rb and run it until it passes ten times in …\") asks:\n  " \
+      "execute: git push origin main\n    in /w (repo w, branch main)\n    why: publishes (rule git-push, bundle guardrails)"
     )
     expect(card[:relay]).to include(id: "r-1", child_id: child.id, child_short: short, child_question_id: "q-1",
                                     chain: [short], more: 0)

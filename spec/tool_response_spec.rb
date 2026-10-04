@@ -43,9 +43,9 @@ RSpec.describe Samagotchi::ToolResponse do
       expect(events).to eq([{ type: :tool_dispatch_started, iteration: 2, call_count: 2 },
                             { type: :tool_dispatch_completed, iteration: 2, call_count: 2 }])
       expect(runner.calls.map(&:last)).to eq([
-                                               { iteration: 2, call_index: 1, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 },
-                                               { iteration: 2, call_index: 2, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 }
-                                             ])
+        { iteration: 2, call_index: 1, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 },
+        { iteration: 2, call_index: 2, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 }
+      ])
       expect(yielded).to eq([["[shots]\none shot", 0], ["[write]\nwrote", 1]])
       expect(runs.size).to eq(2)
     end
