@@ -218,12 +218,15 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .turn-work:not([open]){padding:3px 10px;background:transparent;border-color:transparent;border-left-color:var(--accent);align-self:flex-start;border-radius:6px;transition:background .12s ease}
 .turn-work:not([open]):hover{background:var(--bg-panel)}
 .turn-work:not([open])>summary{font-size:12px;font-weight:500}
-.gen{margin-top:8px;padding-top:6px;border-top:1px solid var(--border)}
-.gen>summary{cursor:pointer;color:var(--text-muted);font-size:12px;font-weight:500;user-select:none;list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A step's body (thinking, narration, rows, cards) sits --step-indent right of its summary, so the thinking
+   chevron and the row marks share one column under the step's own chevron. The summary takes it back with a
+   negative margin: a child's own margin shorthand can't undo the padding. */
+.gen{--step-indent:14px;margin-top:8px;padding-top:6px;padding-left:var(--step-indent);border-top:1px solid var(--border)}
+.gen>summary{margin-left:calc(-1 * var(--step-indent));cursor:pointer;color:var(--text-muted);font-size:12px;font-weight:500;user-select:none;list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gen>summary::-webkit-details-marker{display:none}
 .gen>summary::before{content:"▸ ";color:var(--text-faint)}
 .gen[open]>summary::before{content:"▾ "}
-.gen.live{border-top-color:transparent;background:var(--accent-tint);border-radius:8px;padding:6px 9px 8px;margin-left:-9px;margin-right:-9px}
+.gen.live{border-top-color:transparent;background:var(--accent-tint);border-radius:8px;padding:6px 9px 8px calc(9px + var(--step-indent));margin-left:-9px;margin-right:-9px}
 .gen.live>summary{color:var(--accent);white-space:normal}
 /* The live step's marker: a pulsing accent dot in place of the chevron (the block's own left bar stays the only one). */
 .gen.live>summary::before{content:"";display:inline-block;width:7px;height:7px;margin:0 8px 1px 2px;border-radius:50%;background:var(--accent);vertical-align:middle;animation:step-pulse 1.6s ease-in-out infinite}
@@ -256,6 +259,7 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body))>summary,.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen>summary{display:none}
 .turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen{margin:0;padding:0;border:0;background:transparent}
 .turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
+@media(max-width:600px){.gen{--step-indent:8px}}
 /* A question card asks for input like the composer card, so it wears the same glass (the recipe above); only its warm tint is its own. */
 .bubble.question{border-left:3px solid var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--glass-bg));padding:10px 12px}
 /* Collapsed (resolved) question: one line, like the thinking and activity blocks.
