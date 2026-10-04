@@ -24,6 +24,50 @@ RSpec.describe Samagotchi::Steer do
     it "keeps a plain merge's event fields as they were (no steers: key)" do
       expect(described_class.merge(["x"]).event_fields).to eq(count: 1, content: "x")
     end
+
+    it "saves a Line's source on its input message, and a user Line like a String" do
+      line = described_class::Line
+      merge = described_class.merge([line.new(text: "a", source: "chi_send"), line.new(text: " b ", source: "chi_send")])
+      expect(merge.messages).to eq([{ role: "user", kind: "input", source: "chi_send", content: "a\n\nb" }])
+
+      user = described_class.merge([line.new(text: "a", source: nil), "b"])
+      expect(user.messages).to eq(described_class.merge(%w[a b]).messages)
+    end
+
+    it "saves one input message per run of the same sender; the event still joins every line" do
+      line = described_class::Line
+      merge = described_class.merge([line.new(text: "a", source: nil), line.new(text: "b", source: "chi_send"),
+                                     line.new(text: "c", source: "chi_send"), "d", { text: "n", source: "check-in" }])
+
+      expect(merge.messages).to eq([{ role: "user", kind: "input", content: "a" },
+                                    { role: "user", kind: "input", source: "chi_send", content: "b\n\nc" },
+                                    { role: "user", kind: "input", content: "d" },
+                                    { role: "user", kind: "steer", source: "check-in", content: "n" }])
+      expect(merge.event_fields).to eq(count: 4, content: "a\n\nb\n\nc\n\nd",
+                                       steers: [{ source: "check-in", text: "n" }])
+    end
+
+    it "skips blank Lines" do
+      expect(described_class.merge([described_class::Line.new(text: " ", source: "chi_send")])).to be_empty
+    end
+  end
+
+  describe ".source_for_client" do
+    it "maps a worker input's client id to the saved source (nil = the user)" do
+      expect({ nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
+               "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil,
+               "other" => nil }.to_h { |id, _| [id, described_class.source_for_client(id)] })
+        .to eq(nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
+               "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil, "other" => nil)
+    end
+
+    it "uses the same literals as the senders" do
+      require "samagotchi/send_command"
+      require "samagotchi/tools/delegate"
+
+      expect(described_class::CHI_SEND_CLIENT).to eq(Samagotchi::SendCommand::CLIENT_ID)
+      expect(described_class::DELEGATE_CLIENT_PREFIX).to eq("#{Samagotchi::Tools::Delegate::CLIENT_PREFIX}:")
+    end
   end
 
   describe ".drain" do

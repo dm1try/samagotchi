@@ -10,20 +10,41 @@ module Samagotchi
   #
   # The user's own lines merged into a running turn are marked kind:
   # "input": they are part of that turn, not a turn of their own, so a
-  # reloaded history keeps the turn in one piece.
+  # reloaded history keeps the turn in one piece. A line can be a Line
+  # naming who sent it (a worker's input from chi send, a delegating parent,
+  # a plugin); its input message then carries that source:. The user's own
+  # lines carry none, so their saved bytes are as they always were.
   module Steer
     KIND = "steer"
     INPUT_KIND = "input"
 
+    # A drain item for an input line with its sender (source nil = the user).
+    # A plain String is still a valid item: the user's line.
+    Line = Data.define(:text, :source)
+
+    # The client ids whose input is not the user's own words. Literals, not
+    # SendCommand::CLIENT_ID / Tools::Delegate::CLIENT_PREFIX, so this file
+    # needs no requires (a spec pins them equal).
+    CHI_SEND_CLIENT = "cli:send"
+    DELEGATE_CLIENT_PREFIX = "delegate:"
+    PLUGIN_CLIENT = "plugin"
+
     # What one drain brought: the merged user text (nil when none) and how
-    # many lines made it, and the steers in order.
-    Merge = Struct.new(:content, :count, :steers, keyword_init: true) do
+    # many lines made it, the input messages' text grouped by sender
+    # (consecutive lines from one sender form one group), and the steers in
+    # order.
+    Merge = Struct.new(:content, :count, :inputs, :steers, keyword_init: true) do
       def empty? = content.nil? && steers.empty?
 
-      # The messages it appends: the user's first (marked merged input),
-      # then each steer.
+      # The messages it appends: the merged input first (one message per
+      # sender run, marked kind input, source: when not the user's), then
+      # each steer.
       def messages
-        list = content ? [{ role: "user", kind: INPUT_KIND, content: content }] : []
+        list = inputs.map do |input|
+          message = { role: "user", kind: INPUT_KIND }
+          message[:source] = input[:source] if input[:source]
+          message.merge(content: input[:content])
+        end
         list + steers.map { |steer| Steer.message(**steer) }
       end
 
@@ -37,6 +58,16 @@ module Samagotchi
     end
 
     module_function
+
+    # The saved source of a worker input line from +client_id+: nil for the
+    # user (no client id, the web, an attached TUI, anything unknown).
+    def source_for_client(client_id)
+      id = client_id.to_s
+      if id == CHI_SEND_CLIENT then "chi_send"
+      elsif id.start_with?(DELEGATE_CLIENT_PREFIX) then "parent_agent"
+      elsif id == PLUGIN_CLIENT then "plugin_send"
+      end
+    end
 
     def message(text:, source:)
       { role: "user", kind: KIND, source: source.to_s, content: text.to_s }
@@ -105,8 +136,22 @@ module Samagotchi
         text = (item[:text] || item["text"]).to_s.strip
         { source: (item[:source] || item["source"]).to_s, text: text } unless text.empty?
       end
-      content = lines.map { |line| line.to_s.strip }.reject(&:empty?).join("\n\n")
-      Merge.new(content: content.empty? ? nil : content, count: content.empty? ? 0 : lines.length, steers: steers)
+      inputs = input_groups(lines)
+      content = inputs.map { |input| input[:content] }.join("\n\n")
+      Merge.new(content: content.empty? ? nil : content, count: content.empty? ? 0 : lines.length,
+                inputs: inputs, steers: steers)
+    end
+
+    # Non-blank input lines as [{content:, source:}], one per run of lines
+    # from the same sender.
+    def input_groups(lines)
+      pairs = lines.filter_map do |line|
+        text = (line.is_a?(Line) ? line.text : line).to_s.strip
+        [text, line.is_a?(Line) ? line.source : nil] unless text.empty?
+      end
+      pairs.chunk_while { |a, b| a[1] == b[1] }.map do |run|
+        { content: run.map(&:first).join("\n\n"), source: run.first[1] }
+      end
     end
   end
 end
