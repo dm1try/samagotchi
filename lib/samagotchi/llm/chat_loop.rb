@@ -384,14 +384,16 @@ module Samagotchi
 
         # A generation a plugin cut (stop_generation) is an empty answer made
         # early. Queued input (a user's line, a plugin's steer) goes in
-        # first, with or without a retry left, and spends no attempt. Else it
-        # is asked again with its own nudge while the retry budget lasts,
-        # else the turn ends as cancelled (hook), with nothing salvaged and
-        # without a spent nudge. A Stop that came right after the cut is a
-        # plain cancel. Returns :retry, or the turn's result.
+        # first, with or without a retry left, and spends no attempt. A
+        # steer's cut (Engine#cut_for_steer) with nothing queued is asked
+        # again as is. Else it is asked again with its own nudge while the
+        # retry budget lasts, else the turn ends as cancelled (hook), with
+        # nothing salvaged and without a spent nudge. A Stop that came right
+        # after the cut is a plain cancel. Returns :retry, or the turn's
+        # result.
         def after_cut(iteration, response)
           return canceled(iteration, @cancel_controller.reason) if @cancel_controller.cancelled?
-          return :retry if inject_pending_input(iteration)
+          return :retry if inject_pending_input(iteration) || response.cut[:steer]
 
           if @empty_retry.left?
             @empty_retry.nudge!(@conversation, TurnNote.cut_retry(response.cut[:by], response.cut[:reason]),
@@ -480,8 +482,11 @@ module Samagotchi
             on_delta: lambda { |content:, reasoning:, payload:|
               streamed << content
               thought << reasoning
-              emit(type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,
-                   thinking: reasoning, payload: payload)
+              event = { type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,
+                        thinking: reasoning, payload: payload }
+              # A tool call streaming: a steer doesn't cut it (Engine#cut_for_steer).
+              event[:tool_call] = true if OpenAIChat.tool_call_delta?(payload)
+              emit(event)
             },
             on_retry: ->(**retry_event) { emit({ type: :generation_retrying, iteration: iteration }.merge(retry_event)) }
           )

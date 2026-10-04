@@ -69,6 +69,9 @@ module Samagotchi
             **)
       end
 
+      # true when a streamed +payload+ carries a tool-call delta.
+      def self.tool_call_delta?(payload) = Assembly.tool_call_delta?(payload)
+
       # true when +url+ is OpenRouter's API (openrouter.ai or a subdomain).
       def self.openrouter?(url)
         host = URI(url.to_s).host.to_s.downcase

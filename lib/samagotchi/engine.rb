@@ -47,6 +47,7 @@ require_relative "tools/memory"
 require_relative "muted_memories"
 require_relative "used_memories"
 require_relative "turn_state"
+require_relative "generation_phase"
 require_relative "bundle_needs"
 require_relative "model_overlay"
 require_relative "served_model"
@@ -103,6 +104,8 @@ module Samagotchi
       # steers) and the idle layer's activity clock. Built first: a plugin
       # may steer or ask whether a turn runs while it loads.
       @turn_state = TurnState.new(clock: -> { monotonic_now })
+      # What the running generation streams: whether a steer may cut it.
+      @generation_phase = GenerationPhase.new(clock: -> { monotonic_now })
       @scratch = scratch
       @no_interrupt = no_interrupt
       @chat_backend = nil
@@ -323,6 +326,31 @@ module Samagotchi
     # @return [Boolean] whether it was queued
     def steer(text, source:)
       @turn_state.steer(text, source: source)
+    end
+
+    # A message for the running turn from +source+ (Steer.source_for_client:
+    # nil for the user, "chi_send", "parent_agent") cuts the streaming
+    # generation when it is steer.cut_after seconds old and has only been
+    # thinking (GenerationPhase; checked once, now): the loops' cut path then starts the step again with
+    # the message, no nudge, no retry spent. A plugin's message never cuts.
+    # Call it after the message is queued. Outside any lock; a cut that
+    # lands just after the generation ended is harmless (the loop re-asks).
+    # @return [Boolean] whether a generation was cut now
+    def cut_for_steer(source)
+      return false unless Steer.cuts?(source)
+
+      after = Config.get("steer.cut_after").to_i
+      return false unless after.positive?
+
+      ctrl = active_cancel_controller
+      return false unless ctrl && @generation_phase.cuttable?(after)
+
+      age = @generation_phase.age
+      cut = ctrl.cancel_generation!(:steer, { by: "steer", steer: true, source: source.to_s, reason: "a new message" })
+      Log.info(:turn, "steer_cut", source: source.to_s, age: age&.round(1)) if cut
+      cut
+    rescue StandardError
+      false
     end
 
     # Like #steer, for the turn that begins next (a continue turn answered
@@ -1884,6 +1912,7 @@ module Samagotchi
       # shared inactivity clock so the idle recap detector (shared with the REPL)
       # treats the just-finished turn as activity and re-arms its window.
       left = @turn_state.finish!
+      @generation_phase.finished!
       Client.swap_probe_cancel(probe_cancel_before)
       # The next turn's window and served model are asked again: the cache
       # (this host's, process-wide) is dropped here, at the turn's end,
@@ -2332,11 +2361,15 @@ module Samagotchi
         progress = nil
         case event[:type]
         when :generation_started
+          @generation_phase.started!
           watch&.started(event[:iteration])
         when :generation_chunk
           # A chunk without the lanes (no loop of ours sends one) counts as text.
           text = event.key?(:text) ? event[:text] : event[:content]
           progress = { thinking: event[:thinking].to_s, text: text.to_s }
+          @generation_phase.chunk!(**progress, tool_call: event[:tool_call])
+        when :generation_retrying then @generation_phase.retrying!
+        when :generation_completed, :generation_cancelled then @generation_phase.finished!
         end
         # The chat loop asked again without the thinking fields: a notice,
         # not an event of its own.

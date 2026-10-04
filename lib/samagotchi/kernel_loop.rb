@@ -355,8 +355,12 @@ module Samagotchi
       generation.streamed_thinking += split[:thinking].to_s.length
       return unless turn.on_stream_event
 
-      emit(turn, type: :generation_chunk, iteration: turn.iteration, content: chunk[:content], text: split[:text],
-                 thinking: split[:thinking], payload: chunk[:payload])
+      event = { type: :generation_chunk, iteration: turn.iteration, content: chunk[:content], text: split[:text],
+                thinking: split[:thinking], payload: chunk[:payload] }
+      # A chunk of a tool call (its bytes are dropped from both lanes): a
+      # steer doesn't cut this generation (Engine#cut_for_steer).
+      event[:tool_call] = true if split[:tool]
+      emit(turn, **event)
     end
 
     # The cut stream's visible text goes with it: the buffer as it was
@@ -388,15 +392,17 @@ module Samagotchi
 
     # A generation a plugin cut is an empty answer made early. Queued input
     # (a user's line, a plugin's steer) goes in first, with or without a
-    # retry left, and spends no attempt: the model answers it. Else it is
-    # asked again with its own nudge while the retry budget lasts, else the
-    # turn ends as cancelled (hook), with nothing salvaged and without the
-    # spent nudge. A Stop that came right after the cut is a plain cancel.
-    # Returns :next or the turn's result.
+    # retry left, and spends no attempt: the model answers it. A steer's cut
+    # (Engine#cut_for_steer) with nothing queued (its message was taken at
+    # a boundary already) is asked again as is. Else it is asked again with
+    # its own nudge while the retry budget lasts, else the turn ends as
+    # cancelled (hook), with nothing salvaged and without the spent nudge.
+    # A Stop that came right after the cut is a plain cancel. Returns :next
+    # or the turn's result.
     def after_cut(turn, generation)
       cut = generation.cut
       raise Client::RequestCancelled, turn.cancel_controller.reason if turn.cancel_controller.cancelled?
-      return :next if inject_pending_input!(turn)
+      return :next if inject_pending_input!(turn) || cut[:steer]
 
       if turn.empty_retry.left?
         turn.empty_retry.nudge!(turn.conversation, TurnNote.cut_retry(cut[:by], cut[:reason]),

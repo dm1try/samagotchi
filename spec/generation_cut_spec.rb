@@ -23,6 +23,8 @@ RSpec.describe "A cut generation" do
   let(:cut) { { by: "loop-guard", reason: "its thinking kept repeating itself" } }
   let(:nudge) { Samagotchi::TurnNote.cut_retry("loop-guard", "its thinking kept repeating itself") }
   let(:loop_sentence) { "I should check the file again to be sure. " }
+  # A steer's cut (Engine#cut_for_steer): no nudge, no attempt spent.
+  let(:steer_cut) { { by: "steer", steer: true, source: "", reason: "a new message" } }
 
   after { server.stop }
 
@@ -52,6 +54,71 @@ RSpec.describe "A cut generation" do
 
   # The model requests (not the /props or /models probes).
   def completions = server.requests.select { |r| r.path.end_with?("completion", "completions") }
+
+  # Queues +line+ (when given) and cuts, as a steer from the user does.
+  def steer_sink(after: 3, queue: nil, line: nil)
+    chunks = 0
+    lambda do |event|
+      events << event
+      if event[:type] == :generation_chunk && event[:iteration] == 1
+        chunks += 1
+        if chunks == after
+          queue << line if line
+          controller.cancel_generation!(:steer, steer_cut)
+        end
+      end
+      yield event if block_given?
+    end
+  end
+
+  shared_examples "a steer cut" do
+    it "sends the queued line next, with no nudge and no retry spent, and without the cut thinking" do
+      stream_loop
+      stream_answer("PONG")
+      queue = []
+
+      result = run_turn(steer_sink(queue: queue, line: "skip the tests"), pending_input: -> { queue.shift(queue.size) })
+
+      expect(answer_of(result)).to eq("PONG")
+      expect(completions.size).to eq(2)
+      expect(completions[1].body).to include(Samagotchi::Steer::USER_HEADER, "skip the tests")
+      expect(completions[1].body).not_to include("check the file again")
+      expect(completions[1].body).not_to include(nudge[:content])
+      expect(completions.last.json["temperature"]).not_to eq(0.6)
+      expect(of_type(:empty_answer_retry)).to be_empty
+      expect(of_type(:generation_completed).first).to include(iteration: 1, stopped_by: "steer")
+      expect(of_type(:pending_input_merged)).to contain_exactly(include(iteration: 1, count: 1))
+      expect(result.conversation.map { |m| m[:kind] }).to include("input")
+      expect(controller).not_to be_cancelled
+    end
+
+    it "asks again as is when nothing is queued, with the budget left untouched" do
+      stream_loop
+      stream_answer("PONG")
+
+      result = with_limit(0) { run_turn(steer_sink) }
+
+      expect(answer_of(result)).to eq("PONG")
+      expect(completions.size).to eq(2)
+      expect(completions[1].body).not_to include("check the file again")
+      expect(of_type(:empty_answer_retry)).to be_empty
+      expect(result.conversation.map { |m| m[:role] }).to eq(%w[user model])
+    end
+
+    it "is a plain cancel when the user stops right after the steer's cut" do
+      stream_loop
+      stream_answer("PONG")
+      queue = []
+      stop = ->(event) { controller.cancel!(:user) if event[:stopped_by] && event[:type] == :generation_completed }
+
+      result = run_turn(steer_sink(queue: queue, line: "skip the tests", &stop), pending_input: -> { queue.shift(queue.size) })
+
+      expect(result).to be_canceled
+      expect(result.cancellation_reason).to eq(:user)
+      expect(completions.size).to eq(1)
+      expect(queue).to eq(["skip the tests"])
+    end
+  end
 
   shared_examples "a cut generation" do
     it "asks again with the cut nudge last, at the retry temperature, and answers" do
@@ -167,8 +234,9 @@ RSpec.describe "A cut generation" do
                                           "data: #{JSON.generate(content: "", stop: true)}\n\n"])
     end
 
-    def run_turn(on_event)
-      kernel.run([{ role: "user", content: "hi" }], on_stream_event: on_event, cancel_controller: controller)
+    def run_turn(on_event, pending_input: nil)
+      kernel.run([{ role: "user", content: "hi" }], on_stream_event: on_event, cancel_controller: controller,
+                                                    pending_input: pending_input)
     end
 
     def answer_of(result) = result.output
@@ -178,6 +246,7 @@ RSpec.describe "A cut generation" do
     end
 
     it_behaves_like "a cut generation"
+    it_behaves_like "a steer cut"
 
     it "splits the retry's thinking with a fresh splitter after a cut mid-block" do
       stream_loop
@@ -227,9 +296,9 @@ RSpec.describe "A cut generation" do
                                                    delta({}, finish: "stop"), "data: [DONE]\n\n"])
     end
 
-    def run_turn(on_event)
+    def run_turn(on_event, pending_input: nil)
       backend.complete(messages: [{ role: "user", content: "hi" }], model_name: "m", on_stream_event: on_event,
-                       cancel_controller: controller)
+                       cancel_controller: controller, pending_input: pending_input)
     end
 
     def answer_of(result) = result.text
@@ -237,6 +306,7 @@ RSpec.describe "A cut generation" do
     def last_input(request) = request.json["messages"].last["content"]
 
     it_behaves_like "a cut generation"
+    it_behaves_like "a steer cut"
 
     it "keeps the retry mark through the saved conversation" do
       stream_loop

@@ -109,8 +109,9 @@ module Samagotchi
                                         stopped_by: event[:stopped_by])
       return unless event[:stopped_by]
 
-      # A plugin cut this generation (stop_generation); the turn goes on.
-      log(:info, :generation_stopped, iteration: event[:iteration], bundle: event[:stopped_by],
+      # A plugin (stop_generation) or a steer (Engine#cut_for_steer, by
+      # "steer") cut this generation; the turn goes on.
+      log(:info, :generation_stopped, iteration: event[:iteration], by: event[:stopped_by],
                                       reason: event[:stop_reason].to_s[0, 200], thinking_chars: event[:thinking_chars], ms: ms)
     end
 

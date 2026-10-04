@@ -22,6 +22,8 @@ require_relative "support/fake_chat_adapter"
 # edited cell here.
 RSpec.describe "Turn policy characterization" do
   cut = { by: "loop-guard", reason: "its thinking kept repeating itself" }.freeze
+  # Engine#cut_for_steer's detail, for a [:steer_cut] step (the user's message).
+  steer_cut = { by: "steer", steer: true, source: "", reason: "a new message" }.freeze
 
   # Streams like Client#complete: content chunks, then the last payload
   # (llama.cpp's /completion shape) with the finish reason the transport
@@ -76,10 +78,10 @@ RSpec.describe "Turn policy characterization" do
     kind, *args = step
     options = args.last.is_a?(Hash) && kind != :calls ? args.last : {}
     lambda do |on_chunk:|
-      if kind == :cut
+      if %i[cut steer_cut].include?(kind)
         on_chunk&.call(content: loop_name == :gemma ? "<|channel>thought\nloop " : "<think>loop ", payload: {})
-        controller.cancel_generation!(:hook, cut)
-        raise Samagotchi::LLM::RequestCancelled, :hook
+        kind == :cut ? controller.cancel_generation!(:hook, cut) : controller.cancel_generation!(:steer, steer_cut)
+        raise Samagotchi::LLM::RequestCancelled, kind == :cut ? :hook : :steer
       end
       text = native_text(loop_name, step)
       on_chunk&.call(content: text, payload: { "content" => text })
@@ -110,11 +112,11 @@ RSpec.describe "Turn policy characterization" do
                                         finish_reason: "length")
     when :calls
       FakeChatAdapter.tools(*args.each_with_index.map { |(name, params), index| ["c#{index + 1}", name, params] })
-    when :cut
+    when :cut, :steer_cut
       lambda do |on_delta:, **|
         on_delta&.call(content: "", reasoning: "loop ", payload: {})
-        controller.cancel_generation!(:hook, cut)
-        raise Samagotchi::LLM::RequestCancelled, :hook
+        kind == :cut ? controller.cancel_generation!(:hook, cut) : controller.cancel_generation!(:steer, steer_cut)
+        raise Samagotchi::LLM::RequestCancelled, kind == :cut ? :hook : :steer
       end
     end
   end
@@ -351,6 +353,19 @@ RSpec.describe "Turn policy characterization" do
                            "gen", "done"],
                   conversation: ["user:hi", "system:nudge", "user:steer", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, 0.6, nil], activity: [] } },
+    # A steer's cut (Engine#cut_for_steer): the message goes in, or with
+    # nothing queued the step is asked again; no nudge, no attempt spent.
+    { name: "steer cut, line queued", steps: [[:steer_cut], [:text, "PONG"]], queue: line_at_first,
+      expected: { events: ["gen", "done(stopped)", "merged(count=1 answer=nil)", "gen", "done"],
+                  conversation: ["user:hi", "user:input", "model:PONG"], result: res.call("PONG"), temps: [nil, nil],
+                  activity: [] } },
+    { name: "steer cut, nothing queued", env: { "SAMAGOTCHI_RETRY_EMPTY_ANSWER" => "0" },
+      steps: [[:steer_cut], [:text, "PONG"]],
+      expected: { events: ["gen", "done(stopped)", "gen", "done"], conversation: ["user:hi", "model:PONG"],
+                  result: res.call("PONG"), temps: [nil, nil], activity: [] } },
+    { name: "steer cut, then Stop", steps: [[:steer_cut], [:text, "PONG"]], stop_after_cut: true, queue: line_at_first,
+      expected: { events: ["gen", "done(stopped)", "cancelled(user)"], conversation: ["user:hi"],
+                  result: res.call("", canceled: true, reason: :user), temps: [nil], activity: [] } },
     { name: "user line queued at an empty answer", steps: [[:thought], [:text, "PONG"]], queue: line_at_first,
       expected: { events: merged.call(nil), conversation: ["user:hi", "user:input", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, nil], activity: [] } },

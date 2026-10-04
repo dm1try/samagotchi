@@ -180,4 +180,81 @@ RSpec.describe Samagotchi::Engine, "#steer" do
       expect(conversation.last).to include(role: "user", kind: "steer", source: "user", content: "also X")
     end
   end
+
+  describe "#cut_for_steer" do
+    let(:now) { [1000.0] }
+
+    before { allow(engine).to receive(:monotonic_now) { now.first } }
+
+    # Runs a turn whose one generation thinks for +thinking_for+ seconds
+    # (+lanes+: what else it streamed), then asks for a cut from +source+.
+    # Returns [the answer, whether the generation's controller was cut].
+    def cut_during(source, thinking_for: 25, lanes: {}, between: false)
+      answer = nil
+      cut_detail = nil
+      allow(kernel).to receive(:run) do |_messages, on_stream_event:, cancel_controller:, **|
+        if between
+          answer = engine.cut_for_steer(source)
+        else
+          cancel_controller.generation do |child|
+            on_stream_event.call({ type: :generation_started, iteration: 1 })
+            on_stream_event.call({ type: :generation_chunk, iteration: 1, content: "hm", text: "", thinking: "hm" })
+            now[0] += thinking_for
+            on_stream_event.call({ type: :generation_chunk, iteration: 1, content: "x", text: "", thinking: "x" }.merge(lanes))
+            answer = engine.cut_for_steer(source)
+            cut_detail = child.detail if child.cancelled?
+          end
+        end
+        kernel_result
+      end
+      engine.run_turn(session, "hi")
+      [answer, cut_detail]
+    end
+
+    it "cuts a generation thinking only for steer.cut_after seconds, for the user, chi send and a parent agent" do
+      [nil, "chi_send", "parent_agent"].each do |source|
+        answer, detail = cut_during(source)
+        expect(answer).to be(true)
+        expect(detail).to eq(by: "steer", steer: true, source: source.to_s, reason: "a new message")
+      end
+    end
+
+    it "logs the cut with its source" do
+      allow(Samagotchi::Log).to receive(:info).and_call_original
+      cut_during("chi_send")
+      expect(Samagotchi::Log).to have_received(:info).with(:turn, "steer_cut", source: "chi_send", age: 25.0)
+    end
+
+    it "does not cut a younger generation" do
+      expect(cut_during(nil, thinking_for: 5)).to eq([false, nil])
+    end
+
+    it "does not cut after visible text or a tool call" do
+      expect(cut_during(nil, lanes: { text: "Answer" })).to eq([false, nil])
+      expect(cut_during(nil, lanes: { tool_call: true })).to eq([false, nil])
+    end
+
+    it "never cuts for a plugin" do
+      expect(cut_during("plugin_send")).to eq([false, nil])
+      expect(cut_during("check-in")).to eq([false, nil])
+    end
+
+    it "never cuts with steer.cut_after 0" do
+      with_env("SAMAGOTCHI_STEER_CUT_AFTER" => "0") do
+        expect(cut_during(nil, thinking_for: 600)).to eq([false, nil])
+      end
+    end
+
+    it "honours steer.cut_after" do
+      with_env("SAMAGOTCHI_STEER_CUT_AFTER" => "60") do
+        expect(cut_during(nil, thinking_for: 30)).to eq([false, nil])
+        expect(cut_during(nil, thinking_for: 61).first).to be(true)
+      end
+    end
+
+    it "is false with no turn running, and between generations" do
+      expect(engine.cut_for_steer(nil)).to be(false)
+      expect(cut_during(nil, between: true)).to eq([false, nil])
+    end
+  end
 end

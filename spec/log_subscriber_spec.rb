@@ -94,9 +94,9 @@ RSpec.describe Samagotchi::LogSubscriber do
            stopped_by: "loop-guard", stop_reason: "its thinking kept repeating itself" },
          { type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1, thinking_chars: 14_000, stopped_by: "loop-guard" })
 
-    expect(records.map { |r| [r.event, r.fields.slice("finish_reason", "stopped_by", "bundle", "reason", "ms")] }).to eq([
+    expect(records.map { |r| [r.event, r.fields.slice("finish_reason", "stopped_by", "by", "reason", "ms")] }).to eq([
       ["generation_completed", { "finish_reason" => "stopped", "stopped_by" => "loop-guard", "ms" => "38400" }],
-      ["generation_stopped", { "bundle" => "loop-guard", "reason" => "its thinking kept repeating itself", "ms" => "38400" }],
+      ["generation_stopped", { "by" => "loop-guard", "reason" => "its thinking kept repeating itself", "ms" => "38400" }],
       ["empty_answer_retry", { "stopped_by" => "loop-guard" }]
     ])
   end

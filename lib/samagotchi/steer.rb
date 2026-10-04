@@ -113,6 +113,15 @@ module Samagotchi
     # user or a parent agent's chi answer), not a plugin's prod.
     PERSON_SOURCES = %w[user parent_agent].freeze
 
+    # The senders whose message may cut a generation that has only been
+    # thinking (Engine#cut_for_steer): the user (no source), chi send, a
+    # parent agent. A plugin's never does.
+    CUT_SOURCES = ["", "user", "chi_send", "parent_agent"].freeze
+
+    def cuts?(source)
+      CUT_SOURCES.include?(source.to_s)
+    end
+
     # A steer a person sent: what a recap and a side question keep.
     def person?(message)
       steer?(message) && PERSON_SOURCES.include?((message[:source] || message["source"]).to_s)

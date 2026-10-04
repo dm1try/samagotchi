@@ -46,12 +46,16 @@ module Samagotchi
       @active = nil
     end
 
-    # Feed one raw chunk. Returns the newly-routed deltas for this chunk only.
-    # @return [Hash{ text: String, thinking: String }]
+    # Feed one raw chunk. Returns the newly-routed deltas for this chunk
+    # only, and +tool+: whether the chunk opened, streamed into or closed a
+    # tool_call block (its bytes are dropped, but a steer must not cut a
+    # generation that writes a tool call: Engine#cut_for_steer).
+    # @return [Hash{ text: String, thinking: String, tool: Boolean }]
     def feed(chunk)
       @carry << chunk.to_s
       text = +""
       thinking = +""
+      tool = false
       loop do
         if @state == :normal
           hit = earliest_open
@@ -64,9 +68,11 @@ module Samagotchi
           @carry = @carry[hit[:pos]..]
           @active = hit[:block]
           @state = :in_block
+          tool ||= @active[:lane] == :drop
           # Drop the open marker itself; its body follows.
           @carry = @carry[@active[:open].length..].to_s
         else
+          tool ||= @active[:lane] == :drop && !@carry.empty?
           close_pos = @carry.index(@active[:close])
           if close_pos.nil?
             flush_in_block(thinking)
@@ -79,7 +85,7 @@ module Samagotchi
           @state = :normal
         end
       end
-      { text: text, thinking: thinking }
+      { text: text, thinking: thinking, tool: tool }
     end
 
     # Flush any residual state at end of stream (e.g. an unterminated thinking

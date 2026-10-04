@@ -150,7 +150,7 @@ RSpec.describe Samagotchi::ThoughtStreamSplitter do
 
     it "emits empty deltas for an empty chunk" do
       splitter = described_class.for_profile(QWEN)
-      expect(splitter.feed("")).to eq(text: "", thinking: "")
+      expect(splitter.feed("")).to eq(text: "", thinking: "", tool: false)
     end
 
     it "handles a thinking block with empty body" do
@@ -176,6 +176,40 @@ RSpec.describe Samagotchi::ThoughtStreamSplitter do
       b = splitter.feed("world")
       expect(a[:text]).to eq("hello ")
       expect(b[:text]).to eq("world")
+    end
+  end
+
+  # The tool-call lane: a steer must not cut a generation that streams a
+  # tool call (Engine#cut_for_steer), so #feed says when a chunk touched one.
+  describe "#feed tool:" do
+    [["Qwen", QWEN], ["Gemma", GEMMA]].each do |name, profile|
+      it "is true for a chunk that opens a tool call, even with no body yet (#{name})" do
+        splitter = described_class.for_profile(profile)
+        expect(splitter.feed("ok #{profile.tool_call_open}")[:tool]).to be(true)
+      end
+
+      it "is true for a chunk inside a tool call and for the one that closes it (#{name})" do
+        splitter = described_class.for_profile(profile)
+        splitter.feed(profile.tool_call_open)
+        expect(splitter.feed("call:write{")[:tool]).to be(true)
+        expect(splitter.feed("}#{profile.tool_call_close}")[:tool]).to be(true)
+        expect(splitter.feed(" after")[:tool]).to be(false)
+      end
+
+      it "is false for thinking and text (#{name})" do
+        splitter = described_class.for_profile(profile)
+        open = profile.thought_channel_open || profile.thought_open
+        expect(splitter.feed("#{open}weighing")[:tool]).to be(false)
+        expect(splitter.feed("more")[:tool]).to be(false)
+        expect(splitter.feed("plain text")[:tool]).to be(false)
+      end
+    end
+
+    it "sets once a tool-call open marker split across chunks completes" do
+      splitter = described_class.for_profile(QWEN)
+      half = TC_OPEN.length / 2
+      expect(splitter.feed("x #{TC_OPEN[0, half]}")[:tool]).to be(false)
+      expect(splitter.feed(TC_OPEN[half..])[:tool]).to be(true)
     end
   end
 end
