@@ -82,6 +82,10 @@ test("a reload after the turn shows the same turn and answer", { tag: "@turn" },
   script("turn");
   await send(page, "Check the shell and the README");
   await turnEnded(page, 1);
+  // The copy button is added by an observer after the answer renders:
+  // compare the answers once each has it.
+  const copied = () => expect(answer(page).locator(":scope > .copy-btn")).toHaveCount(1);
+  await copied();
   const before = {
     user: await page.locator("#history .bubble.user").allTextContents(),
     summary: await page.locator("#history .turn-work > summary").allTextContents(),
@@ -96,6 +100,7 @@ test("a reload after the turn shows the same turn and answer", { tag: "@turn" },
   await expect(page.locator("#history .activity-tool")).toHaveText(before.tools);
   await expect(page.locator("#history .activity-params")).toHaveText(before.titles);
   expect(before.titles[0]).toBe("See that the shell answers");
+  await copied();
   expect(await answer(page).innerHTML()).toBe(before.answer);
 });
 
