@@ -8,7 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A generation cut mid-thinking (loop-guard, a plugin's stop, a steer) or ended at the provider's output cap keeps
+  the last 20k chars of its thinking in the session's folder, `thinking_tails.jsonl`, so an archived session holds
+  the loop it was archived for. The model never sees it.
+- Turn records count `cuts` (generations a plugin cut) and `capped` (generations that hit the output cap), and
+  `/stats` shows them as "thinking cuts" and "output cap hits": `retries` counts network retries only.
+
 ### Changed
+
+- loop-guard's cut notice (bundle 0.3.3) quotes the looping sentence: `thinking repeats itself ("Let me write the
+  tool call.", one sentence ×8, 33k chars, 63 s): cut`.
 
 - Chat hosts (`api: openai`) are no longer asked for `temperature: 0.0`: chi sends no temperature unless one is
   configured, so each model runs at its provider's default (as native llama.cpp hosts already did). Greedy decoding
@@ -17,6 +28,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- loop-guard (bundle 0.3.3) cuts thinking that loops in a cycle of 7 or 8 short sentences, or with a longer
+  sentence ("I'll write the spec file now.") in the cycle: 48 sentences in a row with 12 or fewer different ones are
+  a loop. New settings `thinking.window_sentences` (48) and `thinking.window_distinct` (12).
 - A steer row names chi's senders in words: the web's row and trail flash and the terminal's nudged line say
   `parent agent` and `chi send` instead of the raw `parent_agent` / `chi_send`.
 - Thinking off on Gemma 4 no longer warns that off wasn't honoured: its empty thought (whitespace alone) is not

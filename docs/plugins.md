@@ -847,14 +847,20 @@ stream](hooks.md#watching-the-stream)) and cuts it:
   thinking has short sentences too ("Hmm.", "Fine."), but spread out or all
   different (code lines); a longer sentence ends the run, and lines inside a
   ```` ``` ```` code block don't count.
+- Any `window_sentences` sentences in a row, short or long, holding at most
+  `window_distinct` different ones are a loop too: a cycle of 7 or 8 short
+  sentences, or one where a longer sentence ("I'll write the spec file
+  now.") keeps ending the short run. Real thinking holds 40 or more
+  different sentences in any 48; DeepSeek's write loops hold 4 to 9.
 - Nothing triggers before `min_chars` of thinking. The watch sees a loop
   within one batch (2000 chars, or a second) of its third cycle.
 
 What happens (`action: retry`, the default):
 
 1. The first loop in a turn: the generation is cut and the model asked
-   again, with a hidden note that it was cut off. The user sees
-   `loop-guard> thinking repeats itself (3 sentences ×3, 4k chars, 8 s): cut`
+   again, with a hidden note that it was cut off. The user sees the loop's
+   first sentence quoted,
+   `loop-guard> thinking repeats itself ("Wait, the count of the letter r…", 3 sentences ×3, 4k chars, 8 s): cut`,
    and `↻ cut by loop-guard, asking again (1/1)`.
 2. If the retry loops too, the turn is stopped ("stopped the turn: …", "✕
    turn stopped by loop-guard") with a card that quotes the repeated
@@ -868,6 +874,12 @@ The cut uses the `retry.empty_answer` budget: with `retry.empty_answer: 0`
 the first loop ends the turn as stopped by loop-guard, with the notice and
 no card. `action: stop` stops the turn at the first loop; `action: notify` only
 warns, once per generation.
+
+The cut thinking never goes back to the model, but its last 20k chars are kept
+in the session's folder, `thinking_tails.jsonl` (with a generation that ran to
+the provider's output cap, or that a stop_turn ended): an archived session
+keeps them. A turn's record counts its cuts and cap hits (`cuts`, `capped` in
+`analytics.json`; `/stats` shows "thinking cuts" and "output cap hits").
 
 ```yaml
 bundles:
@@ -885,6 +897,8 @@ bundles:
       min_words: 5            # shorter sentences only count toward a short run
       short_run: 24           # this many short sentences in a row…
       short_distinct: 6       # …with at most this many different ones is a loop
+      window_sentences: 48    # any this many sentences in a row…
+      window_distinct: 12     # …with at most this many different ones is a loop
       forget_after: 10        # good steps in a row that forget a loop; 0: never
 ```
 
