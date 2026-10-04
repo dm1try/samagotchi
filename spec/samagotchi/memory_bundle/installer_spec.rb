@@ -43,6 +43,13 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     )
   end
 
+  def set_requires_chi(bundle_dir, constraint)
+    path = File.join(bundle_dir, "manifest.yml")
+    manifest = YAML.safe_load_file(path)
+    manifest["requires_chi"] = constraint
+    File.write(path, YAML.dump(manifest))
+  end
+
   describe "#run" do
     context "with a directory source" do
       it "installs .md files into the system scope directory" do
@@ -446,6 +453,40 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(File.read(File.join(bundles_dir, "test-bundle", "guardrails", "b.yml"))).to eq("rules: [] # v2\n")
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle").read[:guardrails].keys.map(&:to_s))
         .to contain_exactly("a.yml", "b.yml")
+    end
+
+    # GuardrailWiring#bundle_rules won't read them, and a session that never
+    # loaded them refuses guarded calls until chi is updated: say so here.
+    it "warns that its rules won't load when this chi doesn't meet requires_chi" do
+      bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+      FileUtils.mkdir_p(File.join(bundle_dir, "guardrails"))
+      File.write(File.join(bundle_dir, "guardrails", "a.yml"), "rules: []\n")
+      set_requires_chi(bundle_dir, ">= 99.0")
+
+      installer = installer_for(source: bundle_dir, name: "rules-bundle", scope: "system")
+      installer.run
+
+      expect(installer.warnings).to include(
+        "Bundle rules-bundle: its guardrail rules won't load: it requires chi >= 99.0 " \
+        "(this is chi #{Samagotchi::VERSION}); until chi is updated (chi update), guarded tool calls are refused"
+      )
+    end
+
+    it "doesn't warn about the rules when this chi meets requires_chi or the bundle ships none" do
+      with_rules = write_bundle(File.join(tmpdir, "rules"), { "identity.md" => "# Identity\n" }, name: "rules-bundle")
+      FileUtils.mkdir_p(File.join(with_rules, "guardrails"))
+      File.write(File.join(with_rules, "guardrails", "a.yml"), "rules: []\n")
+      set_requires_chi(with_rules, ">= 0.1.0")
+      with_rules_installer = installer_for(source: with_rules, name: "rules-bundle", scope: "system")
+      with_rules_installer.run
+
+      plain = write_bundle(File.join(tmpdir, "plain"), { "identity.md" => "# Identity\n" }, name: "plain-bundle")
+      set_requires_chi(plain, ">= 99.0")
+      plain_installer = installer_for(source: plain, name: "plain-bundle", scope: "system")
+      plain_installer.run
+
+      expect(with_rules_installer.warnings.join).not_to include("guardrail rules")
+      expect(plain_installer.warnings.join).not_to include("guardrail rules")
     end
   end
 

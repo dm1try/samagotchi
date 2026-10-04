@@ -303,6 +303,7 @@ module Samagotchi
         # Like the rules, the bundle's plugin replaces an earlier one.
         plugin_file_for_provenance = install_plugin(manifest, normalized_dir, provenance)
         warn_hooks_requires_chi(manifest, all_hooks_in_bundle)
+        warn_rules_requires_chi(manifest, incoming_rules)
 
         # Files the previous version shipped and this one doesn't.
         if @upgrade && existing_provenance && existing_provenance[:files]
@@ -556,6 +557,19 @@ module Samagotchi
 
         if (failure = Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION))
           @warnings << "Bundle #{@name}: its hooks won't load: #{failure}"
+        end
+      end
+
+      # GuardrailWiring#bundle_rules doesn't read the rules of a bundle whose
+      # requires_chi this chi doesn't meet, and a session that never loaded
+      # them records a required load failure (the gate refuses guarded calls
+      # until chi is updated): say so at install, as the hooks warning does.
+      def warn_rules_requires_chi(manifest, rule_files)
+        return if manifest.nil? || rule_files.empty?
+
+        if (failure = Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION))
+          @warnings << "Bundle #{@name}: its guardrail rules won't load: #{failure}; until chi is updated " \
+                       "(chi update), guarded tool calls are refused"
         end
       end
 
