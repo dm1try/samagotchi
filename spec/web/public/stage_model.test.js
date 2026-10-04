@@ -212,7 +212,18 @@ test("liveSlots: the running tool and the trail carry a call's full command (for
 });
 
 test("liveSlots: a running task_wait's tool slot carries its task id (the stop-task button)", () => {
-  const turn = turnOf({ ...started(1, 1, "task_wait", "20261004120000-0a1b2c3d"), view: { task_id: "20261004120000-0a1b2c3d" } });
+  const turn = turnOf({ ...started(1, 1, "task_wait"), params: 'id="20261004120000-0a1b2c3d"', view: { task_id: "20261004120000-0a1b2c3d" } });
   assert.deepEqual(liveSlots(turn).tool,
-    { name: "task_wait", title: "20261004120000-0a1b2c3d", kind: "exec", taskId: "20261004120000-0a1b2c3d", key: "1:1" });
+    { name: "task_wait", title: 'id="20261004120000-0a1b2c3d"', kind: "exec", taskId: "20261004120000-0a1b2c3d", key: "1:1" });
+});
+
+test("liveSlots: a task_wait titled by its task's command keeps its id line (the params) for the hover", () => {
+  const turn = turnOf(
+    { ...started(1, 1, "task_get", "npm test"), params: 'id="t1"' }, done(1, 1, "task_get"),
+    { ...started(1, 2, "task_wait", "npm test · up to 600s"), params: 'id="t1" timeout="600"', view: { task_id: "t1" } },
+  );
+  const slots = liveSlots(turn);
+  assert.deepEqual(slots.trail, [{ name: "task_get", title: "npm test", status: "ok", command: 'id="t1"' }]);
+  assert.deepEqual(slots.tool,
+    { name: "task_wait", title: "npm test · up to 600s", kind: "exec", command: 'id="t1" timeout="600"', taskId: "t1", key: "1:2" });
 });
