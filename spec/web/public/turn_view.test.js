@@ -287,7 +287,7 @@ test("statusParts: a row's status as a class, a label and the word only exceptio
   assert.deepEqual(statusParts("blocked"), { cls: "blocked", label: "blocked", word: "blocked" });
 });
 
-test("turnHistoryHtml with parts: a failed call's row keeps its word after the params, before the duration", () => {
+test("turnHistoryHtml with parts: a failed call's row keeps its word after the params; its step is marked failed", () => {
   const items = [
     { role: "user", content: "p" },
     { role: "assistant", content: "", parts: { tools: [{ tool: "execute", params: 'command="ls /x"', output: "[execute]\nexit: 1" }] } },
@@ -300,4 +300,6 @@ test("turnHistoryHtml with parts: a failed call's row keeps its word after the p
   const html = turnHistoryHtml(items, failed, { thumbs });
   assert.match(html, /<div class="activity-row" data-key="1:1"><span class="activity-status error" role="img" aria-label="error" title="error"><\/span>/);
   assert.match(html, /<span class="activity-params">command=&quot;ls \/x&quot;<\/span><span class="activity-state error">error<\/span><span class="activity-duration">15ms<\/span>/);
+  // The step says so, with the red-chevron class, and the block's bare count too (under 3 calls).
+  assert.match(html, /<details class="turn-work done"><summary>1 step · 1 tool call \(1 failed\)<\/summary><details class="gen has-failed"><summary>working with execute · 1 tool call \(1 failed\)<\/summary>/);
 });

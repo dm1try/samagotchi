@@ -236,6 +236,8 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .gen>summary::-webkit-details-marker{display:none}
 .gen>summary::before{content:"▸ ";color:var(--text-faint)}
 .gen[open]>summary::before{content:"▾ "}
+/* A step with a failed call (status error): its chevron in the danger colour. */
+.gen.has-failed>summary::before{color:var(--danger)}
 .gen.live{border-top-color:transparent;background:var(--accent-tint);border-radius:8px;padding:6px 9px 8px calc(9px + var(--step-indent));margin-left:-9px;margin-right:-9px}
 .gen.live>summary{color:var(--accent);white-space:normal}
 /* The live step's marker: a pulsing accent dot in place of the chevron (the block's own left bar stays the only one). */

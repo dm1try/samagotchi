@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - Web: a tool row shows its status as a mark (✓, ✕, ■, a spinner while it runs) instead of the word, so its command,
   output and diff start right under the tool name; error, stopped and blocked calls keep their word after the title.
   An open step's body sits indented under its summary.
+- Web: a step with a failed call says so in its collapsed label, `3 tool calls (1 failed)`, with a red chevron; the
+  turn's summary counts failed calls below 3 calls too.
 
 ## [0.28.0] - 2026-10-04
 

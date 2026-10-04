@@ -174,6 +174,19 @@ test("genLabel: the narration's first line, else the tools, else thinking", () =
   assert.equal(genLabel(gen({ text: `${"x".repeat(100)} y` })), `${"x".repeat(80).trimEnd()}…`);
 });
 
+test("genLabel: a step whose calls failed says how many, as the block's tally does (error only)", () => {
+  const gen = (o) => ({ iteration: 1, thinking: "", text: "", tools: [], ...o });
+  const tools = [{ tool: "read", title: "a.conf", status: "ok" }, { tool: "execute", status: "error" }, { tool: "execute", status: "error" }];
+  assert.equal(genLabel(gen({ tools })), "read a.conf · 3 tool calls (2 failed)");
+  assert.equal(genLabel(gen({ text: "Look.", tools: [{ tool: "execute", status: "error" }] })), "Look. · 1 tool call (1 failed)");
+  assert.equal(genLabel(gen({ tools: [{ tool: "task_wait", status: "stopped" }, { tool: "execute", status: "blocked" }] })), "working with task_wait, execute · 2 tool calls");
+});
+
+test("blockSummary: below 3 calls the bare count still says how many failed", () => {
+  const gens = [{ text: "", thinking: "", tools: [{ tool: "execute", status: "error" }, { tool: "read", status: "ok" }] }];
+  assert.equal(blockSummary({ gens }), "1 step · 2 tool calls (1 failed)");
+});
+
 test("blockSummary counts steps and tool calls, with the tally from 3 calls", () => {
   const { turn } = feed(LIVE);
   assert.equal(blockSummary(turn), "3 steps · 2 tool calls");
