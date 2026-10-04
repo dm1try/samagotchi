@@ -71,6 +71,18 @@ RSpec.describe Samagotchi::Web::MessageParts do
       expect(native[:tools].first[:view][:steps].last).to eq(text: "rg -n foo lib", op: "|", limit: "head 5")
       expect(chat[:tools].first[:view]).to eq(native[:tools].first[:view].except(:cwd))
     end
+
+    it "titles a reloaded command by its description as the live row did, both storage shapes" do
+      args = { command: "cd /p && ls | head -3 && pwd", description: "List the project" }
+      native = described_class.for_message({ content: qwen_call("execute", **args) }, [])
+      chat = described_class.for_message({ content: "", tool_calls: [{ id: "c1", name: "execute",
+                                                                       arguments: args.transform_keys(&:to_s) }] }, [])
+
+      [native, chat].each do |parts|
+        expect(parts[:tools].first).to include(title: "List the project", params: 'command="cd /p && ls | head -3 && pwd"')
+        expect(parts[:tools].first[:view]).to include(description: "List the project", cd: "/p")
+      end
+    end
   end
 
   describe ".for_message on the chat loop's tool_calls (api: openai)" do

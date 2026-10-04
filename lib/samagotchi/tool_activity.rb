@@ -3,6 +3,7 @@
 require "json"
 require_relative "log"
 require_relative "command_steps"
+require_relative "tool_view"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
@@ -43,19 +44,31 @@ module Samagotchi
       }
       title = tool_title(tool_name, call, cwd: cwd)
       event[:title] = title if title
+      # The model's own words for a command, which the TUI's tool line
+      # shows in place of the cut params.
+      description = command_description(tool_name, call)
+      event[:description] = description if description
       event
+    end
+
+    # An execute's description, cut as a row's title; nil for the rest.
+    def command_description(tool_name, call)
+      return nil unless call.is_a?(Hash) && ToolView::TOOLS.include?(tool_name)
+
+      ToolView.description_title(call)
     end
 
     # What the call did, for a web row's one line ("edit lib/a.rb", the
     # command without its "cd … &&"): a file tool's path relative to +cwd+
-    # when it is under it, a command's first step and how many more
-    # (CommandSteps; its first line when it has no steps), a memory's name;
+    # when it is under it, a command's description (the model's few words),
+    # else its first step and how many more (CommandSteps; its first line
+    # when it has no steps), a memory's name;
     # nil for the other tools (a plugin's row keeps its preview, the
     # params). +params+ stays the full key=value line (the TUI, the
     # guardrails).
     def tool_title(tool_name, call, cwd: nil)
       if [Tools::Execute::NAME, Tools::TaskCreate::NAME].include?(tool_name)
-        title = steps_title(call[:content])
+        title = command_description(tool_name, call) || steps_title(call[:content])
         return title if title
       end
 

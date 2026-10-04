@@ -19,6 +19,24 @@ RSpec.describe Samagotchi::ToolView do
     expect(cut.to_h.keys).to eq(%i[command truncated chars])
   end
 
+  it "carries the model's description, tidied, and nothing for a blank one" do
+    call = { name: "execute", content: "ls", description: "  List the\n files.  " }
+    expect(described_class.for("execute", call).to_h).to eq(command: "ls", steps: [{ text: "ls" }], description: "List the files")
+    expect(described_class.for("execute", call.merge(description: " ")).to_h).not_to have_key(:description)
+    expect(described_class.for("execute", call.merge(description: 3)).to_h).not_to have_key(:description)
+    expect(described_class.description({ description: "Wait for it..." })).to eq("Wait for it...")
+    expect(described_class.description({ description: "x" * 400 }).length).to eq(described_class::DESCRIPTION_LIMIT)
+  end
+
+  it "cuts a description to a title at a word, whole when it fits" do
+    short = "Count TODO and FIXME in the top 5 files"
+    expect(described_class.description_title({ description: "#{short}." })).to eq(short)
+    long = "Find the 3 largest top-level directories (excluding .git and node_modules) using find."
+    expect(described_class.description_title({ description: long })).to eq("Find the 3 largest top-level directories (excluding .git…")
+    expect(described_class.description_title({ description: "y" * 70 })).to eq("#{"y" * 59}…")
+    expect(described_class.description_title({})).to be_nil
+  end
+
   it "carries a task_create's command and its cwd" do
     view = described_class.for("task_create", { name: "task_create", content: "npm test", cwd: " web ", env: "A=1" })
 

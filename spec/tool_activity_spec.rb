@@ -26,6 +26,17 @@ RSpec.describe Samagotchi::ToolActivity do
     end
   end
 
+  it "carries an execute's description for the TUI's line, the params as they were" do
+    call = { name: "execute", content: "ls | head -3", description: "List files." }
+    expect(described_class.tool_activity_event("execute", call, "a", registry: registry))
+      .to eq(action: "running command", tool: "execute", params: 'command="ls | head -3"', status: "ok",
+             title: "List files", description: "List files")
+    expect(described_class.tool_activity_event("execute", call.except(:description), "a", registry: registry))
+      .not_to have_key(:description)
+    expect(described_class.tool_activity_event("memory_write", { name: "memory_write", path: "n", description: "d" }, "ok",
+                                               registry: registry)).not_to have_key(:description)
+  end
+
   it "says calling tool with no params for a tool the registry doesn't know" do
     expect(described_class.tool_activity_event("nope", { name: "nope", content: "x" }, "Error: …", registry: registry))
       .to eq(action: "calling tool", tool: "nope", params: nil, status: "error")
@@ -125,6 +136,12 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(title("task_create", content: "cd /x && npm test")).to eq("npm test")
       expect(title("execute", content: "echo cd /x && ls")).to eq("echo cd /x +1")
       expect(title("execute", content: "cd /p && a | head -5; b; c | tail -2; d && e || f")).to eq("a +5")
+    end
+
+    it "gives a command's description in place of its steps, cut to a title" do
+      expect(title("execute", content: "cd /x && rg -n foo | head -3 && ls", description: "Find foo uses.")).to eq("Find foo uses")
+      expect(title("execute", content: "ls && pwd", description: "  ")).to eq("ls +1")
+      expect(title("execute", content: "ls", description: "a " * 40).length).to be <= Samagotchi::ToolView::TITLE_LIMIT
     end
 
     it "doesn't count a label echo or a limit as a step" do

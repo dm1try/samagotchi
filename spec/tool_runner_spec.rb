@@ -243,6 +243,14 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(events.first).not_to have_key(:title)
     end
 
+    # The call is whole by tool_call_started (a UI never sees one being
+    # written), so its title is the description from the first event on.
+    it "titles a described command by its description on both events, the params unchanged" do
+      run({ name: "execute", content: "cd /tmp && ls | head -3 && pwd", description: "List tmp." })
+      expect(events.first).to include(title: "List tmp", params: 'command="cd /tmp && ls | head -3 && pwd"')
+      expect(events.map { |e| e[:view][:description] }).to eq(["List tmp"] * 2)
+    end
+
     it "carries an execute's full command as its view, on tool_call_completed too" do
       command = "cd /tmp && #{"rg -n foo lib | " * 10}head -5"
       run({ name: "execute", content: command, cwd: "lib" })
