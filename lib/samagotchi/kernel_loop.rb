@@ -572,10 +572,7 @@ module Samagotchi
       kwargs
     end
 
-    def completion_n_predict
-      value = Samagotchi::Config.get("default.n_predict").to_i
-      value if value.positive?
-    end
+    def completion_n_predict = Samagotchi::Config.n_predict
 
     def completion_model_name(override = nil)
       ModelProfile.required_model_name(override)

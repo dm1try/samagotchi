@@ -155,12 +155,15 @@ module Samagotchi
         (@thinking_refused ||= Set.new) << model
       end
 
-      # One generation's options: the thinking fields under the sampling
-      # (a sampling key wins, chat_template_kwargs merges per sub-key), the
-      # empty-answer retry's temperature on top, then every null dropped at
-      # any depth (a sampling null means "don't send it").
+      # One generation's options: default.n_predict as max_tokens (the
+      # adapter's own default, OpenRouter's, otherwise), the thinking fields
+      # under the sampling (a sampling key wins, chat_template_kwargs merges
+      # per sub-key), the empty-answer retry's temperature on top, then every
+      # null dropped at any depth (a sampling null means "don't send it").
       def request_options(retry_generation: false, model: nil)
+        n_predict = Samagotchi::Config.n_predict
         options = deep_merge(thinking_fields(model), sampling)
+        options = { max_tokens: n_predict }.merge(options) if n_predict
         options = EmptyAnswerRetry.sampling(options) if retry_generation
         deep_compact(options)
       end

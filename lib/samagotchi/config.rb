@@ -404,6 +404,13 @@ module Samagotchi
         get_with_origin(key).first
       end
 
+      # default.n_predict: the most tokens one generation may produce, or
+      # nil when unset or not positive (the server's own limit).
+      def n_predict
+        value = get("default.n_predict").to_i
+        value if value.positive?
+      end
+
       # A timeout setting (server.open_timeout, server.read_timeout) in
       # seconds, +given+ (a caller's own value) first; one that isn't
       # positive (0, a word) is the key's default, on every kind of host.
