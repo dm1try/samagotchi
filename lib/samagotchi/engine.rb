@@ -1780,7 +1780,7 @@ module Samagotchi
     # A caller's check that the next turn starts at once (input queued for
     # it: a worker's inbox) or that none follows (a one-shot run): no
     # warm-up then. nil: neither.
-    attr_writer :next_turn_waiting
+    attr_accessor :next_turn_waiting
 
     # After a completed turn, prefill the next turn's prompt up to its user
     # message while the user reads (PromptWarmup, cache.warmup). Only on a

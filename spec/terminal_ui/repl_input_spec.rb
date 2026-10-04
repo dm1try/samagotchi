@@ -94,6 +94,34 @@ RSpec.describe Samagotchi::TerminalUI::ReplInput do
       expect(reader.reprompts).to eq([{ keep_text: true }])
     end
   end
+
+  # A line typed ahead (or a steer never merged) is the next turn's input:
+  # the turn-end warm-up would prefill a prompt that turn replaces.
+  describe "#waiting_input?" do
+    it "is true with text typed ahead at the open prompt" do
+      reader.typed_text = "half typed"
+
+      expect(input.waiting_input?).to be(true)
+    end
+
+    it "is false with an empty (or blank) prompt" do
+      reader.typed_text = "   "
+
+      expect(input.waiting_input?).to be(false)
+    end
+
+    it "is true with a line a turn left over for the next turn" do
+      input.during_turn(->(*) {}, leftovers: -> { ["late"] }) { nil }
+
+      expect(input.waiting_input?).to be(true)
+    end
+
+    it "is false with no reader and nothing left over" do
+      input.instance_variable_set(:@reader, nil)
+
+      expect(input.waiting_input?).to be(false)
+    end
+  end
 end
 
 RSpec.describe Samagotchi::TerminalUI::ReplInput, "#during_turn" do

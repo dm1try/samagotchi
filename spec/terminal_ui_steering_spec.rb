@@ -52,6 +52,25 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(engine).to have_received(:cut_for_steer).with(nil, epoch: 0).once
   end
 
+  # The turn-end warm-up prefills the next turn's prompt head; a line typed
+  # ahead at the open prompt (or a steer the turn never merged) is that turn's
+  # input already, so the warm-up would be thrown away.
+  describe "the turn-end warm-up" do
+    it "counts text typed ahead at the open prompt as the next turn's input" do
+      expect(engine.next_turn_waiting.call).to be_falsey
+
+      repl_input.instance_variable_set(:@reader, double("reader", typed_text: "typed ahead"))
+
+      expect(engine.next_turn_waiting.call).to be(true)
+    end
+
+    it "counts a steer the turn never merged too" do
+      repl_input.during_turn(->(*) {}, leftovers: -> { ["late"] }) { nil }
+
+      expect(engine.next_turn_waiting.call).to be(true)
+    end
+  end
+
   it "runs a line that came after the last iteration as the next turn" do
     allow(engine).to receive(:run_turn) do |*, pending_input:, **|
       pending_input.call

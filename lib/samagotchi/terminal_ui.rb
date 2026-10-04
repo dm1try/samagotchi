@@ -175,6 +175,11 @@ module Samagotchi
       @engine.interface = @non_interactive ? :non_interactive : :repl
       # A --non-interactive run exits after its turn: no turn-end warm-up.
       @engine.next_turn_waiting = -> { true } if @non_interactive
+      # A warm-up never pays off while a line typed ahead at the open prompt
+      # (or a left-over steer) already forms the next turn: only prefill when
+      # the prompt is empty. The REPL-only check composes with the one above.
+      next_waiting = @engine.next_turn_waiting
+      @engine.next_turn_waiting = -> { @repl_input&.waiting_input? || next_waiting&.call }
       @turn_flow = TurnFlow.new(engine: @engine)
       # A recap written while a continue offer waits says the turn stopped
       # unfinished. (Answering at the prompt is typing: activity already.)

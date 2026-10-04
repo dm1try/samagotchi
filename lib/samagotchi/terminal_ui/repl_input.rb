@@ -94,6 +94,19 @@ module Samagotchi
       # @return [Boolean] whether it went in
       def prefill(text) = open? && @reader.prefill(text)
 
+      # What the open prompt holds, nil when none is open: a line typed
+      # ahead there is the next turn's input.
+      def typed_text = @reader&.typed_text
+
+      # Whether the next turn's input is already here: text typed ahead at
+      # the open prompt, or a line a turn took as steering but never merged
+      # (it runs as the next turn).
+      def waiting_input?
+        @lock.synchronize { return true unless @front.empty? }
+
+        !typed_text.to_s.strip.empty?
+      end
+
       # A question answered at the open prompt: the lines submitted from now
       # on go to it, at the ? prompt. What was typed at the prompt is put aside
       # and comes back once the question closes.
