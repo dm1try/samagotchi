@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: a session card shows `looped` when loop-guard stopped its last turn (`stopped by <name>` for another hook),
+  like `chi sessions list`'s `[looped]`; the all-sessions search finds them by those words.
+- `chi bundle install` warns when a bundle needs a newer chi and its guardrail rules won't load (it already warned
+  about its hooks and plugin).
+
 ### Changed
 
 - Web: a tool row shows its status as a mark (✓, ✕, ■, a spinner while it runs) instead of the word, so its command,
@@ -18,6 +25,15 @@ and commands may change between minor versions. How releases are made:
 - Web: a `task_wait`, `task_get` or `task_stop` row names its task by the task's command instead of its id, a wait with
   how long it waits (`bundle exec rspec · up to 600s`), also for a task started in an earlier turn; the id line stays
   on hover.
+
+### Fixed
+
+- Guardrails: `> /tmp/x cat <<EOF` (a redirection written with a space before the command) is read as a heredoc of
+  data like `cat > /tmp/x <<EOF`, and a `)` inside quotes or a heredoc body no longer ends a `$(…)` early.
+- `!cmd` no longer hands a `--model` worker's model to a chi it runs as the default model.
+- A session worker survives a failed save at the end of a turn (it logs it) instead of crashing.
+- A turn that ends with an empty answer removes only its own retry note, not an earlier turn's cancel or failure note.
+- Web: streamed chunks from llama.cpp no longer carry its whole echoed prompt to every web client.
 
 ## [0.28.0] - 2026-10-04
 
