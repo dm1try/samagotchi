@@ -306,9 +306,26 @@ module Samagotchi
         def data_sink?(at)
           start = at
           start -= 1 while start.positive? && @tokens[start - 1][0] == :word
-          verb = @tokens[start...at].map { |t| t[1] }.find { |w| !w.match?(/\A[A-Za-z_]\w*=/) && !w.match?(REDIRECT) }
+          verb = command_word(@tokens[start...at])
           next_op = @tokens[at..].find { |t| t[0] == :op }
           DATA_SINKS.include?(File.basename(verb.to_s)) && !["|", "|&"].include?(next_op&.dig(1))
+        end
+
+        # The command word among the words before a heredoc's: the NAME=
+        # words and the redirections dropped, and with a redirection written
+        # with a space (> /tmp/x) its target word too.
+        def command_word(words)
+          i = 0
+          while i < words.size
+            word = words[i][1]
+            if word.match?(REDIRECT)
+              i += 1 if word.match?(/\A\d*[<>]{1,2}\z/)
+            elsif !word.match?(/\A[A-Za-z_]\w*=/)
+              return word
+            end
+            i += 1
+          end
+          nil
         end
       end
     end

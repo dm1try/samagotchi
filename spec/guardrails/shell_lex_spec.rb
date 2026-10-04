@@ -33,6 +33,15 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
         .to eq([["cat", "<<EOF", heredoc], %w[git push origin main]])
     end
 
+    it "sees a heredoc body as data past a redirection written with a space" do
+      ["> /tmp/x cat <<EOF\nrm -rf /\nEOF\n",
+       "2> err cat <<EOF\nrm -rf /\nEOF\n",
+       ">/tmp/x cat <<EOF\nrm -rf /\nEOF\n"].each do |text|
+        words = described_class.lex(text).filter_map { |kind, value, _s| value if kind == :word }
+        expect(words).to include("cat", heredoc)
+      end
+    end
+
     it "reads quoted and bare tags" do
       expect(commands("cat <<'EOF'\nrm -rf /\nEOF\nls")).to eq([["cat", "<<EOF", heredoc], %w[ls]])
       expect(commands("cat <<\"END\"\nrm -rf /\nEND\nls")).to eq([["cat", "<<END", heredoc], %w[ls]])
