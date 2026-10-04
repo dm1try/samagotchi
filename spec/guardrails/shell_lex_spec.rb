@@ -25,6 +25,17 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
       expect(commands(text)).to eq(expected)
     end
   end
+  describe "substitutions" do
+    it "ends at the ) that closes it, not at one inside a quoted string" do
+      expect(commands('echo "$(echo ")" rm x)"')).to eq([["echo", subst]])
+    end
+
+    it "ends after a heredoc body inside it, not at a ) in that body" do
+      expect(commands("x=$(cat <<'EOF'\na ) b\nEOF\n)")).to eq([["x=#{subst}"]])
+      expect(commands("echo $(a (b) c)")).to eq([["echo", subst]])
+    end
+  end
+
   describe "heredocs" do
     heredoc = described_class::HEREDOC
 

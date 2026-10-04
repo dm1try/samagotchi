@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::Guardrails::ShellLex, ".lex_with_spans" do
     def lexer(text) = described_class::Lexer.new(text).tap(&:tokens)
 
     it "notes a quote, substitution or heredoc left open" do
-      ["echo 'a", 'echo "a', "echo `a", "echo $(a", "cat <<EOF\nx", "cat <<EOF", 'echo $(echo ")")'].each do |text|
+      ["echo 'a", 'echo "a', "echo `a", "echo $(a", "cat <<EOF\nx", "cat <<EOF", 'echo $(echo "x'].each do |text|
         expect(lexer(text)).to be_unterminated, text
       end
       ["a && b", "echo $((1<<3))", "echo '<<EOF'", "cat <<EOF\nx\nEOF"].each do |text|

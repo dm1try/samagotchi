@@ -169,17 +169,74 @@ module Samagotchi
           add(SUBST, close + 1 - @i)
         end
 
+        # From $( to the ) that closes it, as one SUBST. A quote or a
+        # heredoc body inside it is skipped over: a ) in one of those
+        # doesn't close the substitution.
         def substitution
           depth = 0
           j = @i + 1
           loop do
-            depth += 1 if @s[j] == "("
-            depth -= 1 if @s[j] == ")"
-            j += 1
-            break if depth.zero? || j >= @s.size
+            break if j >= @s.size
+
+            c = @s[j]
+            if ["'", '"'].include?(c)
+              j = quote_end(j)
+            elsif c == "("
+              depth += 1
+              j += 1
+            elsif c == ")"
+              depth -= 1
+              j += 1
+              break if depth.zero?
+            elsif @s[j, 2] == "<<"
+              j = substitution_heredoc(j)
+            else
+              j += 1
+            end
           end
           @unterminated = true unless depth.zero?
           add(SUBST, j - @i)
+        end
+
+        # The index after the quote starting at +j+, a backslash in a double
+        # quote escaping the next character; the text's end when it is never
+        # closed.
+        def quote_end(j)
+          quote = @s[j]
+          k = j + 1
+          while k < @s.size
+            if quote == '"' && @s[k] == "\\" then k += 2
+            elsif @s[k] == quote then return k + 1
+            else k += 1
+            end
+          end
+          k
+        end
+
+        # From a << at +j+ inside a $(…) past its body's terminator line
+        # (nothing is lexed: the body is only stepped over), or on to the
+        # next character when no tag follows or the terminator never comes
+        # (a << that is no heredoc, as arithmetic's 1<<3, stays scanned).
+        def substitution_heredoc(j)
+          dash = @s[j + 2] == "-"
+          k = j + (dash ? 3 : 2)
+          k += 1 while [" ", "\t"].include?(@s[k])
+          tag, _quoted, stop = heredoc_tag(k)
+          return j + 1 if tag.empty?
+
+          eol = @s.index("\n", stop)
+          return j + 1 if eol.nil?
+
+          k = eol + 1
+          while k < @s.size
+            eol = @s.index("\n", k) || @s.size
+            line = @s[k...eol]
+            line = line.sub(/\A\t+/, "") if dash
+            return [eol + 1, @s.size].min if line == tag
+
+            k = eol + 1
+          end
+          j + 1
         end
 
         def comment

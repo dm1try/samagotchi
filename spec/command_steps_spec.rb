@@ -112,7 +112,7 @@ RSpec.describe Samagotchi::CommandSteps do
     [
       "for f in *.rb; do ruby -c $f; done", "while read l; do echo $l; done < x", "ls | while read f; do :; done",
       "if [ -f x ]; then cat x; fi", "case $1 in a) ls;; esac", "f() { ls; }", "{ ls; pwd; } > out",
-      "echo 'open", "cat <<EOF\nno end", "echo $(echo \")\")", "echo (", "echo )", "", "  \n", "# only a comment"
+      "echo 'open", "cat <<EOF\nno end", "echo (", "echo )", "", "  \n", "# only a comment"
     ].each do |text|
       it text.inspect do
         expect(parse(text)).to be_nil
@@ -121,6 +121,12 @@ RSpec.describe Samagotchi::CommandSteps do
 
     it "keeps keywords that are arguments" do
       expect(parse("echo done for if && git log --grep while")[:steps].size).to eq(2)
+    end
+
+    # A ) inside a quoted string doesn't close the substitution: the whole
+    # thing is one step now, not a fallback.
+    it "reads a substitution with a quoted ) as one step" do
+      expect(parse('echo $(echo ")")')).to eq(steps: [{ text: 'echo $(echo ")")' }])
     end
   end
 end
