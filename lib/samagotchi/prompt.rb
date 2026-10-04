@@ -3,6 +3,7 @@
 require_relative "model_profile"
 require_relative "prompt_literal_guard"
 require_relative "vision_context"
+require_relative "tool_response"
 
 module Samagotchi
   # Formats a message list into a prompt string ready for the /completion endpoint.
@@ -10,10 +11,13 @@ module Samagotchi
   # Supports multiple model profiles (Gemma 4, Qwen 3.6, etc.) with different
   # token formats, role prefixing strategies, and tool response handling.
   #
-  # Gemma 4:
-  #   - Turn markers: <|turn>ROLE\n...<end_of_turn>\n
-  #   - Tool response: standalone <|tool_response>...<tool_response|>
-  #   - Generation cue: <|turn>model\n
+  # Gemma 4 (as its chat template renders a conversation):
+  #   - Turn markers: <|turn>ROLE\n...<turn|>\n, the text trimmed
+  #   - Tool calls and their responses stay inside the model's turn:
+  #     ...<tool_call|><|tool_response>response:NAME{value:<|"|>...<|"|>}<tool_response|>
+  #     and the model goes on in the same turn
+  #   - Generation cue: <|turn>model\n, or nothing after a tool response
+  #   - An answer's thought is dropped once a later user turn starts
   #
   # Qwen 3.6:
   #   - Role framing: <|im_start|>ROLE\n...<|im_end|>
@@ -51,7 +55,7 @@ module Samagotchi
              else
                format_with_turn_markers(messages, profile, suffixes)
              end
-      [text + prefill.to_s, images]
+      [text + prefill_for(messages, profile, prefill), images]
     end
 
     private
@@ -71,17 +75,68 @@ module Samagotchi
     end
 
     def self.format_with_turn_markers(messages, profile, suffixes)
-      # Gemma 4 style: <|turn>ROLE\n...<end_of_turn>\n
+      last_user = messages.rindex { |m| m[:role] == "user" } || -1
       parts = messages.each_with_index.map do |m, index|
         content = prompt_content_for(m, profile) + suffixes[index]
-        if m[:role] == "tool_response"
-          "#{profile.tool_response_open}\n#{content}#{profile.tool_response_close}\n"
+        previous = index.positive? ? messages[index - 1][:role] : nil
+        following = messages[index + 1]&.dig(:role)
+        case m[:role]
+        when "tool_response"
+          # Inside the model's turn; closed when another role follows.
+          tool_response_blocks(content, profile) +
+            (following && following != "tool_response" && following != "model" ? "#{profile.turn_end}\n" : "")
+        when "model"
+          content = strip_gemma_thought(content) if index < last_user && !content.include?(profile.tool_call_open)
+          opener = previous == "tool_response" ? "" : "#{profile.turn_start}model\n"
+          closer = following == "tool_response" ? "" : "#{profile.turn_end}\n"
+          "#{opener}#{content.strip}#{closer}"
         else
-          "#{profile.turn_start}#{m[:role]}\n#{content}#{profile.turn_end}\n"
+          "#{profile.turn_start}#{m[:role]}\n#{content.strip}#{profile.turn_end}\n"
         end
       end
-      parts << "#{profile.turn_start}model\n"
+      parts << "#{profile.turn_start}model\n" unless ends_in_tool_response?(messages)
       parts.join
+    end
+
+    def self.ends_in_tool_response?(messages)
+      messages.last&.dig(:role) == "tool_response"
+    end
+
+    # The text after the generation cue: +prefill+, except where Gemma's
+    # turn goes on after a tool response (no cue, so nothing to fill).
+    # The prompt and the model message the kernel keeps both use it.
+    def self.prefill_for(messages, profile, prefill)
+      return "" if !profile.uses_role_prefixes? && ends_in_tool_response?(messages)
+
+      prefill.to_s
+    end
+
+    # A native tool_response entry (ToolResponse.joined: "[name]" outputs
+    # joined by its SEPARATOR) as Gemma's template writes the results: one
+    # response:NAME{value:<|"|>…<|"|>} block per call. A part that doesn't
+    # open with a "[name]" is the previous output's own text.
+    def self.tool_response_blocks(content, profile)
+      runs = content.split(ToolResponse::SEPARATOR).each_with_object([]) do |part, acc|
+        if (match = part.match(/\A\[([^\]\s]+)\](?:\n| |\z)/))
+          acc << [match[1], match.post_match]
+        elsif acc.empty?
+          acc << ["unknown", part]
+        else
+          acc.last[1] = "#{acc.last[1]}#{ToolResponse::SEPARATOR}#{part}"
+        end
+      end
+      runs = [["unknown", ""]] if runs.empty?
+      q = profile.string_delim
+      runs.map do |name, body|
+        "#{profile.tool_response_open}response:#{name}{value:#{q}#{body}#{q}}#{profile.tool_response_close}"
+      end.join
+    end
+
+    GEMMA_THOUGHT_BLOCK = /#{Regexp.escape(ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN.delete_suffix("thought"))}.*?#{Regexp.escape(ModelProfile::GEMMA_THOUGHT_CHANNEL_CLOSE)}/m
+    private_constant :GEMMA_THOUGHT_BLOCK
+
+    def self.strip_gemma_thought(content)
+      content.gsub(GEMMA_THOUGHT_BLOCK, "")
     end
 
     def self.format_with_prefixes(messages, profile, suffixes)

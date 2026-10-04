@@ -8,7 +8,7 @@ module Samagotchi
   module PromptLiteralGuard
     GEMMA_TOKEN_PAIRS = [
       ["[[SAMAGOTCHI_LITERAL_TURN_START]]", "<|turn>"],
-      ["[[SAMAGOTCHI_LITERAL_TURN_END]]", "<end_of_turn>"],
+      ["[[SAMAGOTCHI_LITERAL_TURN_END]]", "<turn|>"],
       ["[[SAMAGOTCHI_LITERAL_TOOL_CALL_OPEN]]", "<|tool_call>"],
       ["[[SAMAGOTCHI_LITERAL_TOOL_CALL_CLOSE]]", "<tool_call|>"],
       ["[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_OPEN]]", "<|tool_response>"],

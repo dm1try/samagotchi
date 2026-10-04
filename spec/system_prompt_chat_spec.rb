@@ -34,7 +34,10 @@ RSpec.describe "Engine#system_prompt per loop" do
   it "keeps the native prompt for a raw host" do
     e = engine("box:gemma-small", "gemma4")
 
-    expect(e.system_prompt).to start_with("<|think|>\n" + e.assist_system_prompt)
+    prose, declarations = e.assist_system_prompt.split(/(?=<\|tool>)/, 2)
+    expect(e.system_prompt).to start_with("<|think|>\n" + prose)
+    # Gemma 4's template declares the tools at the end of the system turn.
+    expect(e.system_prompt).to end_with(declarations)
   end
 
   it "answers for a given target, and rebuilds both after a model switch" do
@@ -65,7 +68,7 @@ RSpec.describe "Engine#system_prompt per loop" do
       it "leaves out Gemma's thinking token" do
         e = engine("box:gemma-small", "gemma4")
 
-        expect(e.system_prompt).to start_with(e.assist_system_prompt)
+        expect(e.system_prompt).to start_with(e.assist_system_prompt.split(/(?=<\|tool>)/, 2).first)
         expect(e.system_prompt).not_to include("<|think|>")
       end
 

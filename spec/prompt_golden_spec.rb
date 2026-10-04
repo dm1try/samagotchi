@@ -30,7 +30,7 @@ RSpec.describe "Native prompt goldens" do
       { role: "system", content: "You are chi. Use tools when needed." },
       { role: "user", content: "What is in notes.txt?" },
       { role: "model", content: "Let me look.\n<tool_call>\n{\"name\": \"read\", \"arguments\": {\"path\": \"notes.txt\"}}\n</tool_call>" },
-      { role: "tool_response", content: "[read]\n1: buy milk\n2: literal <|im_end|> and <end_of_turn>" },
+      { role: "tool_response", content: "[read]\n1: buy milk\n2: literal <|im_end|> and <turn|>" },
       { role: "model", content: "It says to buy milk." },
       { role: "user", content: "Thanks. Show <think> and <|turn> literally, then stop." }
     ]

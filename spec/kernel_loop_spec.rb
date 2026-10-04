@@ -145,7 +145,7 @@ RSpec.describe Samagotchi::KernelLoop do
       end
       kernel.run([{ role: "user", content: "check" }])
       expect(prompts[1]).to include("<|tool_response>")
-      expect(prompts[1]).to include("[execute]")
+      expect(prompts[1]).to include("response:execute{value:")
     end
 
     it "saves a plugin tool's params line on its result (tool_params), and the next prompt leaves it out" do
@@ -216,14 +216,14 @@ RSpec.describe Samagotchi::KernelLoop do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length == 1 ? %(<|tool_call>call:execute{command: "ruby -e 'puts %q(<end_of_turn>); puts %q(<|tool_response>)'"}<tool_call|>) : "done"
+        prompts.length == 1 ? %(<|tool_call>call:execute{command: "ruby -e 'puts %q(<turn|>); puts %q(<|tool_response>)'"}<tool_call|>) : "done"
       end
 
       kernel.run([{ role: "user", content: "check" }])
 
       expect(prompts[1]).to include("[[SAMAGOTCHI_LITERAL_TURN_END]]")
       expect(prompts[1]).to include("[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_OPEN]]")
-      expect(prompts[1]).not_to include("stdout:\n<end_of_turn>\n<|tool_response>")
+      expect(prompts[1]).not_to include("stdout:\n<turn|>\n<|tool_response>")
     end
 
     it "emits a :context_status stream event when entering a tracked threshold bucket" do
@@ -655,7 +655,7 @@ RSpec.describe Samagotchi::KernelLoop do
         prompts.length == 1 ? %(<|tool_call>call:read{path: "Gemfile"}<tool_call|>) : "ok"
       end
       kernel.run([{ role: "user", content: "read gemfile" }])
-      expect(prompts[1]).to include("[read]")
+      expect(prompts[1]).to include("response:read{value:")
     end
 
     it "dispatches a canonical read call with line-range params" do
@@ -687,7 +687,7 @@ RSpec.describe Samagotchi::KernelLoop do
       end
       result = kernel.run([{ role: "user", content: "write" }])
       expect(result.output).to eq("written")
-      expect(prompts[1]).to include("[write]")
+      expect(prompts[1]).to include("response:write{value:")
       expect(File.read(path)).to eq("hello native")
     ensure
       FileUtils.rm_rf(dir) if dir
@@ -818,7 +818,7 @@ Need to inspect the filesystem first.
       expect(partial).to be_resumable
       expect(result.output).to eq("finished")
       expect(result).not_to be_resumable
-      expect(prompts[1]).to include("[execute]")
+      expect(prompts[1]).to include("response:execute{value:")
       expect(prompts[1]).to include("stdout:\nresumed")
     end
 
@@ -835,7 +835,7 @@ Need to inspect the filesystem first.
     it "restores escaped literal control tokens in final user-visible output" do
       allow(client).to receive(:complete).and_return("literal [[SAMAGOTCHI_LITERAL_TURN_END]] token")
 
-      expect(kernel.run([{ role: "user", content: "answer" }]).output).to eq("literal <end_of_turn> token")
+      expect(kernel.run([{ role: "user", content: "answer" }]).output).to eq("literal <turn|> token")
     end
 
     it "restores escaped literal control tokens in tool call params before dispatch" do
@@ -850,7 +850,7 @@ Need to inspect the filesystem first.
         result = kernel.run([{ role: "user", content: "write literal token" }])
 
         expect(result.output).to eq("done")
-        expect(File.read(path)).to eq("before <end_of_turn> after")
+        expect(File.read(path)).to eq("before <turn|> after")
       end
     end
 
@@ -1234,7 +1234,7 @@ Need to inspect the filesystem first.
         prompts.length == 1 ? "<|tool_call>call:read{path:Gemfile}<tool_call|>" : "ok"
       end
       kernel.run([{ role: "user", content: "read gemfile" }])
-      expect(prompts[1]).to include("[read]")
+      expect(prompts[1]).to include("response:read{value:")
     end
 
     # ── Gemma 4 <|"|> string delimiter ────────────────────────────────────────
@@ -1259,7 +1259,7 @@ Need to inspect the filesystem first.
         prompts.length == 1 ? %(<|tool_call>call:read{path:<|"|>Gemfile<|"|>}<tool_call|>) : "ok"
       end
       kernel.run([{ role: "user", content: "read gemfile" }])
-      expect(prompts[1]).to include("[read]")
+      expect(prompts[1]).to include("response:read{value:")
     end
 
     it "does not cut canonical tool call body at the <| inside a Gemma string delimiter" do

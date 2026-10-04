@@ -223,7 +223,7 @@ module Samagotchi
                       :cancel_controller, :cap, :emit, :iteration, :empty_steps, :ended_empty, keyword_init: true)
     # One request: the prompt and its images as sent, the images' token
     # estimate, and the window it was measured against.
-    Request = Struct.new(:prompt, :images, :image_tokens, :window, keyword_init: true)
+    Request = Struct.new(:prompt, :images, :image_tokens, :window, :prefill, keyword_init: true)
     # One generation: the response (nil when cut), the cut's detail, this
     # generation's own server counts, the model the server named, the
     # thinking it streamed, and why it stopped (the transport's finish
@@ -254,7 +254,7 @@ module Samagotchi
       generation = generate(turn, request)
       return after_cut(turn, generation) if generation.cut
 
-      turn.conversation << { role: "model", content: turn.prefill + generation.response.to_s }
+      turn.conversation << { role: "model", content: request.prefill + generation.response.to_s }
       # Profile-specific parse (incl. Qwen unterminated-block recovery); the
       # returned fragment (non-nil only for Qwen) is fed back on the next
       # iteration if the model opened a tool-call block it did not close.
@@ -279,7 +279,10 @@ module Samagotchi
         turn.conversation << line
         prompt, images = format_prompt(turn)
       end
-      Request.new(prompt: prompt, images: images, image_tokens: image_tokens, window: window)
+      # The prefill the prompt ended with (none where Gemma's turn goes on
+      # after a tool response): the model message keeps it.
+      prefill = Prompt.prefill_for(turn.conversation, @profile, turn.prefill)
+      Request.new(prompt: prompt, images: images, image_tokens: image_tokens, window: window, prefill: prefill)
     end
 
     def format_prompt(turn)

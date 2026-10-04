@@ -23,6 +23,10 @@ module Samagotchi
     # An empty thought after the Qwen assistant cue: the model answers at once
     # (what the server's own template does with enable_thinking false).
     QWEN_EMPTY_THOUGHT = "<think>\n\n</think>\n\n"
+    # Gemma 4's empty thought channel after the model cue, as its chat
+    # template writes it with enable_thinking false (only where a model turn
+    # starts: Prompt.prefill_for).
+    GEMMA_EMPTY_THOUGHT = "<|channel>thought\n<channel|>"
 
     # What a native prompt gets for a level: the text before the system
     # prompt, the text after the assistant cue, and whether the level means
@@ -116,7 +120,7 @@ module Samagotchi
       off = level == :off
       honoured = !EFFORTS.include?(level)
       case profile&.name
-      when "gemma4" then Native.new(system_token: off ? "" : GEMMA_THINK_TOKEN, prefill: "", honoured: honoured)
+      when "gemma4" then Native.new(system_token: off ? "" : GEMMA_THINK_TOKEN, prefill: off ? GEMMA_EMPTY_THOUGHT : "", honoured: honoured)
       when "qwen36" then Native.new(system_token: "", prefill: off ? QWEN_EMPTY_THOUGHT : "", honoured: honoured)
       else Native.new(system_token: "", prefill: "", honoured: level == DEFAULT)
       end

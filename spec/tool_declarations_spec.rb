@@ -77,7 +77,7 @@ RSpec.describe Samagotchi::ToolDeclarations, ".flat_schema" do
   it "declares no enum, additionalProperties or nesting in either native format" do
     flat = [described_class.flat_schema(schema)]
     expect(described_class.qwen_declarations(flat)).not_to include('"enum"', "additionalProperties", '"items"', '"properties": {\n          "tags"')
-    expect(described_class.gemma_declarations(flat)).to include("meta:{type:<|\"|>object<|\"|>")
+    expect(described_class.gemma_declarations(flat)).to include("meta:{description:<|\"|>Extra.").and include("type:<|\"|>OBJECT<|\"|>}")
   end
 
   it "leaves the built-ins as they are, and the chat path gets a plugin's schema whole" do

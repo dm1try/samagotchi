@@ -17,6 +17,11 @@ and commands may change between minor versions. How releases are made:
 
 - A continue turn that fails before it begins (its session save, say) asks the step-limit question again
   instead of crashing the session's worker.
+- Native Gemma 4 prompts follow Gemma 4's chat template: turns end with `<turn|>` (not Gemma 3's
+  `<end_of_turn>`, which Gemma 4 reads as plain text), so the stop sequence matches; tool results stay
+  inside the model's turn as `response:NAME{value:…}` blocks, one per call; tools are declared in the
+  template's compact form at the end of the system turn; an answer's thought is dropped once the next
+  user turn starts; and thinking off prefills Gemma's empty thought channel.
 
 ## [0.22.0] - 2026-10-04
 

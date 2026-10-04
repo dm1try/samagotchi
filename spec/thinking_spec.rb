@@ -171,10 +171,11 @@ RSpec.describe Samagotchi::Thinking do
     let(:qwen) { Samagotchi::ModelProfile.qwen36 }
     let(:gemma) { Samagotchi::ModelProfile.gemma4 }
 
-    it "leaves the Gemma think token out for off" do
+    it "leaves the Gemma think token out for off, and prefills an empty thought channel" do
       expect(described_class.native(:off, gemma).system_token).to eq("")
       expect(described_class.native(:default, gemma).system_token).to eq("<|think|>\n")
-      expect(described_class.native(:off, gemma).prefill).to eq("")
+      expect(described_class.native(:off, gemma).prefill).to eq("<|channel>thought\n<channel|>")
+      expect(described_class.native(:default, gemma).prefill).to eq("")
     end
 
     it "prefills an empty thought after the Qwen cue for off" do

@@ -404,25 +404,10 @@ module Samagotchi
       }
     ].freeze
 
-    # Where Gemma's declaration text says something the schema doesn't: extra
-    # description text, and explicit required:false on optional parameters.
+    # Where Gemma's declaration text says something the schema doesn't:
+    # extra description text.
     GEMMA_PARAM_OVERRIDES = {
       "edit" => { new_text: { description: "Replacement text (required)" } },
-      "task_wait" => {
-        timeout: { required: false },
-        tail_lines: { required: false },
-        done_pattern: { required: false }
-      },
-      "delegate" => {
-        model: { required: false },
-        session: { required: false },
-        wait: { required: false },
-        timeout: { required: false }
-      },
-      "delegate_result" => {
-        session: { required: false },
-        timeout: { required: false }
-      },
       "ask_user_question" => {
         options: { description: "2-8 answer options as strings (labels). Single/multi selection via multi_select flag." }
       }
@@ -440,26 +425,42 @@ module Samagotchi
 
     module_function
 
-    # Gemma 4 <|tool>declaration:NAME{…}<tool|> blocks for every tool, one per line group.
+    # Gemma 4 <|tool>declaration:NAME{…}<tool|> blocks for every tool, back
+    # to back, as Gemma 4's chat template declares tools.
     # @param schemas [Array<Hash>] a Tools::Registry's schemas
     def gemma_declarations(schemas = TOOL_SCHEMAS)
-      schemas.map { |schema| gemma_declaration(schema) }.join("\n")
+      schemas.map { |schema| gemma_declaration(schema) }.join
     end
 
+    # One declaration in the template's shape: properties sorted by name,
+    # types upper-cased, the required names as a list.
     def gemma_declaration(schema)
       q = GEMMA_QUOTE
-      required = Array(schema[:parameters][:required])
+      parameters = schema[:parameters] || {}
       overrides = GEMMA_PARAM_OVERRIDES.fetch(schema[:name], {})
-      lines = schema[:parameters][:properties].map do |name, param|
-        override = overrides.fetch(name, {})
-        description = override.fetch(:description, param[:description])
-        line = "    #{name}:{type:#{q}#{param[:type]}#{q}, description:#{q}#{description}#{q}"
-        req = override.fetch(:required, required.include?(name.to_s) ? true : nil)
-        line += ", required:#{req}" unless req.nil?
-        "#{line}}"
+      properties = (parameters[:properties] || {}).to_h do |name, param|
+        [name.to_s, param.merge(overrides.fetch(name.to_sym, {}))]
       end
-      params = lines.empty? ? "  parameters:{}" : "  parameters:{\n#{lines.join(",\n")}\n  }"
-      "<|tool>declaration:#{schema[:name]}{\n  description:#{q}#{schema[:description]}#{q},\n#{params}\n}<tool|>"
+      required = Array(parameters[:required]).map(&:to_s)
+      fields = []
+      fields << "properties:{#{gemma_properties(properties)}}" unless properties.empty?
+      fields << "required:[#{required.map { |name| "#{q}#{name}#{q}" }.join(",")}]" unless required.empty?
+      fields << "type:#{q}#{(parameters[:type] || "object").to_s.upcase}#{q}"
+      "<|tool>declaration:#{schema[:name]}{description:#{q}#{schema[:description]}#{q},parameters:{#{fields.join(",")}}}<tool|>"
+    end
+
+    def gemma_properties(properties)
+      q = GEMMA_QUOTE
+      properties.sort.map do |name, param|
+        fields = []
+        fields << "description:#{q}#{param[:description]}#{q}" unless param[:description].to_s.empty?
+        items = param[:items]
+        if param[:type].to_s.casecmp?("array") && items.is_a?(Hash) && !items.empty?
+          fields << "items:{#{items.sort_by { |key, _| key.to_s }.map { |key, value| "#{key}:#{q}#{value.to_s.upcase}#{q}" if key.to_s == "type" }.compact.join(",")}}"
+        end
+        fields << "type:#{q}#{param[:type].to_s.upcase}#{q}"
+        "#{name}:{#{fields.join(",")}}"
+      end.join(",")
     end
 
     # The schemas for the chat path's tools: array: +schemas+ with

@@ -79,9 +79,10 @@ module Samagotchi
       @built = nil
     end
 
-    # The base prompt (specs, plugins' declarations).
+    # The base prompt (specs, plugins' declarations), with Gemma's tool
+    # declarations at its end as #build has them.
     def base(chat: false, thinking: nil)
-      assist_system_prompt(chat: chat, thinking: thinking)
+      with_tail_declarations(assist_system_prompt(chat: chat, thinking: thinking), chat: chat)
     end
 
     # Names activated via preloaded --memory entries during prompt
@@ -141,15 +142,18 @@ module Samagotchi
     def assist_system_prompt(chat: false, thinking: nil)
       return chat_system_prompt if chat
 
-      declarations = tool_declarations
       hint = tool_call_hint
       turn_preamble = turn_preamble_instruction(thinking)
+      # Gemma 4's template declares the tools at the end of the system turn
+      # (#system_prompt_with_index puts them there).
+      tools = if gemma_tail_declarations?
+                "Your tools are declared at the end of this system prompt."
+              else
+                "You have access to the following tools:\n\n#{tool_declarations}\n"
+              end
 
       <<~SYS
-        You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. You have access to the following tools:
-
-        #{declarations}
-
+        You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. #{tools}
         #{hint}
         You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
         #{turn_preamble}
@@ -234,8 +238,15 @@ module Samagotchi
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"
       ].join("\n\n")
-      [thinking_token + base, rg_guidance, project_description, project_location, current_model, current_session, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
+      prompt = [thinking_token + base, rg_guidance, project_description, project_location, current_model, current_session, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
+      with_tail_declarations(prompt, chat: chat)
     end
+
+    def with_tail_declarations(prompt, chat:)
+      chat || !gemma_tail_declarations? ? prompt : prompt.rstrip + tool_declarations
+    end
+
+    def gemma_tail_declarations? = profile.name == "gemma4"
 
     # B-light: auto-preload the built-in identity memory.
     # The file is installed by SystemBundle.ensure! as a normal system memory,

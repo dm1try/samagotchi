@@ -11,7 +11,7 @@ Let me look.
 <tool_response>
 [read]
 1: buy milk
-2: literal [[SAMAGOTCHI_LITERAL_IM_END]] and <end_of_turn></tool_response>
+2: literal [[SAMAGOTCHI_LITERAL_IM_END]] and <turn|></tool_response>
 <|im_end|>
 <|im_start|>assistant
 It says to buy milk.<|im_end|>

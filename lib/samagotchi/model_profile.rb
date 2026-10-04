@@ -74,7 +74,7 @@ module Samagotchi
       new(
         name: "gemma4",
         turn_start: "<|turn>",
-        turn_end: "<end_of_turn>",
+        turn_end: "<turn|>",
         tool_call_open: "<|tool_call>",
         tool_call_close: "<tool_call|>",
         tool_response_open: "<|tool_response>",
@@ -88,7 +88,7 @@ module Samagotchi
         user_prefix: "",
         assistant_prefix: "",
         model_prefix: "",
-        stop_sequences: ["<end_of_turn>", "<|tool_response>"],
+        stop_sequences: ["<turn|>", "<|tool_response>"],
         tool_decl_format: :gemma4
       )
     end

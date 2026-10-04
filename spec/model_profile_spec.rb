@@ -25,12 +25,12 @@ RSpec.describe Samagotchi::ModelProfile do
       profile = described_class.gemma4
       expect(profile.name).to eq("gemma4")
       expect(profile.turn_start).to eq("<|turn>")
-      expect(profile.turn_end).to eq("<end_of_turn>")
+      expect(profile.turn_end).to eq("<turn|>")
       expect(profile.tool_call_open).to eq("<|tool_call>")
       expect(profile.tool_call_close).to eq("<tool_call|>")
       expect(profile.tool_response_open).to eq("<|tool_response>")
       expect(profile.tool_response_close).to eq("<tool_response|>")
-      expect(profile.stop_sequences).to eq(["<end_of_turn>", "<|tool_response>"])
+      expect(profile.stop_sequences).to eq(["<turn|>", "<|tool_response>"])
     end
 
     it "uses no role prefixes and thinks in a channel" do

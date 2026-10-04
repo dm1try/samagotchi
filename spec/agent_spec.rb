@@ -345,7 +345,7 @@ file2.rb")
       expect(received_prompt).to include('description:<|"|>Run any shell command')
       expect(received_prompt).to include('description:<|"|>Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range. An image file (png, jpeg, gif, webp) comes back as the picture itself: read it to see it.<|"|>')
       expect(received_prompt).to include('description:<|"|>Write content to a file')
-      expect(received_prompt).to include('type:<|"|>string<|"|>')
+      expect(received_prompt).to include('type:<|"|>STRING<|"|>')
     end
 
     it "uses Gemma 4 string delimiters in the tool call hint shown to the model" do
