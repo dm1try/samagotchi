@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- loop-guard (bundle 0.3.4) words a loop its short run or its window found by the different sentences it held,
+  `12 different sentences in 48`, instead of `12 sentences ×4`, which read as a cycle of 12.
+
 ## [0.25.0] - 2026-10-04
 
 ### Added

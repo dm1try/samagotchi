@@ -860,8 +860,9 @@ What happens (`action: retry`, the default):
 1. The first loop in a turn: the generation is cut and the model asked
    again, with a hidden note that it was cut off. The user sees the loop's
    first sentence quoted,
-   `loop-guard> thinking repeats itself ("Wait, the count of the letter r…", 3 sentences ×3, 4k chars, 8 s): cut`,
-   and `↻ cut by loop-guard, asking again (1/1)`.
+   `loop-guard> thinking repeats itself ("Wait, the count of the letter r…", 3 sentences ×3, 4k chars, 8 s): cut`
+   (a short run or a window says how many different sentences it held:
+   "12 different sentences in 48"), and `↻ cut by loop-guard, asking again (1/1)`.
 2. If the retry loops too, the turn is stopped ("stopped the turn: …", "✕
    turn stopped by loop-guard") with a card that quotes the repeated
    sentences.

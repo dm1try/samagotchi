@@ -81,6 +81,7 @@ RSpec.describe "The loop-guard thinking watch" do
       expect(offset).to be_between(run_end, run_end + batch)
       expect(found).to have_attributes(period: 5, times: 4)
       expect(found.sentences).to eq(["I'll write it.", "Go.", "OK."])
+      expect(found.describe).to eq("5 different sentences in 24")
     end
 
     # The 2026-10-04 spike's live replays at temperature 0.0: each a cycle
@@ -157,6 +158,7 @@ RSpec.describe "The loop-guard thinking watch" do
 
       expect(offset).to be_between(10_000, 15_000)
       expect(found).to have_attributes(period: 1, times: 8)
+      expect(found.describe).to eq("one sentence ×8")
     end
 
     it "never triggers on 200k chars of distinct sentences, and stays cheap" do
@@ -187,7 +189,8 @@ RSpec.describe "The loop-guard thinking watch" do
       calm = random_thinking(3000)
 
       expect(first_loop(run * 2)).to be_nil
-      expect(first_loop(calm + run).last).to have_attributes(period: 3, times: 8)
+      expect(first_loop(calm + run).last).to have_attributes(period: 3, times: 8, span: 24)
+      expect(first_loop(calm + run).last.describe).to eq("3 different sentences in 24")
       expect(first_loop(calm + (run.split(" ").each_slice(20).map { |part| part.join(" ") } * " This sentence has enough words in it. "))).to be_nil
     end
 
@@ -299,7 +302,7 @@ RSpec.describe "The loop-guard thinking watch" do
       fire(hooks, { type: :before_turn })
       generation(hooks, fixture("real_deepseek_reset_loop.txt").first * 2)
 
-      expect(notices.first.first).to start_with("thinking repeats itself (\"OK. Let me write. Writing.\", 12 sentences ×4")
+      expect(notices.first.first).to start_with("thinking repeats itself (\"OK. Let me write. Writing.\", 12 different sentences in 48,")
     end
 
     it "starts each turn with no loops counted" do

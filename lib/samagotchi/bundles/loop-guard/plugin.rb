@@ -77,7 +77,18 @@ class ThinkingWatch
   MAX_DISTINCT = 5000
   SPLIT = /(?<=[.!?])\s+|\n+/
 
-  Loop = Struct.new(:period, :times, :sentences, :chars, keyword_init: true)
+  # +span+: the sentences a loop that isn't a cycle (the short run, the
+  # window) was seen in, +period+ the different ones among them; nil for a
+  # cycle of +period+ sentences seen +times+ times.
+  Loop = Struct.new(:period, :times, :sentences, :chars, :span, keyword_init: true) do
+    # "one sentence ×8", "3 sentences ×3", "12 different sentences in 48".
+    def describe
+      return "one sentence ×#{times}" if period == 1
+      return "#{period} sentences ×#{times}" unless span
+
+      "#{period} different sentences in #{span}"
+    end
+  end
   Sentence = Struct.new(:text, :words, :bigrams, :key, :length, keyword_init: true)
 
   attr_reader :thinking_chars
@@ -197,7 +208,8 @@ class ThinkingWatch
 
     texts = @recent.to_h # key => its last text
     top = @recent_counts.sort_by { |_key, n| -n }.first(3).map { |key, _n| texts[key] }
-    Loop.new(period: @recent_counts.size, times: @window_sentences / @recent_counts.size, sentences: top, chars: nil)
+    Loop.new(period: @recent_counts.size, times: @window_sentences / @recent_counts.size, sentences: top, chars: nil,
+             span: @window_sentences)
   end
 
   def short_loop(text, words)
@@ -216,7 +228,8 @@ class ThinkingWatch
     distinct = @short_window.uniq(&:first)
     return nil if distinct.length > @short_distinct
 
-    Loop.new(period: distinct.length, times: @short_count / distinct.length, sentences: distinct.first(3).map(&:last), chars: nil)
+    Loop.new(period: distinct.length, times: @short_count / distinct.length, sentences: distinct.first(3).map(&:last), chars: nil,
+             span: @short_window.length)
   end
 
   def count(key)
@@ -307,8 +320,7 @@ class Plugin
     return unless found
 
     @watch_done = true
-    what = "#{found.period == 1 ? "one sentence" : "#{found.period} sentences"} ×#{found.times}, " \
-           "#{(@watch.thinking_chars / 1000.0).round}k chars, #{(event[:elapsed_ms].to_i / 1000.0).round} s"
+    what = "#{found.describe}, #{(@watch.thinking_chars / 1000.0).round}k chars, #{(event[:elapsed_ms].to_i / 1000.0).round} s"
     # The notices quote the loop's sentences on one line (a short cycle
     # whole), as the stop card does.
     quoted = "\"#{cut(found.sentences.first(3).join(" ").gsub(/\s+/, " "))}\", #{what}"
