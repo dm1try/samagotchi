@@ -395,6 +395,17 @@ module Samagotchi
       @engine.activity_seq > @last_fire_activity_seq
     end
 
+    # SHA1 of one message's role and text: detects a rewrite a count alone
+    # misses. Model text is taken without its thinking, which is dropped from
+    # older model messages when the next turn starts.
+    def self.digest(message)
+      return nil unless message.is_a?(Hash)
+
+      text = message["content"].to_s
+      text = TranscriptFilter.strip_thought(text) if %w[model assistant].include?(message["role"])
+      Digest::SHA1.hexdigest("#{message["role"]}\0#{text}")
+    end
+
     private
 
     # A failing check writes the recap without the offer line.
@@ -504,17 +515,6 @@ module Samagotchi
       return nil unless self.class.digest(messages[saved[:covered] - 1]) == saved[:covered_digest]
 
       saved
-    end
-
-    # SHA1 of one message's role and text: detects a rewrite a count alone
-    # misses. Model text is taken without its thinking, which is dropped from
-    # older model messages when the next turn starts.
-    def self.digest(message)
-      return nil unless message.is_a?(Hash)
-
-      text = message["content"].to_s
-      text = TranscriptFilter.strip_thought(text) if %w[model assistant].include?(message["role"])
-      Digest::SHA1.hexdigest("#{message["role"]}\0#{text}")
     end
 
     def bump_generation

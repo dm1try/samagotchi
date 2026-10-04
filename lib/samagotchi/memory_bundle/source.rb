@@ -105,8 +105,6 @@ module Samagotchi
         end
       end
 
-      private
-
       def self.normalize_zip(zip_path)
         Dir.mktmpdir("samagotchi-zip-") do |extract_dir|
           result = system("unzip", "-o", zip_path, "-d", extract_dir)
@@ -154,6 +152,8 @@ module Samagotchi
         end
         [dst, true]
       end
+
+      private_class_method :normalize_zip, :normalize_tar, :clean_copy_of
     end
   end
 end

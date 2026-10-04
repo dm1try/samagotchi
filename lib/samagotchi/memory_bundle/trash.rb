@@ -132,6 +132,8 @@ module Samagotchi
         end
         [files, bytes]
       end
+
+      private_class_method :real_dir?, :entry_for, :parse_timestamp, :count_files
     end
   end
 end

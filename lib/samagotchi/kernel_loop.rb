@@ -209,6 +209,18 @@ module Samagotchi
       @model_key_fallback = fallback
     end
 
+    # Resolve the per-output character cap for the emitted tool call events.
+    #
+    # Precedence: an explicit override wins, then max_tool_output_chars
+    # (Config). A non-positive value falls back to
+    # DEFAULT_MAX_TOOL_OUTPUT_CHARS (there is intentionally no "unlimited" — live UIs get a
+    # bounded `output:` plus a truthful `output_truncated:` flag).
+    # Class-level so the chat loop resolves it the same way.
+    def self.resolve_output_char_cap(override)
+      parsed = (override || Samagotchi::Config.get("max_tool_output_chars")).to_i
+      parsed.positive? ? parsed : DEFAULT_MAX_TOOL_OUTPUT_CHARS
+    end
+
     private
 
     # ── One turn (#run) ────────────────────────────────────────────────────────
@@ -518,18 +530,6 @@ module Samagotchi
     def tool_context = @tool_context ||= ToolContext.new(self)
 
     # ── Output char cap resolution ─────────────────────────────────────────────
-
-    # Resolve the per-output character cap for the emitted tool call events.
-    #
-    # Precedence: an explicit override wins, then max_tool_output_chars
-    # (Config). A non-positive value falls back to
-    # DEFAULT_MAX_TOOL_OUTPUT_CHARS (there is intentionally no "unlimited" — live UIs get a
-    # bounded `output:` plus a truthful `output_truncated:` flag).
-    # Class-level so the chat loop resolves it the same way.
-    def self.resolve_output_char_cap(override)
-      parsed = (override || Samagotchi::Config.get("max_tool_output_chars")).to_i
-      parsed.positive? ? parsed : DEFAULT_MAX_TOOL_OUTPUT_CHARS
-    end
 
     def resolve_output_char_cap(override)
       self.class.resolve_output_char_cap(override)

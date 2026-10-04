@@ -211,6 +211,18 @@ module Samagotchi
         nil
       end
 
+      def self.served_model(payload)
+        model = payload.is_a?(Hash) ? payload["model"] : nil
+        model.is_a?(String) && !model.strip.empty? ? model : nil
+      end
+
+      # OpenRouter names the provider that served a request (Baseten,
+      # Fireworks, …) in the body's `provider`; other servers send none.
+      def self.served_provider(payload)
+        provider = payload.is_a?(Hash) ? payload["provider"] : nil
+        provider.is_a?(String) && !provider.strip.empty? ? provider : nil
+      end
+
       private
 
       def timeouts(timeout)
@@ -285,19 +297,7 @@ module Samagotchi
                          provider: self.class.served_provider(body))
       end
 
-      def self.served_model(payload)
-        model = payload.is_a?(Hash) ? payload["model"] : nil
-        model.is_a?(String) && !model.strip.empty? ? model : nil
-      end
-
       def served_model(payload) = self.class.served_model(payload)
-
-      # OpenRouter names the provider that served a request (Baseten,
-      # Fireworks, …) in the body's `provider`; other servers send none.
-      def self.served_provider(payload)
-        provider = payload.is_a?(Hash) ? payload["provider"] : nil
-        provider.is_a?(String) && !provider.strip.empty? ? provider : nil
-      end
 
       def served_provider(payload) = self.class.served_provider(payload)
 

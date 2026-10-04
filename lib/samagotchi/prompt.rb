@@ -58,8 +58,6 @@ module Samagotchi
       [text + prefill_for(messages, profile, prefill), images]
     end
 
-    private
-
     def self.image_lines(items, profile, images)
       return "" if items.empty?
 
@@ -172,5 +170,8 @@ module Samagotchi
       role = ESCAPED_KINDS.include?(message[:kind].to_s) ? "user" : message[:role]
       PromptLiteralGuard.escape(message[:content], profile: profile, role: role)
     end
+
+    private_class_method :image_lines, :format_with_turn_markers, :ends_in_tool_response?, :tool_response_blocks,
+                         :strip_gemma_thought, :format_with_prefixes, :prompt_content_for
   end
 end
