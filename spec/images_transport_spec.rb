@@ -148,7 +148,7 @@ RSpec.describe "Images in transport" do
       start_worker
       queue_input("first")
 
-      expect(merged.pop(timeout: 3)).to eq(["steer"])
+      expect(merged.pop(timeout: 3)&.map(&:text)).to eq(["steer"])
       runs = Array.new(3) { turns.pop(timeout: 3) }
       expect(runs).to eq([["first", []], ["look", [wire_ref]], ["after", []]])
     end

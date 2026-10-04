@@ -1638,7 +1638,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       run_worker_with(engine)
 
-      expect(drained).to eq(["steer"])
+      expect(drained).to eq([Samagotchi::Steer::Line.new(text: "steer", source: nil)])
       expect(announced).to eq([{ type: :input_merged, count: 1, origins: [{ client_id: "tui:1", enqueued_id: "e2" }] }])
     end
   end

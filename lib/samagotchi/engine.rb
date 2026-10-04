@@ -344,7 +344,8 @@ module Samagotchi
     # in a --non-interactive run) and the plugin steers. At the after-answer
     # boundary the steers are dropped: the model answered, and a nudge would
     # only restart the turn. The steer part fails on its own, never taking
-    # the user's lines with it.
+    # the user's lines with it. Items are a String (a user line), a
+    # Steer::Line (a worker's input line with its sender) or a steer Hash.
     def turn_drain(pending_input)
       lambda do |at_answer: false|
         lines = pending_input ? Array(pending_input.call) : []

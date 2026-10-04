@@ -241,8 +241,31 @@ RSpec.describe Samagotchi::Worker do
         start_worker(poll_interval: 0.2)
         Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "delegate:1234abcd", state_dir: tmpdir)
 
-        expect(next_turn&.last).to eq(["also this"])
+        expect(next_turn&.last).to eq([Samagotchi::Steer::Line.new(text: "also this", source: nil)])
         expect(archived?).to be(false)
+      end
+    end
+
+    describe "#pending_input_drain" do
+      it "keeps each merged line's sender as a Steer::Line source, and the merge saves it" do
+        senders = ["cli:send", "delegate:abcd1234", "web:x", "plugin", nil]
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          senders.each_with_index do |client_id, index|
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "line #{index}", client_id: client_id)
+          end
+          turns << [prompt, mono, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(poll_interval: 0.2)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "web:x", state_dir: tmpdir)
+
+        lines = next_turn&.last
+        expect(lines.map(&:source)).to eq(["chi_send", "parent_agent", nil, "plugin_send", nil])
+        expect(lines.map(&:text)).to eq(["line 0", "line 1", "line 2", "line 3", "line 4"])
+
+        conversation = []
+        Samagotchi::Steer.inject!(conversation, -> { lines.first(1) }, iteration: 1, emit: ->(_) {}, cancel_controller: nil)
+        expect(conversation).to eq([{ role: "user", kind: "input", source: "chi_send", content: "line 0" }])
       end
     end
 

@@ -7,6 +7,7 @@ require_relative "session"
 require_relative "session_inbox"
 require_relative "turn_note"
 require_relative "context_note"
+require_relative "steer"
 require_relative "worker_idle_exit"
 require_relative "session_manager"
 require_relative "archive_store"
@@ -571,7 +572,9 @@ module Samagotchi
           @engine.announce(type: :input_merged, count: merged.size, origins: merged.filter_map(&:last))
           @merged_this_turn.concat(merged)
         end
-        merged.map(&:first)
+        # Each line keeps its sender (Steer.source_for_client): a chi send or
+        # a delegating parent's line is saved and shown to the model as theirs.
+        merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) }
       end
     end
 
