@@ -57,6 +57,18 @@ module Samagotchi
       end
     end
 
+    # The one line the model reads above a steer or merged input (the wire
+    # only; the saved content stays raw): who sent it, and that it should
+    # follow it or, if it asks for nothing, carry on.
+    HEADER_TAIL = "mid-task. Follow it; if it asks for nothing, carry on with the task.]"
+    SENDERS = {
+      "user" => "from the user",
+      "parent_agent" => "from the parent agent that started this session",
+      "chi_send" => "sent with chi send",
+      "plugin_send" => "sent by a plugin"
+    }.freeze
+    USER_HEADER = "[Steer #{SENDERS["user"]}, #{HEADER_TAIL}".freeze
+
     module_function
 
     # The saved source of a worker input line from +client_id+: nil for the
@@ -67,6 +79,26 @@ module Samagotchi
       elsif id.start_with?(DELEGATE_CLIENT_PREFIX) then "parent_agent"
       elsif id == PLUGIN_CLIENT then "plugin_send"
       end
+    end
+
+    # The header for a steer or merged input message, else nil. No source
+    # (or "") is the user's; an input with an unknown source too; a steer
+    # with an unknown source is a plugin's (its bundle or hook label).
+    def header(message)
+      kind = (message[:kind] || message["kind"]).to_s
+      return unless [KIND, INPUT_KIND].include?(kind)
+
+      source = (message[:source] || message["source"]).to_s
+      source = "user" if source.empty?
+      sender = SENDERS[source] || (kind == KIND ? "from the #{source} plugin" : SENDERS["user"])
+      "[Steer #{sender}, #{HEADER_TAIL}"
+    end
+
+    # The text a steer or merged input goes out as: its header, a newline,
+    # then +text+ (the message's content by default). Other messages: +text+.
+    def wire_text(message, text = (message[:content] || message["content"]).to_s)
+      header = header(message)
+      header ? "#{header}\n#{text}" : text
     end
 
     def message(text:, source:)

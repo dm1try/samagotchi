@@ -107,7 +107,9 @@ module Samagotchi
           when "system"
             wire << { role: "system", content: entry[:content].to_s }
           when "user"
-            wire << { role: "user", content: parts(entry[:content], items) }
+            # A steer or merged input (always a String) goes with its header.
+            content = Steer.header(entry) ? Steer.wire_text(entry, entry[:content].to_s) : entry[:content]
+            wire << { role: "user", content: parts(content, items) }
           when "model"
             wire << assistant_message(entry, paired)
           when "tool_response"

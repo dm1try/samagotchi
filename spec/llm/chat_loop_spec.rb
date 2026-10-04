@@ -743,7 +743,8 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       result = run(pending_input: -> { queue.shift || [] })
 
       expect(events.find { |e| e[:type] == :pending_input_merged }).to include(content: "also this")
-      expect(adapter.requests.last[:messages].last).to eq(role: "user", content: [{ type: "text", text: "also this" }])
+      expect(adapter.requests.last[:messages].last)
+        .to eq(role: "user", content: [{ type: "text", text: "#{Samagotchi::Steer::USER_HEADER}\nalso this" }])
       expect(result.text).to eq("second")
     end
 
@@ -762,13 +763,14 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       result = run(pending_input: -> { queue.shift || [] })
 
-      expect(adapter.requests.last[:messages].last(2)).to eq([{ role: "assistant", content: "first" },
-                                                              { role: "user", content: [{ type: "text", text: "also this" }] }])
+      expect(adapter.requests.last[:messages].last(2))
+        .to eq([{ role: "assistant", content: "first" },
+                { role: "user", content: [{ type: "text", text: "#{Samagotchi::Steer::USER_HEADER}\nalso this" }] }])
       expect(result.conversation.map { |m| [m[:role], m[:content]] }.last(3))
         .to eq([["model", "first"], ["user", "also this"], ["model", "second"]])
     end
 
-    it "appends a plugin steer as its own user message after the user's line, and sends its text only" do
+    it "appends a plugin steer as its own user message after the user's line; the wire carries their headers, the save doesn't" do
       backend.adapter = adapter = FakeChatAdapter.new(tools(["c1", "read", { "path" => "x" }]), text("done"))
       items = [[], ["user line", { text: "nudge", source: "check-in" }]]
 
@@ -779,8 +781,9 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
                 { role: "user", kind: "steer", source: "check-in", content: "nudge" },
                 { role: "model", content: "done" }])
       expect(adapter.requests.last[:messages].last(2))
-        .to eq([{ role: "user", content: [{ type: "text", text: "user line" }] },
-                { role: "user", content: [{ type: "text", text: "nudge" }] }])
+        .to eq([{ role: "user", content: [{ type: "text", text: "#{Samagotchi::Steer::USER_HEADER}\nuser line" }] },
+                { role: "user", content: [{ type: "text", text: "#{Samagotchi::Steer.header({ kind: "steer", source: "check-in" })}\nnudge" }] }])
+      expect(adapter.requests.last[:messages].last[:content].first[:text]).to start_with("[Steer from the check-in plugin, mid-task.")
       expect(events.find { |e| e[:type] == :pending_input_merged })
         .to include(count: 1, content: "user line", steers: [{ source: "check-in", text: "nudge" }])
     end

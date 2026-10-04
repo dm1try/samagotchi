@@ -4,6 +4,7 @@ require_relative "model_profile"
 require_relative "prompt_literal_guard"
 require_relative "vision_context"
 require_relative "tool_response"
+require_relative "steer"
 
 module Samagotchi
   # Formats a message list into a prompt string ready for the /completion endpoint.
@@ -168,7 +169,9 @@ module Samagotchi
       # peer session), and a turn note carries an error's text: escaped like
       # user content so it can't close its turn.
       role = ESCAPED_KINDS.include?(message[:kind].to_s) ? "user" : message[:role]
-      PromptLiteralGuard.escape(message[:content], profile: profile, role: role)
+      # A steer or merged input is led by a header naming its sender (added
+      # after the escape: the header has no literals to guard).
+      Steer.wire_text(message, PromptLiteralGuard.escape(message[:content], profile: profile, role: role))
     end
 
     private_class_method :image_lines, :format_with_turn_markers, :ends_in_tool_response?, :tool_response_blocks,

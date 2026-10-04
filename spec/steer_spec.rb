@@ -145,6 +145,35 @@ RSpec.describe Samagotchi::Steer do
     end
   end
 
+  describe ".header / .wire_text" do
+    tail = "mid-task. Follow it; if it asks for nothing, carry on with the task.]"
+
+    it "names the sender of a steer or merged input" do
+      {
+        { kind: "input" } => "[Steer from the user, #{tail}",
+        { kind: "input", source: "user" } => "[Steer from the user, #{tail}",
+        { kind: "input", source: "chi_send" } => "[Steer sent with chi send, #{tail}",
+        { kind: "input", source: "parent_agent" } => "[Steer from the parent agent that started this session, #{tail}",
+        { kind: "input", source: "plugin_send" } => "[Steer sent by a plugin, #{tail}",
+        { kind: "input", source: "mystery" } => "[Steer from the user, #{tail}",
+        { kind: "steer", source: "user" } => "[Steer from the user, #{tail}",
+        { kind: "steer", source: "parent_agent" } => "[Steer from the parent agent that started this session, #{tail}",
+        { "kind" => "steer", "source" => "check-in" } => "[Steer from the check-in plugin, #{tail}"
+      }.each { |message, header| expect(described_class.header(message)).to eq(header), message.inspect }
+    end
+
+    it "has none for a prompt, a model message or a note" do
+      expect(described_class.header({ role: "user", content: "x" })).to be_nil
+      expect(described_class.header({ role: "system", kind: "note", content: "x" })).to be_nil
+    end
+
+    it "puts the header on its own line before the text" do
+      expect(described_class.wire_text({ kind: "input", content: "a" })).to eq("[Steer from the user, #{tail}\na")
+      expect(described_class.wire_text({ kind: "input", content: "a" }, "b")).to eq("[Steer from the user, #{tail}\nb")
+      expect(described_class.wire_text({ role: "user", content: "a" })).to eq("a")
+    end
+  end
+
   it ".turn_prompt? is a prompt that started a turn: not a steer, not input merged into a running turn" do
     merged = described_class.merge(["also this"]).messages.first
     expect(described_class.input?(merged)).to be(true)
