@@ -8,6 +8,21 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A message that joins a running turn (a line typed in the terminal or the web, `chi send -m`, a delegate's
+  follow-up, `chi answer --option Continue --text`, a plugin's `ctx.steer`) reaches the model with a one-line
+  header naming its sender and asking it to follow the message, or carry on if it asks for nothing, so the model
+  can tell who is steering it. Sessions keep the raw text.
+
+### Fixed
+
+- A `chi send -m` or delegate follow-up merged into a running turn is saved with its sender (`source: chi_send` /
+  `parent_agent`) instead of reading as the user's own words.
+- The idle recap keeps the text of a `chi answer --option Continue --text` (or a continue card answered with
+  text); it was dropped as a plugin's prod.
+- check-in no longer says a nudge was not sent when a user line was merged after it (bundle check-in 0.2.3).
+
 ## [0.23.0] - 2026-10-04
 
 ### Changed

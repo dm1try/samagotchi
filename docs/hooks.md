@@ -115,10 +115,16 @@ known-names)` for a bundle hook, `audit.rb (config)` for a config hook,
 `turn hook` for one registered at runtime.
 
 A steer is saved in the session as `{role: "user", kind: "steer", source:
-"<bundle>", content: "…"}`; the model reads only its text, as a user turn.
+"<bundle>", content: "…"}`, its text raw. The model reads it as a user turn
+led by one line naming the sender: `[Steer from the <bundle> plugin,
+mid-task. Follow it; if it asks for nothing, carry on with the task.]`.
 Its `source` is the hook's bundle (a config or turn hook's label otherwise).
-The user's own lines typed into a running turn are saved as `{role: "user",
-kind: "input", content: "…"}`: part of that turn, not a turn of their own.
+Lines typed into a running turn are saved as `{role: "user", kind: "input",
+content: "…"}`: part of that turn, not a turn of their own. They carry a
+`source` when they are not the user's own: `chi_send` (`chi send -m`),
+`parent_agent` (a delegate's follow-up) or `plugin_send` (`ctx.sessions.send`).
+The model reads them with the same kind of header (`[Steer from the user, …]`,
+`[Steer sent with chi send, …]`, and so on).
 
 Timing: a notice from `:after_turn` or `:session_end` shows after the turn's
 end line. A question from `:before_tool_call` shows **before** the tool

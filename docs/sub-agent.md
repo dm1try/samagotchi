@@ -60,9 +60,10 @@ answers waits as a question of kind `continue` (`"limit": 100`, options
 `Continue` and `Stop`). `answer_with` continues it:
 `chi answer ID --question QID --option Continue`, and the continued turn's
 reply (or its next question) comes back on that same wait. With
-`--text "…"` the text joins the continued turn as a steer (as a `chi send -m`
-into a running turn does, marked as coming from the parent agent), so one
-answer continues and redirects it. To stop it:
+`--text "…"` the text joins the continued turn as a steer, labelled for the
+model as coming from the parent agent that started the session, so one answer
+continues and redirects it. (A `chi send -m` into a running turn joins it too,
+labelled as sent with chi send.) To stop it:
 `--option Stop`, with `--text "why"` for the model;
 that wait ends with `status: not_continued`, exit 0, and the turn's work so far
 stays in the session. A message instead (`chi send ID -m "…"`) drops the

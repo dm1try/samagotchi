@@ -274,7 +274,8 @@ Plain `chi` runs the session in a background worker and attaches the terminal
 to it (`session.shared`, default `true`). A worker's session can have any number
 of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 `--attach`). They all see the same turns as they happen, and any of them can send
-a prompt, also while a turn runs (it merges into that turn as steering). The
+a prompt, also while a turn runs (it merges into that turn as steering: the model
+is told it is a steer and who sent it). The
 first answer to an `ask_user_question` wins; the other UIs close their widget.
 An empty answer dismisses the question in every UI. The model is then told
 not to go ahead with what it asked about, or change anything else, and to wait.
