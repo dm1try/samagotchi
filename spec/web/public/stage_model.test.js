@@ -195,3 +195,18 @@ test("flashOf: a hook's notice (warn or info) and a plugin's nudge flash; chi's 
   assert.deepEqual(flashOf("steer", { source: "check-in", text: "You've made 3 tool calls" }), { kind: "steer", text: "check-in nudged the model" });
   assert.deepEqual(flashOf("steer", {}), { kind: "steer", text: "nudged the model" });
 });
+
+test("liveSlots: the running tool and the trail carry a call's full command (for the hover), only when it has one", () => {
+  const command = "cd /p && rg -n foo lib |\n  head -5";
+  const turn = turnOf(
+    { ...started(1, 1, "execute", "rg -n foo lib | head -5"), view: { command } }, done(1, 1, "execute"),
+    started(1, 2, "read", "lib/a.rb"), done(1, 2, "read"),
+    { ...started(1, 3, "task_create", "npm test"), view: { command: "npm test", cwd: "web" } },
+  );
+  const slots = liveSlots(turn);
+  assert.deepEqual(slots.trail, [
+    { name: "execute", title: "rg -n foo lib | head -5", status: "ok", command },
+    { name: "read", title: "a.rb", status: "ok" },
+  ]);
+  assert.deepEqual(slots.tool, { name: "task_create", title: "npm test", kind: "exec", command: "npm test" });
+});

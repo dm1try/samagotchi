@@ -146,3 +146,16 @@ test("addCompleted keeps an edit's diff on the row", () => {
   addStarted(m, { iteration: 1, call_index: 2, tool: "execute" });
   assert.equal("diff" in addCompleted(m, { iteration: 1, call_index: 2, tool: "execute", output: "ok" }), false);
 });
+
+test("a row keeps its call's view from tool_call_started; a row synthesized from a completion takes the event's", () => {
+  const view = { command: "cd /p && rg -n foo lib |\n  head -5", cwd: "lib" };
+  const m = newActivity();
+  const { row } = addStarted(m, { iteration: 1, call_index: 1, tool: "execute", params: "p", view });
+  assert.deepEqual(row.view, view);
+  addCompleted(m, { iteration: 1, call_index: 1, tool: "execute", output: "x", activity: { status: "ok" } });
+  assert.deepEqual(row.view, view);
+
+  const synthesized = addCompleted(m, { iteration: 2, call_index: 1, tool: "execute", output: "x", view, activity: { status: "ok" } });
+  assert.deepEqual(synthesized.view, view);
+  assert.equal(addStarted(m, { iteration: 3, call_index: 1, tool: "read", params: "p" }).row.view, null);
+});
