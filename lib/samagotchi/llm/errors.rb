@@ -25,6 +25,9 @@ module Samagotchi
     #   CreditsHeld      402 "… in-flight requests": credit reserved by other
     #                    requests; a RateLimited, retried after 20 s
     #   OutOfCredits     any other 402; never retried
+    #   OverBudget       402 metadata.reason weight_exceeds_budget: the
+    #                    request alone exceeds the key's budget; an
+    #                    OutOfCredits, never retried
     #   ServerError      5xx or a server's error event mid-stream
     #   AuthError        401/403, or an API key variable that is not set
     #   BadRequest       other 4xx (a context overflow is one, whatever status;
@@ -103,6 +106,15 @@ module Samagotchi
       def kind = :credits
 
       def summary = "out of credits on host #{host}: #{detail}; add credits, then send again"
+    end
+
+    # A 402 whose error.metadata.reason is weight_exceeds_budget (OpenRouter):
+    # this one request's credit reservation is larger than the key's whole
+    # budget, so no amount of waiting lets it through. Never retried, even
+    # when the message reads like the in-flight one.
+    class OverBudget < OutOfCredits
+      def summary = "request too large for the credit budget on host #{host}: #{detail}; " \
+                    "lower max_tokens (default.max_tokens) or raise the key's credit limit"
     end
 
     class ServerError < ProviderError
@@ -261,6 +273,9 @@ module Samagotchi
       REASONING_REFUSED_RE = /reasoning|thinking/i
       # A 402 about credit held by in-flight requests (see CreditsHeld).
       CREDITS_HELD_RE = /in-flight requests/i
+      # A 402's error.metadata.reason when the request can never fit the
+      # key's budget (see OverBudget).
+      OVER_BUDGET_REASON = "weight_exceeds_budget"
       # Seconds to wait before retrying a CreditsHeld without a Retry-After.
       CREDITS_SETTLE_DELAY = 20.0
       RETRYABLE_SERVER_STATUSES = [500, 502, 503, 504, 529].freeze
@@ -285,7 +300,9 @@ module Samagotchi
         when 429 then RateLimited.new(text, retry_after: parse_retry_after(retry_after), **options)
         when 408 then ServerError.new(text, retryable: true, **options)
         when 402
-          if CREDITS_HELD_RE.match?(message) || CREDITS_HELD_RE.match?(body.to_s)
+          if error_reason(body) == OVER_BUDGET_REASON
+            OverBudget.new(text, **options)
+          elsif CREDITS_HELD_RE.match?(message) || CREDITS_HELD_RE.match?(body.to_s)
             CreditsHeld.new(text, retry_after: parse_retry_after(retry_after) || CREDITS_SETTLE_DELAY, **options)
           else
             OutOfCredits.new(text, **options)
@@ -354,6 +371,14 @@ module Samagotchi
         message = message.to_s.strip
         message = with_upstream(message, parsed["error"]["metadata"]) if parsed.is_a?(Hash) && parsed["error"].is_a?(Hash)
         message.empty? ? "(empty body)" : message[0, 500]
+      end
+
+      # error.metadata.reason of a JSON error body (OpenRouter), or nil.
+      def error_reason(body)
+        parsed = parse_json(body.to_s)
+        error = parsed["error"] if parsed.is_a?(Hash)
+        metadata = error["metadata"] if error.is_a?(Hash)
+        metadata["reason"] if metadata.is_a?(Hash)
       end
 
       # +message+ followed by the upstream provider's name and words from

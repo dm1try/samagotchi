@@ -46,6 +46,26 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(from(400, "in-flight requests")).to be_a(Samagotchi::LLM::BadRequest)
     end
 
+    it "fails fast on a 402 whose metadata.reason is weight_exceeds_budget, even worded like the in-flight one" do
+      body = JSON.generate(error: { code: 402, metadata: { reason: "weight_exceeds_budget" },
+                                    message: "This request would exceed your available credits given your current " \
+                                             "in-flight requests. Retry after in-flight requests settle, or add credits." })
+      error = Samagotchi::LLM::ProviderErrors.from_response(status: 402, body: body, host: "fw", retry_after: "5")
+
+      expect(error).to be_a(Samagotchi::LLM::OverBudget).and be_a(Samagotchi::LLM::OutOfCredits)
+      expect(error).not_to be_a(Samagotchi::LLM::CreditsHeld)
+      expect(error).not_to be_retryable
+      expect(error.kind).to eq(:credits)
+      expect(error.summary).to start_with("request too large for the credit budget on host fw: HTTP 402: This request")
+      expect(error.summary).to end_with("; lower max_tokens (default.max_tokens) or raise the key's credit limit")
+
+      line = "data: #{JSON.generate(error: { code: 402, message: "x", metadata: { reason: "weight_exceeds_budget" } })}"
+      expect(Samagotchi::LLM::ProviderErrors.from_sse_line(line, host: "or")).to be_a(Samagotchi::LLM::OverBudget)
+      other = JSON.generate(error: { code: 402, message: "in-flight requests", metadata: { reason: "something_else" } })
+      expect(Samagotchi::LLM::ProviderErrors.from_response(status: 402, body: other, host: "fw"))
+        .to be_a(Samagotchi::LLM::CreditsHeld)
+    end
+
     it "reads the upstream reason and provider from error.metadata (OpenRouter's recorded 429)" do
       error = Samagotchi::LLM::ProviderErrors.from_response(
         status: 429, body: File.read(File.expand_path("../fixtures/providers/openai/openrouter_error_429.json", __dir__)),

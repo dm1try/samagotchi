@@ -14,6 +14,10 @@ and commands may change between minor versions. How releases are made:
   `parent agent` and `chi send` instead of the raw `parent_agent` / `chi_send`.
 - Thinking off on Gemma 4 no longer warns that off wasn't honoured: its empty thought (whitespace alone) is not
   counted as thinking.
+- An OpenRouter 402 whose `metadata.reason` is `weight_exceeds_budget` (the request alone is larger than the
+  key's credit budget) fails at once as `request too large for the credit budget on host <name>: …; lower
+  max_tokens (default.max_tokens) or raise the key's credit limit`, instead of being retried as credit held by
+  in-flight requests. Other 402s are unchanged.
 
 ## [0.24.0] - 2026-10-04
 
