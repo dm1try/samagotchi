@@ -94,7 +94,8 @@ RSpec.describe Samagotchi::TurnNote do
     cut = described_class.cut_retry("loop-guard", "its thinking kept\nrepeating itself")
 
     expect(cut[:content]).to eq("[SYSTEM: your last reply was cut off by loop-guard: its thinking kept repeating itself. " \
-                                "Don't start the same reasoning again; answer the user's last message now, briefly.]")
+                                "Don't start the same reasoning again; continue the task with your next tool call, " \
+                                "or answer if it is done.]")
     expect([cut, described_class.empty_retry]).to all(satisfy { |note| described_class.retry_nudge?(note) && described_class.note?(note) })
     expect(described_class.retry_nudge?({ "retry_nudge" => true })).to be(true)
     expect(described_class.retry_nudge?(described_class.empty)).to be(false)

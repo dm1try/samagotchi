@@ -143,7 +143,7 @@ module Samagotchi
     def cut_retry(by, reason)
       why = reason.to_s.strip.empty? ? "" : ": #{one_line(reason)}"
       retry_nudge(message("your last reply was cut off by #{by || "a plugin"}#{why}. Don't start the same reasoning " \
-                          "again; answer the user's last message now, briefly."))
+                          "again; continue the task with your next tool call, or answer if it is done."))
     end
 
     # A retry nudge is marked, so the spent one is found by the mark
