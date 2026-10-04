@@ -60,9 +60,30 @@ right-hand column happens.
   #2, so the **next request in the session** reads everything up to it. Mid and tail system messages never take
   a breakpoint. The split point comes from `SystemPrompt#stable_length` via the message's `cache_split:`, which
   never goes on the wire.
-- Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a
-  single-slot local server they can push the session's prefix out of the cache. Fixing that is slice 2 of the
-  plan (R4 `id_slot`, R2 turn-end warm-up).
+- Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
+  llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
+
+## The turn-end warm-up
+
+The next turn's prompt differs from the turn's last request at its tail: the previous answer's thinking is
+stripped (the models' specs require it). A hybrid model on llama.cpp can only resume from a restore point, so the
+next turn prefills from well before the end, more with every turn. `PromptWarmup` moves that work into the time
+the user reads: after a completed turn, `Engine#warm_up_next_turn` formats the next prompt up to where the new
+user message starts (`KernelLoop#warmup_prompt`) and sends it in a thread (`Client#warm_up`: native
+`/completion`, `n_predict: 1`, not streamed, no retries, log purpose `warmup`, then a `model warmup` line with
+`cached=`, `prefilled=` and `prefill_ms=`).
+
+- Only on a local llama.cpp host on the native loop, with `cache.warmup: auto` (the default). Never a remote or
+  paid host, never the chat loop (Splash keeps its own cache; llama.cpp's chat path is not measured).
+- Not after a failed, cancelled or step-limited turn, nor when a reminder is due, a steer is carried or input
+  waits (the next turn starts at once), nor in a `--non-interactive` run.
+- **Slot rule.** The warm-up runs on the slot the turn's last request used (`id_slot` from its stream). The next
+  request is pinned to that slot only while the warm-up still runs, so it queues behind it; once the warm-up is
+  done nothing is pinned. Pinning across an idle gap is the one thing that hurts: a pinned request to a slot the
+  server has since cleared skips its prompt cache and prefills everything (measured 0.5 s → 12 s). For the same
+  reason `id_slot` is a reserved sampling key.
+- What breaks it (the warm-up simply misses): a system-prompt rebuild (`/thinking`, `/model`, a tool change),
+  the image window sliding, `!rollback`.
 
 ## Rules for changes
 
@@ -85,10 +106,15 @@ right-hand column happens.
 
 - **Splash:** `--persistent-cache` (with `--max-cache-disk`) keeps restore points across restarts. Splash learns
   a new branch point on the 2nd session, so the 3rd one gets the full reuse.
-- **llama.cpp:** a single slot is shared by everything sent to it. `--parallel N` and `--cache-ram` give side
-  requests room without evicting the session. `--ctx-checkpoints` controls how many restore points a hybrid
-  model keeps.
+- **llama.cpp:** `--cache-ram` (the host-memory prompt cache, 8 GiB by default in recent builds) is what keeps
+  sessions apart: when a task starts on a slot, the idle slots' state goes to that cache, and an unpinned request
+  restores the best match on whatever slot it gets. So a recap or another session between two turns costs
+  nothing (measured on Ornith: the next turn still reuses 11.9k of 12.3k tokens). Raise it for many or long
+  sessions (roughly 0.25–0.3 GB per 12k-token Ornith session). `--parallel` matters little; pinning a request to
+  a slot (`id_slot`) is the hazard. With `--cache-ram 0` or an old single-slot build, a recap does evict the
+  session. `--ctx-checkpoints` controls how many restore points a hybrid model keeps. chi sends
+  `cache_prompt: true` on every native request.
 - **OpenRouter / Anthropic:** the default cache TTL is 5 minutes. Provider routing (which upstream serves a
   request) also decides whether a cache is there to hit.
 
-Still to come: side requests on their own slot, a turn-end warm-up, image-window batches and longer remote TTLs.
+Still to come: image-window batches and longer remote TTLs.
