@@ -68,6 +68,54 @@ RSpec.describe Samagotchi::Client do
     end
   end
 
+  describe "#warm_up" do
+    def capture_post(answer)
+      request = nil
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) do |built_request|
+        request = built_request
+        double("response", code: "200", body: answer.to_json)
+      end
+      -> { request }
+    end
+
+    it "prefills the prompt on the given slot: one token, cache kept, not streamed; returns the server's counts" do
+      client = described_class.new(host: "localhost", port: 8080)
+      request = capture_post({ "content" => "x", "id_slot" => 1,
+                               "timings" => { "cache_n" => 11_000, "prompt_n" => 900, "prompt_ms" => 1003.7 } })
+
+      result = client.warm_up("head", model: "Ornith", slot: 1)
+
+      expect(request.call.path).to eq("/completion")
+      expect(JSON.parse(request.call.body)).to eq("prompt" => "head", "n_predict" => 1, "cache_prompt" => true,
+                                                  "stream" => false, "id_slot" => 1, "model" => "Ornith")
+      expect(result).to eq(described_class::Warmup.new(slot: 1, cache_n: 11_000, prompt_n: 900, prompt_ms: 1004))
+    end
+
+    it "sends no slot when it has none" do
+      client = described_class.new(host: "localhost", port: 8080)
+      request = capture_post({ "id_slot" => 3, "timings" => {} })
+
+      expect(client.warm_up("head", slot: nil).slot).to eq(3)
+      expect(JSON.parse(request.call.body)).not_to have_key("id_slot")
+    end
+
+    it "does nothing on an OpenAI-compatible transport" do
+      expect(Net::HTTP).not_to receive(:start)
+
+      expect(described_class.new(host: "localhost", port: 8080, transport: :mlx).warm_up("head", slot: 1)).to be_nil
+    end
+
+    it "is one attempt: a network error is raised, not retried" do
+      client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_s) {})
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNRESET)
+
+      expect { client.warm_up("head", slot: 1) }.to raise_error(Errno::ECONNRESET)
+      expect(Net::HTTP).to have_received(:start).once
+    end
+  end
+
   describe "#complete" do
     it "joins streamed completion chunks into a single response" do
       client = described_class.new(host: "localhost", port: 8080)
@@ -181,6 +229,26 @@ RSpec.describe Samagotchi::Client do
       client.complete("prompt", stop: ["done"], sampling: { cache_prompt: false })
 
       expect(JSON.parse(request.body)).to include("cache_prompt" => true)
+    end
+
+    it "pins the request to a slot only when asked, and only on llama.cpp" do
+      bodies = []
+      allow(Net::HTTP).to receive(:start) do |*_args, **_opts, &block|
+        http = instance_double(Net::HTTP)
+        response = double("response", code: "200")
+        allow(response).to receive(:read_body).and_yield("data: [DONE]\n")
+        allow(http).to receive(:request) do |built_request, &inner|
+          bodies << JSON.parse(built_request.body)
+          inner.call(response)
+        end
+        block.call(http)
+      end
+
+      described_class.new(host: "localhost", port: 8080).complete("prompt", slot: 2)
+      described_class.new(host: "localhost", port: 8080).complete("prompt")
+      described_class.new(host: "localhost", port: 8080, transport: :mlx).complete("prompt", slot: 2)
+
+      expect(bodies.map { |body| body["id_slot"] }).to eq([2, nil, nil])
     end
 
     it "includes model when provided" do

@@ -173,6 +173,8 @@ module Samagotchi
       # -p without --non-interactive drops into the REPL, which can answer
       # an approval; --non-interactive can't, so an approval there denies.
       @engine.interface = @non_interactive ? :non_interactive : :repl
+      # A --non-interactive run exits after its turn: no turn-end warm-up.
+      @engine.next_turn_waiting = -> { true } if @non_interactive
       @turn_flow = TurnFlow.new(engine: @engine)
       # A recap written while a continue offer waits says the turn stopped
       # unfinished. (Answering at the prompt is typing: activity already.)

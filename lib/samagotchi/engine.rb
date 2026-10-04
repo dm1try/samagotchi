@@ -64,6 +64,7 @@ require_relative "question_desk"
 require_relative "relay_desk"
 require_relative "guardrail_wiring"
 require_relative "plugin_tasks"
+require_relative "prompt_warmup"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -242,6 +243,9 @@ module Samagotchi
       # list_sessions and send_note speak for whichever session runs now.
       @kernel.peers = PeerView.new(self)
       @kernel.guardrail_gate = @guardrail_wiring.gate
+      # The turn-end warm-up; the kernel asks it for a slot pin per request.
+      @prompt_warmup = PromptWarmup.new
+      @kernel.warmup = @prompt_warmup
       # What a hook can do beyond reading its event (event[:notify],
       # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
       @hooks.runtime = hook_runtime
@@ -1615,6 +1619,7 @@ module Samagotchi
                                 pending_input: pending_input)
         publish_used_memories(session, on_event)
         complete_turn(turn, result)
+        warm_up_next_turn(turn, result)
         result
       rescue Interrupt
         # After the end event (in the after_turn/session_end hooks) the
@@ -1768,6 +1773,50 @@ module Samagotchi
                             window_setting: nil)
     end
     private :turn_settings
+
+    # @return [PromptWarmup] the turn-end warm-up (specs, measurements)
+    attr_reader :prompt_warmup
+
+    # A caller's check that the next turn starts at once (input queued for
+    # it: a worker's inbox) or that none follows (a one-shot run): no
+    # warm-up then. nil: neither.
+    attr_writer :next_turn_waiting
+
+    # After a completed turn, prefill the next turn's prompt up to its user
+    # message while the user reads (PromptWarmup, cache.warmup). Only on a
+    # local llama.cpp host on the native loop, and not when the next turn's
+    # start differs anyway or starts at once: a reminder due, a continue
+    # offer (the turn ran out of steps), a carried steer or queued input.
+    # Never fails the turn.
+    def warm_up_next_turn(turn, result)
+      return if result.canceled? || result.resumable?
+
+      target = @host_registry.resolve(@effective_model_name)
+      client = target.client
+      return unless warmup_target?(target, client)
+      return if reminders_due? || @turn_state.carried_steers? || @next_turn_waiting&.call
+
+      messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: system_prompt(target) })
+      prompt, images = @kernel.warmup_prompt(messages)
+      return unless prompt
+
+      @prompt_warmup.start(client: client, prompt: prompt, model: @kernel.turn_settings.model_name,
+                           slot: @kernel.last_slot, images: images)
+    rescue StandardError => e
+      Log.warn(:model, "warmup_skipped", error: e.class.name, msg: e.message.to_s[0, 200])
+    end
+    private :warm_up_next_turn
+
+    # Never a paid or remote host (cache.warmup auto means local only), nor
+    # the chat loop (Splash keeps its own cache; llama.cpp's chat path is
+    # not measured), nor a non-llama.cpp transport.
+    def warmup_target?(target, client)
+      return false if target.entry.chat? || target.entry.remote?
+      return false unless client.respond_to?(:warm_up) && client.respond_to?(:transport) && client.transport.native?
+
+      PromptWarmup.enabled?
+    end
+    private :warmup_target?
 
     # The messages the turn sends: the history under the system head, due
     # reminders, the prompt. turn.messages is set first and grown in place,

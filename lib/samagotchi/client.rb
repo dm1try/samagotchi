@@ -246,11 +246,15 @@ module Samagotchi
     #   ImagePlan::NATIVE_PLACEHOLDER in the prompt (llama.cpp only)
     # @param sampling    [Hash]          request fields to add (SamplingSettings):
     #   temperature, penalties, …; they can't replace the fields above
+    # @param slot        [Integer, nil]  llama.cpp only: the slot (`id_slot`)
+    #   this request runs on. PromptWarmup's pin, and only while a warm-up
+    #   still runs there: a request pinned to a slot the server has since
+    #   cleared skips its prompt cache and prefills everything again
     # @return [String] the generated text
     def complete(prompt, stop: [], n_predict: nil, model: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil,
-                 images: [], sampling: {})
+                 images: [], sampling: {}, slot: nil)
       images = Array(images)
-      request = { stop: stop, n_predict: n_predict, model: model, sampling: sampling }
+      request = { stop: stop, n_predict: n_predict, model: model, sampling: sampling, slot: slot }
       return stream_completion(LLM::Utf8Scrub.call(prompt), request, on_chunk, cancel_controller, on_retry) if images.empty?
 
       # The media marker is random per server process: a restart between the
@@ -271,6 +275,41 @@ module Samagotchi
     end
 
     OPENAI_API_HINT = "does this host speak the OpenAI API? set `api: openai` on it"
+
+    # What a warm-up (#warm_up) did: the slot it ran on and the server's
+    # counts (tokens reused from the cache, tokens prefilled, prefill ms).
+    Warmup = Data.define(:slot, :cache_n, :prompt_n, :prompt_ms)
+
+    # Prefill +prompt+ and keep it in the server's cache, so the next
+    # request that starts with it only prefills what follows (PromptWarmup:
+    # the turn-end warm-up). llama.cpp's native /completion only; nil on
+    # any other transport. One non-streamed request generating one token
+    # (n_predict 0 does the same on current builds, 1 on every one): no
+    # retries, no first-token limit, no stream events. Errors are raised.
+    # @param slot [Integer, nil] the slot to run on (`id_slot`): the one the
+    #   last request used, which still holds its state
+    # @param images [Array<String>] as #complete's
+    # @return [Warmup, nil]
+    def warm_up(prompt, model: nil, slot: nil, images: [])
+      return nil unless @transport.native?
+
+      images = Array(images)
+      text = LLM::Utf8Scrub.call(images.empty? ? prompt : prompt.gsub(ImagePlan::NATIVE_PLACEHOLDER, media_marker!(model)))
+      payload = { prompt: images.empty? ? text : { prompt_string: text, multimodal_data: images },
+                  n_predict: 1, cache_prompt: true, stream: false }
+      payload[:id_slot] = slot if slot.is_a?(Integer)
+      model_name = @transport.model_for_payload(model)
+      payload[:model] = model_name if model_name
+      uri = completion_uri
+      request = Net::HTTP::Post.new(uri)
+      request["Content-Type"] = "application/json"
+      request.body = payload.to_json
+      response = @http.fetch(uri, request, retries: false, log_fields: { model: model, purpose: "warmup" })
+      body = JSON.parse(response.body.to_s)
+      timings = body["timings"].is_a?(Hash) ? body["timings"] : {}
+      Warmup.new(slot: body["id_slot"], cache_n: timings["cache_n"], prompt_n: timings["prompt_n"],
+                 prompt_ms: timings["prompt_ms"]&.round)
+    end
 
     private def stream_completion(prompt, fields, on_chunk, cancel_controller, on_retry)
       uri = completion_uri
@@ -459,7 +498,7 @@ module Samagotchi
       URI("#{@scheme}://#{@host}:#{@port}#{@transport.completion_path}")
     end
 
-    def completion_payload(prompt, stop:, n_predict:, model:, sampling: {})
+    def completion_payload(prompt, stop:, n_predict:, model:, sampling: {}, slot: nil)
       payload = { prompt: prompt, stop: stop, stream: true }
       # A non-positive cap is dropped, which leaves the length to the server
       # (unbounded): 0 here never means "only process the prompt". The
@@ -470,6 +509,7 @@ module Samagotchi
       if @transport.native?
         # llama.cpp's default today, sent anyway: chi's next turn relies on it.
         payload[:cache_prompt] = true
+        payload[:id_slot] = slot if slot.is_a?(Integer)
       end
       sendable_sampling(sampling).merge(payload)
     end

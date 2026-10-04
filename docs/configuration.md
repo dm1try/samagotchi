@@ -898,6 +898,7 @@ described in their own sections.
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
 | `hosts.<name>.remote` | by address | | `true`/`false`: treat the host as a remote provider or a local server. See "Remote or local". |
 | `max_tool_output_chars` | `10000` | yes | Tool output kept in the conversation; a top-level key (see below). |
+| `cache.warmup` | `auto` | | `auto`: after a turn, send the next turn's prompt (up to the next message) to a local llama.cpp host on the native loop, so the next turn prefills only its message; never a remote or `api: openai` host. `off`: never. See [prompt caching](internals/prompt-caching.md#the-turn-end-warm-up). |
 | `retry.max` | `5` | yes | See "Llama Network Retry Behavior". |
 | `retry.base_delay` | `0.5` | yes | |
 | `retry.max_delay` | `8.0` | yes | |

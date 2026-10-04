@@ -36,9 +36,10 @@ module Samagotchi
         Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ETIMEDOUT
       ].freeze
 
-      # Requests of these purposes are the ones a turn waits on: INFO lines
-      # (and ERROR when they fail). Probes and model lists are DEBUG.
-      LOGGED_PURPOSES = %w[chat recap].freeze
+      # Requests of these purposes are the ones a turn waits on (or, for the
+      # turn-end warm-up, prepares the next one): INFO lines (and ERROR when
+      # they fail). Probes and model lists are DEBUG.
+      LOGGED_PURPOSES = %w[chat recap warmup].freeze
 
       # Exponential backoff: base_delay * 2^(attempt-1), capped at max_delay,
       # for up to +max+ retries (max + 1 attempts).
@@ -127,7 +128,7 @@ module Samagotchi
       # @raise [ProviderError] for an error status
       # @raise [FirstTokenTimeout] when nothing was shown in time
       # @param log_fields [Hash] what the log line says about the request
-      #   (model:, purpose: chat/recap/probe/models); never its body
+      #   (model:, purpose: chat/recap/warmup/probe/models); never its body
       def stream_lines(uri, request, cancel_controller: nil, on_retry: nil, on_network_error: nil, log_fields: {}, &on_line)
         identify(request)
         current = new_attempt_state(uri, request, log_fields, stream: true)

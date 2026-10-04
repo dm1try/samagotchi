@@ -138,6 +138,11 @@ module Samagotchi
       Entry.new(key: "default.max_tokens",       yaml_path: %w[default max_tokens],       type: :integer, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli]),
 
+      # The turn-end warm-up (PromptWarmup): auto prefills the next turn's
+      # prompt on a local llama.cpp host while the user reads; off never
+      # does. A :string, since YAML reads an unquoted off as false.
+      Entry.new(key: "cache.warmup",             yaml_path: %w[cache warmup],             type: :string, default: "auto",           expose: %i[env config]),
+
       Entry.new(key: "retry.max",                yaml_path: %w[retry max],                type: :integer, default: 5,               expose: %i[env config cli]),
       Entry.new(key: "retry.base_delay",         yaml_path: %w[retry base_delay],         type: :float,   default: 0.5,             expose: %i[env config cli]),
       Entry.new(key: "retry.max_delay",          yaml_path: %w[retry max_delay],          type: :float,   default: 8.0,             expose: %i[env config cli]),

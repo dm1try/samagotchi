@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - The web has a light theme: with the system set to light it follows (`prefers-color-scheme`); dark stays as it
   was. There is no in-page switch yet.
+- On a local llama.cpp host, the next turn starts faster: when a turn ends, chi sends the next turn's prompt (up to
+  your next message) in the background, so the server has it ready while you read. `cache.warmup: off` turns it
+  off; remote and paid hosts never get it.
 
 ### Changed
 

@@ -133,6 +133,12 @@ module Samagotchi
       true
     end
 
+    # @return [Boolean] whether #steer_next_turn queued anything a turn has
+    #   yet to begin with
+    def carried_steers?
+      @lock.synchronize { !@carried_steers.empty? }
+    end
+
     # Drop what #steer_next_turn queued and no turn began with (a no-op
     # once #begin! took it).
     # @return [Array<Hash>] the steers dropped ({text:, source:})

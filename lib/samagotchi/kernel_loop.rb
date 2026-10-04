@@ -156,6 +156,13 @@ module Samagotchi
     # Tools::Peers (or the Engine's live view of it): the session
     # list_sessions and send_note speak for; nil outside a session.
     attr_accessor :peers
+    # The Engine's PromptWarmup: a request asks it for a slot pin
+    # (#take_pin) while the turn-end warm-up still runs; nil: never pinned.
+    attr_accessor :warmup
+    # @return [Integer, nil] the llama.cpp slot (`id_slot`) the last
+    #   request of the last run streamed from; nil when the server named
+    #   none (other transports) or no request was made
+    attr_reader :last_slot
 
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.
@@ -177,6 +184,7 @@ module Samagotchi
     # @return [LLM::ModelResult] final visible response with continuation metadata
     def run(messages, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
       @turn_settings = @turn_settings.with(model_name: completion_model_name(model_name))
+      @last_slot = nil
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
                                   pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars))
 
@@ -355,6 +363,8 @@ module Samagotchi
       # llama.cpp names the loaded model in the stream's last payload.
       named = chunk[:payload]["model"] if chunk[:payload].is_a?(Hash)
       generation.served_model = named if named.is_a?(String) && !named.strip.empty?
+      slot = chunk[:payload]["id_slot"] if chunk[:payload].is_a?(Hash)
+      @last_slot = slot if slot.is_a?(Integer)
       generation.finish_reason = chunk[:finish_reason] if chunk[:finish_reason]
       split = stream_splitter.feed(chunk[:content])
       turn.buffer << split[:text]
@@ -567,7 +577,11 @@ module Samagotchi
     # One request, cancelled by +generation_controller+ (the turn's child)
     # when there is one.
     def request_generation(prompt, generation_controller:, cancel_controller:, **)
-      @client.complete(prompt, **complete_kwargs(cancel_controller: generation_controller || cancel_controller, **))
+      kwargs = complete_kwargs(cancel_controller: generation_controller || cancel_controller, **)
+      # Behind a turn-end warm-up still running on its slot (PromptWarmup).
+      slot = @warmup&.take_pin(@client)
+      kwargs[:slot] = slot if slot
+      @client.complete(prompt, **kwargs)
     end
 
     # Yields the turn controller's child for one generation (nil without a
@@ -645,6 +659,22 @@ module Samagotchi
 
     public
 
+    # The next turn's prompt up to where its user message starts, for the
+    # turn-end warm-up (PromptWarmup): +messages+ as the next turn sends
+    # them before its prompt (the history under the system head), formatted
+    # as #run formats them, with a stand-in user message cut off at its
+    # opener. Returns [prompt, images], or nil when the cut isn't found.
+    def warmup_prompt(messages)
+      conversation = prepare_conversation(messages) << { role: "user", content: WARMUP_CUT }
+      prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @turn_settings.vision)
+      head = prompt[0, prompt.index(WARMUP_CUT) || 0]
+      cut = head.rindex(user_opener)
+      cut&.positive? ? [head[0, cut], images] : nil
+    end
+
+    WARMUP_CUT = "chi-warmup-cut"
+    private_constant :WARMUP_CUT
+
     # Public wrapper so other loops (e.g. the chat loop) can strip
     # per-profile thought blocks from finished model text without duplicating the
     # Gemma 4 / Qwen 3.6 logic. Mirrors the native loop's "strip before deciding
@@ -678,6 +708,11 @@ module Samagotchi
     # the per-profile logic lives in ToolCallParser.
     def strip_thought_blocks(text)
       parser.strip_thought(text)
+    end
+
+    # What opens a user turn in the profile's format.
+    def user_opener
+      @profile.uses_role_prefixes? ? @profile.user_prefix : "#{@profile.turn_start}user\n"
     end
 
     def sanitize_history(messages)

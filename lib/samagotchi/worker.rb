@@ -112,6 +112,9 @@ module Samagotchi
       # stream gets the session's history and status in its snapshot, not
       # an empty session until the first turn.
       @engine.session = @session
+      # Input already waiting in the inbox starts the next turn at once: no
+      # turn-end warm-up then.
+      @engine.next_turn_waiting = -> { SessionInbox.find_new_input_files(@session_dir).any? }
       @turn_flow = TurnFlow.new(engine: @engine)
       # Its question's answer is queued as the matching /continue (the
       # Bridge exists by the time anyone answers).

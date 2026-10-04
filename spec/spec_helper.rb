@@ -48,6 +48,9 @@ YAML
 # specs, whatever config dir a spec points at. Examples tagged :recap and
 # :integration examples turn it back on.
 ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
+# The turn-end warm-up (cache.warmup) would send a request after every
+# turn: off for specs; examples tagged :warmup turn it back on.
+ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
 ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
 SPEC_INTEGRATION_XDG_CONFIG_HOME = (IntegrationServer.write_config_home(IntegrationServer.settings) if ENV["SAMAGOTCHI_INTEGRATION"] == "1")
@@ -184,7 +187,15 @@ RSpec.configure do |config|
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
     SPEC_ENV_CLEAR.call
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
+    ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
+  end
+
+  config.around(:each, :warmup) do |example|
+    ENV.delete("SAMAGOTCHI_CACHE_WARMUP")
+    example.run
+  ensure
+    ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
   end
 
   # Specs of the idle recap's own settings: recap as configured (on by
