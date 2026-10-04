@@ -437,7 +437,11 @@ RSpec.describe "The mcp bundle" do
     expect(engine.command_registry.lookup("/mcp").anytime).to be(true)
     engine.running_anytime { commands.run("/mcp") }
     expect(cards.last).to include(title: "MCP servers", id: "mcp-servers", source: "mcp")
-    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 10 tools\n- `mcp_fake_echo`\n")
+    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 10 tools\n- `mcp_fake_")
+    listed = cards.last[:body].scan(/^- `(\w+)`$/).flatten
+    expect(listed.size).to eq(10)
+    expect(listed).to eq(listed.sort) # not the server's tools/list order (echo first)
+    expect(listed.first).not_to eq("mcp_fake_echo")
   end
 
   describe "the tools/list cache (start: lazy)" do
@@ -486,7 +490,7 @@ RSpec.describe "The mcp bundle" do
       next_engine
       expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
       expect(spawned).to eq(1)
-      expect(mcp_card).to eq("**fake**: cached (not started), 3 tools\n- `mcp_fake_echo`\n- `mcp_fake_add`\n- `mcp_fake_slow`")
+      expect(mcp_card).to eq("**fake**: cached (not started), 3 tools\n- `mcp_fake_add`\n- `mcp_fake_echo`\n- `mcp_fake_slow`")
       expect(spawned).to eq(1)
       expect(call_tool("mcp_fake_echo", { "text" => "lazy" })).to eq("echo: lazy")
       expect(spawned).to eq(2)

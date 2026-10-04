@@ -752,7 +752,8 @@ class Plugin
 
     @servers.map do |server|
       head = "**#{server.name}**: #{state_text(server)}"
-      tools = server.tools.map { |tool| tool["chi_name"] }.compact
+      # Sorted: a server lists its tools in its own (often grouped) order.
+      tools = server.tools.map { |tool| tool["chi_name"] }.compact.sort
       tools.empty? ? head : "#{head}\n#{tools.map { |t| "- `#{t}`" }.join("\n")}"
     end.join("\n\n")
   end
