@@ -29,6 +29,9 @@ RSpec.describe "Plugin init tasks" do
   end
   # The tools the kernel had when the turn's first model request went out.
   let(:tools_at_request) { [] }
+  # Gates the examples leave shut: opened before the shutdown, so it
+  # doesn't wait out its join deadline.
+  let(:gates) { [] }
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
@@ -39,10 +42,6 @@ RSpec.describe "Plugin init tasks" do
     end
     engine.subscribe(observer: ->(e) { seen << e })
   end
-
-  # Gates the examples leave shut: opened before the shutdown, so it
-  # doesn't wait out its join deadline.
-  let(:gates) { [] }
 
   after do
     gates.each { |gate| gate << :go }

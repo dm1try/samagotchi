@@ -384,6 +384,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(at_end).to eq(status: "idle", outcome: "canceled")
     expect_released
   end
+
   # The load-failure warnings show once per Engine; a turn stopped before
   # the model is asked leaves them for the next turn.
   it "15. Stop during the turn-start probe keeps the guardrail warning for the next turn" do

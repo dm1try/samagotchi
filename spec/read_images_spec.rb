@@ -38,7 +38,7 @@ RSpec.describe "read on images" do
     end
 
     it "refuses a line range on an image" do
-      expect(described_class.call(png_path, start_line: 1, end_line: 2)).to match(/is an image; read it without start_line/)
+      expect(described_class.call(png_path, start_line: 1, end_line: 2)).to include("is an image; read it without start_line")
     end
   end
 

@@ -6,10 +6,24 @@ require "samagotchi/idle_scheduler"
 require "timeout"
 
 RSpec.describe Samagotchi::IdleRecap do
+  subject(:idle_recap) do
+    described_class.new(
+      engine: stub_engine,
+      model: model,
+      base_url: base_url,
+      inactivity: 2.0,
+      timeout: 1.0,
+      client: client,
+      clock: clock
+    )
+  end
+
   let(:base_time) { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
   let(:messages_json) { "[]" }
   let(:model) { "gemma-small" }
   let(:base_url) { "http://localhost:8080/v1" }
+  let(:client) { double("idle_client", summarize: "recap") }
+  let(:clock) { -> { base_time } }
 
   # Simple double factory for the engine — avoids instance_double's
   # strict signature checking which silently fails on keyword-arg methods.
@@ -25,8 +39,6 @@ RSpec.describe Samagotchi::IdleRecap do
     stub
   end
 
-  let(:client) { double("idle_client", summarize: "recap") }
-
   # Tick until the attempt started by the first tick has been collected
   # (the job never waits on the summarizer itself).
   def drive(idle)
@@ -38,64 +50,57 @@ RSpec.describe Samagotchi::IdleRecap do
       idle.tick
     end
   end
-  let(:clock) { -> { base_time } }
-
-  subject(:idle_recap) do
-    described_class.new(
-      engine: stub_engine,
-      model: model,
-      base_url: base_url,
-      inactivity: 2.0,
-      timeout: 1.0,
-      client: client,
-      clock: clock
-    )
-  end
 
   describe Samagotchi::IdleRecap::TranscriptFilter do
     describe ".build" do
       it "keeps user messages" do
         messages = [{ "role" => "user", "content" => "Hello" }]
-        expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("Hello")
+        expect(described_class.build(messages)).to eq("Hello")
       end
+
       it "leaves a plugin's steer out: it is a prod to the model, not what the user said" do
         messages = [{ "role" => "user", "content" => "Hello" },
                     { "role" => "user", "kind" => "steer", "source" => "check-in", "content" => "status?" },
                     { "role" => "model", "content" => "Hi" }]
-        expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("Hello\n\nHi")
+        expect(described_class.build(messages)).to eq("Hello\n\nHi")
       end
+
       it "names a user message's images, and never carries their bytes" do
         ref = { "file" => "images/0123456789abcdef.png", "name" => "shot.png", "mime" => "image/png", "width" => 3, "height" => 2 }
         messages = [{ "role" => "user", "content" => "what is this?", "images" => [ref] },
                     { "role" => "tool_response", "content" => "[read]\nImage a.png attached.", "images" => [ref] },
                     { "role" => "model", "content" => "A red square." }]
-        result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
+        result = described_class.build(messages)
         expect(result).to eq("what is this?\n[image shot.png]\n\nA red square.")
       end
+
       it "names an image once in a turn of images alone (the web's placeholder text)" do
         refs = [{ "file" => "images/0123456789abcdef.png", "name" => "a.png" },
                 { "file" => "images/fedcba9876543210.png", "name" => "b.png" }]
         messages = [{ "role" => "user", "content" => "[image: a.png] [image: b.png]", "images" => refs },
                     { "role" => "model", "content" => "Two cats." }]
-        expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("[image: a.png] [image: b.png]\n\nTwo cats.")
+        expect(described_class.build(messages)).to eq("[image: a.png] [image: b.png]\n\nTwo cats.")
       end
+
       it "keeps model messages and strips think tokens" do
         messages = [
           { "role" => "user", "content" => "Hi" },
           { "role" => "model", "content" => "<|think|>thinking<|think|> I am ready" }
         ]
-        result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
+        result = described_class.build(messages)
         expect(result).to include("I am ready")
         expect(result).not_to include("thinking")
       end
+
       it "strips literal think tokens" do
         open_tag = "[[" + "SAMAGOTCHI_LITERAL_THINK_OPEN" + "]]"
         close_tag = "[[" + "SAMAGOTCHI_LITERAL_THINK_CLOSE" + "]]"
         content = open_tag + "thinking" + close_tag + " done"
         messages = [{ "role" => "assistant", "content" => content }]
-        result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
+        result = described_class.build(messages)
         expect(result).to eq("done")
       end
+
       it "drops system, tool_response, and any unknown roles" do
         messages = [
           { "role" => "system", "content" => "You are helpful" },
@@ -103,9 +108,10 @@ RSpec.describe Samagotchi::IdleRecap do
           { "role" => "tool_response", "content" => "result" },
           { "role" => "model", "content" => "Here is info" }
         ]
-        result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
+        result = described_class.build(messages)
         expect(result).to eq("Tell me something\n\nHere is info")
       end
+
       it "drops inline tool-call markup (and its arguments) from model prose" do
         messages = [
           { "role" => "user", "content" => "write it" },
@@ -113,19 +119,21 @@ RSpec.describe Samagotchi::IdleRecap do
           { "role" => "model", "content" => "<tool_call>\n<function=execute>\nls\n</function>\n</tool_call>" },
           { "role" => "model", "content" => "Done." }
         ]
-        result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
+        result = described_class.build(messages)
         expect(result).to eq("write it\n\nWriting now\n\nDone.")
       end
+
       it "rejects non-Hash entries" do
         messages = [nil, "string", { "role" => "user", "content" => "ok" }]
-        expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("ok")
+        expect(described_class.build(messages)).to eq("ok")
       end
+
       it "returns empty string when all entries are empty or filtered" do
         messages = [
           { "role" => "system", "content" => "bye" },
           { "role" => "user", "content" => "  " }
         ]
-        expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("")
+        expect(described_class.build(messages)).to eq("")
       end
     end
   end
@@ -149,15 +157,18 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(range(nil)).to eq([2, 4])
         expect(range("  ")).to eq([2, 4])
       end
+
       it "takes a range, a single number or a YAML integer" do
         expect(range("2-3")).to eq([2, 3])
         expect(range("3")).to eq([3, 3])
         expect(range(3)).to eq([3, 3])
       end
+
       it "allows spaces and an en dash" do
         expect(range(" 5 - 7 ")).to eq([5, 7])
         expect(range("5–7")).to eq([5, 7])
       end
+
       it "rejects values outside 1-10, a reversed range and non-numbers" do
         %w[0 12 7-3 0-2 3-11 lots 2-3-4 -2].each { |bad| expect(range(bad)).to be_nil, bad }
       end
@@ -165,65 +176,76 @@ RSpec.describe Samagotchi::IdleRecap do
 
     describe ".build" do
       let(:transcript) { "User asked about X.\nAssistant answered." }
+
       def text(messages) = messages.map { |m| m[:content] }.join("\n")
 
       it "returns nil when transcript is empty (nothing to summarize)" do
-        expect(Samagotchi::IdleRecap::RecapPrompt.build("", tool_count: 0)).to be_nil
+        expect(described_class.build("", tool_count: 0)).to be_nil
       end
+
       it "puts the instructions in a system message and the transcript in the user message" do
-        system, user = Samagotchi::IdleRecap::RecapPrompt.build(transcript)
+        system, user = described_class.build(transcript)
         expect(system[:role]).to eq("system")
         expect(system[:content]).to include("recap only", "no preamble")
         expect(user[:role]).to eq("user")
         expect(user[:content]).to include(transcript)
       end
+
       it "tallies the tool names when the count is small" do
-        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: %w[execute read_file execute]))
+        result = text(described_class.build(transcript, tool_names: %w[execute read_file execute]))
         expect(result).to include("3 tool calls (execute x2, read_file)")
         expect(result).to include("name them only if they matter to the result")
       end
+
       it "includes single tool call phrasing" do
-        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 1))
+        result = text(described_class.build(transcript, tool_count: 1))
         expect(result).to include("1 tool call")
       end
+
       it "asks not to enumerate the calls when the count is large" do
-        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: ["execute"] * 11))
+        result = text(described_class.build(transcript, tool_names: ["execute"] * 11))
         expect(result).to include("11 tool calls (execute x11)")
         expect(result).to include("Do not enumerate the tool calls")
       end
+
       it "asks for an outcome-centred recap: the task first, what came of it, what is open" do
-        system = Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content]
+        system = described_class.build(transcript).first[:content]
         expect(system).to include("Centre it on outcomes", "first sentence names the task itself",
                                   "what came of it", "still open", "Do not retell the chat turn by turn")
         expect(system).to include("Never name who did something", "no personal names", "personal details about the user")
       end
+
       it "asks to leave out what the transcript lacks" do
-        system = Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content]
+        system = described_class.build(transcript).first[:content]
         expect(system).to include("no notes about the task or the transcript. Do not mention what the transcript " \
                                   "lacks or does not say; leave it out.")
       end
+
       it "asks for an updated recap of the whole session when given the previous one" do
-        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, previous: "We set up Bluefin."))
+        result = text(described_class.build(transcript, previous: "We set up Bluefin."))
         expect(result).to include("Earlier recap:\nWe set up Bluefin.")
         expect(result).to include("updated recap of the whole session", "do not just repeat the earlier recap")
         expect(result).to include("since the earlier recap")
       end
+
       it "asks for 2-4 sentences by default and renders the configured range" do
-        build = ->(**kw) { Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw).first[:content] }
+        build = ->(**kw) { described_class.build(transcript, **kw).first[:content] }
         expect(build.call).to include("recap only: 2-4 plain sentences,")
         expect(build.call(sentences: [2, 3])).to include("recap only: 2-3 plain sentences,")
         expect(build.call(sentences: [3, 3])).to include("recap only: 3 plain sentences,")
         expect(build.call(sentences: [1, 1])).to include("recap only: 1 plain sentence,")
       end
+
       it "holds the length in an updated recap only" do
-        first = Samagotchi::IdleRecap::RecapPrompt.build(transcript, sentences: [5, 7]).first[:content]
-        update = Samagotchi::IdleRecap::RecapPrompt.build(transcript, previous: "Earlier.", sentences: [5, 7]).first[:content]
+        first = described_class.build(transcript, sentences: [5, 7]).first[:content]
+        update = described_class.build(transcript, previous: "Earlier.", sentences: [5, 7]).first[:content]
         expect(first).not_to include("Keep it to")
         expect(update).to include("Keep it to 5-7 sentences even though it now covers more", "merge or drop older details",
                                   "Keep the first sentence on the task")
       end
+
       it "asks for one sentence with the task and where it stands when the range is 1" do
-        build = ->(**kw) { Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw).first[:content] }
+        build = ->(**kw) { described_class.build(transcript, **kw).first[:content] }
         one = build.call(sentences: [1, 1])
         expect(one).to include("recap only: 1 plain sentence,", "The sentence names the task itself",
                                "and where it stands: the result, or what is still open.")
@@ -233,24 +255,27 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(update).not_to include("first sentence")
         expect(build.call(sentences: [1, 2])).to include("The first sentence names", "Then say what came of it")
       end
+
       it "states an open continue offer as one line after the transcript" do
-        user = Samagotchi::IdleRecap::RecapPrompt.build(transcript, offer: true).last[:content]
+        user = described_class.build(transcript, offer: true).last[:content]
         expect(user).to end_with("#{transcript}\n---\nWhere it stands now: the last turn stopped at its " \
                                  "step limit before the task was finished.\nWrite the recap now.")
-        system = Samagotchi::IdleRecap::RecapPrompt.build(transcript, offer: true).first[:content]
-        expect(system).to eq(Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content])
+        system = described_class.build(transcript, offer: true).first[:content]
+        expect(system).to eq(described_class.build(transcript).first[:content])
       end
+
       it "builds the same prompt as before without an offer" do
         [{}, { previous: "Earlier." }, { tool_names: %w[execute], sentences: [1, 1] }].each do |kw|
-          expect(Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw, offer: false))
-            .to eq(Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw))
+          expect(described_class.build(transcript, **kw, offer: false))
+            .to eq(described_class.build(transcript, **kw))
         end
-        user = Samagotchi::IdleRecap::RecapPrompt.build(transcript).last[:content]
+        user = described_class.build(transcript).last[:content]
         expect(user).to end_with("#{transcript}\n---\nWrite the recap now.")
       end
+
       it "keeps the tail of an overlong transcript, marking the cut" do
         long = ("a" * 100 + "\n\n") * 300
-        user = Samagotchi::IdleRecap::RecapPrompt.build(long + "THE END").last[:content]
+        user = described_class.build(long + "THE END").last[:content]
         expect(user).to include("(earlier part omitted)", "THE END")
         expect(user.size).to be < Samagotchi::IdleRecap::MAX_NEW_CHARS + 1_000
       end
@@ -263,6 +288,7 @@ RSpec.describe Samagotchi::IdleRecap do
         described_class.new(model: model, base_url: base_url)
       end.to raise_error(ArgumentError, /engine/)
     end
+
     it "creates an IdleClient for the target with the recap's timeout when none is provided" do
       engine = stub_engine
       allow(Samagotchi::IdleClient).to receive(:new).and_return(double(summarize: "recap"))
@@ -297,17 +323,20 @@ RSpec.describe Samagotchi::IdleRecap do
       expect { drive(idle) }.not_to raise_error
       expect(idle).not_to be_in_flight
     end
+
     it "uses a custom client when provided" do
       client_double = double
       engine = stub_engine
       idle = described_class.new(engine: engine, model: model, base_url: base_url, client: client_double)
       expect(idle.send(:client_for, idle.target)).to eq(client_double)
     end
+
     it "defaults to DEFAULT_INACTIVITY_SECONDS" do
       engine = stub_engine
       idle = described_class.new(engine: engine, model: model, base_url: base_url)
       expect(idle.instance_variable_get(:@inactivity)).to eq(described_class::DEFAULT_INACTIVITY_SECONDS)
     end
+
     it "defaults to DEFAULT_MIN_USER_TURNS" do
       engine = stub_engine
       idle = described_class.new(engine: engine, model: model, base_url: base_url)
@@ -319,10 +348,12 @@ RSpec.describe Samagotchi::IdleRecap do
     it "starts at 0" do
       expect(idle_recap.generation).to eq(0)
     end
+
     it "increments after invalidate!" do
       idle_recap.invalidate!
       expect(idle_recap.generation).to eq(1)
     end
+
     it "increments after a successful generate (via bump_generation)" do
       idle_recap.invalidate!
       idle_recap.invalidate!
@@ -337,6 +368,7 @@ RSpec.describe Samagotchi::IdleRecap do
       idle_recap.invalidate!
       expect(idle_recap.generation).to eq(2)
     end
+
     it "is safe to call before start" do
       expect { idle_recap.invalidate! }.not_to raise_error
     end
@@ -348,23 +380,27 @@ RSpec.describe Samagotchi::IdleRecap do
       idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       expect(idle.should_fire?).to be false
     end
+
     it "returns false when idle is below threshold" do
       engine = stub_engine(last_activity: base_time.to_f - 1)
       idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       expect(idle.should_fire?).to be false
     end
+
     it "returns false when idle equals threshold but seq hasn't advanced since last fire" do
       engine = stub_engine(last_activity: base_time.to_f - 2, activity_seq: 1)
       idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       idle.instance_variable_set(:@last_fire_activity_seq, 1)
       expect(idle.should_fire?).to be false
     end
+
     it "returns true when idle exceeds threshold and seq has advanced since last fire" do
       engine = stub_engine(last_activity: base_time.to_f - 3, activity_seq: 2)
       idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
       idle.instance_variable_set(:@last_fire_activity_seq, 1)
       expect(idle.should_fire?).to be true
     end
+
     it "returns true on first idle window (no last_fire_activity_seq)" do
       engine = stub_engine(last_activity: base_time.to_f - 3, activity_seq: 1)
       idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, client: client, clock: -> { base_time })
@@ -404,6 +440,7 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(recap_client).to have_received(:summarize).at_least(:once)
         expect(engine).to have_received(:emit_recap)
       end
+
       it "asks the client for the configured number of sentences" do
         engine = stub_engine_with_two_user_turns
         recap_client = double("recap_client", summarize: "recap")
@@ -413,6 +450,7 @@ RSpec.describe Samagotchi::IdleRecap do
         drive(idle)
         expect(recap_client).to have_received(:summarize) { |prompt| expect(prompt.first[:content]).to include("2-3 plain sentences") }
       end
+
       it "logs why the summarize thread failed, and emits nothing" do
         dir = Dir.mktmpdir("samagotchi-log")
         path = File.join(dir, "chi.log")
@@ -439,6 +477,7 @@ RSpec.describe Samagotchi::IdleRecap do
         drive(idle)
         expect(engine).not_to have_received(:emit_recap)
       end
+
       it "does not emit when recap is empty string" do
         engine = stub_engine_with_two_user_turns
         idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: ""), clock: -> { base_time })
@@ -446,6 +485,7 @@ RSpec.describe Samagotchi::IdleRecap do
         drive(idle)
         expect(engine).not_to have_received(:emit_recap)
       end
+
       it "does not emit when engine messages are empty" do
         engine = stub_engine(messages: "[]")
         idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
@@ -453,6 +493,7 @@ RSpec.describe Samagotchi::IdleRecap do
         drive(idle)
         expect(engine).not_to have_received(:emit_recap)
       end
+
       it "does not emit when user turns are below min" do
         messages = JSON.generate([{ "role" => "user", "content" => "Hello" }])
         engine = stub_engine(messages: messages)
@@ -461,6 +502,7 @@ RSpec.describe Samagotchi::IdleRecap do
         drive(idle)
         expect(engine).not_to have_received(:emit_recap)
       end
+
       it "handles client SummarizeError gracefully (does not break session)" do
         engine = stub_engine_with_two_user_turns
         err_client = double("err_client")
@@ -470,6 +512,7 @@ RSpec.describe Samagotchi::IdleRecap do
         expect { drive(idle) }.not_to raise_error
         expect(engine).not_to have_received(:emit_recap)
       end
+
       it "does not emit when invalidated during generation" do
         engine = stub_engine_with_two_user_turns
         started = Queue.new
@@ -514,6 +557,7 @@ RSpec.describe Samagotchi::IdleRecap do
         clock: -> { base_time }
       )
     end
+
     it "requires at least min_user_turns user turns to fire" do
       allow(idle_recap).to receive(:should_fire?).and_return(true)
       drive(idle_recap)
@@ -531,6 +575,7 @@ RSpec.describe Samagotchi::IdleRecap do
         { "role" => "user", "content" => "Great" }
       ])
     end
+
     it "counts tool_response entries for the prompt" do
       engine = stub_engine(messages: messages_with_one_tool)
       idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
@@ -538,6 +583,7 @@ RSpec.describe Samagotchi::IdleRecap do
       drive(idle)
       expect(engine).to have_received(:emit_recap)
     end
+
     it "states tool count only (no enumeration) when count exceeds threshold" do
       messages = []
       11.times { |i| messages << { "role" => "tool_response", "content" => "r#{i + 1}" } }
@@ -559,6 +605,7 @@ RSpec.describe Samagotchi::IdleRecap do
         { "role" => "user", "content" => "Continue" }
       ])
     end
+
     it "invalidates a generation that was in-flight" do
       engine = stub_engine(messages: messages_with_two_user_turns)
       slow_client = double("slow_client")
@@ -574,6 +621,7 @@ RSpec.describe Samagotchi::IdleRecap do
       drive(idle)
       expect(engine).not_to have_received(:emit_recap)
     end
+
     it "starts a fresh generation with a new generation id after invalidation" do
       engine = stub_engine(messages: messages_with_two_user_turns)
       client_v1 = double("client_v1", summarize: "recap v1")

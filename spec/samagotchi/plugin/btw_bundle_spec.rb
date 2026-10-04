@@ -16,10 +16,25 @@ RSpec.describe "The btw bundle" do
   let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/btw", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("btw-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:state_dir) { File.join(tmpdir, "sessions") }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
   let(:settings) { {} }
+  let(:engine) { Samagotchi::Engine.new(client: client).tap { |e| e.session_state_dir = state_dir } }
+  let(:session) do
+    Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir).tap do |s|
+      s.messages = [{ role: "user", content: "rename foo" }, { role: "model", content: "renamed to bar" }]
+      s.save(state_dir: state_dir)
+    end
+  end
+  let(:commands) do
+    Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                    default_model: "Gemma-4B-it", registry: engine.command_registry)
+  end
+  let(:cards) { [] }
+  let(:asked) { [] }
+  let(:answer) { "It was renamed to bar." }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME")
@@ -37,28 +52,6 @@ RSpec.describe "The btw bundle" do
     allow(Process).to receive(:spawn).and_return(12_345)
     @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "btw", scope: "system", strict: true)
     @installer.run
-  end
-
-  after do
-    FileUtils.rm_rf(tmpdir)
-  end
-
-  let(:engine) { Samagotchi::Engine.new(client: client).tap { |e| e.session_state_dir = state_dir } }
-  let(:session) do
-    Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir).tap do |s|
-      s.messages = [{ role: "user", content: "rename foo" }, { role: "model", content: "renamed to bar" }]
-      s.save(state_dir: state_dir)
-    end
-  end
-  let(:commands) do
-    Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
-                                    default_model: "Gemma-4B-it", registry: engine.command_registry)
-  end
-  let(:cards) { [] }
-  let(:asked) { [] }
-  let(:answer) { "It was renamed to bar." }
-
-  before do
     engine.session = session
     engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
     allow(engine).to receive(:ask_side_model) do |request, **options|
@@ -67,6 +60,10 @@ RSpec.describe "The btw bundle" do
 
       answer
     end
+  end
+
+  after do
+    FileUtils.rm_rf(tmpdir)
   end
 
   def btw(line) = engine.running_anytime { commands.run(line) }

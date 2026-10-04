@@ -17,11 +17,12 @@ require "samagotchi/memory_bundle/uninstaller"
 RSpec.describe "Bundle guardrail rule files" do
   let(:tmpdir) { Dir.mktmpdir("bundle-rules-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:push_rules) do
     { "rules" => [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }] }
   end
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 

@@ -9,6 +9,7 @@ require "samagotchi/memory_bundle/manifest"
 
 RSpec.describe Samagotchi::MemoryBundle::Manifest do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-manifest-") }
+
   after { FileUtils.rm_rf(tmpdir) }
 
   def write_manifest(attrs)
@@ -238,6 +239,7 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       expect(YAML.load_file(File.join(dest, "manifest.yml"))).not_to have_key("needs")
     end
   end
+
   describe "includes" do
     it "is empty when absent" do
       expect(described_class.new(path: write_manifest({})).includes).to eq([])

@@ -9,6 +9,7 @@ require "samagotchi/muted_memories"
 
 RSpec.describe Samagotchi::BundleNeeds do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-needs-") }
+
   after { FileUtils.rm_rf(tmpdir) }
 
   def make_file(dir, name, mode)
@@ -59,6 +60,10 @@ RSpec.describe Samagotchi::BundleNeeds do
 
   describe ".annotate_index" do
     let(:bundles_dir) { File.join(tmpdir, ".bundles") }
+    let(:index) do
+      "# Memory index\n\n- **gh_helper** · system · 2026-09-26 · 120 — GitHub via gh\n" \
+        "- **other** · system · 2026-09-26 · 40\n- **legacy.md** · old line\r\n"
+    end
 
     def install(name, scope:, files:, needs:)
       dir = File.join(bundles_dir, name)
@@ -66,11 +71,6 @@ RSpec.describe Samagotchi::BundleNeeds do
       data = { "name" => name, "scope" => scope, "files" => files.to_h { |f| [f, { "checksum" => "x" }] } }
       data["needs"] = needs if needs
       File.write(File.join(dir, "manifest.json"), JSON.generate(data))
-    end
-
-    let(:index) do
-      "# Memory index\n\n- **gh_helper** · system · 2026-09-26 · 120 — GitHub via gh\n" \
-        "- **other** · system · 2026-09-26 · 40\n- **legacy.md** · old line\r\n"
     end
 
     def annotate(text = index, scope: "system")

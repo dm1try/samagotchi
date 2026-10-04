@@ -93,7 +93,7 @@ RSpec.describe IntegrationServer do
   it "points :integration examples at the integration fixture config", :integration do
     expect(ENV.fetch("XDG_CONFIG_HOME")).to eq(SPEC_INTEGRATION_XDG_CONFIG_HOME)
     expect(Samagotchi::ConfigFile.global_path).to start_with(SPEC_INTEGRATION_XDG_CONFIG_HOME)
-    expect(Samagotchi::Config.get("default.model")).to eq(IntegrationServer.model)
+    expect(Samagotchi::Config.get("default.model")).to eq(described_class.model)
     expect(ENV.fetch("XDG_STATE_HOME")).to eq(SPEC_XDG_STATE_HOME)
   end
 end

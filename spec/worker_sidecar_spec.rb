@@ -7,6 +7,7 @@ require "samagotchi/worker_sidecar"
 
 RSpec.describe Samagotchi::WorkerSidecar do
   let(:dir) { Dir.mktmpdir("worker-sidecar") }
+
   after { FileUtils.rm_rf(dir) }
 
   it "writes bridge.json in the Bridge's key order, input_format only when set, and reads it back" do

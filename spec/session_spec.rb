@@ -618,7 +618,7 @@ RSpec.describe Samagotchi::Session do
     it "auto-detects test env when test_run not given" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       # In rspec, CI may be unset but RACK_ENV not test; ensure explicit env check
-      expect([true, false]).to include(session.test_run)
+      expect(session.test_run).to be(true).or(be(false))
     end
   end
 

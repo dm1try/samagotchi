@@ -32,6 +32,12 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     def programs = @calls.map { |argv| self.class.name_of(argv) }
   end
 
+  subject(:macos) do
+    described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner,
+                        source_dir: source_dir, ruby: "/opt/ruby/bin/ruby", version: "9.9.9",
+                        arch: "arm64", sources_dir: sources_dir, register: register)
+  end
+
   let(:tmp) { Dir.mktmpdir("desktop-macos") }
   let(:app_dir) { File.join(tmp, "Applications") }
   let(:support_dir) { File.join(tmp, "Support", "Chi Helper") }
@@ -49,12 +55,8 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     end
   end
   let(:register) { true }
-
-  subject(:macos) do
-    described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner,
-                        source_dir: source_dir, ruby: "/opt/ruby/bin/ruby", version: "9.9.9",
-                        arch: "arm64", sources_dir: sources_dir, register: register)
-  end
+  let(:app) { File.join(app_dir, "Chi Helper.app") }
+  let(:launch_file) { File.join(support_dir, "launch.json") }
 
   before do
     File.write(File.join(sources_dir, "App.swift"), "// app")
@@ -62,9 +64,6 @@ RSpec.describe Samagotchi::Desktop::MacOS do
   end
 
   after { FileUtils.remove_entry(tmp) }
-
-  let(:app) { File.join(app_dir, "Chi Helper.app") }
-  let(:launch_file) { File.join(support_dir, "launch.json") }
 
   describe "#launch_config" do
     it "runs this chi's bin/chi with the absolute ruby and the version" do

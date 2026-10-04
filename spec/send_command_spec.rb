@@ -293,12 +293,12 @@ RSpec.describe Samagotchi::SendCommand do
 
   describe "--image" do
     let(:fixtures) { File.expand_path("fixtures/images", __dir__) }
+    let(:png) { File.join(fixtures, "tiny.png") }
+    let(:jpg) { File.join(fixtures, "tiny.jpg") }
 
     # No model server here: whether the model sees images is unknown, as
     # with a host chi can't ask (the examples below that refuse say no).
     before { allow(described_class).to receive(:vision_answer).and_return(described_class::UNKNOWN_VISION) }
-    let(:png) { File.join(fixtures, "tiny.png") }
-    let(:jpg) { File.join(fixtures, "tiny.jpg") }
 
     # Each ref names a file in that session's own images/.
     def images_in(session, input)

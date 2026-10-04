@@ -165,6 +165,7 @@ RSpec.describe Samagotchi::TerminalUI do
     let(:surface) { RecordingSurface.new }
     let(:agent) { described_class.new(client: client, surface: surface) }
     let(:engine) { agent.engine }
+
     def lines = surface.lines.flat_map { |line| line.split("\n") }
 
     it "prints a card announced between turns at the open prompt, on the main thread, once" do
@@ -318,6 +319,13 @@ RSpec.describe Samagotchi::TerminalUI do
   end
 
   describe "timing output" do
+    # Shared contract: spec/shared/timing_matrix.json. One source of truth for
+    # the web (JS) and TUI (Ruby) suites — edit it to change either side's output.
+    let(:timing_matrix) do
+      path = File.expand_path("shared/timing_matrix.json", __dir__)
+      JSON.parse(File.read(path))["cases"]
+    end
+
     it "adds compact elapsed time to a completed tool activity line" do
       output = agent.send(
         :format_tool_activity_line,
@@ -339,13 +347,6 @@ RSpec.describe Samagotchi::TerminalUI do
       )
 
       expect(output).to end_with("<33>stopped (17s)")
-    end
-
-    # Shared contract: spec/shared/timing_matrix.json. One source of truth for
-    # the web (JS) and TUI (Ruby) suites — edit it to change either side's output.
-    let(:timing_matrix) do
-      path = File.expand_path("shared/timing_matrix.json", __dir__)
-      JSON.parse(File.read(path))["cases"]
     end
 
     it "formats durations per the shared timing matrix" do

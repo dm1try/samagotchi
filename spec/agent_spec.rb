@@ -192,7 +192,7 @@ file2.rb")
       agent = described_class.new(prompt: "read memory", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
       output = run_and_render(agent, prompt: "read memory")
-      expect(output).to match(/mem: refactoring_backlog/)
+      expect(output).to include("mem: refactoring_backlog")
       expect(output).to include("done")
     end
 
@@ -785,7 +785,10 @@ file2.rb")
   # activity row and StatusRow the status row (their specs pin the rows);
   # these check the REPL feeds them.
   describe "turn view" do
-    before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      agent.send(:refresh_status_row)
+    end
 
     # A memory read as the Engine hands it to the REPL: its tool_call_started,
     # then the used_memories_updated it follows it with.
@@ -797,7 +800,6 @@ file2.rb")
     let(:agent) { described_class.new(prompt: "hi", client: client, surface: surface, spinner_tick_interval: nil) }
 
     # The REPL draws the row at each read and as a turn starts.
-    before { agent.send(:refresh_status_row) }
 
     it "shows the running tool in the activity row and a memory it read in the status row" do
       agent.send(:handle_stream_event, type: :generation_started)

@@ -8,7 +8,21 @@ require "samagotchi/reminder_store"
 RSpec.describe Samagotchi::SessionManager do
   let(:tmpdir) { Dir.mktmpdir("session-manager-spec") }
 
-  after { FileUtils.rm_rf(tmpdir) }
+  after do
+    FileUtils.rm_rf(tmpdir)
+    if @owner_pid
+      begin
+        Process.kill("KILL", @owner_pid)
+      rescue Errno::ESRCH
+        nil
+      end
+      begin
+        Process.wait(@owner_pid)
+      rescue Errno::ECHILD
+        nil
+      end
+    end
+  end
 
   # A stand-in worker: another process holding the owner lock (needs the
   # example group's session and session_dir).
@@ -26,21 +40,6 @@ RSpec.describe Samagotchi::SessionManager do
       raise "owner never took the lock" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
 
       sleep 0.02
-    end
-  end
-
-  after do
-    if @owner_pid
-      begin
-        Process.kill("KILL", @owner_pid)
-      rescue Errno::ESRCH
-        nil
-      end
-      begin
-        Process.wait(@owner_pid)
-      rescue Errno::ECHILD
-        nil
-      end
     end
   end
 
@@ -1243,7 +1242,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     before do
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
-      allow(engine).to receive(:synchronize_events) { |&block| block.call }
+      allow(engine).to receive(:synchronize_events).and_yield
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
     end
 

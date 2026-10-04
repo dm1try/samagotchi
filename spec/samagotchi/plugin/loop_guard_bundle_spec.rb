@@ -16,8 +16,17 @@ RSpec.describe "The loop-guard bundle" do
   let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/loop-guard", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("loop-guard-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
+  let(:engine) { Samagotchi::Engine.new(client: client) }
+  let(:hooks) { engine.instance_variable_get(:@hooks) }
+  let(:runner) do
+    kernel = Struct.new(:hooks, :tools, :guardrail_gate) do
+      def dispatch_tool_call(call) = { output: "[#{call[:name]}]\nexit: 0 (no output)", activity: { tool: call[:name], status: "ok" } }
+    end
+    Samagotchi::ToolRunner.new(kernel.new(hooks))
+  end
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME")
@@ -37,15 +46,6 @@ RSpec.describe "The loop-guard bundle" do
 
   after do
     FileUtils.rm_rf(tmpdir)
-  end
-
-  let(:engine) { Samagotchi::Engine.new(client: client) }
-  let(:hooks) { engine.instance_variable_get(:@hooks) }
-  let(:runner) do
-    kernel = Struct.new(:hooks, :tools, :guardrail_gate) do
-      def dispatch_tool_call(call) = { output: "[#{call[:name]}]\nexit: 0 (no output)", activity: { tool: call[:name], status: "ok" } }
-    end
-    Samagotchi::ToolRunner.new(kernel.new(hooks))
   end
 
   def run(call)

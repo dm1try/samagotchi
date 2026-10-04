@@ -132,11 +132,14 @@ end
 RSpec.describe "The mcp bundle" do
   let(:tmpdir) { Dir.mktmpdir("mcp-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
   let(:fake) { { "command" => [RbConfig.ruby, MCP_FAKE] } }
   let(:servers) { { "fake" => fake } }
   let(:settings) { { "servers" => servers, "startup_timeout" => 2, "timeout" => 5 } }
+  let(:session_dir) { File.join(tmpdir, "session").tap { |dir| FileUtils.mkdir_p(dir) } }
+  let(:tiny_png) { File.expand_path("../../fixtures/images/tiny.png", __dir__) }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME")
@@ -185,9 +188,6 @@ RSpec.describe "The mcp bundle" do
     Samagotchi::ToolRunner.new(kernel).run({ name: name, args: args }, iteration: 1, call_index: 1, call_count: 1,
                                                                        on_stream_event: nil, max_tool_output_chars: nil)
   end
-
-  let(:session_dir) { File.join(tmpdir, "session").tap { |dir| FileUtils.mkdir_p(dir) } }
-  let(:tiny_png) { File.expand_path("../../fixtures/images/tiny.png", __dir__) }
 
   # What the Engine's load and init tasks showed: notices and cards.
   def load_events

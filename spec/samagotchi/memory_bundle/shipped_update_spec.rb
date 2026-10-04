@@ -13,8 +13,9 @@ require "samagotchi/plugin/loader"
 RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   let(:tmp) { Dir.mktmpdir("shipped-update") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
   let(:shipped) { Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR }
+
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
 
   after do
     FileUtils.remove_entry(tmp)
@@ -188,8 +189,9 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
 
     applied = described_class.apply(rows)
     expect(applied.map(&:status)).to eq(%i[failed updated])
-    expect(applied.first.note).to match(/does not exist/)
+    expect(applied.first.note).to include("does not exist")
   end
+
   describe "a profile (meta bundle)" do
     let(:root) { File.join(tmp, "new", "lib", "samagotchi", "bundles") }
 

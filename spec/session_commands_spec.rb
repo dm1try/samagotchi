@@ -8,7 +8,10 @@ require "samagotchi/kernel_loop"
 
 RSpec.describe Samagotchi::SessionCommands do
   # /model and the first turn resolve the prompt profile; no /props probe here.
-  before { allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil) }
+  before do
+    allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
+    engine.session = session
+  end
 
   let(:registry) do
     Samagotchi::HostRegistry.new(hosts_config: {
@@ -31,8 +34,6 @@ RSpec.describe Samagotchi::SessionCommands do
       s.messages = [{ role: "system", content: "sys" }, { role: "user", content: "old" }]
     end
   end
-
-  before { engine.session = session }
 
   def cancelled_turn
     turn_flow.before_prompt_turn

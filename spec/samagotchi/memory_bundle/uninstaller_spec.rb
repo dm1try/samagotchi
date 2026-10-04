@@ -14,8 +14,9 @@ require "samagotchi/memory_bundle/builder"
 RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
   let(:tmpdir) { Dir.mktmpdir("uninstaller-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   before do
     FileUtils.mkdir_p(system_dir)
@@ -217,6 +218,7 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     described_class.new(name: "multi-hook", force: false).run
     expect(Dir.exist?(File.join(bundles_dir, "multi-hook"))).to be false
   end
+
   it "keeps a shared model overlay without giving it an index line" do
     files = { "tips.md" => "Base\n", "tips.qwen3.md" => "Qwen\n" }
     install_bundle(write_bundle_with_hooks(files, name: "ovl-b"), "ovl-b")

@@ -11,12 +11,13 @@ require "samagotchi/memory_bundle/installer"
 RSpec.describe Samagotchi::MemoryBundle::IndexSync do
   let(:tmpdir) { Dir.mktmpdir("index-sync-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   # MemoryRead takes the project override as the project's own dir,
   # IndexUpdater as the base the project key goes under: this one path is
   # both.
   let(:project_dir) { Samagotchi::MemoryPaths.project_dir }
   let(:today) { Date.today.iso8601 }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   before do
     FileUtils.mkdir_p([system_dir, project_dir])

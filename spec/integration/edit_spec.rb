@@ -11,7 +11,7 @@ require "tmpdir"
 RSpec.describe "edit tool - file editing integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new }
 
-  around(:each) do |example|
+  around do |example|
     Dir.mktmpdir do |dir|
       @tmpdir = dir
       example.run

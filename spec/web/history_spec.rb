@@ -32,6 +32,7 @@ RSpec.describe Samagotchi::Web::App, "prompt history" do
       allow(app).to receive(:live_bridge_client).and_return(bridge)
     end
   end
+  let(:accepted) { { status: :accepted, ack: { "status" => "accepted" } } }
 
   around do |example|
     Dir.mktmpdir("web-history") do |dir|
@@ -62,8 +63,6 @@ RSpec.describe Samagotchi::Web::App, "prompt history" do
     allow(bridge).to receive(:post_command).and_return(reply)
     call("/api/sessions/s1/command", method: "POST", body: JSON.generate({ line: line }.merge(extra))).first
   end
-
-  let(:accepted) { { status: :accepted, ack: { "status" => "accepted" } } }
 
   describe "GET /api/history" do
     it "returns the entries, oldest first" do

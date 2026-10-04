@@ -64,7 +64,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(pending[:question]).to eq("Which option?")
       expect(pending[:options]).to eq(%w[Cats Dogs])
       expect(pending[:header]).to eq("Pet preference")
-      expect(pending[:multi_select]).to eq(false)
+      expect(pending[:multi_select]).to be(false)
       expect(pending[:status]).to eq("pending")
       expect(pending[:id]).to be_a(String)
 

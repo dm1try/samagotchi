@@ -422,7 +422,7 @@ RSpec.describe Samagotchi::AnswerCommand do
       expect(err.string).to include("may only stop this turn").and include("turn.parent_continue: false")
     end
 
-    it "won't dismiss it: the turn waits on Continue or Stop" do
+    it "does not dismiss it: the turn waits on Continue or Stop" do
       s = asking(limit_question, status: "idle")
 
       expect(run(s.id, "--question", "c1", "--dismiss", "--timeout", "0.3")).to eq(1)

@@ -14,7 +14,7 @@ RSpec.describe "read tool - literal control token integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new(profile: profile) }
   let(:profile) { Samagotchi::ModelProfile.from_model_name(Samagotchi::ModelProfile.required_model_name) }
 
-  around(:each) do |example|
+  around do |example|
     Dir.mktmpdir do |dir|
       @tmpdir = dir
       example.run

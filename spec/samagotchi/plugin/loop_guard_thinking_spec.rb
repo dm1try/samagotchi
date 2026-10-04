@@ -189,6 +189,7 @@ RSpec.describe "The loop-guard thinking watch" do
         def card(**card) = cards << card
       end.new(notices, cards)
     end
+    let(:looping) { fixture("cycle3.txt").first }
 
     def plugin(settings = {})
       hooks = Hash.new { |h, k| h[k] = [] }
@@ -212,8 +213,6 @@ RSpec.describe "The loop-guard thinking watch" do
                       stop_turn: ->(reason) { acts.push([:stop_turn, reason]).any? } })
       end
     end
-
-    let(:looping) { fixture("cycle3.txt").first }
 
     it "cuts the first loop in a turn with one warn notice, and stops the turn with a card on the second" do
       hooks = plugin

@@ -17,6 +17,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
 
   let(:client) { test_client }
   let(:history_dir) { Dir.mktmpdir("golden-history") }
+  let(:memory_activity) { { action: "loading memory", tool: "memory_read", params: 'name="notes"', status: "ok" } }
+  let(:failed_activity) { { action: "running command", tool: "execute", params: 'command="false"', status: "error" } }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_HISTORY_FILE", "XDG_STATE_HOME", "NO_COLOR", "TERM")
@@ -142,9 +144,6 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     end
     expect(actual).to eq(File.read(path))
   end
-
-  let(:memory_activity) { { action: "loading memory", tool: "memory_read", params: 'name="notes"', status: "ok" } }
-  let(:failed_activity) { { action: "running command", tool: "execute", params: 'command="false"', status: "error" } }
 
   def tool_round(profile)
     generation(profile, "<think>need notes</think>", "<tool_call><function=memory_read>…</function></tool_call>") + [

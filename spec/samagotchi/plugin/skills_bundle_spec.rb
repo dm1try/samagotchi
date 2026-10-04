@@ -19,7 +19,6 @@ RSpec.describe "The skills plugin" do
   let(:source) { File.expand_path("../../../lib/samagotchi/bundles/skills/plugin.rb", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("skills-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   # MemoryRead takes the project override as the project's own dir,
   # IndexUpdater as the base the project key goes under: this one path is
   # both.
@@ -54,6 +53,8 @@ RSpec.describe "The skills plugin" do
       end
     end.new(File.join(tmpdir, "state"))
   end
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   before do
     FileUtils.mkdir_p([system_dir, project_dir])
@@ -478,9 +479,13 @@ RSpec.describe "The skills bundle, installed" do
   let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/skills", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("skills-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:state_dir) { File.join(tmpdir, "sessions") }
   let(:client) { test_client }
+  let(:engine) { Samagotchi::Engine.new(client: client).tap { |e| e.session_state_dir = state_dir } }
+  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir) }
+  let(:events) { [] }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME", "SAMAGOTCHI_THINKING_LEVEL")
@@ -497,20 +502,12 @@ RSpec.describe "The skills bundle, installed" do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "skills", scope: "system", strict: true)
     @installer.run
+    engine.session = session
+    engine.subscribe(observer: ->(e) { events << e })
   end
 
   after do
     FileUtils.rm_rf(tmpdir)
-  end
-
-  let(:engine) { Samagotchi::Engine.new(client: client).tap { |e| e.session_state_dir = state_dir } }
-
-  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir) }
-  let(:events) { [] }
-
-  before do
-    engine.session = session
-    engine.subscribe(observer: ->(e) { events << e })
   end
 
   def tool_call(name, **args)

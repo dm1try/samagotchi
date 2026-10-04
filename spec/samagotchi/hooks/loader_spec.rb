@@ -144,6 +144,7 @@ RSpec.describe Samagotchi::Hooks::Loader do
     require "samagotchi/guardrails"
     let(:failures) { Samagotchi::Guardrails::LoadFailures.new }
     let(:tmpdir) { Dir.mktmpdir("loader-fc") }
+
     after { FileUtils.rm_rf(tmpdir) }
 
     def load_hooks(entries)

@@ -15,6 +15,13 @@ RSpec.describe "TerminalUI and archived sessions" do
   let(:surface) { RecordingSurface.new }
   let(:state_dir) { Samagotchi::Session.default_state_dir }
   let(:result) { Samagotchi::LLM::ModelResult.new(text: "done") }
+  let!(:session) do
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd).tap do |s|
+      s.messages = [{ role: "user", content: "earlier" }, { role: "assistant", content: "ok" }]
+      s.save
+      Samagotchi::ArchiveStore.archive(s.id, state_dir: state_dir)
+    end
+  end
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME", "SAMAGOTCHI_HISTORY_FILE")
@@ -26,14 +33,6 @@ RSpec.describe "TerminalUI and archived sessions" do
     %w[SAMAGOTCHI_DEFAULT_MODEL XDG_STATE_HOME SAMAGOTCHI_HISTORY_FILE].each { |k| ENV.delete(k) }
     saved.each { |k, v| ENV[k] = v }
     FileUtils.remove_entry(state_home)
-  end
-
-  let!(:session) do
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd).tap do |s|
-      s.messages = [{ role: "user", content: "earlier" }, { role: "assistant", content: "ok" }]
-      s.save
-      Samagotchi::ArchiveStore.archive(s.id, state_dir: state_dir)
-    end
   end
 
   def archived? = Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(session.id))

@@ -24,6 +24,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
   describe ".sidecar_port / .discover" do
     let(:dir) { Dir.mktmpdir("bridge-client") }
+
     after { FileUtils.remove_entry(dir) }
 
     it "returns the advertised port of a live bridge" do
@@ -68,6 +69,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
   describe ".wait_for" do
     let(:dir) { Dir.mktmpdir("bridge-client") }
+
     after { FileUtils.remove_entry(dir) }
 
     it "returns a client once the worker publishes a live sidecar" do

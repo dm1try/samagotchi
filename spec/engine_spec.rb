@@ -106,6 +106,8 @@ RSpec.describe Samagotchi::Engine do
   describe "project location in the system prompt" do
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      git("init", "-q", repo)
+      git("-C", repo, "commit", "-q", "--allow-empty", "-m", "init")
     end
 
     around do |example|
@@ -122,11 +124,6 @@ RSpec.describe Samagotchi::Engine do
     end
 
     let(:repo) { File.join(@tmp, "repo") }
-
-    before do
-      git("init", "-q", repo)
-      git("-C", repo, "commit", "-q", "--allow-empty", "-m", "init")
-    end
 
     it "shows the project root and memories folder from a linked worktree" do
       tree = File.join(@tmp, "repo-flip")

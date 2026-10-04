@@ -6,6 +6,7 @@ require "tmpdir"
 
 RSpec.describe Samagotchi::DebugLog do
   let(:dir) { Dir.mktmpdir("samagotchi-debug-log") }
+
   after { FileUtils.remove_entry(dir) if File.directory?(dir) }
 
   it "appends records, creating the directory" do
@@ -44,6 +45,7 @@ end
 RSpec.describe Samagotchi::DebugLog, "rotation" do
   let(:dir) { Dir.mktmpdir("samagotchi-debug-log") }
   let(:path) { File.join(dir, "chi.log") }
+
   after { FileUtils.remove_entry(dir) if File.directory?(dir) }
 
   def log(**options) = described_class.new(path: path, max_bytes: 20, **options)

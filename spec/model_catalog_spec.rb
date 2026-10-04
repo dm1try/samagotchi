@@ -22,6 +22,7 @@ RSpec.describe Samagotchi::ModelCatalog do
       "box" => %w[big other:batch]
     }
   end
+  let(:results) { registry.list_all_models }
 
   before do
     allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return(aliases)
@@ -29,8 +30,6 @@ RSpec.describe Samagotchi::ModelCatalog do
       allow(registry.entries[host].client).to receive(:list_models).and_return(ids.map { |id| { "id" => id } })
     end
   end
-
-  let(:results) { registry.list_all_models }
 
   def info(id) = Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {})
 

@@ -196,7 +196,7 @@ RSpec.describe "TerminalUI images" do
     end
 
     it "shows the image lines of the last prompt when it joins, and of a turn in progress" do
-      allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_call_original
+      allow(described_class).to receive(:new).and_call_original
       messages = [{ "role" => "user", "content" => "look", "images" => [ref.transform_keys(&:to_s)] }, { "role" => "model", "content" => "red" }]
       run_with([], first: snapshot(messages: messages))
       expect(screen.lines).to include(a_string_including("[image shot.png 1280×800 · ~1.3k tokens]"))

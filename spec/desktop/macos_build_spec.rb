@@ -106,7 +106,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       )
       expect(result["windows"].last).to include("title" => "Claude Code", "label" => "claude · samagotchi")
       asked = calls.map { |c| c["argv"][c["argv"].index("--to") + 1] }
-      expect(asked).to contain_exactly(*%w[-1 -2 -3].map { |s| "unix:#{sock_dir}/#{base}#{s}" })
+      expect(asked).to match_array(%w[-1 -2 -3].map { |s| "unix:#{sock_dir}/#{base}#{s}" })
       expect(calls.map { |c| c["argv"].drop(3) }.uniq).to eq([["ls"]])
     end
 

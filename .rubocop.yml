@@ -337,3 +337,16 @@ RSpec/RemoveConst:
 
 RSpec/Output:
   Enabled: false
+
+# `expect(x.empty?).to be(true)` → `be_empty` loosens the check (truthy).
+RSpec/PredicateMatcher:
+  Enabled: false
+
+# Reviewed: safe here (a wrong described_class fails its own spec; be(true)
+# is eq(true) for true, false and nil), so `rubocop -a` applies them.
+RSpec/DescribedClass:
+  SafeAutoCorrect: true
+
+RSpec/BeEq:
+  Safe: true
+  SafeAutoCorrect: true

@@ -11,6 +11,7 @@ RSpec.describe Samagotchi::ReplyWait do
   let(:tmpdir) { Dir.mktmpdir("reply-wait") }
   let(:session) { make(status: "running") }
   let(:threads) { [] }
+  let(:locks) { [] }
 
   after do
     threads.each(&:join)
@@ -38,8 +39,6 @@ RSpec.describe Samagotchi::ReplyWait do
     lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), kind: "worker")
     locks << lock
   end
-
-  let(:locks) { [] }
 
   def write_reply(text)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)

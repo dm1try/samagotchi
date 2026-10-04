@@ -49,14 +49,16 @@ RSpec.describe Samagotchi::ModelOverlay do
   end
 
   describe ".overlay_suffix_pattern" do
+    let(:pattern) { described_class::OVERLAY_SUFFIX_PATTERN }
+
     it "matches overlay file names" do
-      expect("foo.qwen3-6-35b-a3b.md").to match(described_class::OVERLAY_SUFFIX_PATTERN)
-      expect("bar.gemma4o.md").to match(described_class::OVERLAY_SUFFIX_PATTERN)
+      expect(pattern).to match("foo.qwen3-6-35b-a3b.md")
+      expect(pattern).to match("bar.gemma4o.md")
     end
 
     it "does not match base memory files" do
-      expect("foo.md").not_to match(described_class::OVERLAY_SUFFIX_PATTERN)
-      expect("foo.QWEN3-6-35B-A3B.md").not_to match(described_class::OVERLAY_SUFFIX_PATTERN)
+      expect(pattern).not_to match("foo.md")
+      expect(pattern).not_to match("foo.QWEN3-6-35B-A3B.md")
     end
   end
 
@@ -78,11 +80,13 @@ RSpec.describe Samagotchi::ModelOverlay do
     it "respects scope" do
       project_path = described_class.overlay_path_for("test", "key1", "project")
       system_path = described_class.overlay_path_for("test", "key1", "system")
-      expect(project_path).to_not eq(system_path)
+      expect(project_path).not_to eq(system_path)
     end
   end
+
   describe ".overlay_file?" do
     let(:dir) { Dir.mktmpdir("overlay-file-") }
+
     after { FileUtils.rm_rf(dir) }
 
     it "is an overlay when <stem>.md is next to it (the default base dir)" do
@@ -114,8 +118,10 @@ RSpec.describe Samagotchi::ModelOverlay do
       expect(described_class.overlay_file?("tips.qwen3.md", base_dirs: [], base_names: ["tips.md"])).to be(true)
     end
   end
+
   describe ".bundle_overlay?" do
     let(:target) { Dir.mktmpdir("overlay-target-") }
+
     after { FileUtils.rm_rf(target) }
 
     it "is one when the bundle has the base, the base is nowhere, or only the target has it (an installed memory)" do

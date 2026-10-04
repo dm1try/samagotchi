@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::DesktopCommand do
 
   it "upgrade upgrades, and warns" do
     allow(macos).to receive(:warnings).and_return(["from a linked git worktree"])
-    expect(macos).to receive(:upgrade) { |&blk| blk.call("installed X") }
+    expect(macos).to receive(:upgrade).and_yield("installed X")
     expect(run("upgrade")).to eq(0)
     expect(out.string).to include("installed X")
     expect(err.string).to include("warning: from a linked git worktree")

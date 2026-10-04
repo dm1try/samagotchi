@@ -13,6 +13,7 @@ RSpec.describe Samagotchi::MemoryBundle::IndexUpdater do
   let(:tmpdir) { Dir.mktmpdir("index-updater-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
   let(:today) { Date.today.iso8601 }
+
   around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   before { FileUtils.mkdir_p(system_dir) }
   after { FileUtils.rm_rf(tmpdir) }

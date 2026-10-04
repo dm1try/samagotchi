@@ -6,8 +6,9 @@ require "samagotchi/terminal_ui/event_renderer"
 
 RSpec.describe Samagotchi::Bridge::TurnAccumulator do
   # Monotonic seconds, moved by the examples that time a tool call.
-  let(:clock) { [100.0] }
   subject(:acc) { described_class.new(clock: -> { clock[0] }) }
+
+  let(:clock) { [100.0] }
 
   def feed(*events)
     events.each do |event|

@@ -186,6 +186,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
   describe "debug dump" do
     let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
     let(:log_path) { File.join(log_dir, "chi.log") }
+
     after { FileUtils.remove_entry(log_dir) }
 
     def dumps
@@ -766,6 +767,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.conversation.map { |m| [m[:role], m[:content]] }.last(3))
         .to eq([["model", "first"], ["user", "also this"], ["model", "second"]])
     end
+
     it "appends a plugin steer as its own user message after the user's line, and sends its text only" do
       backend.adapter = adapter = FakeChatAdapter.new(tools(["c1", "read", { "path" => "x" }]), text("done"))
       items = [[], ["user line", { text: "nudge", source: "check-in" }]]

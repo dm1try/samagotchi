@@ -430,6 +430,7 @@ Hooks removed: 1\n\z})
       expect(out).to match(%r{\A=== plugin/plugin\.rb ===\n--- base \(provenance\) ---\n#{Regexp.escape(plugin)}--- current \(on-disk\) ---\n#{Regexp.escape(plugin)}--- metadata: sha256=\S+ requires_chi=>= 0\.1\.28\n\n\z})
     end
   end
+
   # A scope only a newer chi knows (read after a downgrade), or a hand edit.
   context "with a bundle whose provenance names a scope this chi doesn't know" do
     before(:context) do

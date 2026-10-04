@@ -4,6 +4,9 @@ require "samagotchi/bridge_client"
 
 RSpec.describe Samagotchi::BridgeClient::EventStream do
   let(:sse_head) { "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n" }
+  let(:events) { [] }
+  let(:bridge) { scripted_bridge(scripts) }
+  let(:client) { Samagotchi::BridgeClient.new(session_id: "s1", port: bridge.port) }
 
   # A fake Bridge serving one scripted connection per entry of +scripts+.
   # Each script gets the connection after its request was read; the request
@@ -34,10 +37,6 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
     sleep 0.01 until events.size >= count || Time.now > deadline
     events.dup
   end
-
-  let(:events) { [] }
-  let(:bridge) { scripted_bridge(scripts) }
-  let(:client) { Samagotchi::BridgeClient.new(session_id: "s1", port: bridge.port) }
 
   after do
     @stream&.close

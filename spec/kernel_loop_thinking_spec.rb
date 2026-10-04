@@ -8,10 +8,12 @@ require "samagotchi/model_profile"
 # the turn's model messages keep it, so the next generation's prompt starts
 # with what the server has cached.
 RSpec.describe Samagotchi::KernelLoop, "thinking level" do
+  subject(:kernel) { described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36) }
+
   let(:client) { instance_double(Samagotchi::Client) }
   let(:events) { [] }
   let(:empty_thought) { "<think>\n\n</think>\n\n" }
-  subject(:kernel) { described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36) }
+  let(:tool_call) { "<tool_call>\n<function=read>\n<parameter=path>\nnope.txt\n</parameter>\n</function>\n</tool_call>" }
 
   def script(*responses)
     prompts = []
@@ -25,8 +27,6 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
   def run
     kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e })
   end
-
-  let(:tool_call) { "<tool_call>\n<function=read>\n<parameter=path>\nnope.txt\n</parameter>\n</function>\n</tool_call>" }
 
   it "prefills the empty thought after the cue for off, and keeps it in the turn's model messages" do
     kernel.turn_settings = kernel.turn_settings.with(thinking: :off)

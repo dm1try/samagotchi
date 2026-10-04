@@ -109,6 +109,7 @@ RSpec.describe Samagotchi::Web::App do
   describe "log lines (tag web)" do
     let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
     let(:log_path) { File.join(log_dir, "chi.log") }
+
     after { FileUtils.remove_entry(log_dir) }
 
     def web_records

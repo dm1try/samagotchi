@@ -25,6 +25,12 @@ RSpec.describe Samagotchi::UpdateCommand do
   let(:web) { ["127.0.0.1", closed_port] }
   let(:helper) { nil }
   let(:supported) { false }
+  # rubygems says this chi is the newest; never the network.
+  let(:fetcher) { -> { JSON.generate(version: Samagotchi::VERSION) } }
+  let(:gem_runner) { double("runner", run: ["Successfully installed samagotchi\n", true]) }
+  let(:gem_update) { Samagotchi::GemUpdate.new(env: {}, fetcher: fetcher, runner: gem_runner, gem_bin: "/rb/bin/gem") }
+  let(:execs) { [] }
+  let(:bundler) { false }
 
   around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
 
@@ -32,13 +38,6 @@ RSpec.describe Samagotchi::UpdateCommand do
     servers.each(&:close)
     FileUtils.remove_entry(tmp)
   end
-
-  # rubygems says this chi is the newest; never the network.
-  let(:fetcher) { -> { JSON.generate(version: Samagotchi::VERSION) } }
-  let(:gem_runner) { double("runner", run: ["Successfully installed samagotchi\n", true]) }
-  let(:gem_update) { Samagotchi::GemUpdate.new(env: {}, fetcher: fetcher, runner: gem_runner, gem_bin: "/rb/bin/gem") }
-  let(:execs) { [] }
-  let(:bundler) { false }
 
   def run(*argv, gem_spec: self.gem_spec)
     out.truncate(0)

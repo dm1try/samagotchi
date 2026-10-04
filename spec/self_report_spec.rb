@@ -8,6 +8,11 @@ RSpec.describe Samagotchi::SelfReport do
   let(:config_home) { File.join(tmp, "config") }
   let(:bundles_dir) { File.join(config_home, "samagotchi", "memories", ".bundles") }
   let(:env) { { "XDG_CONFIG_HOME" => config_home, "XDG_STATE_HOME" => File.join(tmp, "state"), "HOME" => tmp } }
+  # chi self's one server call (the served model's /props GET) answers
+  # nothing unless a spec says otherwise.
+  let(:props_answer) { nil }
+  # ...and no chi web answers, unless a spec says otherwise.
+  let(:web_info) { nil }
 
   def write_config(yaml)
     FileUtils.mkdir_p(File.join(config_home, "samagotchi"))
@@ -17,12 +22,6 @@ RSpec.describe Samagotchi::SelfReport do
   def field(name)
     described_class.fields(env: env).to_h.fetch(name)
   end
-
-  # chi self's one server call (the served model's /props GET) answers
-  # nothing unless a spec says otherwise.
-  let(:props_answer) { nil }
-  # ...and no chi web answers, unless a spec says otherwise.
-  let(:web_info) { nil }
 
   before do
     info = -> { web_info }

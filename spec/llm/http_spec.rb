@@ -408,6 +408,8 @@ RSpec.describe Samagotchi::LLM::HTTP do
   describe "log lines (tag http)" do
     let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
     let(:log_path) { File.join(log_dir, "chi.log") }
+    let(:chat) { { model: "qwen", purpose: "chat" } }
+
     before { Samagotchi::Log.configure(path: log_path, level: :debug) }
     after { FileUtils.remove_entry(log_dir) }
 
@@ -416,8 +418,6 @@ RSpec.describe Samagotchi::LLM::HTTP do
 
       File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.tag == "http" } }
     end
-
-    let(:chat) { { model: "qwen", purpose: "chat" } }
 
     it "writes one INFO line per stream: host, model, status, time to first token, total; never the body" do
       server.enqueue("/v1/chat/completions", sse: "data: {\"secret\":1}\n\n")

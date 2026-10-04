@@ -10,6 +10,7 @@ require "samagotchi/guardrails"
 
 RSpec.describe Samagotchi::Hooks::BundleLoader do
   let(:tmpdir) { Dir.mktmpdir("bundle-loader-") }
+
   after { FileUtils.rm_rf(tmpdir) }
 
   def write_hook(dir, basename, content)

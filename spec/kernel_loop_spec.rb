@@ -8,8 +8,9 @@ require "fileutils"
 require "tmpdir"
 
 RSpec.describe Samagotchi::KernelLoop do
-  let(:client) { instance_double(Samagotchi::Client) }
   subject(:kernel) { described_class.new(client: client) }
+
+  let(:client) { instance_double(Samagotchi::Client) }
 
   around do |example|
     original_env = {
@@ -1664,6 +1665,7 @@ Need to inspect the filesystem first.
   describe "debug dumps" do
     let(:log_dir) { Dir.mktmpdir("samagotchi-debug-log") }
     let(:log_path) { File.join(log_dir, "samagotchi.log") }
+
     after { FileUtils.remove_entry(log_dir) if File.directory?(log_dir) }
 
     def records
@@ -1724,8 +1726,9 @@ Need to inspect the filesystem first.
   # ── Qwen 3.6 tool-call parsing ────────────────────────────────────────────
 
   describe "Qwen 3.6 profile" do
-    let(:qwen_profile) { Samagotchi::ModelProfile.qwen36 }
     subject(:qwen_kernel) { described_class.new(client: client, profile: qwen_profile) }
+
+    let(:qwen_profile) { Samagotchi::ModelProfile.qwen36 }
 
     def qwen_wire(name, params)
       body = params.map { |key, value| "<parameter=#{key}>\n#{value}\n</parameter>\n" }.join

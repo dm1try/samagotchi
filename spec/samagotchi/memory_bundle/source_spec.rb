@@ -8,6 +8,7 @@ require "samagotchi/memory_bundle/source"
 
 RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-srcnorm-") }
+
   after { FileUtils.rm_rf(tmpdir) }
 
   def write_bundle_dir(base_dir, files = {})

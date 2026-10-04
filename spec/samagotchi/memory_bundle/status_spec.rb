@@ -11,8 +11,9 @@ require "samagotchi/memory_bundle/status"
 RSpec.describe Samagotchi::MemoryBundle::Status do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-status-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:fixture) { File.expand_path("../../fixtures/sample_needs_bundle", __dir__) }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   after do
     FileUtils.rm_rf(tmpdir)
@@ -64,6 +65,7 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
     expect(described_class.need_line({ command: "jq", why: nil, hint: nil, found: false }))
       .to eq("needs jq [not found]")
   end
+
   it "marks a model overlay (its base among the bundle's files) and doesn't look for its index line" do
     src = File.join(tmpdir, "ovl-src")
     FileUtils.mkdir_p(src)

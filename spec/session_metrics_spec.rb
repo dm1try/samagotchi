@@ -569,7 +569,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     ])
 
     state_dir = Dir.mktmpdir
-    expect(metrics.persist(state_dir: state_dir)).to eq(true)
+    expect(metrics.persist(state_dir: state_dir)).to be(true)
     dir = Samagotchi::Session.session_dir("persist-sess", state_dir: state_dir)
     expect(File.exist?(File.join(dir, "analytics.json"))).to be(true)
   end

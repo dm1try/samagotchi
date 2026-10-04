@@ -99,11 +99,11 @@ RSpec.configure do |config|
   Kernel.srand config.seed
 
   # A spec's allow_net_connect! ends with its example: back to no net.
-  config.after(:each) { WebMock.disable_net_connect! }
+  config.after { WebMock.disable_net_connect! }
 
   # Never let a spec block on the developer's real terminal. Unstubbed Reline
   # reads behave like EOF (Ctrl-D); specs that need input stub their own values.
-  config.before(:each) do
+  config.before do
     if defined?(Reline)
       allow(Reline).to receive(:readmultiline).and_return(nil)
       allow(Reline).to receive(:readline).and_return(nil)
@@ -137,7 +137,7 @@ RSpec.configure do |config|
   # SystemExit (and signals), so an `exit` in the example, or one a thread's
   # `exit` raises again in the main thread wherever it is, would otherwise end
   # the whole run quietly: "N examples, 0 failures", exit status 0.
-  config.around(:each) do |example|
+  config.around do |example|
     example.run
   rescue SystemExit => e
     raise "exit(#{e.status}) escaped the example (its own code, or a thread from it or an earlier example): " \

@@ -15,9 +15,11 @@ require "samagotchi/plugin/loader"
 RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-plugin-manifest-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:plugin_source) { "class Plugin\n  def register(chi); end\nend\n" }
+  let(:provenance) { Samagotchi::MemoryBundle::Provenance.new(name: "plug") }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   after do
     FileUtils.rm_rf(tmpdir)
@@ -52,8 +54,6 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
     installer
   end
 
-  let(:provenance) { Samagotchi::MemoryBundle::Provenance.new(name: "plug") }
-
   describe Samagotchi::MemoryBundle::Manifest do
     it "reads plugin: {file:, sha256:} and requires_chi:" do
       manifest = described_class.read(dir: write_source(requires_chi: ">= 0.1.0"))
@@ -78,7 +78,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(described_class.requires_chi_failure(">= 0.1.20", "0.1.28")).to be_nil
       expect(described_class.requires_chi_failure(">= 0.1.20, < 0.2", "0.1.28")).to be_nil
       expect(described_class.requires_chi_failure(">= 9.0", "0.1.28")).to eq("it requires chi >= 9.0 (this is chi 0.1.28)")
-      expect(described_class.requires_chi_failure("soon", "0.1.28")).to match(/not a version requirement/)
+      expect(described_class.requires_chi_failure("soon", "0.1.28")).to include("not a version requirement")
     end
 
     it "writes plugin: and requires_chi: back" do
@@ -136,7 +136,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
 
     it "doesn't warn about hooks when this chi meets requires_chi" do
       installer = install(write_source(plugin: nil, hook: true, requires_chi: ">= 0.1.0"))
-      expect(installer.warnings.join).not_to match(/won't load/)
+      expect(installer.warnings.join).not_to include("won't load")
     end
 
     it "removes the plugin when an upgrade drops it" do

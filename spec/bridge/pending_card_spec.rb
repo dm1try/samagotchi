@@ -7,9 +7,10 @@ require "samagotchi/bridge/pending_card"
 # The running turn's open card with actions, as pending_card.json in the
 # session's folder (the web hub's "needs you").
 RSpec.describe Samagotchi::Bridge::PendingCard do
+  subject(:pending) { described_class.new(dir) }
+
   let(:dir) { Dir.mktmpdir("pending-card-spec") }
   let(:path) { File.join(dir, described_class::FILE) }
-  subject(:pending) { described_class.new(dir) }
 
   after { FileUtils.rm_rf(dir) }
 

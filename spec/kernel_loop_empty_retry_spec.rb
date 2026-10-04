@@ -7,10 +7,11 @@ require "samagotchi/model_profile"
 # generation (with its thinking) is dropped, a hidden nudge goes on the tail
 # and the model is asked again, at 0.6 unless a temperature is configured.
 RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
+  subject(:kernel) { described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36) }
+
   let(:client) { instance_double(Samagotchi::Client) }
   let(:nudge) { Samagotchi::TurnNote.empty_retry }
   let(:events) { [] }
-  subject(:kernel) { described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36) }
 
   def script(*responses)
     calls = []

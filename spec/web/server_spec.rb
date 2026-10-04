@@ -51,17 +51,17 @@ RSpec.describe Samagotchi::Web::Server::Log do
 end
 
 RSpec.describe Samagotchi::Web::Server do
+  # The hub logs nothing of its own: the web log's start and stop lines
+  # are the server's. Server.start starts it before WEBrick and stops it
+  # after.
+  let(:hub) { instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, subscribe: nil) }
+
   it "says so on stderr when it can't open the browser" do
     allow(described_class).to receive(:system).and_raise(Errno::ENOENT, "open")
 
     expect { described_class.open_url("http://127.0.0.1:4567/") }
       .to output(%r{Failed to open browser: .*open — please open http://127.0.0.1:4567/ manually}).to_stderr
   end
-
-  # The hub logs nothing of its own: the web log's start and stop lines
-  # are the server's. Server.start starts it before WEBrick and stops it
-  # after.
-  let(:hub) { instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, subscribe: nil) }
 
   describe "a newer chi installed" do
     def chi_event(installed)
@@ -216,7 +216,7 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class).not_to have_received(:start)
     end
 
-    it "won't take LAN access from a chi web already running without it" do
+    it "does not take LAN access from a chi web already running without it" do
       allow(Samagotchi::Web::Lan).to receive(:choose).and_return(lan)
       allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "lan" => nil })
       allow(described_class).to receive(:start)

@@ -13,8 +13,9 @@ require "samagotchi/memory_bundle/builder"
 RSpec.describe Samagotchi::MemoryBundle::Builder do
   let(:tmpdir) { Dir.mktmpdir("builder-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   before do
     FileUtils.mkdir_p(system_dir)
@@ -128,6 +129,7 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     names = [repo, tree].map { |dir| Dir.chdir(dir) { builder.send(:default_name, "project") } }
     expect(names).to eq(%w[chi_my-repo_memories chi_my-repo_memories])
   end
+
   describe "model overlays with --files" do
     before do
       { "tips.md" => "Base\n", "tips.qwen3.md" => "Qwen\n", "tips.deepseek.md" => "DeepSeek\n",

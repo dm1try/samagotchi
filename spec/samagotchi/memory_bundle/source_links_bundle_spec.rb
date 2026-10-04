@@ -15,9 +15,10 @@ require "samagotchi/hooks/bundle_loader"
 RSpec.describe "Source-links bundle E2E" do
   let(:tmpdir) { Dir.mktmpdir("source-links-e2e-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:fixture_path) { File.expand_path("../../../lib/samagotchi/bundles/source-links", __dir__) }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   before do
     FileUtils.mkdir_p(system_dir)

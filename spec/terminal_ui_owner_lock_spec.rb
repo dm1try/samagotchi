@@ -10,6 +10,10 @@ require_relative "support/recording_surface"
 RSpec.describe "TerminalUI session ownership" do
   let(:state_home) { Dir.mktmpdir("tui-owner-state") }
   let(:client) { instance_double(Samagotchi::Client) }
+  let(:session) do
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd).tap(&:save)
+  end
+  let(:session_dir) { Samagotchi::Session.session_dir(session.id) }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME")
@@ -21,11 +25,6 @@ RSpec.describe "TerminalUI session ownership" do
     saved.each { |k, v| ENV[k] = v }
     FileUtils.remove_entry(state_home)
   end
-
-  let(:session) do
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd).tap(&:save)
-  end
-  let(:session_dir) { Samagotchi::Session.session_dir(session.id) }
 
   it "refuses to resume a session a worker owns, before loading it" do
     lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")

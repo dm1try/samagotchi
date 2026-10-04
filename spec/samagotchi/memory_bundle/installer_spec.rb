@@ -277,6 +277,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(index_content).to include("- **identity** · system ·")
           expect(index_content).not_to include("**identity.md**")
         end
+
         it "says when an index line couldn't be written, and installs anyway" do
           allow(Samagotchi::MemoryBundle::IndexUpdater).to receive(:update_index).and_raise(Errno::EACCES, "index.md")
           bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })

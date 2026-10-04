@@ -254,6 +254,7 @@ RSpec.describe "chi bootstrap" do
     let(:tty) do
       Class.new(StringIO) { def tty? = true }
     end
+
     # In process, the bundles go where the process ENV points: a tmp dir
     # here, never the suite's shared config dir.
     around { |example| with_env("XDG_CONFIG_HOME" => File.join(home, "process-config")) { example.run } }

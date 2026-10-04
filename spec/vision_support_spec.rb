@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::VisionSupport do
     end
 
     it "says no without a media marker" do
-      expect(answer(native_target(props(ornith.except("media_marker")))).reason).to match(/no media marker/)
+      expect(answer(native_target(props(ornith.except("media_marker")))).reason).to include("no media marker")
     end
 
     it "says no for a ChatML template that isn't Qwen's vision template" do
@@ -61,7 +61,7 @@ RSpec.describe Samagotchi::VisionSupport do
     end
 
     it "says no for mlx and omlx hosts" do
-      expect(answer(native_target(props(ornith), transport: :mlx)).reason).to match(/mlx hosts take no images/)
+      expect(answer(native_target(props(ornith), transport: :mlx)).reason).to include("mlx hosts take no images")
       expect(answer(native_target(nil, transport: :omlx)).value).to be(false)
     end
 

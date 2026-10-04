@@ -79,6 +79,7 @@ RSpec.describe Samagotchi::MemoryBundle::Listing do
   it "has nothing installed when the bundles dir is missing" do
     expect(described_class.installed(shipped: [])).to eq([])
   end
+
   it "lists a profile that isn't installed with its members, which aren't listed again" do
     ship("core", name: "core", version: "0.1.0", includes: %w[a b])
     ship("dev", name: "dev", version: "0.1.0", includes: %w[c])

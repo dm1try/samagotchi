@@ -16,9 +16,10 @@ require "digest"
 RSpec.describe "Sample hooks bundle E2E", type: :integration do
   let(:tmpdir) { Dir.mktmpdir("sample-e2e-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:fixture_path) { File.expand_path("../../../spec/fixtures/sample_hooks_bundle", __dir__) } # spec/fixtures/sample_hooks_bundle
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   before do
     FileUtils.mkdir_p(system_dir)
@@ -61,6 +62,7 @@ RSpec.describe "Sample hooks bundle E2E", type: :integration do
     expect(Dir.exist?(File.join(bundles_dir, "sample-hooks-bundle"))).to be false
     expect(uninstaller.removed_files).to include("hooks/guardrails.rb")
   end
+
   it "installs a model overlay that only its model reads, with no index line, and uninstalls both" do
     key = "deepseek-v4-1-flash"
     src = File.join(tmpdir, "ovl-src")

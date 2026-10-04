@@ -17,10 +17,19 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
   let(:fixture) { File.expand_path("../../fixtures/sample_plugin_bundle", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("sample-plugin-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:state_home) { File.join(tmpdir, "state") }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
+  let(:engine) { Samagotchi::Engine.new(client: client) }
+  let(:session) do
+    Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir).tap do |s|
+      s.messages = [{ role: "user", content: "hi" }, { role: "model", content: "hello" }]
+    end
+  end
+  let(:tools) { engine.instance_variable_get(:@tools) }
+  let(:kernel) { engine.instance_variable_get(:@kernel) }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME")
@@ -56,15 +65,6 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
     install(src, name: name)
   end
-
-  let(:engine) { Samagotchi::Engine.new(client: client) }
-  let(:session) do
-    Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir).tap do |s|
-      s.messages = [{ role: "user", content: "hi" }, { role: "model", content: "hello" }]
-    end
-  end
-  let(:tools) { engine.instance_variable_get(:@tools) }
-  let(:kernel) { engine.instance_variable_get(:@kernel) }
 
   it "installs cleanly (the fixture's recorded sha256 is its file's)" do
     expect(install.warnings).to be_empty

@@ -12,9 +12,23 @@ require "samagotchi/memory_bundle/installer"
 RSpec.describe Samagotchi::Plugin::Loader do
   let(:tmpdir) { Dir.mktmpdir("plugin-loader-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
+  let(:hook_plugin) do
+    <<~RUBY
+      class Plugin
+        def initialize(settings)
+          @mark = settings.fetch("mark", "hit")
+        end
+
+        def register(chi)
+          chi.on(:before_turn) { |event| event[:marks] = Array(event[:marks]) + [@mark, event[:hook]] }
+        end
+      end
+    RUBY
+  end
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
@@ -38,20 +52,6 @@ RSpec.describe Samagotchi::Plugin::Loader do
     File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
     Samagotchi::MemoryBundle::Installer.new(source: src, name: name, scope: "system", strict: true).run
     File.join(bundles_dir, name, "plugin", "plugin.rb")
-  end
-
-  let(:hook_plugin) do
-    <<~RUBY
-      class Plugin
-        def initialize(settings)
-          @mark = settings.fetch("mark", "hit")
-        end
-
-        def register(chi)
-          chi.on(:before_turn) { |event| event[:marks] = Array(event[:marks]) + [@mark, event[:hook]] }
-        end
-      end
-    RUBY
   end
 
   def engine(**opts)
@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::Plugin::Loader do
       eng = nil
       expect { eng = engine }.to output(/bundle 'marker' plugin 'plugin.rb' not loaded: its sha256/).to_stderr
       expect_not_loaded(eng, /sha256/)
-      expect(eng.plugin_failures.message).not_to match(/denied/)
+      expect(eng.plugin_failures.message).not_to include("denied")
     end
 
     it "is announced on the first turn labelled plugins, apart from the guardrails, and kept for the snapshot" do

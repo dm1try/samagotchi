@@ -105,6 +105,7 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
     describe "sampling options" do
       let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
       let(:log_path) { File.join(log_dir, "chi.log") }
+
       after do
         Samagotchi::Log.reset!
         FileUtils.remove_entry(log_dir)

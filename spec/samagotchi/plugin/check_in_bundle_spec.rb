@@ -310,10 +310,19 @@ RSpec.describe "The check-in bundle, installed" do
   let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/check-in", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("check-in-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:state_dir) { File.join(tmpdir, "sessions") }
   let(:client) { test_client }
   let(:settings) { { "after" => 2, "every" => 10 } }
+  let(:engine) { Samagotchi::Engine.new(client: client).tap { |e| e.session_state_dir = state_dir } }
+  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir) }
+  let(:commands) do
+    Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                    default_model: "Gemma-4B-it", registry: engine.command_registry)
+  end
+  let(:events) { [] }
+  let(:tool_call) { %(<|tool_call>call:execute{command: "true"}<tool_call|>) }
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME", "SAMAGOTCHI_THINKING_LEVEL")
@@ -331,24 +340,12 @@ RSpec.describe "The check-in bundle, installed" do
     allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("check-in" => settings)
     @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "check-in", scope: "system", strict: true)
     @installer.run
+    engine.session = session
+    engine.subscribe(observer: ->(e) { events << e })
   end
 
   after do
     FileUtils.rm_rf(tmpdir)
-  end
-
-  let(:engine) { Samagotchi::Engine.new(client: client).tap { |e| e.session_state_dir = state_dir } }
-  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir) }
-  let(:commands) do
-    Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
-                                    default_model: "Gemma-4B-it", registry: engine.command_registry)
-  end
-  let(:events) { [] }
-  let(:tool_call) { %(<|tool_call>call:execute{command: "true"}<tool_call|>) }
-
-  before do
-    engine.session = session
-    engine.subscribe(observer: ->(e) { events << e })
   end
 
   def cards = events.select { |e| e[:type] == :card }

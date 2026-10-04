@@ -10,10 +10,11 @@ require "samagotchi/memory_bundle/profile"
 RSpec.describe Samagotchi::MemoryBundle::Profile do
   let(:tmp) { Dir.mktmpdir("profile") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
   # A shipped dir as a gem lays it out, so a member's source is "shipped".
   let(:shipped) { File.join(tmp, "gem", "lib", "samagotchi", "bundles") }
   let(:prov) { Samagotchi::MemoryBundle::Provenance }
+
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
 
   after do
     FileUtils.remove_entry(tmp)

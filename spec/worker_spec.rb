@@ -336,6 +336,8 @@ RSpec.describe Samagotchi::Worker do
         [res.code.to_i, JSON.parse(res.body)]
       end
 
+      after { Array(@streams).each(&:close) }
+
       it "leaves at once when nothing keeps it, even with idle exit off, and the session isn't stopped" do
         start_worker(poll_interval: 5, idle_exit_minutes: 0)
 
@@ -409,8 +411,6 @@ RSpec.describe Samagotchi::Worker do
       end
 
       def open_streams = @worker.instance_variable_get(:@bridge).open_streams
-
-      after { Array(@streams).each(&:close) }
 
       it "leaves while the asker's own stream is open" do
         start_worker(poll_interval: 0.05)

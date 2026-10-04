@@ -8,6 +8,7 @@ require "tmpdir"
 RSpec.describe Samagotchi::Log do
   let(:dir) { Dir.mktmpdir("samagotchi-log") }
   let(:path) { File.join(dir, "samagotchi.log") }
+
   after { FileUtils.remove_entry(dir) if File.directory?(dir) }
 
   def records

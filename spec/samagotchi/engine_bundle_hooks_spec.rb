@@ -15,13 +15,14 @@ require "support/test_kernel"
 RSpec.describe Samagotchi::Engine, "bundle hooks" do
   let(:tmpdir) { Dir.mktmpdir("engine-bundle-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
-  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:client) do
     dbl = test_client
     allow(dbl).to receive(:complete).and_return(nil)
     dbl
   end
+
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 

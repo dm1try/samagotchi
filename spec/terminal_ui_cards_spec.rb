@@ -12,6 +12,10 @@ RSpec.describe "TerminalUI cards.json" do
   let(:state_home) { Dir.mktmpdir("tui-cards-state") }
   let(:client) { instance_double(Samagotchi::Client) }
   let(:surface) { RecordingSurface.new }
+  let(:session) do
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd).tap(&:save)
+  end
+  let(:cards_path) { File.join(Samagotchi::Session.session_dir(session.id), "cards.json") }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME")
@@ -23,11 +27,6 @@ RSpec.describe "TerminalUI cards.json" do
     saved.each { |k, v| ENV[k] = v }
     FileUtils.remove_entry(state_home)
   end
-
-  let(:session) do
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd).tap(&:save)
-  end
-  let(:cards_path) { File.join(Samagotchi::Session.session_dir(session.id), "cards.json") }
 
   it "counts the REPL's kept turns on from the saved count; a failed one doesn't count" do
     FileUtils.mkdir_p(File.dirname(cards_path))

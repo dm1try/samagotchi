@@ -28,6 +28,7 @@ RSpec.describe "The loop-guard plugin, replayed" do
     end.new(notices, cards)
   end
   let(:tool_call) { Struct.new(:name, :arguments) }
+  let(:known_names_at_66) { ->(entry) { "near miss of samagotchi" if entry["message"] == 66 } }
 
   # The plugin as the loader builds it: its file in a module of its own,
   # register(chi) collecting the chi.on blocks.
@@ -68,7 +69,6 @@ RSpec.describe "The loop-guard plugin, replayed" do
   end
 
   def by_guard(seen) = seen.select { |s| s[:verdict].deny? && s[:verdict].source == "bundle loop-guard" }.map { |s| s[:message] }
-  let(:known_names_at_66) { ->(entry) { "near miss of samagotchi" if entry["message"] == 66 } }
 
   it "denies the 3rd identical find (message 48) with advice, no flapping, and stops the turn at the 4th deny (56)" do
     seen = replay(plugin, looping, prior_deny: known_names_at_66)

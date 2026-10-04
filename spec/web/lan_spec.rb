@@ -7,12 +7,6 @@ require "samagotchi/web/lan"
 
 RSpec.describe Samagotchi::Web::Lan do
   let(:ifaddr) { Struct.new(:name, :addr, :flags) }
-
-  def iface(name, ip, up: true, loopback: false)
-    flags = (up ? Socket::IFF_UP : 0) | (loopback ? Socket::IFF_LOOPBACK : 0)
-    ifaddr.new(name, ip && Addrinfo.ip(ip), flags)
-  end
-
   let(:machine) do
     [
       iface("lo0", "127.0.0.1", loopback: true),
@@ -30,6 +24,11 @@ RSpec.describe Samagotchi::Web::Lan do
       iface("en5", "10.0.0.4"),
       iface("utun7", "100.101.102.103")
     ]
+  end
+
+  def iface(name, ip, up: true, loopback: false)
+    flags = (up ? Socket::IFF_UP : 0) | (loopback ? Socket::IFF_LOOPBACK : 0)
+    ifaddr.new(name, ip && Addrinfo.ip(ip), flags)
   end
 
   describe ".wanted?" do
