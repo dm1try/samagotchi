@@ -210,3 +210,9 @@ test("liveSlots: the running tool and the trail carry a call's full command (for
   ]);
   assert.deepEqual(slots.tool, { name: "task_create", title: "npm test", kind: "exec", command: "npm test" });
 });
+
+test("liveSlots: a running task_wait's tool slot carries its task id (the stop-task button)", () => {
+  const turn = turnOf({ ...started(1, 1, "task_wait", "20261004120000-0a1b2c3d"), view: { task_id: "20261004120000-0a1b2c3d" } });
+  assert.deepEqual(liveSlots(turn).tool,
+    { name: "task_wait", title: "20261004120000-0a1b2c3d", kind: "exec", taskId: "20261004120000-0a1b2c3d", key: "1:1" });
+});
