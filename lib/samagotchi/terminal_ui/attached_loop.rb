@@ -23,6 +23,7 @@ require_relative "../session_manager"
 require_relative "../session_metrics"
 require_relative "../guardrails/parent_approvals"
 require_relative "../tool_activity"
+require_relative "../tool_view"
 require_relative "../web/message_parts"
 
 module Samagotchi
@@ -1109,7 +1110,8 @@ module Samagotchi
         output = part[:output]
         status = output.nil? ? "no result" : ToolActivity.tool_activity_status(output, part[:tool])
         activity = { action: part[:label] || ToolActivity.tool_activity_action(part[:tool]), tool: part[:tool],
-                     params: part[:params], status: status }
+                     params: part[:params], status: status,
+                     description: ToolView.description_title(part[:view] || {}) }
         "#{format_tool_activity_line(activity, duration_ms: duration_ms)}" \
           "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
       end
@@ -1202,8 +1204,9 @@ module Samagotchi
       def replay_tool_completed(event)
         return @renderer.call({ duration_ms: nil }.merge(event)) if event.dig(:activity, :action)
 
-        activity = event[:activity] || {}
+        activity = EventRenderer.described(event) || {}
         @screen.commit(snapshot_tool_line({ tool: event[:tool], params: activity[:params], status: activity[:status],
+                                            description: activity[:description],
                                             images: event[:images], diff: event[:diff] }))
       end
 

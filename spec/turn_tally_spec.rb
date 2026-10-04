@@ -41,6 +41,19 @@ RSpec.describe Samagotchi::TurnTally do
     expect(tally.text).to end_with("last: execute command=echo a b")
   end
 
+  it "shows the last command's description in place of its params, from a start, a completion or a seed" do
+    2.times { |i| tally.started(key: [1, i], tool: "read", params: "path=a") }
+    tally.started(key: [1, 2], tool: "execute", params: "command=ls", description: "List files")
+    expect(tally.text).to end_with("last: execute: List files")
+    tally.completed(key: [1, 3], tool: "execute", status: "ok", params: "command=pwd", description: "Where am I")
+    expect(tally.text).to end_with("last: execute: Where am I")
+    seeded = described_class.new.seed((1..3).map do |i|
+      { "kind" => "tool", "iteration" => 1, "call_index" => i, "tool" => "execute", "params" => "command=ls", "status" => "ok",
+        "view" => { "description" => "List." } }
+    end)
+    expect(seeded.text).to end_with("last: execute: List")
+  end
+
   it "cuts to the width with an ellipsis" do
     3.times { |i| tally.started(key: [1, i], tool: "execute", params: "command=#{"x" * 80}") }
     text = tally.text(width: 40)

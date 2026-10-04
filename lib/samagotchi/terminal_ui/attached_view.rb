@@ -4,6 +4,8 @@ require "monitor"
 require_relative "formatting"
 require_relative "../output_formatter"
 require_relative "../turn_tally"
+require_relative "../tool_view"
+require_relative "event_renderer"
 require_relative "thinking_line"
 
 module Samagotchi
@@ -111,7 +113,8 @@ module Samagotchi
           @retry = nil
           @waiting_since = nil
           @tool = "running #{event[:tool]}"
-          @tally.started(key: tally_key(event), tool: event[:tool], params: event[:params])
+          @tally.started(key: tally_key(event), tool: event[:tool], params: event[:params],
+                         description: ToolView.description_title(event[:view] || {}))
           redraw_status
         end
       end
@@ -119,7 +122,8 @@ module Samagotchi
       def tool_call_feedback_completed(event)
         @lock.synchronize do
           @tally.completed(key: tally_key(event), tool: event[:tool],
-                           status: event.dig(:activity, :status), params: event.dig(:activity, :params))
+                           status: event.dig(:activity, :status), params: event.dig(:activity, :params),
+                           description: EventRenderer.described(event)&.dig(:description))
         end
       end
 

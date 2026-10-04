@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "formatting"
+require_relative "../tool_view"
 
 module Samagotchi
   class TerminalUI
@@ -70,8 +71,8 @@ module Samagotchi
           @view.tool_call_feedback_completed(event)
           # A replayed row (a join) carries its duration (nil: unknown).
           measured = tool_duration_ms(event)
-          render_streamed_tool_activity(event[:activity], duration_ms: event.fetch(:duration_ms, measured), images: event[:images],
-                                                          diff: event[:diff])
+          render_streamed_tool_activity(self.class.described(event), duration_ms: event.fetch(:duration_ms, measured),
+                                                                     images: event[:images], diff: event[:diff])
         when :generation_completed, :generation_cancelled, :tool_dispatch_started
           @view.generation_feedback_finished
         when :pending_input_merged
@@ -188,6 +189,17 @@ module Samagotchi
         count = event[:count].to_i
         @view.print_line("(#{count} message#{"s" unless count == 1} merged into the running turn)") if count.positive?
         Array(event[:steers]).each { |steer| @view.print_line(@view.format_steer_line(source: steer[:source], text: steer[:text])) }
+      end
+
+      # A tool_call_completed's activity with the command's description:
+      # its own, else its view's (a snapshot's replay carries the view, not
+      # the description). nil for an event without one.
+      def self.described(event)
+        activity = event[:activity]
+        return activity if activity.nil? || activity[:description] || !event[:view].is_a?(Hash)
+
+        description = ToolView.description_title(event[:view].transform_keys(&:to_sym))
+        description ? activity.merge(description: description) : activity
       end
 
       private

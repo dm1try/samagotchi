@@ -130,7 +130,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
 
       expect(screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") }).to eq([
         "web> do it",
-        'tool> Running command (execute command="ls"): ok (1.3s)',
+        # The described command: its description in place of the params.
+        "tool> Running command (execute: List the files): ok (1.3s)",
         "tool> Editing file (edit path=\"a.rb\"): ok (40ms) +1 −1",
         "input> also this",
         "check-in> nudged: keep going",
@@ -169,6 +170,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
 
       expect(screen.lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
                                   'tool> reading file (read path="NOPE.md"): error', "Done."])
+    end
+
+    it "shows a saved command's description in its tool row, as the live row did" do
+      feed(snapshot(messages: [{ role: "user", content: "go" },
+                               { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute",
+                                                                            arguments: { command: "ls && pwd", description: "Look around." } }] },
+                               { role: "tool_response", tool_call_id: "c1", content: "exit: 0" },
+                               { role: "model", content: "Done." }]))
+
+      expect(screen.lines).to eq(["user> go", "tool> running command (execute: Look around): ok", "Done."])
     end
 
     it "shows a last turn that ended with no answer as the notice, not an earlier step's text" do

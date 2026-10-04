@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "tool_view"
+
 module Samagotchi
   # A running count of one turn's tool calls, for the one-line tally a long,
   # tool-heavy turn shows under its activity row:
@@ -32,10 +34,13 @@ module Samagotchi
 
     # @param key [Object] one call's identity within the turn (the event's
     #   [iteration, call_index])
-    def started(key:, tool:, params: nil)
+    # @param description [String, nil] a command's description, which the
+    #   last call shows in place of its params
+    def started(key:, tool:, params: nil, description: nil)
       call = (@calls[key] ||= { tool: tool.to_s, params: "", status: "running" })
       call[:tool] = tool.to_s unless tool.to_s.empty?
       call[:params] = params.to_s unless params.nil?
+      call[:description] = description if description
       call[:status] = "running"
       call
     end
@@ -43,9 +48,10 @@ module Samagotchi
     # A completion with no start seen still counts as a call (as the web's
     # activity rows do). Only "error" is a failure: a call a guardrail or an
     # approval blocked still counts as a call, not as a failed one.
-    def completed(key:, tool:, status:, params: nil)
-      call = @calls[key] || started(key: key, tool: tool, params: params)
+    def completed(key:, tool:, status:, params: nil, description: nil)
+      call = @calls[key] || started(key: key, tool: tool, params: params, description: description)
       call[:params] = params.to_s if params
+      call[:description] = description if description
       call[:status] = status.to_s == "error" ? "error" : "ok"
       call
     end
@@ -58,7 +64,8 @@ module Samagotchi
         next unless part[:kind].to_s == "tool"
 
         key = [part[:iteration].to_i, part[:call_index].to_i]
-        started(key: key, tool: part[:tool], params: part[:params])
+        view = part[:view].is_a?(Hash) ? part[:view].transform_keys(&:to_sym) : {}
+        started(key: key, tool: part[:tool], params: part[:params], description: ToolView.description_title(view))
         completed(key: key, tool: part[:tool], status: part[:status]) unless part[:status].to_s == "running"
       end
       self
@@ -85,8 +92,12 @@ module Samagotchi
       fields = [head] + top.map { |(tool, n), _| "#{tool} ×#{n}" }
       if last
         call = calls.last
-        params = call[:params].to_s.gsub(/\s+/, " ").strip
-        fields << "last: #{[call[:tool], params].reject(&:empty?).join(" ")}"
+        shown = if call[:description]
+                  "#{call[:tool]}: #{call[:description]}"
+                else
+                  [call[:tool], call[:params].to_s.gsub(/\s+/, " ").strip].reject(&:empty?).join(" ")
+                end
+        fields << "last: #{shown}"
       end
       cut(fields.join(SEPARATOR), width)
     end

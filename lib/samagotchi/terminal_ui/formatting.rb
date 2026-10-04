@@ -11,11 +11,21 @@ module Samagotchi
     # $stdout is a colour terminal.
     module Formatting
       def format_tool_activity_line(activity, duration_ms: nil)
-        params = activity[:params].to_s.strip
-        params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
         status = activity[:status].to_s
         elapsed_suffix = duration_ms.nil? ? "" : " (#{format_elapsed_duration(duration_ms)})"
-        "#{paint("tool>", 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color(status))}#{elapsed_suffix}"
+        "#{paint("tool>", 36)} #{activity[:action]} (#{activity[:tool]}#{tool_params_suffix(activity)}): " \
+          "#{paint(status, status_color(status))}#{elapsed_suffix}"
+      end
+
+      # What a tool line says the call did: the model's description of a
+      # command (": List the specs") in place of its cut params, else the
+      # params, dim.
+      def tool_params_suffix(activity)
+        description = activity[:description].to_s.strip
+        return ": #{description}" unless description.empty?
+
+        params = activity[:params].to_s.strip
+        params.empty? ? "" : " #{paint(params, 90)}"
       end
 
       # Green ok, yellow stopped (a wait the user's Stop ended), red the rest.
@@ -129,10 +139,8 @@ module Samagotchi
 
       # A tool call from the snapshot: it has no action text, only the tool.
       def snapshot_tool_line(part)
-        params = part[:params].to_s.strip
-        params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
         status = part[:status].to_s
-        "#{paint("tool>", 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status_color(status))}" \
+        "#{paint("tool>", 36)} #{part[:tool]}#{tool_params_suffix(part)}: #{paint(status, status_color(status))}" \
           "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
       end
 
