@@ -1416,7 +1416,10 @@ RSpec.describe Samagotchi::SessionManager do
     let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
     let(:locks) { [] }
 
-    after { locks.each(&:release) }
+    after do
+      locks.each(&:release)
+      described_class.forget_spawns
+    end
 
     def input_files
       Dir.glob(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*"))
@@ -1511,6 +1514,10 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "wakes a worker for a session nobody owns" do
       allow(Process).to receive(:spawn).and_return(20_002)
+      # The first worker is gone by the write (it idle-exited): its waiter is
+      # dead. A real Process.detach of the made-up pid dies on ECHILD only
+      # once its thread gets to run, which may be after the second resume.
+      allow(Process).to receive(:detach).and_return(instance_double(Thread, alive?: false))
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> {})
 
