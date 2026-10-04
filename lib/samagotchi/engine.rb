@@ -1942,11 +1942,12 @@ module Samagotchi
       # that way: the note, and nothing made up as its answer. The note's
       # marker is for the UIs (the notice, and the empty steps after a
       # reload); it goes on the result's conversation too (the REPL keeps it).
-      # A retry's nudge at the tail goes: this note says it all.
+      # A retry's nudge at the tail goes: this note says it all. An earlier
+      # turn's note stays: it says why that turn ended.
       if result.empty_answer?
         note = TurnNote.empty(retries: result.empty_retries, steps: result.empty_steps)
-        conversation&.replace(TurnNote.without_trailing(conversation))
-        saved = TurnNote.without_trailing(conversation || turn.session.messages)
+        conversation&.replace(TurnNote.without_trailing_nudge(conversation))
+        saved = TurnNote.without_trailing_nudge(conversation || turn.session.messages)
         conversation << note if conversation
         saved + [note]
       elsif result.canceled? && conversation

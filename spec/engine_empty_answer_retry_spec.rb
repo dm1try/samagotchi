@@ -28,6 +28,14 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
     engine.run_turn(session, "hi", on_event: ->(e) { events << e })
   end
 
+  # A continue turn: no user message of its own, the tail it starts from is
+  # the previous turn's.
+  def continue_turn(*steps)
+    backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: FakeChatAdapter.new(*steps))
+    allow(engine).to receive(:backend_for).and_return(backend)
+    engine.run_turn(session, nil, continue: true, on_event: ->(e) { events << e })
+  end
+
   it "keeps the hidden nudge, saves the retried answer and completes the turn" do
     result = chat_turn(FakeChatAdapter.text(""), FakeChatAdapter.text("PONG"))
 
@@ -86,5 +94,19 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
       .to eq(["hi", nudge[:content][0, 40], "[SYSTEM: the previous turn was cancelled"])
     expect(session.last_turn).to include("outcome" => "canceled")
     expect(events.map { |e| e[:type] }).to include(:empty_answer_retry, :turn_canceled)
+  end
+
+  # The nudge this turn spent goes; an earlier turn's note stays (a continue
+  # turn has no user message of its own, and that note says why the turn
+  # before ended).
+  it "keeps an earlier turn's cancel note, drops only the retry nudge" do
+    session.messages = [{ role: "user", content: "old" }, Samagotchi::TurnNote.cancelled(:ctrl_c)]
+    result = continue_turn(FakeChatAdapter.text(""))
+
+    empty = Samagotchi::TurnNote.empty(retries: 1, steps: [{ role: "model", content: "" }] * 2)
+    expect(session.messages.last(2).map { |m| m[:content].to_s })
+      .to eq([Samagotchi::TurnNote.cancelled(:ctrl_c)[:content], empty[:content]])
+    expect(session.messages).not_to include(nudge)
+    expect(result.conversation.last).to eq(empty)
   end
 end

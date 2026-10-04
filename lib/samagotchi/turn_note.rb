@@ -188,6 +188,16 @@ module Samagotchi
       list
     end
 
+    # A copy of +messages+ without the note at its tail when that note is a
+    # retry nudge (anything else stays: an earlier turn's note is what says
+    # why that turn ended).
+    def without_trailing_nudge(messages)
+      list = Array(messages).dup
+      index = trailing_index(list)
+      list.delete_at(index) if index && retry_nudge?(list[index])
+      list
+    end
+
     # The index of the note at the tail of +list+ (behind context notes at
     # most), or nil.
     def trailing_index(list)
