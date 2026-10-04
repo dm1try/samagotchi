@@ -8,11 +8,13 @@
 :root{color-scheme:dark;--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150;--accent-tint:color-mix(in srgb,var(--accent) 7%,transparent);--narr:color-mix(in srgb,var(--accent) 38%,var(--text-muted));
   --glass-bg:color-mix(in srgb,var(--bg-panel) 70%,transparent);--glass-border:rgba(255,255,255,.08);--glass-highlight:rgba(255,255,255,.05);--glass-shadow:0 8px 30px rgba(0,0,0,.35);
   --diff-add-bg:rgba(63,185,80,.14);--diff-add-text:#aff5b4;--diff-del-bg:rgba(248,81,73,.14);--diff-del-text:#ffc1bc;
+  --code-text:#c9d1d9;--code-keyword:#ff7b72;--code-string:#a5d6ff;--code-comment:#8b949e;--code-constant:#79c0ff;--code-func:#d2a8ff;--code-type:#ffa657;
   --card-hover-border:rgba(255,255,255,.14);--on-solid:#fff;--on-warn:#fff;--text-hover:#fff;--badge-bg:rgba(255,255,255,.08);--badge-ring:rgba(255,255,255,.18);--shadow-strong:rgba(0,0,0,.5);--backdrop:rgba(0,0,0,.85);--toast-shadow:0 6px 24px rgba(0,0,0,.25)}
 /* Light palette: follows the system setting. :not([data-theme="dark"]) leaves room for a later in-page toggle (data-theme on <html>); there is none yet. Each palette sets color-scheme, so native radios, inputs and scrollbars follow it. */
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f5f6f8;--bg-panel:#ffffff;--bg-inset:#f1f3f6;--bg-raised:#e8ebf0;--bg-hover:#eceff4;--border:#dde1e7;--border-strong:#c3c9d2;--text:#1f2328;--text-bright:#0d1117;--text-2:#2f363d;--text-3:#475160;--text-muted:#57606a;--text-faint:#636c76;--accent:#0b5cd5;--accent-strong:#0550ae;--accent-bg:#e2ecfd;--accent-ring:rgba(11,92,213,.2);--primary:#1f6feb;--ok:#1a7f37;--ok-text:#116329;--ok-bg:#dafbe1;--warn:#9a6700;--warn-text:#7d4e00;--warn-bright:#875c00;--warn-bg:#fff6cc;--warn-border:#d4a72c;--danger:#cf222e;--danger-bg:#cf222e;--danger-text:#a40e26;--danger-bg-dim:#ffebe9;--think:#8250df;--think-text:#6639ba;--accent-border:#b8cef5;
   --glass-border:rgba(31,35,40,.10);--glass-highlight:rgba(255,255,255,.7);--glass-shadow:0 8px 30px rgba(31,35,40,.10);
   --diff-add-bg:rgba(26,127,55,.12);--diff-add-text:#116329;--diff-del-bg:rgba(207,34,46,.10);--diff-del-text:#82071e;
+  --code-text:#1f2328;--code-keyword:#cf222e;--code-string:#0a3069;--code-comment:#57606a;--code-constant:#0550ae;--code-func:#8250df;--code-type:#953800;
   --card-hover-border:rgba(31,35,40,.18);--on-solid:#fff;--on-warn:#1f2328;--text-hover:#0d1117;--badge-bg:rgba(31,35,40,.06);--badge-ring:rgba(31,35,40,.15);--shadow-strong:rgba(31,35,40,.18);--backdrop:rgba(13,17,23,.85);--toast-shadow:0 6px 24px rgba(31,35,40,.14)}}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),radial-gradient(900px 700px at 100% 100%,color-mix(in srgb,var(--think) 9%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
@@ -62,6 +64,18 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.output.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
 .bubble.output.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text)}
 .bubble.output.markdown pre{font-size:13px;line-height:1.45;border:1px solid var(--border)}
+/* Code highlighting (markdown_renderer.rb): syntect scope classes, hl-prefixed, coloured from the palette's --code-* tokens. More classes win over fewer (a function name is also "entity"). */
+.syntax-highlighting{color:var(--code-text)}
+.syntax-highlighting .hl-keyword,.syntax-highlighting .hl-storage{color:var(--code-keyword)}
+.syntax-highlighting .hl-string{color:var(--code-string)}
+.syntax-highlighting .hl-string .hl-embedded{color:var(--code-text)}
+.syntax-highlighting .hl-constant{color:var(--code-constant)}
+.syntax-highlighting .hl-entity.hl-name.hl-function,.syntax-highlighting .hl-support.hl-function{color:var(--code-func)}
+.syntax-highlighting .hl-entity.hl-name.hl-class,.syntax-highlighting .hl-entity.hl-name.hl-type,.syntax-highlighting .hl-entity.hl-other.hl-inherited-class,.syntax-highlighting .hl-support.hl-class,.syntax-highlighting .hl-support.hl-type,.syntax-highlighting .hl-meta.hl-diff.hl-range{color:var(--code-type)}
+.syntax-highlighting .hl-comment{color:var(--code-comment);font-style:italic}
+.syntax-highlighting .hl-markup.hl-inserted{color:var(--diff-add-text)}
+.syntax-highlighting .hl-markup.hl-deleted{color:var(--diff-del-text)}
+.syntax-highlighting .hl-invalid{color:var(--danger-text)}
 .bubble.output.markdown h1,.bubble.output.markdown h2,.bubble.output.markdown h3,.bubble.output.markdown h4,.bubble.output.markdown h5,.bubble.output.markdown h6{font-weight:600;line-height:1.3;margin:18px 0 8px;color:var(--text-bright)}
 .bubble.output.markdown h1{font-size:19px}
 .bubble.output.markdown h2{font-size:17px}

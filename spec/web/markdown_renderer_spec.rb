@@ -36,10 +36,27 @@ RSpec.describe Samagotchi::Web::MarkdownRenderer do
     expect(html).not_to include("onclick")
   end
 
-  it "applies syntax highlighting to code blocks by default" do
-    html = renderer.render("```ruby\nputs 1\n```")
+  it "highlights code blocks with CSS classes, not inline styles, so both palettes can colour them" do
+    html = renderer.render("```ruby\nputs \"hi\" # note\n```")
 
-    expect(html).to include("<pre")
-    expect(html).to include("style=")
+    expect(html).to include('<pre class="syntax-highlighting">')
+    expect(html).to match(/<span class="[^"]*\bhl-string\b/)
+    expect(html).to match(/<span class="[^"]*\bhl-comment\b/)
+    expect(html).not_to include("style=")
+  end
+
+  it "prefixes every highlighter class, so scope names like diff never hit page CSS" do
+    html = renderer.render("```diff\n-a\n+b\n```")
+    span_classes = Nokogiri::HTML5.fragment(html).css("span").flat_map { |span| span["class"].split }
+
+    expect(span_classes).to include("hl-diff", "hl-inserted", "hl-deleted")
+    expect(span_classes).to all(start_with("hl-"))
+  end
+
+  it "keeps raw HTML in the source as text, so it can carry no class or style" do
+    html = renderer.render('<span class="keyword" style="color:red">x</span>')
+
+    expect(html).to include("&lt;span")
+    expect(html).not_to include("<span")
   end
 end
