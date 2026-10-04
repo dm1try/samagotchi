@@ -105,6 +105,7 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
          { type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: :info },
          { type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1, finish_reason: "stop", thinking_chars: 40 },
          { type: :empty_answer_retry, iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" },
+         { type: :steer_cut, iteration: 2, source: "chi_send" },
          { type: :question_requested, pending_question: question },
          { type: :question_answered, id: "q1", answer: { selected: ["A"] } },
          { type: :question_cancelled, id: "q2", reason: "turn ended" })
@@ -114,6 +115,7 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
       { kind: "notice", event: { type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: :info } },
       { kind: "notice", event: { type: "empty_answer_retry", iteration: 1, attempt: 1, of: 1 } },
       { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } },
+      { kind: "notice", event: { type: "steer_cut", iteration: 2, source: "chi_send" } },
       { kind: "notice", event: { type: "question_requested", pending_question: question } },
       { kind: "notice", event: { type: "question_answered", id: "q1", answer: { selected: ["A"] } } },
       { kind: "notice", event: { type: "question_cancelled", id: "q2", reason: "turn ended" } }

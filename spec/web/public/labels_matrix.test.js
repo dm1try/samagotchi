@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
-import { clientLabel, emptyAnswerLine, emptyRetryLine, hookNoticeLabel, reminderText, retryStatusLine } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { clientLabel, emptyAnswerLine, emptyRetryLine, hookNoticeLabel, noticeLine, reminderText, retryStatusLine, steerCutLine } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { servedModelDiffers } from "../../../lib/samagotchi/web/public/format.js";
 import { costText, speedText } from "../../../lib/samagotchi/web/public/ctx.js";
 
@@ -47,6 +47,13 @@ test("hook notice labels per the shared labels matrix", () => {
 test("empty-answer retry lines per the shared labels matrix", () => {
   for (const entry of cases("empty_retry_lines")) {
     assert.equal(emptyRetryLine(entry.event), expected(entry));
+  }
+});
+
+test("steer cut lines per the shared labels matrix", () => {
+  for (const entry of cases("steer_cut_lines")) {
+    assert.equal(steerCutLine(entry.event), expected(entry));
+    assert.equal(noticeLine({ type: "steer_cut", ...entry.event }), expected(entry));
   }
 });
 

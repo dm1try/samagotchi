@@ -57,6 +57,12 @@ RSpec.describe "Shared labels matrix (TUI side)" do
     end
   end
 
+  cases(matrix, "steer_cut_lines").each do |entry|
+    it "words the steer cut #{entry["event"].inspect}" do
+      expect(fmt.format_steer_cut_line(event(entry["event"]))).to eq(expected(entry))
+    end
+  end
+
   cases(matrix, "empty_answer_lines").each do |entry|
     it "words the no-answer notice after #{entry["retries"]} retries" do
       expect(fmt.format_empty_answer_line(entry["retries"])).to eq(expected(entry))

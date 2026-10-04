@@ -381,7 +381,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       { kind: "tool", iteration: 1, call_index: 1, tool: "read", params: "path=x", status: "ok", output: "x" },
       { kind: "notice", event: { type: "question_requested", pending_question: question } },
       { kind: "notice", event: { type: "question_answered", id: "q1", answer: { selected: ["A"] } } },
-      { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } }
+      { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } },
+      { kind: "notice", event: { type: "steer_cut", iteration: 3, source: "parent_agent" } }
     ] }
     feed(snapshot(current_turn: turn))
 
@@ -392,6 +393,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     expect(cut).to be > first
     expect(plain[(first + 1)...cut].join("\n")).to include("read")
     expect(plain.join("\n")).not_to include("Which?")
+    expect(plain.index("↪ cut in for the parent agent's message")).to be > cut
   end
 
   describe "cards" do

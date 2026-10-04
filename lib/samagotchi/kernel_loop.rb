@@ -402,6 +402,9 @@ module Samagotchi
     def after_cut(turn, generation)
       cut = generation.cut
       raise Client::RequestCancelled, turn.cancel_controller.reason if turn.cancel_controller.cancelled?
+
+      # The row under the cut step, above the message it was cut for.
+      emit(turn, type: :steer_cut, iteration: turn.iteration, source: cut[:source].to_s) if cut[:steer]
       return :next if inject_pending_input!(turn) || cut[:steer]
 
       if turn.empty_retry.left?

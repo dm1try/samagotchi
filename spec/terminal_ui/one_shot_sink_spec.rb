@@ -17,6 +17,12 @@ RSpec.describe Samagotchi::TerminalUI::OneShotSink do
     expect(err.string).to eq("↻ empty answer, asking again (1/1)\n↻ cut by loop-guard, asking again (1/2)\n")
   end
 
+  it "prints a steer's cut row" do
+    sink.call({ type: :steer_cut, iteration: 1, source: "chi_send" })
+
+    expect(err.string).to eq("↪ cut in for a message sent with chi send\n")
+  end
+
   it "prints the generation retry line" do
     sink.call({ type: :generation_retrying, attempt: 1, max_retries: 3, next_delay: 0.5, error_class: "Errno::ECONNREFUSED" })
 

@@ -29,6 +29,7 @@ module Samagotchi
       def call(event)
         case event[:type]
         when :empty_answer_retry then line(format_empty_retry_line(event))
+        when :steer_cut then line(format_steer_cut_line(event))
         when :generation_retrying then line(format_generation_retry_line(event))
         when :turn_completed, :turn_canceled then @turn_over = true
         when :hook_notice

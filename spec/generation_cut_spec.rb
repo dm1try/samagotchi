@@ -88,6 +88,9 @@ RSpec.describe "A cut generation" do
       expect(of_type(:empty_answer_retry)).to be_empty
       expect(of_type(:generation_completed).first).to include(iteration: 1, stopped_by: "steer")
       expect(of_type(:pending_input_merged)).to contain_exactly(include(iteration: 1, count: 1))
+      types = events.map { |e| e[:type] }
+      expect(of_type(:steer_cut)).to eq([{ type: :steer_cut, iteration: 1, source: "" }])
+      expect(types.index(:steer_cut)).to be < types.index(:pending_input_merged)
       expect(result.conversation.map { |m| m[:kind] }).to include("input")
       expect(controller).not_to be_cancelled
     end

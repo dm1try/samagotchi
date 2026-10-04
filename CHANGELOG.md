@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `steer.cut_after` (default 20 s, `0` = never): a message for a running turn from you, `chi send` or a parent
+  agent cuts a generation that has run that long and streamed only thinking. The model starts the step again with the
+  message, and a `↪ cut in for your message` row marks it. Plugins' steers never cut. Only the cut thinking is
+  lost (llama.cpp re-reads the few tokens after its cached prompt).
+
 ### Changed
 
 - The web shows an `execute` / `task_create` call's full command: an expanded tool row has it as a block above the
@@ -18,6 +25,8 @@ and commands may change between minor versions. How releases are made:
   follow-up, `chi answer --option Continue --text`, a plugin's `ctx.steer`) reaches the model with a one-line
   header naming its sender and asking it to follow the message, or carry on if it asks for nothing, so the model
   can tell who is steering it. Sessions keep the raw text.
+- The `generation_stopped` log line names who cut the generation as `by=` (was `bundle=`), as a message can cut
+  it now too.
 
 ### Fixed
 

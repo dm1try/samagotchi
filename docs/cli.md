@@ -275,7 +275,11 @@ to it (`session.shared`, default `true`). A worker's session can have any number
 of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 `--attach`). They all see the same turns as they happen, and any of them can send
 a prompt, also while a turn runs (it merges into that turn as steering: the model
-is told it is a steer and who sent it). The
+is told it is a steer and who sent it). Steering waits for the model's next step,
+unless the model's generation has run for `steer.cut_after` seconds (default 20) and
+streamed only thinking so far: then that generation is cut and the step starts again with your message, marked
+`↪ cut in for your message` (see
+[configuration.md](configuration.md#llama-network-retry-behavior)). The
 first answer to an `ask_user_question` wins; the other UIs close their widget.
 An empty answer dismisses the question in every UI. The model is then told
 not to go ahead with what it asked about, or change anything else, and to wait.

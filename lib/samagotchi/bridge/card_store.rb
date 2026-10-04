@@ -16,7 +16,7 @@ module Samagotchi
     # iteration started before it (a before_tool_call hook's notice comes
     # before its call's row, so the web puts it above row calls + 1). The
     # loop's "asking again" row (:empty_answer_retry, after an empty or cut
-    # answer) is kept the same way, and so is a question the turn asked
+    # answer) and a steer's cut row (:steer_cut) are kept the same way, and so is a question the turn asked
     # (:question_requested), with how it was answered or cancelled, so a
     # reload draws the resolved card where it was.
     #
@@ -46,11 +46,11 @@ module Samagotchi
     # onto a new worker doesn't print those again).
     class CardStore
       CAPACITY = 20
-      NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry].freeze
+      NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry steer_cut].freeze
       FILE = "cards.json"
       # The events after which the file is written again: the ones that
       # change an entry or the turn count.
-      SAVED_ON = (%i[card hook_notice empty_answer_retry question_requested question_answered question_cancelled
+      SAVED_ON = (%i[card hook_notice empty_answer_retry steer_cut question_requested question_answered question_cancelled
                      question_relay turn_failed] + Events::TURN_KEPT).freeze
 
       # What a session's saved file lists, as a store started from it lists
@@ -167,6 +167,7 @@ module Samagotchi
         when :guardrail_warning then push({ type: :guardrail_warning, message: event[:message], label: event[:label] }
                                             .compact.merge(in_turn: false, turns: @turns_done))
         when :empty_answer_retry then add_turn_row(event.slice(:type, :attempt, :of, :stopped_by)) if @running
+        when :steer_cut then add_turn_row(event.slice(:type, :source)) if @running
         when :question_requested
           add_turn_row({ type: :question, pending_question: Marshal.load(Marshal.dump(event[:pending_question])) }) if @running
         when :question_answered then resolve_question(event[:id], answer: event[:answer])

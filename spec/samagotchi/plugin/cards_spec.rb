@@ -259,6 +259,19 @@ RSpec.describe "Cards" do
       ])
     end
 
+    it "keeps a steer's cut row in its step, and evicts it as a notice, not a card" do
+      store = described_class.new(capacity: 2)
+      store.call(card("a"))
+      store.call({ type: :turn_started })
+      store.call({ type: :generation_started, iteration: 1 })
+      store.call({ type: :steer_cut, iteration: 1, source: "chi_send" })
+      expect(store.list.last).to eq({ type: :steer_cut, source: "chi_send", in_turn: true, iteration: 1, calls: 0,
+                                      turns_since: 0, current: true })
+      store.call({ type: :hook_notice, hook: "h", text: "n1", level: :info })
+      store.call({ type: :hook_notice, hook: "h", text: "n2", level: :info })
+      expect(store.list.map { |e| e[:id] || e[:text] || e[:type] }).to eq(%w[a n1 n2])
+    end
+
     it "keeps a turn's questions with how each was answered or cancelled, in their step" do
       store = described_class.new
       q1 = { id: "q1", question: "Which?", options: %w[A B], status: "pending" }

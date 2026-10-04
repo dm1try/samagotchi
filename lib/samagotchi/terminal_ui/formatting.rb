@@ -45,6 +45,15 @@ module Samagotchi
         paint("↻ #{what}, asking again (#{event[:attempt]}/#{event[:of]})", 90)
       end
 
+      # "↪ cut in for your message": a message for the running turn cut a
+      # generation that was only thinking (Engine#cut_for_steer); an empty
+      # or unknown source is the user's.
+      STEER_CUT_FOR = { "chi_send" => "a message sent with chi send", "parent_agent" => "the parent agent's message" }.freeze
+
+      def format_steer_cut_line(event)
+        paint("↪ cut in for #{STEER_CUT_FOR.fetch(event[:source].to_s, "your message")}", 90)
+      end
+
       # "no answer: the model returned nothing (after 1 retry)", dim like the
       # retry row: a turn that ended with no answer (TurnNote.empty_answer_line).
       def format_empty_answer_line(retries)

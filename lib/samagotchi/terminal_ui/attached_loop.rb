@@ -1189,7 +1189,7 @@ module Samagotchi
           # hook's notice, a retry's line), as they were drawn live.
           # Questions are left out: the pending one is asked after the
           # replay, answered ones showed no line.
-          when :turn_started, :pending_input_merged, :hook_notice, :empty_answer_retry then @renderer.call(event)
+          when :turn_started, :pending_input_merged, :hook_notice, :empty_answer_retry, :steer_cut then @renderer.call(event)
           end
         end
         @view.resume(tail: tail, lane: lane, tool: running_tool, parts: turn[:parts])

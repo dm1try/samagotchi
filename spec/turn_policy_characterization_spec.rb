@@ -214,6 +214,7 @@ RSpec.describe "Turn policy characterization" do
     when :generation_cancelled then "cancelled(#{event[:reason]})"
     when :context_status then "ctx(#{event[:bucket]})"
     when :empty_answer_retry then "retry #{event[:attempt]}/#{event[:of]}#{" cut" if event[:stopped_by]}"
+    when :steer_cut then "steer_cut(#{event[:source].inspect})"
     when :pending_input_merged
       fields = ["count=#{event[:count]}", "answer=#{event[:answer].inspect}"]
       fields << "steers=#{event[:steers].size}" if event[:steers]
@@ -356,12 +357,12 @@ RSpec.describe "Turn policy characterization" do
     # A steer's cut (Engine#cut_for_steer): the message goes in, or with
     # nothing queued the step is asked again; no nudge, no attempt spent.
     { name: "steer cut, line queued", steps: [[:steer_cut], [:text, "PONG"]], queue: line_at_first,
-      expected: { events: ["gen", "done(stopped)", "merged(count=1 answer=nil)", "gen", "done"],
+      expected: { events: ["gen", "done(stopped)", "steer_cut(\"\")", "merged(count=1 answer=nil)", "gen", "done"],
                   conversation: ["user:hi", "user:input", "model:PONG"], result: res.call("PONG"), temps: [nil, nil],
                   activity: [] } },
     { name: "steer cut, nothing queued", env: { "SAMAGOTCHI_RETRY_EMPTY_ANSWER" => "0" },
       steps: [[:steer_cut], [:text, "PONG"]],
-      expected: { events: ["gen", "done(stopped)", "gen", "done"], conversation: ["user:hi", "model:PONG"],
+      expected: { events: ["gen", "done(stopped)", "steer_cut(\"\")", "gen", "done"], conversation: ["user:hi", "model:PONG"],
                   result: res.call("PONG"), temps: [nil, nil], activity: [] } },
     { name: "steer cut, then Stop", steps: [[:steer_cut], [:text, "PONG"]], stop_after_cut: true, queue: line_at_first,
       expected: { events: ["gen", "done(stopped)", "cancelled(user)"], conversation: ["user:hi"],

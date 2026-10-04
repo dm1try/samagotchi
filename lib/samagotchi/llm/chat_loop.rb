@@ -393,6 +393,9 @@ module Samagotchi
         # result.
         def after_cut(iteration, response)
           return canceled(iteration, @cancel_controller.reason) if @cancel_controller.cancelled?
+
+          # The row under the cut step, above the message it was cut for.
+          emit(type: :steer_cut, iteration: iteration, source: response.cut[:source].to_s) if response.cut[:steer]
           return :retry if inject_pending_input(iteration) || response.cut[:steer]
 
           if @empty_retry.left?

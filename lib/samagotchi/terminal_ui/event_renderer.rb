@@ -79,6 +79,9 @@ module Samagotchi
         when :empty_answer_retry
           @view.finish_thinking_spinner
           @view.print_line(@view.format_empty_retry_line(event))
+        when :steer_cut
+          @view.finish_thinking_spinner
+          @view.print_line(@view.format_steer_cut_line(event))
         when :turn_completed
           render_turn_summary(event[:turn_summary]) if event[:turn_summary]
         when :turn_canceled

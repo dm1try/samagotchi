@@ -12,6 +12,7 @@ module Samagotchi
       FIELDS = {
         hook_notice: %i[hook text level],
         empty_answer_retry: %i[iteration attempt of stopped_by],
+        steer_cut: %i[iteration source],
         question_requested: %i[pending_question],
         question_answered: %i[id answer],
         question_cancelled: %i[id reason]

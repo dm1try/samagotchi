@@ -49,6 +49,17 @@
       { "event": { "attempt": 1, "of": 1, "stopped_by": "loop-guard" }, "expected": "↻ cut by loop-guard, asking again (1/1)" }
     ]
   },
+  "steer_cut_lines": {
+    "note": "The row a step gets when a message for the running turn cut a generation that was only thinking (Formatting#format_steer_cut_line; turn_events.js steerCutLine). An empty or unknown source is the user.",
+    "cases": [
+      { "event": { "source": "" }, "expected": "↪ cut in for your message" },
+      { "event": {}, "expected": "↪ cut in for your message" },
+      { "event": { "source": "user" }, "expected": "↪ cut in for your message" },
+      { "event": { "source": "chi_send" }, "expected": "↪ cut in for a message sent with chi send" },
+      { "event": { "source": "parent_agent" }, "expected": "↪ cut in for the parent agent's message" },
+      { "event": { "source": "something-else" }, "expected": "↪ cut in for your message" }
+    ]
+  },
   "empty_answer_lines": {
     "note": "The one muted line every UI shows for a turn that ended with no answer (TurnNote.empty_answer_line, Formatting#format_empty_answer_line; turn_events.js emptyAnswerLine).",
     "cases": [
