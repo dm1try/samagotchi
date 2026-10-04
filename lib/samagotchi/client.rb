@@ -148,6 +148,9 @@ module Samagotchi
         value.empty? ? nil : value
       end
 
+      # llama.cpp's own API: slots (`id_slot`), `cache_prompt`, /props.
+      def native? = @name == :llama_cpp
+
       private
 
       def openai_compatible?
@@ -458,9 +461,16 @@ module Samagotchi
 
     def completion_payload(prompt, stop:, n_predict:, model:, sampling: {})
       payload = { prompt: prompt, stop: stop, stream: true }
+      # A non-positive cap is dropped, which leaves the length to the server
+      # (unbounded): 0 here never means "only process the prompt". The
+      # turn-end warm-up (#warm_up) sends its own payload for that reason.
       payload[@transport.token_limit_key] = n_predict if n_predict && n_predict.to_i.positive?
       model_name = @transport.model_for_payload(model)
       payload[:model] = model_name if model_name
+      if @transport.native?
+        # llama.cpp's default today, sent anyway: chi's next turn relies on it.
+        payload[:cache_prompt] = true
+      end
       sendable_sampling(sampling).merge(payload)
     end
 

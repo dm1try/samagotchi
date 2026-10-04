@@ -165,6 +165,24 @@ RSpec.describe Samagotchi::Client do
       expect(body).not_to have_key("min_p")
     end
 
+    it "asks llama.cpp to keep the prompt cache, explicitly" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response", code: "200")
+      request = nil
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) do |built_request, &block|
+        request = built_request
+        block.call(response)
+      end
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      client.complete("prompt", stop: ["done"], sampling: { cache_prompt: false })
+
+      expect(JSON.parse(request.body)).to include("cache_prompt" => true)
+    end
+
     it "includes model when provided" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
@@ -453,6 +471,24 @@ RSpec.describe Samagotchi::Client do
         expect(request.body).to include('"stop":["done"]')
         expect(request.body).to include('"max_tokens":128')
         expect(request.body).not_to include('"n_predict"')
+      end
+
+      it "sends no llama.cpp-only fields (cache_prompt)" do
+        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
+        http = instance_double(Net::HTTP)
+        response = double("response", code: "200")
+        request = nil
+
+        allow(Net::HTTP).to receive(:start).and_yield(http)
+        allow(http).to receive(:request) do |built_request, &block|
+          request = built_request
+          block.call(response)
+        end
+        allow(response).to receive(:read_body).and_yield("data: [DONE]\n")
+
+        client.complete("prompt", stop: ["done"])
+
+        expect(JSON.parse(request.body)).not_to have_key("cache_prompt")
       end
 
       it "omits max_tokens when n_predict is not provided" do

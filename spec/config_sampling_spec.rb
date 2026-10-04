@@ -58,6 +58,15 @@ RSpec.describe "sampling config" do
     end
   end
 
+  it "drops id_slot: a pin on every request skips the server's prompt cache after a pause" do
+    with_config("hosts" => { "work" => { "host" => "h", "sampling" => { "temperature" => 0.6, "id_slot" => 0 } } }) do |path|
+      hosts = nil
+      expect { hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path) }
+        .to output(/sampling.id_slot is set by chi; ignored/).to_stderr
+      expect(hosts["work"][:sampling]).to eq(temperature: 0.6)
+    end
+  end
+
   it "warns about a sampling that is not a map and skips it" do
     with_config("models" => { "m" => { "sampling" => "hot" } }) do |path|
       models = nil

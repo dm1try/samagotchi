@@ -661,9 +661,11 @@ module Samagotchi
     end
 
     # Request keys chi sets itself; a `sampling:` map can't override them.
-    # (Length caps would need their own semantics.)
+    # (Length caps would need their own semantics.) `id_slot` too: pinning
+    # every request to one llama.cpp slot makes a request after an idle
+    # gap skip the server's prompt cache (measured: 0.5 s → 12 s).
     SAMPLING_RESERVED_KEYS = %w[model messages prompt stream stream_options tools tool_choice stop n_predict
-                                max_tokens n parallel_tool_calls response_format cache_prompt].freeze
+                                max_tokens n parallel_tool_calls response_format cache_prompt id_slot].freeze
 
     # A `sampling:` setting (hosts entry or models: entry): request parameters
     # passed through to the provider as written (keys symbolized, nested maps
