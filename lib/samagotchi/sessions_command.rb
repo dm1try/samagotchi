@@ -112,6 +112,28 @@ module Samagotchi
       options.to_h { |key, value| [key, INTEGER_OPTIONS.include?(key) ? value.to_i : value] }
     end
 
+    # The flags a list row carries: a chi scratch session, a test run, an
+    # archived one, and the turn's stopper (see #stopped_flag).
+    def session_flag(scratch:, test_run:, archived:, stopped_by: nil)
+      flag = if scratch
+               " [scratch]"
+             else
+               (test_run ? " [test]" : "")
+             end
+      flag += " [archived]" if archived
+      flag + stopped_flag(stopped_by)
+    end
+
+    # The marker for a turn a hook stopped: "[looped]" for loop-guard (the
+    # bundle's thinking watch, and the word `chi sessions stats` uses for its
+    # cuts), "[stopped by X]" for any other hook; "" otherwise. A cut with no
+    # retry left records the same stopped_by.
+    def stopped_flag(by)
+      return "" if by.to_s.empty?
+
+      by.to_s == "loop-guard" ? " [looped]" : " [stopped by #{by}]"
+    end
+
     def list
       format, scope, cwd = @opts.values_at(:format, :scope, :cwd)
       unless format.nil? || %w[text json tsv].include?(format)
@@ -156,7 +178,7 @@ module Samagotchi
         # id, for chi answer --question; relayed_to: the parent session (short
         # id) whose card it also waits in (the approval relay), or nil
         keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived scratch ctx_pct waiting
-                  waiting_id relayed_to]
+                  waiting_id relayed_to stopped_by]
         @stdout.puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| @stdout.puts "#{summary[:id]}\t#{summary[:desc]}" }
@@ -176,12 +198,8 @@ module Samagotchi
           end
           # A delegated session points at its parent.
           child = summary[:parent_short_id] ? "  ↳ #{summary[:parent_short_id]}" : ""
-          flag = if summary[:scratch]
-                   " [scratch]"
-                 else
-                   (summary[:test_run] ? " [test]" : "")
-                 end
-          flag += " [archived]" if summary[:archived]
+          flag = session_flag(scratch: summary[:scratch], test_run: summary[:test_run], archived: summary[:archived],
+                              stopped_by: summary[:stopped_by])
           ctx = Samagotchi::SessionMetrics.context_label(summary[:ctx_pct])
           @stdout.puts "#{summary[:id]}  #{state.ljust(8)}  #{ctx.ljust(8)}  #{summary[:updated_at]}  #{desc}#{flag}#{child}"
         end
@@ -209,12 +227,7 @@ module Samagotchi
       end
       # A delegated session points at its parent: ↳ <parent's short id>.
       row = lambda do |s|
-        flag = if s.scratch
-                 " [scratch]"
-               else
-                 (s.test_run ? " [test]" : "")
-               end
-        flag += " [archived]" if s.archived
+        flag = session_flag(scratch: s.scratch, test_run: s.test_run, archived: s.archived, stopped_by: s.stopped_by)
         child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
         # How full the context was after the last turn: "ctx 12%", blank when unknown.
         ctx = Samagotchi::SessionMetrics.context_label(

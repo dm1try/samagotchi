@@ -62,6 +62,15 @@ module Samagotchi
     # "ended_at" => iso8601, "seconds" => Float, "origin" =>
     # "client"|"reminder"|"delegate"}; nil before the first turn.
     attr_accessor :last_turn
+
+    # The hook that stopped the last turn (stop_turn, or a cut with no retry
+    # left), e.g. "loop-guard"; nil when it ended otherwise. Both strings
+    # and symbols are read (the file's keys are strings).
+    def stopped_by
+      return nil unless @last_turn.is_a?(Hash)
+
+      (@last_turn["stopped_by"] || @last_turn[:stopped_by])&.to_s
+    end
     # Archived (ArchiveStore): hidden from the lists. Set by .list (with
     # include_archived); not saved in session.json.
     attr_accessor :archived

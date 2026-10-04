@@ -200,6 +200,25 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.summary_from_file(File.join(tmpdir, "#{plain.id}.json"))).to have_attributes(last_turn: nil, pending_question: nil)
     end
 
+    it "reads the hook that stopped the last turn (#stopped_by), and round-trips it" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      expect(session.stopped_by).to be_nil
+
+      session.last_turn = { "outcome" => "completed" }
+      expect(session.stopped_by).to be_nil
+
+      session.last_turn = { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard" }
+      expect(session.stopped_by).to eq("loop-guard")
+
+      session.last_turn = { outcome: "canceled", stopped_by: :"loop-guard" }
+      expect(session.stopped_by).to eq("loop-guard")
+
+      session.save(state_dir: tmpdir)
+
+      expect(described_class.load(session.id, state_dir: tmpdir).stopped_by).to eq("loop-guard")
+      expect(described_class.summary_from_file(File.join(tmpdir, "#{session.id}.json")).stopped_by).to eq("loop-guard")
+    end
+
     it "reads a session file written before the memory-name fields as empty lists" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)

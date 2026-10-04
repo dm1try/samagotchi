@@ -34,11 +34,12 @@ RSpec.describe "chi sessions list" do
     super("sessions", "list", *args, env: env, chdir: dir)
   end
 
-  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil, scratch: false)
+  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil, scratch: false, last_turn: nil)
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd, parent_id: parent_id).tap do |s|
       s.last_prompt = prompt
       s.test_run = test_run
       s.scratch = scratch
+      s.last_turn = last_turn
       s.save(state_dir: state_dir)
       locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: state_dir), kind: owner) if owner
       sleep(0.01) # distinct updated_at
@@ -67,6 +68,30 @@ RSpec.describe "chi sessions list" do
     expect(oldest_first).to eq([first.id, second.id])
     out, = run_chi("--cwd", "/work", "--format", "tsv", "--sort", "created_at", "--order", "asc")
     expect(out.lines.map { |line| line.split("\t").first }).to eq([first.id, second.id])
+  end
+
+  it "marks a session whose last turn loop-guard stopped [looped], and no other" do
+    looped = make("kept repeating itself", last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard" })
+    other = make("stopped from the outside", last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "check-in" })
+    plain = make("finished", last_turn: { "outcome" => "completed" })
+
+    out, err, status = run_chi
+
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to match(/^#{looped.id} .*  kept repeating itself \[looped\]\n/)
+    expect(out).to match(/^#{other.id} .*  stopped from the outside \[stopped by check-in\]\n/)
+    expect(out).to match(/^#{plain.id} .*  finished\n/)
+  end
+
+  it "marks it in the --live, --cwd and --format text listings too" do
+    looped = make("kept repeating itself", live: true, owner: "worker",
+                                           last_turn: { "outcome" => "canceled", "cancel_reason" => "hook", "stopped_by" => "loop-guard" })
+
+    [%w[--cwd /work], %w[--format text], %w[--live]].each do |args|
+      out, err, status = run_chi(*args)
+      expect(status.exitstatus).to eq(0), err
+      expect(out).to match(/^#{looped.id} .*  (app · )?kept repeating itself \[looped\]\n/), "#{args.join(" ")}: #{out}"
+    end
   end
 
   it "marks a chi scratch session [scratch]" do
@@ -275,7 +300,7 @@ RSpec.describe "chi sessions list" do
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
                                      "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
-                                     "waiting_id" => nil, "relayed_to" => nil }])
+                                     "waiting_id" => nil, "relayed_to" => nil, "stopped_by" => nil }])
   end
 
   it "--format json: each session's recap, its first sentence; the tsv lines don't change" do
