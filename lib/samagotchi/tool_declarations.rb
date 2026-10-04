@@ -28,7 +28,7 @@ module Samagotchi
             },
             description: {
               type: "string",
-              description: "Optional: what this command does, in a few words (what, not why)"
+              description: "What this command does, in a few words (what, not why). Shown to the user as the step's title, so include it on every call."
             },
             cwd: {
               type: "string",

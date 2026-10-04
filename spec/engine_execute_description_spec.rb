@@ -21,9 +21,9 @@ RSpec.describe Samagotchi::Engine, "execute.description" do
   end
 
   it "declares execute's description by default and not with the setting off" do
-    expect(prompt({})).to include("what this command does")
+    expect(prompt({})).to include("What this command does")
     off = prompt("SAMAGOTCHI_EXECUTE_DESCRIPTION" => "false")
-    expect(off).not_to include("what this command does")
+    expect(off).not_to include("What this command does")
     expect(off).to include("declaration:execute{")
   end
 end

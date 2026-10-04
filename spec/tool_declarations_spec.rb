@@ -28,10 +28,10 @@ RSpec.describe Samagotchi::ToolDeclarations do
     execute = schemas.find { |s| s[:name] == "execute" }
     expect(execute[:parameters][:properties].keys).to eq(%i[command cwd])
     expect(schemas - [execute]).to eq(described_class::TOOL_SCHEMAS.reject { |s| s[:name] == "execute" })
-    expect(described_class.gemma_declarations(schemas)).not_to include("what this command does")
-    expect(described_class.qwen_declarations(schemas)).not_to include("what this command does")
-    expect(described_class.chat_schemas(schemas).to_s).not_to include("what this command does")
-    expect(described_class.gemma_declarations).to include("what this command does")
+    expect(described_class.gemma_declarations(schemas)).not_to include("What this command does")
+    expect(described_class.qwen_declarations(schemas)).not_to include("What this command does")
+    expect(described_class.chat_schemas(schemas).to_s).not_to include("What this command does")
+    expect(described_class.gemma_declarations).to include("What this command does")
     expect(described_class::TOOL_SCHEMAS.find { |s| s[:name] == "execute" }.dig(:parameters, :properties))
       .to include(:description)
   end

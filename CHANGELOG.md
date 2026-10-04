@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `execute`'s `description` parameter now says it is shown to the user as the step's title and asks for it on
+  every call (still optional), so models, Sonnet in particular, now label execute steps.
 - loop-guard (bundle 0.3.4) words a loop its short run or its window found by the different sentences it held,
   `12 different sentences in 48`, instead of `12 sentences ×4`, which read as a cycle of 12.
 
