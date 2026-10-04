@@ -18,7 +18,7 @@ test("commandBlockHtml: the whole description first when the row's title cut it,
   assert.equal(commandBlockHtml({ command: "ls", description: "List files" }, "List files"),
     `<div class="activity-command code-wrap"><pre><code>ls</code></pre>${COPY}</div>`);
   assert.match(commandBlockHtml({ ...view, steps: [{ text: "ls" }] }, "List…"),
-    /^<div class="activity-command code-wrap has-steps"><div class="activity-command-desc">List &lt;the&gt;[^<]*<\/div><div class="activity-command-head">/);
+    /^<div class="activity-command code-wrap has-steps"><div class="activity-command-desc">List &lt;the&gt;[^<]*<\/div><div class="activity-command-head bare">/);
 });
 
 test("commandBlockHtml: the call's cwd as given, above the command", () => {
@@ -41,6 +41,12 @@ test("commandBlockHtml: a view with steps shows them, the cd as an in tag, a raw
     `<ol class="activity-steps"><li class="activity-step"><span class="step-op"></span><span class="step-body"><code>rg x</code>` +
     `<span class="step-chip" title="output limited">head 5</span></span></li></ol>` +
     `<pre><code>cd /p &amp;&amp; rg x | head -5</code></pre>${COPY}</div>`);
+});
+
+test("commandBlockHtml: steps with no in tag get the raw toggle alone, no empty head line", () => {
+  const html = commandBlockHtml({ command: "ls", steps: [{ text: "ls" }] });
+  assert.match(html, /^<div class="activity-command code-wrap has-steps"><div class="activity-command-head bare"><label class="activity-command-raw"[^]*?raw<\/label><\/div><ol /);
+  assert.doesNotMatch(html, /activity-command-cwd/);
 });
 
 test("commandBlockHtml: the fallback (no steps, or none parsed) is the raw block alone, a cd not shown apart", () => {
