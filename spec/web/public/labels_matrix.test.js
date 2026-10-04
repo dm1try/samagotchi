@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import { cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
 import { clientLabel, emptyAnswerLine, emptyRetryLine, hookNoticeLabel, noticeLine, reminderText, retryStatusLine, steerCutLine } from "../../../lib/samagotchi/web/public/turn_events.js";
-import { servedModelDiffers } from "../../../lib/samagotchi/web/public/format.js";
+import { servedModelDiffers, steerRowHtml, steerSender } from "../../../lib/samagotchi/web/public/format.js";
+import { flashOf } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { costText, speedText } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Shared contract: spec/shared/labels_matrix.json, the words the web and the
@@ -54,6 +55,15 @@ test("steer cut lines per the shared labels matrix", () => {
   for (const entry of cases("steer_cut_lines")) {
     assert.equal(steerCutLine(entry.event), expected(entry));
     assert.equal(noticeLine({ type: "steer_cut", ...entry.event }), expected(entry));
+  }
+});
+
+test("steer senders per the shared labels matrix (row, flash, reload all agree)", () => {
+  for (const entry of cases("steer_senders")) {
+    const who = expected(entry) ? `${expected(entry)} nudged the model` : "nudged the model";
+    assert.equal(steerSender(entry.source), expected(entry));
+    assert.equal(flashOf("steer", { source: entry.source, text: "go" }).text, who);
+    assert.match(steerRowHtml({ source: entry.source, text: "go" }), new RegExp(`<summary>${who}</summary>`));
   }
 });
 

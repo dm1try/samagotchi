@@ -30,12 +30,22 @@ module Samagotchi
 
       STEER_PREVIEW = 80
 
+      # Who a steer names as its sender: a plugin's own label, chi's sender
+      # ids in words (the web's format.js steerSender agrees;
+      # spec/shared/labels_matrix.json). "": no one named.
+      STEER_SENDERS = { "parent_agent" => "parent agent", "chi_send" => "chi send" }.freeze
+
+      def steer_sender(source)
+        STEER_SENDERS.fetch(source.to_s, source.to_s)
+      end
+
       # "check-in> nudged: <text>", dim, one line cut: a plugin's steer
       # (Steer) in the running turn or the join's last exchange.
       def format_steer_line(source:, text:)
         first = text.to_s.strip.split("\n").first.to_s
         first = "#{first[0, STEER_PREVIEW - 1]}…" if first.length > STEER_PREVIEW || text.to_s.strip.include?("\n")
-        paint("#{source.to_s.empty? ? "plugin" : source}> nudged: #{first}", 90)
+        sender = steer_sender(source)
+        paint("#{sender.empty? ? "plugin" : sender}> nudged: #{first}", 90)
       end
 
       # "↻ empty answer, asking again (1/1)": the loop retries an empty answer;

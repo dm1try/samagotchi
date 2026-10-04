@@ -63,6 +63,14 @@ RSpec.describe "Shared labels matrix (TUI side)" do
     end
   end
 
+  cases(matrix, "steer_senders").each do |entry|
+    it "names the steer sender #{entry["source"].inspect}" do
+      expect(fmt.steer_sender(entry["source"])).to eq(expected(entry))
+      who = expected(entry).empty? ? "plugin" : expected(entry)
+      expect(fmt.format_steer_line(source: entry["source"], text: "go")).to eq("#{who}> nudged: go")
+    end
+  end
+
   cases(matrix, "empty_answer_lines").each do |entry|
     it "words the no-answer notice after #{entry["retries"]} retries" do
       expect(fmt.format_empty_answer_line(entry["retries"])).to eq(expected(entry))

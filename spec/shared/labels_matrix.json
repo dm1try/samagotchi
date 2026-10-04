@@ -60,6 +60,15 @@
       { "event": { "source": "something-else" }, "expected": "↪ cut in for your message" }
     ]
   },
+  "steer_senders": {
+    "note": "Who a steer row names as its sender (Formatting#steer_sender, the TUI's \"<who>> nudged: …\"; format.js steerSender, the web's \"<who> nudged the model\"): a plugin's label as is, chi's sender ids in words. No source: the TUI says \"plugin\", the web names no one.",
+    "cases": [
+      { "source": "check-in", "expected": "check-in" },
+      { "source": "parent_agent", "expected": "parent agent" },
+      { "source": "chi_send", "expected": "chi send" },
+      { "source": "", "expected": "" }
+    ]
+  },
   "empty_answer_lines": {
     "note": "The one muted line every UI shows for a turn that ended with no answer (TurnNote.empty_answer_line, Formatting#format_empty_answer_line; turn_events.js emptyAnswerLine).",
     "cases": [
