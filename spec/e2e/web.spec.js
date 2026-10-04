@@ -9,6 +9,9 @@ import { APPROVAL_COMMAND, EDIT_ASK_FILE } from "./support/env.js";
 // containers a card sits directly in.
 const stage = () => test.info().project.use.view !== "turn";
 const H = () => (stage() ? ":is(#history, #turnStage)" : "#history");
+// The live timing line: "turn N running · …" in the history, "turn N · …" in
+// the stage's status row (which already says the turn runs).
+const LIVE_LINE = (n) => new RegExp(`^turn ${n}${stage() ? "" : " running"} · `);
 const HC = () => (stage() ? ":is(#history, #turnStage .ts-extras, #turnStage .ts-tail)" : "#history");
 
 // Types into the composer and sends (Start on the start page, Send in a session).
@@ -933,7 +936,7 @@ test("a queued turn keeps its own live timing line when the turn before it re-re
     await route.fulfill({ response });
   });
   await send(page, "Say first");
-  await expect(page.locator(`${H()} .turn-timing.live`)).toHaveText(/^turn 1 running · /);
+  await expect(page.locator(`${H()} .turn-timing.live`)).toHaveText(LIVE_LINE(1));
   // B: an image dropped into the composer, sent while A runs.
   await page.evaluate((b64) => {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -952,11 +955,11 @@ test("a queued turn keeps its own live timing line when the turn before it re-re
   // A's re-read landed: its answer is the rendered markdown.
   await expect(page.locator(`${H()} .bubble.output strong`)).toHaveText("bold");
   await expect(live).toHaveCount(1);
-  await expect(live).toHaveText(/^turn 2 running · /);
+  await expect(live).toHaveText(LIVE_LINE(2));
   await expect(lines.first()).toHaveText(/^turn 1 · /);
   const before = await live.textContent();
   await expect.poll(() => live.textContent(), { timeout: 3000 }).not.toBe(before);
-  await expect(live).toHaveText(/^turn 2 running · /);
+  await expect(live).toHaveText(LIVE_LINE(2));
   // B ends: its own line, final.
   await expect(page.locator(`${H()} .bubble.output`).last()).toHaveText("Second answer, from the queued turn.", { timeout: 15_000 });
   await turnEnded(page, 2);
