@@ -8,10 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-04
+
 ### Added
 
-- The web has a light theme: with the system set to light it follows (`prefers-color-scheme`); dark stays as it
-  was. There is no in-page switch yet.
+- The web has a light theme: with the system set to light it follows (`prefers-color-scheme`). There is no
+  in-page switch yet. Native radios, inputs and scrollbars now follow the theme, so they are dark in dark mode.
 - On a local llama.cpp host, the next turn starts faster: when a turn ends, chi sends the next turn's prompt (up to
   your next message) in the background, so the server has it ready while you read. `cache.warmup: off` turns it
   off; remote and paid hosts never get it.
@@ -22,6 +24,14 @@ and commands may change between minor versions. How releases are made:
   every call (still optional), so models, Sonnet in particular, now label execute steps.
 - loop-guard (bundle 0.3.4) words a loop its short run or its window found by the different sentences it held,
   `12 different sentences in 48`, instead of `12 sentences ×4`, which read as a cycle of 12.
+- `sampling:` can't set llama.cpp's `id_slot` (pinning a session to a slot made the next turn re-read the whole
+  prompt).
+
+### Fixed
+
+- `thinking_tails.jsonl` names the plugin that stopped a turn instead of "hook".
+
+Update with `chi update` (loop-guard 0.3.4).
 
 ## [0.25.0] - 2026-10-04
 
@@ -1409,7 +1419,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/dm1try/samagotchi/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/dm1try/samagotchi/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/dm1try/samagotchi/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/dm1try/samagotchi/compare/v0.22.0...v0.23.0
