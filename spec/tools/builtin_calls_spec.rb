@@ -23,7 +23,9 @@ RSpec.describe Samagotchi::Tools::BuiltinCalls do
 
   it "puts the main argument in content and the rest in their own fields, nil when absent" do
     expect(described_class.build("execute", { "command" => " ls ", "cwd" => "web" }))
-      .to eq(name: "execute", content: "ls", path: nil, scope: nil, cwd: "web")
+      .to eq(name: "execute", content: "ls", path: nil, scope: nil, description: nil, cwd: "web")
+    expect(described_class.build("execute", { "command" => "ls", "description" => " List files " })[:description])
+      .to eq("List files")
     expect(described_class.build("read", { "path" => "a.rb" }))
       .to eq(name: "read", content: "a.rb", path: nil, scope: nil, start_line: nil, end_line: nil)
     expect(described_class.build("memory_write", { "name" => "n", "body" => " c ", "scope" => "system" }))

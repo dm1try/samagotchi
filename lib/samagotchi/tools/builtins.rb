@@ -142,11 +142,14 @@ module Samagotchi
         -> { !!peers&.cancelled? }
       end
 
+      # @param command_description [Boolean] false: execute declares no
+      #   description parameter (execute.description off)
       # @return [Registry] a new registry with the built-ins, in
       #   TOOL_SCHEMAS order (an Engine's own, which bundles add to)
-      def registry
+      def registry(command_description: true)
         by_name = CLASSES.to_h { |klass| [klass::NAME, klass] }
         ToolDeclarations::TOOL_SCHEMAS.each_with_object(Registry.new) do |schema, registry|
+          schema = ToolDeclarations.without_command_description(schema) unless command_description
           klass = by_name.fetch(schema[:name])
           handler = HANDLERS.fetch(klass::NAME) { ->(call, _kctx) { klass.call(call[:content]) } }
           registry.register(klass::NAME, schema: schema, handler: handler)

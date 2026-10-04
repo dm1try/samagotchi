@@ -915,6 +915,7 @@ described in their own sections.
 | `execute.preview_bytes` | `12288` | yes | |
 | `execute.telemetry_threshold_pct` | `80` | yes | |
 | `execute.timeout_sec` | `120` | yes | Seconds one `execute` command may run before it is stopped. |
+| `execute.description` | `true` | | `execute` offers the model an optional `description` (a few words on what the command does), shown as the tool row's title in `chi web` and in place of the command in the TUI's tool line. `false`: the parameter isn't declared, and rows show the command's first step. |
 | `web.port` | `4567` | `--port` | `chi web`'s port. See [CLI](cli.md). |
 | `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`; `lan` (this machine's private IPv4 address) or one of its IPv4 addresses also opens `chi web` to the network, with an access token (`chi web --new-token` replaces it). Anything else binds `127.0.0.1` with a warning. See [CLI: chi web on your phone](cli.md#chi-web-on-your-phone). |
 | `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |

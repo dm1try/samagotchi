@@ -174,6 +174,8 @@ module Samagotchi
       Entry.new(key: "execute.telemetry_threshold_pct", yaml_path: %w[execute telemetry_threshold_pct], type: :integer, default: 80,     expose: %i[env config cli]),
       # Seconds one execute command may run before it is stopped (Tools::Execute::TIMEOUT_SEC).
       Entry.new(key: "execute.timeout_sec",             yaml_path: %w[execute timeout_sec],             type: :integer, default: 120,    expose: %i[env config cli]),
+      # Whether execute declares its optional description parameter (a few model-written words, a tool row's title).
+      Entry.new(key: "execute.description",             yaml_path: %w[execute description],             type: :bool,    default: true,   expose: %i[env config]),
 
       Entry.new(key: "web.port",                 yaml_path: %w[web port],                 type: :integer, default: 4567,            expose: %i[env config cli]),
       Entry.new(key: "web.host",                 yaml_path: %w[web host],                 type: :string, default: "127.0.0.1",     expose: %i[env config cli]),

@@ -12,6 +12,10 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
           "type": "string",
           "description": "The shell command to run"
         },
+        "description": {
+          "type": "string",
+          "description": "Optional: what this command does, in a few words (what, not why)"
+        },
         "cwd": {
           "type": "string",
           "description": "Optional working directory to run in (defaults to the project root). Relative paths are resolved against the project root."

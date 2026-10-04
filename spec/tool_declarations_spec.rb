@@ -13,6 +13,29 @@ RSpec.describe Samagotchi::ToolDeclarations do
       .to match_array(Samagotchi::KernelLoop::TOOLS.map { |t| t::NAME })
   end
 
+  # The row title (ToolView, ToolActivity.tool_title); only execute has it:
+  # task_create's commands are mostly one step, their own title.
+  it "offers execute an optional description after its command, and only execute" do
+    execute = described_class::TOOL_SCHEMAS.find { |s| s[:name] == "execute" }
+    expect(execute[:parameters][:properties].keys).to eq(%i[command description cwd])
+    expect(execute[:parameters][:required]).to eq(["command"])
+    with = described_class::TOOL_SCHEMAS.select { |s| s.dig(:parameters, :properties, :description) }.map { |s| s[:name] }
+    expect(with).to eq(%w[execute memory_write register_reminder])
+  end
+
+  it "declares no description on execute with execute.description off, in every format" do
+    schemas = Samagotchi::Tools::Builtins.registry(command_description: false).schemas
+    execute = schemas.find { |s| s[:name] == "execute" }
+    expect(execute[:parameters][:properties].keys).to eq(%i[command cwd])
+    expect(schemas - [execute]).to eq(described_class::TOOL_SCHEMAS.reject { |s| s[:name] == "execute" })
+    expect(described_class.gemma_declarations(schemas)).not_to include("what this command does")
+    expect(described_class.qwen_declarations(schemas)).not_to include("what this command does")
+    expect(described_class.chat_schemas(schemas).to_s).not_to include("what this command does")
+    expect(described_class.gemma_declarations).to include("what this command does")
+    expect(described_class::TOOL_SCHEMAS.find { |s| s[:name] == "execute" }.dig(:parameters, :properties))
+      .to include(:description)
+  end
+
   it "only overrides parameters that exist" do
     described_class::GEMMA_PARAM_OVERRIDES.each do |tool, params|
       schema = described_class::TOOL_SCHEMAS.find { |s| s[:name] == tool }

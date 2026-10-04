@@ -26,6 +26,10 @@ module Samagotchi
               type: "string",
               description: "The shell command to run"
             },
+            description: {
+              type: "string",
+              description: "Optional: what this command does, in a few words (what, not why)"
+            },
             cwd: {
               type: "string",
               description: "Optional working directory to run in (defaults to the project root). Relative paths are resolved against the project root."
@@ -424,6 +428,16 @@ module Samagotchi
     GEMMA_QUOTE = '<|"|>'
 
     module_function
+
+    # +schema+ without execute's description property: what a session
+    # with execute.description off declares (the parameter isn't offered
+    # at all). Any other schema as given.
+    def without_command_description(schema)
+      return schema unless schema[:name] == "execute"
+
+      parameters = schema[:parameters]
+      schema.merge(parameters: parameters.merge(properties: parameters[:properties].except(:description)))
+    end
 
     # Gemma 4 <|tool>declaration:NAME{…}<tool|> blocks for every tool, back
     # to back, as Gemma 4's chat template declares tools.

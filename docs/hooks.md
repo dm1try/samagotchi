@@ -399,7 +399,7 @@ stripped of surrounding whitespace, except file text, an edit's
 
 | Tool | `content:` from | `path:` from | Own fields |
 |------|-----------------|--------------|------------|
-| `execute` | `command` | — | `cwd` |
+| `execute` | `command` | — | `description`, `cwd` |
 | `read` | `path` | — | `start_line`, `end_line` |
 | `write` | — | `path` | `content` |
 | `edit` | — | `path` | `old_text`, `new_text`, `start_line`, `end_line` |

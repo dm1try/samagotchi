@@ -173,8 +173,9 @@ module Samagotchi
       @hooks = load_hooks_from_config
       load_hooks_from_bundles
       # The tools this session offers (the prompts' declarations and the
-      # kernel's dispatch): the built-ins, per Engine.
-      @tools = Tools::Builtins.registry
+      # kernel's dispatch): the built-ins, per Engine. execute.description
+      # off: execute offers no description parameter.
+      @tools = Tools::Builtins.registry(command_description: Config.get("execute.description") != false)
       if @scratch
         # A scratch session's children would outlive it, and so would a
         # note it left in a peer; its memories would too (write and edit
