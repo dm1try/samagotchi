@@ -213,8 +213,9 @@ RSpec.describe "The mcp bundle" do
 
   it "registers each tool as mcp_<server>_<tool>, sanitized, with its inputSchema, label and preview" do
     names = tools.entries.map(&:name).grep(/\Amcp_/)
-    expect(names).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_fail mcp_fake_mixed mcp_fake_slow mcp_fake_crash
-                           mcp_fake_weird_name_v2 mcp_fake_changed mcp_fake_path mcp_fake_blob])
+    # By name (Tools::Registry), whatever order the server lists them in.
+    expect(names).to eq(%w[mcp_fake_add mcp_fake_blob mcp_fake_changed mcp_fake_crash mcp_fake_echo mcp_fake_fail
+                           mcp_fake_mixed mcp_fake_path mcp_fake_slow mcp_fake_weird_name_v2])
     echo = tools["mcp_fake_echo"]
     expect(echo.schema).to include(name: "mcp_fake_echo", description: "Echo the text back.")
     expect(echo.schema[:parameters]).to include(properties: { text: { type: "string", description: "what to echo" } },
@@ -414,7 +415,7 @@ RSpec.describe "The mcp bundle" do
     let(:servers) { { "fake" => fake.merge("tools" => ["echo", "a*"]) } }
 
     it "registers only those" do
-      expect(tools.entries.map(&:name).grep(/\Amcp_/)).to eq(%w[mcp_fake_echo mcp_fake_add])
+      expect(tools.entries.map(&:name).grep(/\Amcp_/)).to eq(%w[mcp_fake_add mcp_fake_echo])
     end
   end
 
@@ -483,7 +484,7 @@ RSpec.describe "The mcp bundle" do
 
     it "registers a hit's tools without starting the server; the first call starts it" do
       next_engine
-      expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_slow])
+      expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
       expect(spawned).to eq(1)
       expect(mcp_card).to eq("**fake**: cached (not started), 3 tools\n- `mcp_fake_echo`\n- `mcp_fake_add`\n- `mcp_fake_slow`")
       expect(spawned).to eq(1)
@@ -498,10 +499,10 @@ RSpec.describe "The mcp bundle" do
     it "replaces the tools for the next turn when the live list differs, and rewrites the cache" do
       File.write(tools_file, "echo\nfail\n")
       next_engine
-      expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_slow])
+      expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
       expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("echo: x")
       expect(cache["tools"].map { |t| t["name"] }).to eq(%w[echo fail])
-      expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_slow])
+      expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
       expect(engine.apply_staged_tools!).to be(true)
       expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_fail])
       expect(call_tool("mcp_fake_fail")).to eq("Error: it broke")
@@ -516,7 +517,7 @@ RSpec.describe "The mcp bundle" do
       expect(call_tool("mcp_fake_changed")).to eq("changed")
       Timeout.timeout(5) { sleep(0.05) until cache["tools"].map { |t| t["name"] } == %w[echo changed] }
       Timeout.timeout(5) { sleep(0.05) until engine.apply_staged_tools! }
-      expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_changed])
+      expect(mcp_tools).to eq(%w[mcp_fake_changed mcp_fake_echo])
       expect(call_tool("mcp_fake_echo", { "text" => "still" })).to eq("echo: still")
       expect(spawned).to eq(2)
     end
@@ -537,7 +538,7 @@ RSpec.describe "The mcp bundle" do
         servers["fake"] = fake.merge("start" => "eager")
         next_engine
         expect(spawned).to eq(2)
-        expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_slow])
+        expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
       end
     end
 
@@ -582,7 +583,7 @@ RSpec.describe "The mcp bundle" do
           next_engine
         end
         expect(spawned).to eq(1)
-        expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_slow])
+        expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
       end
     end
 

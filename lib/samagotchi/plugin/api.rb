@@ -264,8 +264,9 @@ module Samagotchi
 
       # Make +bundle+'s tools in +registry+ the +specs+: its tools not in
       # them go; a new one, or one whose schema or label changed, is
-      # registered (a changed one again, at the end); an unchanged one is
-      # kept as it is. A name another source has is left out. Called on
+      # registered (a changed one again, in its place: Tools::Registry
+      # orders bundle tools by bundle and name); an unchanged one is kept
+      # as it is. A name another source has is left out. Called on
       # the turn thread (Engine#apply_staged_tools!).
       # @return [Hash] {changed: Boolean, skipped: [String] (why)}
       def self.apply_tools(registry, bundle, specs, context)

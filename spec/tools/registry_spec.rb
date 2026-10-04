@@ -5,6 +5,7 @@ require "samagotchi/engine"
 require "samagotchi/kernel_loop"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/tools/builtins"
+require "samagotchi/plugin/api"
 
 RSpec.describe Samagotchi::Tools::Registry do
   let(:schema) { { name: "echo", description: "echo it", parameters: { type: "object", properties: {}, required: [] } } }
@@ -24,6 +25,39 @@ RSpec.describe Samagotchi::Tools::Registry do
     expect(registry.schemas.last).to eq(schema)
     expect(registry["echo"].core?).to be(false)
     expect { registry.register("echo", schema: schema, handler: ->(*) {}) }.to raise_error(ArgumentError)
+  end
+
+  # The tool list is part of the prompt's cached prefix: it must not
+  # depend on which plugin's init finished first.
+  describe "bundle tools' order" do
+    def spec_for(name, description = "does #{name}") = Samagotchi::Plugin::Api.tool_spec(name, description) { "ok" }
+
+    def apply(registry, bundle, *names, description: nil)
+      specs = names.map { |name| description ? spec_for(name, description) : spec_for(name) }
+      Samagotchi::Plugin::Api.apply_tools(registry, bundle, specs, nil)
+    end
+
+    it "is by bundle and name after the built-ins, whichever plugin applied its tools first" do
+      first = Samagotchi::Tools::Builtins.registry
+      apply(first, "mcp", "mcp_zeta", "mcp_alpha")
+      apply(first, "check-in", "checkin_wait")
+      second = Samagotchi::Tools::Builtins.registry
+      apply(second, "check-in", "checkin_wait")
+      apply(second, "mcp", "mcp_alpha", "mcp_zeta")
+
+      builtins = Samagotchi::Tools::Builtins.default.names
+      expect(first.names).to eq(builtins + %w[checkin_wait mcp_alpha mcp_zeta])
+      expect(second.schemas).to eq(first.schemas)
+      expect(Samagotchi::ToolDeclarations.native_schemas(second)).to eq(Samagotchi::ToolDeclarations.native_schemas(first))
+    end
+
+    it "keeps a changed tool in its place" do
+      registry = Samagotchi::Tools::Builtins.registry
+      apply(registry, "mcp", "mcp_alpha", "mcp_zeta")
+      expect(apply(registry, "mcp", "mcp_alpha", "mcp_zeta", description: "changed")[:changed]).to be(true)
+      expect(registry.names.last(2)).to eq(%w[mcp_alpha mcp_zeta])
+      expect(registry["mcp_alpha"].schema[:description]).to eq("changed")
+    end
   end
 
   it "unregisters a tool, and registers the name again after that" do

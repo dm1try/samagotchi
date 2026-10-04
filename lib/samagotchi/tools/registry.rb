@@ -3,7 +3,11 @@
 module Samagotchi
   module Tools
     # The tools a session offers the model, in declaration order: the
-    # built-ins (Tools::Builtins), and later the ones bundles add. The
+    # built-ins (Tools::Builtins) as registered, then the ones bundles add,
+    # by bundle and name. That order doesn't depend on which plugin
+    # finished its init first or re-registered a changed tool, so the
+    # tool list (part of the prompt's cached prefix) is the same in every
+    # session with the same tools. The
     # native prompts and the chat path's tools: are rendered from #schemas,
     # and KernelLoop#dispatch runs a call through its entry's handler.
     class Registry
@@ -43,13 +47,16 @@ module Samagotchi
       def key?(name) = @entries.key?(name.to_s)
 
       # @return [Array<String>] in declaration order
-      def names = @entries.keys
+      def names = entries.map(&:name)
 
       # @return [Array<Entry>] in declaration order
-      def entries = @entries.values
+      def entries
+        core, added = @entries.values.partition(&:core?)
+        core + added.sort_by { |entry| [entry.source.to_s, entry.name] }
+      end
 
       # @return [Array<Hash>] the schemas, in declaration order
-      def schemas = @entries.values.map(&:schema)
+      def schemas = entries.map(&:schema)
 
       def freeze
         @entries.freeze
