@@ -14,8 +14,9 @@ module Samagotchi
   # The system prompt an Engine gives its model: the base prompt (tool
   # declarations and call syntax for the raw-prompt loop, none for the chat
   # loop, the shared guidance) and around it the thinking token, rg
-  # guidance, AGENT.md, where the session runs, the memory indexes, the
-  # identity memory and the preloaded memories.
+  # guidance, the identity memory, the preloaded memories, AGENT.md, the
+  # memory indexes and, last, the model, where the session runs and the
+  # session (#system_prompt_with_index has the order and why).
   #
   # What changes during a session (the profile after a model switch, the
   # tools a plugin replaces, the attached session, the thinking level) is
@@ -186,7 +187,7 @@ module Samagotchi
           6. Use write for full-file rewrites or creating new files.
 
         Memory convention:
-          Project scope: one folder per git repository, shared by its worktrees and subdirectories (path shown above)
+          Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the "Project memories folder:" line below)
           System scope:  ~/.config/samagotchi/memories/ (cross-project)
           memory_read accepts optional scope (project|system).
           memory_write requires explicit scope and entry name.
@@ -229,17 +230,24 @@ module Samagotchi
     # @param chat [Boolean] no Gemma thinking token (the chat API's template
     #   decides about thinking)
     # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
+    #
+    # Ordered for the servers' prompt caches (they reuse only an exact token
+    # prefix): what every session shares first, what changes least before
+    # what changes more, and the per-session lines last. The global parts
+    # (identity, preloads) come before the project's AGENT.md, the memory
+    # indexes (a memory write changes them) after both; the model, the
+    # location and the session close the prompt (Gemma's tool declarations
+    # still follow them).
     def system_prompt_with_index(base, chat: false, thinking: nil)
-      project_index = read_memory_index("project")
-      system_index = read_memory_index("system")
-      project_description = project_specific_description
       thinking_token = chat ? "" : Thinking.native(thinking || turn_thinking, profile).system_token
       memory_sections = [
-        "Project memories:\n#{project_index}",
-        "System memories:\n#{system_index}"
+        "Project memories:\n#{read_memory_index("project")}",
+        "System memories:\n#{read_memory_index("system")}"
       ].join("\n\n")
-      prompt = [thinking_token + base, rg_guidance, project_description, project_location, current_model, current_session, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
-      with_tail_declarations(prompt, chat: chat)
+      stable = [thinking_token + base, rg_guidance, system_identity_section, explicit_memory_section,
+                project_specific_description, memory_sections]
+      volatile = [current_model, project_location, current_session]
+      with_tail_declarations((stable + volatile).compact.join("\n"), chat: chat)
     end
 
     def with_tail_declarations(prompt, chat:)

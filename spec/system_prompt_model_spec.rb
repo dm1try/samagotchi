@@ -35,13 +35,30 @@ RSpec.describe "Engine#system_prompt names the model" do
     expect(prompt).to include("memory_write current_model_only: true")
   end
 
-  it "sits after the working directory and before the session id" do
+  it "sits before the working directory and the session id" do
     e = engine("box:gemma-small")
     e.session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
     prompt = e.system_prompt
 
-    expect(prompt.index("Current working directory:")).to be < prompt.index("Model: this session runs on")
-    expect(prompt.index("Model: this session runs on")).to be < prompt.index("Current session id:")
+    expect(prompt.index("Model: this session runs on")).to be < prompt.index("Current working directory:")
+    expect(prompt.index("Current working directory:")).to be < prompt.index("Current session id:")
+  end
+
+  # The prompt caches reuse only an exact prefix: what differs between
+  # sessions (model, location, session) closes the prompt, before only
+  # Gemma's tool declarations.
+  [["box:qwen", "qwen36", false], ["box:gemma-small", "gemma4", false], ["oai:m", "qwen36", true]].each do |model, profile, chat|
+    it "ends with the model, location and session lines (#{profile}#{", chat" if chat})" do
+      e = engine(model, profile)
+      e.session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
+      prompt = e.system_prompt
+      prompt = prompt.split(/(?=<\|tool>)/, 2).first if profile == "gemma4"
+      tail = prompt[prompt.index("Model: this session runs on")..]
+
+      expect(tail).to include("Current working directory:", "Current session id:")
+      expect(tail).not_to include("Project memories:", "System memories:", "System identity", "Editing workflow:")
+      expect(prompt.index("System identity")).to be < prompt.index("Project memories:")
+    end
   end
 
   it "is the same text across builds and changes after a model switch" do

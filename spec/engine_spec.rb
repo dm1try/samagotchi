@@ -83,7 +83,7 @@ RSpec.describe Samagotchi::Engine do
       session.parent_id = "parent-1234"
       prompt = engine.instance_variable_get(:@prompt_builder).then { |b| b.send(:system_prompt_with_index, b.base) }
       expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
-      expect(prompt).to match(/^Delegated by session parent-1234: it reads your final reply; reach it with send_note\.$/)
+      expect(prompt).to match(/^Delegated by session parent-1234: it reads your final reply; reach it with send_note\./)
     end
   end
 
@@ -164,7 +164,7 @@ RSpec.describe Samagotchi::Engine do
 
     it "points the memory convention at the shown folder instead of a path pattern" do
       prompt = project_prompt_in(repo)
-      expect(prompt).to include("Project scope: one folder per git repository, shared by its worktrees and subdirectories (path shown above)")
+      expect(prompt).to include("Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the \"Project memories folder:\" line below)")
       expect(prompt).not_to include("<name>_<hash>")
     end
   end

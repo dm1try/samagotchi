@@ -19,7 +19,7 @@ Editing workflow:
   6. Use write for full-file rewrites or creating new files.
 
 Memory convention:
-  Project scope: one folder per git repository, shared by its worktrees and subdirectories (path shown above)
+  Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the "Project memories folder:" line below)
   System scope:  ~/.config/samagotchi/memories/ (cross-project)
   memory_read accepts optional scope (project|system).
   memory_write requires explicit scope and entry name.
@@ -58,18 +58,10 @@ Feedback:
   Plain thanks or a remark about the code is not feedback to save.
 
 For fast repository/text search, prefer `rg` (ripgrep) over `grep` when exploring files or text.
+System identity (auto-loaded, scope=system):
+I am chi's identity.
 Project specific description:
 This project builds widgets.
-Current working directory:
-<TMP>/project
-Home directory: <HOME> (write it as ~ or $HOME in commands and paths)
-Project memories folder:
-~/.config/samagotchi/memories/projects/project_abc
-Model: this session runs on oai:m (host oai, oai.test:8000; model key m).
-Asked which model you are, answer with this line, not from training: a fine-tuned model often knows only its base model's name, but this session runs what is named here; it changes only with /model. Guidance for this model only goes in memory overlays: memory_write current_model_only: true.
-Current session id: <SID> (resume later with `chi --resume <SID>`)
-My debug log: <STATE>/samagotchi/samagotchi.log (one record per line; this session's carry sid=<SHORT_SID>)
-Delegated by session parent-1234: it reads your final reply; reach it with send_note.
 Project memories:
 # project index
 - **cfg_note** · project · 2026-09-01
@@ -83,5 +75,13 @@ System memories:
 - **hidden** · system · 2026-09-02
 hidden
 
-System identity (auto-loaded, scope=system):
-I am chi's identity.
+Model: this session runs on oai:m (host oai, oai.test:8000; model key m).
+Asked which model you are, answer with this line, not from training: a fine-tuned model often knows only its base model's name, but this session runs what is named here; it changes only with /model. Guidance for this model only goes in memory overlays: memory_write current_model_only: true.
+Current working directory:
+<TMP>/project
+Home directory: <HOME> (write it as ~ or $HOME in commands and paths)
+Project memories folder:
+~/.config/samagotchi/memories/projects/project_abc
+Current session id: <SID> (resume later with `chi --resume <SID>`)
+My debug log: <STATE>/samagotchi/samagotchi.log (one record per line; this session's carry sid=<SHORT_SID>)
+Delegated by session parent-1234: it reads your final reply; reach it with send_note.

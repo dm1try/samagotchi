@@ -184,12 +184,16 @@ engine.system_prompt     # fully built system prompt string
 engine.session           # current session (Engine owns create/resume)
 ```
 
-The system prompt (`SystemPrompt#build`) is the base prompt, then rg guidance,
-AGENT.md, the working directory, **the model** (`Model: this session runs on
-<ref> (host …; model key …)` and a line telling the model to answer "which model
-are you" from it, not from training), the session id and log, the memory indexes,
-the identity and the preloaded memories. It is built once per loop and rebuilt only
-by a model switch (or changed tools), so the model line costs no KV churn.
+The system prompt (`SystemPrompt#build`) is the base prompt, then rg guidance, the
+identity and the preloaded memories, AGENT.md, the memory indexes, and last **the
+model** (`Model: this session runs on <ref> (host …; model key …)` and a line telling
+the model to answer "which model are you" from it, not from training), the working
+directory and the session id and log (Gemma's native tool declarations still follow).
+The order is for the servers' prompt caches, which reuse only an exact token prefix:
+what every session shares first, what changes least before what changes more, the
+per-session lines last, so a new session reuses everything above them. It is built
+once per loop and rebuilt only by a model switch (or changed tools), so the model
+line costs no KV churn.
 
 #### Subscribing to the live stream (and the bridge)
 

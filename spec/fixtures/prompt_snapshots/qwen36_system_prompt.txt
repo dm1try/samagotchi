@@ -471,7 +471,7 @@ Editing workflow:
   6. Use write for full-file rewrites or creating new files.
 
 Memory convention:
-  Project scope: one folder per git repository, shared by its worktrees and subdirectories (path shown above)
+  Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the "Project memories folder:" line below)
   System scope:  ~/.config/samagotchi/memories/ (cross-project)
   memory_read accepts optional scope (project|system).
   memory_write requires explicit scope and entry name.
