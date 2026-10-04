@@ -147,7 +147,8 @@ class Plugin
       role = (message[:role] || message["role"]).to_s
       kind = (message[:kind] || message["kind"]).to_s
       return true if kind == "steer" && (message[:content] || message["content"]).to_s.strip == text.strip
-      return false if role == "user" && kind != "steer"
+      # A user line merged into the turn (kind input) is part of it: look past it.
+      return false if role == "user" && !%w[steer input].include?(kind)
     end
     false
   end

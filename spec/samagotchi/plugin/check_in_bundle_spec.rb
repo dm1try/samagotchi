@@ -241,6 +241,18 @@ RSpec.describe "The check-in plugin" do
 
       expect(ctx.notices.map(&:first)).to eq(["nudged the model after 2 tool calls"])
     end
+
+    it "nudge says nothing at the turn's end when a user line was merged after the steer" do
+      p = plugin("after" => 2, "mode" => "nudge")
+      turn(p)
+      tools(p, "read", "read")
+      steer = { role: "user", kind: "steer", source: "check-in", content: steered.last }
+      merged = { role: "user", kind: "input", content: "also this" }
+      fire(p, :after_turn, status: "completed",
+                           messages: [{ role: "user", content: "go" }, steer, merged, { role: "model", content: "done" }])
+
+      expect(ctx.notices.map(&:first)).to eq(["nudged the model after 2 tool calls"])
+    end
   end
 
   describe "/checkin" do
