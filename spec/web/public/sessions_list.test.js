@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, heldOrder, listedSessions, sortedByUpdated, waitingBadge, waitingFirst, waitingSearchText, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, heldOrder, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, waitingSearchText, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -118,4 +118,26 @@ test("waitingBadge: a delegate's question relayed to its parent says where it wa
   assert.deepEqual(badge, { kind: "approval", text: "in parent pppp1111",
     title: "Waiting for your approval in parent session pppp1111 (answering here works too)" });
   assert.equal(waitingSearchText({ id: "c", pending_question: { id: "q", kind: "approval", relayed_to: "pppp1111" } }), "waiting in parent pppp1111");
+});
+
+// A card's badge for a turn a hook stopped (the same marker as `chi sessions
+// list`'s "[looped]" / "[stopped by X]"): "looped" for loop-guard, "stopped by
+// <name>" for any other hook; null when the last turn ended otherwise.
+test("stoppedBadge: loop-guard says looped, another hook its name, otherwise null", () => {
+  assert.deepEqual(stoppedBadge({ id: "s", last_turn: { outcome: "canceled", cancel_reason: "hook", stopped_by: "loop-guard" } }),
+    { text: "looped", title: "loop-guard stopped the last turn" });
+  assert.deepEqual(stoppedBadge({ id: "s", last_turn: { outcome: "canceled", cancel_reason: "hook", stopped_by: "my-hook" } }),
+    { text: "stopped by my-hook", title: "my-hook stopped the last turn" });
+  assert.equal(stoppedBadge({ id: "s", last_turn: { outcome: "completed", ended_at: "t" } }), null);
+  assert.equal(stoppedBadge({ id: "s", last_turn: null }), null);
+  assert.equal(stoppedBadge({ id: "s" }), null);
+});
+
+test("waitingSearchText matches the stopped badge's words too (looped, stopped by <name>)", () => {
+  assert.equal(waitingSearchText({ last_turn: { stopped_by: "loop-guard" } }), "looped");
+  assert.equal(waitingSearchText({ last_turn: { stopped_by: "my-hook" } }), "stopped by my-hook");
+  // Both, when the session waits and its last turn a hook stopped: a search
+  // for either word finds it.
+  assert.equal(waitingSearchText({ pending_question: { id: "q", kind: "question" }, last_turn: { stopped_by: "loop-guard" } }), "waiting question looped");
+  assert.equal(waitingSearchText({ status: "idle" }), "");
 });

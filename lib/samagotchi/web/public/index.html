@@ -826,6 +826,7 @@ body.all-view #center, body.all-view #topStrip{display:none}
 @keyframes attn-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 60%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 0%,transparent)}}
 @media (prefers-reduced-motion:reduce){.card .dot.running,.card .dot.waiting{animation:none}}
 .card .attn{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
+.card .stopped-badge{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn);color:var(--bg)}
 .status.running{background:var(--ok-bg);color:var(--ok-text)}
 .status.idle{background:var(--bg-raised)}
 .status.completed{background:var(--accent-bg);color:var(--accent)}
