@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The web has a light theme: with the system set to light it follows (`prefers-color-scheme`); dark stays as it
+  was. There is no in-page switch yet.
+
 ### Changed
 
 - `execute`'s `description` parameter now says it is shown to the user as the step's title and asks for it on
