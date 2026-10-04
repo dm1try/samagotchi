@@ -1,6 +1,6 @@
 ---
 name: mcp
-version: 0.4.1
+version: 0.4.2
 scope: system
 description: "Tools from MCP servers (stdio): each server in config.yml bundles: mcp: servers: runs for the session, its tools are mcp_<server>_<tool>; /mcp lists them"
 trust_level: reviewed

@@ -1,6 +1,6 @@
 ---
 name: source-links
-version: 0.3.2
+version: 0.3.3
 scope: system
 description: Links source refs (JIRA tickets, GitHub issues, …) in the model's answer — inline links in the web, and a one-line note after the turn (note false turns it off); sources are configured patterns
 trust_level: reviewed

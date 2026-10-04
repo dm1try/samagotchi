@@ -1,6 +1,6 @@
 ---
 name: btw
-version: 0.1.1
+version: 0.1.2
 scope: system
 description: "/btw <question>: a side answer about the conversation, as a card in every UI, even mid-turn; Keep as session forks it into a child session"
 trust_level: reviewed

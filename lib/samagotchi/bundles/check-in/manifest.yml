@@ -1,6 +1,6 @@
 ---
 name: check-in
-version: 0.2.1
+version: 0.2.2
 scope: system
 description: "Checks on a long turn: after N tool calls with no answer, a card asks the user (Nudge / Keep going / Stop), or the model is nudged to say what it has found"
 trust_level: reviewed
