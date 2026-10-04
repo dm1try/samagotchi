@@ -81,3 +81,67 @@ test("a failed stop frees the button; 409/503 quietly, anything else alerts", as
     assert.deepEqual(alerts, said);
   }
 });
+
+const failStop = () => () => Promise.reject(Object.assign(new Error("boom (502)"), { status: 502 }));
+
+test("a declined confirm neither posts nor touches the watchers", async () => {
+  const { s, calls } = stopper({ confirm: () => false });
+  const seen = [];
+  s.watch(ID, (busy) => seen.push(busy));
+  assert.equal(await s.stop(ID), false);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(seen, []);
+});
+
+test("watch: called when a stop starts and again when it fails", async () => {
+  const seen = [];
+  const { s } = stopper({ stopTask: failStop() });
+  s.watch(ID, (busy) => seen.push(busy));
+  await s.stop(ID);
+  assert.deepEqual(seen, [true, false]);
+});
+
+test("watch: a successful stop calls it once (the key stays in flight)", async () => {
+  const seen = [];
+  const { s } = stopper();
+  s.watch(ID, (busy) => seen.push(busy));
+  const first = s.stop(ID);
+  assert.deepEqual(seen, [true]); // synchronously, at the add
+  await first;
+  assert.deepEqual(seen, [true]);
+  assert.equal(s.busy(ID), true);
+});
+
+test("watch: every watcher of the key is called, in registration order", async () => {
+  const seen = [];
+  const { s } = stopper({ stopTask: failStop() });
+  s.watch(ID, (busy) => seen.push(["a", busy]));
+  s.watch(ID, (busy) => seen.push(["b", busy]));
+  await s.stop(ID);
+  assert.deepEqual(seen, [["a", true], ["b", true], ["a", false], ["b", false]]);
+});
+
+test("watch: not called for another task, or for a stop on another session", async () => {
+  const seen = [];
+  const { s } = stopper();                       // session "s1"
+  const other = stopper({ sessionId: () => "s2" });
+  s.watch("other-task", (busy) => seen.push(["other", busy]));
+  s.watch(ID, (busy) => seen.push(["s1", busy]));
+  await s.stop(ID);                              // key s1|ID -> only s1's watcher
+  assert.deepEqual(seen, [["s1", true]]);        // "other-task" is untouched
+  await other.s.stop(ID);                        // key s2|ID -> s1's watcher untouched
+  assert.deepEqual(seen, [["s1", true]]);
+});
+
+test("watch: unwatch stops the calls; a re-watch sees the next change", async () => {
+  const seen = [];
+  const { s } = stopper({ stopTask: failStop() });
+  const unwatch = s.watch(ID, (busy) => seen.push(busy));
+  unwatch();
+  await s.stop(ID);
+  assert.deepEqual(seen, []);
+  const again = [];
+  s.watch(ID, (busy) => again.push(busy));
+  await s.stop(ID);
+  assert.deepEqual(again, [true, false]);
+});
