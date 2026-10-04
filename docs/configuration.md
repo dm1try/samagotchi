@@ -308,8 +308,8 @@ prompt profile (see "Prompt profile" below). How the selector reaches the reques
   (`model: Field required`) without it, so samagotchi forwards the selector
   resolved to the exact id listed in the server's `/v1/models` — matched by exact
   (case-insensitive) first, then substring, then passed through unchanged. That
-  resolved id is usually prefixed (e.g. `mlx-community--gemma-3-4b-it-4bit`), so a
-  short selector such as `gemma-3-4b-it-4bit` is what you set in
+  resolved id is usually prefixed (e.g. `mlx-community--gemma-4-e4b-it-4bit`), so a
+  short selector such as `gemma-4-e4b-it-4bit` is what you set in
   `default.model`. An unknown selector passes through raw and oMLX 404s,
   listing its available models; if `/v1/models` is unreachable, samagotchi falls
   back to the raw selector and lets the server decide (its own 400/404). Either
@@ -535,7 +535,7 @@ With several `hosts:`, `host:model` (or an alias naming a host) pins the host.
 An unqualified model name goes to the default host when its `/models` list has
 that exact id, else to the first host in `hosts:` order whose list has it, else
 to the default host. Only exact ids count, never a substring: `/model gemma` on
-a box that lists `gemma-3-12b` needs `box:gemma` or the exact id. The lists are
+a box that lists `gemma-4-26b` needs `box:gemma` or the exact id. The lists are
 known only after `/models` ran (nothing is fetched before the first turn), so
 until then an unqualified name goes to the default host; use `host:model` to pin
 one. A **remote** host (an `https` url or a public address; see "Remote or local") keeps its model

@@ -64,7 +64,7 @@ RSpec.describe Samagotchi::Client do
       expect(omitting.model_for_payload("anything")).to be_nil
 
       resolving = described_class.new(:omlx, model_resolver: ->(m) { "mlx-community--#{m}" })
-      expect(resolving.model_for_payload("gemma-3-4b")).to eq("mlx-community--gemma-3-4b")
+      expect(resolving.model_for_payload("gemma-4-e4b")).to eq("mlx-community--gemma-4-e4b")
     end
   end
 
@@ -545,7 +545,7 @@ RSpec.describe Samagotchi::Client do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
         # /v1/models is loaded once per completion; stub it so we don't hit a
         # second Net::HTTP.start.
-        allow(client).to receive(:list_models).and_return(["mlx-community--gemma-3-4b-it-4bit"])
+        allow(client).to receive(:list_models).and_return(["mlx-community--gemma-4-e4b-it-4bit"])
         http = instance_double(Net::HTTP)
         response = double("response", code: "200")
         request = nil
@@ -562,7 +562,7 @@ RSpec.describe Samagotchi::Client do
           .and_yield("data: {\"choices\":[{\"text\":\"lo\"}]}\n")
           .and_yield("data: [DONE]\n")
 
-        result = client.complete("prompt", stop: ["done"], n_predict: 128, model: "gemma-3-4b-it-4bit")
+        result = client.complete("prompt", stop: ["done"], n_predict: 128, model: "gemma-4-e4b-it-4bit")
 
         expect(result).to eq("Hello")
         expect(request.path).to eq("/v1/completions")
@@ -571,7 +571,7 @@ RSpec.describe Samagotchi::Client do
         expect(request.body).to include('"max_tokens":128')
         expect(request.body).not_to include('"n_predict"')
         # resolved full id forwarded (substring match against /v1/models)
-        expect(request.body).to include('"model":"mlx-community--gemma-3-4b-it-4bit"')
+        expect(request.body).to include('"model":"mlx-community--gemma-4-e4b-it-4bit"')
       end
 
       it "omits max_tokens when n_predict is not provided" do
@@ -624,19 +624,19 @@ RSpec.describe Samagotchi::Client do
 
       it "resolves a short selector to a prefixed id via substring (AC #2)" do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "gemma-3-4b-it-4bit", models_or_error: ["mlx-community--gemma-3-4b-it-4bit"])
-        expect(request.body).to include('"model":"mlx-community--gemma-3-4b-it-4bit"')
+        request = run_omlx(client, model: "gemma-4-e4b-it-4bit", models_or_error: ["mlx-community--gemma-4-e4b-it-4bit"])
+        expect(request.body).to include('"model":"mlx-community--gemma-4-e4b-it-4bit"')
       end
 
       it "passes a full registered id through unchanged (AC #3)" do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "mlx-community--gemma-3-4b-it-4bit", models_or_error: ["mlx-community--gemma-3-4b-it-4bit"])
-        expect(request.body).to include('"model":"mlx-community--gemma-3-4b-it-4bit"')
+        request = run_omlx(client, model: "mlx-community--gemma-4-e4b-it-4bit", models_or_error: ["mlx-community--gemma-4-e4b-it-4bit"])
+        expect(request.body).to include('"model":"mlx-community--gemma-4-e4b-it-4bit"')
       end
 
       it "passes an unknown selector through raw so oMLX 404s with its available list (AC #4)" do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "nope-xyz", models_or_error: ["mlx-community--gemma-3-4b-it-4bit"])
+        request = run_omlx(client, model: "nope-xyz", models_or_error: ["mlx-community--gemma-4-e4b-it-4bit"])
         expect(request.body).to include('"model":"nope-xyz"')
       end
 
@@ -648,8 +648,8 @@ RSpec.describe Samagotchi::Client do
 
       it "falls back to the raw selector when /v1/models is unreachable (AC #9)" do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
-        request = run_omlx(client, model: "gemma-3-4b-it-4bit", models_or_error: RuntimeError.new("server down"))
-        expect(request.body).to include('"model":"gemma-3-4b-it-4bit"')
+        request = run_omlx(client, model: "gemma-4-e4b-it-4bit", models_or_error: RuntimeError.new("server down"))
+        expect(request.body).to include('"model":"gemma-4-e4b-it-4bit"')
       end
 
       it "ignores a leading keepalive chunk and still joins text correctly" do

@@ -246,7 +246,7 @@ module Samagotchi
     # @param sampling    [Hash]          request fields to add (SamplingSettings):
     #   temperature, penalties, …; they can't replace the fields above
     # @return [String] the generated text
-    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], n_predict: nil, model: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil,
+    def complete(prompt, stop: [], n_predict: nil, model: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil,
                  images: [], sampling: {})
       images = Array(images)
       request = { stop: stop, n_predict: n_predict, model: model, sampling: sampling }

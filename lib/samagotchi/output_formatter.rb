@@ -23,7 +23,6 @@ module Samagotchi
     # wrapper forms; bare <name> content (no pipe) is deliberately preserved.
     CONTROL_NAMES = %w[
       turn
-      end_of_turn
       tool_call
       tool_response
       tool
@@ -48,7 +47,7 @@ module Samagotchi
     # Angle-bracketed literal tokens stripped wholesale (including the thought
     # channel's trailing word). Applied before INDIVIDUAL_RE so multi-part tokens
     # are removed as a unit. Pipes are escaped; angle brackets are literal.
-    LITERALS_RE = /<\|"\|>|<end_of_turn>/.freeze
+    LITERALS_RE = /<\|"\|>/.freeze
 
     # Gemma 4's thought channel, as a whole block: `<|channel>thought` to its
     # `<channel|>` close, or to the end of the text when the close is missing

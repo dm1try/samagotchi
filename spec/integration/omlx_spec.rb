@@ -14,7 +14,7 @@ require "samagotchi/kernel_loop"
 # a short model selector (docs/testing.md), e.g.
 #   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_INTEGRATION_TRANSPORT=omlx \
 #     SAMAGOTCHI_INTEGRATION_HOST=192.0.2.10 SAMAGOTCHI_INTEGRATION_PORT=8000 \
-#     SAMAGOTCHI_INTEGRATION_MODEL=gemma-3-4b-it-4bit bundle exec rspec spec/integration/omlx_spec.rb
+#     SAMAGOTCHI_INTEGRATION_MODEL=gemma-4-e4b-it-4bit bundle exec rspec spec/integration/omlx_spec.rb
 RSpec.describe "omlx transport - model resolution + forwarding", :integration do
   before do
     unless IntegrationServer.settings.transport == "omlx"
