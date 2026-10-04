@@ -178,13 +178,14 @@ What a cut is, in detail:
 
 - It is an empty answer made early: it uses the `retry.empty_answer` budget
   ([configuration.md](configuration.md#llama-network-retry-behavior)). With
-  no retry left (`retry.empty_answer: 0`, or already used), the turn ends
-  cancelled (hook): "✕ turn canceled (hook)".
+  no retry left (`retry.empty_answer: 0`, or already used) and nothing
+  queued, the turn ends cancelled (hook): "✕ turn canceled (hook)".
 - It shows nothing by itself: post your own notice (`event[:notify]`) to say
   why. The bundle and the reason go into the note the model reads and the
   log (`generation_stopped`).
 - Queued input (the user's line, or a hook's `steer`) goes in place of the
-  hidden note, as for an empty answer; then there is no `↻` line.
+  hidden note, also once the retry budget is spent, and spends no retry;
+  then there is no `↻` line.
 - The cut generation is not kept: its thinking and any visible text it had
   streamed go with it (the retry answers anew). `:after_generation` doesn't
   fire for it, and its token usage is lost (the stream never sent its last

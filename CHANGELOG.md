@@ -29,6 +29,8 @@ and commands may change between minor versions. How releases are made:
 - The idle recap keeps the text of a `chi answer --option Continue --text` (or a continue card answered with
   text); it was dropped as a plugin's prod.
 - check-in no longer says a nudge was not sent when a user line was merged after it (bundle check-in 0.2.3).
+- A plugin's cut of a generation (loop-guard) with a message or a plugin's steer waiting now delivers it even after
+  `retry.empty_answer`'s budget is spent; the turn used to end cancelled and drop a waiting plugin steer.
 
 ## [0.23.0] - 2026-10-04
 

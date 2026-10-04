@@ -386,18 +386,19 @@ module Samagotchi
                                      messages: AnswerDisplay.strip_all(turn.conversation).map(&:dup).freeze })
     end
 
-    # A generation a plugin cut is an empty answer made early: asked again
-    # with its own nudge while the retry budget lasts (queued input goes in
-    # place of the nudge), else the turn ends as cancelled (hook), with
-    # nothing salvaged and without the spent nudge. A Stop that came right
-    # after the cut is a plain cancel. Returns :next or the turn's result.
+    # A generation a plugin cut is an empty answer made early. Queued input
+    # (a user's line, a plugin's steer) goes in first, with or without a
+    # retry left, and spends no attempt: the model answers it. Else it is
+    # asked again with its own nudge while the retry budget lasts, else the
+    # turn ends as cancelled (hook), with nothing salvaged and without the
+    # spent nudge. A Stop that came right after the cut is a plain cancel.
+    # Returns :next or the turn's result.
     def after_cut(turn, generation)
       cut = generation.cut
       raise Client::RequestCancelled, turn.cancel_controller.reason if turn.cancel_controller.cancelled?
+      return :next if inject_pending_input!(turn)
 
       if turn.empty_retry.left?
-        return :next if inject_pending_input!(turn)
-
         turn.empty_retry.nudge!(turn.conversation, TurnNote.cut_retry(cut[:by], cut[:reason]),
                                 emit: turn.emit, iteration: turn.iteration, finish_reason: "stopped",
                                 thinking_chars: generation.streamed_thinking, stopped_by: cut[:by])

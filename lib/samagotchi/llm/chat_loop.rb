@@ -383,17 +383,17 @@ module Samagotchi
         end
 
         # A generation a plugin cut (stop_generation) is an empty answer made
-        # early: asked again with its own nudge while the retry budget lasts
-        # (queued input goes in place of the nudge), else the turn ends as
-        # cancelled (hook), with nothing salvaged and without a spent nudge.
-        # A Stop that came right after the cut is a plain cancel. Returns
-        # :retry, or the turn's result.
+        # early. Queued input (a user's line, a plugin's steer) goes in
+        # first, with or without a retry left, and spends no attempt. Else it
+        # is asked again with its own nudge while the retry budget lasts,
+        # else the turn ends as cancelled (hook), with nothing salvaged and
+        # without a spent nudge. A Stop that came right after the cut is a
+        # plain cancel. Returns :retry, or the turn's result.
         def after_cut(iteration, response)
           return canceled(iteration, @cancel_controller.reason) if @cancel_controller.cancelled?
+          return :retry if inject_pending_input(iteration)
 
           if @empty_retry.left?
-            return :retry if inject_pending_input(iteration)
-
             @empty_retry.nudge!(@conversation, TurnNote.cut_retry(response.cut[:by], response.cut[:reason]),
                                 emit: method(:emit), iteration: iteration, finish_reason: response.finish_reason,
                                 thinking_chars: response.reasoning.to_s.length, stopped_by: response.cut[:by])
