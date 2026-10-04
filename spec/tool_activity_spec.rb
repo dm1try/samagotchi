@@ -117,15 +117,36 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(cut).to start_with("…").and end_with("/file.rb")
     end
 
-    it "drops a leading cd from a command, takes its first line and cuts it at 80 after that" do
+    it "gives a command's first step and how many more, its leading cd dropped" do
       expect(title("execute", content: "cd /x && rspec a")).to eq("rspec a")
       expect(title("execute", content: "cd /x; ls")).to eq("ls")
       expect(title("execute", content: "cd '/my dir' && make")).to eq("make")
-      expect(title("execute", content: "\n  git status\ngit diff")).to eq("git status")
+      expect(title("execute", content: "\n  git status\ngit diff")).to eq("git status +1")
       expect(title("task_create", content: "cd /x && npm test")).to eq("npm test")
-      expect(title("execute", content: "echo cd /x && ls")).to eq("echo cd /x && ls")
-      cut = title("execute", content: "cd /somewhere && #{"y" * 100}")
-      expect(cut).to eq("#{"y" * 79}…")
+      expect(title("execute", content: "echo cd /x && ls")).to eq("echo cd /x +1")
+      expect(title("execute", content: "cd /p && a | head -5; b; c | tail -2; d && e || f")).to eq("a +5")
+    end
+
+    it "doesn't count a label echo or a limit as a step" do
+      expect(title("execute", content: %(cd /p && echo "=== log ===" && git log | head -20 && echo "=== diff ===" && git diff)))
+        .to eq("git log +1")
+    end
+
+    it "shows a heredoc command's first line, the body not" do
+      expect(title("execute", content: "git commit -m \"$(cat <<'EOF'\nFix\n\nbody\nEOF\n)\" && git log -1"))
+        .to eq(%(git commit -m "$(cat <<'EOF')" +1))
+    end
+
+    it "cuts the first step to fit 80 with its +N" do
+      expect(title("execute", content: "cd /somewhere && #{"y" * 100}")).to eq("#{"y" * 79}…")
+      cut = title("execute", content: "#{"y" * 100} && a && b")
+      expect(cut).to eq("#{"y" * 76}… +2")
+      expect(cut.length).to eq(80)
+    end
+
+    it "falls back to the first line without its cd when the command has no steps" do
+      expect(title("execute", content: "cd /x && for f in *; do echo $f; done")).to eq("for f in *; do echo $f; done")
+      expect(title("execute", content: "echo 'open\nsecond")).to eq("echo 'open")
     end
 
     it "names the memory for the memory tools, nil for the rest" do

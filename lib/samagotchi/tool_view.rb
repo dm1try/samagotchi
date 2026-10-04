@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "command_steps"
 require_relative "tools/execute"
 require_relative "tools/task_create"
 
@@ -12,9 +13,12 @@ module Samagotchi
   # 80-char cut stay as they are (the guardrails, "ran as:", the TUI).
   #
   # +truncated+: the command was longer than COMMAND_LIMIT and is cut to it;
-  # +chars+ is then its full length.
-  ToolView = Data.define(:command, :cwd, :truncated, :chars) do
-    def to_h = super.compact.reject { |_key, value| value == false }
+  # +chars+ is then its full length. +cd+ and +steps+: the command as
+  # CommandSteps reads it (its leading cd, its steps), both nil when it
+  # can't (the fallback: the UI shows the command itself) or the command
+  # is cut.
+  ToolView = Data.define(:command, :cwd, :truncated, :chars, :cd, :steps) do
+    def to_h = super.merge(steps: steps&.map(&:to_h)).compact.reject { |_key, value| value == false }
   end
 
   class ToolView
@@ -33,8 +37,9 @@ module Samagotchi
 
       cwd = call[:cwd].to_s.strip
       truncated = command.length > COMMAND_LIMIT
+      parsed = truncated ? nil : CommandSteps.parse(command)
       new(command: truncated ? command[0, COMMAND_LIMIT] : command, cwd: cwd.empty? ? nil : cwd,
-          truncated: truncated, chars: truncated ? command.length : nil)
+          truncated: truncated, chars: truncated ? command.length : nil, cd: parsed&.cd, steps: parsed&.steps)
     end
   end
 end

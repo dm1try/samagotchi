@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "log"
+require_relative "command_steps"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
@@ -47,10 +48,17 @@ module Samagotchi
 
     # What the call did, for a web row's one line ("edit lib/a.rb", the
     # command without its "cd … &&"): a file tool's path relative to +cwd+
-    # when it is under it, a command's first line, a memory's name; nil for
-    # the other tools (a plugin's row keeps its preview, the params).
-    # +params+ stays the full key=value line (the TUI, the guardrails).
+    # when it is under it, a command's first step and how many more
+    # (CommandSteps; its first line when it has no steps), a memory's name;
+    # nil for the other tools (a plugin's row keeps its preview, the
+    # params). +params+ stays the full key=value line (the TUI, the
+    # guardrails).
     def tool_title(tool_name, call, cwd: nil)
+      if [Tools::Execute::NAME, Tools::TaskCreate::NAME].include?(tool_name)
+        title = steps_title(call[:content])
+        return title if title
+      end
+
       text = case tool_name
              when Tools::Read::NAME, Tools::MemoryRead::NAME then call[:content]
              when Tools::Write::NAME, Tools::Edit::NAME, Tools::MemoryWrite::NAME then call[:path]
@@ -72,6 +80,19 @@ module Samagotchi
     # A leading "cd <dir> &&" / "cd <dir>;" goes: the model's habit, and it
     # eats the line.
     LEADING_CD = /\Acd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/
+
+    # "<first step> +N" (N the steps after it), cut to fit
+    # TOOL_ACTIVITY_PREVIEW_LIMIT; nil when the command has no steps.
+    def steps_title(command)
+      steps = CommandSteps.parse(command)&.steps
+      return nil unless steps
+
+      first = steps.first.text.gsub(/\s+/, " ")
+      more = steps.size > 1 ? " +#{steps.size - 1}" : ""
+      room = TOOL_ACTIVITY_PREVIEW_LIMIT - more.length
+      first = "#{first[0, room - 1]}…" if first.length > room
+      "#{first}#{more}"
+    end
 
     def command_title(command)
       line = command.to_s.lines.map(&:strip).find { |l| !l.empty? }.to_s

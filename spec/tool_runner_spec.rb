@@ -247,15 +247,16 @@ RSpec.describe Samagotchi::ToolRunner do
       command = "cd /tmp && #{"rg -n foo lib | " * 10}head -5"
       run({ name: "execute", content: command, cwd: "lib" })
       expect(events.first[:params].length).to be < command.length
-      expect(events.first[:view]).to eq(command: command, cwd: "lib")
-      expect(events.last).to include(type: :tool_call_completed, view: { command: command, cwd: "lib" })
+      expect(events.first[:view]).to include(command: command, cwd: "lib", cd: "/tmp")
+      expect(events.first[:view][:steps].size).to eq(10)
+      expect(events.last).to include(type: :tool_call_completed, view: events.first[:view])
       expect(events.last[:activity]).not_to have_key(:view)
     end
 
     it "carries the view of the call the hooks replaced" do
       hooks.register(:before_tool_call) { |e| e[:call] = { name: "execute", content: "pwd" } }
       run
-      expect(events.map { |e| e[:view] }).to eq([{ command: "pwd" }] * 2)
+      expect(events.map { |e| e[:view] }).to eq([{ command: "pwd", steps: [{ text: "pwd" }] }] * 2)
     end
 
     it "carries no view for a tool without one" do
