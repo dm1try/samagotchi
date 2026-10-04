@@ -2039,12 +2039,23 @@ module Samagotchi
       nil
     end
 
+    # Whether this generation's thinking lane said anything: nil while it
+    # streamed none, false while only whitespace (Gemma 4's empty thought
+    # with thinking off), true once a real thought came.
+    def note_generation_thought(thinking)
+      return if thinking.empty?
+
+      @generation_thought ||= thinking.match?(/\S/)
+    end
+
     # Thinking off, and the model thought anyway: logged each time, said
-    # once per session and host.
+    # once per session and host. A thinking lane of whitespace alone is no
+    # thought.
     def check_thinking_honoured(event)
       level, target = @turn_thinking
       chars = event[:thinking_chars].to_i
       return unless level == :off && chars.positive? && target
+      return if @generation_thought == false
 
       Log.warn(:model, "thinking_not_honoured", level: level, host: target.entry.name, model: target.bare_model, chars: chars)
       thinking_notice_once(:not_honoured, target, :warn,
@@ -2406,6 +2417,7 @@ module Samagotchi
         case event[:type]
         when :generation_started
           @generation_phase.started!
+          @generation_thought = nil
           watch&.started(event[:iteration])
         when :generation_chunk
           # A chunk without the lanes (no loop of ours sends one) counts as text.
@@ -2413,6 +2425,7 @@ module Samagotchi
           progress = { thinking: event[:thinking].to_s, text: text.to_s }
           @generation_phase.chunk!(**progress, tool_call: event[:tool_call])
           recheck_waiting_steer unless progress[:thinking].empty?
+          note_generation_thought(progress[:thinking])
         when :generation_retrying then @generation_phase.retrying!
         when :generation_completed, :generation_cancelled then @generation_phase.finished!
         end

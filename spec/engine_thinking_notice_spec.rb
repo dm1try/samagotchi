@@ -33,6 +33,8 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
   end
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "box:qwen-small", working_directory: Dir.pwd) }
   let(:thinking_chars) { [0] }
+  # Per generation, the thinking chunks it streamed (none by default).
+  let(:thoughts) { [] }
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
@@ -41,6 +43,10 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     allow_any_instance_of(Samagotchi::Client).to receive(:cached_server_props).and_return(nil)
     allow(kernel).to receive(:run) do |messages, on_stream_event: nil, **|
       thinking_chars.each_with_index do |chars, index|
+        on_stream_event&.call(type: :generation_started, iteration: index + 1)
+        thoughts[index]&.each do |thought|
+          on_stream_event&.call(type: :generation_chunk, iteration: index + 1, content: thought, thinking: thought, text: "")
+        end
         on_stream_event&.call(type: :generation_completed, iteration: index + 1, content_length: 2, thinking_chars: chars)
       end
       Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
@@ -140,6 +146,20 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     expect(second).to be_empty
     expect(Samagotchi::Log).to have_received(:warn).with(:model, "thinking_not_honoured", hash_including(chars: 120, host: "box"))
     expect(Samagotchi::Log).to have_received(:warn).with(:model, "thinking_not_honoured", hash_including(chars: 80))
+  end
+
+  it "says nothing when off's thinking lane held only whitespace (Gemma 4's empty thought)" do
+    ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
+    thinking_chars.replace([1, 2])
+    thoughts.replace([["\n"], [" ", "\n"]])
+    expect(notices).to be_empty
+  end
+
+  it "still warns when off's thinking lane held a real thought after whitespace" do
+    ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
+    thinking_chars.replace([1, 9])
+    thoughts.replace([["\n"], ["\n", "let me "]])
+    expect(notices.map { |n| n[:text] }).to contain_exactly(include("(9 chars of thinking)"))
   end
 
   it "says once that the host refused the thinking fields, and not also that off wasn't honoured" do

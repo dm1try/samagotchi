@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - A steer row names chi's senders in words: the web's row and trail flash and the terminal's nudged line say
   `parent agent` and `chi send` instead of the raw `parent_agent` / `chi_send`.
+- Thinking off on Gemma 4 no longer warns that off wasn't honoured: its empty thought (whitespace alone) is not
+  counted as thinking.
 
 ## [0.24.0] - 2026-10-04
 
