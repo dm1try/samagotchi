@@ -182,6 +182,29 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       end
     end
 
+    describe "max_tokens on OpenRouter" do
+      def entry(url) = Samagotchi::HostRegistry::HostEntry.new(name: "or", host: "h", port: 1, api: :openai, url: url)
+
+      it "is set for an OpenRouter host only" do
+        expect(described_class.for(entry("https://openrouter.ai/api/v1")).default_max_tokens)
+          .to eq(described_class::OPENROUTER_MAX_TOKENS)
+        expect(described_class.for(entry("https://api.example.com/v1")).default_max_tokens).to be_nil
+        expect(described_class.for(entry("http://192.168.1.29:8081/v1")).default_max_tokens).to be_nil
+      end
+
+      it "sends the default when the request names none, and the request's own value over it" do
+        capped = described_class.new(base_url: server.base_url, host_name: "or", env: env, retries: false,
+                                     default_max_tokens: 32_768)
+        replay("text_stream.sse")
+        capped.chat(messages: messages, tools: [], model: "m")
+        expect(server.requests.last.json["max_tokens"]).to eq(32_768)
+
+        replay("text_stream.sse")
+        capped.chat(messages: messages, tools: [], model: "m", options: { max_tokens: 200 })
+        expect(server.requests.last.json["max_tokens"]).to eq(200)
+      end
+    end
+
     it "sends the session id as a Session-Id header, and no header without one" do
       replay("text_stream.sse")
       adapter.chat(messages: messages, tools: [], model: "m", session_id: "abc-123")

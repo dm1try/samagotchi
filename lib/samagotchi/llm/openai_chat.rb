@@ -53,13 +53,28 @@ module Samagotchi
       # How much of a 200's non-stream body is read as a possible JSON error.
       PLAIN_ERROR_LIMIT = 64 * 1024
       DEFAULT_MODELS_TTL = 60
+      # OpenRouter holds a paid request's estimated cost against the balance
+      # while it runs: the input plus the output max_tokens allows (a fixed
+      # per-request cap when it is unset), and refuses a request with a 402
+      # once the running ones fill the budget. A request that names a sane
+      # limit holds less. 32k leaves room for any one step's answer.
+      OPENROUTER_MAX_TOKENS = 32_768
 
-      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout
+      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :default_max_tokens
 
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **options)
         new(base_url: entry.openai_base_url, host_name: entry.name, api_key_env: entry.api_key_env,
-            remote: entry.remote?, **options)
+            remote: entry.remote?, default_max_tokens: (OPENROUTER_MAX_TOKENS if openrouter?(entry.openai_base_url)),
+            **options)
+      end
+
+      # true when +url+ is OpenRouter's API (openrouter.ai or a subdomain).
+      def self.openrouter?(url)
+        host = URI(url.to_s).host.to_s.downcase
+        host == "openrouter.ai" || host.end_with?(".openrouter.ai")
+      rescue URI::Error
+        false
       end
 
       # Tool arguments as a Hash; "" is {}, invalid JSON stays a String.
@@ -87,10 +102,13 @@ module Samagotchi
       # @param remote [Boolean] a provider on the network, not a local server
       # @param first_token_timeout [Numeric, nil] seconds a streamed answer
       #   may take to show something (LLM::HTTP); nil: no limit
+      # @param default_max_tokens [Integer, nil] max_tokens for a request
+      #   whose options name none (OPENROUTER_MAX_TOKENS); nil sends none
       def initialize(base_url:, host_name:, api_key_env: nil, stream: true, retries: true, timeout: nil,
                      env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
-                     first_token_timeout: nil, purpose: "chat")
+                     first_token_timeout: nil, purpose: "chat", default_max_tokens: nil)
         @remote = remote
+        @default_max_tokens = default_max_tokens
         # What its requests are for, in the log (LLM::HTTP::LOGGED_PURPOSES).
         @purpose = purpose
         @first_token_timeout = first_token_timeout
@@ -211,11 +229,12 @@ module Samagotchi
           stream: @stream
         }
         body[:stream_options] = { include_usage: true } if @stream
+        body[:max_tokens] = @default_max_tokens if @default_max_tokens
         unless Array(tools).empty?
           body[:tools] = tools
           body[:tool_choice] = "auto"
         end
-        # A configured value replaces chi's own (temperature); nil drops it.
+        # A configured value replaces chi's own (temperature, max_tokens); nil drops it.
         body.merge(options || {}).compact
       end
 
