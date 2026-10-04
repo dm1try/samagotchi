@@ -270,23 +270,6 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
 
       expect(adapter.chat(messages: messages, tools: [], model: "m").usage).to eq(Samagotchi::LLM::Usage.none)
     end
-
-    it "drops the newlines before the answer's first text, across chunks (incoai/splash#254)" do
-      server.enqueue("/v1/chat/completions", sse: [
-        %(data: {"choices":[{"index":0,"delta":{"reasoning_content":"think"}}]}\n\n),
-        %(data: {"choices":[{"index":0,"delta":{"content":"\\n"}}]}\n\n),
-        %(data: {"choices":[{"index":0,"delta":{"content":"\\nHi"}}]}\n\n),
-        %(data: {"choices":[{"index":0,"delta":{"content":"\\n\\nthere"},"finish_reason":"stop"}]}\n\n),
-        "data: [DONE]\n\n"
-      ])
-      deltas = []
-
-      response = adapter.chat(messages: messages, tools: [], model: "m",
-                              on_delta: ->(content:, reasoning:, payload:) { deltas << content })
-
-      expect(response.text).to eq("Hi\n\nthere")
-      expect(deltas.join).to eq("Hi\n\nthere")
-    end
   end
 
   describe "#chat, not streamed" do
@@ -302,13 +285,6 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(response.usage.source).to eq(:server)
       expect(server.requests.last.json).not_to include("stream_options")
       expect(server.requests.last.json["stream"]).to be(false)
-    end
-
-    it "drops the newlines before the answer (incoai/splash#254)" do
-      server.enqueue("/v1/chat/completions",
-                     json: { choices: [{ message: { content: "\n\nHi\n", reasoning_content: "think" } }] })
-
-      expect(adapter.chat(messages: messages, tools: [], model: "m").text).to eq("Hi\n")
     end
 
     it "reports the model the body names" do

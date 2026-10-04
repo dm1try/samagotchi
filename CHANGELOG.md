@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi no longer strips the blank lines Splash before 1.2.0 put at the start of an answer (incoai/splash#254, fixed
+  in Splash 1.2.0): upgrade Splash with `brew upgrade incoai/tap/splash`.
+
 ### Fixed
 
 - A continue turn that fails before it begins (its session save, say) asks the step-limit question again
