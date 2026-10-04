@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-04
+
 ### Added
 
 - `steer.cut_after` (default 20 s, `0` = never): a message for a running turn from you, `chi send` or a parent
@@ -21,7 +23,6 @@ and commands may change between minor versions. How releases are made:
 - The web shows an `execute` / `task_create` call's full command: an expanded tool row has it as a block above the
   output (whitespace kept, a copy button, `in <cwd>` when the call gave one), and the row's and the stage's hovers
   show the whole command instead of the 80-character `command="…"` line. The terminal is unchanged.
-
 - A message that joins a running turn (a line typed in the terminal or the web, `chi send -m`, a delegate's
   follow-up, `chi answer --option Continue --text`, a plugin's `ctx.steer`) reaches the model with a one-line
   header naming its sender and asking it to follow the message, or carry on if it asks for nothing, so the model
@@ -41,6 +42,9 @@ and commands may change between minor versions. How releases are made:
 - check-in no longer says a nudge was not sent when a user line was merged after it (bundle check-in 0.2.3).
 - A plugin's cut of a generation (loop-guard) with a message or a plugin's steer waiting now delivers it even after
   `retry.empty_answer`'s budget is spent; the turn used to end cancelled and drop a waiting plugin steer.
+
+Update with `chi update`: check-in moves to 0.2.3 (the nudge-not-sent fix). Restart `chi web` and running sessions
+afterwards (`chi sessions restart ID`).
 
 ## [0.23.0] - 2026-10-04
 
@@ -1338,7 +1342,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/dm1try/samagotchi/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/dm1try/samagotchi/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/dm1try/samagotchi/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/dm1try/samagotchi/compare/v0.20.0...v0.21.0
