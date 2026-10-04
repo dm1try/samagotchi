@@ -31,6 +31,11 @@ RSpec.describe Samagotchi::TerminalUI::RelineHistoryHook do
     described_class.install
   end
 
+  # A real read always ends in LineEditor#finalize. Without it the read stays
+  # open for RelineSeam (prepended process-wide once any spec installs it):
+  # RelineSeam.reading? stuck true fails reline_seam_spec run after this file.
+  after { editor.finalize if @prompt_open }
+
   around do |example|
     saved = Reline::HISTORY.to_a
     Reline::HISTORY.clear
@@ -46,6 +51,7 @@ RSpec.describe Samagotchi::TerminalUI::RelineHistoryHook do
   end
 
   def open_prompt(prompt = "> ")
+    @prompt_open = true
     editor.reset(prompt)
     editor.multiline_on
   end
