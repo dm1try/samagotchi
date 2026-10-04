@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { commandBlockHtml, rowHover } from "../../../lib/samagotchi/web/public/command_view.js";
+import { commandBlockHtml, rowHover, stepTextHtml, stepsHtml } from "../../../lib/samagotchi/web/public/command_view.js";
 import { copyButtonHtml } from "../../../lib/samagotchi/web/public/copy.js";
 
 const COPY = copyButtonHtml("code");
@@ -19,6 +19,56 @@ test("commandBlockHtml: the call's cwd as given, above the command", () => {
 test("commandBlockHtml: a cut command says how much of it is shown, outside the copied code", () => {
   const html = commandBlockHtml({ command: "x".repeat(8000), truncated: true, chars: 12345 });
   assert.match(html, /<\/pre><button[^]*<\/button><div class="activity-command-cut">… \(8,000 of 12,345 chars\)<\/div><\/div>$/);
+});
+
+test("commandBlockHtml: a view with steps shows them, the cd as an in tag, a raw toggle, the raw command kept for raw and copy", () => {
+  const html = commandBlockHtml({ command: "cd /p && rg x | head -5", cwd: "lib", cd: "/p", steps: [{ text: "rg x", limit: "head 5" }] });
+  assert.equal(html,
+    `<div class="activity-command code-wrap has-steps"><div class="activity-command-head">` +
+    `<span class="activity-command-cwd">in <span>lib</span> <span class="activity-command-sep">›</span> <span>/p</span></span>` +
+    `<label class="activity-command-raw" title="Show the command as written"><input type="checkbox">raw</label></div>` +
+    `<ol class="activity-steps"><li class="activity-step"><span class="step-op"></span><span class="step-body"><code>rg x</code>` +
+    `<span class="step-chip" title="output limited">head 5</span></span></li></ol>` +
+    `<pre><code>cd /p &amp;&amp; rg x | head -5</code></pre>${COPY}</div>`);
+});
+
+test("commandBlockHtml: the fallback (no steps, or none parsed) is the raw block alone, a cd not shown apart", () => {
+  const plain = `<div class="activity-command code-wrap"><pre><code>for f in *; do :; done</code></pre>${COPY}</div>`;
+  assert.equal(commandBlockHtml({ command: "for f in *; do :; done" }), plain);
+  assert.equal(commandBlockHtml({ command: "for f in *; do :; done", steps: [], cd: "/p" }), plain);
+});
+
+test("commandBlockHtml: a cut command with steps keeps its cut line", () => {
+  const html = commandBlockHtml({ command: "ls", truncated: true, chars: 9000, steps: [{ text: "ls" }] });
+  assert.match(html, /<div class="activity-command-cut">… \(2 of 9,000 chars\)<\/div><\/div>$/);
+});
+
+test("stepsHtml: ops between steps, labels as headings, limit and heredoc chips, all escaped", () => {
+  const html = stepsHtml([
+    { text: "git status", label: "<git>" },
+    { text: "a", op: "&&" }, { text: "b", op: "||" }, { text: "c", op: "|" }, { text: "d", op: "&" },
+    { text: "git commit -m \"$(cat <<'EOF')\"", op: "\n", heredoc: { tag: "EOF", lines: 1 } },
+    { text: "cat > x <<J", op: ";", heredoc: { tag: "J", lines: 34 } }
+  ]);
+  assert.equal(html,
+    `<ol class="activity-steps"><li class="step-label">&lt;git&gt;</li><li class="activity-step"><span class="step-op"></span><span class="step-body"><code>git status</code></span></li>` +
+    `<li class="activity-step"><span class="step-op" title="&amp;&amp;">→</span><span class="step-body"><code>a</code></span></li>` +
+    `<li class="activity-step"><span class="step-op else" title="||">else</span><span class="step-body"><code>b</code></span></li>` +
+    `<li class="activity-step"><span class="step-op" title="|">→</span><span class="step-body"><code>c</code></span></li>` +
+    `<li class="activity-step"><span class="step-op" title="after starting the step before in the background">&amp;</span><span class="step-body"><code>d</code></span></li>` +
+    `<li class="activity-step"><span class="step-op" title="new line">→</span><span class="step-body"><code>git commit -m &quot;$(cat &lt;&lt;'EOF')&quot;</code>` +
+    `<span class="step-chip heredoc" title="a heredoc: its text in the raw command">EOF · 1 line</span></span></li>` +
+    `<li class="activity-step"><span class="step-op" title=";">→</span><span class="step-body"><code>cat &gt; x &lt;&lt;J</code>` +
+    `<span class="step-chip heredoc" title="a heredoc: its text in the raw command">J · 34 lines</span></span></li></ol>`);
+});
+
+test("stepTextHtml: dims redirections to and from nowhere, leaves real ones", () => {
+  assert.equal(stepTextHtml("rg x 2>&1"), `rg x <span class="step-plumbing">2&gt;&amp;1</span>`);
+  assert.equal(stepTextHtml("rspec </dev/null 2>/dev/null"),
+    `rspec <span class="step-plumbing">&lt;/dev/null</span> <span class="step-plumbing">2&gt;/dev/null</span>`);
+  assert.equal(stepTextHtml("a &>/dev/null"), `a <span class="step-plumbing">&amp;&gt;/dev/null</span>`);
+  assert.equal(stepTextHtml("echo x > out.txt"), "echo x &gt; out.txt");
+  assert.equal(stepTextHtml("echo 2>&1x"), "echo 2&gt;&amp;1x");
 });
 
 test("commandBlockHtml: nothing for a call without a view", () => {

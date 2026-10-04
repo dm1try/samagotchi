@@ -141,6 +141,30 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .activity-command-cwd{margin-bottom:2px}
 .activity-command-cwd>span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted)}
 .activity-command-cut{margin-top:2px}
+/* The command as its steps (CommandSteps): the op that links each to the one before, labels as small headings, limits and heredocs as chips; "raw" swaps in the command as written (CSS only). */
+.activity-command.has-steps{background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;padding:4px 8px 5px}
+.activity-command-head{display:flex;align-items:center;gap:8px;min-height:20px;padding-right:30px}
+.has-steps .activity-command-cwd{flex:1 1 auto;min-width:0;margin:0;overflow-wrap:anywhere}
+.activity-command-cwd>.activity-command-sep{font-family:inherit;color:var(--text-faint)}
+.activity-command-raw{flex:none;display:inline-flex;align-items:center;height:18px;padding:0 7px;border:1px solid var(--border-strong);border-radius:9px;font-size:11px;color:var(--text-muted);cursor:pointer;user-select:none;-webkit-user-select:none}
+.activity-command-raw:hover{color:var(--text-2)}
+.activity-command-raw input{position:absolute;opacity:0;width:0;height:0;margin:0}
+.activity-command-raw:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:1px}
+.activity-command-raw:has(input:checked){color:var(--accent);border-color:var(--accent-border);background:var(--accent-tint)}
+.activity-steps{list-style:none;margin:2px 0 0;padding:0;max-height:220px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.5;color:var(--text-2)}
+.activity-step{display:flex;align-items:baseline;gap:6px;min-width:0}
+.step-body{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px}
+.step-body>code{min-width:0;font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}
+.step-op{flex:none;width:2.4em;text-align:right;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--text-faint)}
+.step-op.else{color:var(--warn-text)}
+.step-label{margin:5px 0 0 calc(2.4em + 6px);font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:600;color:var(--text-muted)}
+.step-label:first-child{margin-top:1px}
+.step-chip{flex:none;align-self:center;padding:0 6px;border:1px solid var(--border-strong);border-radius:8px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:15px;color:var(--text-muted);white-space:nowrap}
+.step-chip.heredoc{border-style:dashed}
+.step-plumbing{color:var(--text-faint)}
+.activity-command.has-steps>pre{display:none;max-height:220px;margin-top:2px;padding:0 4px;background:none;border:0}
+.has-steps:has(.activity-command-raw input:checked)>pre{display:block}
+.has-steps:has(.activity-command-raw input:checked)>.activity-steps{display:none}
 @media(max-width:600px){
   .activity-params{flex:1 1 0}
   .activity-output{margin-left:0}
