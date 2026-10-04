@@ -149,6 +149,7 @@ RSpec.describe Samagotchi::Log do
     end
 
     it "drops a record it can't format, and keeps logging" do
+      allow(described_class).to receive(:strict).and_return(false)
       expect(described_class.info(:nope, "x")).to be_nil
       expect(described_class.info(:worker, "Bad Event")).to be_nil
       bad = Object.new
@@ -157,6 +158,15 @@ RSpec.describe Samagotchi::Log do
       described_class.info(:worker, "ok")
 
       expect(records.map(&:event)).to eq(%w[ok])
+    end
+
+    it "raises on an unknown tag or a bad event when strict (the suite), at any level" do
+      described_class.configure(path: path, level: :warn)
+
+      expect(described_class.strict).to be(true)
+      expect { described_class.debug(:wroker, "x") }.to raise_error(ArgumentError, /unknown log tag wroker/)
+      expect { described_class.info(:worker, "Bad Event") }.to raise_error(ArgumentError, /bad log event/)
+      expect(records).to eq([])
     end
 
     it "keeps logging after invalid UTF-8" do

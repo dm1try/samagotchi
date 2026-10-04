@@ -51,6 +51,9 @@ ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
 # The turn-end warm-up (cache.warmup) would send a request after every
 # turn: off for specs; examples tagged :warmup turn it back on.
 ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
+# Log drops a record with an unknown tag or a bad event name; specs (and the
+# workers they spawn) raise instead, so a typo'd tag fails loudly.
+ENV["SAMAGOTCHI_LOG_STRICT"] = "1"
 ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
 SPEC_INTEGRATION_XDG_CONFIG_HOME = (IntegrationServer.write_config_home(IntegrationServer.settings) if ENV["SAMAGOTCHI_INTEGRATION"] == "1")

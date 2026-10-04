@@ -23,6 +23,8 @@ module Samagotchi
   # (once, until Config.reload!). While that runs (Config can warn itself)
   # records only echo. Nothing here raises into the caller: a record that
   # can't be formatted is dropped, an unwritable file pauses (DebugLog).
+  # The one exception is strict mode (SAMAGOTCHI_LOG_STRICT=1, the spec
+  # suite): an unknown tag or a malformed event raises, whatever the level.
   module Log
     LEVELS = { debug: 0, info: 1, warn: 2, error: 3 }.freeze
     DEFAULT_LEVEL = :info
@@ -39,6 +41,7 @@ module Samagotchi
     @state = nil
     @resolving = false
     @session_id = nil
+    @strict = ENV["SAMAGOTCHI_LOG_STRICT"] == "1"
 
     class << self
       # @param path [String, nil, :auto] the file; :auto → LogPath.resolve
@@ -72,6 +75,9 @@ module Samagotchi
       # carry its first SID_LENGTH chars unless they pass their own sid:.
       attr_accessor :session_id
 
+      # Raise on an unknown tag or a bad event instead of dropping the record.
+      attr_accessor :strict
+
       def debug(tag, event, **kw) = log(:debug, tag, event, **kw)
       def info(tag, event, **kw) = log(:info, tag, event, **kw)
       def warn(tag, event, **kw) = log(:warn, tag, event, **kw)
@@ -96,7 +102,19 @@ module Samagotchi
         resolved_state&.dig(:writer)&.path
       end
 
-      def log(level, tag, event, payload: nil, sid: nil, echo: nil, **fields)
+      def log(level, tag, event, **kw)
+        check_names!(tag, event) if strict
+        write_record(level, tag, event, **kw)
+      end
+
+      private
+
+      def check_names!(tag, event)
+        raise ArgumentError, "unknown log tag #{tag}" unless LogLine::TAGS.include?(tag.to_s)
+        raise ArgumentError, "bad log event #{event}" unless event.to_s.match?(LogLine::SLUG)
+      end
+
+      def write_record(level, tag, event, payload: nil, sid: nil, echo: nil, **fields)
         options = @options
         echo_to_stderr(echo) if echo && options.fetch(:stderr, true)
         state = resolved_state
@@ -112,8 +130,6 @@ module Samagotchi
       rescue StandardError
         nil
       end
-
-      private
 
       def build(level, tag, event, payload:, sid:, fields:)
         tag = tag.to_s
