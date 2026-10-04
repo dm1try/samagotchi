@@ -8,12 +8,20 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-04
+
+### Added
+
+- Web: a "stop task" button on a running `task_wait` stops the background task; the turn goes on and the model is
+  told the user stopped it (Cancel still cancels the turn and leaves the task running).
+
 ### Changed
 
 - `/mcp` lists each server's tools alphabetically, not in the order the server sent them (mcp bundle 0.4.3).
 
 ### Fixed
 
+- A stopped background task ends as `stopped`, not `failed`, and records who stopped it (the user or the model).
 - Code blocks in the web follow the light theme too: their highlighting comes from the page's palette instead of one
   fixed dark theme.
 
@@ -1430,7 +1438,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/dm1try/samagotchi/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/dm1try/samagotchi/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/dm1try/samagotchi/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/dm1try/samagotchi/compare/v0.23.0...v0.24.0
