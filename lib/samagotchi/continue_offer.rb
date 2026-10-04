@@ -58,7 +58,7 @@ module Samagotchi
       outcome = @turn_flow.after_turn(result, continue: continue, no_interrupt: no_interrupt)
       return unless %i[continue_offered continue_cancelled].include?(outcome)
 
-      open
+      announce_offer
     end
 
     # A prompt (or a reminder turn) taken while a continue is offered
@@ -126,12 +126,12 @@ module Samagotchi
           @turn_flow.before_continue_turn
         rescue StandardError => e
           Log.warn(:worker, "turn_not_begun", continue: true, error: e.class.name, msg: e.message)
-          return open(offer)
+          return announce_offer(offer)
         end
         @run_turn.call(nil, continue: true, origin: { client_id: command[:client_id] }.compact,
                             max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
           if error
-            open(offer)
+            announce_offer(offer)
           else
             after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
           end
@@ -152,7 +152,7 @@ module Samagotchi
 
     private
 
-    def open(offer = @turn_flow.offer)
+    def announce_offer(offer = @turn_flow.offer)
       @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
       ask
     end
