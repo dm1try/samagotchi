@@ -71,6 +71,9 @@ RSpec.describe Samagotchi::TerminalUI::LiveRegion do
   # A slow terminal (ssh): the read was stopped while Reline waited for the
   # reply, which comes after the region closed.
   it "waits for the reply to a cursor query a stopped read left unanswered, and no longer" do
+    # A long reply wait, so "no longer" is told apart from running out the
+    # wait by a wide margin instead of a tight wall-clock bound.
+    stub_const("#{described_class}::CURSOR_REPLY_WAIT", 5.0)
     PTY.open do |terminal, input|
       surface = described_class.open(out: tty, input: input, env: { "TERM" => "xterm" })
       Samagotchi::TerminalUI::RelineSeam.unanswered_query_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -89,11 +92,12 @@ RSpec.describe Samagotchi::TerminalUI::LiveRegion do
       left = input.raw { input.wait_readable(0.1) && input.read_nonblock(64, exception: false) }
       expect(left).to be_nil
       # Timed from the reply itself: a loaded CI runner can wake the replier
-      # late (0.50 s seen on macOS; the reply comes early so a late wake still
-      # lands inside the 0.5 s wait), and close must wait for it either way,
-      # then stop soon after instead of running out its whole wait.
+      # late (0.50 s seen on macOS) or the closer late after it (0.19 s seen
+      # on macOS against DRAIN_WINDOW 0.05), and close must wait for the
+      # reply either way, then stop soon after instead of running out its
+      # whole (here 5 s) wait.
       expect(closed_at).to be >= written_at
-      expect(closed_at - written_at).to be < 0.15
+      expect(closed_at - written_at).to be < 2.0
       expect(Samagotchi::TerminalUI::RelineSeam.unanswered_query_at).to be_nil
     end
   end
