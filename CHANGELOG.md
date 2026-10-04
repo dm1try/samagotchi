@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: a tool row shows its status as a mark (✓, ✕, ■, a spinner while it runs) instead of the word, so its command,
+  output and diff start right under the tool name; error, stopped and blocked calls keep their word after the title.
+  An open step's body sits indented under its summary.
+
 ## [0.28.0] - 2026-10-04
 
 ### Added

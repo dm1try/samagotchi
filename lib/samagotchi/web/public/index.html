@@ -127,14 +127,24 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.recap .recap-body{white-space:pre-wrap;margin-top:6px}
 .bubble.recap.stale{opacity:.7;border-left-style:dashed}
 .activity-body{margin-top:6px}
-.activity-row{display:flex;gap:8px;align-items:baseline;font-size:13px;color:var(--text-2);padding:5px 2px;border-top:1px solid var(--border)}
+.activity-row{--row-gutter:22px;display:flex;gap:8px;align-items:baseline;font-size:13px;color:var(--text-2);padding:5px 2px;border-top:1px solid var(--border)}
 .activity-row:first-child{border-top:none}
-.activity-status{font-size:11px;min-width:52px;text-transform:uppercase;letter-spacing:.03em;font-weight:600}
-.activity-status.running{color:var(--warn)}
-.activity-status.ok{color:var(--ok)}
-.activity-status.error{color:var(--danger)}
-.activity-status.stopped{color:var(--warn-text);opacity:.8}
-.activity-status.blocked{color:var(--danger-text)}
+/* A row's status is a mark in a 14 px slot, drawn from its class (no text: a copy or an annotate quote gets
+   no glyph; the word is its aria-label and title). The glyphs the stage already uses: done ✓, error and
+   blocked ✕, stopped ■, running its border spinner (still once the turn is over: a dead worker's row).
+   An exception also shows its word after the title (.activity-state). */
+.activity-status{width:14px;text-align:center;font-size:12px;font-weight:700}
+.activity-status.ok::before{content:"\2713";opacity:.85}
+.activity-status.error::before,.activity-status.blocked::before{content:"\2715"}
+.activity-status.stopped::before{content:"\25A0";font-size:10px}
+.activity-status.running::before{content:"";display:inline-block;box-sizing:border-box;width:10px;height:10px;vertical-align:-1px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%}
+.turn-work:not(.done) .activity-status.running::before{animation:init-spin .8s linear infinite}
+.activity-state{flex:none;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.03em;font-weight:600}
+:is(.activity-status,.activity-state).running{color:var(--warn)}
+:is(.activity-status,.activity-state).ok{color:var(--ok)}
+:is(.activity-status,.activity-state).error{color:var(--danger)}
+:is(.activity-status,.activity-state).stopped{color:var(--warn-text);opacity:.8}
+:is(.activity-status,.activity-state).blocked{color:var(--danger-text)}
 .activity-tool{color:var(--accent);font-weight:600}
 /* The stop-task button on a running task_wait (task_stop.js): a small ghost
    button in the danger colours, at the row's end and in the stage's now slot. */
@@ -143,24 +153,24 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .ts-now button.task-stop{align-self:center}
 .activity-params{color:var(--text-muted);word-break:break-all}
 .activity-duration{color:var(--text-faint);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.activity-output{margin:4px 0 2px 60px;font-size:12px;color:var(--text-muted);white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radius:6px;padding:6px 8px;max-height:160px;overflow:auto}
+.activity-output{margin:4px 0 2px var(--row-gutter);font-size:12px;color:var(--text-muted);white-space:pre-wrap;word-break:break-word;background:var(--bg);border-radius:6px;padding:6px 8px;max-height:160px;overflow:auto}
 /* A row's status and tool name never wrap (a phone broke them letter by
    letter); the params take what is left. The output goes on its own line
    under the call instead of a column beside it: on a desktop it lines up
-   under the tool name (the status is 52 px + the 8 px gap), on a phone it
-   takes the full width and the params break inside the rest of the first
-   line rather than drop to a line of their own. */
+   under the tool name (--row-gutter: the 14 px mark slot + the 8 px gap), on
+   a phone it takes the full width and the params break inside the rest of
+   the first line rather than drop to a line of their own. */
 .activity-row{flex-wrap:wrap}
 .activity-status,.activity-tool{flex-shrink:0;white-space:nowrap}
 .activity-params{min-width:0}
 .activity-output{flex:1 1 100%;min-width:0}
 /* An edit/write's change: a closed "diff +3 −1" under the output, lined up with it. */
-.activity-diff{flex:1 1 100%;min-width:0;margin:2px 0 2px 60px}
+.activity-diff{flex:1 1 100%;min-width:0;margin:2px 0 2px var(--row-gutter)}
 .activity-diff>summary{cursor:pointer;font-size:12px;color:var(--text-muted);width:max-content;font-variant-numeric:tabular-nums}
 .activity-diff>summary:hover{color:var(--text-2)}
 .activity-diff[open]>summary{margin-bottom:4px}
 /* An execute/task_create's full command, above its output and lined up with it: as written, its own scroll. */
-.activity-row>.activity-command{flex:1 1 100%;min-width:0;margin:4px 0 2px 60px}
+.activity-row>.activity-command{flex:1 1 100%;min-width:0;margin:4px 0 2px var(--row-gutter)}
 .activity-command pre{margin:0;max-height:160px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.45;color:var(--text-2);background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;padding:6px 34px 6px 8px}
 .activity-command-cwd,.activity-command-cut{font-size:11px;color:var(--text-faint)}
 .activity-command-cwd{margin-bottom:2px}
@@ -436,7 +446,8 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 .chip .chip-remove{background:transparent;color:var(--text-3);padding:0 6px;min-height:0;font-size:14px}
 .thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .thumb{max-height:120px;max-width:200px;border-radius:6px;border:1px solid var(--border-strong);cursor:zoom-in;object-fit:contain;background:var(--bg)}
-.activity-row .thumbs{flex-basis:100%}
+.activity-row .thumbs{flex-basis:100%;margin-left:var(--row-gutter)}
+@media(max-width:600px){.activity-row .thumbs{margin-left:0}}
 #lightbox{position:fixed;inset:0;z-index:50;background:var(--backdrop);display:flex;align-items:center;justify-content:center;cursor:zoom-out}
 #lightbox[hidden]{display:none}
 #lightbox img{max-width:96vw;max-height:94vh;border-radius:6px}
@@ -621,7 +632,7 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   .ts-defer{display:none}
   .ts-trail-item{max-width:24ch}
 }
-@media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark{animation:none}.turn-stage.leaving{transition:none}}
+@media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark,.turn-work:not(.done) .activity-status.running::before{animation:none}.turn-stage.leaving{transition:none}}
 #infoBar{display:flex;padding:8px 14px 10px;border-top:1px solid var(--glass-border);background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
 #infoBar.visible{display:flex}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}

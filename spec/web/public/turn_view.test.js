@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { turnHistoryHtml } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { statusParts, turnHistoryHtml } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { commandBlockHtml } from "../../../lib/samagotchi/web/public/command_view.js";
 
@@ -24,9 +24,9 @@ test("turnHistoryHtml: a reloaded tool turn is a collapsed block of steps, then 
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<details class="turn-work done"><summary>2 steps · 2 tool calls</summary>' +
     '<details class="gen"><summary>Let me &lt;check&gt;. · 1 tool call</summary><div class="gen-text">Let me &lt;check&gt;.</div>' +
-    '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok">done</span><span class="activity-tool">execute</span><span class="activity-duration">7ms</span></div></div></details>' +
+    '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span><span class="activity-duration">7ms</span></div></div></details>' +
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
-    '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok">done</span><span class="activity-tool">read</span><span class="activity-duration">1.2s</span></div></div></details>' +
+    '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">read</span><span class="activity-duration">1.2s</span></div></div></details>' +
     '</details>' +
     '<div class="bubble output markdown" data-copy-source="Both fine."><p>Both <em>fine</em>.</p></div><div class="turn-timing">turn 1 · 19s</div>');
 });
@@ -63,10 +63,10 @@ test("turnHistoryHtml with parts: each step expands to its thinking, text and ca
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<details class="turn-work done"><summary>3 steps · 2 tool calls</summary>' +
     '<details class="gen"><summary>Let me check. · 1 tool call</summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
-    '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok">done</span><span class="activity-tool">execute</span>' +
+    '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span>' +
     '<span class="activity-params">command=&quot;true&quot;</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
-    '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok">done</span><span class="activity-tool">read</span>' +
+    '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">read</span>' +
     `<span class="activity-params">path=&quot;R.md&quot;</span><span class="activity-duration">1.2s</span><div class="activity-output" title="${"x".repeat(310)}">${"x".repeat(300)}…</div></div></div></details>` +
     // A thinking-only step: one header, the body directly under it (no
     // nested wrap that would repeat "thinking"), as the live view leaves it.
@@ -178,7 +178,7 @@ test("turnHistoryHtml: a saved task_wait record the user's Stop ended reloads as
     tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "task_wait", status: "stopped", duration_ms: 800 }],
   });
   const html = turnHistoryHtml(items, stopped, { thumbs });
-  assert.match(html, /<span class="activity-status stopped">stopped<\/span><span class="activity-tool">task_wait<\/span>/);
+  assert.match(html, /<span class="activity-status stopped" role="img" aria-label="stopped" title="stopped"><\/span><span class="activity-tool">task_wait<\/span><span class="activity-state stopped">stopped<\/span><span class="activity-duration">/);
 });
 
 test("turnHistoryHtml: a saved guardrail-denied record reloads as blocked, not done", () => {
@@ -188,7 +188,7 @@ test("turnHistoryHtml: a saved guardrail-denied record reloads as blocked, not d
     tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "blocked", duration_ms: 0 }],
   });
   const html = turnHistoryHtml(items, denied, { thumbs });
-  assert.match(html, /<span class="activity-status blocked">blocked<\/span><span class="activity-tool">execute<\/span>/);
+  assert.match(html, /<span class="activity-status blocked" role="img" aria-label="blocked" title="blocked"><\/span><span class="activity-tool">execute<\/span><span class="activity-state blocked">blocked<\/span>/);
 });
 
 test("turnHistoryHtml with parts: an edit's row keeps its collapsed diff after a reload", () => {
@@ -276,4 +276,28 @@ test("turnHistoryHtml with parts: an execute's reloaded row shows its full comma
   assert.ok(html.includes(
     '<span class="activity-params" title="cd /p &amp;&amp; rg -n foo lib |\n  head -5">rg -n foo lib |</span><span class="activity-duration">7ms</span>' +
     `${commandBlockHtml(view)}<div class="activity-output" title="a">a</div>`), html);
+});
+
+test("statusParts: a row's status as a class, a label and the word only exceptions show", () => {
+  assert.deepEqual(statusParts("ok"), { cls: "ok", label: "done", word: "" });
+  assert.deepEqual(statusParts(undefined), { cls: "ok", label: "done", word: "" });
+  assert.deepEqual(statusParts("running"), { cls: "running", label: "running", word: "" });
+  assert.deepEqual(statusParts("error"), { cls: "error", label: "error", word: "error" });
+  assert.deepEqual(statusParts("stopped"), { cls: "stopped", label: "stopped", word: "stopped" });
+  assert.deepEqual(statusParts("blocked"), { cls: "blocked", label: "blocked", word: "blocked" });
+});
+
+test("turnHistoryHtml with parts: a failed call's row keeps its word after the params, before the duration", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "", parts: { tools: [{ tool: "execute", params: 'command="ls /x"', output: "[execute]\nexit: 1" }] } },
+    { role: "assistant", content: "Done." },
+  ];
+  const failed = normalizeTiming({
+    turn_records: [{ id: "T1", status: "completed", duration_ms: 900 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "error", duration_ms: 15 }],
+  });
+  const html = turnHistoryHtml(items, failed, { thumbs });
+  assert.match(html, /<div class="activity-row" data-key="1:1"><span class="activity-status error" role="img" aria-label="error" title="error"><\/span>/);
+  assert.match(html, /<span class="activity-params">command=&quot;ls \/x&quot;<\/span><span class="activity-state error">error<\/span><span class="activity-duration">15ms<\/span>/);
 });

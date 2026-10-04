@@ -70,7 +70,7 @@ test("a multi-step turn shows its steps, tool rows and the markdown answer", { t
   // The model's description is the row's title; the command is its hover.
   await expect(rows.nth(0).locator(".activity-params")).toHaveText("See that the shell answers");
   await expect(rows.nth(0).locator(".activity-params")).toHaveAttribute("title", "true");
-  await expect(rows.nth(0).locator(".activity-status")).toHaveText("done");
+  await expect(rows.nth(0).locator(".activity-status")).toHaveAttribute("aria-label", "done");
   await expect(rows.nth(1).locator(".activity-tool")).toHaveText("read");
   await expect(rows.nth(1).locator(".activity-output")).toContainText("# e2e project");
   await expect(answer(page).locator("li")).toHaveText(["the shell answers (true exited 0)", "README.md is readable"]);
@@ -292,7 +292,7 @@ test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ p
   await expect(answer(page)).toHaveText("The approved command ran.");
   await turnEnded(page, 1);
   const row = page.locator("#history .activity-row").filter({ hasText: "execute" });
-  await expect(row.locator(".activity-status")).toHaveText("done");
+  await expect(row.locator(".activity-status")).toHaveAttribute("aria-label", "done");
   await expect(row.locator(".activity-output")).toContainText("E2E_APPROVED");
 });
 
