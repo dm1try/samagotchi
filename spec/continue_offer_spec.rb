@@ -21,11 +21,11 @@ RSpec.describe Samagotchi::ContinueOffer do
                                           before_continue_turn: nil)
   end
   let(:queued) { [] }
-  # The worker's run_engine_turn, as far as the Engine: what it raises
-  # before the turn begins (a save) comes out of it without a yield.
+  # The worker's run_engine_turn, as far as the Engine: what fails before
+  # the turn begins (its save) is yielded as the error, with no result.
   let(:run_turn) do
     lambda do |prompt, **args, &block|
-      raise(@fail_before_begin) if @fail_before_begin
+      next block.call(nil, @fail_before_begin) if @fail_before_begin
 
       block.call(engine.run_turn(session, prompt, continue: args[:continue]), nil)
     end
@@ -79,8 +79,21 @@ RSpec.describe Samagotchi::ContinueOffer do
     answer(["Continue"], freeform: "also X")
     @fail_before_begin = IOError.new("save failed")
 
-    expect { continue_offer.run_continue_turn(client_id: "web:2") }.to raise_error(IOError)
+    continue_offer.run_continue_turn(client_id: "web:2")
+    expect(engine.pending_question).to include(kind: "continue")
     @fail_before_begin = nil
+    engine.run_turn(session, "something else")
+
+    expect(drains).to eq([[]])
+  end
+
+  it "asks again when its own step before the turn fails, and drops the steer" do
+    drains
+    answer(["Continue"], freeform: "also X")
+    allow(turn_flow).to receive(:before_continue_turn).and_raise(IOError, "checkpoint")
+
+    expect { continue_offer.run_continue_turn(client_id: "web:2") }.not_to raise_error
+    expect(engine.pending_question).to include(kind: "continue")
     engine.run_turn(session, "something else")
 
     expect(drains).to eq([[]])

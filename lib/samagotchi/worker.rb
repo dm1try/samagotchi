@@ -483,15 +483,22 @@ module Samagotchi
     # queued while it ran are refused, then the caller's block takes the
     # result (or the error the Engine announced as :turn_failed), the
     # answer goes to the output file and the session is saved.
+    # A failure before the Engine's turn began (this save, say) goes to the
+    # block too, with no :turn_failed: it is logged, the session idle again.
     # @yieldparam result [Object, nil] Engine#run_turn's, nil on a failure
     # @yieldparam error [StandardError, nil]
     def run_engine_turn(prompt, **turn_args)
-      @session.status = Session::STATUS_RUNNING
-      @session.save(state_dir: @state_dir)
       begin
+        @session.status = Session::STATUS_RUNNING
+        @session.save(state_dir: @state_dir)
         result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, **turn_args)
       rescue StandardError => e
         error = e
+        # Still running: no turn of the Engine's ended (it never began).
+        if @session.status == Session::STATUS_RUNNING
+          @session.status = Session::STATUS_IDLE
+          Log.warn(:worker, "turn_not_begun", error: e.class.name, msg: e.message)
+        end
       ensure
         refuse_queued_commands
       end

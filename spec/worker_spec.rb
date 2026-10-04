@@ -1164,6 +1164,36 @@ RSpec.describe Samagotchi::Worker do
           expect(engine.pending_question).to include(kind: "continue")
           expect(saved_session.pending_question).to include(kind: "continue")
         end
+
+        it "is asked again, the worker running on, when the continue turn fails before it begins (its save)" do
+          failed = false
+          allow_any_instance_of(Samagotchi::Session).to receive(:save).and_wrap_original do |original, *args, **kwargs|
+            # The save run_engine_turn makes as the session goes running.
+            if !failed && original.receiver.status == Samagotchi::Session::STATUS_RUNNING
+              failed = true
+              raise Errno::ENOSPC, "session file"
+            end
+            original.call(*args, **kwargs)
+          end
+          expect(post_answer(["Continue"], freeform: "also X").code).to eq("200")
+
+          expect(wait_until { events_seen.count { |e| e[:type] == :question_requested } == 2 }).to be(true)
+          expect(failed).to be(true)
+          expect(@thread).to be_alive
+          expect(engine.pending_question).to include(kind: "continue")
+          expect(wait_until { saved_session.pending_question&.dig(:kind) == "continue" }).to be(true)
+          expect(saved_session.status).to eq("idle")
+          expect(seen.map { |e| e[:type] }).not_to include(:turn_failed)
+        end
+
+        it "is asked again when the continue turn fails before it begins (the Engine's checkpoint)" do
+          allow(engine).to receive(:messages_checkpoint).and_raise(IOError, "checkpoint")
+          expect(post_answer(["Continue"]).code).to eq("200")
+
+          expect(wait_until { events_seen.count { |e| e[:type] == :question_requested } == 2 }).to be(true)
+          expect(@thread).to be_alive
+          expect(engine.pending_question).to include(kind: "continue")
+        end
       end
     end
   end

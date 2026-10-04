@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A continue turn that fails before it begins (its session save, say) asks the step-limit question again
+  instead of crashing the session's worker.
+
 ## [0.22.0] - 2026-10-04
 
 ### Added
