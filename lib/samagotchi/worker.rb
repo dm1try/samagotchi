@@ -515,7 +515,16 @@ module Samagotchi
       unless response.nil? || response.strip.empty? || @continue_offer.awaiting?
         SessionInbox.write_output(@session_dir, response)
       end
+      save_after_turn
+    end
+
+    # The turn's own save: the turn ended fine and its messages are in
+    # memory, so a save that fails here (disk full, permissions; the next
+    # save writes them) must not take the worker down with it.
+    def save_after_turn
       save_session
+    rescue SystemCallError, IOError => e
+      Log.exception(:worker, "save_failed", e)
     end
 
     # Back to the conversation before the failed turn, as the REPL does (so
