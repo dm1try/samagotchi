@@ -372,11 +372,18 @@ module Samagotchi
       return unless turn.on_stream_event
 
       event = { type: :generation_chunk, iteration: turn.iteration, content: chunk[:content], text: split[:text],
-                thinking: split[:thinking], payload: chunk[:payload] }
+                thinking: split[:thinking], payload: event_payload(chunk[:payload]) }
       # A chunk of a tool call (its bytes are dropped from both lanes): a
       # steer doesn't cut this generation (Engine#cut_for_steer).
       event[:tool_call] = true if split[:tool]
       emit(turn, **event)
+    end
+
+    # The payload a :generation_chunk event carries: llama.cpp's last chunk
+    # echoes the whole rendered prompt, which nothing reads and every SSE
+    # client would get (the kernel's own reads keep the full payload).
+    def event_payload(payload)
+      payload.is_a?(Hash) ? payload.except("prompt") : payload
     end
 
     # The payload's prompt-cache counts, kept as the largest seen.

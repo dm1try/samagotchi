@@ -876,6 +876,28 @@ Need to inspect the filesystem first.
       expect(events.select { |event| event[:type] == :generation_chunk }.map { |event| event[:content] }).to eq(%w[Hel lo])
     end
 
+    # llama.cpp's last /completion chunk carries the whole rendered prompt:
+    # nothing reads it (the kernel takes usage, cache counts and the model
+    # from the payload before the event), and every SSE client would get it.
+    it "keeps the echoed prompt out of :generation_chunk, leaving the rest of the payload" do
+      events = []
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        kwargs[:on_chunk]&.call(content: "Hi", payload: { "content" => "Hi" })
+        kwargs[:on_chunk]&.call(content: "", payload: { "content" => "", "stop" => true, "tokens_evaluated" => 11_892,
+                                                        "prompt" => "the whole rendered prompt",
+                                                        "timings" => { "prompt_n" => 522 } })
+        "Hi"
+      end
+
+      kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(event) { events << event })
+
+      last = events.select { |event| event[:type] == :generation_chunk }.last
+      expect(last[:payload]).to eq("content" => "", "stop" => true, "tokens_evaluated" => 11_892,
+                                   "timings" => { "prompt_n" => 522 })
+      completed = events.find { |event| event[:type] == :generation_completed }
+      expect(completed).to include(prompt_tokens: 11_892)
+    end
+
     it "names the model the server reports in :generation_completed, next to the one asked for" do
       events = []
       allow(client).to receive(:complete) do |_prompt, **kwargs|
