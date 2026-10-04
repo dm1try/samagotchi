@@ -39,6 +39,19 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(repl_input.pop(timeout: 0)).to be_nil
   end
 
+  it "asks the engine to cut a generation that is only thinking for a steered line (the user's)" do
+    allow(engine).to receive(:cut_for_steer).and_return(false)
+    allow(engine).to receive(:run_turn) do |*, pending_input:, **|
+      repl_input << [:line, "skip the tests"]
+      pending_input.call
+      result
+    end
+
+    agent.run_engine_turn(session, "go")
+
+    expect(engine).to have_received(:cut_for_steer).with(nil).once
+  end
+
   it "runs a line that came after the last iteration as the next turn" do
     allow(engine).to receive(:run_turn) do |*, pending_input:, **|
       pending_input.call

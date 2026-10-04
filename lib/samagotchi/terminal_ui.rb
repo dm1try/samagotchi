@@ -1008,6 +1008,9 @@ module Samagotchi
       return image_line_waits if ImageInput.extract(line).any?
 
       @pending_input_queue.push(line.strip)
+      # The user's line cuts a generation that has only been thinking for
+      # long (steer.cut_after): the model starts the step again with it.
+      @engine.cut_for_steer(nil)
       true
     end
 

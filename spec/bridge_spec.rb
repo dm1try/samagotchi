@@ -481,6 +481,41 @@ RSpec.describe Samagotchi::Bridge do
       expect(queued.map { |q| [q["prompt"], q["no_interrupt"]] }).to eq([["long", true], ["short", nil]])
     end
 
+    describe "a message for a running turn (Engine#cut_for_steer)" do
+      def post(prompt, client_id)
+        post_turn(JSON.generate(session_id: @session.id, prompt: prompt, client_id: client_id))
+      end
+
+      it "asks the engine to cut, with the sender's source, once the input is queued" do
+        start_bridge(input_format: 2, on_command: ->(_) {})
+        allow(@engine).to receive(:cut_for_steer).and_return(false)
+
+        post("from the web", "web:tab-1")
+        post("from chi send", "cli:send")
+        post("from the parent", "delegate:abcd1234")
+        post("from a plugin", "plugin")
+
+        expect(@engine).to have_received(:cut_for_steer).with(nil).ordered
+        expect(@engine).to have_received(:cut_for_steer).with("chi_send").ordered
+        expect(@engine).to have_received(:cut_for_steer).with("parent_agent").ordered
+        expect(@engine).to have_received(:cut_for_steer).with("plugin_send").ordered
+      end
+
+      it "does not for a command, an input with images, or an input it could not queue" do
+        start_bridge(input_format: 2, on_command: ->(_) {})
+        allow(@engine).to receive(:cut_for_steer).and_return(false)
+
+        post("/model x", "cli:send")
+        allow(Samagotchi::ImageStore).to receive(:check_refs).and_return([{ "id" => "a" * 32 }])
+        post("look", "web:tab-1")
+        allow(Samagotchi::ImageStore).to receive(:check_refs).and_return([])
+        allow(@bridge).to receive(:enqueue_turn).and_return(false)
+        expect(post("lost", "web:tab-1").first).to eq(500)
+
+        expect(@engine).not_to have_received(:cut_for_steer)
+      end
+    end
+
     it "writes a discoverable port sidecar on start, with the chi version it runs and its features" do
       start_bridge
       expect(@bridge_port).to be > 0
