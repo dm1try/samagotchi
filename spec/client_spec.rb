@@ -219,6 +219,9 @@ RSpec.describe Samagotchi::Client do
       allow(response).to receive(:read_body)
 
       client.complete("prompt")
+
+      expect(Net::HTTP).to have_received(:start)
+        .with("localhost", 8080, open_timeout: 2, read_timeout: 1200, max_retries: 0)
     end
 
     it "invokes on_chunk for each streamed content fragment" do
@@ -271,6 +274,9 @@ RSpec.describe Samagotchi::Client do
       allow(response).to receive(:read_body)
 
       client.complete("prompt")
+
+      expect(Net::HTTP).to have_received(:start)
+        .with("localhost", 8080, open_timeout: 3, read_timeout: 900, max_retries: 0)
     ensure
       ENV.delete("SAMAGOTCHI_SERVER_OPEN_TIMEOUT")
       ENV.delete("SAMAGOTCHI_SERVER_READ_TIMEOUT")

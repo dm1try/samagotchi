@@ -182,8 +182,7 @@ RSpec.describe Samagotchi::ReminderStore do
           store.mark_fired("health") if i.even?
         end
       end
-      threads.each(&:join)
-      # Should not raise any errors
+      expect { threads.each(&:join) }.not_to raise_error
     end
   end
 end

@@ -123,7 +123,8 @@ RSpec.describe Samagotchi::HostRegistry do
     end
 
     it "keeps one adapter per host, which remembers a remote list for 10 minutes and a local one for a minute" do
-      expect(registry.adapter_for(registry.entries["fw"])).to be(registry.adapter_for(registry.entries["fw"]))
+      first = registry.adapter_for(registry.entries["fw"])
+      expect(registry.adapter_for(registry.entries["fw"])).to be(first)
       expect(registry.adapter_for(registry.entries["fw"]).models_ttl).to eq(600)
       expect(registry.adapter_for(registry.entries["oai"]).models_ttl).to eq(60)
     end

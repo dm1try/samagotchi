@@ -405,7 +405,8 @@ RSpec.describe "Turn policy characterization" do
   loops = %i[qwen gemma chat]
 
   if ENV["TURN_POLICY_DUMP"]
-    it "dumps every row" do
+    # Not a check: TURN_POLICY_DUMP=1 prints the rows to refresh the table.
+    it "dumps every row" do # rubocop:disable RSpec/NoExpectationExample
       require "pp"
       rows.each do |row|
         loops.each { |loop_name| puts "#{row[:name]} [#{loop_name}]: #{run_row(row, loop_name).pretty_inspect}" }

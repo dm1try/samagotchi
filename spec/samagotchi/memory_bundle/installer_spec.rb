@@ -364,11 +364,16 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         zip_path = File.join(tmpdir, "bundle.zip")
         Dir.chdir(bundle_dir) { system("zip", "-r", zip_path, ".") }
 
+        normalized = nil
+        allow(Samagotchi::MemoryBundle::SourceNormalizer).to receive(:normalize).and_wrap_original do |original, *args|
+          original.call(*args).tap { |result| normalized = result.first }
+        end
         installer = installer_for(source: zip_path, name: "zip-bundle", scope: "system")
         installer.run
 
-        # Zip source: temp dirs should be cleaned up. The installer uses source_owned.
-        # The normalized temp dir is cleaned in ensure block when source_owned=true.
+        # The copy extracted from the zip is the installer's to remove.
+        expect(normalized).to start_with(Dir.tmpdir)
+        expect(File.exist?(normalized)).to be(false)
       end
     end
 
