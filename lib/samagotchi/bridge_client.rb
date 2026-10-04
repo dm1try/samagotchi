@@ -287,7 +287,7 @@ module Samagotchi
           end
           chunk = sock.readpartial(4096)
           yield chunk
-        rescue EOFError, IOError, Errno::ECONNRESET, Errno::ECONNREFUSED
+        rescue IOError, Errno::ECONNRESET, Errno::ECONNREFUSED # EOFError is an IOError
           break
         end
       ensure

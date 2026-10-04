@@ -8,7 +8,7 @@ files:
   known_names.md: sha256:d5348b95b6c655017b541910b36e384220da280818160201f6ec9a50e1e4287c
 hooks:
   known_names.rb:
-    sha256: sha256:78e6f9cd4d99cdb4ff37351ff257a8d5de8ded310c41ceb8caac87b437471468
+    sha256: sha256:acff04fbe284b44644ca7140d574c1c0ebd2d999ede1243cd3fe0f432bfbb6d2
     event: before_tool_call
     on_error: log
     priority: 50

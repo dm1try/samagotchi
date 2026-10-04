@@ -217,8 +217,6 @@ module Samagotchi
           "\r\n"
         )
         io.flush
-      rescue Errno::EPIPE, Errno::ECONNRESET, IOError
-        raise
       end
 
       # Serialise one SSE event: an `id:` line (the replay cursor), an optional
@@ -232,15 +230,11 @@ module Samagotchi
         JSON.generate(data).each_line { |line| lines << "data: #{line.chomp}" }
         io.write(lines.join("\r\n") + "\r\n\r\n")
         io.flush
-      rescue Errno::EPIPE, Errno::ECONNRESET, IOError
-        raise
       end
 
       def write_heartbeat(io)
         io.write(": ping\r\n\r\n")
         io.flush
-      rescue Errno::EPIPE, Errno::ECONNRESET, IOError
-        raise
       end
 
       # Emit a control frame carrying the current snapshot so a client that

@@ -40,7 +40,8 @@ module Samagotchi
     # @return [OwnerLock, nil] nil when another owner holds it
     def self.acquire(session_dir, kind:, wait: DEFAULT_WAIT)
       FileUtils.mkdir_p(session_dir)
-      file = File.open(path(session_dir), File::RDWR | File::CREAT, 0o644)
+      # Held open on purpose: the flock lives as long as the OwnerLock (#release closes it).
+      file = File.open(path(session_dir), File::RDWR | File::CREAT, 0o644) # rubocop:disable Style/FileOpen
       deadline = monotonic_now + wait.to_f
       until file.flock(File::LOCK_EX | File::LOCK_NB)
         if monotonic_now >= deadline

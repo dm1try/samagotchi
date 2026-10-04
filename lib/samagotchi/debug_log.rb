@@ -86,7 +86,7 @@ module Samagotchi
 
     def rotate
       File.open("#{@path}.lock", File::RDWR | File::CREAT, 0o600) do |lock|
-        return unless lock.flock(File::LOCK_EX | File::LOCK_NB)
+        next unless lock.flock(File::LOCK_EX | File::LOCK_NB)
 
         stat = File.stat(@path)
         File.rename(@path, "#{@path}.1") if stat.ino == @ino && stat.size >= @max_bytes

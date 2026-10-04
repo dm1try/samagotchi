@@ -296,14 +296,16 @@ module Samagotchi
           delim = @s.getch
           return false if delim.nil? || delim.match?(/[\s\\]/)
 
-          delimited(delim) && delimited(delim) && @s.skip(/[gpiImM\d]*/) && true
+          # Two calls, two fields: each one advances the scanner (pattern, then replacement).
+          delimited(delim) && delimited(delim) && @s.skip(/[gpiImM\d]*/) && true # rubocop:disable Lint/BinaryOperatorWithIdenticalOperands
         end
 
         def transliterate
           delim = @s.getch
           return false if delim.nil? || delim.match?(/[\s\\]/)
 
-          delimited(delim) && delimited(delim)
+          # Source set, then target set: each call advances the scanner.
+          delimited(delim) && delimited(delim) # rubocop:disable Lint/BinaryOperatorWithIdenticalOperands
         end
 
         # Up to the next unescaped +delim+ (consumed); false at the end.

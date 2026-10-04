@@ -103,7 +103,7 @@ module Samagotchi
         return nil if Gem::Requirement.new(*requirement.to_s.split(",").map(&:strip)).satisfied_by?(Gem::Version.new(version.to_s))
 
         "it requires chi #{requirement} (this is chi #{version})"
-      rescue ArgumentError, Gem::Requirement::BadRequirementError => e
+      rescue ArgumentError => e # Gem::Requirement::BadRequirementError is one
         "its requires_chi #{requirement.inspect} is not a version requirement (#{e.message})"
       end
 
@@ -248,9 +248,7 @@ module Samagotchi
           next unless v.is_a?(Hash)
 
           sha = (v["sha256"] || v[:sha256] || "").to_s
-          if !sha.empty? && !sha.empty? && !sha.start_with?("sha256:")
-            sha = "sha256:#{sha}"
-          end
+          sha = "sha256:#{sha}" unless sha.empty? || sha.start_with?("sha256:")
           event = (v["event"] || v[:event] || "").to_s.strip
           on_error = (v["on_error"] || v[:on_error] || "skip").to_s.strip
           on_error = "skip" if on_error.empty?

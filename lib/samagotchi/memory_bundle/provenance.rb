@@ -175,9 +175,7 @@ module Samagotchi
 
             hv = v.transform_keys(&:to_sym)
             sha = (hv[:sha256] || "").to_s
-            if !sha.empty? && !sha.empty? && !sha.start_with?("sha256:")
-              sha = "sha256:#{sha}"
-            end
+            sha = "sha256:#{sha}" unless sha.empty? || sha.start_with?("sha256:")
             normalized_hooks[k] = {
               sha256: sha,
               event: (hv[:event] || "").to_s,

@@ -186,7 +186,7 @@ module Samagotchi
           @thread = Thread.new do
             Thread.current.report_on_exception = false
             loop { @buffer << io.readpartial(READ_CHUNK_BYTES) }
-          rescue EOFError, IOError
+          rescue IOError # EOFError is one
             nil
           end
         end

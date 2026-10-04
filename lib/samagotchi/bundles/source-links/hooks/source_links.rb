@@ -430,7 +430,7 @@ class SourceLinks
   def group_count(regex)
     probe = Regexp.new("(?:#{regex.source}\n)|", regex.options, timeout: REGEX_TIMEOUT)
     probe.match("").size - 1
-  rescue RegexpError, Regexp::TimeoutError
+  rescue RegexpError # Regexp::TimeoutError is one
     nil
   end
 

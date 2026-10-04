@@ -150,7 +150,7 @@ class KnownNames
     root = context[:repo_root].to_s
     names << File.basename(root) if @derive.include?("repo") && !root.empty?
     names.concat(git_names(root)) if @derive.include?("git") && !root.empty?
-    names.map(&:to_s).map(&:strip).reject(&:empty?)
+    names.map { |name| name.to_s.strip }.reject(&:empty?)
   rescue StandardError
     names
   end
@@ -217,6 +217,6 @@ class KnownNames
   end
 
   def list(value)
-    Array(value).map(&:to_s).map(&:strip).reject(&:empty?)
+    Array(value).map { |name| name.to_s.strip }.reject(&:empty?)
   end
 end

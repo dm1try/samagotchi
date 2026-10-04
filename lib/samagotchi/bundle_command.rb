@@ -804,7 +804,8 @@ module Samagotchi
             lines.concat(preview)
             lines << "    --- end preview ---"
           end
-        rescue StandardError => _e
+        rescue StandardError
+          # No preview for a file that can't be read: the diff lines stand alone.
         end
       end
       lines << ""

@@ -44,7 +44,8 @@ module Samagotchi
 
         FileUtils.mkdir_p(task_dir)
 
-        output_io = File.open(output_path, "a")
+        # The child writes to it; the ensure below closes the parent's copy.
+        output_io = File.open(output_path, "a") # rubocop:disable Style/FileOpen
         output_io.sync = true
 
         wrapped_command = wrapped_shell_command(normalized_command, exit_code_path)

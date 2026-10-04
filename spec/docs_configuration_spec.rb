@@ -70,7 +70,8 @@ RSpec.describe "docs/configuration.md YAML examples and settings table" do
       found << "#{key}: CLI column #{cli.inspect}" unless cli_ok
       literal = default[/\A`([^`]*)`\z/, 1]
       if literal && !entry.default.nil?
-        same = entry.default.is_a?(Numeric) ? Float(literal, exception: false) == entry.default : literal == entry.default.to_s
+        # Exact on purpose: the doc's literal must be the default as written.
+        same = entry.default.is_a?(Numeric) ? Float(literal, exception: false) == entry.default : literal == entry.default.to_s # rubocop:disable Lint/FloatComparison
         found << "#{key}: default #{literal} in the doc, #{entry.default.inspect} in the code" unless same
       end
       found

@@ -523,8 +523,8 @@ Hooks removed: 1\n\z})
       chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
       chi("uninstall", "sample-hooks-bundle")
 
-      out, _, code = chi("trash")
-      expect([_, code]).to eq(["", 0])
+      out, err, code = chi("trash")
+      expect([err, code]).to eq(["", 0])
       expect(out).to match(/\A  sample-hooks-bundle-\d{8}-\d{6}  \d+ file  \d+ B  just now\n\nEmpty it with: chi bundle trash --empty \[--older-than DAYS\]\n\z/)
     end
 
@@ -532,8 +532,8 @@ Hooks removed: 1\n\z})
       chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
       chi("uninstall", "sample-hooks-bundle")
 
-      out, _, code = chi("trash", "--empty")
-      expect([_, code]).to eq(["", 0])
+      out, err, code = chi("trash", "--empty")
+      expect([err, code]).to eq(["", 0])
       expect(out).to match(/\ADeleted \d+ folder \(1 file\) from the trash\.\n\z/)
       expect(Dir.glob(File.join(memories, ".bundles", ".trash", "**", "*"))).to eq([])
     end

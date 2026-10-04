@@ -46,7 +46,8 @@ module Samagotchi
       type = event[:type]&.to_sym
       return unless type
 
-      if respond_to?(handler = :"on_#{type}", true)
+      handler = :"on_#{type}"
+      if respond_to?(handler, true)
         send(handler, event)
       elsif ANNOUNCED.key?(type)
         log(:info, type, **event.slice(*ANNOUNCED[type]), **origin(event), **items(event))

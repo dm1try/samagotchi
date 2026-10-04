@@ -138,7 +138,7 @@ module Samagotchi
             @on_event.call(event)
           end
         end
-      rescue EOFError, IOError, SystemCallError
+      rescue IOError, SystemCallError # EOFError is an IOError
         yielded ? :events : :unreachable
       ensure
         detach(sock)
