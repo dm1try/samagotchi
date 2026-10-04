@@ -554,8 +554,9 @@ struct PanelView: View {
           .help("paste it into the agent's input without Enter: add more, then press Enter there")
       } else {
         Button("Note ⌘⏎") { send(.note) }
-          .disabled(!model.sendEnabled || !model.selectedKitty.isEmpty)
-          .help("add it as background the model sees on its next turn; starts no turn")
+          .disabled(!model.sendEnabled || !model.selectedKitty.isEmpty || model.newSelected)
+          .help(model.newSelected ? "a note needs a session: pick one, or ⏎ starts a new one with the message"
+                                  : "add it as background the model sees on its next turn; starts no turn")
       }
       Button(action: { send(.message) }) {
         if model.phase == .sending { ProgressView().controlSize(.small) } else { Text("Send ⏎") }
@@ -873,13 +874,18 @@ final class PanelController: NSObject, NSWindowDelegate {
       model.message = "Paste only is for kitty windows"
       return
     }
+    // A note into a session that doesn't exist yet makes no sense.
+    if kind == .note, new {
+      NSSound.beep()
+      model.message = "A note needs a session"
+      return
+    }
     if kind == .note, !model.images.isEmpty {
       NSSound.beep()
       model.message = "Notes are text only: ⏎ sends the image as a message"
       return
     }
-    // A note into a session that doesn't exist yet makes no sense.
-    guard model.sendEnabled, new ? kind == .message : !(ids.isEmpty && windows.isEmpty) else { NSSound.beep(); return }
+    guard model.sendEnabled, new || !(ids.isEmpty && windows.isEmpty) else { NSSound.beep(); return }
     model.phase = .sending
     model.message = ""
     if !new {

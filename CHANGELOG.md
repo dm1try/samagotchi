@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Desktop: `chi desktop install` starts the helper with a bare env, so `SAMAGOTCHI_*` settings (and anything else)
   from the install shell no longer stick to the helper and the chi it runs until a relaunch; run `chi desktop upgrade`.
+- Desktop: ⌘⏎ on the panel's "New session" row says "A note needs a session" instead of only beeping, and the Note
+  button is off on that row; run `chi desktop upgrade`.
 
 ## [0.27.0] - 2026-10-04
 
