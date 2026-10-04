@@ -5,13 +5,23 @@ module Samagotchi
     # A small shell lexer for the guardrails' text checks (ShellGitDirs
     # and the rules' shell matchers): words with quotes and
     # backslashes undone, operators apart, comments dropped, and $(…) or
-    # backticks (quoted or not) as one opaque SUBST marker inside a word. It never runs
-    # anything, and it does its best on odd input (an unbalanced quote).
+    # backticks (quoted or not) as one opaque SUBST marker inside a word. A
+    # heredoc's body (<<EOF, <<'EOF', <<-EOF) is one word after its <<TAG
+    # word and lexing goes on after the terminator line: HEREDOC when cat or
+    # tee read it as data, SUBST when an unquoted tag's body holds $(…) or
+    # backticks, else the body text itself (a script, as sh -c '…' gives).
+    # An unterminated heredoc is no heredoc: the rest is lexed as commands.
+    # It never runs anything, and it does its best on odd input (an
+    # unbalanced quote).
     module ShellLex
       # Longest first: "&&" before "&", ";;" before ";".
       OPERATORS = ["&&", "||", ";;", "|&", ";", "|", "&", "\n", "(", ")"].freeze
       # What a $(…) or `…` becomes inside a word.
       SUBST = "\0SUBST"
+      # What a heredoc body that cat or tee read as data becomes.
+      HEREDOC = "\0HEREDOC"
+      # Commands that read a heredoc as data (when not piped on).
+      DATA_SINKS = %w[cat tee].freeze
       # A word that is a redirection (>, >>, 2>&1, <).
       REDIRECT = /\A\d*[<>]/
 
@@ -50,6 +60,7 @@ module Samagotchi
           @word = +""
           @specials = +""
           @in_word = false
+          @heredocs = []
         end
 
         def tokens
@@ -139,8 +150,12 @@ module Samagotchi
           @i = @s.index("\n", @i) || @s.size
         end
 
-        # >, >>, 2>&1, &>, <, <<: kept in the word (the walk drops them).
+        # >, >>, 2>&1, &>, <, <<<: kept in the word (the walk drops them).
+        # << starts a heredoc.
         def redirection
+          return add("<<<", 3) if @s[@i, 3] == "<<<"
+          return if @s[@i, 2] == "<<" && heredoc
+
           special(@s[@i])
           add(@s[@i], 1) while @i < @s.size && @s[@i].match?(/[&\d>-]/) && @word.end_with?(">")
         end
@@ -156,7 +171,100 @@ module Samagotchi
             flush
             @tokens << [:op, op]
             @i += op.size
+            bodies if op == "\n" && !@heredocs.empty?
           end
+        end
+
+        # <<TAG, <<-TAG, <<'TAG', << "TAG": its own word, the body noted to
+        # be read after the line ends. False (nothing read) without a tag.
+        def heredoc
+          dash = @s[@i + 2] == "-"
+          j = @i + (dash ? 3 : 2)
+          j += 1 while [" ", "\t"].include?(@s[j])
+          tag, quoted, stop = heredoc_tag(j)
+          return false if tag.empty?
+
+          flush unless @word.match?(/\A\d*\z/)
+          special("<")
+          @word << "<" << (dash ? "-" : "") << tag
+          @i = stop
+          flush
+          @heredocs << { tag: tag, dash: dash, quoted: quoted, at: @tokens.size }
+          true
+        end
+
+        # The tag starting at +j+ with quotes and backslashes undone, whether
+        # any were there, and where it ends.
+        def heredoc_tag(j)
+          tag = +""
+          quoted = false
+          while j < @s.size && !@s[j].match?(/[\s;&|<>()]/)
+            if ["'", '"'].include?(@s[j])
+              close = @s.index(@s[j], j + 1) or return ["", false, j]
+              tag << @s[(j + 1)...close]
+              j = close + 1
+              quoted = true
+            elsif @s[j] == "\\"
+              tag << @s[j + 1].to_s
+              j += 2
+              quoted = true
+            else
+              tag << @s[j]
+              j += 1
+            end
+          end
+          [tag, quoted, j]
+        end
+
+        # After a line with heredocs: each body in order, up to its
+        # terminator line, as one word in its command. Unterminated: none
+        # are, and the rest is lexed as commands.
+        def bodies
+          heredocs = @heredocs
+          @heredocs = []
+          pos = @i
+          read = []
+          heredocs.each do |doc|
+            body, pos = body(doc, pos)
+            break unless body
+
+            read << [doc, body]
+          end
+          return if read.size < heredocs.size
+
+          read.reverse_each { |doc, body| @tokens.insert(doc[:at], [:word, body_word(doc, body), ""]) }
+          @i = pos
+        end
+
+        # The body from +pos+ and where lexing goes on, or nil.
+        def body(doc, pos)
+          start = pos
+          while pos < @s.size
+            eol = @s.index("\n", pos) || @s.size
+            line = @s[pos...eol]
+            line = line.sub(/\A\t+/, "") if doc[:dash]
+            return [@s[start...pos], [eol + 1, @s.size].min] if line == doc[:tag]
+
+            pos = eol + 1
+          end
+          nil
+        end
+
+        def body_word(doc, body)
+          return SUBST if !doc[:quoted] && body.match?(/\$\(|`/)
+          return HEREDOC if data_sink?(doc[:at])
+
+          body
+        end
+
+        # Whether the command the heredoc at token +at+ is in is cat or tee
+        # and not piped into another command.
+        def data_sink?(at)
+          start = at
+          start -= 1 while start.positive? && @tokens[start - 1][0] == :word
+          verb = @tokens[start...at].map { |t| t[1] }.find { |w| !w.match?(/\A[A-Za-z_]\w*=/) && !w.match?(REDIRECT) }
+          next_op = @tokens[at..].find { |t| t[0] == :op }
+          DATA_SINKS.include?(File.basename(verb.to_s)) && !["|", "|&"].include?(next_op&.dig(1))
         end
       end
     end

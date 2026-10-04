@@ -25,4 +25,55 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
       expect(commands(text)).to eq(expected)
     end
   end
+  describe "heredocs" do
+    heredoc = described_class::HEREDOC
+
+    it "keeps an apostrophe in a body from hiding the command after it" do
+      expect(commands("cat <<EOF\nit's\nEOF\ngit push origin main"))
+        .to eq([["cat", "<<EOF", heredoc], %w[git push origin main]])
+    end
+
+    it "reads quoted and bare tags" do
+      expect(commands("cat <<'EOF'\nrm -rf /\nEOF\nls")).to eq([["cat", "<<EOF", heredoc], %w[ls]])
+      expect(commands("cat <<\"END\"\nrm -rf /\nEND\nls")).to eq([["cat", "<<END", heredoc], %w[ls]])
+      expect(commands("cat << EOF\nrm -rf /\nEOF\nls")).to eq([["cat", "<<EOF", heredoc], %w[ls]])
+      expect(commands("cat<<EOF\nx\nEOF")).to eq([["cat", "<<EOF", heredoc]])
+    end
+
+    it "strips leading tabs from the terminator for <<-" do
+      expect(commands("cat <<-EOF\n\tit's\n\tEOF\nls")).to eq([["cat", "<<-EOF", heredoc], %w[ls]])
+      expect(commands("cat <<EOF\nx\n\tEOF\nEOF\nls")).to eq([["cat", "<<EOF", heredoc], %w[ls]])
+    end
+
+    it "reads several heredocs on one line in order, each into its own command" do
+      text = "cat <<A > /tmp/a; cat <<'B' > /tmp/b\nit's a\nA\nit's b\nB\ngit push"
+      expect(commands(text)).to eq([["cat", "<<A", heredoc, ">", "/tmp/a"], ["cat", "<<B", heredoc, ">", "/tmp/b"],
+                                    %w[git push]])
+    end
+
+    it "keeps a body fed to anything but cat or tee as one script word" do
+      expect(commands("bash <<'EOF'\nrm -rf /\nEOF\nls")).to eq([["bash", "<<EOF", "rm -rf /\n"], %w[ls]])
+      expect(commands("cat <<'EOF' | sh\nrm -rf /\nEOF")).to eq([["cat", "<<EOF", "rm -rf /\n"], %w[sh]])
+    end
+
+    it "makes an unquoted body with a substitution a SUBST" do
+      expect(commands("cat <<EOF\n$(rm -rf /)\nEOF")).to eq([["cat", "<<EOF", subst]])
+      expect(commands("cat <<'EOF'\n$(rm -rf /)\nEOF")).to eq([["cat", "<<EOF", heredoc]])
+    end
+
+    it "leaves a here-string alone" do
+      expect(commands("cat <<<'it is' && ls")).to eq([["cat", "<<<it is"], %w[ls]])
+      expect(commands("cat <<< x\nit's")).to eq([["cat", "<<<", "x"], ["its"]])
+    end
+
+    it "lexes the rest as commands when the terminator never comes" do
+      expect(commands("cat > /tmp/x <<EOF\nrm -rf /\nls"))
+        .to eq([["cat", ">", "/tmp/x", "<<EOF"], ["rm", "-rf", "/"], %w[ls]])
+    end
+
+    it "keeps $(cat <<'EOF' … EOF) one opaque word" do
+      text = "git commit -m \"$(cat <<'EOF'\nit's\nEOF\n)\" && git push"
+      expect(commands(text)).to eq([["git", "commit", "-m", subst], %w[git push]])
+    end
+  end
 end

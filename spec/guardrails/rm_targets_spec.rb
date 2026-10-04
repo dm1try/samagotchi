@@ -21,14 +21,16 @@ RSpec.describe Samagotchi::Guardrails::RmTargets do
     "rm -rf @T/x", "rm -rf $TMPDIR/x", "rm -rf ${TMPDIR}/x", "rm -rf @T/pp/state3 && mkdir -p @T/pp/state3",
     "rm -fr @T/a @T/b", "rm --recursive --force -- @T/x", "rm -rf @T/x 2>/dev/null", "rm -rf @T/x > /dev/null 2>&1",
     "cd @T && rm -rf x", "rm -f /etc/one-file", "rm -r ~/no-force", "rm -rf @T/x/../y", "ls ~ && rm -rf @T/x",
-    "rm-tool -rf /"
+    "rm-tool -rf /", "cat > /tmp/x.sh <<'EOF'\nrm -rf /Users/foo\nEOF"
   ]
 
   outside = [
     "rm -rf /", "rm -rf ~", "rm -rf ..", "rm -rf @T", "rm -rf @T/", "rm -rf @T/*", "rm -rf @T/../etc",
     "rm -rf $HOME/x", "rm -rf $X/y", "rm -rf @T/x ~/y", "rm -rf @T/x && rm -rf ~", "rm -rf @T/x; rm -rf ..",
     "sudo rm -rf @T/x", "xargs rm -rf < list", "/bin/rm -rf @T/x", "sh -c 'rm -rf @T/x'", "echo $(rm -rf ~)",
-    "rm -rf `echo @T`", "rm -rf x", "cd $X && rm -rf y", "rm -rf"
+    "rm -rf `echo @T`", "rm -rf x", "cd $X && rm -rf y", "rm -rf",
+    "cat <<EOF\nit's\nEOF\nrm -rf /Users/foo", "bash <<'EOF'\nrm -rf ~\nEOF", "cat <<'EOF' | sh\nrm -rf ~\nEOF",
+    "cat <<EOF\n$(rm -rf ~)\nEOF", "cat > /tmp/x <<EOF\nrm -rf ~"
   ]
 
   inside.each do |command|

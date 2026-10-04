@@ -32,13 +32,15 @@ RSpec.describe Samagotchi::Guardrails::ShellPaths do
     # can't be resolved: the text decides
     "sh -c 'echo x >> ~/.config/samagotchi/config.yml'", "ruby -e 'File.write(\"samagotchi/config.yml\", 1)'",
     "cp a $SOMEWHERE/.config/samagotchi/x", "cp a ~/.config/samagotchi/*.yml", "cd $X && echo > samagotchi/hooks/a",
-    "cat > \"$(echo ~/.config/samagotchi)/config.yml\""
+    "cat > \"$(echo ~/.config/samagotchi)/config.yml\"",
+    "cat <<EOF > ~/.config/samagotchi/x\nit's\nEOF", "bash <<'EOF'\necho x >> ~/.config/samagotchi/config.yml\nEOF"
   ]
 
   not_touching = [
     "echo x > /tmp/pp/config/samagotchi/config.yml", "rg samagotchi/hooks lib", "echo x > lib/samagotchi/hooks/x.rb",
     "cp a ~/.configs/samagotchi", "cp a ~/projects/x", "cd ~/.config && ls", "echo samagotchi",
-    "cd $X && echo > other.txt", "ls -la", "make -C sub"
+    "cd $X && echo > other.txt", "ls -la", "make -C sub",
+    "cat > /tmp/notes <<'EOF'\nedit ~/.config/samagotchi/config.yml\nEOF"
   ]
 
   touching.each do |command|

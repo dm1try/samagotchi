@@ -17,6 +17,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Guardrails read heredocs (`cat <<'EOF' … EOF`): a heredoc's body no longer asks needlessly (an `rm -rf` or
+  `git push` written into a file by `cat`/`tee`), and an apostrophe in a body no longer hides the commands after it
+  from the strict-mode check for git outside the repo. A body fed to `bash`, `sh` and the like still counts.
 - A `chi send -m` or delegate follow-up merged into a running turn is saved with its sender (`source: chi_send` /
   `parent_agent`) instead of reading as the user's own words.
 - The idle recap keeps the text of a `chi answer --option Continue --text` (or a continue card answered with

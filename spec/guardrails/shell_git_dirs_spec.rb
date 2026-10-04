@@ -50,7 +50,11 @@ RSpec.describe Samagotchi::Guardrails::ShellGitDirs do
     "cd /p/main # && git commit" => [],
     "git push 2>&1 && cd /p/main" => ["/p/wt"],
     "git -C /p/main push |& tee log" => ["/p/main"],
-    "cd /p/main;; git add x" => ["/p/main"]
+    "cd /p/main;; git add x" => ["/p/main"],
+    "cat <<EOF\nit's\nEOF\ngit push origin main" => ["/p/wt"],
+    "cat <<-'EOF'\n\tit's\n\tEOF\ncd /p/main && git push" => ["/p/main"],
+    "cat >/tmp/n <<'EOF'\ngit push origin main\nEOF" => [],
+    "git commit -m \"$(cat <<'EOF'\nit's\nEOF\n)\" && git push" => ["/p/wt", "/p/wt"].uniq
   }.freeze
 
   table.each do |command, expected|

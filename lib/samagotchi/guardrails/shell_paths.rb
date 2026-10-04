@@ -114,7 +114,7 @@ module Samagotchi
 
         # An absolute path for +word+ against +dir+, or nil.
         def resolve(word, dir)
-          return nil if word.include?(ShellLex::SUBST) || word.match?(SCRIPT)
+          return nil if word.include?(ShellLex::SUBST) || word == ShellLex::HEREDOC || word.match?(SCRIPT)
 
           word = expand(word) or return nil
           return nil if word.match?(GLOB)
