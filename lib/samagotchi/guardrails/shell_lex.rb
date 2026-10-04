@@ -33,6 +33,15 @@ module Samagotchi
         Lexer.new(text).tokens
       end
 
+      # lex's tokens, each with the range of +text+ it was read from
+      # appended ([:word, "x", specials, 0...1] / [:op, "&&", 2...4]), for a
+      # display that slices the original text. A heredoc body's range is
+      # the body and its terminator line. lex itself is unchanged by this.
+      def self.lex_with_spans(text)
+        lexer = Lexer.new(text)
+        lexer.tokens.zip(lexer.spans).map { |token, span| [*token, span] }
+      end
+
       # The token stream split at operators into word lists; ( and ) become
       # :open / :close markers.
       def self.simple_commands(tokens)
@@ -57,17 +66,33 @@ module Samagotchi
           @s = text
           @i = 0
           @tokens = []
+          @spans = []
+          @start = 0
           @word = +""
           @specials = +""
           @in_word = false
           @heredocs = []
+          @heredoc_spans = []
+          @unterminated = false
         end
 
         def tokens
           step while @i < @s.size
           flush
+          @unterminated = true unless @heredocs.empty?
           @tokens
         end
+
+        # Each token's range in the text, in step with #tokens (after it).
+        attr_reader :spans
+
+        # The heredocs read ({tag:, span:}, the body and its terminator
+        # line), after #tokens.
+        attr_reader :heredoc_spans
+
+        # Whether a quote, $(…), backtick or heredoc was left open (after
+        # #tokens): the lexer's best effort, not the shell's reading.
+        def unterminated? = @unterminated
 
         private
 
@@ -87,6 +112,7 @@ module Samagotchi
         end
 
         def add(text, advance)
+          @start = @i unless @in_word
           @word << text
           @in_word = true
           @i += advance
@@ -99,7 +125,10 @@ module Samagotchi
         end
 
         def flush
-          @tokens << [:word, @word.dup, @specials.dup] if @in_word
+          if @in_word
+            @tokens << [:word, @word.dup, @specials.dup]
+            @spans << (@start...[@i, @s.size].min)
+          end
           @word.clear
           @specials.clear
           @in_word = false
@@ -107,11 +136,14 @@ module Samagotchi
         end
 
         def single_quote
-          close = @s.index("'", @i + 1) || @s.size
+          close = @s.index("'", @i + 1)
+          @unterminated ||= close.nil?
+          close ||= @s.size
           add(@s[(@i + 1)...close].to_s, close + 1 - @i)
         end
 
         def double_quote
+          @start = @i unless @in_word
           @i += 1
           @in_word = true
           while @i < @s.size && @s[@i] != '"'
@@ -126,11 +158,14 @@ module Samagotchi
               @i += 1
             end
           end
+          @unterminated = true if @i >= @s.size
           @i += 1
         end
 
         def backtick
-          close = @s.index("`", @i + 1) || @s.size
+          close = @s.index("`", @i + 1)
+          @unterminated ||= close.nil?
+          close ||= @s.size
           add(SUBST, close + 1 - @i)
         end
 
@@ -143,6 +178,7 @@ module Samagotchi
             j += 1
             break if depth.zero? || j >= @s.size
           end
+          @unterminated = true unless depth.zero?
           add(SUBST, j - @i)
         end
 
@@ -170,6 +206,7 @@ module Samagotchi
           else
             flush
             @tokens << [:op, op]
+            @spans << (@i...(@i + op.size))
             @i += op.size
             bodies if op == "\n" && !@heredocs.empty?
           end
@@ -223,16 +260,23 @@ module Samagotchi
           heredocs = @heredocs
           @heredocs = []
           pos = @i
+          start = pos
           read = []
           heredocs.each do |doc|
             body, pos = body(doc, pos)
             break unless body
 
-            read << [doc, body]
+            read << [doc, body, start...(@s[pos - 1] == "\n" ? pos - 1 : pos)]
+            start = pos
           end
+          @unterminated ||= read.size < heredocs.size
           return if read.size < heredocs.size
 
-          read.reverse_each { |doc, body| @tokens.insert(doc[:at], [:word, body_word(doc, body), ""]) }
+          read.reverse_each do |doc, body, span|
+            @tokens.insert(doc[:at], [:word, body_word(doc, body), ""])
+            @spans.insert(doc[:at], span)
+          end
+          read.each { |doc, _body, span| @heredoc_spans << { tag: doc[:tag], span: span } }
           @i = pos
         end
 
