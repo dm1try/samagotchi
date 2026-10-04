@@ -30,8 +30,9 @@ module Samagotchi
           "finished_at: #{record["finished_at"]}",
           "exit_code: #{record["exit_code"]}",
           "stop_reason: #{record["stop_reason"]}",
-          "output_path: #{record.fetch("output_path")}"
-        ].join("\n")
+          "output_path: #{record.fetch("output_path")}",
+          (TaskRuntime::USER_STOP_NOTE if TaskRuntime.stopped_by_user?(record))
+        ].compact.join("\n")
       end
       private_class_method :format_record
     end

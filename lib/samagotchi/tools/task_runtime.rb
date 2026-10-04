@@ -22,6 +22,9 @@ module Samagotchi
       SANITIZED_ENV_KEYS = %w[RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION].freeze
       # Set by chi (Builtins.parent_env); the model's env can't change it.
       MARKER_ENV_KEYS = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL].freeze
+      # task_wait and task_get add it to a task the user stopped (the web's
+      # stop-task button), so the model doesn't rerun the job.
+      USER_STOP_NOTE = "note: the user stopped this task; don't restart it unless they ask."
 
       module_function
 
@@ -119,6 +122,8 @@ module Samagotchi
           { id: id, command: record["command"].to_s } if record&.fetch("status") == "running"
         end
       end
+
+      def stopped_by_user?(record) = record["stop_reason"] == "stopped_by_user"
 
       def get_record(task_id)
         record = load_record(task_id)

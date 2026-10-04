@@ -169,6 +169,16 @@ RSpec.describe "task tools" do
 
       expect(result).to include("Error: task not found")
     end
+
+    it "notes a user stop, and not a model stop" do
+      user_task, = Samagotchi::Tools::TaskRuntime.create_task("sleep 30")
+      model_task, = Samagotchi::Tools::TaskRuntime.create_task("sleep 30")
+      Samagotchi::Tools::TaskRuntime.stop_task(user_task["id"], by: "user")
+      Samagotchi::Tools::TaskRuntime.stop_task(model_task["id"], by: "model")
+
+      expect(described_class.call(user_task["id"])).to end_with("note: the user stopped this task; don't restart it unless they ask.")
+      expect(described_class.call(model_task["id"])).not_to include("note:")
+    end
   end
 
   describe Samagotchi::Tools::TaskList do
@@ -332,6 +342,25 @@ RSpec.describe "task tools" do
       expect(result).to include("task_id: #{task_id}")
       expect(result).to include("status: stopped")
       expect(result).to include("stop_reason: stopped_by_model")
+    end
+
+    it "returns with a note and the output tail when the user stops the task" do
+      create_result = Samagotchi::Tools::TaskCreate.call("echo one; echo two; echo three; sleep 30")
+      task_id = extract_field(create_result, "task_id")
+      output_path = extract_field(create_result, "output_path")
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+      sleep 0.05 until File.read(output_path).include?("three") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      stopper = Thread.new do
+        sleep 0.3
+        Samagotchi::Tools::TaskRuntime.stop_task(task_id, by: "user")
+      end
+
+      result = described_class.call(task_id, tail_lines: 2)
+      stopper.join
+
+      expect(result).to include("status: stopped").and include("stop_reason: stopped_by_user")
+      expect(result).to include("note: the user stopped this task; don't restart it unless they ask.")
+      expect(result).to end_with("output_tail:\ntwo\nthree")
     end
 
     it "returns on Stop and leaves a running task running" do
