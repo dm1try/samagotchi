@@ -8,8 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-04
+
 ### Added
 
+- The web shows an `execute` command as the steps a person reads: `cd X &&` becomes an "in X" tag, `| head -20` a
+  chip, `echo "=== x ==="` a label, a heredoc a collapsed "EOF · N lines" chip; the collapsed row's title is the
+  first step `+N`. A `raw` toggle shows the whole command; anything the parser can't read shows as before.
+- `execute` takes an optional `description` ("what the command does, in a few words"), written by the model; it
+  becomes the tool row's title in the web and replaces the cut command in the terminal's tool line. Turn it off
+  with `execute.description: false`.
+- Every generation logs its prompt-cache counts (`prompt=`, `cached=`, `cache_write=`), and `/stats` shows cache
+  writes next to cached tokens.
 - A generation cut mid-thinking (loop-guard, a plugin's stop, a steer) or ended at the provider's output cap keeps
   the last 20k chars of its thinking in the session's folder, `thinking_tails.jsonl`, so an archived session holds
   the loop it was archived for. The model never sees it.
@@ -24,7 +34,10 @@ and commands may change between minor versions. How releases are made:
   `/bin/sh`; see [background tasks](docs/internals/background-tasks.md).
 - loop-guard's cut notice (bundle 0.3.3) quotes the looping sentence: `thinking repeats itself ("Let me write the
   tool call.", one sentence ×8, 33k chars, 63 s): cut`.
-
+- The system prompt puts what every session shares first and the per-session lines (model, working directory,
+  session) last, and plugin tools come in a fixed order, so a new session reuses the server's prompt cache: on a
+  local llama.cpp or Splash server its first answer starts in about 0.5 s instead of 4–6 s, and on Claude via
+  OpenRouter a new session reads the shared part from the cache (about 7× cheaper to start).
 - Chat hosts (`api: openai`) are no longer asked for `temperature: 0.0`: chi sends no temperature unless one is
   configured, so each model runs at its provider's default (as native llama.cpp hosts already did). Greedy decoding
   made DeepSeek v4.1-flash loop in its thinking. The idle recap and `/btw` follow suit. Set `sampling: {temperature:
@@ -43,6 +56,9 @@ and commands may change between minor versions. How releases are made:
   key's credit budget) fails at once as `request too large for the credit budget on host <name>: …; lower
   max_tokens (default.max_tokens) or raise the key's credit limit`, instead of being retried as credit held by
   in-flight requests. Other 402s are unchanged.
+
+Update with `chi update`: loop-guard moves to 0.3.3 (the window rule and the quoted cut notice). Restart `chi web`
+and running sessions afterwards (`chi sessions restart ID`).
 
 ## [0.24.0] - 2026-10-04
 
@@ -1378,7 +1394,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/dm1try/samagotchi/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/dm1try/samagotchi/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/dm1try/samagotchi/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/dm1try/samagotchi/compare/v0.21.0...v0.22.0
