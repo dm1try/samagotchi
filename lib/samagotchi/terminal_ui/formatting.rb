@@ -421,14 +421,15 @@ module Samagotchi
         lines.join("\n")
       end
 
-      # ", cached 4864 (93%), reasoning 212" for the tokens line; the counts a
-      # server didn't report are left out.
+      # ", cached 4864 (93%), cache writes 312, reasoning 212" for the tokens
+      # line; the counts a server didn't report are left out.
       def token_breakdown_text(tokens)
         cached = tokens[:cached_sum].to_i
         reasoning = tokens[:reasoning_sum].to_i
         prompt = tokens[:prompt_sum].to_i
         text = +""
         text << ", cached #{cached} (#{(cached * 100.0 / prompt).round}%)" if cached.positive? && prompt.positive?
+        text << ", cache writes #{tokens[:cache_write_sum].to_i}" if tokens[:cache_write_sum].to_i.positive?
         text << ", reasoning #{reasoning}" if reasoning.positive?
         text
       end

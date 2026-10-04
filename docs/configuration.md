@@ -518,7 +518,9 @@ Chat requests for a Claude model (an id containing `claude`, such as `anthropic/
 OpenAI-compatible host get two prompt-cache breakpoints (`cache_control` on the system message and on the last
 message), so each step reads the earlier prompt from Anthropic's cache instead of paying for it again; the debug
 log's line shows `cache=on`. Nothing to configure. A provider behind a gateway may still not cache: check the
-cached tokens in `/stats`.
+cached tokens in `/stats`. Each request's own counts are in the debug log's `generation_completed` line:
+`prompt=` (its prompt tokens), `cached=` (read from the server's cache) and `cache_write=` (written to it, when the
+server reports writes); recap and side requests log theirs as `recap request_usage`.
 
 ## Llama Model Routing
 

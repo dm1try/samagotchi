@@ -371,6 +371,27 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(metrics.snapshot[:turn_records].last).not_to include(:cost)
     end
 
+    it "sums the cache writes a server reports into the turn record and the totals, and keeps none it wasn't told of" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      write = router_chunk("a", 5)
+      write[:payload]["usage"]["prompt_tokens_details"] = { "cached_tokens" => 0, "cache_write_tokens" => 14_728 }
+      metrics.call(write)
+      metrics.call(type: :generation_completed, iteration: 1)
+      metrics.call(type: :turn_completed)
+
+      expect(metrics.snapshot[:tokens]).to include(cache_write_sum: 14_728)
+      expect(metrics.snapshot[:turn_records].last).to include(cache_write_tokens_sum: 14_728)
+
+      start_turn("t2")
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(router_chunk("a", 5))
+      metrics.call(type: :generation_completed, iteration: 1)
+      metrics.call(type: :turn_completed)
+      expect(metrics.snapshot[:turn_records].last).not_to include(:cache_write_tokens_sum)
+      expect(metrics.snapshot[:tokens]).to include(cache_write_sum: 14_728)
+    end
+
     it "estimates the decode speed from the first streamed chunk, not from the request, with cost and reasoning" do
       start_turn
       metrics.call(type: :generation_started, iteration: 1)

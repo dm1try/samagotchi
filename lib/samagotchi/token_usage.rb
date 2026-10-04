@@ -12,15 +12,16 @@ module Samagotchi
   # The last chunk can say more: llama.cpp adds a `timings` block with exact
   # speeds and `cache_n` (its native `tokens_cached` counts the new tokens too,
   # so it is not read); OpenRouter adds `usage.cost` (USD) and the
-  # `prompt_tokens_details.cached_tokens` / `completion_tokens_details.reasoning_tokens`
-  # breakdowns. Those fields are nil when a payload doesn't carry them.
+  # `prompt_tokens_details.cached_tokens` / `cache_write_tokens` /
+  # `completion_tokens_details.reasoning_tokens` breakdowns (cache writes:
+  # Anthropic models, prompt caching's first request). Those fields are nil when a payload doesn't carry them.
   #
   # from_payload returns nil when no server token counts are present, so a
   # caller can fall back to a chars/4 heuristic. The reported values are
   # cumulative per request, so callers should take the running MAX across
   # chunks (see SessionMetrics).
-  class TokenUsage < Data.define(:prompt_tokens, :completion_tokens, :cached_tokens, :reasoning_tokens, :cost,
-                                 :predicted_per_second, :prompt_per_second, :predicted_ms, :source)
+  class TokenUsage < Data.define(:prompt_tokens, :completion_tokens, :cached_tokens, :cache_write_tokens,
+                                 :reasoning_tokens, :cost, :predicted_per_second, :prompt_per_second, :predicted_ms, :source)
     CHARS_PER_TOKEN = 4.0
 
     class << self
@@ -41,11 +42,12 @@ module Samagotchi
         )
         return nil unless prompt_tokens || completion_tokens
 
+        details = hash_at(usage, :prompt_tokens_details)
         new(
           prompt_tokens: prompt_tokens,
           completion_tokens: completion_tokens,
-          cached_tokens: first_positive(*both(hash_at(usage, :prompt_tokens_details), :cached_tokens),
-                                        *both(timings, :cache_n)),
+          cached_tokens: first_positive(*both(details, :cached_tokens), *both(timings, :cache_n)),
+          cache_write_tokens: first_positive(*both(details, :cache_write_tokens)),
           reasoning_tokens: first_positive(*both(hash_at(usage, :completion_tokens_details), :reasoning_tokens)),
           cost: number(*both(usage, :cost)),
           predicted_per_second: positive_number(*both(timings, :predicted_per_second)),
@@ -53,6 +55,16 @@ module Samagotchi
           predicted_ms: positive_number(*both(timings, :predicted_ms)),
           source: :server
         )
+      end
+
+      # A request's prompt-cache counts as a :generation_completed event
+      # carries them (the log line too): the prompt, the part of it the
+      # server reused from its cache, and the part it wrote to it (nil when
+      # none: only some remote servers report writes).
+      # @return [Hash] {prompt_tokens:, cached_tokens:, cache_write_tokens:}
+      def cache_fields(prompt:, cached:, cache_write:)
+        { prompt_tokens: prompt.to_i, cached_tokens: cached.to_i,
+          cache_write_tokens: cache_write.to_i.positive? ? cache_write.to_i : nil }
       end
 
       # Estimate token count from raw text length using the chars/4 heuristic.

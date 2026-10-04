@@ -78,10 +78,11 @@ module Samagotchi
       :gen_prompt_max,
       :gen_open,
       # The rest of this generation's server report: the largest cached and
-      # reasoning counts, the last cost, and the server's speeds and decode
+      # reasoning counts (and cache writes), the last cost, and the server's speeds and decode
       # time (llama.cpp's timings); and when its first content, reasoning or
       # tool call chunk came (an estimated speed runs from there).
       :gen_cached_max,
+      :gen_cache_write_max,
       :gen_reasoning_max,
       :gen_cost,
       :gen_decode_tps,
@@ -102,6 +103,7 @@ module Samagotchi
       # tokens of the generations with a speed. The last speeds and where the
       # decode one came from (server / estimate).
       :cached_sum,
+      :cache_write_sum,
       :reasoning_sum,
       :cost_sum,
       :decode_ms_sum,
@@ -394,6 +396,7 @@ module Samagotchi
         prompt_sum: add.call(:prompt_sum),
         completion_sum: add.call(:completion_sum),
         cached_sum: add.call(:cached_sum),
+        cache_write_sum: add.call(:cache_write_sum),
         reasoning_sum: add.call(:reasoning_sum),
         cost_sum: add.call(:cost_sum),
         decode_ms_sum: decode_ms.round,
@@ -443,6 +446,7 @@ module Samagotchi
           gen_prompt_max: 0,
           gen_open: false,
           gen_cached_max: 0,
+          gen_cache_write_max: 0,
           gen_reasoning_max: 0,
           generations: 0,
           prompt_last: nil,
@@ -451,6 +455,7 @@ module Samagotchi
           completion_sum: 0,
           token_sources: [],
           cached_sum: 0,
+          cache_write_sum: 0,
           reasoning_sum: 0,
           cost_sum: nil,
           decode_ms_sum: 0,
@@ -563,6 +568,7 @@ module Samagotchi
     # here: it has no speed. Caller holds the mutex.
     def close_server_report(turn, completion)
       turn.cached_sum += turn.gen_cached_max
+      turn.cache_write_sum += turn.gen_cache_write_max
       turn.reasoning_sum += turn.gen_reasoning_max
       turn.cost_sum = turn.cost_sum.to_f + turn.gen_cost if turn.gen_cost
       turn.last_prefill_tps = turn.gen_prefill_tps.round(1) if turn.gen_prefill_tps
@@ -601,6 +607,7 @@ module Samagotchi
       @turn.gen_had_server = false
       @turn.gen_estimate_sum = 0
       @turn.gen_cached_max = 0
+      @turn.gen_cache_write_max = 0
       @turn.gen_reasoning_max = 0
       @turn.gen_cost = nil
       @turn.gen_decode_tps = @turn.gen_prefill_tps = @turn.gen_decode_ms = nil
@@ -643,6 +650,7 @@ module Samagotchi
         prefill_tps: turn.last_prefill_tps,
         tps_source: turn.tps_source
       }
+      fields[:cache_write_tokens_sum] = turn.cache_write_sum if turn.cache_write_sum.positive?
       fields.merge!(cost: turn.cost_sum, cost_source: "reported") if turn.cost_sum
       fields
     end
@@ -729,6 +737,7 @@ module Samagotchi
       turn.gen_prompt_max = [turn.gen_prompt_max, usage.prompt_tokens.to_i].max
       turn.gen_completion_max = [turn.gen_completion_max, usage.completion_tokens.to_i].max
       turn.gen_cached_max = [turn.gen_cached_max, usage.cached_tokens.to_i].max
+      turn.gen_cache_write_max = [turn.gen_cache_write_max, usage.cache_write_tokens.to_i].max
       turn.gen_reasoning_max = [turn.gen_reasoning_max, usage.reasoning_tokens.to_i].max
       turn.gen_cost = usage.cost if usage.cost
       if usage.predicted_per_second && usage.predicted_ms
@@ -878,7 +887,8 @@ module Samagotchi
     # (#snapshot adds the running turn). Caller holds the mutex.
     def reset_totals
       @totals = { cancellations: 0, prompt_sum: 0, completion_sum: 0, token_sources: [], iterations: 0,
-                  gen_ms: 0, retries: 0, cuts: 0, capped: 0, by_tool: {}, tool_errors: 0, cached_sum: 0, reasoning_sum: 0,
+                  gen_ms: 0, retries: 0, cuts: 0, capped: 0, by_tool: {}, tool_errors: 0, cached_sum: 0, cache_write_sum: 0,
+                  reasoning_sum: 0,
                   cost_sum: 0, decode_ms_sum: 0, decode_tokens_sum: 0, last_decode_tps: nil,
                   last_prefill_tps: nil, tps_source: nil }
     end
@@ -894,6 +904,7 @@ module Samagotchi
       totals[:cuts] += number(record[:cuts])
       totals[:capped] += number(record[:capped])
       totals[:cached_sum] += number(record[:cached_tokens_sum])
+      totals[:cache_write_sum] += number(record[:cache_write_tokens_sum])
       totals[:reasoning_sum] += number(record[:reasoning_tokens])
       totals[:cost_sum] += number(record[:cost])
       totals[:decode_ms_sum] += number(record[:decode_ms])

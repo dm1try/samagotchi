@@ -93,7 +93,8 @@ module Samagotchi
     # @raise [SummarizeError] any failure but a cancel
     # @raise [LLM::RequestCancelled] +cancel_controller+ was cancelled
     def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil)
-      content, served = generate(messages, max_tokens: max_tokens, cancel_controller: cancel_controller, whole_sentences: false)
+      content, served = generate(messages, max_tokens: max_tokens, cancel_controller: cancel_controller, whole_sentences: false,
+                                           kind: "ask")
       Summary.new(text: content.to_s.strip, model: served)
     rescue SummarizeError, LLM::RequestCancelled
       raise
@@ -109,7 +110,7 @@ module Samagotchi
     # the reply has neither content nor reasoning_content. Cut off by
     # +max_tokens+, the text keeps its finished sentences (+whole_sentences+)
     # or all of it, with "…".
-    def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true)
+    def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true, kind: "recap")
       response = begin
         request(messages, max_tokens, cancel_controller)
       rescue LLM::BadRequest => e
@@ -121,6 +122,7 @@ module Samagotchi
         Log.info(:recap, "thinking_refused", model: @model, detail: e.detail)
         request(messages, max_tokens, cancel_controller)
       end
+      log_usage(response, kind)
       content = response.text
       reasoning = response.reasoning
       raise SummarizeError, "server returned no parseable assistant content" if content.empty? && reasoning.empty?
@@ -139,6 +141,16 @@ module Samagotchi
       [text, response.model]
     rescue LLM::ProtocolError => e
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
+    end
+
+    # The request's prompt-cache counts (a side request on the session's
+    # host can evict the session's cached prompt there).
+    def log_usage(response, kind)
+      fields = response.usage&.cache_fields || {}
+      return if fields.empty?
+
+      Log.info(:recap, "request_usage", kind: kind, model: @model, prompt: fields[:prompt_tokens],
+                                        cached: fields[:cached_tokens], cache_write: fields[:cache_write_tokens])
     end
 
     def request(messages, max_tokens, cancel_controller)

@@ -75,6 +75,14 @@ RSpec.describe "Usage parsing" do
                                        prompt_per_second: nil, predicted_ms: nil)
     end
 
+    it "reads OpenRouter's cache writes (Anthropic models), nil when it wrote none" do
+      payload = { "usage" => { "prompt_tokens" => 14_800, "completion_tokens" => 5,
+                               "prompt_tokens_details" => { "cached_tokens" => 0, "cache_write_tokens" => 14_728 } } }
+      expect(Samagotchi::TokenUsage.from_payload(payload)).to have_attributes(cached_tokens: nil, cache_write_tokens: 14_728)
+      payload["usage"]["prompt_tokens_details"] = { "cached_tokens" => 14_728, "cache_write_tokens" => 0 }
+      expect(Samagotchi::TokenUsage.from_payload(payload)).to have_attributes(cached_tokens: 14_728, cache_write_tokens: nil)
+    end
+
     it "keeps a zero cost (a free model) and skips a broken one" do
       free = { "usage" => { "prompt_tokens" => 10, "completion_tokens" => 2, "cost" => 0 } }
       expect(Samagotchi::TokenUsage.from_payload(free).cost).to eq(0.0)

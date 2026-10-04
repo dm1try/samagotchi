@@ -448,7 +448,8 @@ module Samagotchi
           record_context_status(response.usage, window)
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
                thinking_chars: response.reasoning.to_s.length, served_model: response.model,
-               served_provider: response.provider, requested_model: @model_name, finish_reason: response.finish_reason)
+               served_provider: response.provider, requested_model: @model_name, finish_reason: response.finish_reason,
+               **(response.usage&.cache_fields || {}))
           dump_response(response, iteration)
           @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text,
                                                messages: AnswerDisplay.strip_all(@conversation).map(&:dup).freeze })

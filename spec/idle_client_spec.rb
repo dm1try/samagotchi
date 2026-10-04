@@ -3,6 +3,9 @@
 require "spec_helper"
 require "samagotchi/idle_client"
 require "samagotchi/cancellation_controller"
+require "samagotchi/log"
+require "fileutils"
+require "tmpdir"
 require_relative "support/fake_provider_server"
 
 RSpec.describe Samagotchi::IdleClient do
@@ -149,6 +152,38 @@ RSpec.describe Samagotchi::IdleClient do
       expect(server.requests.last.header("authorization")).to eq("Bearer sk-recap")
       client.summarize("hi")
       expect(server.requests.last.header("authorization")).to be_nil
+    end
+  end
+
+  describe "the request's prompt-cache counts" do
+    let(:dir) { Dir.mktmpdir("samagotchi-idle-log") }
+    let(:path) { File.join(dir, "chi.log") }
+
+    before { Samagotchi::Log.configure(path: path) }
+    after { FileUtils.remove_entry(dir) }
+
+    def usage_records
+      File.open(path) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.event == "request_usage" } }
+    end
+
+    it "logs them per request, recap or side answer" do
+      usage = { prompt_tokens: 900, completion_tokens: 40, prompt_tokens_details: { cached_tokens: 512 } }
+      2.times do
+        server.enqueue("/v1/chat/completions", json: { usage: usage, choices: [{ message: { content: "Done." }, finish_reason: "stop" }] })
+      end
+      client.summarize("summarize this")
+      client.ask([{ role: "user", content: "q" }])
+
+      expect(usage_records.map { |r| [r.tag, r.fields] }).to eq([
+        ["recap", { "kind" => "recap", "model" => "gemma-small", "prompt" => "900", "cached" => "512" }],
+        ["recap", { "kind" => "ask", "model" => "gemma-small", "prompt" => "900", "cached" => "512" }]
+      ])
+    end
+
+    it "logs nothing when the server reports no counts" do
+      reply(content: "Done.")
+      client.summarize("summarize this")
+      expect(File.exist?(path) ? usage_records : []).to be_empty
     end
   end
 

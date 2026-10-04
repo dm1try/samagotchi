@@ -8,6 +8,7 @@ require_relative "context_status"
 require_relative "context_window"
 require_relative "prompt"
 require_relative "prompt_literal_guard"
+require_relative "token_usage"
 require_relative "client"
 require_relative "llm/errors"
 require_relative "log"
@@ -238,8 +239,10 @@ module Samagotchi
     # One generation: the response (nil when cut), the cut's detail, this
     # generation's own server counts, the model the server named, the
     # thinking it streamed, and why it stopped (the transport's finish
-    # reason, Client::Transport#finish_reason_from; nil when not named).
-    Generation = Struct.new(:response, :cut, :usage, :served_model, :streamed_thinking, :finish_reason, keyword_init: true)
+    # reason, Client::Transport#finish_reason_from; nil when not named),
+    # and its prompt-cache counts (the largest seen: they come cumulative).
+    Generation = Struct.new(:response, :cut, :usage, :served_model, :streamed_thinking, :finish_reason, :cache,
+                            keyword_init: true)
     private_constant :Turn, :Request, :Generation
 
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:)
@@ -328,6 +331,7 @@ module Samagotchi
           on_retry: lambda { |retry_event|
             # The retry streams from the start: its counts replace these.
             generation.usage = nil
+            generation.cache = nil
             generation.streamed_thinking = 0
             generation.finish_reason = nil
             turn.emit.call({ type: :generation_retrying, iteration: turn.iteration }.merge(retry_event)) if turn.on_stream_event
@@ -346,6 +350,7 @@ module Samagotchi
 
     def stream_chunk(turn, generation, stream_splitter, chunk)
       generation.usage = turn.context.capture(chunk[:payload]) || generation.usage
+      note_cache_counts(generation, chunk[:payload])
       # llama.cpp names the loaded model in the stream's last payload.
       named = chunk[:payload]["model"] if chunk[:payload].is_a?(Hash)
       generation.served_model = named if named.is_a?(String) && !named.strip.empty?
@@ -362,6 +367,19 @@ module Samagotchi
       event[:tool_call] = true if split[:tool]
       emit(turn, **event)
     end
+
+    # The payload's prompt-cache counts, kept as the largest seen.
+    def note_cache_counts(generation, payload)
+      counts = TokenUsage.from_payload(payload)
+      return unless counts
+
+      cache = generation.cache ||= { prompt: 0, cached: 0, cache_write: 0 }
+      cache[:prompt] = [cache[:prompt], counts.prompt_tokens.to_i].max
+      cache[:cached] = [cache[:cached], counts.cached_tokens.to_i].max
+      cache[:cache_write] = [cache[:cache_write], counts.cache_write_tokens.to_i].max
+    end
+
+    def cache_fields(cache) = cache ? TokenUsage.cache_fields(**cache) : {}
 
     # The cut stream's visible text goes with it: the buffer as it was
     # before (the next generation gets a fresh splitter).
@@ -380,7 +398,7 @@ module Samagotchi
       emit(turn, type: :generation_completed, iteration: turn.iteration, content_length: response.length,
                  thinking_chars: thinking_chars(response, generation.streamed_thinking),
                  served_model: generation.served_model, requested_model: turn.model_name,
-                 finish_reason: generation.finish_reason)
+                 finish_reason: generation.finish_reason, **cache_fields(generation.cache))
       dump_log("response", generation.response, iteration: turn.iteration)
       # The after_generation hook (after the model returns, before the tool
       # parse), with a read-only copy of the conversation as sent.

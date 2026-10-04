@@ -76,6 +76,20 @@ RSpec.describe Samagotchi::LogSubscriber do
     ])
   end
 
+  it "writes a generation's prompt-cache counts: prompt, cached and, when the server wrote any, cache writes" do
+    feed({ type: :generation_started, iteration: 1 },
+         { type: :generation_completed, iteration: 1, content_length: 4, prompt_tokens: 11_892, cached_tokens: 11_370,
+           cache_write_tokens: nil },
+         { type: :generation_started, iteration: 2 },
+         { type: :generation_completed, iteration: 2, content_length: 4, prompt_tokens: 14_800, cached_tokens: 0,
+           cache_write_tokens: 14_728 })
+
+    expect(records.map { |r| r.fields.slice("prompt", "cached", "cache_write") }).to eq([
+      { "prompt" => "11892", "cached" => "11370" },
+      { "prompt" => "14800", "cached" => "0", "cache_write" => "14728" }
+    ])
+  end
+
   it "writes an empty-answer retry and a generation's finish reason" do
     feed({ type: :generation_started, iteration: 1 },
          { type: :generation_completed, iteration: 1, content_length: 0, thinking_chars: 240_000, finish_reason: "length" },
