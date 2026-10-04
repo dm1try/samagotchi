@@ -114,6 +114,31 @@ RSpec.describe Samagotchi::LLM::PromptCache do
     end
   end
 
+  it "sends the system prompt as its stable part, marked, and its per-session tail at the cache_split" do
+    messages = deep_freeze([{ role: "system", content: "base\nModel: m", cache_split: 5 }, { role: "user", content: "hi" }])
+
+    expect(described_class.mark(messages, model: claude)).to eq([
+      { role: "system", content: [text_part("base\n", marked: true), text_part("Model: m")] },
+      { role: "user", content: [text_part("hi", marked: true)] }
+    ])
+  end
+
+  it "marks the whole system prompt when the cache_split doesn't fall inside it" do
+    [0, 13, 99, nil].each do |split|
+      messages = deep_freeze([{ role: "system", content: "base\nModel: m", cache_split: split }, { role: "user", content: "hi" }])
+      expect(described_class.mark(messages, model: claude).first).to eq({ role: "system", content: [text_part("base\nModel: m", marked: true)] })
+    end
+  end
+
+  it "drops the cache_split from every message for other models, and keeps messages without one as they are" do
+    messages = deep_freeze([{ role: "system", content: "base\nModel: m", cache_split: 5 }, { role: "user", content: "hi" }])
+
+    expect(described_class.mark(messages, model: "deepseek/deepseek-v4.1-flash"))
+      .to eq([{ role: "system", content: "base\nModel: m" }, { role: "user", content: "hi" }])
+    plain = deep_freeze([{ role: "user", content: "hi" }])
+    expect(described_class.without_split(plain)).to equal(plain)
+  end
+
   it "leaves other models' messages as they are" do
     messages = deep_freeze([{ role: "system", content: "sys" }, { role: "user", content: "hi" }])
 

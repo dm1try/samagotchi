@@ -259,7 +259,7 @@ module Samagotchi
       # would pay for a cache write nothing reads, and a local model named
       # after Claude must not get Array content.
       def cache_breakpoints(messages, model)
-        return messages unless @remote && @purpose == "chat"
+        return PromptCache.without_split(messages) unless @remote && @purpose == "chat"
 
         PromptCache.mark(messages, model: model)
       end

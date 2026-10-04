@@ -50,9 +50,12 @@ module Samagotchi
       # @param kernel [KernelLoop] tool dispatch, thought stripping, hooks
       # @param adapter [OpenAIChat, nil] the host to talk to; Engine sets it
       #   per turn for the effective model's host
-      def initialize(kernel:, adapter: nil)
+      # @param stable_length [#call, nil] text → the length of the system
+      #   prompt's part every session shares (SystemPrompt#stable_length), or nil
+      def initialize(kernel:, adapter: nil, stable_length: nil)
         @kernel = kernel
         @adapter = adapter
+        @stable_length = stable_length
       end
 
       def provider = :chat
@@ -105,7 +108,7 @@ module Samagotchi
           items = plan.items(entry, index)
           case entry[:role].to_s
           when "system"
-            wire << { role: "system", content: entry[:content].to_s }
+            wire << system_message(entry, index)
           when "user"
             # A steer or merged input (always a String) goes with its header.
             content = Steer.header(entry) ? Steer.wire_text(entry, entry[:content].to_s) : entry[:content]
@@ -130,6 +133,16 @@ module Samagotchi
           tool_images = []
         end
         wire
+      end
+
+      # The head system prompt says where its stable part ends
+      # (`cache_split:`, a character offset): the adapter puts a remote
+      # Claude model's cache breakpoint there (PromptCache) and drops it
+      # for every other request.
+      def system_message(entry, index)
+        text = entry[:content].to_s
+        split = index.zero? && @stable_length&.call(text)
+        split ? { role: "system", content: text, cache_split: split } : { role: "system", content: text }
       end
 
       TOOL_IMAGES_TEXT = "[images from tool results]"

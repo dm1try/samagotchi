@@ -61,6 +61,24 @@ RSpec.describe "Engine#system_prompt names the model" do
     end
   end
 
+  # A remote Claude model's cache breakpoint goes there (PromptCache).
+  it "says where a chat prompt's stable part ends, and the chat loop sends it with the system message" do
+    e = engine("oai:m", "qwen36")
+    e.session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
+    prompt = e.system_prompt
+    split = e.instance_variable_get(:@prompt_builder).stable_length(prompt)
+
+    expect(prompt[split..]).to start_with("Model: this session runs on oai:m")
+    expect(prompt[0, split]).to end_with("System memories:\n(index)\n")
+    wire = e.send(:backend_for, registry.resolve("oai:m")).wire_messages([{ role: "system", content: prompt },
+                                                                          { role: "user", content: "hi" }])
+    expect(wire.first).to eq({ role: "system", content: prompt, cache_split: split })
+
+    native = engine("box:gemma-small")
+    expect(native.instance_variable_get(:@prompt_builder).stable_length(native.system_prompt)).to be_nil
+    expect(e.instance_variable_get(:@prompt_builder).stable_length("#{prompt} ")).to be_nil
+  end
+
   it "is the same text across builds and changes after a model switch" do
     e = engine("box:gemma-small")
     first = model_lines(e.system_prompt)

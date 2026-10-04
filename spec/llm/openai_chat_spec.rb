@@ -181,6 +181,20 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
                                                                  { "role" => "user", "content" => "hi" }])
           end
         end
+
+        it "splits a Claude request's system prompt at its cache_split, which no request sends" do
+          split = [{ role: "system", content: "stable\nModel: m", cache_split: 7 }, { role: "user", content: "hi" }]
+          replay("text_stream.sse")
+          chat_adapter.chat(messages: split, tools: tools, model: claude)
+          expect(server.requests.last.json["messages"].first["content"])
+            .to eq([marked.merge("text" => "stable\n"), { "type" => "text", "text" => "Model: m" }])
+
+          [[chat_adapter(remote: false), claude], [chat_adapter, "deepseek/deepseek-v4.1-flash"]].each do |client, model|
+            replay("text_stream.sse")
+            client.chat(messages: split, tools: tools, model: model)
+            expect(server.requests.last.json["messages"].first).to eq({ "role" => "system", "content" => "stable\nModel: m" })
+          end
+        end
       end
     end
 

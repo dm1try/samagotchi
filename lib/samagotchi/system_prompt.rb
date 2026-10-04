@@ -78,7 +78,15 @@ module Samagotchi
     # indexes and memories again (a model or profile switch, changed tools).
     def reset!
       @built = nil
+      @stable_lengths = nil
     end
+
+    # The length of +prompt+'s stable part when it is a chat prompt #build
+    # made: everything before the model, location and session lines, which
+    # a remote prompt cache can keep for every session (PromptCache). nil
+    # for any other text, or a prompt without those lines.
+    # @return [Integer, nil]
+    def stable_length(prompt) = @stable_lengths&.[](prompt)
 
     # The base prompt (specs, plugins' declarations), with Gemma's tool
     # declarations at its end as #build has them.
@@ -246,8 +254,13 @@ module Samagotchi
       ].join("\n\n")
       stable = [thinking_token + base, rg_guidance, system_identity_section, explicit_memory_section,
                 project_specific_description, memory_sections]
-      volatile = [current_model, project_location, current_session]
-      with_tail_declarations((stable + volatile).compact.join("\n"), chat: chat)
+      stable_text = stable.compact.join("\n")
+      volatile = [current_model, project_location, current_session].compact
+      return with_tail_declarations(stable_text, chat: chat) if volatile.empty?
+
+      prompt = "#{stable_text}\n#{volatile.join("\n")}"
+      (@stable_lengths ||= {})[prompt] = stable_text.length + 1 if chat
+      with_tail_declarations(prompt, chat: chat)
     end
 
     def with_tail_declarations(prompt, chat:)

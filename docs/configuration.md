@@ -515,8 +515,10 @@ gateway that spreads requests over several providers can key on it to keep one c
 prompt caches hit and every turn is answered by the same model. Servers that don't know the header ignore it.
 
 Chat requests for a Claude model (an id containing `claude`, such as `anthropic/claude-sonnet-5.5`) on a remote
-OpenAI-compatible host get two prompt-cache breakpoints (`cache_control` on the system message and on the last
-message), so each step reads the earlier prompt from Anthropic's cache instead of paying for it again; the debug
+OpenAI-compatible host get two prompt-cache breakpoints (`cache_control` on the system prompt and on the last
+message), so each step reads the earlier prompt from Anthropic's cache instead of paying for it again. The system
+prompt goes as two text parts, the breakpoint after the first: everything sessions share, then the model, working
+directory and session lines, so a new session reads the shared part from the cache as well; the debug
 log's line shows `cache=on`. Nothing to configure. A provider behind a gateway may still not cache: check the
 cached tokens in `/stats`. Each request's own counts are in the debug log's `generation_completed` line:
 `prompt=` (its prompt tokens), `cached=` (read from the server's cache) and `cache_write=` (written to it, when the
