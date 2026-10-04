@@ -90,6 +90,14 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts].last).to include(tool: "execute", title: "ls")
   end
 
+  it "keeps a tool call's view (its full command) on its part" do
+    view = { command: "cd /x && ls\n  -la", cwd: "lib" }
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: 'command="cd /x && ls -la"', view: view },
+         { type: :tool_call_started, iteration: 1, call_index: 2, tool: "read", params: 'path="a"' })
+    expect(acc.current_turn[:parts].map { |part| part[:view] }).to eq([view, nil])
+  end
+
   it "keeps each of the turn's rows as a notice part holding its event, in stream order" do
     question = { id: "q1", question: "Which?", options: %w[A B], status: "pending" }
     feed({ type: :turn_started, prompt: "hi" },

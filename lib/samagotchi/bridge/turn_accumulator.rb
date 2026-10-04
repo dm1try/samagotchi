@@ -158,7 +158,8 @@ module Samagotchi
         call = { iteration: part[:iteration], call_index: part[:call_index], tool: part[:tool] }
         call[:label] = part[:label] if part[:label]
         title = part[:title] ? { title: part[:title] } : {}
-        events = [{ type: :tool_call_started, **call, params: part[:params], **title }]
+        view = part[:view] ? { view: part[:view] } : {}
+        events = [{ type: :tool_call_started, **call, params: part[:params], **title, **view }]
         if part[:status] == "running"
           events.first[:elapsed_ms] = part[:elapsed_ms] unless part[:elapsed_ms].nil?
           return events
@@ -170,6 +171,7 @@ module Samagotchi
                       activity: activity }
         completed[:duration_ms] = part[:duration_ms] unless part[:duration_ms].nil?
         completed[:diff] = part[:diff] if part[:diff]
+        completed.merge!(view)
         events << with_images(completed, part[:images])
       end
       private_class_method :tool_replay_events
@@ -253,6 +255,7 @@ module Samagotchi
                    tool: event[:tool], params: event[:params], status: "running" }
           part[:label] = event[:label] if event[:label]
           part[:title] = event[:title] if event[:title]
+          part[:view] = event[:view] if event[:view]
           parts << part
           @tool_started_at[[event[:iteration], event[:call_index]]] = @clock.call
         when :tool_call_completed
