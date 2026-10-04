@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Bundles btw 0.1.2, check-in 0.2.2, known-names 0.1.5, loop-guard 0.3.2, mcp 0.4.2, skills 0.1.6 and
+  source-links 0.3.3: code style only, no behaviour change.
 - chi no longer strips the blank lines Splash before 1.2.0 put at the start of an answer (incoai/splash#254, fixed
   in Splash 1.2.0): upgrade Splash with `brew upgrade incoai/tap/splash`.
 - Requests to OpenRouter send `max_tokens: 32768` (a request's own limit, as a recap's, still wins). OpenRouter
@@ -23,6 +25,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A Ctrl-C (or SIGTERM) while chi loads bundle hooks and plugins stops chi again; before, it was logged as a
+  failed hook and chi carried on. A hook's or plugin's own error, `exit` or syntax error is still only reported.
 - A continue turn that fails before it begins (its session save, say) asks the step-limit question again
   instead of crashing the session's worker.
 - Native Gemma 4 prompts follow Gemma 4's chat template: turns end with `<turn|>` (not Gemma 3's

@@ -4,7 +4,13 @@
 bundle exec parallel_rspec -n 8   # Ruby specs, in parallel (or plain: bundle exec rspec)
 npm test                          # web frontend specs
 npm run e2e                       # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
+bundle exec rake lint             # RuboCop: no offenses (CI runs it)
 ```
+
+Run `bundle exec rubocop -a` on the files you changed before committing: every enabled style cop follows the
+code's own style and has a safe autocorrect, so `-a` fixes them. What it leaves is a Lint finding (a possible
+bug) or a broken spec: fix it, or disable that line with the reason (`# rubocop:disable Cop -- why`).
+`.rubocop.yml` says why each cop that is off is off.
 
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).

@@ -46,6 +46,7 @@ and `--resume`. Flag semantics (also in `docs/cli.md`):
 
 ## Operational Instructions
 - **Always validate the test suite** (`bundle exec rspec`; run `npm test` too for web frontend changes — files under `lib/samagotchi/web/public/` and `spec/web/public/`; `npm run e2e` for the web UI's happy paths) after adding, updating, or removing functionality. Failing specs must be fixed before committing.
+- **Run `bundle exec rubocop -a` on changed Ruby files before committing**; `bundle exec rake lint` must report no offenses (CI runs it). An offense `-a` doesn't fix is a Lint finding or a broken spec: fix it, or disable that line with the reason. See docs/testing.md.
 - When modifying code, always ensure RSpec tests pass.
 - Use memory scopes explicitly: `memory_read` may omit scope (project -> system fallback), while `memory_write` must provide `scope` (`project` or `system`).
 - `memory_write` accepts an optional `description` (and its scoped `index.md` is auto-maintained). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). Each entry is written as a managed line — `- **name** · scope · date · size — description` — with every other line preserved byte-for-byte.
