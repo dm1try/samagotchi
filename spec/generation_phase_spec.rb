@@ -23,6 +23,26 @@ RSpec.describe Samagotchi::GenerationPhase do
     expect(phase.age).to eq(25.0)
   end
 
+  it "counts min_age from the first thinking delta, not the generation start (the wait for a first token)" do
+    phase.started!
+    at(15)
+    phase.chunk!(thinking: "hmm", text: "")
+    at(25)
+    phase.chunk!(thinking: "more", text: "")
+    expect(phase.cuttable?(20)).to be(false)
+    expect(phase.age).to eq(10.0)
+    at(35.5)
+    phase.chunk!(thinking: "more", text: "")
+    expect(phase.cuttable?(20)).to be(true)
+  end
+
+  it "starts the thinking clock again on a retry" do
+    thinking_for(25)
+    phase.retrying!
+    phase.chunk!(thinking: "again", text: "")
+    expect(phase.cuttable?(20)).to be(false)
+  end
+
   it "is not cuttable while younger than min_age" do
     thinking_for(5)
     expect(phase.cuttable?(20)).to be(false)
@@ -61,17 +81,21 @@ RSpec.describe Samagotchi::GenerationPhase do
     expect(phase.cuttable?(20)).to be(false)
   end
 
-  it "forgets what it saw on a retry, keeping its age" do
+  it "forgets what it saw on a retry" do
     thinking_for(25)
     phase.chunk!(thinking: "", text: "text")
     phase.retrying!
     expect(phase.cuttable?(20)).to be(false)
+    phase.chunk!(thinking: "again", text: "")
+    at(50)
     phase.chunk!(thinking: "again", text: "")
     expect(phase.cuttable?(20)).to be(true)
   end
 
   it "is not cuttable once finished, nor before any generation" do
     expect(phase.cuttable?(0)).to be(false)
+    expect(phase.age).to be_nil
+    phase.started!
     expect(phase.age).to be_nil
     thinking_for(25)
     phase.finished!

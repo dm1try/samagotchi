@@ -193,7 +193,7 @@ What a cut is, in detail:
   the turn so far until the turn ends.
 - A Stop from the user right after a cut is a plain cancel.
 - A cut for a message (a user's, `chi send`'s or a parent agent's line into
-  a generation that has run for `steer.cut_after` seconds, only thinking)
+  a generation that has streamed only thinking for `steer.cut_after` seconds)
   is not a plugin's cut: it sends no hidden note and spends no retry; the
   message goes in and the UIs print `↪ cut in for your message`. The
   stream's `generation_completed` says `stopped_by: "steer"`, and

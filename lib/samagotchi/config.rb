@@ -144,7 +144,7 @@ module Samagotchi
       # Asks again in the same turn after an empty answer (EmptyAnswerRetry);
       # 0 = off, capped at 3. No CLI flag: workers get no CLI args.
       Entry.new(key: "retry.empty_answer",       yaml_path: %w[retry empty_answer],       type: :integer, default: 1,               expose: %i[env config]),
-      # How old (s) a generation streaming only thinking must be before a message
+      # Seconds a generation must have streamed only thinking before a message
       # for the running turn (the user's, chi send's, a parent agent's) cuts
       # it (Engine#cut_for_steer); 0 = never. No CLI flag: workers get no CLI args.
       Entry.new(key: "steer.cut_after",          yaml_path: %w[steer cut_after],          type: :integer, default: 20,              expose: %i[env config]),

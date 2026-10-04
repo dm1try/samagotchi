@@ -330,8 +330,8 @@ module Samagotchi
 
     # A message for the running turn from +source+ (Steer.source_for_client:
     # nil for the user, "chi_send", "parent_agent") cuts the streaming
-    # generation when it is steer.cut_after seconds old and has only been
-    # thinking (GenerationPhase; checked once, now): the loops' cut path then starts the step again with
+    # generation when it has streamed only thinking for steer.cut_after
+    # seconds (GenerationPhase): the loops' cut path then starts the step again with
     # the message, no nudge, no retry spent. A plugin's message never cuts.
     # Call it after the message is queued. Outside any lock; a cut that
     # lands just after the generation ended is harmless (the loop re-asks).
