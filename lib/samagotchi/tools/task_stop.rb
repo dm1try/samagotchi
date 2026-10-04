@@ -10,7 +10,7 @@ module Samagotchi
       def self.name = NAME
 
       def self.call(task_id)
-        record, error = TaskRuntime.stop_task(task_id.to_s.strip)
+        record, error = TaskRuntime.stop_task(task_id.to_s.strip, by: "model")
         return error if error
 
         [

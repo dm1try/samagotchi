@@ -142,13 +142,19 @@ module Samagotchi
         content.lines.last(line_count).join
       end
 
-      def stop_task(task_id)
+      # A requested stop ends as "stopped" whatever the exit code: the flag
+      # is on disk before the TERM, so a reader refreshing the record while
+      # the group dies records the stop, not a failure.
+      # @param by [String] "model" (task_stop) or "user" (the web's button)
+      def stop_task(task_id, by:)
         record = load_record(task_id)
         return [nil, "Error: task not found: #{task_id}"] unless record
 
         refreshed = refresh_record(record)
         return [refreshed, nil] unless refreshed["status"] == "running"
 
+        refreshed["stop_requested_by"] = by.to_s
+        write_record(refreshed)
         pid = refreshed["pid"].to_i
 
         begin
@@ -168,10 +174,7 @@ module Samagotchi
           end
         end
 
-        updated = refresh_record(refreshed)
-        updated["status"] = "stopped" if updated["status"] == "running"
-        updated["finished_at"] ||= timestamp
-        updated["stop_reason"] = "stopped_by_user"
+        updated = mark_stopped(refresh_record(refreshed))
         write_record(updated)
 
         [updated, nil]
@@ -294,9 +297,15 @@ module Samagotchi
       end
 
       def mark_finished_without_exit_code(record)
+        record = current_record(record)
+        return record unless record["status"] == "running"
+
         exit_code = read_exit_code(record["exit_code_path"])
 
-        if exit_code.nil?
+        if record["stop_requested_by"]
+          record["exit_code"] = exit_code
+          mark_stopped(record)
+        elsif exit_code.nil?
           record["status"] = "failed"
           record["exit_code"] = nil
           record["stop_reason"] ||= "process_ended_without_exit_code"
@@ -310,6 +319,23 @@ module Samagotchi
 
         record["finished_at"] ||= timestamp
         write_record(record)
+        record
+      end
+
+      # The disk copy when it is newer than +record+: already finished, or
+      # flagged by a stop that started after +record+ was read.
+      def current_record(record)
+        disk = load_record(record.fetch("id"))
+        return record unless disk
+        return disk if disk["status"] != "running" || disk["stop_requested_by"]
+
+        record
+      end
+
+      def mark_stopped(record)
+        record["status"] = "stopped"
+        record["stop_reason"] = "stopped_by_#{record["stop_requested_by"]}"
+        record["finished_at"] ||= timestamp
         record
       end
 

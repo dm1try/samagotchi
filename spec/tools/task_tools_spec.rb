@@ -196,16 +196,65 @@ RSpec.describe "task tools" do
       result = described_class.call(task_id)
 
       expect(result).to include("task_id: #{task_id}")
-      expect(result).to include("stop_reason: stopped_by_user")
+      expect(result).to include("status: stopped")
+      expect(result).to include("stop_reason: stopped_by_model")
 
       get_result = Samagotchi::Tools::TaskGet.call(task_id)
-      expect(get_result).not_to include("status: running")
+      expect(get_result).to include("status: stopped")
     end
 
     it "returns an error for an unknown task id" do
       result = described_class.call("does-not-exist")
 
       expect(result).to include("Error: task not found")
+    end
+  end
+
+  describe Samagotchi::Tools::TaskRuntime do
+    it "ends a user stop as stopped, recording who stopped it" do
+      record, = described_class.create_task("sleep 30")
+
+      stopped, error = described_class.stop_task(record["id"], by: "user")
+
+      expect(error).to be_nil
+      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_user", "stop_requested_by" => "user")
+      expect(described_class.get_record(record["id"]).first).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
+    end
+
+    it "ends a stop as stopped when the command traps TERM and exits non-zero" do
+      record, = described_class.create_task("trap 'exit 7' TERM; while true; do sleep 0.1; done")
+
+      stopped, = described_class.stop_task(record["id"], by: "model")
+
+      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_model")
+    end
+
+    it "never shows failed to a reader polling during the stop" do
+      record, = described_class.create_task("sleep 30")
+      seen = []
+      done = false
+      reader = Thread.new do
+        until done
+          seen << described_class.get_record(record["id"]).first&.fetch("status")
+          sleep 0.005
+        end
+      end
+
+      described_class.stop_task(record["id"], by: "user")
+      done = true
+      reader.join
+
+      expect(seen).not_to include("failed")
+      expect(described_class.get_record(record["id"]).first).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
+    end
+
+    it "keeps a stop that already finished on disk when a stale copy is refreshed" do
+      record, = described_class.create_task("sleep 30")
+      stale = described_class.load_record(record["id"])
+      described_class.stop_task(record["id"], by: "user")
+
+      expect(described_class.refresh_record(stale)).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
+      expect(described_class.load_record(record["id"])).to include("status" => "stopped")
     end
   end
 
@@ -275,14 +324,14 @@ RSpec.describe "task tools" do
       expect(described_class.call("task", tail_lines: 0)).to eq("Error: tail_lines must be a positive integer")
     end
 
-    it "returns failed status when task is stopped via task_stop" do
+    it "returns stopped status when task is stopped via task_stop" do
       create_result = Samagotchi::Tools::TaskCreate.call("sleep 30")
       task_id = extract_field(create_result, "task_id")
       Samagotchi::Tools::TaskStop.call(task_id)
       result = described_class.call(task_id)
       expect(result).to include("task_id: #{task_id}")
-      expect(result).to include("status: failed")
-      expect(result).to include("stop_reason: stopped_by_user")
+      expect(result).to include("status: stopped")
+      expect(result).to include("stop_reason: stopped_by_model")
     end
 
     it "returns on Stop and leaves a running task running" do
