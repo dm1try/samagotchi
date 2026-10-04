@@ -46,7 +46,7 @@ module Samagotchi
     module TranscriptFilter
       # A tool call as the model wrote it inline: gemma, qwen, or the qwen
       # prompt-literal form. An unterminated gemma call runs to the end.
-      TOOL_CALL_RE = /<\|tool_call>(?:.*?<tool_call\|>|.*\z)|<tool_call>.*?<\/tool_call>|\[\[SAMAGOTCHI_LITERAL_TOOL_CALL_OPEN\]\].*?\[\[SAMAGOTCHI_LITERAL_TOOL_CALL_CLOSE\]\]/m
+      TOOL_CALL_RE = %r{<\|tool_call>(?:.*?<tool_call\|>|.*\z)|<tool_call>.*?</tool_call>|\[\[SAMAGOTCHI_LITERAL_TOOL_CALL_OPEN\]\].*?\[\[SAMAGOTCHI_LITERAL_TOOL_CALL_CLOSE\]\]}m
       # Each dispatched call's output starts with "[name]"; the kernel loop
       # joins one step's outputs into a single tool_response with this
       # separator, while the chat loop writes one message per call.
@@ -215,7 +215,7 @@ module Samagotchi
         system = format(SYSTEM, range) + (previous ? UPDATE + format(UPDATE_LENGTH, range) : "") + tools
         user = +""
         user << "Earlier recap:\n#{previous}\n\n" if previous
-        user << "Transcript#{previous ? ' since the earlier recap' : ''} (the system prompt and tool " \
+        user << "Transcript#{" since the earlier recap" if previous} (the system prompt and tool " \
                 "internals were removed; only user turns and assistant prose remain):\n---\n#{body}\n---\n"
         user << "#{OFFER_LINE}\n" if offer
         user << "Write the recap now."
@@ -225,7 +225,7 @@ module Samagotchi
       # "2-4 sentences", or "3 sentences" for [3, 3] ("1 sentence" for [1, 1])
       def sentences_text((min, max), adjective = "")
         count = min == max ? min.to_s : "#{min}-#{max}"
-        "#{count} #{adjective}#{max == 1 ? 'sentence' : 'sentences'}"
+        "#{count} #{adjective}#{max == 1 ? "sentence" : "sentences"}"
       end
 
       # The tail of +body+ when it is over MAX_NEW_CHARS, from a paragraph
@@ -243,7 +243,7 @@ module Samagotchi
       def tools_used(names)
         return "" if names.empty?
 
-        " (#{names.tally.map { |name, n| n > 1 ? "#{name} x#{n}" : name }.join(', ')})"
+        " (#{names.tally.map { |name, n| n > 1 ? "#{name} x#{n}" : name }.join(", ")})"
       end
     end
 
@@ -514,7 +514,7 @@ module Samagotchi
 
       text = message["content"].to_s
       text = TranscriptFilter.strip_thought(text) if %w[model assistant].include?(message["role"])
-      Digest::SHA1.hexdigest("#{message['role']}\0#{text}")
+      Digest::SHA1.hexdigest("#{message["role"]}\0#{text}")
     end
 
     def bump_generation

@@ -333,9 +333,7 @@ module Samagotchi
       true
     end
 
-    def sync_handler=(block)
-      @sync_handler = block
-    end
+    attr_writer :sync_handler
 
     # @return [Boolean] a REPL answers inline (no wait loop)
     def sync_handler? = !@sync_handler.nil?
@@ -356,7 +354,7 @@ module Samagotchi
         next if id && pending[:id].to_s != id.to_s
         next if @answer || pending[:status].to_s != "pending"
         # Its poster closes it; nothing waits on a cancel.
-        raise NotDismissable, "answer #{Array(pending[:options]).join(' or ')}" if @standing && id
+        raise NotDismissable, "answer #{Array(pending[:options]).join(" or ")}" if @standing && id
         next if @standing
 
         pending[:status] = "cancelled"
@@ -470,7 +468,7 @@ module Samagotchi
     def validated_answer(pending, sel, fm, parent_agent:, parent_setting:)
       opts = Array(pending[:options])
       invalid = sel.reject { |v| opts.include?(v) }
-      raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})" unless invalid.empty?
+      raise ArgumentError, "invalid selection: #{invalid.join(", ")} (valid: #{opts.join(", ")})" unless invalid.empty?
       raise ArgumentError, "single-select question: got #{sel.size} selections" if !pending[:multi_select] && sel.size > 1
       raise ArgumentError, "selection required" if pending[:multi_select] == false && sel.empty? && fm.nil?
 

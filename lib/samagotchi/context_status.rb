@@ -221,11 +221,11 @@ module Samagotchi
     end
 
     def emit?(bucket:, iteration_index:)
-      bucket_changed = if @last_bucket.nil?
-                         bucket != "under#{@thresholds.first}"
-                       else
-                         bucket != @last_bucket
-                       end
+      bucket_changed = bucket != if @last_bucket.nil?
+                                   "under#{@thresholds.first}"
+                                 else
+                                   @last_bucket
+                                 end
       cadence_due = @cadence.positive? && ((iteration_index + 1) % @cadence).zero?
       bucket_changed || cadence_due
     end

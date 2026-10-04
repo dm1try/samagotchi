@@ -15,7 +15,8 @@ module Samagotchi
     # comments), after a backup, and is checked by parsing it again: every
     # other key must be unchanged, or the backup goes back.
     class ConfigWriter
-      Error = Class.new(StandardError)
+      class Error < StandardError
+      end
 
       # kind: :new (a fresh file), :appended, :exists (the host is already
       #   there as +existing+; nothing written), :snippet (a file chi can't

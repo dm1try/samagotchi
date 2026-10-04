@@ -155,11 +155,11 @@ RSpec.describe Samagotchi::LLM::HTTP do
         controller = Samagotchi::CancellationController.new
         server.enqueue("/v1/chat/completions", sse: keep_alives, delay: 0.05, hold: true)
 
-        expect {
+        expect do
           limited.stream_lines(uri, post_request, cancel_controller: controller) do |_line|
             controller.cancel!(:ctrl_c)
           end
-        }.to raise_error(Samagotchi::LLM::RequestCancelled)
+        end.to raise_error(Samagotchi::LLM::RequestCancelled)
       end
     end
 
@@ -181,12 +181,12 @@ RSpec.describe Samagotchi::LLM::HTTP do
         lines = []
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        expect {
+        expect do
           http.stream_lines(uri, post_request, cancel_controller: controller) do |line|
             lines << line
             Thread.new { controller.cancel!(:ctrl_c) } if line == "data: 1"
           end
-        }.to raise_error(Samagotchi::LLM::RequestCancelled) { |error| expect(error.reason).to eq(:ctrl_c) }
+        end.to raise_error(Samagotchi::LLM::RequestCancelled) { |error| expect(error.reason).to eq(:ctrl_c) }
 
         expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
         expect(lines.first).to eq("data: 1")
@@ -236,7 +236,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
       501 => [Samagotchi::LLM::ServerError, false, :server],
       503 => [Samagotchi::LLM::ServerError, true, :server]
     }.each do |key, (klass, retryable, kind)|
-      it "maps HTTP #{key} to #{klass.name.split("::").last}#{retryable ? ", retried" : ""}" do
+      it "maps HTTP #{key} to #{klass.name.split("::").last}#{", retried" if retryable}" do
         status = key.to_s.to_i
         message = "nope #{key}"
         server.default("/v1/chat/completions", status: status, json: { error: { message: message } })
@@ -318,12 +318,12 @@ RSpec.describe Samagotchi::LLM::HTTP do
       server.default("/v1/chat/completions", sse: ["data: 1\n\n"], drop: true)
       lines = []
 
-      expect {
+      expect do
         http.stream_lines(uri, post_request) do |line, shown|
           lines << line
           shown.call
         end
-      }
+      end
         .to raise_error(Samagotchi::LLM::RetryExhausted) { |error|
           expect(error).to be_a(Samagotchi::LLM::ConnectionError)
           expect(error.attempts).to eq(1)
@@ -382,14 +382,14 @@ RSpec.describe Samagotchi::LLM::HTTP do
     it "does not retry an error line after the caller showed a line" do
       server.default("/v1/chat/completions", sse: "data: hi\n\ndata: {\"error\":{\"code\":503,\"message\":\"gone\"}}\n\n")
 
-      expect {
+      expect do
         http.stream_lines(uri, post_request) do |line, shown|
           error = described_class.sse_error(line, host: "fake")
           raise error if error
 
           shown.call unless line.empty?
         end
-      }.to raise_error(Samagotchi::LLM::ServerError, /gone/) { |error| expect(error.attempts).to eq(1) }
+      end.to raise_error(Samagotchi::LLM::ServerError, /gone/) { |error| expect(error.attempts).to eq(1) }
       expect(server.requests.size).to eq(1)
     end
 
@@ -465,7 +465,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
 
       expect { http.stream_lines(uri, post_request, log_fields: chat) { nil } }.to raise_error(Samagotchi::LLM::RateLimited)
 
-      expect(http_records.map { |r| [r.level, r.event, r.fields["status"]] }).to eq([["ERROR", "failed", "429"]])
+      expect(http_records.map { |r| [r.level, r.event, r.fields["status"]] }).to eq([%w[ERROR failed 429]])
     end
 
     it "writes an ERROR for a first-token timeout" do
@@ -508,13 +508,13 @@ RSpec.describe Samagotchi::LLM::HTTP do
                  retries: false, check_status: false, log_fields: { purpose: "probe" })
       http.fetch(URI("#{server.base_url}/models"), Net::HTTP::Get.new(URI("#{server.base_url}/models")),
                  log_fields: { purpose: "models" })
-      expect {
+      expect do
         http.fetch(URI("http://127.0.0.1:#{closed_port}/props"), Net::HTTP::Get.new(URI("http://127.0.0.1:1/props")),
                    retries: false, log_fields: { purpose: "probe" })
-      }.to raise_error(Errno::ECONNREFUSED)
+      end.to raise_error(Errno::ECONNREFUSED)
 
       expect(http_records.map { |r| [r.level, r.event, r.fields["status"]] })
-        .to eq([["DEBUG", "fetch", "404"], ["DEBUG", "fetch", "200"], ["DEBUG", "failed", nil]])
+        .to eq([%w[DEBUG fetch 404], %w[DEBUG fetch 200], ["DEBUG", "failed", nil]])
       expect(http_records.first.fields["url"]).to eq("#{server.base_url}/props")
     end
   end

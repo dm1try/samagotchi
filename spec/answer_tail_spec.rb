@@ -100,10 +100,10 @@ RSpec.describe Samagotchi::AnswerTail do
     it "is that turn's last answer (merged input and steers are the turn's); symbol and string keys" do
       [msgs, stringify(msgs)].each do |list|
         found = ->(id) { described_class.find(list, turn_id: id).then { |m| m && (m[:content] || m["content"]) } }
-        expect(found.("tA")).to eq("answer A, steered")
-        expect(found.("tB")).to eq("answer B")
+        expect(found.call("tA")).to eq("answer A, steered")
+        expect(found.call("tB")).to eq("answer B")
         # A turn with no answer (yet): none, not an earlier turn's.
-        expect(found.("tC")).to be_nil
+        expect(found.call("tC")).to be_nil
       end
     end
 

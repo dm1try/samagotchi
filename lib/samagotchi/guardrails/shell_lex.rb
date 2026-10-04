@@ -147,7 +147,7 @@ module Samagotchi
 
         def operator_or_char(char)
           op = OPERATORS.find { |o| @s[@i, o.size] == o }
-          return special(char) if char == "{" || char == "}"
+          return special(char) if ["{", "}"].include?(char)
           return add(char, 1) unless op
 
           if op == "&" && @word.match?(/\d*>\z/)

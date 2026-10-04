@@ -22,10 +22,10 @@ module SpecEnv
   # XDG_CONFIG_HOME=dir, with the suite's fixture config.yml copied in.
   #
   #   around { |example| with_config_home(tmp) { example.run } }
-  def with_config_home(dir, &block)
+  def with_config_home(dir, &)
     FileUtils.mkdir_p(File.join(dir, "samagotchi"))
     config = File.join(dir, "samagotchi", "config.yml")
     FileUtils.cp(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi", "config.yml"), config) unless File.exist?(config)
-    with_env("XDG_CONFIG_HOME" => dir, &block)
+    with_env("XDG_CONFIG_HOME" => dir, &)
   end
 end

@@ -65,13 +65,13 @@ module Samagotchi
             next if basename.empty?
 
             meta = ->(key) { raw_meta && (raw_meta[key] || raw_meta[key.to_s]) }
-            event = meta.(:event).to_s
+            event = meta.call(:event).to_s
             # A hook with no declared event cannot be auto-registered.
             next if event.empty?
 
             event_sym = event.to_sym
-            on_error = (meta.(:on_error) || "skip").to_s
-            priority = (meta.(:priority) || 100).to_i
+            on_error = (meta.call(:on_error) || "skip").to_s
+            priority = (meta.call(:priority) || 100).to_i
             fail_closed = on_error == "fail_closed" && event_sym == :before_tool_call
             what = "hook #{basename} (bundle #{bundle_name})"
             file = hooks_dir && File.join(hooks_dir, basename)
@@ -79,7 +79,7 @@ module Samagotchi
               failures&.add(what, "the file is missing", required: true) if fail_closed
               next
             end
-            if (mismatch = too_old || sha_mismatch(file, meta.(:sha256), required: fail_closed))
+            if (mismatch = too_old || sha_mismatch(file, meta.call(:sha256), required: fail_closed))
               Log.warn(:hooks, "bundle_hook_mismatch", echo: "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' not loaded: #{mismatch}", bundle: bundle_name, hook: basename.to_s)
               failures&.add(what, mismatch, required: fail_closed)
               next
@@ -91,7 +91,7 @@ module Samagotchi
                        elsif on_error == "log" then :log
                        else :skip
                        end
-              label = "#{fail_closed ? "guardrail " : ""}#{basename} (bundle #{bundle_name})"
+              label = "#{"guardrail " if fail_closed}#{basename} (bundle #{bundle_name})"
               handler = Hooks.wrap(label: label, event: event_sym, policy: policy, log: [:hooks, "bundle_hook_failed"],
                                    fields: { bundle: bundle_name }) { |event| plugin.call(event) }
               registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: priority, &handler)

@@ -128,11 +128,10 @@ module Samagotchi
         pos = start
         while (p = text.index(CONTROL_TOKEN_START, pos))
           # Skip over a <|"|> token entirely
-          if text[p, @string_delim.length] == @string_delim
-            pos = p + @string_delim.length
-          else
-            return p
-          end
+          return p unless text[p, @string_delim.length] == @string_delim
+
+          pos = p + @string_delim.length
+
         end
         nil
       end
@@ -334,13 +333,13 @@ module Samagotchi
 
       def strip_thought(text)
         # Remove all complete <think>...</think> blocks with the newlines after them
-        result = text.gsub(/<think>.*?<\/think>\n*/m, '')
+        result = text.gsub(%r{<think>.*?</think>\n*}m, "")
         # Remove any stray opening tags
-        result = result.gsub(/<think>.*?(?=\n|$)/m, '')
+        result = result.gsub(/<think>.*?(?=\n|$)/m, "")
         # Remove any orphaned closing tags (and the whitespace around them)
         # The answer's own blank lines stay: they are its markdown paragraphs
         # and lists (a chat host's answer is saved as stripped here).
-        result.gsub(/^\s*<\/think>\s*/m, '')
+        result.gsub(%r{^\s*</think>\s*}m, "")
       end
 
       def strip_tool_calls(text)
@@ -365,11 +364,11 @@ module Samagotchi
       def qwen_params(body)
         params = {}
 
-        body.scan(/<parameter=(\w+)>(.*?)<\/parameter>/m) do |key, value|
+        body.scan(%r{<parameter=(\w+)>(.*?)</parameter>}m) do |key, value|
           params[key.to_s.downcase] = trim_tag_newline(value)
         end
 
-        body.scan(/<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/m) do |key, value|
+        body.scan(%r{<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>}m) do |key, value|
           params[key.to_s.downcase.strip] = trim_tag_newline(value)
         end
 

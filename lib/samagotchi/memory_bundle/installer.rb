@@ -80,11 +80,9 @@ module Samagotchi
         rescue SourceNormalizer::UnknownSourceError => e
           raise InstallError, "Source normalization failed: #{e.message}"
         rescue Manifest::ValidationError => e
-          if @strict
-            raise InstallError, e.message
-          else
-            @warnings << "No manifest found — proceeding without strict manifest validation"
-          end
+          raise InstallError, e.message if @strict
+
+          @warnings << "No manifest found — proceeding without strict manifest validation"
         end
 
         # Determine target scope (CLI wins over manifest).
@@ -195,11 +193,11 @@ module Samagotchi
             dest = File.join(hooks_target, basename)
 
             if @dry_run
-              if File.exist?(dest) && !@force
-                @results[basename] = { status: "would_skip" }
-              else
-                @results[basename] = { status: "would_install" }
-              end
+              @results[basename] = if File.exist?(dest) && !@force
+                                     { status: "would_skip" }
+                                   else
+                                     { status: "would_install" }
+                                   end
               next
             end
 
@@ -208,10 +206,8 @@ module Samagotchi
               prev_meta = existing_provenance[:hooks] ? (existing_provenance[:hooks][basename.to_sym] || existing_provenance[:hooks][basename]) : nil
               if prev_meta
                 prev_sha = prev_meta[:sha256] || prev_meta["sha256"]
-                if File.exist?(dest)
-                  if !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
-                    @warnings << "Hook #{basename} was locally modified; overwriting"
-                  end
+                if File.exist?(dest) && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
+                  @warnings << "Hook #{basename} was locally modified; overwriting"
                 end
               end
             end
@@ -265,14 +261,14 @@ module Samagotchi
             next if @conflicts.key?(basename)
 
             expected = manifest.checksum_for_hook(basename)
-            if expected
-              dest = File.join(hooks_target, basename)
-              next unless File.exist?(dest)
+            next unless expected
 
-              actual = Digest::SHA256.hexdigest(File.read(dest))
-              if actual != expected
-                @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-              end
+            dest = File.join(hooks_target, basename)
+            next unless File.exist?(dest)
+
+            actual = Digest::SHA256.hexdigest(File.read(dest))
+            if actual != expected
+              @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
             end
           end
         end
@@ -327,11 +323,11 @@ module Samagotchi
             next unless File.exist?(target_path)
 
             expected = manifest.checksum_for(file_key)
-            if expected
-              actual = Digest::SHA256.hexdigest(File.read(target_path))
-              if actual != expected
-                @warnings << "Checksum mismatch for #{file_key}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-              end
+            next unless expected
+
+            actual = Digest::SHA256.hexdigest(File.read(target_path))
+            if actual != expected
+              @warnings << "Checksum mismatch for #{file_key}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
             end
           end
         end
@@ -355,13 +351,13 @@ module Samagotchi
                 # Keep old base snapshot — do not overwrite with edited current
                 # Use base snapshot as source if it exists to preserve old checksum
                 base_path = provenance.base_path(file_key)
-                if File.exist?(base_path)
-                  # Keep existing provenance entry by re-using base content
-                  # We still need to include it to prevent pruning, but with base content
-                  provenance_files[file_key] = base_path
-                else
-                  provenance_files[file_key] = target_path
-                end
+                provenance_files[file_key] = if File.exist?(base_path)
+                                               # Keep existing provenance entry by re-using base content
+                                               # We still need to include it to prevent pruning, but with base content
+                                               base_path
+                                             else
+                                               target_path
+                                             end
               else
                 # installed, updated, skipped — use current target (which is incoming for updated)
                 provenance_files[file_key] = target_path
@@ -374,13 +370,13 @@ module Samagotchi
                 next if all_files_in_bundle.include?(old_key_str)
 
                 # If it was kept_pruned, include it with base content to prevent pruning
-                if @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
-                  base_path = provenance.base_path(old_key_str)
-                  target_path = File.join(target_dir, old_key_str)
-                  # Use base if exists to keep old checksum, else target
-                  src = File.exist?(base_path) ? base_path : target_path
-                  provenance_files[old_key_str] = src if File.exist?(src)
-                end
+                next unless @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
+
+                base_path = provenance.base_path(old_key_str)
+                target_path = File.join(target_dir, old_key_str)
+                # Use base if exists to keep old checksum, else target
+                src = File.exist?(base_path) ? base_path : target_path
+                provenance_files[old_key_str] = src if File.exist?(src)
               end
             end
           else
@@ -462,15 +458,15 @@ module Samagotchi
         removed = @results.select { |_, r| r[:status].to_s == "removed" }.keys
         would_remove = @results.select { |_, r| r[:status].to_s == "would_remove" }.keys
 
-        lines << "Installed: #{installed.join(', ')}" unless installed.empty?
-        lines << "Updated: #{updated.join(', ')}" unless updated.empty?
-        lines << "Would install: #{would_install.join(', ')}" unless would_install.empty?
-        lines << "Fast-forward: #{fast_forward.join(', ')}" unless fast_forward.empty?
-        lines << "Removed (no longer in the bundle): #{removed.join(', ')}#{trash_dir ? " (moved to #{trash_dir})" : ""}" unless removed.empty?
-        lines << "Would remove (no longer in the bundle): #{would_remove.join(', ')}" unless would_remove.empty?
-        lines << "Kept (local edits preserved): #{kept.join(', ')}" unless kept.empty?
-        lines << "Skipped: #{skipped.join(', ')}" unless skipped.empty?
-        lines << "Conflicts: #{conflicts.join(', ')}" unless conflicts.empty?
+        lines << "Installed: #{installed.join(", ")}" unless installed.empty?
+        lines << "Updated: #{updated.join(", ")}" unless updated.empty?
+        lines << "Would install: #{would_install.join(", ")}" unless would_install.empty?
+        lines << "Fast-forward: #{fast_forward.join(", ")}" unless fast_forward.empty?
+        lines << "Removed (no longer in the bundle): #{removed.join(", ")}#{" (moved to #{trash_dir})" if trash_dir}" unless removed.empty?
+        lines << "Would remove (no longer in the bundle): #{would_remove.join(", ")}" unless would_remove.empty?
+        lines << "Kept (local edits preserved): #{kept.join(", ")}" unless kept.empty?
+        lines << "Skipped: #{skipped.join(", ")}" unless skipped.empty?
+        lines << "Conflicts: #{conflicts.join(", ")}" unless conflicts.empty?
         lines.concat(@warnings) unless @warnings.empty?
         lines.concat(@placeholder_warnings) unless @placeholder_warnings.empty?
         lines << "#{@name} is already installed; `chi bundle upgrade #{@name}` updates it and keeps local edits" if @reinstall

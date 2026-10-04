@@ -143,7 +143,7 @@ module Samagotchi
       def safe_value(key, value)
         return "[redacted]" if key.match?(SECRET_KEY)
 
-        value = value.is_a?(Float) ? value.round(3) : value
+        value = value.round(3) if value.is_a?(Float)
         value.is_a?(String) && value.match?(URL) ? safe_url(value) : value
       end
 
@@ -185,7 +185,7 @@ module Samagotchi
       def build_state
         options = @options
         path = options.fetch(:path, :auto)
-        path = (LogPath.resolve rescue nil) if path == :auto
+        path = LogPath.resolve rescue nil if path == :auto
         level = options[:level] || (Config.get("log.level") rescue nil)
         level = LEVELS.key?(level.to_s.downcase.to_sym) ? level.to_s.downcase.to_sym : DEFAULT_LEVEL
         { writer: DebugLog.new(path: path), level: LEVELS.fetch(level), mirror: options[:mirror] ? true : false }

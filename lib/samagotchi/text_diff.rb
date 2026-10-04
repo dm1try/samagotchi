@@ -98,8 +98,8 @@ module Samagotchi
         vd = trace[d]
         at = ->(k) { vd[k + d + 1] }
         k = x - y
-        prev_k = k == -d || (k != d && at.(k - 1) < at.(k + 1)) ? k + 1 : k - 1
-        prev_x = at.(prev_k)
+        prev_k = k == -d || (k != d && at.call(k - 1) < at.call(k + 1)) ? k + 1 : k - 1
+        prev_x = at.call(prev_k)
         prev_y = prev_x - prev_k
         while x > prev_x && y > prev_y
           x -= 1
@@ -108,11 +108,11 @@ module Samagotchi
         end
         break if d.zero?
 
-        if x == prev_x
-          ops << [:add, nil, prev_y]
-        else
-          ops << [:del, prev_x, nil]
-        end
+        ops << if x == prev_x
+                 [:add, nil, prev_y]
+               else
+                 [:del, prev_x, nil]
+               end
         x = prev_x
         y = prev_y
       end

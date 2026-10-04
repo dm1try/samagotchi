@@ -155,7 +155,7 @@ module Samagotchi
       # true unless told otherwise; text-based parsers hand strings over.
       def self.parse_wait(value)
         return true if value.nil? || value.to_s.strip.empty?
-        return value if value == true || value == false
+        return value if [true, false].include?(value)
 
         !%w[false 0 no off].include?(value.to_s.strip.downcase)
       end

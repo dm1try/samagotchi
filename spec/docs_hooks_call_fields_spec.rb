@@ -13,7 +13,7 @@ RSpec.describe "docs/hooks.md built-in call fields" do
   it "has a row per built-in that matches its mapping" do
     expected = Samagotchi::Tools::BuiltinCalls.rows.each_value.map do |row|
       path = row.path_key ? "`#{row.path_key}`" : "—"
-      "| `#{row.name}` | #{code_list(row.content_keys, ' or ')} | #{path} | #{code_list(row.fields)} |"
+      "| `#{row.name}` | #{code_list(row.content_keys, " or ")} | #{path} | #{code_list(row.fields)} |"
     end
     documented = doc.lines.map(&:chomp).select { |line| line.match?(/\A\| `[a-z_]+` \|/) }
 

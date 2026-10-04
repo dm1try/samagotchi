@@ -150,13 +150,13 @@ module Samagotchi
         return nil unless preview.is_a?(Hash)
 
         get = ->(key) { preview[key] || preview[key.to_s] }
-        return "would fail: #{get.(:error)}" if get.(:error)
-        return "not shown (#{get.(:skipped)})" if get.(:skipped)
+        return "would fail: #{get.call(:error)}" if get.call(:error)
+        return "not shown (#{get.call(:skipped)})" if get.call(:skipped)
 
-        added = get.(:added).to_i
-        return "new file, #{added} #{added == 1 ? "line" : "lines"}" if get.(:new_file)
+        added = get.call(:added).to_i
+        return "new file, #{added} #{added == 1 ? "line" : "lines"}" if get.call(:new_file)
 
-        "+#{added} −#{get.(:removed).to_i}"
+        "+#{added} −#{get.call(:removed).to_i}"
       end
     end
   end

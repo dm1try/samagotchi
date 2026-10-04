@@ -121,7 +121,7 @@ RSpec.describe "delegate tools" do
     it "refuses a model whose host isn't configured, creating nothing" do
       out = described_class.call("quick look", model: "nosuch:org/model", wait: "false", peers: peers)
 
-      expect(out).to match(/\AError: unknown host 'nosuch' in model 'nosuch:org\/model'; the configured hosts are /)
+      expect(out).to match(%r{\AError: unknown host 'nosuch' in model 'nosuch:org/model'; the configured hosts are })
       expect(session_files).to contain_exactly(parent.id)
     end
 
@@ -407,9 +407,9 @@ RSpec.describe "delegate tools" do
   describe ".parse_timeout" do
     it "keeps 0 (check now) and makes a negative 0; only a missing or unreadable value takes the default" do
       parse = ->(v) { Samagotchi::Tools::Delegate.parse_timeout(v) }
-      expect([parse.(0), parse.("0"), parse.(-3), parse.(" 12 ")]).to eq([0, 0, 0, 12])
+      expect([parse.call(0), parse.call("0"), parse.call(-3), parse.call(" 12 ")]).to eq([0, 0, 0, 12])
       default = Samagotchi::Tools::DelegateWait::TIMEOUT_DEFAULT
-      expect([parse.(nil), parse.(""), parse.("soon")]).to eq([default, default, default])
+      expect([parse.call(nil), parse.call(""), parse.call("soon")]).to eq([default, default, default])
     end
   end
 end

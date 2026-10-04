@@ -29,7 +29,7 @@ module Samagotchi
       # @return [Integer] the usage exit status
       def usage_error(message)
         usage = usage_on_error
-        error_line("#{command_name}: #{message}#{usage ? "" : " (see #{command_name} --help)"}")
+        error_line("#{command_name}: #{message}#{" (see #{command_name} --help)" unless usage}")
         @stderr.puts(usage) if usage
         Exit::USAGE
       end

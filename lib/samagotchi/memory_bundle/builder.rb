@@ -65,7 +65,7 @@ module Samagotchi
           candidates_by_basename = candidates.map { |p| [File.basename(p), p] }.to_h
           missing = allow.reject { |k| candidates_by_basename.key?(k) }
           unless missing.empty?
-            raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(', ')}"
+            raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(", ")}"
           end
 
           candidates = with_overlays(allow, candidates_by_basename).map { |k| candidates_by_basename[k] }
@@ -247,7 +247,7 @@ module Samagotchi
       def summary
         lines = []
         lines << "Built #{@built_files.size} file(s) to #{@out_path}"
-        lines << "Files: #{@built_files.join(', ')}" unless @built_files.empty?
+        lines << "Files: #{@built_files.join(", ")}" unless @built_files.empty?
         lines.concat(@placeholder_warnings.map { |w| "Placeholder: #{w}" }) unless @placeholder_warnings.empty?
         lines.concat(@warnings) unless @warnings.empty?
         lines.join("\n")

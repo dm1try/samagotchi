@@ -118,9 +118,7 @@ module Samagotchi
       @model_index = nil # downcased model_id => [host_name] in hosts: order
     end
 
-    def entries
-      @entries
-    end
+    attr_reader :entries
 
     # Loopback, private (RFC 1918, IPv6 unique local) and link-local nets.
     LOCAL_NETS = %w[127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10

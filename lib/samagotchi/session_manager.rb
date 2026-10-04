@@ -702,7 +702,7 @@ module Samagotchi
       Dir.children(dir).all? do |name|
         path = File.join(dir, name)
         if EMPTY_SKELETON_DIRS.include?(name)
-          File.directory?(path) && (!EMPTY_DIRS.include?(name) || Dir.children(path).empty?)
+          File.directory?(path) && (!EMPTY_DIRS.include?(name) || Dir.empty?(path))
         elsif name == "analytics.json"
           Array(JSON.parse(File.read(path))["turn_records"]).empty?
         # Cards and notices from before any turn (Bridge::CardStore).

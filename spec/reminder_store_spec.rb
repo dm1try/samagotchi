@@ -117,7 +117,7 @@ RSpec.describe Samagotchi::ReminderStore do
         Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
       )
       due = store.due_reminders
-      expect(due.map { |r| r[:name] }).to match_array(["health", "cleanup"])
+      expect(due.map { |r| r[:name] }).to match_array(%w[health cleanup])
     end
 
     it "returns frozen array" do
@@ -147,7 +147,7 @@ RSpec.describe Samagotchi::ReminderStore do
       store.register({ name: "cleanup", description: "test", interval_minutes: 10 })
       old_health = store.reminders["health"][:next_fire_at]
       old_cleanup = store.reminders["cleanup"][:next_fire_at]
-      store.mark_fired_batch(["health", "cleanup"])
+      store.mark_fired_batch(%w[health cleanup])
       expect(store.reminders["health"][:next_fire_at]).to be > old_health
       expect(store.reminders["cleanup"][:next_fire_at]).to be > old_cleanup
     end
@@ -179,7 +179,7 @@ RSpec.describe Samagotchi::ReminderStore do
       threads = 10.times.map do |i|
         Thread.new do
           store.due_reminders
-          store.mark_fired("health") if i % 2 == 0
+          store.mark_fired("health") if i.even?
         end
       end
       threads.each(&:join)

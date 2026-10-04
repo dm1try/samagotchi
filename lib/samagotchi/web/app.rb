@@ -1491,7 +1491,7 @@ module Samagotchi
 
           norm_role = role == "model" ? "assistant" : role
           # normalize assistant vs model, keep user as is
-          norm_role = "assistant" if norm_role == "assistant" || norm_role == "model"
+          norm_role = "assistant" if %w[assistant model].include?(norm_role)
           norm_role = "user" if norm_role == "user"
           next unless %w[user assistant].include?(norm_role)
 
@@ -1747,12 +1747,12 @@ module Samagotchi
           @server_running = server_running
         end
 
-        def each(&block)
+        def each(&)
           # Forward the browser's auto-reconnect cursor: the bridge prefers the
           # Last-Event-ID header over ?from_seq, and the reconnect URL carries a
           # stale initial cursor — without this the bridge would replay content
           # already delivered (duplicate bubbles).
-          @client.stream(query: @query, last_event_id: @headers["HTTP_LAST_EVENT_ID"], running: @server_running, &block)
+          @client.stream(query: @query, last_event_id: @headers["HTTP_LAST_EVENT_ID"], running: @server_running, &)
         end
       end
     end

@@ -111,8 +111,8 @@ module Samagotchi
     # Run the block while no event is being numbered or delivered, so it sees
     # (and can change) state consistently with the event log. Reentrant: the
     # block may notify. Keep it short; every emitter waits for it.
-    def synchronize(&block)
-      @mutex.synchronize(&block)
+    def synchronize(&)
+      @mutex.synchronize(&)
     end
   end
 end

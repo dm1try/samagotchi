@@ -44,7 +44,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
 
     it "refuses to start on it without --model" do
       expect { Samagotchi::TerminalUI.new(host_registry: registry) }
-        .to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'nosuch' in model 'nosuch:org\/model'/)
+        .to raise_error(Samagotchi::ModelProfile::UnknownHost, %r{unknown host 'nosuch' in model 'nosuch:org/model'})
     end
 
     it "lets an Engine (a worker's) start on its session's model" do

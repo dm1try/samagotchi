@@ -47,7 +47,7 @@ module Samagotchi
         @client = client
         @rediscover = rediscover
         params = []
-        params << ["snapshot", "1"] if snapshot
+        params << %w[snapshot 1] if snapshot
         params << ["client_id", client_id] if client_id
         @query = params.empty? ? "" : "?#{URI.encode_www_form(params)}"
         @reconnect_delays = reconnect_delays

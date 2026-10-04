@@ -183,7 +183,7 @@ RSpec.describe Samagotchi::LogSubscriber do
     feed({ type: :tool_call_completed, iteration: 1, call_index: 0, tool: "execute",
            output: (+"[execute]\nbad \xFF\xFE bytes").force_encoding(Encoding::UTF_8) })
 
-    expect(records.map { |r| [r.event, r.fields["output_chars"]] }).to eq([["tool_call_completed", "22"]])
+    expect(records.map { |r| [r.event, r.fields["output_chars"]] }).to eq([%w[tool_call_completed 22]])
   end
 
   it "never raises into the observer" do

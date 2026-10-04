@@ -71,7 +71,7 @@ module Samagotchi
               description: "Content to write to the file"
             }
           },
-          required: ["path", "content"]
+          required: %w[path content]
         }
       },
       {
@@ -101,7 +101,7 @@ module Samagotchi
               description: "Optional end line (1-based, inclusive) for range mode. Must be provided with start_line."
             }
           },
-          required: ["path", "new_text"]
+          required: %w[path new_text]
         }
       },
       {
@@ -148,7 +148,7 @@ module Samagotchi
               description: "Set true to save this entry as a model-specific overlay for the current model only (<name>.<model>.md); it is auto-appended when the entry is read under that model and never listed in the index."
             }
           },
-          required: ["name", "content", "scope"]
+          required: %w[name content scope]
         }
       },
       {
@@ -268,7 +268,7 @@ module Samagotchi
               description: "How often to remind (1-1440 minutes, i.e. up to 1 day)"
             }
           },
-          required: ["name", "description", "interval_minutes"]
+          required: %w[name description interval_minutes]
         }
       },
       {
@@ -321,7 +321,7 @@ module Samagotchi
               description: "The note: what the other session should know (up to 16 KiB)"
             }
           },
-          required: ["session", "text"]
+          required: %w[session text]
         }
       },
       {
@@ -399,7 +399,7 @@ module Samagotchi
               description: "Allow freeform/Other text alongside selection. Default false."
             }
           },
-          required: ["question", "options"]
+          required: %w[question options]
         }
       }
     ].freeze

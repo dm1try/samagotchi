@@ -63,10 +63,10 @@ module Samagotchi
       attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :default_max_tokens
 
       # @param entry [HostRegistry::HostEntry]
-      def self.for(entry, **options)
+      def self.for(entry, **)
         new(base_url: entry.openai_base_url, host_name: entry.name, api_key_env: entry.api_key_env,
             remote: entry.remote?, default_max_tokens: (OPENROUTER_MAX_TOKENS if openrouter?(entry.openai_base_url)),
-            **options)
+            **)
       end
 
       # true when +url+ is OpenRouter's API (openrouter.ai or a subdomain).
@@ -181,7 +181,7 @@ module Samagotchi
         models = []
         after = nil
         MAX_MODEL_PAGES.times do
-          uri = URI("#{@base_url}/models#{after ? "?after=#{URI.encode_www_form_component(after)}" : ""}")
+          uri = URI("#{@base_url}/models#{"?after=#{URI.encode_www_form_component(after)}" if after}")
           body = parse_json(@http.fetch(uri, get_request(uri), log_fields: { purpose: "models" }).body, "model list")
           models.concat(model_entries(body).map { |raw| model_info(raw) })
           break unless body.is_a?(Hash) && body["has_more"] && body["last_id"]
@@ -369,7 +369,7 @@ module Samagotchi
         listed = raw["supported_parameters"] || raw["capabilities"]
         return nil unless listed.is_a?(Array)
 
-        listed.include?("tools") ? true : nil
+        listed.include?("tools") || nil
       end
 
       def cached_models

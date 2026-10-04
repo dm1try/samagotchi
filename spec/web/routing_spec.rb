@@ -84,20 +84,20 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["GET", "/api/info"] => ["handle_info"],
       ["GET", "/api/models"] => ["handle_models"],
       ["GET", "/api/events"] => ["handle_events"],
-      ["GET", "/api/sessions/s1/stream"] => ["handle_stream", "s1"],
-      ["GET", "/api/sessions/s1/output"] => ["handle_output", "s1"],
-      ["POST", "/api/sessions/s1/cancel"] => ["handle_cancel", "s1"],
-      ["POST", "/api/sessions/s1/stop"] => ["handle_stop", "s1"],
-      ["POST", "/api/sessions/s1/archive"] => ["handle_archive", "s1"],
-      ["POST", "/api/sessions/s1/unarchive"] => ["handle_unarchive", "s1"],
-      ["POST", "/api/sessions/s1/turn"] => ["handle_turn", "s1"],
-      ["POST", "/api/sessions/s1/answer"] => ["handle_question_answer", "s1"],
-      ["POST", "/api/sessions/s1/question/dismiss"] => ["handle_question_dismiss", "s1"],
-      ["POST", "/api/sessions/s1/command"] => ["handle_command", "s1"],
-      ["POST", "/api/sessions/s1/images"] => ["handle_image_upload", "s1"],
+      ["GET", "/api/sessions/s1/stream"] => %w[handle_stream s1],
+      ["GET", "/api/sessions/s1/output"] => %w[handle_output s1],
+      ["POST", "/api/sessions/s1/cancel"] => %w[handle_cancel s1],
+      ["POST", "/api/sessions/s1/stop"] => %w[handle_stop s1],
+      ["POST", "/api/sessions/s1/archive"] => %w[handle_archive s1],
+      ["POST", "/api/sessions/s1/unarchive"] => %w[handle_unarchive s1],
+      ["POST", "/api/sessions/s1/turn"] => %w[handle_turn s1],
+      ["POST", "/api/sessions/s1/answer"] => %w[handle_question_answer s1],
+      ["POST", "/api/sessions/s1/question/dismiss"] => %w[handle_question_dismiss s1],
+      ["POST", "/api/sessions/s1/command"] => %w[handle_command s1],
+      ["POST", "/api/sessions/s1/images"] => %w[handle_image_upload s1],
       ["GET", "/api/sessions/s1/images/abc.png"] => ["handle_image", "s1", "abc.png"],
-      ["GET", "/api/sessions/s1"] => ["handle_show", "s1"],
-      ["DELETE", "/api/sessions/s1"] => ["handle_delete", "s1"]
+      ["GET", "/api/sessions/s1"] => %w[handle_show s1],
+      ["DELETE", "/api/sessions/s1"] => %w[handle_delete s1]
     }
     table.each do |(method, path), expected|
       expect(routed(path, method: method)).to eq(expected), "#{method} #{path}"

@@ -15,7 +15,8 @@ module Samagotchi
   # SAMAGOTCHI_UPDATE_GEM_FILE=<path to a .gem> (hidden, for smokes) makes that
   # file the newest version and installs it instead.
   class GemUpdate
-    Error = Class.new(StandardError)
+    class Error < StandardError
+    end
 
     LATEST_URL = URI("https://rubygems.org/api/v1/versions/samagotchi/latest.json")
     # Not SAMAGOTCHI_UPDATE_GEM: that is the env form of config update.gem.

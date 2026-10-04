@@ -264,7 +264,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     end
 
     it "records the reason on no, <reason>" do
-      output = run_session(model: "Qwen3-14B", prompts: ["go", "next"], answers: ["no, too slow"],
+      output = run_session(model: "Qwen3-14B", prompts: %w[go next], answers: ["no, too slow"],
                            turns: [[tool_round("qwen36"), method(:exhausted_result)], answer_turn])
 
       expect_golden("continue_no_reason", output)

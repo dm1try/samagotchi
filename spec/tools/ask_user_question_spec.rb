@@ -13,7 +13,7 @@ RSpec.describe Samagotchi::Tools::AskUserQuestion do
     end
 
     it "keeps normal labels untouched" do
-      expect(described_class.normalize_options_lenient(["Rust", "Zig"])).to eq(%w[Rust Zig])
+      expect(described_class.normalize_options_lenient(%w[Rust Zig])).to eq(%w[Rust Zig])
     end
 
     it "returns an empty array for nil" do

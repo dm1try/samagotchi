@@ -22,9 +22,9 @@ module ChiCli
   # Run chi with empty stdin. With +timeout+ the whole process group is
   # killed past it (BoundedCapture), for a run that could hang.
   # @return [Array(String, String, Process::Status)]
-  def run_chi(*args, env: {}, chdir: nil, timeout: nil)
-    return BoundedCapture.capture3(env, RbConfig.ruby, CHI, *args, stdin_data: "", timeout: timeout, chdir: chdir) if timeout
+  def run_chi(*, env: {}, chdir: nil, timeout: nil)
+    return BoundedCapture.capture3(env, RbConfig.ruby, CHI, *, stdin_data: "", timeout: timeout, chdir: chdir) if timeout
 
-    Open3.capture3(env, RbConfig.ruby, CHI, *args, stdin_data: "", **(chdir ? { chdir: chdir } : {}))
+    Open3.capture3(env, RbConfig.ruby, CHI, *, stdin_data: "", **(chdir ? { chdir: chdir } : {}))
   end
 end

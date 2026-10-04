@@ -27,7 +27,7 @@ module Samagotchi
         updated, message = result
         File.write(path, updated)
         message
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 
@@ -49,7 +49,7 @@ module Samagotchi
         old_text = old_text.to_s
         new_text = new_text.to_s
 
-        source = read.(path)
+        source = read.call(path)
         count  = count_occurrences(source, old_text)
 
         return "Error: old text not found in #{path}" if count == 0
@@ -58,7 +58,7 @@ module Samagotchi
         idx     = source.index(old_text)
         updated = source[0, idx] + new_text + source[idx + old_text.length..]
         [updated, "Edited #{path}: replaced #{old_text.bytesize} bytes with #{new_text.bytesize} bytes"]
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 
@@ -77,7 +77,7 @@ module Samagotchi
         # guessed start would silently overwrite the top of the file.
         return START_LINE_REQUIRED if start_num.nil?
 
-        source = read.(path)
+        source = read.call(path)
         lines = source.lines
         total_lines = lines.length
 
@@ -94,12 +94,11 @@ module Samagotchi
         end_value = nil
         if end_provided
           if end_num > total_lines
-            if OutputGuardrails.env_bool("SAMAGOTCHI_EDIT_ALLOW_OOR_END", default: true)
-              clamp_note = " (end_line #{end_num} exceeds #{total_lines} lines; clamped to line #{total_lines})"
-              end_value = total_lines
-            else
-              return "Error: range out of bounds for #{path}: file has #{total_lines} lines"
-            end
+            return "Error: range out of bounds for #{path}: file has #{total_lines} lines" unless OutputGuardrails.env_bool("SAMAGOTCHI_EDIT_ALLOW_OOR_END", default: true)
+
+            clamp_note = " (end_line #{end_num} exceeds #{total_lines} lines; clamped to line #{total_lines})"
+            end_value = total_lines
+
           else
             end_value = end_num
           end
@@ -119,13 +118,13 @@ module Samagotchi
         suffix = lines[end_value..]&.join.to_s
         # Ensure new_text ends with a newline when a suffix follows so that the
         # first suffix line isn't concatenated onto the last replacement line.
-        normalized = (!new_text.empty? && !suffix.empty? && !new_text.end_with?("\n")) ? new_text + "\n" : new_text
+        normalized = !new_text.empty? && !suffix.empty? && !new_text.end_with?("\n") ? new_text + "\n" : new_text
         updated = prefix + normalized + suffix
 
         replaced_lines = (end_value - start_num) + 1
         new_line_count = new_text.lines.length
         [updated, "Edited #{path}: replaced lines #{start_num}-#{end_value} (#{replaced_lines} lines) with #{new_line_count} lines#{clamp_note}"]
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
       private_class_method :apply_range_mode

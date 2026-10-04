@@ -56,7 +56,7 @@ module Samagotchi
 
       # Booleans the way models send them (Gemma passes "true"/"false").
       def self.to_bool(value)
-        return value if value == true || value == false
+        return value if [true, false].include?(value)
 
         %w[1 true yes on].include?(value.to_s.strip.downcase)
       end
@@ -125,8 +125,6 @@ module Samagotchi
           parts = t.split(/[,;\n]+/).map(&:strip)
           # Strip surrounding quotes from each part
           parts.map { |p| p.gsub(/\A["'\s]+|["'\s]+\z/, "").strip }
-        else
-          return nil
         end
       end
 
@@ -144,7 +142,7 @@ module Samagotchi
         s = s.strip
         return nil if s.empty?
         return nil if s.match?(/\A[\[\],\s]+\z/)
-        return nil if s == "]" || s == "["
+        return nil if ["]", "["].include?(s)
 
         s
       end

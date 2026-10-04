@@ -25,24 +25,22 @@ namespace :gem do
   task :validate do
     spec = Gem::Specification.load("samagotchi.gemspec")
     result = spec.validate
-    if result
-      # validate returns true (ok) or array of warnings
-      if result.is_a?(Array) && !result.empty?
-        $stderr.puts "Gemspec validation warnings:"
-        result.each { |msg| $stderr.puts "  - #{msg}" }
-      end
+    # validate returns true (ok) or array of warnings
+    if result && result.is_a?(Array) && !result.empty?
+      $stderr.puts "Gemspec validation warnings:"
+      result.each { |msg| $stderr.puts "  - #{msg}" }
     end
     puts "✓ Gemspec is valid"
   end
 
   desc "Clean built .gem files from pkg/"
-  task :clean => :clobber
+  task clean: :clobber
 
   desc "Build the samagotchi gem into pkg/"
-  task :build => "rake:build"
+  task build: "rake:build"
 
   desc "Build and install the samagotchi gem locally"
-  task :install => [:validate, "rake:install:local"]
+  task install: [:validate, "rake:install:local"]
 end
 
 namespace :bundles do

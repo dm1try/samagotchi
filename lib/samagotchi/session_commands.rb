@@ -65,7 +65,7 @@ module Samagotchi
         guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
       end
       registry.register(MODEL_COMMAND, "show or switch the model",
-                        match: ->(text) { text.match?(/\A\/model(?:\s+.*)?\z/) }) { |text| model(text) }
+                        match: ->(text) { text.match?(%r{\A/model(?:\s+.*)?\z}) }) { |text| model(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)

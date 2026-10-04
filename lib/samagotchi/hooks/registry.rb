@@ -13,7 +13,11 @@ module Samagotchi
     # @param settings [Hash]
     def self.build_plugin(klass, settings)
       takes_settings = klass.instance_method(:initialize).arity != 0
-      takes_settings ? klass.new(settings.is_a?(Hash) ? settings : {}) : klass.new
+      if takes_settings
+        klass.new(settings.is_a?(Hash) ? settings : {})
+      else
+        klass.new
+      end
     end
 
     # A stream hook (:generation_progress) fires ~once a second: a broken

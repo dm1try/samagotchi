@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
     File.binwrite(path, text)
   end
 
-  def parsed = YAML.safe_load(File.read(path))
+  def parsed = YAML.safe_load_file(path)
   def hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
   def backups = Dir[File.join(File.dirname(File.realpath(path)), "config.yml.bak-*")].sort
 
@@ -153,7 +153,7 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
       writer.write(name: "lan", fields: lan, model: "m")
 
       expect(File.symlink?(path)).to be(true)
-      expect(YAML.safe_load(File.read(real))["hosts"].keys).to eq(%w[main lan])
+      expect(YAML.safe_load_file(real)["hosts"].keys).to eq(%w[main lan])
       expect(Dir[File.join(dir, "dotfiles", "chi.yml.bak-*")].size).to eq(1)
     end
 

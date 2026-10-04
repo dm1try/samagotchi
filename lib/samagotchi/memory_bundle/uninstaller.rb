@@ -39,7 +39,7 @@ module Samagotchi
         # Determine scope from flag or provenance
         cli_scope = @scope.to_s.strip.empty? ? nil : @scope
         raw = cli_scope || data[:scope]&.to_s
-        target_scope = (raw.nil? || raw.strip.empty?) ? "system" : raw
+        target_scope = raw.nil? || raw.strip.empty? ? "system" : raw
         target_dir = MemoryPaths.scope_dir(target_scope) or raise UninstallError, "invalid scope: #{target_scope}"
 
         files = data[:files] || {}
@@ -69,7 +69,7 @@ module Samagotchi
           end
         end
 
-        raise UninstallError, "Uninstall blocked: #{blocked.join(', ')} has local edits (use --force)" if blocked.any?
+        raise UninstallError, "Uninstall blocked: #{blocked.join(", ")} has local edits (use --force)" if blocked.any?
 
         files.each do |file_key, _meta|
           file_key_str = file_key.to_s
@@ -111,9 +111,9 @@ module Samagotchi
           end
           # Remove hooks dir if empty, else rm_rf will clean
           FileUtils.rm_rf(hooks_dir) if Dir.exist?(hooks_dir)
-        else
+        elsif Dir.exist?(provenance.hooks_dir)
           # Ensure stale hooks dir removed even if provenance has no hooks map but dir exists
-          FileUtils.rm_rf(provenance.hooks_dir) if Dir.exist?(provenance.hooks_dir)
+          FileUtils.rm_rf(provenance.hooks_dir)
         end
 
         plugin_path = provenance.plugin_path(data)

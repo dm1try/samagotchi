@@ -56,8 +56,8 @@ module Samagotchi
     end
 
     # Section names: lower alnum only, no _ or -.
-    SECTION_RE = /\A[a-z0-9]+\z/.freeze
-    LEAF_RE    = /\A[a-z0-9_]+\z/.freeze
+    SECTION_RE = /\A[a-z0-9]+\z/
+    LEAF_RE    = /\A[a-z0-9_]+\z/
 
     ENTRIES = [
       # universal – env+config+cli
@@ -186,7 +186,7 @@ module Samagotchi
       # env+config only
       Entry.new(key: "default.input",            yaml_path: %w[default input],            type: :string, default: nil,              expose: %i[env config]),
       Entry.new(key: "history.file",             yaml_path: %w[history file],             type: :string, default: nil,              expose: %i[env config]),
-      Entry.new(key: "skip_agent_md",            yaml_path: %w[skip_agent_md],            type: :bool,   default: false,            expose: %i[env config]),
+      Entry.new(key: "skip_agent_md",            yaml_path: %w[skip_agent_md],            type: :bool,   default: false,            expose: %i[env config])
     ].freeze
 
     # Top-level maps read by their own code, whose entry names and contents
@@ -269,7 +269,7 @@ module Samagotchi
           lowered = str.downcase
           allowed = entry.enum_values.map(&:downcase)
           unless allowed.include?(lowered)
-            Log.warn(:config, "invalid_value", echo: "Warning: invalid value for #{entry.key}: #{raw.inspect} (allowed: #{entry.enum_values.join(', ')}) — using default", key: entry.key)
+            Log.warn(:config, "invalid_value", echo: "Warning: invalid value for #{entry.key}: #{raw.inspect} (allowed: #{entry.enum_values.join(", ")}) — using default", key: entry.key)
             return entry.default
           end
           # return canonical casing from enum_values
@@ -326,7 +326,7 @@ module Samagotchi
 
       def already_coerced?(entry, val)
         case entry.type
-        when :bool then val == true || val == false
+        when :bool then [true, false].include?(val)
         when :integer then val.is_a?(Integer)
         when :float then val.is_a?(Float) || val.is_a?(Integer)
         when :enum then entry.enum_values.include?(val)
@@ -559,7 +559,7 @@ module Samagotchi
         candidates = candidates.uniq
         near = near_names(probe, candidates)
         close = (near + candidates.select { |c| c.split(".").last == probe.split(".").last }).uniq.first(3)
-        hint = close.empty? ? "" : " (did you mean #{close.map { |c| "'#{prefix}#{c}'" }.join(' or ')}?)"
+        hint = close.empty? ? "" : " (did you mean #{close.map { |c| "'#{prefix}#{c}'" }.join(" or ")}?)"
         "config: unknown key '#{key}'#{hint}"
       end
 
@@ -607,7 +607,7 @@ module Samagotchi
       return hit[1] if hit && hit[0] == key
 
       data = begin
-        YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
+        YAML.safe_load_file(path, permitted_classes: [], aliases: false)
       rescue StandardError
         nil
       end
@@ -645,7 +645,7 @@ module Samagotchi
     # else warns once and counts as unset.
     def bool_flag(value, where, key)
       return nil if value.nil?
-      return value if value == true || value == false
+      return value if [true, false].include?(value)
 
       text = value.to_s.strip.downcase
       return true if text == "true"
@@ -813,7 +813,7 @@ module Samagotchi
             next
           end
           port_val = port.to_s.strip.empty? ? 8080 : port.to_i
-          if port_val <= 0 || port_val > 65535
+          if port_val <= 0 || port_val > 65_535
             warn_once "Warning: ignoring hosts entry '#{name}': invalid port"
             next
           end
@@ -853,7 +853,7 @@ module Samagotchi
         default_host = Samagotchi::Config.resolve("server.host", **opts).to_s.strip
         default_host = "localhost" if default_host.empty?
         default_port = Samagotchi::Config.resolve("server.port", **opts).to_i
-        default_port = 8080 if default_port <= 0 || default_port > 65535
+        default_port = 8080 if default_port <= 0 || default_port > 65_535
         transport_sym = Samagotchi::Config.resolve_with_origin("server.transport", **opts).then do |value, origin|
           origin == :default ? nil : value.to_sym
         end
@@ -895,7 +895,11 @@ module Samagotchi
 
     # enabled: false (or "false", any case) in a hosts entry.
     def host_disabled?(cfg)
-      enabled = cfg.key?("enabled") ? cfg["enabled"] : (cfg.key?(:enabled) ? cfg[:enabled] : true)
+      enabled = if cfg.key?("enabled")
+                  cfg["enabled"]
+                else
+                  (cfg.key?(:enabled) ? cfg[:enabled] : true)
+                end
       enabled == false || enabled.to_s.strip.downcase == "false"
     end
     private_class_method :host_disabled?

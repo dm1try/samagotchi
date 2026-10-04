@@ -35,7 +35,7 @@ module Samagotchi
     # The parent's user (or a parent agent) answered the relay card.
     # @param by [String] "user" or "parent_agent"
     # @return [Boolean] false when the relay isn't open (first answer wins)
-    def record(id, selected_indices: [], freeform: nil, dismissed: false, by:)
+    def record(id, by:, selected_indices: [], freeform: nil, dismissed: false)
       @mutex.synchronize do
         relay = @relays[id.to_s]
         next false unless relay && relay[:state] == "open"

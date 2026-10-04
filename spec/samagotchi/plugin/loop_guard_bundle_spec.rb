@@ -78,8 +78,8 @@ RSpec.describe "The loop-guard bundle" do
     edit = ->(old) { gemma.parse("<|tool_call>call:edit{path:#{d}a.rb#{d},old_text:#{d}#{old}#{d},new_text:#{d}x#{d}}<tool_call|>").first }
     hooks.fire(:before_turn, { type: :before_turn, prompt: "edit" })
 
-    expect(%w[a b c].map { |old| run(edit.(old))[:output] }).to all(start_with("[edit]\nexit: 0"))
-    expect(run(edit.("c"))[:output]).to start_with("[edit]\nexit: 0")
-    expect(run(edit.("c"))[:output]).to start_with("[edit] Error: denied by guardrail (bundle loop-guard): repeated call. ")
+    expect(%w[a b c].map { |old| run(edit.call(old))[:output] }).to all(start_with("[edit]\nexit: 0"))
+    expect(run(edit.call("c"))[:output]).to start_with("[edit]\nexit: 0")
+    expect(run(edit.call("c"))[:output]).to start_with("[edit] Error: denied by guardrail (bundle loop-guard): repeated call. ")
   end
 end

@@ -22,13 +22,15 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
   def answer_with(input, question = pending)
     out = StringIO.new
-    old_stdin, old_stdout = $stdin, $stdout
+    old_stdin = $stdin
+    old_stdout = $stdout
     $stdin = StringIO.new(input)
     $stdout = out
     result = agent.send(:render_question_widget, question)
     [result, out.string]
   ensure
-    $stdin, $stdout = old_stdin, old_stdout
+    $stdin = old_stdin
+    $stdout = old_stdout
   end
 
   it "shows the question and records a numbered choice" do
@@ -81,14 +83,14 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     answer_with("2\n")
 
     expect(surface.events).to eq([
-      [:clear_slot, :activity],
+      %i[clear_slot activity],
       [:set_slot, :notes, ["Fruit", "? Which one?", "  1) Apple", "  2) Banana", "  3) Cherry",
                            "  [Select one (e.g. 2); Enter alone cancels]"]],
       [:set_slot, :editor, ["? "]],
       [:commit, "2"], # off a terminal the piped line completes the ? prompt
-      [:clear_slot, :notes],
+      %i[clear_slot notes],
       [:commit, "? Which one? → Banana"],
-      [:clear_slot, :notes]
+      %i[clear_slot notes]
     ])
   end
 
@@ -182,7 +184,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     agent.send(:answer_continue_offer, nil, "/stats")
 
     expect(surface.lines).to eq(["? /stats", "\nmodel> answer yes, no, or no, <reason>"])
-    expect(surface.events).not_to include([:clear_slot, :notes])
+    expect(surface.events).not_to include(%i[clear_slot notes])
   end
 
   # A reminder turn drops a pending continue offer (the worker's rule), so a
@@ -201,7 +203,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     expect(flow.awaiting_continue?).to be(false)
     expect(surface.lines.first).to end_with("→ (dropped: a reminder ran)")
-    expect(surface.events).to include([:clear_slot, :notes])
+    expect(surface.events).to include(%i[clear_slot notes])
   end
 
   describe "an approval" do
@@ -265,12 +267,14 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     def open_with(input)
       out = StringIO.new
-      old_stdin, old_stdout = $stdin, $stdout
+      old_stdin = $stdin
+      old_stdout = $stdout
       $stdin = StringIO.new(input)
       $stdout = out
       [engine.open_question(fields), out.string]
     ensure
-      $stdin, $stdout = old_stdin, old_stdout
+      $stdin = old_stdin
+      $stdout = old_stdout
     end
 
     it "refuses an allow from piped input, says why, and denies at the end of the input" do

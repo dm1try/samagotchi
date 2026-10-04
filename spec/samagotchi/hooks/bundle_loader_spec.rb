@@ -214,7 +214,7 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       write_hook(hooks_dir, "guardrails.rb", "class Guardrails; def call(e); e[:sym]=true; end; end")
       registry = Samagotchi::Hooks::Registry.new
       # Simulate JSON.parse symbolize_names keys
-      meta_sym = { :"guardrails.rb" => { event: "before_tool_call", on_error: "skip" } }
+      meta_sym = { "guardrails.rb": { event: "before_tool_call", on_error: "skip" } }
       loaded = described_class.load(bundle_name: "sym-bundle", hooks_dir: hooks_dir, metadata: meta_sym, registry: registry)
       expect(loaded).to eq(1)
       e = {}

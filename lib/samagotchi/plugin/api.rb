@@ -79,9 +79,9 @@ module Samagotchi
       # @param targets [#call, nil] args → what guardrail rules match: a Hash
       #   with paths: (absolute or relative to the cwd), command: (a shell
       #   command) and cwd:, each optional
-      def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
+      def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &)
         spec = Api.tool_spec(name, description, params: params, schema: schema, label: label, preview: preview,
-                                                targets: targets, &block)
+                                                targets: targets, &)
         if (taken = @registries.tools[spec[:name]])
           raise ArgumentError, "tool #{spec[:name]} is already registered (#{taken.source})"
         end
@@ -125,9 +125,9 @@ module Samagotchi
         end
 
         # As Api#tool.
-        def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
+        def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &)
           spec = Api.tool_spec(name, description, params: params, schema: schema, label: label, preview: preview,
-                                                  targets: targets, &block)
+                                                  targets: targets, &)
           raise ArgumentError, "tool #{spec[:name]} is registered twice" if @specs.any? { |s| s[:name] == spec[:name] }
 
           @specs << spec
@@ -326,7 +326,7 @@ module Samagotchi
       # (a call built without one, in a spec say: the call without its
       # name), string keys, typed by +parameters+, frozen.
       def self.args_of(call, parameters = nil)
-        given = call[:args].is_a?(Hash) ? call[:args] : call.reject { |key, _| key == :name || key == :args }
+        given = call[:args].is_a?(Hash) ? call[:args] : call.reject { |key, _| %i[name args].include?(key) }
         Tools::Args.coerce(given, parameters).freeze
       end
 

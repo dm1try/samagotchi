@@ -210,10 +210,10 @@ RSpec.describe Samagotchi::IdleRecap do
       end
       it "asks for 2-4 sentences by default and renders the configured range" do
         build = ->(**kw) { Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw).first[:content] }
-        expect(build.()).to include("recap only: 2-4 plain sentences,")
-        expect(build.(sentences: [2, 3])).to include("recap only: 2-3 plain sentences,")
-        expect(build.(sentences: [3, 3])).to include("recap only: 3 plain sentences,")
-        expect(build.(sentences: [1, 1])).to include("recap only: 1 plain sentence,")
+        expect(build.call).to include("recap only: 2-4 plain sentences,")
+        expect(build.call(sentences: [2, 3])).to include("recap only: 2-3 plain sentences,")
+        expect(build.call(sentences: [3, 3])).to include("recap only: 3 plain sentences,")
+        expect(build.call(sentences: [1, 1])).to include("recap only: 1 plain sentence,")
       end
       it "holds the length in an updated recap only" do
         first = Samagotchi::IdleRecap::RecapPrompt.build(transcript, sentences: [5, 7]).first[:content]
@@ -224,14 +224,14 @@ RSpec.describe Samagotchi::IdleRecap do
       end
       it "asks for one sentence with the task and where it stands when the range is 1" do
         build = ->(**kw) { Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw).first[:content] }
-        one = build.(sentences: [1, 1])
+        one = build.call(sentences: [1, 1])
         expect(one).to include("recap only: 1 plain sentence,", "The sentence names the task itself",
                                "and where it stands: the result, or what is still open.")
         expect(one).not_to include("first sentence", "Then say what came of it", "End with")
-        update = build.(sentences: [1, 1], previous: "Earlier.")
+        update = build.call(sentences: [1, 1], previous: "Earlier.")
         expect(update).to include("Keep it to 1 sentence even though", "Keep it on the task")
         expect(update).not_to include("first sentence")
-        expect(build.(sentences: [1, 2])).to include("The first sentence names", "Then say what came of it")
+        expect(build.call(sentences: [1, 2])).to include("The first sentence names", "Then say what came of it")
       end
       it "states an open continue offer as one line after the transcript" do
         user = Samagotchi::IdleRecap::RecapPrompt.build(transcript, offer: true).last[:content]
@@ -259,9 +259,9 @@ RSpec.describe Samagotchi::IdleRecap do
 
   describe "#initialize" do
     it "requires an engine" do
-      expect {
+      expect do
         described_class.new(model: model, base_url: base_url)
-      }.to raise_error(ArgumentError, /engine/)
+      end.to raise_error(ArgumentError, /engine/)
     end
     it "creates an IdleClient for the target with the recap's timeout when none is provided" do
       engine = stub_engine
@@ -591,7 +591,7 @@ RSpec.describe Samagotchi::IdleRecap do
       allow(idle).to receive(:should_fire?).and_return(true)
       idle.instance_variable_set(:@engine, engine2)
       idle.instance_variable_set(:@client_override, double("client_v2", summarize: "recap v2"))
-      # Note: @generation is gen_v1+1; start bumps it to gen_v1+2
+      # NOTE: @generation is gen_v1+1; start bumps it to gen_v1+2
       expected_gen = gen_v1 + 2
       drive(idle)
       # The emit should use the new generation

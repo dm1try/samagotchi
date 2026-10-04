@@ -98,8 +98,8 @@ module Samagotchi
 
         begin
           buf = Reline.line_buffer.to_s
-          unless buf.empty?
-            return [] unless buf.lstrip.start_with?("/")
+          if !buf.empty? && !buf.lstrip.start_with?("/")
+            return []
           end
         rescue StandardError
           nil

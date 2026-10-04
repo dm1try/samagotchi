@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::MemoryBundle::Listing do
 
   it "reads the bundles shipped with chi, keyed by the name install takes, without the system bundle" do
     shipped = described_class.shipped
-    expect(shipped.map { |s| [s.source, s.name] }).to include(["guardrails", "guardrails"], ["known-names", "known-names"], ["loop-guard", "loop-guard"], ["check-in", "check-in"], ["skills", "skills"])
+    expect(shipped.map { |s| [s.source, s.name] }).to include(%w[guardrails guardrails], %w[known-names known-names], %w[loop-guard loop-guard], %w[check-in check-in], %w[skills skills])
     expect(shipped.map(&:name)).not_to include("samagotchi-system")
   end
 

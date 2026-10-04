@@ -60,7 +60,7 @@ class SourceLinks
   REGEX_TIMEOUT = 0.5
   # A bare URL (scheme-anchored, so it can't start inside a markdown label),
   # and a markdown link (label in group 1, target in group 2).
-  URL_SPAN = %r{[a-z][a-z0-9+.\-]*://\S+}i
+  URL_SPAN = %r{[a-z][a-z0-9+.-]*://\S+}i
   MARKDOWN_LINK = /\[([^\]]*)\]\(([^)]*)\)/
   # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~).
   FENCE_OPEN = /\A {0,3}(`{3,}|~{3,})/
@@ -354,7 +354,7 @@ class SourceLinks
 
   def line(found)
     shown = found.first(@max)
-    text = "sources: #{shown.map { |name, ref, url| "#{name} #{ref} → #{url}" }.join(', ')}"
+    text = "sources: #{shown.map { |name, ref, url| "#{name} #{ref} → #{url}" }.join(", ")}"
     extra = found.size - shown.size
     text += ", … +#{extra} more" if extra.positive?
     text
@@ -411,7 +411,7 @@ class SourceLinks
     groups = group_count(regex)
     known, unknown = used.partition do |word|
       if word.match?(/\A\d+\z/)
-        groups.nil? || (word.to_i.between?(1, groups))
+        groups.nil? || word.to_i.between?(1, groups)
       else
         BUILTIN_PLACEHOLDERS.include?(word) || regex.names.include?(word)
       end
@@ -528,6 +528,6 @@ class SourceLinks
 
   # A capture group is free-form, so escape what goes into the URL path.
   def escape_url(value)
-    value.to_s.gsub(%r{[^A-Za-z0-9\-._~]}) { |c| c.bytes.map { |b| format("%%%02X", b) }.join }
+    value.to_s.gsub(/[^A-Za-z0-9\-._~]/) { |c| c.bytes.map { |b| format("%%%02X", b) }.join }
   end
 end

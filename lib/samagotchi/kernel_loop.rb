@@ -134,8 +134,7 @@ module Samagotchi
     # @return [Tools::Registry] the tools #dispatch runs. The Engine sets
     #   its own on a kernel it is given, as with hooks.
     attr_accessor :tools
-    attr_accessor :client
-    attr_accessor :model_key
+    attr_accessor :client, :model_key
     # @return [String, nil] the key whose overlay memory_read takes when
     #   #model_key has none (#sync_model_key!)
     attr_reader :model_key_fallback
@@ -538,16 +537,16 @@ module Samagotchi
 
     # One request, cancelled by +generation_controller+ (the turn's child)
     # when there is one.
-    def request_generation(prompt, generation_controller:, cancel_controller:, **options)
-      @client.complete(prompt, **complete_kwargs(cancel_controller: generation_controller || cancel_controller, **options))
+    def request_generation(prompt, generation_controller:, cancel_controller:, **)
+      @client.complete(prompt, **complete_kwargs(cancel_controller: generation_controller || cancel_controller, **))
     end
 
     # Yields the turn controller's child for one generation (nil without a
     # controller).
-    def with_generation(cancel_controller, &block)
+    def with_generation(cancel_controller, &)
       return yield(nil) unless cancel_controller
 
-      cancel_controller.generation(&block)
+      cancel_controller.generation(&)
     end
 
     # The generation was cut (stop_generation) and the turn goes on.
@@ -724,7 +723,7 @@ module Samagotchi
         dispatched[:image_only] = true if result.respond_to?(:image_only?) && result.image_only?
       end
       dispatched
-    rescue => e
+    rescue StandardError => e
       dump_log("tool_error", e.message, tool: call[:name], error: e.class.name)
       result = "Error: #{e.message}"
       {

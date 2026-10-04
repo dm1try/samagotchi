@@ -34,7 +34,7 @@ module Samagotchi
 
         html = Commonmarker.to_html(markdown.to_s, options: {
           render: { escape: true }, # escape raw HTML from source; highlighter output is still emitted
-          extension: { header_ids: nil },
+          extension: { header_ids: nil }
         })
         return nil unless html
 

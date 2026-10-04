@@ -12,7 +12,7 @@ require "samagotchi/tool_call_parser"
 # the right spelling (or corrected, or asked about).
 RSpec.describe "The known-names bundle" do
   let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/known-names", __dir__) }
-  let(:manifest) { YAML.safe_load(File.read(File.join(bundle_dir, "manifest.yml"))) }
+  let(:manifest) { YAML.safe_load_file(File.join(bundle_dir, "manifest.yml")) }
   # A repo named samagotchi whose git user is "J0hnni Doe" <j0hnny@example.com>.
   let(:repo) do
     base = File.realpath(Dir.mktmpdir("known-names"))

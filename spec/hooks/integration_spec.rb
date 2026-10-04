@@ -67,12 +67,12 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
     let(:hooks_log) { [] }
     let(:hook_events) do
       {
-        :before_turn => [],
-        :after_turn => [],
-        :before_generation => [],
-        :after_generation => [],
-        :before_tool_call => [],
-        :after_tool_call => []
+        before_turn: [],
+        after_turn: [],
+        before_generation: [],
+        after_generation: [],
+        before_tool_call: [],
+        after_tool_call: []
       }
     end
 

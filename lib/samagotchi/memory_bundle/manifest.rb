@@ -108,13 +108,13 @@ module Samagotchi
       end
 
       # Writes a fresh manifest.yml from computed checksums at `dir`.
-      def self.write(dir:, name:, version:, scope: nil, description: "", files:, hooks: nil, trust_level: nil,
+      def self.write(dir:, name:, version:, files:, scope: nil, description: "", hooks: nil, trust_level: nil,
                      plugin: nil, requires_chi: nil, needs: nil)
         FileUtils.mkdir_p(dir)
         manifest = {
           "name" => name,
           "version" => version,
-          "description" => description,
+          "description" => description
         }
         manifest["scope"] = scope if scope
         manifest["files"] = files # { "file.md" => "sha256:abc..." }
@@ -248,7 +248,9 @@ module Samagotchi
           next unless v.is_a?(Hash)
 
           sha = (v["sha256"] || v[:sha256] || "").to_s
-          sha = sha.start_with?("sha256:") ? sha : "sha256:#{sha}" unless sha.empty?
+          if !sha.empty? && !sha.empty? && !sha.start_with?("sha256:")
+            sha = "sha256:#{sha}"
+          end
           event = (v["event"] || v[:event] || "").to_s.strip
           on_error = (v["on_error"] || v[:on_error] || "skip").to_s.strip
           on_error = "skip" if on_error.empty?

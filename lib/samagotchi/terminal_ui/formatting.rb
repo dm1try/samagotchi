@@ -15,7 +15,7 @@ module Samagotchi
         params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
         status = activity[:status].to_s
         elapsed_suffix = duration_ms.nil? ? "" : " (#{format_elapsed_duration(duration_ms)})"
-        "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color(status))}#{elapsed_suffix}"
+        "#{paint("tool>", 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color(status))}#{elapsed_suffix}"
       end
 
       # Green ok, yellow stopped (a wait the user's Stop ended), red the rest.
@@ -75,7 +75,7 @@ module Samagotchi
         return "" unless diff.is_a?(Hash)
 
         get = ->(key) { diff[key] || diff[key.to_s] }
-        " #{paint("+#{get.(:added).to_i}", 32)} #{paint("\u2212#{get.(:removed).to_i}", 31)}"
+        " #{paint("+#{get.call(:added).to_i}", 32)} #{paint("\u2212#{get.call(:removed).to_i}", 31)}"
       end
 
       # Prompt labels by the sender's client_id prefix (turn_events.js
@@ -113,7 +113,7 @@ module Samagotchi
         params = part[:params].to_s.strip
         params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
         status = part[:status].to_s
-        "#{paint('tool>', 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status_color(status))}" \
+        "#{paint("tool>", 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status_color(status))}" \
           "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
       end
 
@@ -233,8 +233,8 @@ module Samagotchi
         value = tps.to_f
         return "" unless value.positive?
 
-        number = value >= 1000 ? "#{format('%.1f', (value / 100).round / 10.0)}k" : value.round.to_s
-        "#{'~' if source.to_s == 'estimate'}#{number} tok/s"
+        number = value >= 1000 ? "#{format("%.1f", (value / 100).round / 10.0)}k" : value.round.to_s
+        "#{"~" if source.to_s == "estimate"}#{number} tok/s"
       end
 
       # "$0.42"; a cost under a cent keeps four decimals ("$0.0012"); "" for
@@ -297,7 +297,7 @@ module Samagotchi
       def status_rows(segments, width)
         return [] if segments.empty? || width <= 0
 
-        row = cap_preview_text("status> #{segments.join(' | ')}", width)
+        row = cap_preview_text("status> #{segments.join(" | ")}", width)
         [color_output? ? paint(row, 90) : row]
       end
 
@@ -336,7 +336,7 @@ module Samagotchi
 
         visible = names.first(limit)
         suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
-        "#{label}: #{visible.join(', ')}#{suffix}"
+        "#{label}: #{visible.join(", ")}#{suffix}"
       end
 
       def cap_preview_text(text, width)
@@ -411,8 +411,8 @@ module Samagotchi
         return nil unless last
 
         source = tokens[:tps_source].to_s
-        text = +"#{speed_text(last, source)} out"
-        text << ", #{speed_text(tokens[:last_prefill_tps], 'server')} prompt" if tokens[:last_prefill_tps]
+        text = "#{speed_text(last, source)} out"
+        text << ", #{speed_text(tokens[:last_prefill_tps], "server")} prompt" if tokens[:last_prefill_tps]
         text << " (last, #{source})"
         text << ", avg #{speed_text(tokens[:avg_decode_tps], source)}" if tokens[:avg_decode_tps]
         text
@@ -428,7 +428,7 @@ module Samagotchi
         return "#{seconds.round}s" if seconds < 60
 
         total_seconds = seconds.round
-        "#{total_seconds / 60}m #{format('%02d', total_seconds % 60)}s"
+        "#{total_seconds / 60}m #{format("%02d", total_seconds % 60)}s"
       end
 
       def paint(text, code)

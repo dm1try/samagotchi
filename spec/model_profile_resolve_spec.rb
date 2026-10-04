@@ -35,8 +35,12 @@ RSpec.describe "ModelProfile.resolve" do
 
   def entry(**attrs) = Samagotchi::HostRegistry::HostEntry.new(name: "main", host: "h", port: 8081, **attrs)
 
+  # entry() calls the helper above; without the () the default would be the
+  # parameter itself (a circular argument reference).
+  # rubocop:disable Style/MethodCallWithoutArgsParentheses
   def resolve(names: ["ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M"], entry: entry(), client: FakePropsClient.new(answered(ornith_props)),
               bare_model: names.first, override: [nil, :default], models: {})
+    # rubocop:enable Style/MethodCallWithoutArgsParentheses
     Samagotchi::ModelProfile.resolve(names: names, entry: entry, client: client, bare_model: bare_model,
                                      override: override, models: models)
   end
@@ -53,7 +57,7 @@ RSpec.describe "ModelProfile.resolve" do
 
     it "gives any other ChatML template qwen36, whose <|im_end|> stop ends its turns" do
       expect(Samagotchi::ModelProfile.fingerprint("chat_template" => "<|im_start|>{{ m }}<|im_end|><tool_call>{"))
-        .to eq(["qwen36", "ChatML"])
+        .to eq(%w[qwen36 ChatML])
     end
 
     it "matches nothing without a template, or with Gemma 3's" do

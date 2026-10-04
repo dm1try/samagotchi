@@ -123,7 +123,7 @@ RSpec.describe Samagotchi::KernelLoop do
     end
 
     it "truncates long command previews in tool activity" do
-      long_command = "echo #{'x' * 120}"
+      long_command = "echo #{"x" * 120}"
       responses = [
         %(<|tool_call>call:execute{command: "#{long_command}"}<tool_call|>),
         "done"
@@ -872,7 +872,7 @@ Need to inspect the filesystem first.
       expect(result.output).to eq("Hello")
       expect(events.map { |event| event[:type] }).to include(:generation_started, :generation_chunk, :generation_completed)
       expect(events.count { |event| event[:type] == :generation_chunk }).to eq(2)
-      expect(events.select { |event| event[:type] == :generation_chunk }.map { |event| event[:content] }).to eq(["Hel", "lo"])
+      expect(events.select { |event| event[:type] == :generation_chunk }.map { |event| event[:content] }).to eq(%w[Hel lo])
     end
 
     it "names the model the server reports in :generation_completed, next to the one asked for" do

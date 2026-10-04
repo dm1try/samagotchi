@@ -72,7 +72,8 @@ module Samagotchi
       end
 
       def newer?(candidate, current)
-        candidate, current = candidate.to_s, current.to_s
+        candidate = candidate.to_s
+        current = current.to_s
         return false unless Gem::Version.correct?(candidate) && Gem::Version.correct?(current)
 
         Gem::Version.new(candidate) > Gem::Version.new(current)

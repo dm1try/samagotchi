@@ -15,7 +15,7 @@ module Samagotchi
         return "No tasks found." if records.empty?
 
         records.map { |record| format_entry(record) }.join("\n\n")
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 

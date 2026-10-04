@@ -71,7 +71,7 @@ RSpec.describe Samagotchi::Thinking do
         expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path)["work"][:thinking]).to eq(:off)
         expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)["qwen"][:thinking]).to eq(:off)
         with_env("XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_THINKING_LEVEL" => nil) do
-          expect(described_class.global_level).to eq([:off, :file])
+          expect(described_class.global_level).to eq(%i[off file])
         end
       end
     end

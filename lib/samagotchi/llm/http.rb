@@ -208,7 +208,7 @@ module Samagotchi
         @api_key&.authorize(request)
       end
 
-      def start(uri, open_timeout: nil, read_timeout: nil, max_retries: nil, &block)
+      def start(uri, open_timeout: nil, read_timeout: nil, max_retries: nil, &)
         options = { open_timeout: open_timeout || @open_timeout, read_timeout: read_timeout || @read_timeout }
         # Net::HTTP retries an idempotent request once on its own (max_retries
         # defaults to 1) when the connection drops before an answer: chi's
@@ -218,15 +218,15 @@ module Samagotchi
         retries = max_retries || 0
         options[:max_retries] = retries
         options[:use_ssl] = true if uri.scheme == "https"
-        Net::HTTP.start(uri.host, uri.port, **options, &block)
+        Net::HTTP.start(uri.host, uri.port, **options, &)
       end
 
       # Runs the block (one attempt) until it returns, retrying network
       # errors. The block gets a hash to put the attempt's Net::HTTP in, so a
       # cancel can reach its socket.
-      def with_retries(cancel_controller, on_retry, on_network_error, current = { mutex: Mutex.new })
+      def with_retries(cancel_controller, on_retry, on_network_error, current = { mutex: Mutex.new }, &block)
         cancellable(cancel_controller, current) do
-          retrying(cancel_controller, on_retry, on_network_error, current) { |state| yield(state) }
+          retrying(cancel_controller, on_retry, on_network_error, current, &block)
         end
       end
 

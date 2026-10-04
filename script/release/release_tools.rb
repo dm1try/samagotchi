@@ -27,7 +27,7 @@ module ReleaseTools
   end
 
   def system_bundle_version(root)
-    YAML.safe_load(File.read(File.join(root, SYSTEM_MANIFEST)))["version"].to_s
+    YAML.safe_load_file(File.join(root, SYSTEM_MANIFEST))["version"].to_s
   end
 
   # --- bundle manifests' sha256 lines -------------------------------------
@@ -48,7 +48,10 @@ module ReleaseTools
     top = sub = nil
     changes = []
     lines = text.lines.map do |line|
-      top, sub = line[/\A([^\s#][^:]*):/, 1], nil if line.match?(/\A[^\s#]/)
+      if line.match?(/\A[^\s#]/)
+        top = line[/\A([^\s#][^:]*):/, 1]
+        sub = nil
+      end
       sub = line[/\A  ([^\s#][^:]*):/, 1] if line.match?(/\A  [^\s#]/)
       file, prefix = sha_line(line, top, sub, plugin_file)
       next line unless file
@@ -59,7 +62,7 @@ module ReleaseTools
       old = line[/sha256:(\h*)\s*\z/, 1]
       new = Digest::SHA256.hexdigest(File.binread(path))
       changes << [file, old, new] unless old == new
-      "#{prefix}sha256:#{new}#{line.end_with?("\n") ? "\n" : ""}"
+      "#{prefix}sha256:#{new}#{"\n" if line.end_with?("\n")}"
     end
     [lines.join, changes]
   end
@@ -99,8 +102,8 @@ module ReleaseTools
 
   # --- git --------------------------------------------------------------
 
-  def git(root, *args)
-    out, status = Open3.capture2e("git", "-C", root, *args)
+  def git(root, *)
+    out, status = Open3.capture2e("git", "-C", root, *)
     [out, status.success?]
   end
 
@@ -123,7 +126,7 @@ module ReleaseTools
       next unless existed
 
       old = YAML.safe_load(old_text)["version"].to_s
-      new = YAML.safe_load(File.read(File.join(dir, "manifest.yml")))["version"].to_s
+      new = YAML.safe_load_file(File.join(dir, "manifest.yml"))["version"].to_s
       next if Gem::Version.new(new) > Gem::Version.new(old)
 
       "#{File.basename(dir)}: changed since #{tag} but still version #{new} (bump its manifest version)"
@@ -137,7 +140,7 @@ module ReleaseTools
   def stale_requires_chi(root, tag)
     tagged = Gem::Version.new(tag.delete_prefix("v"))
     bundle_dirs(root).filter_map do |dir|
-      requires = YAML.safe_load(File.read(File.join(dir, "manifest.yml")))["requires_chi"] or next
+      requires = YAML.safe_load_file(File.join(dir, "manifest.yml"))["requires_chi"] or next
       next unless Gem::Requirement.new(*requires.to_s.split(",").map(&:strip)).satisfied_by?(tagged)
 
       _, same = git(root, "diff", "--quiet", tag, "--", dir.delete_prefix("#{File.expand_path(root)}/"))

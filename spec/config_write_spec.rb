@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::ConfigFile, "writes to config.yml" do
     described_class.clear_yaml_cache!(@path)
   end
 
-  def data = YAML.safe_load(File.read(@path))
+  def data = YAML.safe_load_file(@path)
 
   describe ".write_default_model!" do
     it "replaces default.model in place and keeps the comments" do

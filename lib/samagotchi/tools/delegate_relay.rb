@@ -137,7 +137,7 @@ module Samagotchi
 
       # execute: git push origin main
       def what_text(facts)
-        facts = facts.is_a?(Hash) ? facts : {}
+        facts = {} unless facts.is_a?(Hash)
         tool = facts[:label] || facts[:tool] || "tool"
         what = facts[:command] || Array(facts[:paths]).join(", ")
         what = facts[:args].to_s if what.to_s.empty?

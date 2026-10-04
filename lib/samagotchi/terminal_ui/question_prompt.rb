@@ -33,29 +33,29 @@ module Samagotchi
       # @param pending [Hash] Engine#pending_question (symbol or string keys)
       def initialize(pending)
         field = ->(key) { pending[key] || pending[key.to_s] }
-        approval = field.(:approval)
+        approval = field.call(:approval)
         @preview = approval.is_a?(Hash) ? (approval[:preview] || approval["preview"]) : nil
-        @id = field.(:id).to_s
-        @question = field.(:question).to_s
+        @id = field.call(:id).to_s
+        @question = field.call(:question).to_s
         # A delegate's approval relayed here: the delegate's own text is the
         # question, who asks a dim line (#note).
-        relay = field.(:relay)
+        relay = field.call(:relay)
         if relay.is_a?(Hash)
           get = ->(key) { relay[key] || relay[key.to_s] }
-          chain = Array(get.(:chain)).map(&:to_s)
-          chain = [get.(:child_id).to_s[0, 8]] if chain.empty?
+          chain = Array(get.call(:chain)).map(&:to_s)
+          chain = [get.call(:child_id).to_s[0, 8]] if chain.empty?
           @delegate = chain.reverse.join(" → ")
-          @delegate_task = get.(:task).to_s
-          @question = get.(:asked).to_s unless get.(:asked).to_s.strip.empty?
+          @delegate_task = get.call(:task).to_s
+          @question = get.call(:asked).to_s unless get.call(:asked).to_s.strip.empty?
         end
-        self.relayed_to = field.(:relayed_to)
-        @options = Array(field.(:options)).map { |v| v.to_s.strip }.reject(&:empty?)
-        header = field.(:header).to_s.strip
+        self.relayed_to = field.call(:relayed_to)
+        @options = Array(field.call(:options)).map { |v| v.to_s.strip }.reject(&:empty?)
+        header = field.call(:header).to_s.strip
         @header = header.empty? ? nil : header
-        @multi = !!field.(:multi_select)
-        @free = !!field.(:allow_freeform)
-        @approval = field.(:kind).to_s == "approval"
-        @continue = field.(:kind).to_s == "continue"
+        @multi = !!field.call(:multi_select)
+        @free = !!field.call(:allow_freeform)
+        @approval = field.call(:kind).to_s == "approval"
+        @continue = field.call(:kind).to_s == "continue"
       end
 
       def multi? = @multi
@@ -121,19 +121,19 @@ module Samagotchi
         return [] unless preview.is_a?(Hash)
 
         get = ->(key) { preview[key] || preview[key.to_s] }
-        return [paint.("this edit would fail: #{get.(:error)}", 33)] if get.(:error)
-        return [paint.("diff not shown: #{get.(:skipped)}", 2)] if get.(:skipped)
+        return [paint.call("this edit would fail: #{get.call(:error)}", 33)] if get.call(:error)
+        return [paint.call("diff not shown: #{get.call(:skipped)}", 2)] if get.call(:skipped)
 
-        lines = get.(:text).to_s.split("\n")
+        lines = get.call(:text).to_s.split("\n")
         return [] if lines.empty?
 
         # TextDiff's own cut note ("… N more lines") counts toward the rest.
         cut = lines.last.to_s[/\A… (\d+) more lines\z/, 1]
         lines.pop if cut
         hidden = [lines.size - PREVIEW_LINES, 0].max + cut.to_i
-        shown = lines.first(PREVIEW_LINES).map { |line| paint.(line, diff_code(line)) }
-        shown.unshift(paint.("new file", 2)) if get.(:new_file)
-        shown << paint.("… #{hidden} more lines (full diff on the web)", 2) if hidden.positive?
+        shown = lines.first(PREVIEW_LINES).map { |line| paint.call(line, diff_code(line)) }
+        shown.unshift(paint.call("new file", 2)) if get.call(:new_file)
+        shown << paint.call("… #{hidden} more lines (full diff on the web)", 2) if hidden.positive?
         shown
       end
 
@@ -142,7 +142,7 @@ module Samagotchi
       # @param outcome [String] the answer (#answer_text) or what closed it
       def summary(outcome, paint: ->(text, _code) { text })
         who = @delegate ? "#{@delegate}: " : ""
-        "#{paint.("#{mark}#{who}#{question.lines.first.to_s.chomp}", approval? ? 33 : 94)} → #{outcome}"
+        "#{paint.call("#{mark}#{who}#{question.lines.first.to_s.chomp}", approval? ? 33 : 94)} → #{outcome}"
       end
 
       # @param answer [Answer] an accepted one

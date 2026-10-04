@@ -121,7 +121,7 @@ module Samagotchi
         sleep(INIT_WAIT_POLL)
       end
       Log.info(:plugins, "init_wait", ms: ((@clock.call - started) * 1000).round,
-                                      cancelled: controller&.cancelled? ? true : nil)
+                                      cancelled: controller&.cancelled? || nil)
       true
     end
 

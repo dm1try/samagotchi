@@ -65,7 +65,7 @@ module Samagotchi
         build_truncated_preview(path: path, file_size: size, preview_bytes: preview_bytes)
       rescue Errno::ENOENT
         "Error: file not found: #{path}"
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 
@@ -146,12 +146,11 @@ module Samagotchi
         # the historical hard error instead.
         clamp_note = ""
         if end_provided && end_num > total_lines
-          if OutputGuardrails.env_bool("SAMAGOTCHI_READ_ALLOW_OOR_END", default: true)
-            clamp_note = "\n[read: end_line #{end_num} exceeds #{total_lines} lines; returning lines #{start_num}-#{total_lines}]"
-            end_num = total_lines
-          else
-            return "Error: range out of bounds for #{path}: file has #{total_lines} lines"
-          end
+          return "Error: range out of bounds for #{path}: file has #{total_lines} lines" unless OutputGuardrails.env_bool("SAMAGOTCHI_READ_ALLOW_OOR_END", default: true)
+
+          clamp_note = "\n[read: end_line #{end_num} exceeds #{total_lines} lines; returning lines #{start_num}-#{total_lines}]"
+          end_num = total_lines
+
         end
 
         # A start past EOF is genuinely unusable -> keep a hard error.  A slice

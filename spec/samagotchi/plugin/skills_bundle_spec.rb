@@ -177,7 +177,7 @@ RSpec.describe "The skills plugin" do
       p = plugin("history_keep" => 2)
       File.write(path, "0\n")
       (1..4).each { |n| write_call(p, "memory_write", path, "#{n}\n") }
-      expect(history("project", "release").map { |f| File.read(f) }).to eq(["2\n", "3\n"])
+      expect(history("project", "release").map { |f| File.read(f) }).to eq(%W[2\n 3\n])
     end
 
     it "leaves other files alone: other memories, overlays, files elsewhere, a mismatched after" do

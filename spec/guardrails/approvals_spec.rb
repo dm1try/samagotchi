@@ -245,7 +245,7 @@ RSpec.describe Samagotchi::Guardrails::Gate, "with the bundle's git-outside-repo
   let(:rules) do
     file = File.expand_path("../../lib/samagotchi/bundles/guardrails/guardrails/rules.yml", __dir__)
     Samagotchi::Guardrails::Rules.new(
-      Samagotchi::Guardrails::Rules.parse(YAML.safe_load(File.read(file))["rules"], source: "bundle guardrails"),
+      Samagotchi::Guardrails::Rules.parse(YAML.safe_load_file(file)["rules"], source: "bundle guardrails"),
       mode: "strict" # git-outside-repo is strict only
     )
   end

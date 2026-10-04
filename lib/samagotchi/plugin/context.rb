@@ -107,9 +107,7 @@ module Samagotchi
       # $XDG_STATE_HOME/samagotchi/plugins/<bundle>/, created on first use.
       # @return [String]
       def data_dir
-        @data_dir ||= begin
-          File.join(Paths.state_dir(env: @env), "plugins", @bundle).tap { |dir| FileUtils.mkdir_p(dir) }
-        end
+        @data_dir ||= File.join(Paths.state_dir(env: @env), "plugins", @bundle).tap { |dir| FileUtils.mkdir_p(dir) }
       end
 
       # The conversation so far, a frozen copy, without the system prompt.

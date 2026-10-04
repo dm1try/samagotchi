@@ -14,8 +14,8 @@ require "samagotchi/reminder_store"
 #   before { allow(kernel).to receive(:run) { |messages, **| ... } }
 module TestKernel
   # @param opts [Hash] more KernelLoop.new options (profile:, tools:, hooks:)
-  def test_kernel(client: test_client, **opts)
-    Samagotchi::KernelLoop.new(client: client, reminder_store: Samagotchi::ReminderStore.new, **opts)
+  def test_kernel(client: test_client, **)
+    Samagotchi::KernelLoop.new(client: client, reminder_store: Samagotchi::ReminderStore.new, **)
   end
 
   # @param stubs [Hash] more Client methods and their answers

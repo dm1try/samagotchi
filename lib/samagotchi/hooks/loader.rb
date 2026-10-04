@@ -67,17 +67,15 @@ module Samagotchi
           definitions = parse_definitions(hooks_config)
 
           definitions.each do |defn|
-            begin
-              plugin = load_plugin(hooks_dir, defn[:path], settings: defn[:settings])
-              # Persistent: config hooks must fire on every turn, not be wiped
-              # by Engine#run_turn's per-turn clear_hooks after turn 1.
-              registry.register_persistent(defn[:event_type].to_sym, label: "#{defn[:path]} (config)",
-                                           &wrapped(plugin, defn))
-            rescue ScriptError, StandardError => e
-              # ScriptError: a SyntaxError (or LoadError) from `require`.
-              Log.error(:hooks, "hook_load_failed", echo: "[samagotchi:hooks] hook #{defn[:path]} failed to load: #{e.class}: #{e.message}", hook: defn[:path].to_s, error: e.class.name)
-              failures&.add("hook #{defn[:path]} (config)", "#{e.class}: #{e.message}", required: defn[:required])
-            end
+            plugin = load_plugin(hooks_dir, defn[:path], settings: defn[:settings])
+            # Persistent: config hooks must fire on every turn, not be wiped
+            # by Engine#run_turn's per-turn clear_hooks after turn 1.
+            registry.register_persistent(defn[:event_type].to_sym, label: "#{defn[:path]} (config)",
+                                         &wrapped(plugin, defn))
+          rescue ScriptError, StandardError => e
+            # ScriptError: a SyntaxError (or LoadError) from `require`.
+            Log.error(:hooks, "hook_load_failed", echo: "[samagotchi:hooks] hook #{defn[:path]} failed to load: #{e.class}: #{e.message}", hook: defn[:path].to_s, error: e.class.name)
+            failures&.add("hook #{defn[:path]} (config)", "#{e.class}: #{e.message}", required: defn[:required])
           end
 
           registry
@@ -126,9 +124,7 @@ module Samagotchi
 
         # Check if already loaded (Ruby's require caching handles this)
         # We cache the instance separately to avoid re-instantiating
-        unless @plugin_cache
-          @plugin_cache = {}
-        end
+        @plugin_cache ||= {}
 
         @plugin_cache[[full_path, settings]] ||= begin
           require full_path
@@ -146,9 +142,11 @@ module Samagotchi
       # on_error: log warns and skip is silent.
       def self.wrapped(plugin, defn)
         if defn[:required] && defn[:event_type] == "before_tool_call"
-          policy, label = :deny, "required hook #{defn[:path]}"
+          policy = :deny
+          label = "required hook #{defn[:path]}"
         else
-          policy, label = (defn[:on_error] == "log" ? :log : :skip), "#{defn[:path]} (config)"
+          policy = (defn[:on_error] == "log" ? :log : :skip)
+          label = "#{defn[:path]} (config)"
         end
         Hooks.wrap(label: label, event: defn[:event_type].to_sym, policy: policy) { |event| plugin.call(event) }
       end

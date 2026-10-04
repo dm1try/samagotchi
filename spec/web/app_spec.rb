@@ -43,9 +43,13 @@ class FakeResponsesManager
     nil
   end
 
-  def resume_session(id, state_dir: nil); @resume_calls << [id, state_dir]; nil; end
-  def write_turn_input(_id, prompt:, client_id: nil, enqueued_id: nil, state_dir: nil); true; end
-  def stop_session(_id, state_dir: nil, wait: nil); nil; end
+  def resume_session(id, state_dir: nil)
+    @resume_calls << [id, state_dir]
+    nil
+  end
+
+  def write_turn_input(_id, prompt:, client_id: nil, enqueued_id: nil, state_dir: nil) = true
+  def stop_session(_id, state_dir: nil, wait: nil) = nil
 end
 
 # Loader that pretends a session always exists, so stream/show specs don't need
@@ -219,7 +223,7 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(out.string).to include("id: 1")
       expect(out.string).to include("event: generation_chunk")
-      expect(out.string).to include(%q{"content":"one"})
+      expect(out.string).to include('"content":"one"')
       expect(out.string).not_to include("HTTP/1.1") # handler owns the status line
     end
   end
@@ -687,7 +691,7 @@ RSpec.describe Samagotchi::Web::App do
       payload = JSON.parse(body.first)
       expect(payload["last_event_seq"]).to be_nil
       expect(payload["last_event_id"]).to be_nil
-      expect(payload["messages"].map { |m| m["content"] }).to eq(%w[hello hi\ there])
+      expect(payload["messages"].map { |m| m["content"] }).to eq(["hello", "hi there"])
     end
 
     it "draws the file's pending question only while a worker owns the session (a dead worker's or a REPL's can't be answered)" do
@@ -2331,9 +2335,9 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(200)
       expect(JSON.parse(body.first)).to include("status" => "answered", "id" => "q-9")
       expect(received).to include("POST /session/s1/answer HTTP/1.1")
-      expect(received).to include(%q{"id":"q-9"})
-      expect(received).to include(%q{"selected":["Cats"]})
-      expect(received).to include(%q{"freeform":"meow"})
+      expect(received).to include('"id":"q-9"')
+      expect(received).to include('"selected":["Cats"]')
+      expect(received).to include('"freeform":"meow"')
     end
 
     it "passes the bridge's 409 through when another client answered first" do

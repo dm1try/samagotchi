@@ -200,7 +200,7 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
 
     renderer.render_turn_summary(tool_activity: [activity], output: "x", resumable: false)
 
-    expect(view.lines.last(2)).to eq(["read", "x"])
+    expect(view.lines.last(2)).to eq(%w[read x])
     expect(view.calls).to include(:reset_turn_feedback)
   end
 

@@ -34,7 +34,7 @@ RSpec.describe "chi bootstrap" do
 
   def models(*ids) = { object: "list", data: ids.map { |id| { id: id } } }
   def bundles_dir = File.join(home, "config", "samagotchi", "memories", ".bundles")
-  def written = YAML.safe_load(File.read(config))
+  def written = YAML.safe_load_file(config)
 
   it "writes a native llama.cpp host with its model, n_ctx and profile" do
     server.default("/props", json: { model_alias: "qwen-a", build_info: "b1", chat_template: "<|im_start|> <function=",

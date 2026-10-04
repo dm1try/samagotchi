@@ -72,8 +72,8 @@ module Samagotchi
         list.find do |e|
           case e["scope"]
           when "session" then session_id && e["session_id"] == session_id && e["key"] == key
-          when "repo" then here.(e) && e["key"] == key
-          when "rule" then verdict.rule && e["rule"] == verdict.rule && e["source"] == verdict.source && here.(e)
+          when "repo" then here.call(e) && e["key"] == key
+          when "rule" then verdict.rule && e["rule"] == verdict.rule && e["source"] == verdict.source && here.call(e)
           end
         end
       end

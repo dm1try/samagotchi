@@ -9,7 +9,7 @@ RSpec.describe Samagotchi::Hooks::Registry do
       subject.register_bundle("bundle-a", :before_tool_call, hook_name: "guard.rb", priority: 100) { order << :bundle }
       subject.register(:before_tool_call) { order << :plain }
       subject.fire(:before_tool_call, {})
-      expect(order).to eq([:bundle, :plain])
+      expect(order).to eq(%i[bundle plain])
     end
 
     it "orders bundle hooks by priority, then bundle, then hook_name" do
@@ -18,7 +18,7 @@ RSpec.describe Samagotchi::Hooks::Registry do
       subject.register_bundle("a", :ev, hook_name: "a.rb", priority: 10) { order << :a10 }
       subject.register_bundle("a", :ev, hook_name: "b.rb", priority: 5) { order << :a5 }
       subject.fire(:ev, {})
-      expect(order).to eq([:a5, :a10, :b10])
+      expect(order).to eq(%i[a5 a10 b10])
     end
 
     it "unregister_bundle removes only that bundle" do

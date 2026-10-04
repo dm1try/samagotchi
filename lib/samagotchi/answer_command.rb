@@ -172,7 +172,7 @@ module Samagotchi
 
     # A step-limit question can't be left unanswered: the turn waits on it.
     def not_dismissable(pending)
-      "the step-limit question can't be dismissed: answer #{Array(pending[:options]).join(' or ')} " \
+      "the step-limit question can't be dismissed: answer #{Array(pending[:options]).join(" or ")} " \
         "(--option Stop --text WHY stops it)"
     end
 

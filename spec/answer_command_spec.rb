@@ -376,7 +376,7 @@ RSpec.describe Samagotchi::AnswerCommand do
     end
 
     before do
-      allow(Samagotchi::Config).to receive(:get).with("turn.parent_continue") { @parent_continue.nil? ? true : @parent_continue }
+      allow(Samagotchi::Config).to receive(:get).with("turn.parent_continue") { @parent_continue.nil? || @parent_continue }
     end
 
     it "continues it, marked as chi answer's, and prints the continued turn's reply" do

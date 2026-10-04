@@ -244,7 +244,7 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
     end
 
     it "reads a list of bundle names; the manifest is then a meta" do
-      m = described_class.new(path: write_manifest({ "files" => nil, "includes" => ["loop-guard", "check-in", "loop-guard"] }))
+      m = described_class.new(path: write_manifest({ "files" => nil, "includes" => %w[loop-guard check-in loop-guard] }))
       expect(m.includes).to eq(%w[loop-guard check-in])
       expect(m.meta?).to be(true)
     end

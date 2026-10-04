@@ -234,17 +234,17 @@ RSpec.describe Samagotchi::Session do
 
   describe ".load" do
     it "raises ArgumentError when session_id does not exist" do
-      expect {
+      expect do
         described_class.load("nonexistent-id", state_dir: tmpdir)
-      }.to raise_error(ArgumentError, /Session not found/)
+      end.to raise_error(ArgumentError, /Session not found/)
     end
 
     it "raises ArgumentError on corrupted JSON" do
       bad_path = File.join(tmpdir, "bad-id.json")
       File.write(bad_path, "{ not valid json")
-      expect {
+      expect do
         described_class.load("bad-id", state_dir: tmpdir)
-      }.to raise_error(ArgumentError, /corrupted/)
+      end.to raise_error(ArgumentError, /corrupted/)
     end
   end
 

@@ -30,7 +30,7 @@ module Samagotchi
     # The request options of a retry generation: the turn's sampling, with
     # TEMPERATURE when it sets none (a configured nil keeps "don't send").
     def self.sampling(base)
-      base = base || {}
+      base ||= {}
       base.key?(:temperature) ? base : base.merge(temperature: TEMPERATURE)
     end
 

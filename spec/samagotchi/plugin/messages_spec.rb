@@ -49,7 +49,7 @@ RSpec.describe "ctx.messages" do
     engine.session = session
     engine.run_turn(session, "now", on_event: ->(_e) {})
 
-    expect(seen_mid_turn).to eq([[[["user", "earlier"]], true]])
+    expect(seen_mid_turn).to eq([[[%w[user earlier]], true]])
   end
 
   it "adds the running turn so far with a Bridge (a worker)" do

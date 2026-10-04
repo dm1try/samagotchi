@@ -27,10 +27,10 @@ module Samagotchi
       return [:resume, nil] if normalized.empty?
 
       lowered = normalized.downcase
-      return [:resume, nil] if lowered == CONTINUE_COMMAND || lowered == "yes" || lowered == "y"
-      return [:abort, nil] if lowered == "no" || lowered == "n"
+      return [:resume, nil] if [CONTINUE_COMMAND, "yes", "y"].include?(lowered)
+      return [:abort, nil] if %w[no n].include?(lowered)
 
-      reason_match = normalized.match(/\A(?:no|n)\s*[,:\-]\s*(.+)\z/i)
+      reason_match = normalized.match(/\A(?:no|n)\s*[,:-]\s*(.+)\z/i)
       if reason_match
         reason = reason_match[1].to_s.strip
         return [:abort, nil] if reason.empty?
@@ -220,11 +220,11 @@ module Samagotchi
       lines << "- original_prompt: #{original_prompt.to_s.empty? ? "(unavailable)" : original_prompt}"
 
       tool_trace = context ? Array(context[:tool_trace]) : []
-      if tool_trace.empty?
-        lines << "- interrupted_tools: (none)"
-      else
-        lines << "- interrupted_tools: #{tool_trace.join("; ")}"
-      end
+      lines << if tool_trace.empty?
+                 "- interrupted_tools: (none)"
+               else
+                 "- interrupted_tools: #{tool_trace.join("; ")}"
+               end
 
       model_intent = context && context[:last_model_intent]
       lines << "- last_model_intent: #{model_intent.to_s.empty? ? "(unavailable)" : model_intent}"

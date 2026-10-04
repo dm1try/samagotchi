@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::TextDiff do
   end
 
   it "cuts the text at max_bytes" do
-    result = diff("", Array.new(40) { "#{'x' * 400}\n" }.join)
+    result = diff("", Array.new(40) { "#{"x" * 400}\n" }.join)
     expect(result[:text].bytesize).to be <= described_class::MAX_BYTES + 40
     expect(result[:text]).to end_with("more lines")
     expect(result[:truncated]).to be true

@@ -14,7 +14,7 @@ module Samagotchi
         return error if error
 
         format_record(record)
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 

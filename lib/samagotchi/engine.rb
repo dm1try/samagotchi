@@ -557,8 +557,8 @@ module Samagotchi
 
     # Run the block with the event log held: no event is numbered or
     # delivered meanwhile, and events the block emits keep their order.
-    def synchronize_events(&block)
-      @session_observer.synchronize(&block)
+    def synchronize_events(&)
+      @session_observer.synchronize(&)
     end
 
     # Add a context note to the session's conversation, between turns: a
@@ -638,8 +638,8 @@ module Samagotchi
     # Start an anytime command on its own thread (D8), one #shutdown waits
     # for, so its command_ran is announced before the process leaves.
     # @return [Thread]
-    def spawn_anytime(&block)
-      thread = Thread.new(&block)
+    def spawn_anytime(&)
+      thread = Thread.new(&)
       @lifecycle_mutex.synchronize do
         @anytime_threads.select!(&:alive?)
         @anytime_threads << thread
@@ -656,9 +656,9 @@ module Samagotchi
 
     # Add a plugin's init task (Plugin::Api#init at commit); it starts with
     # #start_init_tasks!.
-    def add_init_task(bundle:, label:, plugin_label:, provides_tools:, quiet:, timeout:, failed: nil, &block)
+    def add_init_task(bundle:, label:, plugin_label:, provides_tools:, quiet:, timeout:, failed: nil, &)
       @plugin_tasks.add(bundle: bundle, label: label, plugin_label: plugin_label, provides_tools: provides_tools,
-                        quiet: quiet, timeout: timeout, failed: failed, &block)
+                        quiet: quiet, timeout: timeout, failed: failed, &)
     end
 
     # Start the init tasks not started yet, each on its own thread
@@ -836,8 +836,8 @@ module Samagotchi
     # @param name [Symbol] one of the hook names (see Hooks module)
     # @param block [Proc] receives an event hash (may mutate in place)
     # @return [void]
-    def register_hook(name, &block)
-      @hooks.register(name, &block)
+    def register_hook(name, &)
+      @hooks.register(name, &)
     end
 
     # Unregister a previously registered hook.
@@ -1369,9 +1369,7 @@ module Samagotchi
     end
 
     # @return [Session] current session (Engine owns create/resume)
-    def session
-      @session
-    end
+    attr_reader :session
 
     # The kernel's Tools::Peers, following the current session. cancelled?
     # is the running turn's cancel, for a tool that waits (delegate_result):
@@ -1424,9 +1422,7 @@ module Samagotchi
     end
 
     # @return [IdleRecap, nil] the idle recap detector, or nil when disabled
-    def recap
-      @recap
-    end
+    attr_reader :recap
 
     # Write the recap now, before the session is left (IdleRecap#write_now).
     # @return [String, nil] the recap written, nil when none was (recap off,

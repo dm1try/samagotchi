@@ -205,7 +205,7 @@ Hooks removed: 1\n\z})
       out, err, code = chi("list")
       expect([err, code]).to eq(["", 0])
       expect(out).to match(/\AInstalled:\n  btw +v\S+ +scope=system  files=\d+  installed=\S+\n\nAvailable/)
-      expect(out).not_to match(/^  btw +v\S+  \//)
+      expect(out).not_to match(%r{^  btw +v\S+  /})
     end
 
     it "installs the core profile's bundles, records them, and keeps one the user uninstalled out" do
@@ -427,7 +427,7 @@ Hooks removed: 1\n\z})
       out, err, code = chi("diff", "sample-plugin")
 
       expect([err, code]).to eq(["", 0])
-      expect(out).to match(/\A=== plugin\/plugin\.rb ===\n--- base \(provenance\) ---\n#{Regexp.escape(plugin)}--- current \(on-disk\) ---\n#{Regexp.escape(plugin)}--- metadata: sha256=\S+ requires_chi=>= 0\.1\.28\n\n\z/)
+      expect(out).to match(%r{\A=== plugin/plugin\.rb ===\n--- base \(provenance\) ---\n#{Regexp.escape(plugin)}--- current \(on-disk\) ---\n#{Regexp.escape(plugin)}--- metadata: sha256=\S+ requires_chi=>= 0\.1\.28\n\n\z})
     end
   end
   # A scope only a newer chi knows (read after a downgrade), or a hand edit.

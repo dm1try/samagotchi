@@ -40,31 +40,31 @@ module Samagotchi
     # <word> in the surrounding content is NOT stripped:
     #   <|name> / <name|> / <|name|>
     INDIVIDUAL_RE = Regexp.new(
-      '<\\|(?:' + CONTROL_NAMES.join('|') + ')\\|?>' \
-      '|<(?:' + CONTROL_NAMES.join('|') + ')\\|>'
+      '<\\|(?:' + CONTROL_NAMES.join("|") + ')\\|?>' \
+      "|<(?:" + CONTROL_NAMES.join("|") + ')\\|>'
     )
     INDIVIDUAL_RE.freeze
 
     # Angle-bracketed literal tokens stripped wholesale (including the thought
     # channel's trailing word). Applied before INDIVIDUAL_RE so multi-part tokens
     # are removed as a unit. Pipes are escaped; angle brackets are literal.
-    LITERALS_RE = /<\|"\|>/.freeze
+    LITERALS_RE = /<\|"\|>/
 
     # Gemma 4's thought channel, as a whole block: `<|channel>thought` to its
     # `<channel|>` close, or to the end of the text when the close is missing
     # (ToolCallParser::Gemma strips the same pair). Removing only the marker
     # would leave the model's private reasoning in the answer; the channel is
     # the profile's thinking lane, not output.
-    GEMMA_THOUGHT_RE = /<\|\w*channel>thought.*?(?:<channel\|>|\z)/m.freeze
+    GEMMA_THOUGHT_RE = /<\|\w*channel>thought.*?(?:<channel\|>|\z)/m
 
     # Qwen prompt-literal placeholders, e.g. </think>.
-    PROMPT_LITERALS = /\[\[SAMAGOTCHI_LITERAL_[A-Z_]+\]\]/.freeze
+    PROMPT_LITERALS = /\[\[SAMAGOTCHI_LITERAL_[A-Z_]+\]\]/
 
     # Qwen3.6 thinking blocks: <think>...</think> (including empty)
-    QWEN_THINK_RE = /<think>.*?<\/think>/m.freeze
+    QWEN_THINK_RE = %r{<think>.*?</think>}m
     # Qwen tool_call XML blocks that survive when a tool call is rendered as text
     # e.g. <tool_call>\n<function=list_reminders>\n</function>\n</tool_call>
-    QWEN_TOOL_CALL_RE = /<tool_call>.*?<\/tool_call>/m.freeze
+    QWEN_TOOL_CALL_RE = %r{<tool_call>.*?</tool_call>}m
 
     module_function
 
@@ -80,7 +80,7 @@ module Samagotchi
         .gsub(/[ \t]+/, " ")
         .gsub(/ *\n */, "\n")
         .strip
-      cleaned.empty? ? '' : cleaned
+      cleaned.empty? ? "" : cleaned
     end
 
     # The same tokens as #strip, but the text keeps its layout (indentation,
@@ -92,15 +92,15 @@ module Samagotchi
 
     def remove_tokens(text)
       text.to_s
-          .gsub(QWEN_THINK_RE, '')
-          .gsub(GEMMA_THOUGHT_RE, '')
-          .gsub(QWEN_TOOL_CALL_RE, '')
-          .gsub(LITERALS_RE, '')
-          .gsub(INDIVIDUAL_RE, '')
-          .gsub(PROMPT_LITERALS, '')
+          .gsub(QWEN_THINK_RE, "")
+          .gsub(GEMMA_THOUGHT_RE, "")
+          .gsub(QWEN_TOOL_CALL_RE, "")
+          .gsub(LITERALS_RE, "")
+          .gsub(INDIVIDUAL_RE, "")
+          .gsub(PROMPT_LITERALS, "")
           # orphaned closing tags that may remain after block removal
-          .gsub(/<\/?think>/, '')
-          .gsub(/<\/?tool_call>/, '')
+          .gsub(%r{</?think>}, "")
+          .gsub(%r{</?tool_call>}, "")
     end
   end
 end

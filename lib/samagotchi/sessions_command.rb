@@ -176,13 +176,17 @@ module Samagotchi
           end
           # A delegated session points at its parent.
           child = summary[:parent_short_id] ? "  ↳ #{summary[:parent_short_id]}" : ""
-          flag = summary[:scratch] ? " [scratch]" : (summary[:test_run] ? " [test]" : "")
+          flag = if summary[:scratch]
+                   " [scratch]"
+                 else
+                   (summary[:test_run] ? " [test]" : "")
+                 end
           flag += " [archived]" if summary[:archived]
           ctx = Samagotchi::SessionMetrics.context_label(summary[:ctx_pct])
           @stdout.puts "#{summary[:id]}  #{state.ljust(8)}  #{ctx.ljust(8)}  #{summary[:updated_at]}  #{desc}#{flag}#{child}"
         end
         if project
-          @stdout.puts "#{summaries.empty? ? "" : "\n"}#{scope_note.call(summaries.size)}"
+          @stdout.puts "#{"\n" unless summaries.empty?}#{scope_note.call(summaries.size)}"
         else
           @stdout.puts summaries.empty? ? "No sessions." : "\n#{summaries.size} session(s)"
         end
@@ -205,7 +209,11 @@ module Samagotchi
       end
       # A delegated session points at its parent: ↳ <parent's short id>.
       row = lambda do |s|
-        flag = s.scratch ? " [scratch]" : (s.test_run ? " [test]" : "")
+        flag = if s.scratch
+                 " [scratch]"
+               else
+                 (s.test_run ? " [test]" : "")
+               end
         flag += " [archived]" if s.archived
         child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
         # How full the context was after the last turn: "ctx 12%", blank when unknown.
@@ -223,7 +231,7 @@ module Samagotchi
       end
       if project
         sessions.each { |s| @stdout.puts row.call(s) }
-        @stdout.puts "#{sessions.empty? ? "" : "\n"}#{scope_note.call(sessions.size)}"
+        @stdout.puts "#{"\n" unless sessions.empty?}#{scope_note.call(sessions.size)}"
       elsif sessions.empty?
         @stdout.puts "No sessions."
       else
@@ -277,7 +285,7 @@ module Samagotchi
           next false
         rescue Samagotchi::SessionManager::RestartRefused => e
           @stdout.flush
-          @stderr.puts e.reason == :not_running || e.reason == :unsupported ? e.message : "session #{id}: #{e.message}"
+          @stderr.puts %i[not_running unsupported].include?(e.reason) ? e.message : "session #{id}: #{e.message}"
           next false
         rescue ArgumentError => e
           @stdout.flush

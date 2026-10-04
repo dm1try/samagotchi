@@ -44,7 +44,7 @@ RSpec.describe Samagotchi::EditPreview do
       expect(described_class.for(name: "edit", path: path, old_text: "nope", new_text: "x"))
         .to eq(error: "old text not found in #{path}")
       expect(described_class.for(name: "edit", path: File.join(@dir, "missing"), old_text: "a", new_text: "b"))
-        .to eq(error: "file not found: #{File.join(@dir, 'missing')}")
+        .to eq(error: "file not found: #{File.join(@dir, "missing")}")
       expect(described_class.for(name: "write", path: path, content: nil)).to eq(error: "missing content")
     end
 

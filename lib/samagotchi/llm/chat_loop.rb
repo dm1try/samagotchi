@@ -452,10 +452,10 @@ module Samagotchi
 
         # The request runs under the generation's own controller (the turn
         # controller's child), so a plugin's stop_generation cuts it alone.
-        def with_generation(&block)
+        def with_generation(&)
           return yield(nil) unless @cancel_controller
 
-          @cancel_controller.generation(&block)
+          @cancel_controller.generation(&)
         end
 
         # The empty response of a cut generation: its spinners close as any

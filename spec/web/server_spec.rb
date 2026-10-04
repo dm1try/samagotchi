@@ -55,7 +55,7 @@ RSpec.describe Samagotchi::Web::Server do
     allow(described_class).to receive(:system).and_raise(Errno::ENOENT, "open")
 
     expect { described_class.open_url("http://127.0.0.1:4567/") }
-      .to output(/Failed to open browser: .*open — please open http:\/\/127.0.0.1:4567\/ manually/).to_stderr
+      .to output(%r{Failed to open browser: .*open — please open http://127.0.0.1:4567/ manually}).to_stderr
   end
 
   # The hub logs nothing of its own: the web log's start and stop lines

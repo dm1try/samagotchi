@@ -12,7 +12,7 @@ RSpec.describe "The guardrails bundle's rules" do
   let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/guardrails", __dir__) }
   let(:mode) { "auto" }
   let(:rules) do
-    doc = YAML.safe_load(File.read(File.join(bundle_dir, "guardrails", "rules.yml")))
+    doc = YAML.safe_load_file(File.join(bundle_dir, "guardrails", "rules.yml"))
     Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(doc["rules"], source: "bundle guardrails"),
                                       mode: mode)
   end
@@ -182,7 +182,7 @@ RSpec.describe "The guardrails bundle's rules" do
   end
 
   it "has a manifest whose file checksums match" do
-    manifest = YAML.safe_load(File.read(File.join(bundle_dir, "manifest.yml")))
+    manifest = YAML.safe_load_file(File.join(bundle_dir, "manifest.yml"))
     manifest["files"].each do |file, sha|
       expect(sha).to eq("sha256:#{Digest::SHA256.hexdigest(File.read(File.join(bundle_dir, file)))}")
     end
@@ -194,7 +194,7 @@ end
 RSpec.describe "The guardrails bundle's small-model rules" do
   let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/guardrails", __dir__) }
   let(:rules) do
-    doc = YAML.safe_load(File.read(File.join(bundle_dir, "guardrails", "small-models.yml")))
+    doc = YAML.safe_load_file(File.join(bundle_dir, "guardrails", "small-models.yml"))
     Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(doc["rules"], source: "bundle guardrails"))
   end
   let(:repo) { File.realpath(Dir.mktmpdir("shipped-small-rules")).tap { |d| system("git", "-C", d, "init", "-q") } }
@@ -255,7 +255,7 @@ RSpec.describe "The guardrails bundle's small-model rules" do
   # deny every call, so the bundle must not install there.
   # (requires_chi becomes ">= 0.20.0" with the release that ships skip_read_only.)
   it "needs a chi that knows models:, git: and skip_read_only:, which this one is" do
-    manifest = YAML.safe_load(File.read(File.join(bundle_dir, "manifest.yml")))
+    manifest = YAML.safe_load_file(File.join(bundle_dir, "manifest.yml"))
     requirement = Gem::Requirement.new(manifest["requires_chi"])
     expect(requirement).not_to be_satisfied_by(Gem::Version.new("0.8.0"))
     expect(requirement).not_to be_satisfied_by(Gem::Version.new("0.17.0"))

@@ -22,7 +22,8 @@ module Samagotchi
     # command goes through the runner, and the dirs are injectable, so specs
     # (and smokes with register: false) never touch the real system.
     class MacOS
-      Error = Class.new(StandardError)
+      class Error < StandardError
+      end
 
       APP_NAME = "Chi Helper"
       BUNDLE_ID = "dev.samagotchi.chi-helper"
@@ -166,9 +167,9 @@ module Samagotchi
       end
 
       # Keeps the login item as it was.
-      def upgrade(&progress)
+      def upgrade(&)
         was_login = installed? && login == "enabled"
-        install(force: true, login: was_login, &progress)
+        install(force: true, login: was_login, &)
       end
 
       # SMAppService status as the app reports it ("enabled",
@@ -212,7 +213,7 @@ module Samagotchi
         env = launch["env"].is_a?(Hash) ? launch["env"] : {}
         dump, = @runner.run([PBS, "-dump"])
         _, running = @runner.run(["pgrep", "-x", EXECUTABLE])
-        hotkey = (JSON.parse(File.read(hotkey_path)) rescue nil)
+        hotkey = JSON.parse(File.read(hotkey_path)) rescue nil
         result.merge(
           app_version: app_version,
           login: login,

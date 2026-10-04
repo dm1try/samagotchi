@@ -47,7 +47,7 @@ module Samagotchi
       return text.to_sym if LEVELS.include?(text.to_sym)
 
       hint = value == true || %w[true on].include?(text) ? "; `on` isn't one, `default` leaves it to the model" : ""
-      ConfigFile.warn_once "Warning: #{where}: thinking must be one of #{LEVELS.join(', ')}#{hint}; ignored"
+      ConfigFile.warn_once "Warning: #{where}: thinking must be one of #{LEVELS.join(", ")}#{hint}; ignored"
       nil
     end
 

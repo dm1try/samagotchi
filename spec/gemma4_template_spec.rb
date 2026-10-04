@@ -18,7 +18,7 @@ RSpec.describe "Gemma 4 native prompt vs the chat template" do
 
   def conversation(think:, upto: nil)
     messages = [
-      { role: "system", content: "#{think ? "<|think|>\n" : ""}You are chi. Use tools when needed." },
+      { role: "system", content: "#{"<|think|>\n" if think}You are chi. Use tools when needed." },
       { role: "user", content: "What is in notes.txt?" },
       { role: "model", content: "<|channel>thought\nI should read it.\n<channel|><|tool_call>call:read{path:<|\"|>notes.txt<|\"|>}<tool_call|>" },
       { role: "tool_response", content: "[read]\n1: buy milk" },

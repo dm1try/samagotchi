@@ -13,7 +13,7 @@ require "samagotchi/answer_display"
 # issues, …) the model's answer mentions as one line after the turn.
 RSpec.describe "The source-links bundle" do
   let(:bundle_dir) { File.expand_path("../../../lib/samagotchi/bundles/source-links", __dir__) }
-  let(:manifest) { YAML.safe_load(File.read(File.join(bundle_dir, "manifest.yml"))) }
+  let(:manifest) { YAML.safe_load_file(File.join(bundle_dir, "manifest.yml")) }
   let(:settings) do
     {
       "sources" => [
@@ -30,7 +30,7 @@ RSpec.describe "The source-links bundle" do
 
     registry.runtime = Samagotchi::Hooks::Runtime.new(
       notify: ->(**kw) { notices << kw },
-      ask_user: ->(**) { nil },
+      ask_user: ->(**) {},
       stop_turn: ->(**) { false }
     )
     registry

@@ -22,7 +22,7 @@ module Samagotchi
         FileUtils.mkdir_p(File.dirname(path))
         File.write(path, content)
         "Written #{content.bytesize} bytes to #{path}"
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
     end

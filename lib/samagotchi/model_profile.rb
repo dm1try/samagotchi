@@ -17,10 +17,13 @@ module Samagotchi
     MODEL_FROM_CLI_ENV = "SAMAGOTCHI_DEFAULT_MODEL_FROM_CLI"
     # No model anywhere (--model, default.model in config.yml, the env): a
     # first run before any config. An ArgumentError, as before.
-    MissingModel = Class.new(ArgumentError)
+    class MissingModel < ArgumentError
+    end
+
     # A host-qualified model whose host isn't configured (a MissingModel,
     # so every surface that reports a missing model reports it the same way).
-    UnknownHost = Class.new(MissingModel)
+    class UnknownHost < MissingModel
+    end
 
     # Gemma 4 thinks in a channel: `<|channel>thought` … `<channel|>`. The
     # one source for the parser, the stream splitter, the literal guard and
@@ -172,8 +175,8 @@ module Samagotchi
 
       names = hosts.keys.map { |k| k.to_s.downcase }.sort
       near = Samagotchi::Config.near_names(host, names).first(3)
-      hint = near.empty? ? "" : " (did you mean #{near.map { |n| "'#{n}'" }.join(' or ')}?)"
-      raise UnknownHost, "unknown host '#{host}' in model '#{ref}'#{hint}; the configured hosts are #{names.join(', ')}"
+      hint = near.empty? ? "" : " (did you mean #{near.map { |n| "'#{n}'" }.join(" or ")}?)"
+      raise UnknownHost, "unknown host '#{host}' in model '#{ref}'#{hint}; the configured hosts are #{names.join(", ")}"
     end
 
     # The prefix of "box:x" when box is a host config.yml has with
@@ -276,7 +279,7 @@ module Samagotchi
       FINGERPRINTS.each do |name, markers|
         return [name, markers.join(" + ")] if markers.all? { |marker| template.include?(marker) }
       end
-      return ["qwen36", "ChatML"] if template.include?("<|im_start|>")
+      return %w[qwen36 ChatML] if template.include?("<|im_start|>")
 
       nil
     end
@@ -342,7 +345,7 @@ module Samagotchi
 
     def self.configured(value, where)
       profile = named(value)
-      Log.warn(:config, "unknown_profile", echo: "Warning: unknown profile #{value.to_s.inspect} in #{where} (allowed: #{NAMES.join(', ')}) — ignored", profile: value.to_s, where: where) unless profile
+      Log.warn(:config, "unknown_profile", echo: "Warning: unknown profile #{value.to_s.inspect} in #{where} (allowed: #{NAMES.join(", ")}) — ignored", profile: value.to_s, where: where) unless profile
       profile
     end
     private_class_method :configured

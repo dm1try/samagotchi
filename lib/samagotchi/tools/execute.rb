@@ -67,7 +67,7 @@ module Samagotchi
         stopped_result("Error: command timed out after #{timeout_sec}s\n#{TIMEOUT_HINT}", e)
       rescue CommandCancelled => e
         stopped_result("Error: command stopped by the user after #{e.elapsed.round}s (killed; rerun it if still needed)", e)
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 
@@ -221,9 +221,7 @@ module Samagotchi
         signal_process(pid, "TERM")
 
         deadline = monotonic_time + STOP_GRACE_SEC
-        while process_alive?(pid) && monotonic_time < deadline
-          sleep(STOP_POLL_INTERVAL_SEC)
-        end
+        sleep(STOP_POLL_INTERVAL_SEC) while process_alive?(pid) && monotonic_time < deadline
 
         signal_process(pid, "KILL") if process_alive?(pid)
       end

@@ -230,8 +230,8 @@ module Samagotchi
         if Events::TURN_END.include?(type)
           @turn = nil
           @merged_origins = []
-        else
-          @turn[:event_seq] = event[:event_seq] if event[:event_seq]
+        elsif event[:event_seq]
+          @turn[:event_seq] = event[:event_seq]
         end
       end
 

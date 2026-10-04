@@ -8,7 +8,7 @@ RSpec.describe Samagotchi::SessionObserver do
   let(:observer) { described_class.new }
 
   def collecting
-    Array.new.tap do |arr|
+    [].tap do |arr|
       arr << ->(event) { arr << event }
     end
   end
@@ -104,7 +104,7 @@ RSpec.describe Samagotchi::SessionObserver do
       observer.notify(type: :before)
       handle.unsubscribe
       observer.notify(type: :after)
-      expect(keep.map { |e| e[:type] }).to eq([:before, :after])
+      expect(keep.map { |e| e[:type] }).to eq(%i[before after])
       expect(drop.map { |e| e[:type] }).to eq([:before])
     end
 

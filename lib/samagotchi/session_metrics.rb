@@ -137,9 +137,9 @@ module Samagotchi
 
       tokens = data["tokens"].is_a?(Hash) ? data["tokens"] : {}
       count = ->(key) { tokens[key].is_a?(Numeric) ? tokens[key] : 0 }
-      SavedSummary.new(ctx_pct: saved_pct(data["context"]), prompt_sum: count.("prompt_sum"),
-                       completion_sum: count.("completion_sum"), cached_sum: count.("cached_sum"),
-                       reasoning_sum: count.("reasoning_sum"), cost_sum: count.("cost_sum"))
+      SavedSummary.new(ctx_pct: saved_pct(data["context"]), prompt_sum: count.call("prompt_sum"),
+                       completion_sum: count.call("completion_sum"), cached_sum: count.call("cached_sum"),
+                       reasoning_sum: count.call("reasoning_sum"), cost_sum: count.call("cost_sum"))
     rescue JSON::ParserError, SystemCallError, TypeError
       nil
     end
@@ -379,15 +379,15 @@ module Samagotchi
     # Caller holds the mutex.
     def tokens_block(totals, turn)
       add = ->(key) { totals[key] + (turn&.public_send(key) || 0) }
-      decode_ms = add.(:decode_ms_sum)
-      decode_tokens = add.(:decode_tokens_sum)
+      decode_ms = add.call(:decode_ms_sum)
+      decode_tokens = add.call(:decode_tokens_sum)
       speed_turn = turn&.last_decode_tps ? turn : nil
       {
-        prompt_sum: add.(:prompt_sum),
-        completion_sum: add.(:completion_sum),
-        cached_sum: add.(:cached_sum),
-        reasoning_sum: add.(:reasoning_sum),
-        cost_sum: add.(:cost_sum),
+        prompt_sum: add.call(:prompt_sum),
+        completion_sum: add.call(:completion_sum),
+        cached_sum: add.call(:cached_sum),
+        reasoning_sum: add.call(:reasoning_sum),
+        cost_sum: add.call(:cost_sum),
         decode_ms_sum: decode_ms.round,
         decode_tokens_sum: decode_tokens,
         avg_decode_tps: decode_ms.positive? ? (decode_tokens * 1000.0 / decode_ms).round(1) : nil,

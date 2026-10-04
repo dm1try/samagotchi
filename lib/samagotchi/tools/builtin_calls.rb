@@ -87,7 +87,7 @@ module Samagotchi
         # one of its keys must be a property; the rest must all be.
         unknown = ([path_key].compact + Array(o[:verbatim]) + Array(o[:also]) + o.fetch(:aliases, {}).keys) - properties
         unknown << content_keys.join("/") unless content_keys.empty? || content_keys.intersect?(properties)
-        raise ArgumentError, "#{name}: overrides name no schema property: #{unknown.join(', ')}" unless unknown.empty?
+        raise ArgumentError, "#{name}: overrides name no schema property: #{unknown.join(", ")}" unless unknown.empty?
         raise ArgumentError, "#{name}: a property would replace the call's name" if fields.include?("name")
 
         Row.new(name: name, content_keys: content_keys, path_key: path_key, fields: fields,

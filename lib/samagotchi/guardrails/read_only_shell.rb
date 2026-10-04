@@ -167,7 +167,7 @@ module Samagotchi
         program = nil
         until rest.empty?
           arg = rest.shift
-          if arg == "-F" || arg == "-v" then rest.shift
+          if ["-F", "-v"].include?(arg) then rest.shift
           elsif arg.match?(/\A-[Fv]./m) then next
           elsif arg == "--" then program = rest.shift
           elsif arg.start_with?("-") then return false

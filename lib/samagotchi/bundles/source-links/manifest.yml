@@ -8,7 +8,7 @@ files:
   source_links.md: sha256:aebd37f1e25491780994ecc4afc20ed6e8db32b724dc038302bb050177efada8
 hooks:
   source_links.rb:
-    sha256: sha256:a26903c25fe60193199081b74c0722fa37570c957db610e23fffab01001f861f
+    sha256: sha256:630b54c39088f093d384ff052d1f27d48bea3e0c795a573d8bda0d1d97a9a4fc
     event: after_turn
     on_error: log
     priority: 90

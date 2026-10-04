@@ -239,7 +239,11 @@ RSpec.describe "Turn policy characterization" do
   define_method(:diff_shape) do |diffs|
     return nil if diffs.nil?
 
-    diffs.is_a?(Array) ? diffs.map { |diff| diff ? :diff : nil } : :diff
+    if diffs.is_a?(Array)
+      diffs.map { |diff| diff ? :diff : nil }
+    else
+      :diff
+    end
   end
 
   define_method(:observe) do |row, kernel, result, events, requests|
@@ -274,11 +278,11 @@ RSpec.describe "Turn policy characterization" do
 
   # ── the table ────────────────────────────────────────────────────────────
   # The result's fields: text, empty_answer?, canceled?, cancellation_reason, exhausted?.
-  res = ->(text, empty: false, canceled: false, reason: nil, exhausted: false) do
+  res = lambda do |text, empty: false, canceled: false, reason: nil, exhausted: false|
     { text: text, empty: empty, canceled: canceled, reason: reason, exhausted: exhausted }
   end
   answered = ["gen", "done", "retry 1/1", "gen", "done"]
-  merged = ->(answer, count: 1, steers: nil) do
+  merged = lambda do |answer, count: 1, steers: nil|
     ["gen", "done", "merged(count=#{count} answer=#{answer.inspect}#{" steers=#{steers}" if steers})", "gen", "done"]
   end
   line_at_first = [{ on: :generation_completed, iteration: 1, items: ["user line"] }]
@@ -286,7 +290,7 @@ RSpec.describe "Turn policy characterization" do
 
   rows = [
     { name: "empty answer, then an answer", steps: [[:thought], [:text, "PONG"]],
-      expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
+      expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, 0.6], activity: [] } },
     # Neither loop keeps an empty generation (result.empty_steps has them,
     # for the UIs); the native loop drops the last nudge, the chat loop
@@ -295,84 +299,84 @@ RSpec.describe "Turn policy characterization" do
     { name: "empty answer past the budget", env: { "SAMAGOTCHI_RETRY_EMPTY_ANSWER" => "2" }, steps: [[:thought]],
       expected: { events: ["gen", "done", "retry 1/2", "gen", "done", "retry 2/2", "gen", "done"],
                   temps: [nil, 0.6, 0.6], activity: [] },
-      native: { conversation: ["user:hi", "system:nudge"], result: res.("", empty: true) },
-      chat: { conversation: ["user:hi", "system:nudge", "system:nudge"], result: res.("", empty: true) } },
+      native: { conversation: ["user:hi", "system:nudge"], result: res.call("", empty: true) },
+      chat: { conversation: ["user:hi", "system:nudge", "system:nudge"], result: res.call("", empty: true) } },
     { name: "retry.empty_answer 0", env: { "SAMAGOTCHI_RETRY_EMPTY_ANSWER" => "0" }, steps: [[:thought], [:text, "late"]],
-      expected: { events: ["gen", "done"], temps: [nil], activity: [] },
-      native: { conversation: ["user:hi"], result: res.("", empty: true) },
-      chat: { conversation: ["user:hi"], result: res.("", empty: true) } },
+      expected: { events: %w[gen done], temps: [nil], activity: [] },
+      native: { conversation: ["user:hi"], result: res.call("", empty: true) },
+      chat: { conversation: ["user:hi"], result: res.call("", empty: true) } },
     { name: "whitespace-only answer", steps: [[:blank], [:text, "PONG"]],
-      expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
+      expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, 0.6], activity: [] } },
     { name: "whitespace-only answer with a line queued", steps: [[:blank], [:text, "PONG"]], queue: line_at_first,
-      expected: { events: merged.(nil), conversation: ["user:hi", "user:input", "model:PONG"], result: res.("PONG"),
+      expected: { events: merged.call(nil), conversation: ["user:hi", "user:input", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, nil], activity: [] } },
     # Not retried: the window is full (≥ 90 %), not a thinking loop. Neither
     # loop keeps the empty generation.
     { name: "length stop with the context full", env: window, also: %i[finish],
       steps: [[:length, { usage: [950, 10] }], [:text, "late"]],
-      expected: { events: ["gen", "done"], temps: [nil], activity: [], finish: ["generation_completed=\"length\""] },
-      native: { conversation: ["user:hi"], result: res.("", empty: true) },
-      chat: { conversation: ["user:hi"], result: res.("", empty: true) } },
+      expected: { events: %w[gen done], temps: [nil], activity: [], finish: ["generation_completed=\"length\""] },
+      native: { conversation: ["user:hi"], result: res.call("", empty: true) },
+      chat: { conversation: ["user:hi"], result: res.call("", empty: true) } },
     { name: "length stop with room left", env: window, steps: [[:length, { usage: [100, 10] }], [:text, "PONG"]],
-      expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
+      expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, 0.6], activity: [] } },
     { name: "cut, then an answer", steps: [[:cut], [:text, "PONG"]],
       expected: { events: ["gen", "done(stopped)", "retry 1/1 cut", "gen", "done"],
-                  conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"), temps: [nil, 0.6],
+                  conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.call("PONG"), temps: [nil, 0.6],
                   activity: [] } },
     { name: "cut with no budget", env: { "SAMAGOTCHI_RETRY_EMPTY_ANSWER" => "0" }, steps: [[:cut]],
       expected: { events: ["gen", "done(stopped)", "cancelled(hook)"], conversation: ["user:hi"],
-                  result: res.("", canceled: true, reason: :hook), temps: [nil], activity: [] } },
+                  result: res.call("", canceled: true, reason: :hook), temps: [nil], activity: [] } },
     { name: "cut twice", steps: [[:cut], [:cut]],
       expected: { events: ["gen", "done(stopped)", "retry 1/1 cut", "gen", "done(stopped)", "cancelled(hook)"],
-                  conversation: ["user:hi"], result: res.("", canceled: true, reason: :hook), temps: [nil, 0.6],
+                  conversation: ["user:hi"], result: res.call("", canceled: true, reason: :hook), temps: [nil, 0.6],
                   activity: [] } },
     { name: "cut, then Stop", steps: [[:cut], [:text, "PONG"]], stop_after_cut: true,
       expected: { events: ["gen", "done(stopped)", "cancelled(user)"], conversation: ["user:hi"],
-                  result: res.("", canceled: true, reason: :user), temps: [nil], activity: [] } },
+                  result: res.call("", canceled: true, reason: :user), temps: [nil], activity: [] } },
     { name: "cut with a line queued", steps: [[:cut], [:text, "PONG"]], queue: line_at_first,
       expected: { events: ["gen", "done(stopped)", "merged(count=1 answer=nil)", "gen", "done"],
-                  conversation: ["user:hi", "user:input", "model:PONG"], result: res.("PONG"), temps: [nil, nil],
+                  conversation: ["user:hi", "user:input", "model:PONG"], result: res.call("PONG"), temps: [nil, nil],
                   activity: [] } },
     { name: "user line queued at an empty answer", steps: [[:thought], [:text, "PONG"]], queue: line_at_first,
-      expected: { events: merged.(nil), conversation: ["user:hi", "user:input", "model:PONG"], result: res.("PONG"),
+      expected: { events: merged.call(nil), conversation: ["user:hi", "user:input", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, nil], activity: [] } },
     { name: "user line queued at an answer", steps: [[:text, "A"], [:text, "B"]], queue: line_at_first,
-      expected: { events: merged.("A"), conversation: ["user:hi", "model:A", "user:input", "model:B"], result: res.("B"),
+      expected: { events: merged.call("A"), conversation: ["user:hi", "model:A", "user:input", "model:B"], result: res.call("B"),
                   temps: [nil, nil], activity: [] } },
     { name: "steer at an empty answer", steps: [[:thought], [:text, "PONG"]],
       queue: [{ on: :generation_completed, iteration: 1, items: [{ text: "steer", source: "check-in" }] }],
-      expected: { events: merged.(nil, count: 0, steers: 1), conversation: ["user:hi", "user:steer", "model:PONG"],
-                  result: res.("PONG"), temps: [nil, nil], activity: [] } },
+      expected: { events: merged.call(nil, count: 0, steers: 1), conversation: ["user:hi", "user:steer", "model:PONG"],
+                  result: res.call("PONG"), temps: [nil, nil], activity: [] } },
     { name: "steer at an answer", steps: [[:text, "A"], [:text, "B"]],
       queue: [{ on: :generation_completed, iteration: 1, items: [{ text: "steer", source: "check-in" }] }],
-      expected: { events: ["gen", "done"], conversation: ["user:hi", "model:A"], result: res.("A"), temps: [nil],
+      expected: { events: %w[gen done], conversation: ["user:hi", "model:A"], result: res.call("A"), temps: [nil],
                   activity: [] } },
     # Native formats the next prompt and starts a generation before the
     # request sees the Stop; chat checks first.
     { name: "Stop between two tool calls", drift: "#13", stop_between_calls: true,
       steps: [[:calls, ["probe", { what: "a" }], ["probe", { what: "b" }]], [:text, "late"]],
-      expected: { result: res.("", canceled: true, reason: :user), temps: [nil], activity: %w[probe probe] },
+      expected: { result: res.call("", canceled: true, reason: :user), temps: [nil], activity: %w[probe probe] },
       native: { events: ["gen", "done", "tools(2)", "tool:probe", "tool:probe", "gen", "cancelled(user)"],
                 conversation: ["user:hi", "model:", "tool_response"] },
       chat: { events: ["gen", "done", "tools(2)", "tool:probe", "tool:probe", "cancelled(user)"],
               conversation: ["user:hi", "model+calls:", "tool_response", "tool_response"] } },
     { name: "max_iterations on tool calls", max_iterations: 2, steps: [[:calls, ["probe", { what: "a" }]]],
       expected: { events: ["gen", "done", "tools(1)", "tool:probe", "gen", "done", "tools(1)", "tool:probe"],
-                  result: res.("", exhausted: true), temps: [nil, nil], activity: %w[probe probe] },
+                  result: res.call("", exhausted: true), temps: [nil, nil], activity: %w[probe probe] },
       native: { conversation: ["user:hi", "model:", "tool_response", "model:", "tool_response"] },
       chat: { conversation: ["user:hi", "model+calls:", "tool_response", "model+calls:", "tool_response"] } },
     { name: "max_iterations on a merge", drift: "#14", max_iterations: 1, steps: [[:text, "A"]], queue: line_at_first,
       expected: { events: ["gen", "done", "merged(count=1 answer=\"A\")"], conversation: ["user:hi", "model:A", "user:input"],
                   temps: [nil], activity: [] },
-      native: { result: res.("A") },
-      chat: { result: res.("A", exhausted: true) } },
+      native: { result: res.call("A") },
+      chat: { result: res.call("A", exhausted: true) } },
     # Formats, not drift: native joins a batch's results into one entry
     # (with per-call image counts and diffs), chat answers each call.
     { name: "a batch with an image and an edit", also: %i[tool_shapes],
       steps: [[:calls, ["shots", {}], ["write", { path: "%{dir}/out.txt", content: "hello" }]], [:text, "done"]],
-      expected: { events: ["gen", "done", "tools(2)", "tool:shots", "tool:write", "gen", "done"], result: res.("done"),
+      expected: { events: ["gen", "done", "tools(2)", "tool:shots", "tool:write", "gen", "done"], result: res.call("done"),
                   temps: [nil, nil], activity: %w[shots write] },
       native: { conversation: ["user:hi", "model:", "tool_response", "model:done"],
                 tool_shapes: [{ keys: %i[image_counts images tool_diffs], images: 1, image_counts: [1, 0],
@@ -382,7 +386,7 @@ RSpec.describe "Turn policy characterization" do
                             { keys: %i[tool_call_id tool_diffs], images: 0, diffs: :diff }] } },
     { name: "a dispatcher that raises", raising_dispatch: true,
       steps: [[:calls, ["probe", { what: "a" }]], [:text, "done"]],
-      expected: { events: ["gen", "done", "tools(1)", "tool:probe", "gen", "done"], result: res.("done"), temps: [nil, nil],
+      expected: { events: ["gen", "done", "tools(1)", "tool:probe", "gen", "done"], result: res.call("done"), temps: [nil, nil],
                   activity: [] },
       native: { conversation: ["user:hi", "model:", "tool_response", "model:done"] },
       chat: { conversation: ["user:hi", "model+calls:", "tool_response", "model:done"] } },
@@ -391,9 +395,9 @@ RSpec.describe "Turn policy characterization" do
     { name: "usage crossing 40%", env: window, prompt: "x" * 2000, also: %i[ctx_display],
       steps: [[:text, "ok", { usage: [500, 10] }]],
       expected: { events: ["ctx(40plus)", "gen", "done"], conversation: ["user:xxxxxxxxxxxx", "system:context", "model:ok"],
-                  result: res.("ok"), temps: [nil], activity: [], ctx_display: "40plus" } },
+                  result: res.call("ok"), temps: [nil], activity: [], ctx_display: "40plus" } },
     { name: "finish_reason on the events", also: %i[finish], steps: [[:thought], [:text, "PONG"]],
-      expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
+      expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, 0.6], activity: [],
                   finish: ["generation_completed=\"stop\"", "empty_answer_retry=\"stop\"", "generation_completed=\"stop\""] } }
   ]

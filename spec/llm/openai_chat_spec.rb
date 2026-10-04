@@ -492,10 +492,10 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       server.enqueue("/v1/chat/completions", sse: FakeProviderServer.sse_events(FakeProviderServer.fixture("text_stream.sse")).first(3),
                                              hold: true)
 
-      expect {
+      expect do
         adapter.chat(messages: messages, tools: [], model: "m", cancel_controller: controller,
                      on_delta: ->(**) { controller.cancel!(:ctrl_c) })
-      }.to raise_error(Samagotchi::LLM::RequestCancelled)
+      end.to raise_error(Samagotchi::LLM::RequestCancelled)
     end
   end
 

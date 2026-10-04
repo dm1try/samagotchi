@@ -114,7 +114,7 @@ RSpec.describe Samagotchi::Commands::Registry do
       expect(["quit", "exit now", "/exit --force", "/archive now", "/model", "no exit"].map { |line| builtins.lookup_local(line) })
         .to all(be_nil)
       expect(builtins.lookup("/exit")).to be_nil
-      expect(%w[/exit\ --delete EXIT\ --DELETE /quit\ --delete].map { |l| Samagotchi::SessionCommands.delete_on_exit?(l) }).to all(be(true))
+      expect(["/exit --delete", "EXIT --DELETE", "/quit --delete"].map { |l| Samagotchi::SessionCommands.delete_on_exit?(l) }).to all(be(true))
       expect(Samagotchi::SessionCommands.delete_on_exit?("/exit")).to be(false)
     end
 

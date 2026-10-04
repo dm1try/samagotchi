@@ -18,7 +18,7 @@ module Samagotchi
     # port answers at once instead of after chi's usual backoff.
     class Probe
       # The ports `chi bootstrap` with no target tries on localhost.
-      LOCAL_PORTS = { 8080 => "llama.cpp", 11434 => "Ollama", 1234 => "LM Studio", 8000 => "vLLM" }.freeze
+      LOCAL_PORTS = { 8080 => "llama.cpp", 11_434 => "Ollama", 1234 => "LM Studio", 8000 => "vLLM" }.freeze
       DEFAULT_PORT = 8080
       # Connect and read seconds for /props and /v1/models: a remote https
       # handshake needs more than Client#server_props' 1 s / 2 s.

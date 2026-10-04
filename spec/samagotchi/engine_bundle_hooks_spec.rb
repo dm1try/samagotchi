@@ -66,9 +66,9 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     bad_path = File.join(bundles_dir, "broken-hooks", "hooks", "bad.rb")
     File.write(bad_path, "raise \"boom during load\"")
     engine = nil
-    expect {
+    expect do
       engine = described_class.new(client: client)
-    }.to output(/broken-hooks.*not loaded: its sha256/).to_stderr
+    end.to output(/broken-hooks.*not loaded: its sha256/).to_stderr
     expect(engine.guardrail_failures.list.map(&:what)).to eq(["hook bad.rb (bundle broken-hooks)"])
   end
 
@@ -80,17 +80,17 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
   it "prints experimental warning for experimental bundle and stays quiet for reviewed" do
     src_exp = write_bundle("exp-bundle", { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }) # no trust_level => experimental
     Samagotchi::MemoryBundle::Installer.new(source: src_exp, name: "exp-bundle", scope: "system", force: false, strict: true).run
-    expect {
+    expect do
       described_class.new(client: client)
-    }.to output(/exp-bundle.*experimental/).to_stderr
+    end.to output(/exp-bundle.*experimental/).to_stderr
 
     # Clean and test reviewed is quiet
     FileUtils.rm_rf(File.join(bundles_dir, "exp-bundle"))
     src_rev = write_bundle("rev-bundle", { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, trust_level: "reviewed")
     Samagotchi::MemoryBundle::Installer.new(source: src_rev, name: "rev-bundle", scope: "system", force: false, strict: true).run
-    expect {
+    expect do
       described_class.new(client: client)
-    }.not_to output(/experimental/).to_stderr
+    end.not_to output(/experimental/).to_stderr
   end
 
   it "guardrail fires on turn 2, not just turn 1 (survives ensure clear_hooks — Policy 4 regression)" do
@@ -126,8 +126,8 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     Samagotchi::MemoryBundle::Installer.new(source: src, name: "trust-e2e", scope: "system", force: false, strict: true).run
     prov = Samagotchi::MemoryBundle::Provenance.new(name: "trust-e2e")
     expect(prov.read[:trust_level]).to eq("experimental")
-    expect {
+    expect do
       described_class.new(client: client)
-    }.to output(/trust-e2e.*experimental/).to_stderr
+    end.to output(/trust-e2e.*experimental/).to_stderr
   end
 end

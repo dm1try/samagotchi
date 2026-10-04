@@ -107,7 +107,7 @@ module Samagotchi
         def candidate(word)
           word = word.sub(REDIRECT_PREFIX, "")
           word = word.split("=", 2).last if word.match?(/\A(--?[\w-]+|[A-Za-z_]\w*)=/)
-          return nil if word.empty? || word == "-" || word.match?(/\A-[^\/]/)
+          return nil if word.empty? || word == "-" || word.match?(%r{\A-[^/]})
 
           word
         end
@@ -124,7 +124,7 @@ module Samagotchi
         end
 
         def expand(word)
-          word = word.sub(/\A~(?=\/|\z)/) { @home }
+          word = word.sub(%r{\A~(?=/|\z)}) { @home }
           word = word.sub(EXPANSION) { value(Regexp.last_match(1) || Regexp.last_match(2)) || "$" }
           return nil if word.include?("$") || word.start_with?("~")
 

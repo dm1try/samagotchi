@@ -93,27 +93,27 @@ RSpec.describe "Engine recap on a configured host", :recap do
 
     it "warns about an invalid recap.sentences and keeps the recap on with 2-4" do
       engine = nil
-      expect {
+      expect do
         engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                                         recap: { host_ref: "box", model: "box:small", sentences: "12" })
-      }.to output(/invalid value for recap.sentences: "12" — using 2-4/).to_stderr
+      end.to output(/invalid value for recap.sentences: "12" — using 2-4/).to_stderr
       expect(engine.recap.sentences).to eq([2, 4])
     end
 
     it "still warns and stays off for an incomplete explicit config" do
-      expect {
+      expect do
         engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m", recap: { host_ref: "box" })
         expect(engine.recap).to be_nil
-      }.to output(/base_url\/model are missing/).to_stderr
+      end.to output(%r{base_url/model are missing}).to_stderr
     end
   end
 
   describe "with a bare recap model id (no host)" do
     it "sends it to the host a bare --model goes to (the default host)" do
       engine = nil
-      expect {
+      expect do
         engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big", recap: { model: "small" })
-      }.not_to output.to_stderr
+      end.not_to output.to_stderr
       expect(engine.recap.target).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "small")
     end
 

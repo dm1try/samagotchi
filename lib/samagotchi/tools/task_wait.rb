@@ -52,12 +52,12 @@ module Samagotchi
         end
 
         # Timeout reached — do one final refresh to capture the latest status
-        refreshed, _ = TaskRuntime.get_record(task_id)
+        refreshed, = TaskRuntime.get_record(task_id)
         return format_response(refreshed) unless refreshed.fetch("status") == "running"
 
         output_tail = TaskRuntime.output_tail_lines(refreshed.fetch("output_path"), tail_lines)
         format_response(refreshed, wait_result: "timeout", output_tail: output_tail)
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 

@@ -330,8 +330,8 @@ module Samagotchi
 
     # The session as it was before the message went in (ReplyWait's
     # baseline).
-    def baseline_of(session, **options)
-      ReplyWait.baseline_of(session, **options)
+    def baseline_of(session, **)
+      ReplyWait.baseline_of(session, **)
     end
 
     # A new idle session's first turn, with the images. Its worker's Bridge

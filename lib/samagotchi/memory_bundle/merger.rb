@@ -34,13 +34,13 @@ module Samagotchi
         incoming_digest = Digest::SHA256.hexdigest(File.read(incoming_path))
 
         if current_digest == incoming_digest
-          return :noop
+          :noop
         elsif current_digest == base_digest
-          return :fast_forward
+          :fast_forward
         elsif incoming_digest == base_digest
-          return :keep
+          :keep
         else
-          return :conflict
+          :conflict
         end
       end
 

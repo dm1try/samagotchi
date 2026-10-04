@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::RecapStore do
   end
 
   it "saves nothing and loads nothing with no current session" do
-    none = described_class.new(session_id_lookup: -> { nil }, state_dir_lookup: -> { state_dir })
+    none = described_class.new(session_id_lookup: -> {}, state_dir_lookup: -> { state_dir })
     expect { none.save(state) }.not_to raise_error
     expect(none.load).to be_nil
   end
@@ -133,7 +133,7 @@ RSpec.describe Samagotchi::RecapStore do
     end
 
     it "cuts after dropping the subject phrase, so the task gets the room" do
-      write("The user was testing #{'word ' * 40}")
+      write("The user was testing #{"word " * 40}")
       line = described_class.preview(File.dirname(path))
       expect(line).to start_with("Testing word")
       expect(line.length).to eq(described_class::PREVIEW_CHARS)

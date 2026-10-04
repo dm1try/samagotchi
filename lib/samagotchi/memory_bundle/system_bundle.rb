@@ -110,12 +110,13 @@ module Samagotchi
 
       def skip?
         val = ENV[SKIP_ENV].to_s.strip.downcase
-        val == "1" || val == "true"
+        %w[1 true].include?(val)
       end
 
       # Unparseable versions fall back to the old "any difference upgrades" behaviour.
       def installed_newer?(installed, shipped)
-        installed, shipped = installed.to_s, shipped.to_s
+        installed = installed.to_s
+        shipped = shipped.to_s
         return false unless Gem::Version.correct?(installed) && Gem::Version.correct?(shipped)
 
         Gem::Version.new(installed) > Gem::Version.new(shipped)

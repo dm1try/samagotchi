@@ -193,7 +193,7 @@ module Samagotchi
     def describe(result)
       if result.native?
         build = result.props["build_info"].to_s
-        @stdout.puts("found: llama.cpp at #{result.candidate.root}#{build.empty? ? "" : " (build #{build})"}")
+        @stdout.puts("found: llama.cpp at #{result.candidate.root}#{" (build #{build})" unless build.empty?}")
       else
         @stdout.puts("found: an OpenAI-compatible API at #{result.candidate.base}")
       end
@@ -406,7 +406,7 @@ module Samagotchi
         shown.first(PICK_SHOWN).each_with_index { |item, i| @stdout.puts(format("  %2d) %s", i + 1, item)) }
         more = shown.size - PICK_SHOWN
         @stdout.puts("  … #{more} more: type part of a name to narrow the list") if more.positive?
-        @stdout.print("#{noun} (number#{items.size > PICK_SHOWN ? " or text" : ""}, empty to stop): ")
+        @stdout.print("#{noun} (number#{" or text" if items.size > PICK_SHOWN}, empty to stop): ")
         answer = @stdin.gets.to_s.strip
         return nil if answer.empty?
 

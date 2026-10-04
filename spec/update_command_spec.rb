@@ -100,14 +100,14 @@ RSpec.describe Samagotchi::UpdateCommand do
     %w[loop-guard btw].each { |m| FileUtils.cp_r(File.join(shipped, m), root) }
     core = File.join(root, "core")
     FileUtils.mkdir_p(core)
-    write_core = ->(version, includes) do
+    write_core = lambda do |version, includes|
       File.write(File.join(core, "manifest.yml"), YAML.dump("name" => "core", "version" => version, "includes" => includes))
     end
     write_core.call("0.1.0", %w[loop-guard])
     Samagotchi::MemoryBundle::Profile.install(core, shipped_dir: root)
     write_core.call("0.2.0", %w[loop-guard btw])
 
-    command = ->(*argv) do
+    command = lambda do |*argv|
       out.truncate(0)
       out.rewind
       described_class.new(argv, stdout: out, stderr: err, gem_spec: gem_spec, platform: ->(register:) { helper },

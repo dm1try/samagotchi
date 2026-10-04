@@ -56,7 +56,7 @@ module Samagotchi
     # (or kept, after a cancelled continue turn) is announced and asked.
     def after_turn(result, continue: false, no_interrupt: false)
       outcome = @turn_flow.after_turn(result, continue: continue, no_interrupt: no_interrupt)
-      return unless outcome == :continue_offered || outcome == :continue_cancelled
+      return unless %i[continue_offered continue_cancelled].include?(outcome)
 
       open
     end

@@ -125,12 +125,12 @@ module Samagotchi
 
       # @param hint [String, nil] what to try, added to the summary
       def initialize(message = nil, context_overflow: false, tools_unsupported: false, reasoning_refused: false, hint: nil,
-                     **options)
+                     **)
         @context_overflow = context_overflow
         @tools_unsupported = tools_unsupported
         @reasoning_refused = reasoning_refused
         @hint = hint
-        super(message, **options)
+        super(message, **)
       end
 
       attr_reader :hint

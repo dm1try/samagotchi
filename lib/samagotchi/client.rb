@@ -224,9 +224,7 @@ module Samagotchi
     attr_reader :host_name
 
     # The wire-format strategy for this client's transport.
-    def transport
-      @transport
-    end
+    attr_reader :transport
 
     # Send a raw prompt and return the model's completion text.
     #
@@ -449,7 +447,7 @@ module Samagotchi
                  when :omlx
                    ->(model) { resolve_omlx_model(model) }
                  when :mlx
-                   ->(_model) { nil }
+                   ->(_model) {}
                  end
       Transport.new(name, model_resolver: resolver)
     end

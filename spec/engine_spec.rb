@@ -346,9 +346,9 @@ RSpec.describe Samagotchi::Engine do
       session = make_session
       engine = build_engine(profile: "gemma4")
 
-      expect {
+      expect do
         engine.run_turn(session, "hi", on_event: proc { |_event| raise "boom" })
-      }.not_to raise_error
+      end.not_to raise_error
     end
 
     it "forwards tool_call_completed output and output_truncated to the event sink" do
@@ -508,7 +508,8 @@ RSpec.describe Samagotchi::Engine do
     end
 
     it "delivers identical events to multiple subscribers" do
-      first, second = [], []
+      first = []
+      second = []
       engine = build_engine(profile: "gemma4")
       engine.subscribe(observer: ->(event) { first << event })
       engine.subscribe(observer: ->(event) { second << event })
@@ -527,7 +528,8 @@ RSpec.describe Samagotchi::Engine do
     end
 
     it "stops delivery after unsubscribe but leaves other subscribers intact" do
-      dropped, kept = [], []
+      dropped = []
+      kept = []
       engine = build_engine(profile: "gemma4")
       handle = engine.subscribe(observer: ->(event) { dropped << event })
       engine.subscribe(observer: ->(event) { kept << event })
@@ -538,7 +540,7 @@ RSpec.describe Samagotchi::Engine do
       run_turn_with_kernel_events(engine, session, "hi 2")
 
       expect(dropped.map { |e| e[:type] }).to eq(%i[turn_started generation_started generation_completed turn_completed])
-      expect(kept.map { |e| e[:type] }).to eq((%i[turn_started generation_started generation_completed turn_completed] * 2))
+      expect(kept.map { |e| e[:type] }).to eq(%i[turn_started generation_started generation_completed turn_completed] * 2)
     end
 
     it "isolates a raising observer so the turn completes and others still receive" do
@@ -553,7 +555,8 @@ RSpec.describe Samagotchi::Engine do
     end
 
     it "leaves on_event: un-sequenced while the observer receives a sequenced copy" do
-      on_events, observer_events = [], []
+      on_events = []
+      observer_events = []
       engine = build_engine(profile: "gemma4")
       engine.subscribe(observer: ->(event) { observer_events << event })
       stub_kernel_events

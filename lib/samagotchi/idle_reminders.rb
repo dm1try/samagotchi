@@ -66,9 +66,9 @@ module Samagotchi
       # The callback is responsible for triggering a turn (e.g. SessionManager
       # writes a file, TerminalUI queues input). The engine's run_turn or
       # REPL injection point then picks up and delivers the reminders.
-      if @auto_turn_callback
-        @auto_turn_callback.call(due_names)
-      end
+      return unless @auto_turn_callback
+
+      @auto_turn_callback.call(due_names)
     end
   end
 end

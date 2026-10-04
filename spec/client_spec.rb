@@ -60,7 +60,7 @@ RSpec.describe Samagotchi::Client do
     end
 
     it "defers to an installed model resolver (mlx omits, omlx resolves)" do
-      omitting = described_class.new(:mlx, model_resolver: ->(_m) { nil })
+      omitting = described_class.new(:mlx, model_resolver: ->(_m) {})
       expect(omitting.model_for_payload("anything")).to be_nil
 
       resolving = described_class.new(:omlx, model_resolver: ->(m) { "mlx-community--#{m}" })
@@ -237,7 +237,7 @@ RSpec.describe Samagotchi::Client do
       result = client.complete("prompt", on_chunk: ->(event) { chunks << event[:content] })
 
       expect(result).to eq("Hello")
-      expect(chunks).to eq(["Hel", "lo"])
+      expect(chunks).to eq(%w[Hel lo])
     end
 
     it "names the stream's finish reason on the chunk that carries it" do

@@ -1174,7 +1174,8 @@ module Samagotchi
         Bridge::TurnAccumulator.replay_events(turn).each do |event|
           case event[:type]
           # A new step starts its line over, as live (a join during a hold).
-          when :generation_started then tail, lane = nil, :writing
+          when :generation_started then tail = nil
+                                        lane = :writing
           when :generation_chunk
             tail, lane = event[:thinking].to_s.empty? ? [event[:text], :writing] : [event[:thinking], :thinking]
           when :tool_call_started

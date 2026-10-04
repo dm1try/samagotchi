@@ -131,8 +131,8 @@ module Samagotchi
         end
       end
 
-      def with_surface_lock(&block)
-        @surface.respond_to?(:synchronize) ? @surface.synchronize(&block) : yield
+      def with_surface_lock(&)
+        @surface.respond_to?(:synchronize) ? @surface.synchronize(&) : yield
       end
     end
   end

@@ -16,7 +16,7 @@ RSpec.describe Samagotchi::PendingInputQueue do
     queue.push("second")
     queue.push("third")
 
-    expect(queue.drain).to eq(["first", "second", "third"])
+    expect(queue.drain).to eq(%w[first second third])
     expect(queue).to be_empty
   end
 

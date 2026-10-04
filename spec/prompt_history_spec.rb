@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::PromptHistory do
       FileUtils.mkdir_p(File.dirname(described_class.path))
       File.write(described_class.path, JSON.generate(["one", "two\r\nlines", "  ", " three "]))
 
-      expect(described_class.entries).to eq(["one", "two\nlines", "three"])
+      expect(described_class.entries).to eq(%W[one two\nlines three])
     end
 
     it "falls back to one entry per line for a non-JSON file" do

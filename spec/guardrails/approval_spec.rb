@@ -31,11 +31,11 @@ RSpec.describe Samagotchi::Guardrails::Approval do
 
     it "words each preview kind, with symbol or string keys" do
       text = ->(preview) { described_class.payload(ask, preview: preview)[:question].lines.last }
-      expect(text.(diff.merge(new_file: true, added: 12))).to eq("  change: new file, 12 lines")
-      expect(text.(diff.merge(new_file: true, added: 1))).to eq("  change: new file, 1 line")
-      expect(text.({ error: "old text not found in /x" })).to eq("  change: would fail: old text not found in /x")
-      expect(text.({ skipped: "binary file" })).to eq("  change: not shown (binary file)")
-      expect(text.({ "added" => 2, "removed" => 0 })).to eq("  change: +2 \u22120")
+      expect(text.call(diff.merge(new_file: true, added: 12))).to eq("  change: new file, 12 lines")
+      expect(text.call(diff.merge(new_file: true, added: 1))).to eq("  change: new file, 1 line")
+      expect(text.call({ error: "old text not found in /x" })).to eq("  change: would fail: old text not found in /x")
+      expect(text.call({ skipped: "binary file" })).to eq("  change: not shown (binary file)")
+      expect(text.call({ "added" => 2, "removed" => 0 })).to eq("  change: +2 \u22120")
     end
 
     it "leaves a call without a preview as it was" do

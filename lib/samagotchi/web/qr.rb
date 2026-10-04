@@ -21,7 +21,13 @@ module Samagotchi
         rows = matrix(text, quiet: quiet)
         rows << Array.new(rows.first.size, false) if rows.size.odd?
         rows.each_slice(2).map do |top, bottom|
-          line = top.zip(bottom).map { |t, b| t ? (b ? "█" : "▀") : (b ? "▄" : " ") }.join
+          line = top.zip(bottom).map do |t, b|
+            if t
+              b ? "█" : "▀"
+            else
+              (b ? "▄" : " ")
+            end
+          end.join
           color ? "#{COLORS}#{line}#{RESET}" : line
         end
       end

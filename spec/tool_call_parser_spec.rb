@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::ToolCallParser do
       parser = described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4))
       call = parser.parse('<|tool_call>call:mcp_s3_get2{key:<|"|>k<|"|>}<tool_call|>').first
       expect(call).to include(name: "mcp_s3_get2", args: { "key" => "k" })
-      expect(parser.parse('<|tool_call>call:2fast{}<tool_call|>')).to be_empty
+      expect(parser.parse("<|tool_call>call:2fast{}<tool_call|>")).to be_empty
     end
 
     it "Gemma: the flat scan when the body doesn't parse" do

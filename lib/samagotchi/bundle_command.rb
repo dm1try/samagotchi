@@ -121,7 +121,7 @@ module Samagotchi
       when "trash" then trash(@argv[1..])
       else
         @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build, trash"
-        return CLI::Exit::USAGE
+        CLI::Exit::USAGE
       end
     end
 
@@ -131,7 +131,8 @@ module Samagotchi
       parsed = parse_flags(INSTALL_FLAGS, rest, "install", help: INSTALL_HELP)
       return parsed if parsed.is_a?(Integer)
 
-      opts, source = parsed.options, parsed.args.last
+      opts = parsed.options
+      source = parsed.args.last
       scope = opts[:scope]
       force = opts.fetch(:force, false)
       if source.nil? || source.empty?
@@ -154,7 +155,8 @@ module Samagotchi
       parsed = parse_flags(UPGRADE_FLAGS, rest, "upgrade", help: UPGRADE_HELP)
       return parsed if parsed.is_a?(Integer)
 
-      opts, source = parsed.options, parsed.args.last
+      opts = parsed.options
+      source = parsed.args.last
       scope = opts[:scope]
       force = opts.fetch(:force, false)
       dry_run = opts.fetch(:dry_run, false)
@@ -197,8 +199,8 @@ module Samagotchi
       nil
     end
 
-    def installer_for(source, name, scope:, force:, **options)
-      Samagotchi::MemoryBundle::Installer.new(source: source, name: name, scope: scope, force: force, strict: true, **options)
+    def installer_for(source, name, scope:, force:, **)
+      Samagotchi::MemoryBundle::Installer.new(source: source, name: name, scope: scope, force: force, strict: true, **)
     end
 
     # Runs +installer+, prints its summary, then yields the manifest.
@@ -219,7 +221,7 @@ module Samagotchi
     end
 
     def print_hooks_and_plugin(manifest, plugin: true)
-      @stdout.puts "Hooks: #{manifest.hooks.size} hook(s) (#{manifest.hooks.keys.join(', ')})" if manifest&.hooks&.any?
+      @stdout.puts "Hooks: #{manifest.hooks.size} hook(s) (#{manifest.hooks.keys.join(", ")})" if manifest&.hooks&.any?
       @stdout.puts "Plugin: #{manifest.plugin[:file]} (loads at the next chi start)" if plugin && manifest&.plugin
     end
 
@@ -247,7 +249,7 @@ module Samagotchi
       installer.conflicts.each { |k, _| @stdout.puts "  conflict: #{k}" }
       launch = if agent.nil? && @stdin.tty?
                  @stdout.print "Conflicts detected — launch interactive agent to resolve? [y/N] "
-                 ans = begin; @stdin.gets; rescue => _e; nil; end
+                 ans = begin; @stdin.gets; rescue StandardError => _e; nil; end
                  ans && ans.strip.downcase.start_with?("y")
                elsif agent.nil?
                  @stdout.puts "Non-interactive terminal: kept your edits in the file(s) above; the rest is upgraded. Re-run with --force to take the bundle's version, or --agent in a TTY to merge."
@@ -281,7 +283,8 @@ module Samagotchi
       parsed = parse_flags(UNINSTALL_FLAGS, rest, "uninstall", help: UNINSTALL_HELP)
       return parsed if parsed.is_a?(Integer)
 
-      opts, bundle_name = parsed.options, parsed.args.last
+      opts = parsed.options
+      bundle_name = parsed.args.last
       scope = opts[:scope]
       force = opts.fetch(:force, false)
       if bundle_name.nil? || bundle_name.empty?
@@ -296,13 +299,13 @@ module Samagotchi
         uninstaller.run
         @stdout.puts "Uninstalled bundle '#{bundle_name}'"
         puts_trashed(uninstaller.trashed_files, uninstaller.trash_dir)
-        @stdout.puts "Removed: #{uninstaller.removed_files.join(', ')}" unless uninstaller.removed_files.empty?
+        @stdout.puts "Removed: #{uninstaller.removed_files.join(", ")}" unless uninstaller.removed_files.empty?
         hook_removed = uninstaller.removed_files.count { |f| f.start_with?("hooks/") }
         @stdout.puts "Hooks removed: #{hook_removed}" if hook_removed > 0
         uninstaller.warnings.each { |w| @stdout.puts w }
-        return 0
+        0
       rescue Samagotchi::MemoryBundle::Uninstaller::UninstallError => e
-        @stderr.puts "Uninstall failed: #{e.message}"; return 1
+        @stderr.puts "Uninstall failed: #{e.message}"; 1
       end
     end
 
@@ -434,7 +437,7 @@ module Samagotchi
           @stdout.puts "  #{bname} v#{st[:provenance][:version]} scope=#{status_scope(st)} files=#{st[:files].size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
         end
       end
-      return 0
+      0
     end
 
     # "team (unknown)" for a scope this chi can't resolve (Status#bundle_status).
@@ -469,7 +472,7 @@ module Samagotchi
         @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
         @stdout.puts "--- current (on-disk) ---"
         @stdout.puts File.exist?(plugin_path) ? File.read(plugin_path) : "(missing)"
-        @stdout.puts "--- metadata: sha256=#{data[:plugin][:sha256]}#{data[:requires_chi] ? " requires_chi=#{data[:requires_chi]}" : ""}"
+        @stdout.puts "--- metadata: sha256=#{data[:plugin][:sha256]}#{" requires_chi=#{data[:requires_chi]}" if data[:requires_chi]}"
       end
       if file_arg
         # Try file first, then hook
@@ -493,7 +496,7 @@ module Samagotchi
           meta = hooks[file_arg.to_sym] || hooks[file_arg]
           if meta
             m = meta.transform_keys(&:to_s)
-            @stdout.puts "--- metadata: event=#{m['event']} on_error=#{m['on_error']} priority=#{m['priority']} sha256=#{m['sha256']}"
+            @stdout.puts "--- metadata: event=#{m["event"]} on_error=#{m["on_error"]} priority=#{m["priority"]} sha256=#{m["sha256"]}"
           end
         elsif plugin_file && [plugin_file, "plugin/#{plugin_file}"].include?(file_arg)
           show_plugin.call
@@ -526,7 +529,7 @@ module Samagotchi
           meta = hooks[k.to_sym] || hooks[k]
           if meta
             m = meta.transform_keys(&:to_s)
-            @stdout.puts "--- metadata: event=#{m['event']} on_error=#{m['on_error']} priority=#{m['priority']} sha256=#{m['sha256']}"
+            @stdout.puts "--- metadata: event=#{m["event"]} on_error=#{m["on_error"]} priority=#{m["priority"]} sha256=#{m["sha256"]}"
           end
           @stdout.puts ""
         end
@@ -535,7 +538,7 @@ module Samagotchi
           @stdout.puts ""
         end
       end
-      return 0
+      0
     end
 
     def list
@@ -570,7 +573,7 @@ module Samagotchi
           @stdout.puts "  #{s.source.ljust(name_w)}  #{"v#{s.version}".ljust(ver_w)}  #{s.description}#{members}".rstrip
         end
       end
-      return 0
+      0
     end
 
     # An installed profile's list cell: its recorded members still
@@ -578,7 +581,7 @@ module Samagotchi
     def profile_members(members, installed)
       names = installed.map(&:name)
       here, gone = members.partition { |m| names.include?(m) }
-      "includes=#{here.join(",")}#{gone.empty? ? "" : "  left out=#{gone.join(",")}"}"
+      "includes=#{here.join(",")}#{"  left out=#{gone.join(",")}" unless gone.empty?}"
     end
 
     def build(rest)
@@ -605,16 +608,16 @@ module Samagotchi
         result = builder.run
         @stdout.puts "Built #{result[:files].size} file(s) to #{result[:out_path]}"
         @stdout.puts "Bundle: #{result[:name]} v#{result[:version]} scope=#{result[:scope]}"
-        @stdout.puts "Files: #{result[:files].join(', ')}" unless result[:files].empty?
+        @stdout.puts "Files: #{result[:files].join(", ")}" unless result[:files].empty?
         builder.warnings.each { |w| @stdout.puts w }
         unless result[:placeholder_warnings].empty?
           @stdout.puts "Placeholders:"
           result[:placeholder_warnings].each { |w| @stdout.puts "  #{w}" }
         end
-        return 0
+        0
       rescue Samagotchi::MemoryBundle::Builder::BuildError => e
         @stderr.puts "Build failed: #{e.message}"
-        return 1
+        1
       end
     end
 
@@ -658,7 +661,7 @@ module Samagotchi
       end
 
       entries.each do |e|
-        @stdout.puts "  #{e.name}  #{e.files} file#{'s' unless e.files == 1}  #{format_bytes(e.bytes)}  #{format_age(e.time)}"
+        @stdout.puts "  #{e.name}  #{e.files} file#{"s" unless e.files == 1}  #{format_bytes(e.bytes)}  #{format_age(e.time)}"
       end
       @stdout.puts "\nEmpty it with: chi bundle trash --empty [--older-than DAYS]"
       0
@@ -667,7 +670,7 @@ module Samagotchi
     def do_empty(older_than_days:, dry_run:)
       entries = Samagotchi::MemoryBundle::Trash.empty!(
         older_than_days: older_than_days,
-        dry_run: dry_run,
+        dry_run: dry_run
       )
       if entries.empty?
         @stdout.puts "The bundle trash is empty."
@@ -677,11 +680,11 @@ module Samagotchi
       total_files = entries.sum(&:files)
       if dry_run
         entries.each do |e|
-          @stdout.puts "Would delete: #{e.name} (#{e.files} file#{'s' unless e.files == 1}, #{format_bytes(e.bytes)})"
+          @stdout.puts "Would delete: #{e.name} (#{e.files} file#{"s" unless e.files == 1}, #{format_bytes(e.bytes)})"
         end
-        @stdout.puts "\n(dry-run: #{entries.size} folder#{'s' unless entries.size == 1}, #{total_files} file#{'s' unless total_files == 1})"
+        @stdout.puts "\n(dry-run: #{entries.size} folder#{"s" unless entries.size == 1}, #{total_files} file#{"s" unless total_files == 1})"
       else
-        @stdout.puts "Deleted #{entries.size} folder#{'s' unless entries.size == 1} (#{total_files} file#{'s' unless total_files == 1}) from the trash."
+        @stdout.puts "Deleted #{entries.size} folder#{"s" unless entries.size == 1} (#{total_files} file#{"s" unless total_files == 1}) from the trash."
       end
       0
     end
@@ -754,13 +757,13 @@ module Samagotchi
       begin
         nd, owned = Samagotchi::MemoryBundle::SourceNormalizer.normalize(expanded_src)
         m = Samagotchi::MemoryBundle::Manifest.read(dir: nd)
-        return m.name
+        m.name
       rescue Samagotchi::MemoryBundle::Manifest::ValidationError
         # Fallback to source basename without archive extensions
         src = expanded_src
         name = File.basename(src)
         name = name.sub(/\.tar\.gz\z/i, "").sub(/\.tgz\z/i, "").sub(/\.zip\z/i, "").sub(/\.tar\z/i, "")
-        return name.empty? ? File.basename(nd || src) : name
+        name.empty? ? File.basename(nd || src) : name
       ensure
         Samagotchi::MemoryBundle::SourceNormalizer.cleanup(nd) if owned
       end
@@ -801,7 +804,7 @@ module Samagotchi
             lines.concat(preview)
             lines << "    --- end preview ---"
           end
-        rescue => _e
+        rescue StandardError => _e
         end
       end
       lines << ""

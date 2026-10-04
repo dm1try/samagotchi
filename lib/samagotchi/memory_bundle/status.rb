@@ -21,7 +21,7 @@ module Samagotchi
         return nil unless data
 
         raw_scope = scope_override || data[:scope]&.to_s
-        scope = (raw_scope.nil? || raw_scope.strip.empty?) ? "system" : raw_scope
+        scope = raw_scope.nil? || raw_scope.strip.empty? ? "system" : raw_scope
         target_dir = MemoryPaths.scope_dir(scope)
         files = data[:files] || {}
         details = {}

@@ -100,7 +100,8 @@ module Samagotchi
   # Downscales and converts images with whatever tool the machine has:
   # macOS sips first, then ImageMagick. `none` when neither is installed.
   class ImageResizer
-    Error = Class.new(StandardError)
+    class Error < StandardError
+    end
 
     attr_reader :tool
 
@@ -191,7 +192,8 @@ module Samagotchi
   # Messages hold small refs to those files; the base64 is built only when
   # a request is sent.
   module ImageStore
-    Error = Class.new(StandardError)
+    class Error < StandardError
+    end
 
     DIR = "images"
     REF_RE = %r{\Aimages/[0-9a-f]{16}\.(png|jpe?g|gif|webp)\z}

@@ -18,12 +18,12 @@ RSpec.describe "Events drift" do
   end
 
   let(:web_handlers) do
-    body = section(read.("lib/samagotchi/web/public/app.js"), "const streamHandlers = {", /^};$/)
+    body = section(read.call("lib/samagotchi/web/public/app.js"), "const streamHandlers = {", /^};$/)
     body.scan(/^  ([a-z_]+):/).flatten.map(&:to_sym)
   end
 
   let(:attached_cases) do
-    body = section(read.("lib/samagotchi/terminal_ui/attached_loop.rb"), "def handle_event(event)", /^      end$/)
+    body = section(read.call("lib/samagotchi/terminal_ui/attached_loop.rb"), "def handle_event(event)", /^      end$/)
     body.scan(/^\s+when (.+?)(?: then|$)/).flatten.flat_map { |labels| labels.scan(/:([a-z_]+)/).flatten }.map(&:to_sym)
   end
 
@@ -51,9 +51,9 @@ RSpec.describe "Events drift" do
   end
 
   it "replays the same turn part kinds in the web and the TUI as TurnAccumulator writes" do
-    accumulator = read.("lib/samagotchi/bridge/turn_accumulator.rb")
+    accumulator = read.call("lib/samagotchi/bridge/turn_accumulator.rb")
     written = accumulator.scan(/kind: "([a-z]+)"/).flatten + accumulator.scan(/append_text\([^,]+, "([a-z]+)"/).flatten
-    replay = section(read.("lib/samagotchi/web/public/turn_events.js"), "export function snapshotEvents", /^}$/)
+    replay = section(read.call("lib/samagotchi/web/public/turn_events.js"), "export function snapshotEvents", /^}$/)
     web_kinds = replay.scan(/^        case "([a-z]+)":/).flatten
 
     expected = Samagotchi::Events::PART_KINDS.sort

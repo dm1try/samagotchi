@@ -481,7 +481,7 @@ module Samagotchi
       %w[GET snapshot] => :handle_snapshot,
       %w[GET tail] => :handle_tail
     }.freeze
-    ROUTE_PATH = %r|\A/session/([^/]+)/(.+)\z|u
+    ROUTE_PATH = %r{\A/session/([^/]+)/(.+)\z}u
 
     # @return [Array(Symbol, String), nil] the handler and the session id, or
     #   nil when no route takes this method and path
@@ -888,7 +888,7 @@ module Samagotchi
       headers = {}
       content_length = 0
       while (line = io.gets)
-        break if line == "\r\n" || line == "\n"
+        break if ["\r\n", "\n"].include?(line)
 
         key, value = line.split(":", 2)
         next unless key

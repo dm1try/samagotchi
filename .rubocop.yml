@@ -64,6 +64,14 @@ Lint/MissingSuper:
   AllowedParentClasses:
     - ModelBackend
 
+# One-liners like `{ a; b }` read fine; a trailing `;` is still flagged.
+Style/Semicolon:
+  AllowAsExpressionSeparator: true
+
+# An `else nil` with a comment documents the case; only an empty else goes.
+Style/EmptyElse:
+  EnforcedStyle: empty
+
 # -- Off: a refactor or taste, not lint, and not autocorrectable ----------------
 
 Layout/LineLength:
@@ -105,6 +113,18 @@ Style/OneClassPerFile:
   Enabled: false
 
 Style/OptionalBooleanParameter:
+  Enabled: false
+
+# %{marker}-style placeholders here are our own templates, not format strings.
+Style/FormatStringToken:
+  Enabled: false
+
+# `warn` is not `$stderr.puts` in a class with its own #warn (Log has one).
+Style/StderrPuts:
+  Enabled: false
+
+# $1 reads better than ::Regexp.last_match(1).
+Style/PerlBackrefs:
   Enabled: false
 
 # `!!x` is deliberate boolean coercion; the autocorrect (`!x.nil?`) turns

@@ -31,7 +31,7 @@ module Samagotchi
 
       # The line a continue offer leaves in the scrollback.
       def self.continue_summary(outcome, paint: ->(text, _code) { text })
-        "#{paint.("? #{CONTINUE_QUESTION}", 33)} → #{outcome}"
+        "#{paint.call("? #{CONTINUE_QUESTION}", 33)} → #{outcome}"
       end
 
       # @param question [String] the first row's text, wrapped when there is room
@@ -77,14 +77,14 @@ module Samagotchi
 
       def layout(width, hint:, details:, header:, folded:)
         rows = []
-        rows << @paint.(@header, 1) if header && @header
-        rows << @paint.(@note, 2) if header && @note
+        rows << @paint.call(@header, 1) if header && @header
+        rows << @paint.call(@note, 2) if header && @note
         question_rows = wrap(@question, width, first: @mark, indent: " " * @mark.size)
         question_rows = question_rows.first(1) unless details
-        rows.concat(question_rows.map { |row| @paint.(row, @question_code) })
-        rows.concat(@details.map { |row| @paint.(row, @question_code) }) if details
-        rows.concat(folded ? folded_options(width) : @options.map { |o| @paint.("  #{o.text}", 92) })
-        rows << @paint.("  [#{@hint}]", 90) if hint && @hint
+        rows.concat(question_rows.map { |row| @paint.call(row, @question_code) })
+        rows.concat(@details.map { |row| @paint.call(row, @question_code) }) if details
+        rows.concat(folded ? folded_options(width) : @options.map { |o| @paint.call("  #{o.text}", 92) })
+        rows << @paint.call("  [#{@hint}]", 90) if hint && @hint
         rows
       end
 
@@ -97,13 +97,13 @@ module Samagotchi
           candidate = line.empty? ? "  #{item}" : "#{line} · #{item}"
           if !line.empty? && display_width(candidate) > width
             rows << line
-            line = +"  #{item}"
+            line = "  #{item}"
           else
             line = +candidate
           end
         end
         rows << line unless line.empty?
-        rows.map { |row| @paint.(row, 92) }
+        rows.map { |row| @paint.call(row, 92) }
       end
 
       # Word wrap at +width+ columns, the first row after +first+, the others
@@ -122,7 +122,7 @@ module Samagotchi
           while display_width(line.rstrip) > width
             head, = Reline::Unicode.take_mbchar_range(line, 0, width, padding: false)
             rows << head
-            line = +"#{indent}#{line[head.size..]}"
+            line = "#{indent}#{line[head.size..]}"
           end
         end
         rows << line.rstrip unless line.strip.empty? && !rows.empty?

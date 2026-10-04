@@ -109,7 +109,7 @@ parser = OptionParser.new do |opts|
   opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (the default, config session.shared; with --resume: that session); --no-shared runs a plain in-process REPL") { |v| options[:shared] = v }
   opts.on("--model NAME", "Model for this run, not saved (overrides --resume's; config default.model) [env SAMAGOTCHI_DEFAULT_MODEL]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,
-          "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join('|')}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
+          "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join("|")}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
   opts.on("--thinking LEVEL", Samagotchi::Thinking::LEVELS.map(&:to_s), "How much the model thinks this run: off|low|medium|high|default (outranks config.yml; " \
                               "sessions already running keep theirs) [env SAMAGOTCHI_THINKING_LEVEL]") { |l| cli_overrides["thinking.level"] = l }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; a comma list too)") { |m| (options[:memories] ||= []) << m }
@@ -138,10 +138,10 @@ parser = OptionParser.new do |opts|
     case entry.type
     when :bool
       # --[no-]: a bool that defaults to on is only useful switched off.
-      opts.on("--[no-]#{entry.cli_flag.delete_prefix('--')}", "Set #{entry.key} (bool, default #{entry.default ? 'on' : 'off'}) [env #{entry.env_key}]") { |v| cli_overrides[entry.key] = v }
+      opts.on("--[no-]#{entry.cli_flag.delete_prefix("--")}", "Set #{entry.key} (bool, default #{entry.default ? "on" : "off"}) [env #{entry.env_key}]") { |v| cli_overrides[entry.key] = v }
     when :integer, :float, :string, :enum
       desc = "Set #{entry.key} [env #{entry.env_key}]"
-      desc += " (#{entry.enum_values.join('|')})" if entry.type == :enum
+      desc += " (#{entry.enum_values.join("|")})" if entry.type == :enum
       desc += " (#{value_hints[entry.key]})" if value_hints.key?(entry.key)
       desc += "; only without a hosts: config" if %w[server.host server.port].include?(entry.key)
       desc += "; hosts: entries without a transport use it" if entry.key == "server.transport"
@@ -259,7 +259,10 @@ if options[:memories] || options[:muted]
   end
   memory_exists = lambda do |raw|
     scope, name = raw.split("/", 2)
-    scope, name = nil, raw unless name && Samagotchi::Tools::VALID_SCOPES.include?(scope)
+    unless name && Samagotchi::Tools::VALID_SCOPES.include?(scope)
+      scope = nil
+      name = raw
+    end
     !Samagotchi::Tools::MemoryRead.call(name, scope: scope).start_with?("Error:")
   end
   cli_memories = (options[:memories] || []).flat_map { |m| m.split(",") }.map(&:strip).reject(&:empty?)

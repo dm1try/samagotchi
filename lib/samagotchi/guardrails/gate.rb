@@ -120,8 +120,8 @@ module Samagotchi
       end
 
       # Registry#fire_each rescues a raising hook itself.
-      def fire_each(name, event, &after_each)
-        @hooks_lookup.call&.fire_each(name, event, &after_each)
+      def fire_each(name, event, &)
+        @hooks_lookup.call&.fire_each(name, event, &)
       end
     end
   end

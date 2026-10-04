@@ -65,7 +65,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
         stub_request(:get, "https://example.com").to_return(
           status: 200,
           body: "<html><head><title>Example</title></head><body><h1>Example Domain</h1></body></html>",
-          headers: { "Content-Type" => "text/html; charset=utf-8" },
+          headers: { "Content-Type" => "text/html; charset=utf-8" }
         )
         result = web_fetch.call("  https://example.com  ")
         expect(result).not_to include("Error")
@@ -78,7 +78,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
         stub_request(:get, "https://example.com").to_return(
           status: 200,
           body: "<html><body><script>alert(1)</script><style>body{}</style><h1>Hello</h1></body></html>",
-          headers: { "Content-Type" => "text/html; charset=utf-8" },
+          headers: { "Content-Type" => "text/html; charset=utf-8" }
         )
         result = web_fetch.call("https://example.com")
         expect(result).not_to include("<script")
@@ -90,7 +90,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
         stub_request(:get, "https://example.com").to_return(
           status: 200,
           body: "<html><body><noscript>JavaScript is disabled</noscript><p>Main content</p></body></html>",
-          headers: { "Content-Type" => "text/html; charset=utf-8" },
+          headers: { "Content-Type" => "text/html; charset=utf-8" }
         )
         result = web_fetch.call("https://example.com")
         expect(result).to include("JavaScript is disabled")
@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
         stub_request(:get, "https://example.com").to_return(
           status: 200,
           body: "<html><body><iframe>hidden</iframe><svg>hidden</svg><h1>Hello</h1></body></html>",
-          headers: { "Content-Type" => "text/html; charset=utf-8" },
+          headers: { "Content-Type" => "text/html; charset=utf-8" }
         )
         result = web_fetch.call("https://example.com")
         expect(result).to include("Hello")
@@ -151,7 +151,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
       stub_request(:get, "https://example.com").to_return(
         status: 200,
         body: "<html><body>ok</body></html>",
-        headers: { "Content-Type" => "text/html; charset=utf-8" },
+        headers: { "Content-Type" => "text/html; charset=utf-8" }
       )
       result = web_fetch.call("https://example.com")
       expect(result).not_to include("Error")
@@ -165,7 +165,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
       stub_request(:get, "https://long.example.com").to_return(
         status: 200,
         body: "<html><body>#{long_text}</body></html>",
-        headers: { "Content-Type" => "text/html; charset=utf-8" },
+        headers: { "Content-Type" => "text/html; charset=utf-8" }
       )
       result = web_fetch.call("https://long.example.com")
       expect(result).not_to include("Error")
@@ -178,7 +178,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
       stub_request(:get, "https://small.example.com").to_return(
         status: 200,
         body: "<html><body>tiny</body></html>",
-        headers: { "Content-Type" => "text/html; charset=utf-8" },
+        headers: { "Content-Type" => "text/html; charset=utf-8" }
       )
       result = web_fetch.call("https://small.example.com")
       expect(result).not_to include("TRUNCATED")
@@ -191,7 +191,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
       stub_request(:get, "https://example.com/plain").to_return(
         status: 200,
         body: "plain text content",
-        headers: { "Content-Type" => "text/plain; charset=utf-8" },
+        headers: { "Content-Type" => "text/plain; charset=utf-8" }
       )
       result = web_fetch.call("https://example.com/plain")
       expect(result).to eq("plain text content")
@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
       stub_request(:get, "https://example.com/raw").to_return(
         status: 200,
         body: body,
-        headers: { "Content-Type" => "text/plain; charset=utf-8" },
+        headers: { "Content-Type" => "text/plain; charset=utf-8" }
       )
       result = web_fetch.call("https://example.com/raw")
       expect(result.encoding).to eq(Encoding::UTF_8)
@@ -219,7 +219,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
       stub_request(:get, "https://example.com/json").to_return(
         status: 200,
         body: '{"key": "value"}',
-        headers: { "Content-Type" => "application/json" },
+        headers: { "Content-Type" => "application/json" }
       )
       result = web_fetch.call("https://example.com/json")
       expect(result).to include("unsupported content type")
@@ -230,7 +230,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
     it "returns 404 message" do
       stub_request(:get, "https://example.com/notfound").to_return(
         status: 404,
-        body: "Not found",
+        body: "Not found"
       )
       result = web_fetch.call("https://example.com/notfound")
       expect(result).to include("404")
@@ -239,7 +239,7 @@ RSpec.describe Samagotchi::Tools::WebFetch do
     it "returns 403 message" do
       stub_request(:get, "https://example.com/forbidden").to_return(
         status: 403,
-        body: "Forbidden",
+        body: "Forbidden"
       )
       result = web_fetch.call("https://example.com/forbidden")
       expect(result).to include("403")

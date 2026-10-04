@@ -114,7 +114,7 @@ module Samagotchi
       return range if range
 
       default = IdleRecap::RecapPrompt::DEFAULT_SENTENCES
-      Log.warn(:recap, "sentences_invalid", echo: "Warning: invalid value for recap.sentences: #{value.to_s.inspect} — using #{default.join('-')}",
+      Log.warn(:recap, "sentences_invalid", echo: "Warning: invalid value for recap.sentences: #{value.to_s.inspect} — using #{default.join("-")}",
                                             value: value.to_s)
       default
     end

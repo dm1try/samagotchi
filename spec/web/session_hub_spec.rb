@@ -464,7 +464,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.stop
 
       records = File.open(File.join(dir, "chi.log")) { |io| Samagotchi::LogLine.each_record(io).to_a }
-      expect(records.map { |r| [r.tag, r.event, r.fields["error"]] }).to include(["web", "hub_scan_failed", "RuntimeError"])
+      expect(records.map { |r| [r.tag, r.event, r.fields["error"]] }).to include(%w[web hub_scan_failed RuntimeError])
     ensure
       FileUtils.remove_entry(dir)
     end

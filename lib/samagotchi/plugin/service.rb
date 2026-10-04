@@ -62,7 +62,7 @@ module Samagotchi
       def running? = @state == :running
 
       # @return [Symbol] :idle, :running or :stopped
-      def state = @state
+      attr_reader :state
 
       # Run the stop callbacks (newest first) once; a raise is logged, the
       # rest still run. It never starts again after this.

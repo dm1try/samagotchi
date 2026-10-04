@@ -68,7 +68,7 @@ RSpec.describe "ctx.ask_model" do
     cancelled = Samagotchi::Plugin::Host.new(ask_model: ->(*) { raise Samagotchi::LLM::RequestCancelled, :manual })
     build = ->(h) { Samagotchi::Plugin::Context.new(bundle: "b", label: "l", settings: {}, host: h) }
 
-    expect { build.(failing).ask_model(messages: [], prompt: "q") }.to raise_error(Samagotchi::Plugin::ModelError, "server down")
-    expect { build.(cancelled).ask_model(messages: [], prompt: "q") }.to raise_error(Samagotchi::Plugin::ModelCancelled)
+    expect { build.call(failing).ask_model(messages: [], prompt: "q") }.to raise_error(Samagotchi::Plugin::ModelError, "server down")
+    expect { build.call(cancelled).ask_model(messages: [], prompt: "q") }.to raise_error(Samagotchi::Plugin::ModelCancelled)
   end
 end

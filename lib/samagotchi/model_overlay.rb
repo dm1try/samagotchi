@@ -49,7 +49,7 @@ module Samagotchi
 
     # Regex matching overlay file names: /<something>.<lowercase-dashed-key>.md\z
     # Useful for tooling, tests, and future index suppression.
-    OVERLAY_SUFFIX_PATTERN = /\.([a-z0-9\-]+)\.md\z/
+    OVERLAY_SUFFIX_PATTERN = /\.([a-z0-9-]+)\.md\z/
 
     # The base file name (`tips.md`) an overlay-looking name
     # (`tips.qwen3.md`) would belong to, or nil when it doesn't match the

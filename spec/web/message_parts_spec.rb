@@ -11,8 +11,8 @@ RSpec.describe Samagotchi::Web::MessageParts do
 
   describe ".for_message on the native loop's markup (a profile, llama.cpp)" do
     it "reads the thinking, each call's params and its piece of the joined output" do
-      content = "<think>\nLook first.\n</think>\n\nLet me check.\n#{qwen_call('execute', command: 'ls -la')}\n" \
-                "#{qwen_call('read', path: 'README.md', start_line: 1, end_line: 3)}"
+      content = "<think>\nLook first.\n</think>\n\nLet me check.\n#{qwen_call("execute", command: "ls -la")}\n" \
+                "#{qwen_call("read", path: "README.md", start_line: 1, end_line: 3)}"
       response = { role: "tool_response", content: "[execute]\na\nb\n\n---\n\n[read]\n1: # Title" }
 
       expect(described_class.for_message({ role: "model", content: content }, [response])).to eq(
@@ -25,7 +25,7 @@ RSpec.describe Samagotchi::Web::MessageParts do
     end
 
     it "keeps an output that holds the joiner itself whole (the split is at the next [tool] tag)" do
-      content = "#{qwen_call('read', path: 'a.md')}#{qwen_call('execute', command: 'true')}"
+      content = "#{qwen_call("read", path: "a.md")}#{qwen_call("execute", command: "true")}"
       response = { content: "[read]\nabove\n\n---\n\nbelow\n\n---\n\n[execute]\n" }
 
       tools = described_class.for_message({ content: content }, [response])[:tools]
@@ -176,7 +176,7 @@ RSpec.describe Samagotchi::Web::MessageParts do
     let(:shown) { { file: "images/aaaaaaaaaaaaaaaa.png", name: "shot.png", width: 3, height: 2 } }
 
     it "native: splits the joined list by image_counts, each call its own" do
-      content = "#{qwen_call('read', path: 'a.png')}#{qwen_call('execute', command: 'true')}#{qwen_call('shots', {})}"
+      content = "#{qwen_call("read", path: "a.png")}#{qwen_call("execute", command: "true")}#{qwen_call("shots", {})}"
       response = { "content" => "[read]\nImage\n\n---\n\n[execute]\n\n\n---\n\n[shots]\ntwo",
                    "images" => [shot, gif, shot], "image_counts" => [1, 0, 2] }
 
@@ -188,7 +188,7 @@ RSpec.describe Samagotchi::Web::MessageParts do
     it "native, an older session without image_counts: a lone call gets them, several get none" do
       one = described_class.for_message({ content: qwen_call("read", path: "a.png") }, [{ content: "[read]\nx", images: [shot] }])
       expect(one[:tools].first[:images]).to eq([shown])
-      two = described_class.for_message({ content: "#{qwen_call('read', path: 'a')}#{qwen_call('read', path: 'b')}" },
+      two = described_class.for_message({ content: "#{qwen_call("read", path: "a")}#{qwen_call("read", path: "b")}" },
                                         [{ content: "[read]\nx\n\n---\n\n[read]\ny", images: [shot] }])
       expect(two[:tools].map { |t| t[:images] }).to eq([nil, nil])
     end
@@ -204,7 +204,7 @@ RSpec.describe Samagotchi::Web::MessageParts do
 
   describe "titles" do
     it "gives each call its title, a path relative to the given cwd" do
-      content = "#{qwen_call('execute', command: 'cd /p/app && rspec')}#{qwen_call('edit', path: '/p/app/lib/a.rb', old_string: 'a', new_string: 'b')}"
+      content = "#{qwen_call("execute", command: "cd /p/app && rspec")}#{qwen_call("edit", path: "/p/app/lib/a.rb", old_string: "a", new_string: "b")}"
       tools = described_class.for_message({ content: content }, [], cwd: "/p/app")[:tools]
       expect(tools.map { |t| t[:title] }).to eq(["rspec", "lib/a.rb"])
       expect(tools.first[:params]).to eq('command="cd /p/app && rspec"')

@@ -80,7 +80,7 @@ module Samagotchi
 
         write_record(record)
         [record, nil]
-      rescue => e
+      rescue StandardError => e
         [nil, "Error: #{e.message}"]
       ensure
         output_io&.close
@@ -124,7 +124,7 @@ module Samagotchi
         return [nil, "Error: task not found: #{task_id}"] unless record
 
         [refresh_record(record), nil]
-      rescue => e
+      rescue StandardError => e
         [nil, "Error: #{e.message}"]
       end
 
@@ -157,9 +157,7 @@ module Samagotchi
         end
 
         deadline = monotonic_time + STOP_GRACE_SEC
-        while process_alive?(pid) && monotonic_time < deadline
-          sleep(STOP_POLL_INTERVAL_SEC)
-        end
+        sleep(STOP_POLL_INTERVAL_SEC) while process_alive?(pid) && monotonic_time < deadline
 
         if process_alive?(pid)
           begin
@@ -176,7 +174,7 @@ module Samagotchi
         write_record(updated)
 
         [updated, nil]
-      rescue => e
+      rescue StandardError => e
         [nil, "Error: #{e.message}"]
       end
 
@@ -278,7 +276,7 @@ module Samagotchi
         return nil if rubyopt.empty?
 
         filtered = rubyopt.split(/\s+/).reject do |arg|
-          arg == "-rbundler/setup" || arg.match?(/\A-r.*bundler\/setup\z/)
+          arg == "-rbundler/setup" || arg.match?(%r{\A-r.*bundler/setup\z})
         end
         return nil if filtered.empty?
 
@@ -318,7 +316,7 @@ module Samagotchi
         return nil if path.to_s.empty? || !File.exist?(path)
 
         Integer(File.read(path).strip, exception: false)
-      rescue => _e
+      rescue StandardError => _e
         nil
       end
 

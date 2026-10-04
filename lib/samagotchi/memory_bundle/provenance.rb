@@ -154,11 +154,11 @@ module Samagotchi
         if existing && existing[:files]
           existing[:files].keys.each do |old_key|
             old_key_str = old_key.to_s
-            unless files.key?(old_key_str) || files.key?(old_key)
-              old_base = File.join(bases_dir, old_key_str)
-              FileUtils.rm_f(old_base) if File.exist?(old_base)
-              merged_entries.delete(old_key_str)
-            end
+            next if files.key?(old_key_str) || files.key?(old_key)
+
+            old_base = File.join(bases_dir, old_key_str)
+            FileUtils.rm_f(old_base) if File.exist?(old_base)
+            merged_entries.delete(old_key_str)
           end
         end
 
@@ -175,7 +175,9 @@ module Samagotchi
 
             hv = v.transform_keys(&:to_sym)
             sha = (hv[:sha256] || "").to_s
-            sha = sha.start_with?("sha256:") ? sha : "sha256:#{sha}" unless sha.empty?
+            if !sha.empty? && !sha.empty? && !sha.start_with?("sha256:")
+              sha = "sha256:#{sha}"
+            end
             normalized_hooks[k] = {
               sha256: sha,
               event: (hv[:event] || "").to_s,
@@ -205,12 +207,12 @@ module Samagotchi
             meta = meta.merge(sha256: "sha256:#{Digest::SHA256.hexdigest(File.read(src.to_s))}")
           end
           hooks_map[k] = meta.transform_keys(&:to_s)
-          if src && File.exist?(src.to_s)
-            begin
-              File.write(File.join(bases_dir, k), File.read(src.to_s))
-            rescue StandardError
-              nil
-            end
+          next unless src && File.exist?(src.to_s)
+
+          begin
+            File.write(File.join(bases_dir, k), File.read(src.to_s))
+          rescue StandardError
+            nil
           end
         end
 

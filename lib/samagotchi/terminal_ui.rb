@@ -976,10 +976,10 @@ module Samagotchi
     # While a turn runs, a line submitted at the open prompt steers it: it
     # merges at the next iteration boundary (Kernel), and one that comes after
     # the last runs as the next turn. Reminder turns too.
-    def with_steering(&block)
+    def with_steering(&)
       return yield unless @repl_input
 
-      @repl_input.during_turn(method(:steer_line), leftovers: -> { @pending_input_queue.drain }, &block)
+      @repl_input.during_turn(method(:steer_line), leftovers: -> { @pending_input_queue.drain }, &)
     end
 
     # On the reader thread, from ReplInput: takes a line for the running turn.

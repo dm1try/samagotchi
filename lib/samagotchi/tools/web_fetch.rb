@@ -41,7 +41,7 @@ module Samagotchi
         "Error: could not resolve hostname"
       rescue Timeout::Error
         "Error: request timed out after #{TIMEOUT_SEC}s"
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 
@@ -58,7 +58,7 @@ module Samagotchi
           IPAddr.new("::1/128"),
           IPAddr.new("fc00::/7"),
           IPAddr.new("fe80::/10"),
-          IPAddr.new("::ffff:0:0/96"),
+          IPAddr.new("::ffff:0:0/96")
         ]
 
         # Try to parse host as IP directly

@@ -204,7 +204,7 @@ RSpec.describe Samagotchi::Guardrails::Rules do
   end
 
   describe ".parse errors" do
-    def error_for(raw) = (described_class.parse([raw], source: "config") && nil) rescue $!.message
+    def error_for(raw) = described_class.parse([raw], source: "config") && nil rescue $!.message
 
     it "names the rule and the problem" do
       expect(error_for({ "id" => "x", "verdict" => "block", "tool" => "a" })).to eq('rule x: verdict must be ask or deny (got "block")')
@@ -288,15 +288,15 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("guardrails.small_models").and_return("auto")
       call = { name: "execute", content: "git rebase" }
-      v = ->(mode, model) do
+      v = lambda do |mode, model|
         verdict = Samagotchi::Guardrails::Verdict.new(call: call)
         verdict.context = context
         verdict.targets = Samagotchi::Guardrails::Targets.for(call, context, model_name: model)
         set(mode, both).check(verdict)
       end
-      expect(v.("strict", "Ornith-9B")).to be_ask
-      expect(v.("auto", "Ornith-9B")).to be_allow
-      expect(v.("strict", "Llama-3.3-70B")).to be_allow
+      expect(v.call("strict", "Ornith-9B")).to be_ask
+      expect(v.call("auto", "Ornith-9B")).to be_allow
+      expect(v.call("strict", "Llama-3.3-70B")).to be_allow
     end
 
     it "rejects a mode that isn't auto or strict" do

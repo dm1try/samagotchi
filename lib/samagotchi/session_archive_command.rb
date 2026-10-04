@@ -47,7 +47,11 @@ module Samagotchi
       bad = @argv.find { |arg| arg.start_with?("-") }
       return usage_error(bad ? "unknown option #{bad}" : "give session ids") if bad || @argv.empty?
 
-      @argv.uniq.map { |given| @action == "archive" ? archive(given) : unarchive(given) }.all? ? 0 : 1
+      if @argv.uniq.map { |given| @action == "archive" ? archive(given) : unarchive(given) }.all?
+        0
+      else
+        1
+      end
     end
 
     private

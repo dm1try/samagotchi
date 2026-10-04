@@ -133,7 +133,7 @@ RSpec.describe "The btw bundle" do
     child = Samagotchi::SessionManager.children_of(session.id, state_dir: state_dir).first
     loaded = Samagotchi::Session.load(child[:id], state_dir: state_dir)
     expect(loaded.messages.map { |m| [m[:role], m[:content]] }).to eq(
-      [%w[user rename\ foo], ["model", "renamed to bar"], ["user", "what did we rename?"], ["model", "It was renamed to bar."]]
+      [["user", "rename foo"], ["model", "renamed to bar"], ["user", "what did we rename?"], ["model", "It was renamed to bar."]]
     )
     expect(loaded).to have_attributes(parent_id: session.id, status: "idle", first_preview: "btw: what did we rename?")
     expect(cards[-2]).to include(actions: [], body: "It was renamed to bar.")

@@ -47,7 +47,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
   # One raw request on its own connection: [status, headers (lowercased), parsed body].
   def request(method, target, headers: {}, body: nil)
     sock = TCPSocket.new("127.0.0.1", @port)
-    head = +"#{method} #{target} HTTP/1.1\r\nHost: 127.0.0.1:#{@port}\r\nConnection: close\r\n"
+    head = "#{method} #{target} HTTP/1.1\r\nHost: 127.0.0.1:#{@port}\r\nConnection: close\r\n"
     headers.each { |k, v| head << "#{k}: #{v}\r\n" }
     head << "Content-Length: #{body.bytesize}\r\n" if body
     sock.write("#{head}\r\n#{body}")
@@ -60,18 +60,18 @@ RSpec.describe Samagotchi::Bridge, "routing" do
 
   it "sends every route to its handler with the session id and the body" do
     table = {
-      ["POST", "cancel"] => "handle_cancel",
-      ["POST", "answer"] => "handle_answer",
+      %w[POST cancel] => "handle_cancel",
+      %w[POST answer] => "handle_answer",
       ["POST", "question/dismiss"] => "handle_dismiss_question",
-      ["POST", "turn"] => "handle_post_turn",
-      ["POST", "command"] => "handle_command",
-      ["POST", "exit"] => "handle_exit_request",
-      ["POST", "recap"] => "handle_recap",
-      ["POST", "relay"] => "handle_relay",
+      %w[POST turn] => "handle_post_turn",
+      %w[POST command] => "handle_command",
+      %w[POST exit] => "handle_exit_request",
+      %w[POST recap] => "handle_recap",
+      %w[POST relay] => "handle_relay",
       ["POST", "relay/status"] => "handle_relay_status",
-      ["GET", "state"] => "handle_state",
-      ["GET", "stats"] => "handle_stats",
-      ["GET", "snapshot"] => "handle_snapshot"
+      %w[GET state] => "handle_state",
+      %w[GET stats] => "handle_stats",
+      %w[GET snapshot] => "handle_snapshot"
     }
     table.each do |(method, action), handler|
       status, headers, body = request(method, "/session/s1/#{action}", body: method == "POST" ? '{"x":1}' : nil)

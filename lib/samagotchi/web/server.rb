@@ -94,8 +94,12 @@ module Samagotchi
             puts lan_off_line(setting)
             return 0
           end
-          start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
-                annotate_presets: annotate_presets, lan: lan) ? 0 : 1
+          if start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
+                   annotate_presets: annotate_presets, lan: lan)
+            0
+          else
+            1
+          end
         end
       rescue Lan::Error => e
         warn "Error: #{e.message}"

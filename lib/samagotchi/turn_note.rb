@@ -98,7 +98,11 @@ module Samagotchi
     # emptyAnswerLine words it the same).
     def empty_answer_line(retries)
       count = retries.to_i
-      after = count.positive? ? " (after #{count} #{count == 1 ? "retry" : "retries"})" : ""
+      after = if count.positive?
+                " (after #{count} #{count == 1 ? "retry" : "retries"})"
+              else
+                ""
+              end
       "no answer: the model returned nothing#{after}"
     end
 

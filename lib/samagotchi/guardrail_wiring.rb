@@ -159,7 +159,7 @@ module Samagotchi
               raise Guardrails::Rules::ParseError, "its sha256 differs from the installed one (edited after install? reinstall the bundle)"
             end
 
-            doc = YAML.safe_load(File.read(path))
+            doc = YAML.safe_load_file(path)
             raise Guardrails::Rules::ParseError, "expected a mapping with rules:" unless doc.is_a?(Hash)
 
             loaded.concat(Guardrails::Rules.parse(doc["rules"], source: "bundle #{bundle_name}"))

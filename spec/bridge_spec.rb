@@ -74,9 +74,7 @@ class SSEClient
   def wait_until(timeout: 3)
     deadline = SpecWaiting.mono + timeout
     @mutex.synchronize do
-      until yield(@events) || SpecWaiting.mono > deadline
-        @cv.wait(@mutex, [deadline - SpecWaiting.mono, 0].max)
-      end
+      @cv.wait(@mutex, [deadline - SpecWaiting.mono, 0].max) until yield(@events) || SpecWaiting.mono > deadline
     end
     @events.dup
   end
@@ -170,7 +168,7 @@ class ControllableIO
   end
 
   def flush; end
-  def binmode; self; end
+  def binmode = self
 
   private
 
@@ -296,7 +294,7 @@ RSpec.describe Samagotchi::Bridge do
     # The ring holds seqs 5..10. Cursor 4 has seen everything before 5, so it
     # replays; cursor 3 missed seq 4, which is gone, so it resets.
     { "4" => false, "3" => true }.each do |cursor, resets|
-      it "#{resets ? 'resets' : 'replays'} a cursor at #{cursor} when the ring's oldest seq is 5" do
+      it "#{resets ? "resets" : "replays"} a cursor at #{cursor} when the ring's oldest seq is 5" do
         engine = make_engine
         allow(engine).to receive(:event_count).and_return(10)
         ring = Samagotchi::Bridge::RingBuffer.new(capacity: 6)

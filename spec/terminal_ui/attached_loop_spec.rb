@@ -670,7 +670,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
 
     run_with(["/model x", "/models", "/continue", "!rollback", "!ls"])
 
-    %w[/model\ x /models /continue !rollback !ls].each do |line|
+    ["/model x", "/models", "/continue", "!rollback", "!ls"].each do |line|
       expect(client).to have_received(:post_command).with(line: line.delete("\\"), client_id: "tui:1")
     end
     expect(screen.lines.grep(/not available/)).to be_empty

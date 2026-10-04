@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::CancellationController do
     controller.cancel!(:user)
 
     expect(kept).to be_a(Integer)
-    expect(calls).to eq([[:kept, :user]])
+    expect(calls).to eq([%i[kept user]])
   end
 
   it "runs a listener added after the cancel at once" do

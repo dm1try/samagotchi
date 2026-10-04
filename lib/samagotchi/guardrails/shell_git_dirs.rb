@@ -123,7 +123,7 @@ module Samagotchi
         def expand(arg, dir)
           return nil if arg.include?(ShellLex::SUBST)
 
-          arg = arg.sub(/\A(~|\$HOME|\$\{HOME\})(?=\/|\z)/) { @home }
+          arg = arg.sub(%r{\A(~|\$HOME|\$\{HOME\})(?=/|\z)}) { @home }
           return nil if arg.include?("$") || arg.start_with?("~")
           return File.expand_path(arg) if arg.start_with?("/")
 

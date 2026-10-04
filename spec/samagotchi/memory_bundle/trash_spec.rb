@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::MemoryBundle::Trash do
         entries = described_class.entries(bundles_dir: bundles_dir)
         expect(entries.map(&:name)).to eq([
           "bundle-a-20260101-120000",
-          "bundle-b-20260102-120000",
+          "bundle-b-20260102-120000"
         ])
       end
     end
@@ -78,7 +78,7 @@ RSpec.describe Samagotchi::MemoryBundle::Trash do
         File.write(File.join(new_dir, "x.md"), "x")
 
         entries = described_class.entries(bundles_dir: bundles_dir)
-        expect(entries.map(&:name)).to eq(["old-stuff", "new-stuff"])
+        expect(entries.map(&:name)).to eq(%w[old-stuff new-stuff])
         expect(entries[0].time).to be_within(1).of(old_time)
       end
     end

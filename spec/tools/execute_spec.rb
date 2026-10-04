@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       ENV["SAMAGOTCHI_EXECUTE_TRUNCATE_AT_BYTES"] = "100"
       ENV["SAMAGOTCHI_EXECUTE_PREVIEW_BYTES"] = "20"
 
-      result = described_class.call("ruby -e 'print " + ("\"A\"*200") + "'")
+      result = described_class.call("ruby -e 'print " + "\"A\"*200" + "'")
 
       expect(result).to include("stdout:")
       expect(result).to include("truncated=true")
@@ -127,7 +127,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
       ENV["SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT"] = "50"
 
-      result = described_class.call("ruby -e 'print " + ("\"z\"*100") + "'")
+      result = described_class.call("ruby -e 'print " + "\"z\"*100" + "'")
 
       expect(result).to include("estimated_tokens_for_command_output=")
       expect(result).to include("estimated_window_pct_for_command_output=")
@@ -140,7 +140,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "4"
       ENV["SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT"] = "99"
 
-      result = described_class.call("ruby -e 'print " + ("\"z\"*100") + "'")
+      result = described_class.call("ruby -e 'print " + "\"z\"*100" + "'")
 
       expect(result).not_to include("estimated_tokens_for_command_output=")
       expect(result).not_to include("estimated_window_pct_for_command_output=")
@@ -352,7 +352,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       it "says a holder that left the process group (setsid) was left running" do
-        result = described_class.call(%q{ruby -e "Process.setsid; sleep 30.85" & echo pid=$!; echo hi})
+        result = described_class.call('ruby -e "Process.setsid; sleep 30.85" & echo pid=$!; echo hi')
         pid = pid_from(result)
         begin
           expect(result).to include("hi")

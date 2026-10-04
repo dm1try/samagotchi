@@ -136,7 +136,7 @@ module Samagotchi
       if owner
         @stdout.puts("#{short}  queued: its worker adds it within a few seconds")
       else
-        queued = SessionInbox.find_new_note_files(File.dirname(File.dirname(path))).size
+        queued = SessionInbox.find_new_note_files(File.dirname(path, 2)).size
         @stdout.puts("#{short}  waits for the session's next start (#{queued} #{queued == 1 ? "note" : "notes"} queued)")
       end
       true

@@ -875,9 +875,9 @@ RSpec.describe Samagotchi::SessionManager do
       @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
       expect(Samagotchi::Engine).not_to receive(:new)
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir, owner_wait: 0.1)
-      }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+      end.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
     end
 
     it "decides the worker's exit: 0 on a stop, without resuming for queued input or discarding; 1 on a crash" do
@@ -886,17 +886,17 @@ RSpec.describe Samagotchi::SessionManager do
       allow(described_class).to receive(:discardable?).and_return(true)
       allow_any_instance_of(Samagotchi::Worker).to receive(:run).and_return(:stopped)
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
-      }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+      end.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
       expect(described_class).not_to have_received(:resume_session)
       expect(described_class).not_to have_received(:discardable?)
       expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
 
       allow_any_instance_of(Samagotchi::Worker).to receive(:run).and_return(:crashed)
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
-      }.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
+      end.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
     end
 
     it "does not run the initial prompt of a session stopped before the worker took it, nor its plugins' init tasks" do
@@ -909,9 +909,9 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       expect(engine).not_to receive(:run_turn)
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
       expect(engine).to have_received(:announce_load_events!)
       expect(engine).not_to have_received(:start_init_tasks!)
     end
@@ -932,9 +932,9 @@ RSpec.describe Samagotchi::SessionManager do
         []
       end
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
 
       expect(owner_seen).to have_attributes(kind: "worker", pid: Process.pid)
       expect(pid_seen).to be(false)
@@ -1068,9 +1068,9 @@ RSpec.describe Samagotchi::SessionManager do
       allow(sub_handle).to receive(:unsubscribe)
       allow(engine).to receive(:subscribe).and_return(sub_handle)
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
     end
 
     it "leaves the idle recap to the config (the web and attached UIs show :recap_ready)" do
@@ -1086,9 +1086,9 @@ RSpec.describe Samagotchi::SessionManager do
       end
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
     end
 
     it "hands the Engine its session before any turn, so a joining UI sees the history" do
@@ -1113,9 +1113,9 @@ RSpec.describe Samagotchi::SessionManager do
         []
       end
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
 
       expect(bridge_started).to be(true)
       expect(given.id).to eq(session.id)
@@ -1141,9 +1141,9 @@ RSpec.describe Samagotchi::SessionManager do
       allow(sub_handle).to receive(:unsubscribe)
       allow(engine).to receive(:subscribe).and_return(sub_handle)
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
 
       expect(engine).to receive(:note_due_reminders).with(["daily"])
       expect { reminder_callback.call(["daily"]) }.not_to raise_error
@@ -1193,9 +1193,9 @@ RSpec.describe Samagotchi::SessionManager do
           result
         end
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
     end
 
     it "does not replay the last prompt when resuming a session with history" do
@@ -1219,9 +1219,9 @@ RSpec.describe Samagotchi::SessionManager do
         []
       end
 
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_prompt).to eq("earlier")
     end
   end
@@ -1568,9 +1568,9 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:reminder_store).and_return(nil)
       allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0, messages_checkpoint: [])
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
-      expect {
+      expect do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
-      }.to raise_error(SystemExit)
+      end.to raise_error(SystemExit)
     end
 
     it "runs queued turns with their origin, or none" do

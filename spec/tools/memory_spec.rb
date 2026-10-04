@@ -262,7 +262,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
         expect(contents).to include("auto-maintained")
         expect(contents.lines.count { |l| l.start_with?("- **notes**") }).to eq(1)
         line = managed_line_for(contents, "notes")
-        expect(line).to eq("- **notes** · project · #{Date.today.iso8601} · #{'Note'.bytesize}\n")
+        expect(line).to eq("- **notes** · project · #{Date.today.iso8601} · #{"Note".bytesize}\n")
       end
 
       it "omits the description segment when none is supplied" do
@@ -283,7 +283,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
         contents = File.read(File.join(project_memories_dir, "index.md"))
         lines = contents.lines.select { |l| l.start_with?("- **note**") }
         expect(lines.size).to eq(1)
-        expect(lines.first).to eq("- **note** · project · #{Date.today.iso8601} · #{'a much longer content'.bytesize}\n")
+        expect(lines.first).to eq("- **note** · project · #{Date.today.iso8601} · #{"a much longer content".bytesize}\n")
       end
 
       it "appends a new managed line without disturbing existing ones" do
@@ -318,7 +318,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
         contents = File.read(File.join(project_memories_dir, "index.md"))
         lines = contents.lines.select { |l| l.start_with?("- **notes**") }
         expect(lines.size).to eq(1)
-        expect(lines.first).to match(%r{^- \*\*notes\*\* · project · \d{4}-\d{2}-\d{2} · \d+})
+        expect(lines.first).to match(/^- \*\*notes\*\* · project · \d{4}-\d{2}-\d{2} · \d+/)
         expect(lines.first).to end_with("old desc\n")
       end
 

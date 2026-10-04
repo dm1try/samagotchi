@@ -20,7 +20,7 @@ RSpec.describe "Tool call outcomes per model format" do
     "<tool_call>\n<function=#{name}>\n#{args.map { |k, v| "<parameter=#{k}>\n#{v}\n</parameter>\n" }.join}</function>\n</tool_call>"
   end
   define_method(:gemma_wire) do |name, args|
-    "<|tool_call>call:#{name}{#{args.map { |k, v| "#{k}:#{delim}#{v}#{delim}" }.join(',')}}<tool_call|>"
+    "<|tool_call>call:#{name}{#{args.map { |k, v| "#{k}:#{delim}#{v}#{delim}" }.join(",")}}<tool_call|>"
   end
   define_method(:built) do |format, name, args|
     case format

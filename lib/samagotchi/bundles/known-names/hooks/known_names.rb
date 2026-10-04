@@ -24,11 +24,11 @@ class KnownNames
   # Splits a command or path into tokens; each token's [-_.] parts are
   # candidates too. "~" splits: in "~name" (that user's home) the name
   # after it is what is checked.
-  TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@~]+}.freeze
-  PART_SPLIT = /[-_.]+/.freeze
+  TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@~]+}
+  PART_SPLIT = /[-_.]+/
   # A candidate with a shell glob character is not checked: `workato*`
   # is a pattern over the name, not a misspelling of it.
-  GLOB = /[*?\[\]{}]/.freeze
+  GLOB = /[*?\[\]{}]/
   ASK_OPTIONS = ["Correct it and run", "Run as is", "Deny"].freeze
 
   def initialize(settings = {})

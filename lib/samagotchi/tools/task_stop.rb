@@ -21,7 +21,7 @@ module Samagotchi
           "stop_reason: #{record["stop_reason"]}",
           "output_path: #{record.fetch("output_path")}"
         ].join("\n")
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
     end

@@ -40,8 +40,8 @@ class VirtualTerminal
     until scanner.eos?
       if scanner.scan(/\e\[\?[0-9;]*[hl]/) then nil
       elsif (m = scanner.scan(/\e\[([0-9;]*)([A-Za-z])/)) then csi(scanner[1], scanner[2], m)
-      elsif scanner.scan(/\r/) then carriage_return
-      elsif scanner.scan(/\n/) then line_feed
+      elsif scanner.scan("\r") then carriage_return
+      elsif scanner.scan("\n") then line_feed
       else put(scanner.getch)
       end
     end

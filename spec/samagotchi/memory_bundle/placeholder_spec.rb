@@ -20,7 +20,7 @@ RSpec.describe Samagotchi::MemoryBundle::Placeholder do
 
     it "handles multiple occurrences of same placeholder" do
       p = described_class.new(content: "{{name}} and {{name}} again")
-      expect(p.placeholders).to eq(["name", "name"])
+      expect(p.placeholders).to eq(%w[name name])
     end
 
     it "extracts unique sorted names" do

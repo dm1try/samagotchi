@@ -446,7 +446,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
         session_id: -> { "sid-1" }, cwd: -> { tmpdir }, messages: -> { [{ role: "user", content: "hi" }] },
         notify: ->(text, level, label) { notices << [text, level, label] },
         ask_user: ->(**kw) { { selected: [kw[:options].first], hook: kw[:hook] } },
-        cancelled: -> { nil }
+        cancelled: -> {}
       )
     end
     let(:ctx) do

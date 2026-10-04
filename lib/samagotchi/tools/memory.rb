@@ -58,34 +58,34 @@ module Samagotchi
           found = false
           resolved_scopes.each do |resolved_scope|
             path = memory_path(name, resolved_scope)
-            if File.exist?(path)
-              body = File.read(path, encoding: "UTF-8")
-              # Append model-specific overlay if key is provided and overlay exists.
-              [model_key, fallback_model_key].compact.each do |key|
-                overlay_path = ModelOverlay.overlay_path_for(name, key, resolved_scope)
-                next unless overlay_path && File.exist?(overlay_path)
+            next unless File.exist?(path)
 
-                body += SEPARATOR + "Model-specific guidance (#{key}):\n" + File.read(overlay_path, encoding: "UTF-8")
-                break
-              end
-              results << body
-              found = true
+            body = File.read(path, encoding: "UTF-8")
+            # Append model-specific overlay if key is provided and overlay exists.
+            [model_key, fallback_model_key].compact.each do |key|
+              overlay_path = ModelOverlay.overlay_path_for(name, key, resolved_scope)
+              next unless overlay_path && File.exist?(overlay_path)
+
+              body += SEPARATOR + "Model-specific guidance (#{key}):\n" + File.read(overlay_path, encoding: "UTF-8")
               break
             end
+            results << body
+            found = true
+            break
           end
           missing << name unless found
         end
 
         if results.empty? && !missing.empty?
-          "Error: memory not found: #{missing.join(', ')}"
+          "Error: memory not found: #{missing.join(", ")}"
         elsif missing.empty?
           results.join(SEPARATOR)
         else
-          results.join(SEPARATOR) + SEPARATOR + "Error: memory not found: #{missing.join(', ')}"
+          results.join(SEPARATOR) + SEPARATOR + "Error: memory not found: #{missing.join(", ")}"
         end
       rescue Errno::ENOENT => e
         "Error: #{e.message}"
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 
@@ -108,7 +108,7 @@ module Samagotchi
         return nil if value.empty?
         return value if VALID_SCOPES.include?(value)
 
-        raise ArgumentError, "invalid scope '#{scope}', expected one of: #{VALID_SCOPES.join(', ')}"
+        raise ArgumentError, "invalid scope '#{scope}', expected one of: #{VALID_SCOPES.join(", ")}"
       end
 
       def self.scoped_index(scope)
@@ -196,14 +196,12 @@ module Samagotchi
 
         # The verbatim "write to index.md" behavior (path: "index") must not
         # trigger upsert logic.
-        unless entry_name == MEMORY_INDEX
-          if manage_index(resolved_scope, entry_name, bytes, description)
-            message += " Index line refreshed automatically."
-          end
+        if !(entry_name == MEMORY_INDEX) && manage_index(resolved_scope, entry_name, bytes, description)
+          message += " Index line refreshed automatically."
         end
 
         message
-      rescue => e
+      rescue StandardError => e
         "Error: #{e.message}"
       end
 

@@ -80,7 +80,7 @@ module Samagotchi
       # A line that is one word: a slash and a name, no spaces, no second
       # slash. `/modle` is one; `/foo bar` and `/usr/bin/env` are not (they
       # are prompts).
-      UNKNOWN_COMMAND_WORD = /\A\/[A-Za-z][A-Za-z0-9_-]*\z/
+      UNKNOWN_COMMAND_WORD = %r{\A/[A-Za-z][A-Za-z0-9_-]*\z}
 
       # Whether +line+ is a command word no command answers: a typo like
       # `/modle`, which a UI must not send to the model as a prompt.
@@ -100,7 +100,7 @@ module Samagotchi
 
         text = line.to_s.strip
         close = DidYouMean::SpellChecker.new(dictionary: @entries.map(&:name)).correct(text).first
-        "Unknown command #{text}. #{close ? "Did you mean #{close}? " : ""}/help lists the commands."
+        "Unknown command #{text}. #{"Did you mean #{close}? " if close}/help lists the commands."
       end
 
       # @return [Entry, nil] the first entry the UI runs itself (local) that

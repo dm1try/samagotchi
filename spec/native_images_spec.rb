@@ -108,7 +108,7 @@ RSpec.describe "Native images" do
       server.default("/props", status: 503, json: { error: { message: "loading" } })
 
       expect { client.complete(prompt, images: [png64]) }
-        .to raise_error(Samagotchi::LLM::VisionUnsupported, /can't reach \/props for the media marker/)
+        .to raise_error(Samagotchi::LLM::VisionUnsupported, %r{can't reach /props for the media marker})
       expect(server.requests.map(&:path)).to eq(%w[/props])
     end
   end

@@ -48,7 +48,7 @@ RSpec.describe "Source-links bundle E2E" do
     notices = []
     registry.runtime = Samagotchi::Hooks::Runtime.new(
       notify: ->(**kw) { notices << kw },
-      ask_user: ->(**) { nil },
+      ask_user: ->(**) {},
       stop_turn: ->(**) { false }
     )
     registry.fire(:after_turn, { type: :after_turn, status: "completed",

@@ -128,7 +128,7 @@ class Plugin
     removed = ops.count { |op, _| op == :del }
     first = ops.find { |op, _| op == :add } || ops.find { |op, _| op == :del }
     line = first ? cut(first.last.strip) : ""
-    "skill #{name} updated (+#{added} −#{removed})#{line.empty? ? "" : ": #{line}"} · /skill diff #{name}"
+    "skill #{name} updated (+#{added} −#{removed})#{": #{line}" unless line.empty?} · /skill diff #{name}"
   end
 
   # --- the nudge ------------------------------------------------------------
@@ -289,7 +289,7 @@ class Plugin
         next unless skill_name(name) == name
 
         date, description = index.fetch("skill_#{name}", [nil, nil])
-        line = +"#{name} · #{scope}"
+        line = "#{name} · #{scope}"
         line << " · #{date}" if date
         line << " — #{description}" if description
         line

@@ -283,7 +283,7 @@ file2.rb")
                                                preloaded_memory_names: ["foo"], muted_memory_names: ["bar"])
       stored.save
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      agent = described_class.new(client: client, session_id: stored.id, memories: ["baz"], muted_memories: ["bar", "qux"])
+      agent = described_class.new(client: client, session_id: stored.id, memories: ["baz"], muted_memories: %w[bar qux])
 
       expect(agent.instance_variable_get(:@requested_memories)).to eq(%w[foo baz])
       expect(agent.engine.muted_memory_names).to eq(%w[bar qux])
@@ -578,7 +578,7 @@ file2.rb")
       agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
       expect do
         expect { agent.run }.to output("done\n").to_stdout
-      end.to output(/^↻ empty answer, asking again \(1\/1\)$/).to_stderr
+      end.to output(%r{^↻ empty answer, asking again \(1/1\)$}).to_stderr
     end
 
     # A hook's notice goes to stderr: one during the turn as it comes, an
@@ -731,9 +731,9 @@ file2.rb")
 
     describe "no-op exit for --non-interactive with no prompt" do
       it "builds nothing and prints no banner" do
-        expect {
+        expect do
           described_class.new(client: client, non_interactive: true).run
-        }.not_to output(/Session:|Resumed session:/).to_stdout
+        end.not_to output(/Session:|Resumed session:/).to_stdout
       end
     end
   end
@@ -891,17 +891,15 @@ file2.rb")
       previous_dir = Dir.pwd
       original_xdg = ENV["XDG_CONFIG_HOME"]
       Dir.mktmpdir("samagotchi-empty") do |empty_cfg|
-        begin
-          ENV["XDG_CONFIG_HOME"] = empty_cfg
-          Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
-          ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(tmpdir, "history.json")
-          Dir.chdir(tmpdir)
-          example.run
-        ensure
-          ENV["XDG_CONFIG_HOME"] = original_xdg
-          Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
-          Dir.chdir(previous_dir) rescue nil
-        end
+        ENV["XDG_CONFIG_HOME"] = empty_cfg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(tmpdir, "history.json")
+        Dir.chdir(tmpdir)
+        example.run
+      ensure
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        Dir.chdir(previous_dir) rescue nil
       end
       FileUtils.rm_rf(tmpdir)
     end
@@ -969,7 +967,7 @@ file2.rb")
       agent = described_class.new(client: client)
 
       expect { agent.run }
-        .to output(/ggml-org\/gemma-4-26b-a4b-it-GGUF:Q4_K_M \(loaded\).*Qwen3-14B-Instruct \(unloaded\)/m).to_stdout
+        .to output(%r{ggml-org/gemma-4-26b-a4b-it-GGUF:Q4_K_M \(loaded\).*Qwen3-14B-Instruct \(unloaded\)}m).to_stdout
     end
 
     it "rejects new input until the interrupted turn is resumed" do
