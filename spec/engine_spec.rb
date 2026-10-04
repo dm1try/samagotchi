@@ -2,6 +2,7 @@
 
 require "samagotchi/engine"
 require "samagotchi/session"
+require "samagotchi/memory_bundle/installer"
 require "tmpdir"
 require "support/thinking_off"
 require "support/test_kernel"
