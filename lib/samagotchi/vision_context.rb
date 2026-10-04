@@ -66,8 +66,10 @@ module Samagotchi
 
   # Which images of a conversation one request sends. Every image that is
   # not sent becomes a placeholder line: all of them when the model can't
-  # see images, the older ones past limits.max_per_request (the newest go),
-  # and any whose file is gone.
+  # see images, the oldest ones past limits.max_per_request, and any whose
+  # file is gone. Past the limit the oldest images are dropped in batches
+  # (ImagePlan.dropped_count), so the cut stays put for a few new images
+  # and the history before it stays a cacheable prefix.
   class ImagePlan
     Item = Data.define(:ref, :data, :placeholder) do
       def sent? = !data.nil?
@@ -92,7 +94,18 @@ module Samagotchi
         Array(entry[:images]).each_index { |position| occurrences << [index, position] }
       end
       @limit = vision&.limits&.max_per_request || ImageStore::Limits.from_config.max_per_request
-      @sent = occurrences.last(@limit)
+      @sent = occurrences.drop(self.class.dropped_count(occurrences.size, @limit))
+    end
+
+    # How many of +total+ images (oldest first) a request leaves out with
+    # +limit+ per request: none up to the limit, then whole steps of
+    # limit/2, so it's a pure function of the count. With limit 20, 21..30
+    # images drop the oldest 10, 31..40 the oldest 20.
+    def self.dropped_count(total, limit)
+      return 0 if total <= limit
+
+      step = [limit / 2, 1].max
+      (((total - limit) + step - 1) / step) * step
     end
 
     # The Items for conversation[+index+] (none when it has no images).
@@ -120,7 +133,7 @@ module Samagotchi
     def skip_reason(index, position)
       return "no session images here" if @vision.nil?
       return CANT_SEE unless @vision.sendable?
-      return "only the newest #{@limit} images are sent" unless @sent.include?([index, position])
+      return "an older image (chi sends up to the newest #{@limit})" unless @sent.include?([index, position])
 
       nil
     end

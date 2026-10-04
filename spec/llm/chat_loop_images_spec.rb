@@ -81,8 +81,21 @@ RSpec.describe "ChatLoop images" do
     kernel.turn_settings = kernel.turn_settings.with(vision: tight)
     wire = loop.wire_messages([{ role: "user", content: "one", images: [png] }, { role: "model", content: "ok" },
                                { role: "user", content: "two", images: [gif] }])
-    expect(wire[0][:content]).to eq([{ type: "text", text: "one\n[image tiny.png 3×2 not sent: only the newest 1 images are sent]" }])
+    expect(wire[0][:content]).to eq([{ type: "text", text: "one\n[image tiny.png 3×2 not sent: an older image (chi sends up to the newest 1)]" }])
     expect(wire[2][:content]).to eq([{ type: "text", text: "two" }, image(gif_uri)])
+  end
+
+  it "drops older images in batches, so earlier messages stay byte-stable until a step boundary" do
+    tight = Samagotchi::VisionContext.new(session_dir: dir, limits: limits.with(max_per_request: 4))
+    kernel.turn_settings = kernel.turn_settings.with(vision: tight)
+    conversation = ->(count) { Array.new(count) { |i| { role: "user", content: "m#{i}", images: [png] } } }
+    wires = (4..9).to_h { |count| [count, loop.wire_messages(conversation.call(count))] }
+    sent = wires.transform_values { |wire| wire.count { |m| m[:content].any? { |part| part[:type] == "image_url" } } }
+
+    expect(sent).to eq(4 => 4, 5 => 3, 6 => 4, 7 => 3, 8 => 4, 9 => 3)
+    expect(wires[6].first(5)).to eq(wires[5])
+    expect(wires[8].first(7)).to eq(wires[7])
+    expect(wires[7].first(6)).not_to eq(wires[6])
   end
 
   it "sends a placeholder for a ref whose file is gone or isn't valid" do

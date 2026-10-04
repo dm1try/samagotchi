@@ -495,9 +495,12 @@ A model that can see images gets them these ways:
 Images are downscaled to a 1568 px long side (with `sips` on macOS or
 ImageMagick; without either, a larger image is refused with a hint) and stored
 next to the session in `<session>/images/`, and the session file keeps small
-references to them. Each request sends the newest 20 images of the conversation;
-older ones become a line like `[image shot.png 1280×800 not sent: only the
-newest 20 images are sent]`.
+references to them. Each request sends up to the newest 20 images of the
+conversation (`image.max_per_request`); past that the oldest are left out ten at
+a time (half the limit), so the earlier conversation stays the same between
+requests and the server's prompt cache keeps it. A left-out image becomes a line
+like `[image shot.png 1280×800 not sent: an older image (chi sends up to the
+newest 20)]`.
 
 A model that can't see images (a text-only model, llama.cpp without
 `--mmproj`, an mlx host) refuses a turn with images before sending it:

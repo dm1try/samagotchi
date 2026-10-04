@@ -784,7 +784,7 @@ downscaled first; three settings bound them (env `SAMAGOTCHI_IMAGE_*` or
 image:
   max_side: 1568          # long side in px (Claude's standard; ~1.3k tokens for 1280×800)
   max_bytes: 3750000      # larger after downscaling → re-encoded as JPEG
-  max_per_request: 20     # older images in the conversation become placeholder lines
+  max_per_request: 20     # older images become placeholder lines, dropped in batches of half this
 ```
 
 Whether a model can see images is found out before a turn with images is sent:

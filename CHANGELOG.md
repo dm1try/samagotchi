@@ -13,6 +13,12 @@ and commands may change between minor versions. How releases are made:
 - Desktop: the panel's footer says where its text and images came from, "from clipboard" (the hotkey) or "from
   selection" (Send to chi); run `chi desktop upgrade`.
 
+### Changed
+
+- Past `image.max_per_request` images, the oldest are left out in batches of half the limit instead of one per new
+  image, so the earlier conversation stays a cacheable prefix; the placeholder reads "an older image (chi sends up
+  to the newest N)".
+
 ### Fixed
 
 - Desktop: `chi desktop install` starts the helper with a bare env, so `SAMAGOTCHI_*` settings (and anything else)
