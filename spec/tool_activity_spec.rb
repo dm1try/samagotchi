@@ -98,6 +98,13 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_status("wait_result: canceled", "read")).to eq("ok")
     end
 
+    it "calls a task_wait whose task was stopped (by the user or the model) stopped" do
+      stopped = "task_id: t1\nstatus: stopped\nexit_code: \nstop_reason: stopped_by_user\noutput_path: x"
+      expect(described_class.tool_activity_status(stopped, "task_wait")).to eq("stopped")
+      expect(described_class.tool_activity_status(stopped.sub("stopped_by_user", "stopped_by_model"), "task_wait")).to eq("stopped")
+      expect(described_class.tool_activity_status(stopped.sub("status: stopped", "status: completed"), "task_wait")).to eq("ok")
+    end
+
     it "carries it into the activity event" do
       expect(described_class.tool_activity_event("execute", { name: "execute", content: "false" }, "exit: 1 (no output)")[:status])
         .to eq("error")

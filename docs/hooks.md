@@ -56,7 +56,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | `:after_generation` | After LLM returns (both loops); not after a generation a hook cut (`stop_generation`) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
 | `:generation_progress` | While the response streams, in batches (see [Watching the stream](#watching-the-stream)) | `{ type: :generation_progress, iteration: N, thinking: "..." (new since the last fire), text: "..." (new visible text), thinking_chars: N, text_chars: N (this generation so far), elapsed_ms: N }` |
 | `:before_tool_call` | Before tool dispatch (and before `tool_call_started`) | `{ type: :before_tool_call, iteration: N, call: {...}, params: "...", guardrail: Verdict, context: {...}, targets: {...}, blocked: false, block_reason: nil }` |
-| `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." (capped at max_tool_output_chars), status: "ok" \| "error" \| "blocked" \| "stopped" }` |
+| `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." (capped at max_tool_output_chars), status: "ok" \| "error" \| "blocked" \| "stopped" }`; `stopped` is a `task_wait` the turn's Stop ended (the task runs on) or whose task was stopped |
 | `:session_end` | After each turn `:after_turn` fires for, after it (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
 
 Every event also carries the hook runtime (next section): `hook:` (the label

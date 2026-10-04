@@ -150,12 +150,13 @@ module Samagotchi
     # "error" for an "Error:" result, and for an execute whose command
     # exited non-zero (its last "exit: N" line; no number: killed by a
     # signal), so the turn tally's "(N failed)" counts it. "stopped" for a
-    # task_wait the user's Stop ended: the task itself runs on.
+    # task_wait the user's Stop ended (the task itself runs on), and for one
+    # whose task was stopped (the stop-task button, or the model's task_stop).
     def tool_activity_status(result, tool_name = nil)
       text = result.to_s
       return "error" if text.start_with?("Error:")
       return "error" if tool_name == Tools::Execute::NAME && execute_failed?(text)
-      return "stopped" if tool_name == Tools::TaskWait::NAME && text.match?(/^wait_result: canceled$/)
+      return "stopped" if tool_name == Tools::TaskWait::NAME && text.match?(/^(wait_result: canceled|status: stopped)$/)
 
       "ok"
     end
