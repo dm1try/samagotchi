@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { commandBlockHtml, rowHover, stepTextHtml, stepsHtml } from "../../../lib/samagotchi/web/public/command_view.js";
+import { commandBlockHtml, heredocChip, rowHover, stepTextHtml, stepsHtml } from "../../../lib/samagotchi/web/public/command_view.js";
 import { copyButtonHtml } from "../../../lib/samagotchi/web/public/copy.js";
 
 const COPY = copyButtonHtml("code");
@@ -77,6 +77,20 @@ test("stepsHtml: ops between steps, labels as headings, limit and heredoc chips,
     `<span class="step-chip heredoc" title="a heredoc: its text in the raw command">EOF · 1 line</span></span></li>` +
     `<li class="activity-step"><span class="step-op" title=";">→</span><span class="step-body"><code>cat &gt; x &lt;&lt;J</code>` +
     `<span class="step-chip heredoc" title="a heredoc: its text in the raw command">J · 34 lines</span></span></li></ol>`);
+});
+
+test("heredocChip: the first heredoc and +N for the others, all of them in the hover", () => {
+  assert.equal(heredocChip({ text: "x" }), "");
+  assert.equal(heredocChip({ heredoc: { tag: "EOF", lines: 3 } }),
+    `<span class="step-chip heredoc" title="a heredoc: its text in the raw command">EOF · 3 lines</span>`);
+  const two = { heredoc: { tag: "EOF", lines: 3 }, heredocs: [{ tag: "EOF", lines: 3 }, { tag: "T", lines: 1 }] };
+  assert.equal(heredocChip(two),
+    `<span class="step-chip heredoc" title="2 heredocs: EOF · 3 lines, T · 1 line; their text in the raw command">EOF · 3 lines +1</span>`);
+  const three = { heredoc: { tag: "<A>", lines: 1 }, heredocs: [{ tag: "<A>", lines: 1 }, { tag: "B", lines: 2 }, { tag: "C", lines: 4 }] };
+  assert.match(heredocChip(three), /title="3 heredocs: &lt;A&gt; · 1 line, B · 2 lines, C · 4 lines; their text in the raw command">&lt;A&gt; · 1 line \+2<\/span>$/);
+  // A one-entry heredocs: (not sent today) reads as the one heredoc.
+  assert.equal(heredocChip({ heredoc: { tag: "EOF", lines: 2 }, heredocs: [{ tag: "EOF", lines: 2 }] }),
+    `<span class="step-chip heredoc" title="a heredoc: its text in the raw command">EOF · 2 lines</span>`);
 });
 
 test("stepTextHtml: dims redirections to and from nowhere, leaves real ones", () => {

@@ -37,6 +37,8 @@ and commands may change between minor versions. How releases are made:
   source's `remote_host:` lists that host, so it can't link to the local checkout's host.
 - Web stage: the running-tool row no longer reads `thinking…` once the turn has ended (answered, canceled or
   failed): it is idle, with no word.
+- Web: a command step with more than one heredoc says so on its chip, `EOF · 3 lines +1`, and the chip's hover
+  lists them all.
 - A step with more than one heredoc (`-f body="$(cat <<EOF …)" -f title="$(cat <<EOF …)"`) cuts out every body;
   the step's chip still names the first (the web shows one chip for now).
 

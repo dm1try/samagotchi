@@ -11,7 +11,7 @@ module Samagotchi
   # - a heredoc's body leaves its step's text and becomes its +heredoc+
   #   ({tag:, lines:}), also one inside a "$(cat <<'EOF' … EOF)" argument; a
   #   step with more than one is cut of them all, and lists them as
-  #   +heredocs+ (+heredoc+ stays the first, what the UI shows today);
+  #   +heredocs+ (+heredoc+ stays the first; the web's chip names it, +N);
   # - steps are split at && || ; | |& & and newlines; a ( … ) subshell stays
   #   one step; +op+ is the operator before a step (nil for the first);
   # - a leading "cd X &&" / "cd X;" becomes +cd+ (only the first);
