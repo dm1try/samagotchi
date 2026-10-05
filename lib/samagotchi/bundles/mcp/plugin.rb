@@ -18,11 +18,12 @@
 #           attach_image_paths: true  # default: an image path in the text, in the
 #                                     # temp dir or cwd, attaches it
 #
-# Image blocks in a result go to the model as images (text: "[image 1:
-# image/png, attached]"); so does an image file named in a text block,
+# Image blocks in a result go to the model as images (the text keeps
+# "[image 1: image/png]"); so does an image file named in a text block,
 # under the system temp dir or the server's cwd: the block is only its
 # absolute path (chrome-devtools-mcp --slim answers a screenshot that way),
-# or it says one ending in an image extension ("Saved it to /tmp/a.png.").
+# or it says one ending in an image extension ("Saved it to /tmp/a.png."),
+# noted as "[image 1: a.png]".
 # A server that doesn't start, answer or list its tools is skipped with a
 # notice; the rest of chi works. One that exits mid-session starts again on
 # its next call, at most MAX_RESTARTS times a session. /mcp lists the
