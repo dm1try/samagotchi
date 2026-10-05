@@ -644,6 +644,15 @@ RSpec.describe Samagotchi::Web::App do
       expect(app.send(:messages_for_display, [note])).to eq([{ role: "note", content: "deploy frozen", label: "slack" }])
     end
 
+    it "marks a context wake turn's note as its turn's start, with the turn's id" do
+      note = Samagotchi::ContextNote.message(note_id: "ctx-pr-1-2-ab", text: "Updated: pr-1.", source: "context pr-1",
+                                             context_source: "pr-1", turn_start: true, turn_id: "T2")
+      app = build_app(state_dir: Dir.mktmpdir)
+
+      expect(app.send(:messages_for_display, [note]))
+        .to eq([{ role: "note", content: "Updated: pr-1.", label: "context pr-1", turn_start: true, turn_id: "T2" }])
+    end
+
     it "shows a plugin's steer as role steer with its source and the step that answered it, never as a prompt" do
       messages = [{ role: "user", content: "look" },
                   { role: "model", content: "", tool_calls: [{ id: "c1", name: "read" }] },

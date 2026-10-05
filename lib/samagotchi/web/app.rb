@@ -1558,7 +1558,14 @@ module Samagotchi
           role = (m[:role] || m["role"]).to_s
           content = (m[:content] || m["content"]).to_s
           if Samagotchi::ContextNote.note?(m)
-            filtered << { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m) }
+            note = { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m) }
+            # A context wake turn's note starts that turn (Steer.turn_prompt?):
+            # the page opens the turn with it and pairs it with its record.
+            if Samagotchi::Steer.turn_prompt?(m)
+              note[:turn_start] = true
+              note[:turn_id] = (m[:turn_id] || m["turn_id"]).to_s
+            end
+            filtered << note
             next
           end
           # A plugin's steer: a row of the step that answered it, which the
