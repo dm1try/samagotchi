@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
   waiting on an open card it showed.
 - source-links: a ref that names its own repo (`other/repo#12`) takes `{host}` from the git remote only when the
   source's `remote_host:` lists that host, so it can't link to the local checkout's host.
+- A step with more than one heredoc (`-f body="$(cat <<EOF …)" -f title="$(cat <<EOF …)"`) cuts out every body;
+  the step's chip still names the first (the web shows one chip for now).
 
 ## [0.29.0] - 2026-10-05
 

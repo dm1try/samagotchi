@@ -103,6 +103,14 @@ RSpec.describe Samagotchi::CommandSteps do
       )
     end
 
+    it "a second heredoc in one step is cut out too" do
+      text = %(gh api -f body="$(cat <<EOF\nline one\nEOF\n)" -f title="$(cat <<EOF\na title\nEOF\n)")
+      parsed = parse(text)
+      expect(parsed[:steps].map { |step| step[:text] }).to eq([%(gh api -f body="$(cat <<EOF)" -f title="$(cat <<EOF)")])
+      expect(parsed[:steps].first[:heredoc]).to eq(tag: "EOF", lines: 1)
+      expect(parsed[:steps].first[:heredocs]).to eq([{ tag: "EOF", lines: 1 }, { tag: "EOF", lines: 1 }])
+    end
+
     it "<< in quotes or $((…)) is no heredoc" do
       expect(parse("echo '<<EOF' && echo $((1<<3))")).to eq(steps: [{ text: "echo '<<EOF'" }, { text: "echo $((1<<3))", op: "&&" }])
     end

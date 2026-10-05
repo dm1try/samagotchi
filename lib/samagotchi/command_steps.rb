@@ -9,7 +9,9 @@ module Samagotchi
   # command as the model wrote it. Rules, in order:
   #
   # - a heredoc's body leaves its step's text and becomes its +heredoc+
-  #   ({tag:, lines:}), also one inside a "$(cat <<'EOF' … EOF)" argument;
+  #   ({tag:, lines:}), also one inside a "$(cat <<'EOF' … EOF)" argument; a
+  #   step with more than one is cut of them all, and lists them as
+  #   +heredocs+ (+heredoc+ stays the first, what the UI shows today);
   # - steps are split at && || ; | |& & and newlines; a ( … ) subshell stays
   #   one step; +op+ is the operator before a step (nil for the first);
   # - a leading "cd X &&" / "cd X;" becomes +cd+ (only the first);
@@ -23,8 +25,8 @@ module Samagotchi
   #   parentheses) gives nil: the UI then shows the title and the raw
   #   command.
   module CommandSteps
-    Step = Data.define(:text, :op, :label, :limit, :heredoc) do
-      def initialize(text:, op: nil, label: nil, limit: nil, heredoc: nil) = super
+    Step = Data.define(:text, :op, :label, :limit, :heredoc, :heredocs) do
+      def initialize(text:, op: nil, label: nil, limit: nil, heredoc: nil, heredocs: nil) = super
 
       def to_h = super.compact
     end
@@ -122,29 +124,47 @@ module Samagotchi
 
       slice = text[from...to]
       heredoc = body && { tag: bodies[body.last], lines: body_lines(text[body.last]) }
-      slice, heredoc = inner_heredoc(slice) unless heredoc
-      Step.new(text: slice.strip, op: op, heredoc: heredoc)
+      slice, heredocs = inner_heredocs(slice) if heredoc.nil?
+      Step.new(text: slice.strip, op: op, heredoc: heredoc || heredocs&.first,
+               heredocs: heredocs && heredocs.size > 1 ? heredocs : nil)
     end
 
-    # A heredoc inside a $(…) in +slice+ (git commit -m "$(cat <<'EOF' …)"):
-    # the slice with the body cut out, and the heredoc; or the slice as is.
-    def inner_heredoc(slice)
-      return [slice, nil] unless slice.include?("<<")
+    # Every heredoc inside a $(…) in +slice+ (git commit -m "$(cat <<'EOF'
+    # …)"): the slice with all their bodies cut out, and the heredocs ([] for
+    # none). One step can hold several ("-f body=$(cat <<EOF …)" and
+    # "-f title=$(cat <<EOF …)"), and the rest of the step is text the reader
+    # would otherwise see.
+    def inner_heredocs(slice)
+      heredocs = []
+      return [slice, heredocs] unless slice.include?("<<")
 
       at = 0
       while (open = slice.index("$(", at))
         lexer = Lex::Lexer.new(slice[(open + 2)..])
         lexer.tokens
         doc = lexer.heredoc_spans.first
-        if doc
-          from = open + 2 + doc[:span].begin - 1 # the newline before the body
-          to = open + 2 + doc[:span].end
-          to += 1 if slice[to] == "\n"
-          return [slice[0...from] + slice[to..], { tag: doc[:tag], lines: body_lines(slice[(from + 1)...to]) }]
+        unless doc
+          at = open + 2
+          next
         end
+
+        from = open + 2 + doc[:span].begin - 1 # the newline before the body
+        to = open + 2 + doc[:span].end
+        to += 1 if slice[to] == "\n"
+        heredocs << { tag: doc[:tag], lines: body_lines(slice[(from + 1)...to]) }
+        cut = slice[0...from] + slice[to..]
+        # A span that cut nothing (it can't) would loop here: move past it.
+        if cut.length >= slice.length
+          at = open + 2
+          next
+        end
+
+        slice = cut
+        # The cut moved everything after it left; keep looking from the same
+        # spot, past this "$(".
         at = open + 2
       end
-      [slice, nil]
+      [slice, heredocs]
     end
 
     # The body's line count, its terminator line not counted.
