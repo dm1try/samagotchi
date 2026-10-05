@@ -17,6 +17,7 @@ require_relative "continue_offer"
 require_relative "iteration_limit"
 require_relative "session_commands"
 require_relative "model_profile"
+require_relative "child_reports"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -92,6 +93,14 @@ module Samagotchi
       # The lines the running turn's drain merged ([prompt, origin]), for a
       # failed prompt turn to hand back; reset as each turn begins.
       @merged_this_turn = []
+      # A delegate child's side (ChildRing): whether the running turn is
+      # its parent's (it rings when it ends), whether that turn rang a
+      # question, and whether the next turn rings whatever its origin (it
+      # follows a question the parent was rung about: D10).
+      @reporting_turn = false
+      @asked_parent = false
+      @owes_parent = false
+      @initial_turn = false
     end
 
     # Whether the session was empty as the worker left it, so the caller
@@ -134,7 +143,10 @@ module Samagotchi
       @turn_end_seq = 0
       @engine.subscribe(observer: lambda { |event|
         @turn_end_seq = event[:event_seq] if Events::TURN_END.include?(event[:type])
+        ring_question(event) if event[:type] == :question_requested
       })
+      # This session's own delegate children's news (rings in children/).
+      @child_reports = ChildReports.new(session_id: @session_id, state_dir: @state_dir)
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.
       @default_model = ModelProfile.required_model_name(nil)
@@ -193,7 +205,7 @@ module Samagotchi
           absorb_notes
 
           if (prompt = take_initial_prompt)
-            run_prompt(prompt, nil) unless initial_command(prompt)
+            run_initial_prompt(prompt) unless initial_command(prompt)
             next
           end
 
@@ -219,6 +231,8 @@ module Samagotchi
         # Its stderr is /dev/null: the log is the only trace of why.
         Log.exception(:worker, "crashed", e)
         Session.mark_error(@session_id, reason: e.message, state_dir: @state_dir)
+        # A delegate's parent hears of it (best effort).
+        ChildRing.ring(@session, why: "crash", state_dir: @state_dir) if @session
         :crashed
       ensure
         # The anytime commands finish and the plugins' services stop (a
@@ -334,6 +348,15 @@ module Samagotchi
       return unless save_or_log(:notes) { @session.save(state_dir: @state_dir) }
 
       claimed.each { |file| FileUtils.rm_f(file) }
+    end
+
+    # The first prompt (spawn_session's): a delegate child's task, which is
+    # its parent's although no client sent it.
+    def run_initial_prompt(prompt)
+      @initial_turn = true
+      run_prompt(prompt, nil)
+    ensure
+      @initial_turn = false
     end
 
     def run_input_file(input_file)
@@ -501,6 +524,7 @@ module Samagotchi
       # Every kind of turn merges steering (a reminder turn too, which may be
       # a fresh worker's first), so the list is this turn's from the start.
       @merged_this_turn = []
+      @reporting_turn = reports_to_parent?(turn_args[:origin])
       begin
         @session.status = Session::STATUS_RUNNING
         @session.save(state_dir: @state_dir)
@@ -524,6 +548,51 @@ module Samagotchi
         SessionInbox.write_output(@session_dir, response)
       end
       save_or_log(:turn) { save_session }
+      settle_child_reports(error)
+      ring_parent_after_turn
+    end
+
+    # The delegate reports this turn took: a kept turn moves the cursors on
+    # and deletes their rings; a failed one (rolled back) leaves the rings
+    # for the next turn.
+    def settle_child_reports(error)
+      error ? @child_reports.release : @child_reports.commit
+    end
+
+    # A delegate child's turn that was its parent's (#reports_to_parent?)
+    # rings the parent, after the save: the parent reads a settled child.
+    # A question it rang about that still waits makes the next turn ring
+    # too, whoever starts it (the user answering Continue on the web).
+    def ring_parent_after_turn
+      ChildRing.ring(@session, why: "turn_end", state_dir: @state_dir) if @reporting_turn
+      @owes_parent = @asked_parent && !@session.pending_question.nil?
+      @asked_parent = false
+      @reporting_turn = false
+    end
+
+    # Whether the turn starting now is a delegate child's parent's: its
+    # task (the initial prompt), a follow-up, a continue the parent
+    # answered, a reminder, anything but a human typing into the child
+    # (ArchiveStore.user_input?), and any turn after a question the parent
+    # was rung about.
+    def reports_to_parent?(origin)
+      return false unless @session.delegate?
+
+      @initial_turn || @owes_parent || !ArchiveStore.user_input?(origin&.dig(:client_id))
+    end
+
+    # The Engine published a question (after the question desk saved it).
+    # In a turn that reports to the parent, the model's own question and
+    # the step-limit continue ring it; approvals and hooks' questions are
+    # the user's, on this session's card.
+    def ring_question(event)
+      return unless @reporting_turn
+
+      kind = event.dig(:pending_question, :kind).to_s
+      return unless ["", ContinueOffer::KIND].include?(kind)
+
+      ChildRing.ring(@session, why: "question", state_dir: @state_dir)
+      @asked_parent = true
     end
 
     # A save between turns (the turn's own, a command's, the notes', the
@@ -593,14 +662,28 @@ module Samagotchi
           end
         end
         merged.each { |_prompt, origin| user_input(origin&.dig(:client_id)) }
-        unless merged.empty?
-          @engine.announce(type: :input_merged, count: merged.size, origins: merged.filter_map(&:last))
+        # Delegate children's reports: never handed back on a failure
+        # (their rings stay for the next turn), so not in @merged_this_turn.
+        reports = take_child_reports
+        unless merged.empty? && reports.empty?
+          @engine.announce(type: :input_merged, count: merged.size + reports.size,
+                           origins: merged.filter_map(&:last) + reports.map(&:origin))
           @merged_this_turn.concat(merged)
         end
         # Each line keeps its sender (Steer.source_for_client): a chi send or
         # a delegating parent's line is saved and shown to the model as theirs.
-        merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) }
+        merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) } +
+          reports.map(&:line)
       end
+    end
+
+    # The reports for rings that came in since the turn last looked. A
+    # failure to read them must not take the turn's steering with it.
+    def take_child_reports
+      @child_reports.take
+    rescue StandardError => e
+      Log.warn(:worker, "delegate_reports_failed", error: e.class.name, msg: e.message)
+      []
     end
 
     # Check again with the event log held, which the Bridge holds while it

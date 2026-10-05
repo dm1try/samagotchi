@@ -463,6 +463,32 @@ module Samagotchi
       session
     end
 
+    # A delegate child rang a parent that has no worker (ChildRing): start
+    # one, which runs a turn for the report. Not for a parent that is gone,
+    # stopped, archived, a scratch session, or open in a chi REPL: the ring
+    # waits on disk for whoever runs it next (#resume_session itself would
+    # clear the stop). A stop landing between the check and the resume is
+    # a small window, left as is.
+    # @return [Symbol] :woken, or why not (:gone, :stopped, :archived,
+    #   :scratch, :owned)
+    def self.wake_for_report(session_id, state_dir: nil)
+      sd = state_dir || Session.default_state_dir
+      return :gone unless Session.exist?(session_id, state_dir: sd)
+      return :owned if session_owner(session_id, state_dir: sd)
+      return :stopped if Session.stopped_marker?(session_id, state_dir: sd)
+      return :archived if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
+
+      session = Session.load(session_id, state_dir: sd)
+      return :stopped if session.status == Session::STATUS_STOPPED
+      return :scratch if session.scratch
+
+      resume_session(session_id, state_dir: sd)
+      Log.info(:worker, "delegate_woke_parent", parent: session_id[0, 8])
+      :woken
+    rescue OwnedByTUI
+      :owned
+    end
+
     # How long after a spawn a resume trusts that worker to take the
     # session, while it runs (and the session wasn't stopped since).
     WORKER_START_GRACE = 30.0
