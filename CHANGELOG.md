@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
 - Web: the stop-task confirm names a task from an earlier turn by its command (the wait row's title), not its id.
 - A canceled turn's last step keeps the thinking it streamed, so reloading it shows the thought instead of an empty
   step (both loops).
+- A plain REPL (`--no-shared`) keeps its session's `pending_card.json` as a worker does, so `chi web` marks a session
+  waiting on an open card it showed.
 
 ## [0.29.0] - 2026-10-05
 
