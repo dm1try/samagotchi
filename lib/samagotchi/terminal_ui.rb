@@ -254,6 +254,7 @@ module Samagotchi
         ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir)
         # Retry lines and hook notices on stderr; stdout gets the answer below.
         sink = OneShotSink.new
+        save_before_first_turn(session)
         begin
           result = @engine.run_turn(
             session,
@@ -582,6 +583,7 @@ module Samagotchi
       refresh_status_row
       # A prompt the user typed brings an archived session back to the lists.
       ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir) if prompt && !continue
+      save_before_first_turn(session)
       with_steering do
         @engine.run_turn(
           session,
@@ -807,6 +809,13 @@ module Samagotchi
     def save_session(session)
       @engine.store_model!(session)
       session.save
+    end
+
+    # A fresh session reaches the disk before its first turn: a tool in that
+    # turn reads it from there (delegate loads its parent to start a child,
+    # "Session not found" otherwise). Later turns find it saved already.
+    def save_before_first_turn(session)
+      session.save unless Session.exist?(session.id)
     end
 
     # A !cmd shows its own output; everything else is the model> line.

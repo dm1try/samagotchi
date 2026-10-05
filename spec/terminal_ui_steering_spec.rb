@@ -10,7 +10,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
   let(:surface) { RecordingSurface.new }
   let(:agent) { described_class.new(client: client, surface: surface) }
   let(:engine) { agent.engine }
-  let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: [], used_memory_names: []) }
+  let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: [], used_memory_names: [], save: nil) }
   # A session something happened in: the REPL keeps it at exit.
   let(:used_session) do
     instance_double(Samagotchi::Session, id: "s1", used_memory_names: [], "messages=": nil, messages: [{ role: "user", content: "go" }], last_prompt: "go")

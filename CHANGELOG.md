@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - A message sent while a reminder turn ran was lost when that reminder turn was the session worker's first turn
   (a fresh or restarted worker): the turn took the message and dropped it. It now joins the turn as steering does.
+- `chi -p … --non-interactive` (and a fresh REPL session's first turn without a worker) could not use the `delegate`
+  tool: the session was not saved until its turn ended, so the child failed with "Session not found". A fresh
+  session is now saved before its first turn.
 
 ## [0.30.0] - 2026-10-05
 
