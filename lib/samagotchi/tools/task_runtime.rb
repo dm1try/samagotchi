@@ -154,7 +154,7 @@ module Samagotchi
 
       def get_record(task_id)
         record = load_record(task_id)
-        return [nil, "Error: task not found: #{task_id}"] unless record
+        return [nil, not_found(task_id)] unless record
 
         [refresh_record(record), nil]
       rescue StandardError => e
@@ -180,7 +180,7 @@ module Samagotchi
       # @param by [String] "model" (task_stop) or "user" (the web's button)
       def stop_task(task_id, by:)
         record = load_record(task_id)
-        return [nil, "Error: task not found: #{task_id}"] unless record
+        return [nil, not_found(task_id)] unless record
 
         refreshed = refresh_record(record)
         return [refreshed, nil] unless refreshed["status"] == "running"
@@ -221,6 +221,19 @@ module Samagotchi
         return mark_finished_without_exit_code(record) unless process_alive?(pid)
 
         record
+      end
+
+      # A session id (a uuid) is never a task's: task ids are a timestamp
+      # and hex (20261005093000-1a2b3c4d).
+      SESSION_ID_SHAPE = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+
+      # A model mixing up ids (Qwen passes session ids to task_get and
+      # task_stop) is told which kind it passed and where task ids come from.
+      def not_found(task_id)
+        error = "Error: task not found: #{task_id}"
+        return error unless SESSION_ID_SHAPE.match?(task_id.to_s)
+
+        "#{error} (that is a session id; task ids come from task_create, and task_list lists them)"
       end
 
       def load_record(task_id)

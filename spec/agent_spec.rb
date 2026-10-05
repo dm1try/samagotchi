@@ -609,6 +609,31 @@ file2.rb")
       expect(both.string.lines.map(&:chomp).drop(1)).to eq(["hook> early", "done", "hook> warning: sources: JIRA-1"])
     end
 
+    # A tool in the first turn reads the session from disk (delegate loads
+    # its parent to start a child): the fresh session is saved before it.
+    it "saves a fresh session before its first -p --non-interactive turn" do
+      on_disk = nil
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
+      allow(client).to receive(:complete) do
+        on_disk = Samagotchi::Session.exist?(agent.engine.session.id)
+        "done"
+      end
+      expect { expect { agent.run }.to output("done\n").to_stdout }.to output(/Session:/).to_stderr
+      expect(on_disk).to be(true)
+    end
+
+    it "saves a fresh session before its first REPL turn" do
+      on_disk = nil
+      allow(Reline).to receive(:readmultiline).and_return("hello", nil)
+      agent = described_class.new(client: client)
+      allow(client).to receive(:complete) do
+        on_disk = Samagotchi::Session.exist?(agent.engine.session.id)
+        "done"
+      end
+      expect { agent.run }.to output.to_stdout
+      expect(on_disk).to be(true)
+    end
+
     # Ctrl-C: the Engine keeps the prompt and a cancel note; the run saves
     # them, so --resume has the prompt, and says so (bin/chi exits 130).
     it "saves the session at a Ctrl-C in a -p --non-interactive turn and returns :interrupted" do

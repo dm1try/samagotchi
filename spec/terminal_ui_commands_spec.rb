@@ -115,7 +115,7 @@ RSpec.describe Samagotchi::TerminalUI do
   describe "an unknown command word at the prompt" do
     let(:surface) { RecordingSurface.new }
     let(:agent) { described_class.new(client: client, surface: surface) }
-    let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: []) }
+    let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: [], save: nil) }
 
     it "prints the hint and sends nothing" do
       allow(agent.engine).to receive(:run_turn)
