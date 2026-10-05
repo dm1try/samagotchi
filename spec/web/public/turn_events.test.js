@@ -389,7 +389,7 @@ test("reminderText names the reminders a turn got", () => {
 import { displayWait } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("workerGoneText ends a running turn whose worker went away, and only a running one", () => {
-  assert.equal(workerGoneText({ turnRunning: true, stopped: true }), "\u2715 canceled (session stopped)");
+  assert.equal(workerGoneText({ turnRunning: true, stopped: true }), "\u25A0 canceled (session stopped)");
   assert.equal(workerGoneText({ turnRunning: true }), "\u2715 canceled (worker exited)");
   assert.equal(workerGoneText({ turnRunning: false, stopped: true }), null);
 });

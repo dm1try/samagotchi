@@ -1,7 +1,7 @@
 {
   "description": "Canonical label contract shared by the web (JS) and TUI (Ruby) suites: the words both UIs put on the same event. One source of truth: edit this file to change either side's words and BOTH suites must still pass. A case with \"expected\" is the same on both sides; one with \"ruby\" / \"js\" pins where the two UIs differ on purpose (the line around the label is each UI's own: the TUI's \"x>\" rows, the web's bubbles). Ruby: spec/labels_matrix_spec.rb; JS: spec/web/public/labels_matrix.test.js.",
   "cancel_reasons": {
-    "note": "The label a canceled turn's line ends with, in parentheses (Formatting#turn_canceled_line: \"✕ turn canceled (label)\"; timing.js cancelLineText: \"✕ canceled (label)\"); null: no parentheses.",
+    "note": "The label a canceled turn's line ends with, in parentheses (Formatting#turn_canceled_line: \"✕ turn canceled (label)\"; timing.js cancelLineText: \"■ canceled (label)\", a stop's mark, not an error's); null: no parentheses.",
     "cases": [
       { "reason": "ctrl_c", "expected": "Ctrl-C" },
       { "reason": "user", "expected": "stopped" },
@@ -11,7 +11,7 @@
     ]
   },
   "cancelled_by": {
-    "note": "A canceled turn's line with who stopped it (turn_canceled's cancelled_by, the turn record's too): the words after the \u2715 (Formatting#turn_canceled_line: \"\u2715 turn <words>\"; timing.js cancelLineText: \"\u2715 <words>\"). Only a hook's stop names one; no one: the cancel_reasons line.",
+    "note": "A canceled turn's line with who stopped it (turn_canceled's cancelled_by, the turn record's too): the words after the mark (Formatting#turn_canceled_line: \"\u2715 turn <words>\"; timing.js cancelLineText: \"\u25a0 <words>\"). Only a hook's stop names one; no one: the cancel_reasons line.",
     "cases": [
       { "reason": "hook", "by": "loop-guard", "expected": "stopped by loop-guard" },
       { "reason": "hook", "by": null, "expected": "canceled (by a hook)" },

@@ -23,13 +23,13 @@ const expected = (entry) => ("js" in entry ? entry.js : entry.expected);
 test("cancel reasons per the shared labels matrix", () => {
   for (const entry of cases("cancel_reasons")) {
     const label = expected(entry);
-    assert.equal(cancelLineText(entry.reason), `✕ canceled${label ? ` (${label})` : ""}`, `reason ${entry.reason}`);
+    assert.equal(cancelLineText(entry.reason), `■ canceled${label ? ` (${label})` : ""}`, `reason ${entry.reason}`);
   }
 });
 
 test("who stopped a turn per the shared labels matrix", () => {
   for (const entry of cases("cancelled_by")) {
-    assert.equal(cancelLineText(entry.reason, entry.by), `✕ ${expected(entry)}`, `${entry.reason} by ${entry.by}`);
+    assert.equal(cancelLineText(entry.reason, entry.by), `■ ${expected(entry)}`, `${entry.reason} by ${entry.by}`);
   }
 });
 

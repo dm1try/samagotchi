@@ -47,7 +47,7 @@ test("turnHistoryHtml: a turn canceled before any answer keeps its timing under 
     tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
   });
   const html = turnHistoryHtml(items, canceled, { thumbs });
-  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 0.9s · canceled<\/div><div class="bubble cancel">\u2715 canceled<\/div>$/);
+  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 0.9s · canceled<\/div><div class="bubble cancel stopped">\u25A0 canceled<\/div>$/);
   assert.match(html, /<summary>1 step · 1 tool call<\/summary><details class="gen"><summary>working with execute · 1 tool call<\/summary>/);
 });
 
@@ -88,7 +88,7 @@ test("turnHistoryHtml: a canceled turn with an answer ends with its cancel line 
   const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Running the slow\n[interrupted]" }];
   const canceled = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", cancellation_reason: "user", duration_ms: 4400 }] });
   const html = turnHistoryHtml(items, canceled, { thumbs });
-  assert.match(html, /<div class="turn-timing">turn 1 · 4.4s · canceled<\/div><div class="bubble cancel">\u2715 canceled \(stopped\)<\/div>$/);
+  assert.match(html, /<div class="turn-timing">turn 1 · 4.4s · canceled<\/div><div class="bubble cancel stopped">\u25A0 canceled \(stopped\)<\/div>$/);
   const done = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 4400 }] });
   assert.doesNotMatch(turnHistoryHtml(items, done, { thumbs }), /bubble cancel/);
 });
@@ -107,7 +107,7 @@ test("turnHistoryHtml: a canceled multi-step turn keeps its partial text in the 
   assert.doesNotMatch(html, /bubble output/);
   assert.match(html, /2 steps · 1 tool call/);
   assert.match(html, /Both checks passed:/);
-  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 12s · canceled<\/div><div class="bubble cancel">✕ canceled \(stopped\)<\/div>$/);
+  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 12s · canceled<\/div><div class="bubble cancel stopped">■ canceled \(stopped\)<\/div>$/);
 });
 
 test("turnHistoryHtml with parts: a call's images are thumbs on its reloaded row, as live", () => {

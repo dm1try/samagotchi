@@ -122,6 +122,8 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.user blockquote:last-child{margin-bottom:0}
 .bubble.tool{border-left:3px solid var(--ok);background:var(--bg-panel);font-size:13px;color:var(--text-2)}
 .bubble.cancel{border-left:3px solid var(--danger);background:color-mix(in srgb,var(--danger) 8%,var(--bg-panel));color:var(--danger-text);font-size:13px}
+/* A stop someone chose (a cancel, the session's stop): the ■ STOPPED rows' colours, not an error's. */
+.bubble.cancel.stopped{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--bg-panel));color:var(--warn-text)}
 .bubble.recap{border-left:3px solid var(--think-text);background:color-mix(in srgb,var(--think) 6%,var(--bg-panel));font-size:13px}
 .bubble.recap summary{cursor:pointer;color:var(--think-text);font-size:12px}
 .bubble.recap .recap-body{white-space:pre-wrap;margin-top:6px}
