@@ -170,6 +170,16 @@ RSpec.describe "task tools" do
       expect(result).to include("Error: task not found")
     end
 
+    it "never reads outside tmp/tasks for an id that isn't a task id's shape" do
+      FileUtils.mkdir_p("tmp/x")
+      File.write("tmp/x/task.json", JSON.generate("id" => "../x", "status" => "completed"))
+      FileUtils.mkdir_p("tmp/tasks")
+
+      expect(described_class.call("../x")).to eq("Error: task not found: ../x")
+      expect(Samagotchi::Tools::TaskStop.call("../x")).to eq("Error: task not found: ../x")
+      expect(Samagotchi::Tools::TaskWait.call("../x")).to eq("Error: task not found: ../x")
+    end
+
     it "notes a user stop, and not a model stop" do
       user_task, = Samagotchi::Tools::TaskRuntime.create_task("sleep 30")
       model_task, = Samagotchi::Tools::TaskRuntime.create_task("sleep 30")

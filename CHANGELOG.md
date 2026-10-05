@@ -17,6 +17,9 @@ and commands may change between minor versions. How releases are made:
   session is now saved before its first turn.
 - `task_get`, `task_stop` and `task_wait` given a session id say so: `task not found: <id> (that is a session id; task
   ids come from task_create, and task_list lists them)`.
+- `task_get`, `task_stop` and `task_wait` take only an id shaped like task_create's (`20261005093000-1a2b3c4d`): an id
+  such as `../x` could read a `task.json` outside `tmp/tasks`. Anything else is `task not found`.
+- `task_wait` for an unknown task said `Error: Error: task not found: …`; it now says it once.
 
 ## [0.30.0] - 2026-10-05
 

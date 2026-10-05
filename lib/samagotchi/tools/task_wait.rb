@@ -34,7 +34,7 @@ module Samagotchi
 
         loop do
           record, error = TaskRuntime.get_record(task_id)
-          return "Error: #{error}" if error
+          return error if error
 
           status = record.fetch("status")
           return finished_response(record, tail_lines) unless status == "running"
@@ -64,7 +64,7 @@ module Samagotchi
       # normal finished result. Only a task still running says so.
       def self.cancelled_response(task_id, tail_lines, started)
         record, error = TaskRuntime.get_record(task_id)
-        return "Error: #{error}" if error
+        return error if error
         return finished_response(record, tail_lines) unless record.fetch("status") == "running"
 
         note = [
