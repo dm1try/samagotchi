@@ -101,12 +101,26 @@ module Samagotchi
       @asked_parent = false
       @owes_parent = false
       @initial_turn = false
+      # A parent's side: turns run for delegate reports since the last human
+      # input (session.max_wakes), whether a failed one paused them until
+      # then, whether the budget notice went out, and the reports a wake
+      # turn's first boundary hands over.
+      @wakes_in_a_row = 0
+      @wakes_paused = false
+      @budget_noticed = false
+      @wake_reports = nil
     end
 
     # Whether the session was empty as the worker left it, so the caller
     # deletes it once the lock is free (SessionManager.run_session_loop
     # checks again then).
     def discard? = @discard
+
+    # Whether delegate reports wait that an idle parent runs a turn for
+    # (#wake_state): SessionManager.run_session_loop starts a new worker
+    # for them after this one leaves. Reports the budget or a failure held
+    # back wait for the next human input instead.
+    def wake_due? = wake_state == :due
 
     # What a new session starts on (and /model resets to); nil before #run.
     attr_reader :default_model
@@ -126,7 +140,7 @@ module Samagotchi
       @engine.session = @session
       # Input already waiting in the inbox starts the next turn at once: no
       # turn-end warm-up then.
-      @engine.next_turn_waiting = -> { SessionInbox.find_new_input_files(@session_dir).any? }
+      @engine.next_turn_waiting = -> { SessionInbox.find_new_input_files(@session_dir).any? || wake_due? }
       @turn_flow = TurnFlow.new(engine: @engine)
       # Its question's answer is queued as the matching /continue (the
       # Bridge exists by the time anyone answers).
@@ -211,6 +225,7 @@ module Samagotchi
 
           input_files = SessionInbox.find_new_input_files(@session_dir)
           if input_files.empty?
+            next if run_wake_turn
             next if run_due_reminders
             return left(:idle_exit) if @idle_exit.due? && leave_idle
             return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
@@ -410,6 +425,72 @@ module Samagotchi
       run_engine_turn(nil, continue: true, origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
                            max_iterations: IterationLimit.for) { @turn_flow.after_reminder_turn }
       true
+    end
+
+    # :due when an idle parent should run a turn for its delegate
+    # children's reports now (session.delegate_reports: wake): rings wait,
+    # no continue offer does (they merge into its turn), wakes aren't paused
+    # by a failed one, and the wake budget isn't spent; :budget when only
+    # the budget stops it; nil otherwise.
+    def wake_state
+      return nil unless @child_reports && ChildRing.mode == "wake"
+      return nil if @wakes_paused || @turn_flow&.awaiting_continue?
+      return nil unless @child_reports.waiting?
+
+      @wakes_in_a_row < max_wakes ? :due : :budget
+    end
+
+    # Run a turn nobody typed for the reports the rings bring (a wake turn):
+    # a continue turn (no prompt bubble) whose first boundary merges them,
+    # with origin child:<id8>. A failure goes back to the checkpoint, keeps
+    # the rings and pauses wakes until a human's input (a provider outage
+    # doesn't loop).
+    # @return [Boolean] whether a wake turn ran
+    def run_wake_turn
+      state = wake_state
+      budget_notice if state == :budget
+      return false unless state == :due
+
+      reports = take_child_reports
+      # The turn must not generate with nothing to say: the drain gets this
+      # exact list at its first boundary.
+      return false if reports.empty?
+
+      @wake_reports = reports
+      @wakes_in_a_row += 1
+      Log.info(:worker, "delegate_wake_turn", reports: reports.size, in_a_row: @wakes_in_a_row)
+      @turn_flow.before_prompt_turn
+      run_engine_turn(nil, continue: true, origin: reports.first.origin, max_iterations: IterationLimit.for) do |result, error|
+        if error
+          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message)
+          @turn_flow.prompt_turn_failed(note: note)
+          @wakes_paused = true
+        else
+          @continue_offer.after_turn(result)
+        end
+      end
+      true
+    ensure
+      @wake_reports = nil
+    end
+
+    def max_wakes
+      value = Integer(Config.get(ChildRing::MAX_WAKES_KEY), exception: false)
+      value&.positive? ? value : ChildRing::MAX_WAKES_DEFAULT
+    rescue StandardError
+      ChildRing::MAX_WAKES_DEFAULT
+    end
+
+    # The wake budget is spent: the parent's UIs hear once that reports
+    # wait for the next message.
+    def budget_notice
+      return if @budget_noticed
+
+      @budget_noticed = true
+      count = SessionInbox.find_ring_files(@session_dir).map { |f| SessionInbox.read_ring(f)&.dig(:child_id) }.uniq.size
+      @engine.announce(type: :hook_notice, hook: "delegate", level: :info, between_turns: true,
+                       text: "#{count} delegate report#{"s" if count != 1} waiting; #{count == 1 ? "it joins" : "they join"} " \
+                             "your next message (#{max_wakes} turns ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
     end
 
     def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)
@@ -680,6 +761,12 @@ module Samagotchi
     # The reports for rings that came in since the turn last looked. A
     # failure to read them must not take the turn's steering with it.
     def take_child_reports
+      if @wake_reports
+        reports = @wake_reports
+        @wake_reports = nil
+        return reports
+      end
+
       @child_reports.take
     rescue StandardError => e
       Log.warn(:worker, "delegate_reports_failed", error: e.class.name, msg: e.message)
@@ -784,8 +871,14 @@ module Samagotchi
 
     # A human's input (ArchiveStore.user_input?) un-archives the session;
     # a delegate's, a plugin's or a reminder's doesn't.
+    # It also resets the delegate-report wakes (budget and pause).
     def user_input(client_id)
-      ArchiveStore.user_input(@session_id, state_dir: @state_dir) if ArchiveStore.user_input?(client_id)
+      return unless ArchiveStore.user_input?(client_id)
+
+      ArchiveStore.user_input(@session_id, state_dir: @state_dir)
+      @wakes_in_a_row = 0
+      @wakes_paused = false
+      @budget_noticed = false
     end
 
     def stopped_on_disk?

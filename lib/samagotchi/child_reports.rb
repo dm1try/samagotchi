@@ -26,6 +26,9 @@ module Samagotchi
   module ChildRing
     MODE_KEY = "session.delegate_reports"
     MODES = %w[wake queue off].freeze
+    # Turns an idle parent runs for reports in a row with no human input.
+    MAX_WAKES_KEY = "session.max_wakes"
+    MAX_WAKES_DEFAULT = 10
 
     module_function
 

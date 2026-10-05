@@ -61,6 +61,7 @@ require_relative "thinking"
 require_relative "answer_display"
 require_relative "edit_preview"
 require_relative "question_desk"
+require_relative "child_reports"
 require_relative "relay_desk"
 require_relative "guardrail_wiring"
 require_relative "plugin_tasks"
@@ -1190,6 +1191,7 @@ module Samagotchi
     def record_last_turn(session, outcome, seconds, origin, event, limit: nil)
       client_id = origin.is_a?(Hash) ? origin[:client_id].to_s : ""
       source = if client_id.start_with?("#{Tools::Delegate::CLIENT_PREFIX}:") then "delegate"
+               elsif client_id.start_with?(ChildReports::CLIENT_PREFIX) then "delegate_report"
                elsif client_id == SessionManager::REMINDER_CLIENT_ID then "reminder"
                else "client"
                end

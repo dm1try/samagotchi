@@ -859,8 +859,10 @@ module Samagotchi
       # owner after its write and wakes one, or this finds its input.
       # A restart starts its successor here, on the newest chi installed
       # (worker_command), once this one's lock is free.
+      # Delegate reports that rang while it left wake one too.
       if result == :restart ||
-         (%i[idle_exit exit_requested].include?(result) && !SessionInbox.find_new_input_files(session_dir).empty?)
+         (%i[idle_exit exit_requested].include?(result) &&
+          (!SessionInbox.find_new_input_files(session_dir).empty? || worker.wake_due?))
         resume_session(session_id, state_dir: sd)
       elsif worker.discard?
         discard_left_session(session_id, state_dir: sd, default_model: worker.default_model)

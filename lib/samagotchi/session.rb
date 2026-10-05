@@ -65,7 +65,9 @@ module Samagotchi
     # How the last turn ended, for the web's notifications (the hub sends
     # it in the summary): {"outcome" => "completed"|"failed"|"canceled",
     # "ended_at" => iso8601, "seconds" => Float, "origin" =>
-    # "client"|"reminder"|"delegate"}; nil before the first turn.
+    # "client"|"reminder"|"delegate"|"delegate_report"}; nil before the
+    # first turn. delegate_report: a turn a parent ran for its delegate
+    # children's reports (ChildReports).
     attr_accessor :last_turn
 
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
