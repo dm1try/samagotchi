@@ -72,6 +72,8 @@ session:
   # idle_exit_minutes: 30   # an unused worker exits after this (0 = never)
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
   # max_children: 4         # running sessions one session may have delegated at a time (the delegate tool)
+  # delegate_reports: wake  # a child's reply reaches its parent by itself: wake (an idle parent runs a turn), queue, off
+  # max_wakes: 10           # turns in a row a parent runs for delegate reports with no human input
 
 # Baseline memories preloaded into the system prompt (same shape as --memory);
 # name entries you have, or chi warns at each start.
