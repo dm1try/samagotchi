@@ -183,6 +183,25 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(File.join(tmpdir, "#{plain.id}.json")))).to include("parent_id" => nil)
     end
 
+    it "knows a delegate child from a fork: the delegate flag, or (older children) the delegated memory" do
+      child = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
+                                          parent_id: "p1", delegate: true)
+      child.save(state_dir: tmpdir)
+      expect(described_class.load(child.id, state_dir: tmpdir).delegate?).to be(true)
+      expect(JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))).to include("delegate" => true)
+
+      older = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
+                                          parent_id: "p1", preloaded_memory_names: ["system/delegated"])
+      expect(older.delegate?).to be(true)
+
+      fork = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp", parent_id: "p1")
+      fork.save(state_dir: tmpdir)
+      expect(described_class.load(fork.id, state_dir: tmpdir).delegate?).to be(false)
+      top = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
+                                        preloaded_memory_names: ["system/delegated"])
+      expect(top.delegate?).to be(false)
+    end
+
     it "round-trips last_turn and reads the pending question in the summary too" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       last = { "outcome" => "failed", "ended_at" => "2026-09-28T10:00:00.000+02:00", "seconds" => 12.5, "origin" => "client" }

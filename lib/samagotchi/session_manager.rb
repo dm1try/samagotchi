@@ -134,7 +134,7 @@ module Samagotchi
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
-                           title: nil)
+                           title: nil, delegate: false)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -153,7 +153,8 @@ module Samagotchi
         preloaded_memory_names: memories,
         muted_memory_names: muted_memories,
         parent_id: parent_id,
-        messages: messages
+        messages: messages,
+        delegate: delegate
       )
       session.model_warning = model_warning
       # With no prompt there is no first turn to run (an attaching UI sends

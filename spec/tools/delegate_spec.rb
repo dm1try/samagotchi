@@ -106,6 +106,7 @@ RSpec.describe "delegate tools" do
       expect(child.working_directory).to eq("/work/app")
       expect(child.model_name).to eq("big-model")
       expect(child.preloaded_memory_names).to eq(["system/delegated"])
+      expect(child.delegate?).to be(true)
       expect(child.status).to eq("running")
       expect(child.last_prompt).to eq("count the specs")
       expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; delegate_result waits for its reply. " \

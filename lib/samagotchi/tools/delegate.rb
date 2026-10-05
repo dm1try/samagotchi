@@ -30,7 +30,7 @@ module Samagotchi
       STARTING_GRACE_SECONDS = 15
       # The memory every child starts with, scoped so a project memory of
       # the same name cannot shadow it.
-      CHILD_MEMORIES = ["system/delegated"].freeze
+      CHILD_MEMORIES = [Session::DELEGATE_MEMORY].freeze
 
       def self.name = NAME
 
@@ -84,7 +84,7 @@ module Samagotchi
 
         child = SessionManager.spawn_session(prompt: task, working_directory: parent.working_directory,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
-                                             parent_id: parent.id, state_dir: state_dir)
+                                             parent_id: parent.id, delegate: true, state_dir: state_dir)
         DelegateWait.mark_started(parent.id, child, state_dir: state_dir)
         [child.id, child.model_warning]
       end
