@@ -19,14 +19,22 @@ module Samagotchi
     INPUT_KIND = "input"
 
     # A drain item for an input line with its sender (source nil = the user).
-    # A plain String is still a valid item: the user's line.
-    Line = Data.define(:text, :source)
+    # A plain String is still a valid item: the user's line. +mark+: fields
+    # its input message carries ({turn_start: true, turn_id:} for the
+    # first message of a turn with no prompt, a delegate report's wake
+    # turn), nil for none.
+    Line = Data.define(:text, :source, :mark) do
+      def initialize(text:, source:, mark: nil) = super
+    end
 
     # The client ids whose input is not the user's own words. Literals, not
     # SendCommand::CLIENT_ID / Tools::Delegate::CLIENT_PREFIX, so this file
     # needs no requires (a spec pins them equal).
     CHI_SEND_CLIENT = "cli:send"
     DELEGATE_CLIENT_PREFIX = "delegate:"
+    # A delegate child's report (ChildReports::CLIENT_PREFIX).
+    CHILD_CLIENT_PREFIX = "child:"
+    DELEGATE_REPORT = "delegate_report"
     PLUGIN_CLIENT = "plugin"
 
     # What one drain brought: the merged user text (nil when none) and how
@@ -43,6 +51,7 @@ module Samagotchi
         list = inputs.map do |input|
           message = { role: "user", kind: INPUT_KIND }
           message[:source] = input[:source] if input[:source]
+          message.merge!(input[:mark]) if input[:mark]
           message.merge(content: input[:content])
         end
         list + steers.map { |steer| Steer.message(**steer) }
@@ -90,6 +99,7 @@ module Samagotchi
       id = client_id.to_s
       if id == CHI_SEND_CLIENT then "chi_send"
       elsif id.start_with?(DELEGATE_CLIENT_PREFIX) then "parent_agent"
+      elsif id.start_with?(CHILD_CLIENT_PREFIX) then DELEGATE_REPORT
       elsif id == PLUGIN_CLIENT then "plugin_send"
       end
     end
@@ -154,9 +164,11 @@ module Samagotchi
     end
 
     # A prompt that started a turn: not a steer, not input merged into a
-    # running turn. What the turns a page shows count.
+    # running turn, except the input a turn with no prompt starts with (a
+    # wake turn's delegate report, marked turn_start). What the turns a
+    # page shows count.
     def turn_prompt?(message)
-      prompt?(message) && !input?(message)
+      prompt?(message) && (!input?(message) || (message[:turn_start] || message["turn_start"]) == true)
     end
 
     # Call a loop's drain: +at_answer+ goes only to a drain that takes it
@@ -212,10 +224,10 @@ module Samagotchi
     def input_groups(lines)
       pairs = lines.filter_map do |line|
         text = (line.is_a?(Line) ? line.text : line).to_s.strip
-        [text, line.is_a?(Line) ? line.source : nil] unless text.empty?
+        [text, line.is_a?(Line) ? line.source : nil, line.is_a?(Line) ? line.mark : nil] unless text.empty?
       end
       pairs.chunk_while { |a, b| a[1] == b[1] }.map do |run|
-        { content: run.map(&:first).join("\n\n"), source: run.first[1] }
+        { content: run.map(&:first).join("\n\n"), source: run.first[1], mark: run.first[2] }.compact
       end
     end
   end

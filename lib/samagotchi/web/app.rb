@@ -1522,8 +1522,14 @@ module Samagotchi
 
           message = { role: norm_role, content: stripped }
           # Merged into the running turn (Steer::INPUT_KIND): part of it,
-          # read by step +step+.
-          message.merge!(merged: true, step: steer_step(list, index)) if norm_role == "user" && Samagotchi::Steer.input?(m)
+          # read by step +step+; a wake turn's report starts its turn
+          # (Steer.turn_prompt?). Its sender (a delegate report, chi send):
+          # the page's label.
+          if norm_role == "user" && Samagotchi::Steer.input?(m)
+            message.merge!(merged: true, step: steer_step(list, index)) unless Samagotchi::Steer.turn_prompt?(m)
+            source = (m[:source] || m["source"]).to_s
+            message[:source] = source unless source.empty?
+          end
           # The turn it started (Engine): the page pairs it with that turn's
           # record by this, not by its place.
           turn_id = m[:turn_id] || m["turn_id"]

@@ -92,15 +92,15 @@ module Samagotchi
   # the cursors move on (DelegateCursors) and the rings go; #release when it
   # failed: the next turn reads the same rings again.
   class ChildReports
-    SOURCE = "delegate_report"
-    CLIENT_PREFIX = "child:"
+    SOURCE = Steer::DELEGATE_REPORT
+    CLIENT_PREFIX = Steer::CHILD_CLIENT_PREFIX
 
     # A report for the model: the text delegate_result would return
     # (DelegateWait.finish, its report variant), the cursor it moves the child to,
     # and the cursor it was read from (a commit after the model moved it
     # itself, with delegate_result, leaves it alone).
     Report = Data.define(:child_id, :text, :before, :after, :rings) do
-      def line = Steer::Line.new(text: text, source: ChildReports::SOURCE)
+      def line(mark: nil) = Steer::Line.new(text: text, source: ChildReports::SOURCE, mark: mark)
       def origin = { client_id: "#{ChildReports::CLIENT_PREFIX}#{child_id[0, 8]}" }
     end
 

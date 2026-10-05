@@ -275,6 +275,8 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(prompt).to be_nil
         expect(kwargs).to include(continue: true, origin: { client_id: "child:#{child.id[0, 8]}" })
         expect(lines.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nfound it"])
+        # Its message starts the turn (a reload shows the wake turn as its own).
+        expect(lines.first.mark).to include(turn_start: true)
         expect(wait_until { rings.empty? }).to be(true)
         sleep(0.3)
         expect(wake_turns).to be_empty

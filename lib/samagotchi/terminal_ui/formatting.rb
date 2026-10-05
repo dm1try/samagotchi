@@ -43,7 +43,8 @@ module Samagotchi
       # Who a steer names as its sender: a plugin's own label, chi's sender
       # ids in words (the web's format.js steerSender agrees;
       # spec/shared/labels_matrix.json). "": no one named.
-      STEER_SENDERS = { "parent_agent" => "parent agent", "chi_send" => "chi send", "plugin_send" => "plugin" }.freeze
+      STEER_SENDERS = { "parent_agent" => "parent agent", "chi_send" => "chi send", "plugin_send" => "plugin",
+                        "delegate_report" => "delegate report" }.freeze
 
       def steer_sender(source)
         STEER_SENDERS.fetch(source.to_s, source.to_s)
@@ -109,7 +110,8 @@ module Samagotchi
 
       # Prompt labels by the sender's client_id prefix (turn_events.js
       # CLIENT_LABELS; spec/shared/labels_matrix.json).
-      CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder", "delegate" => "delegate" }.freeze
+      CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder", "delegate" => "delegate",
+                        "child" => "delegate report" }.freeze
 
       # "web> <prompt>": a prompt, labelled by who sent it.
       def prompt_line(client_id, prompt)

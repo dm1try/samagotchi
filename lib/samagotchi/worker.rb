@@ -157,6 +157,7 @@ module Samagotchi
       @turn_end_seq = 0
       @engine.subscribe(observer: lambda { |event|
         @turn_end_seq = event[:event_seq] if Events::TURN_END.include?(event[:type])
+        @turn_id = event[:turn_id] if event[:type] == :turn_started
         ring_question(event) if event[:type] == :question_requested
       })
       # This session's own delegate children's news (rings in children/).
@@ -451,7 +452,7 @@ module Samagotchi
       budget_notice if state == :budget
       return false unless state == :due
 
-      reports = take_child_reports
+      reports, = take_child_reports
       # The turn must not generate with nothing to say: the drain gets this
       # exact list at its first boundary.
       return false if reports.empty?
@@ -745,7 +746,7 @@ module Samagotchi
         merged.each { |_prompt, origin| user_input(origin&.dig(:client_id)) }
         # Delegate children's reports: never handed back on a failure
         # (their rings stay for the next turn), so not in @merged_this_turn.
-        reports = take_child_reports
+        reports, mark = take_child_reports
         unless merged.empty? && reports.empty?
           @engine.announce(type: :input_merged, count: merged.size + reports.size,
                            origins: merged.filter_map(&:last) + reports.map(&:origin))
@@ -754,23 +755,28 @@ module Samagotchi
         # Each line keeps its sender (Steer.source_for_client): a chi send or
         # a delegating parent's line is saved and shown to the model as theirs.
         merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) } +
-          reports.map(&:line)
+          reports.each_with_index.map { |report, i| report.line(mark: i.zero? ? mark : nil) }
       end
     end
 
     # The reports for rings that came in since the turn last looked. A
     # failure to read them must not take the turn's steering with it.
+    # A wake turn's first call gets the reports it was started for (their
+    # message is the turn's start: turn_start, turn_id, so a reload shows
+    # the turn as its own).
+    # @return [Array(Array<ChildReports::Report>, Hash|nil)] the reports
+    #   and the mark of their message
     def take_child_reports
       if @wake_reports
         reports = @wake_reports
         @wake_reports = nil
-        return reports
+        return [reports, { turn_start: true, turn_id: @turn_id }.compact]
       end
 
-      @child_reports.take
+      [@child_reports.take, nil]
     rescue StandardError => e
       Log.warn(:worker, "delegate_reports_failed", error: e.class.name, msg: e.message)
-      []
+      [[], nil]
     end
 
     # Check again with the event log held, which the Bridge holds while it

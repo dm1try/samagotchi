@@ -47,6 +47,16 @@ RSpec.describe Samagotchi::Steer do
                                        steers: [{ source: "check-in", text: "n" }])
     end
 
+    it "puts a Line's mark on its input message: a wake turn's report starts its turn" do
+      mark = { turn_start: true, turn_id: "T9" }
+      line = described_class::Line.new(text: "report", source: "delegate_report", mark: mark)
+      expect(line).not_to eq(described_class::Line.new(text: "report", source: "delegate_report"))
+      message = described_class.merge([line]).messages.first
+      expect(message).to eq(role: "user", kind: "input", source: "delegate_report", turn_start: true, turn_id: "T9", content: "report")
+      expect(described_class.turn_prompt?(message)).to be(true)
+      expect(described_class.turn_prompt?(message.except(:turn_start))).to be(false)
+    end
+
     it "skips blank Lines" do
       expect(described_class.merge([described_class::Line.new(text: " ", source: "chi_send")])).to be_empty
     end
@@ -56,9 +66,11 @@ RSpec.describe Samagotchi::Steer do
     it "maps a worker input's client id to the saved source (nil = the user)" do
       expect({ nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
                "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil,
-               "other" => nil }.to_h { |id, _| [id, described_class.source_for_client(id)] })
+               "child:abcd1234" => nil, "other" => nil }.to_h { |id, _| [id, described_class.source_for_client(id)] })
         .to eq(nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
-               "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil, "other" => nil)
+               "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil,
+               "child:abcd1234" => "delegate_report", "other" => nil)
+      expect(described_class.cuts?("delegate_report")).to be(false)
     end
 
     it "uses the same literals as the senders" do
