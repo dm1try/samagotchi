@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
 - `chi -p … --non-interactive` (and a fresh REPL session's first turn without a worker) could not use the `delegate`
   tool: the session was not saved until its turn ended, so the child failed with "Session not found". A fresh
   session is now saved before its first turn.
+- `task_get`, `task_stop` and `task_wait` given a session id say so: `task not found: <id> (that is a session id; task
+  ids come from task_create, and task_list lists them)`.
 
 ## [0.30.0] - 2026-10-05
 

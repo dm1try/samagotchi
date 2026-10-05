@@ -218,6 +218,14 @@ RSpec.describe "task tools" do
 
       expect(result).to include("Error: task not found")
     end
+
+    it "says a session id is not a task id, and where task ids come from" do
+      result = described_class.call("0f8c2a4e-5b1d-4c3e-9a7f-1234567890ab")
+
+      expect(result).to eq("Error: task not found: 0f8c2a4e-5b1d-4c3e-9a7f-1234567890ab " \
+                            "(that is a session id; task ids come from task_create, and task_list lists them)")
+      expect(Samagotchi::Tools::TaskGet.call("0f8c2a4e-5b1d-4c3e-9a7f-1234567890ab")).to include("that is a session id")
+    end
   end
 
   describe Samagotchi::Tools::TaskRuntime do
