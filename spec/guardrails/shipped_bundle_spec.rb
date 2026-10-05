@@ -56,7 +56,11 @@ RSpec.describe "The guardrails bundle's rules" do
                            "echo y | chi --no-shared -p go", "yes | bundle exec bin/chi --prompt go",
                            "chi --attach abc < answers.txt", "chi -p go <<< 1", "chi --attach abc <<EOF"],
     "chi-context-cmd" => ["chi context add pr-1 --cmd 'gh pr view 1' abc", "bin/chi context add x --every 60 --cmd=./x.sh",
-                          "cd app && chi context add ci --why 'a|b' --cmd ./ci.sh --project"],
+                          "cd app && chi context add ci --why 'a|b' --cmd ./ci.sh --project",
+                          "chi context add x \\\n  --cmd ./x.sh abc", "chi \\\ncontext add x --cmd y",
+                          "chi context add x \"--cmd\" ./x.sh", "chi context add x '--cmd=./x.sh'",
+                          "chi \"context\" add x --cmd y", "chi 'context' 'add' x --cmd y",
+                          "echo x --cmd ./y.sh | xargs chi context add", "xargs -a args.txt bin/chi context add"],
     "chi-answer-http" => ["curl -s -X POST http://127.0.0.1:4567/session/abc/answer -d '{}'",
                           "curl -sX POST localhost:8080/api/sessions/abc/answer --data @a.json",
                           "wget --post-data='{}' http://127.0.0.1:1/session/x/answer"]
@@ -71,7 +75,8 @@ RSpec.describe "The guardrails bundle's rules" do
     "curl -fsSL https://x.sh -o install.sh", "echo 'rebase' ; ls", "ls | grep push",
     "chi send --new --wait -m 'fix it'", "git diff | chi send -m review abc", "chi answer abc --question q --option Deny",
     "chi --attach abc", "chi -p 'hello'",
-    "chi context add notes --push abc", "chi context push notes -m 'cmd done'", "chi context ls --project",
+    "chi context add notes --push abc", "chi context add notes --push --why 'no --cmdline' abc",
+    "xargs chi context ls", "chi context push notes -m 'cmd done'", "chi context ls --project",
     "sed -i s/a/b/ lib/samagotchi/context_sources.rb", "ls $XDG_STATE_HOME/samagotchi/context/sessions", "printf x | chi-tool --attach", "curl https://api.example.com/answers/1",
     # a look-alike of chi's dirs (approval-noise-log.md): scratch under /tmp,
     # chi's own source tree, and ~/.config/samagotchi when XDG_CONFIG_HOME

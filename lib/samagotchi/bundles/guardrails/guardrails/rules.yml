@@ -117,10 +117,13 @@ rules:
 
   # ── attached context: a source's command runs later, outside the gate ──
   # Every chi context add --cmd asks, once at a time (each command is new
-  # code). add NAME --push and chi context push don't run anything.
+  # code). add NAME --push and chi context push don't run anything. Quoted
+  # words ("context", '--cmd=…') and backslash-newline continuations still
+  # match; xargs chi context add asks whatever it is fed (its arguments
+  # aren't in the command).
   - id: chi-context-cmd
     tool: shell
-    command: '\bchi\s+context\s+add\b[^\n]*\s--cmd(?:[\s=]|$)'
+    command: '\bchi["'']?[\s\\]+["'']?context["'']?[\s\\]+["'']?add\b(?:[^\n]|\\\n)*[\s"''\\]--cmd(?:[\s="''\\]|$)|\bxargs\b[^;&|\n]*\bchi["'']?[\s\\]+["'']?context["'']?[\s\\]+["'']?add\b'
     verdict: ask
     scopes: [once]
     reason: attaches a command chi will run every few minutes, outside the guardrails
