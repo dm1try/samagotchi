@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi saves the model ids each host last listed (`~/.local/state/samagotchi/model_lists.json`), so a command that
+  starts a session without listing the hosts itself knows what they serve.
+
 ### Changed
 
 - Web: an open step whose label is its narration's first line or its first call's title shows only its call count,
