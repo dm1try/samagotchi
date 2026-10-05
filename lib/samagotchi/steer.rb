@@ -68,6 +68,9 @@ module Samagotchi
       "plugin_send" => "sent by a plugin"
     }.freeze
     USER_HEADER = "[Steer #{SENDERS["user"]}, #{HEADER_TAIL}".freeze
+    # A source whose message is not a steer at all gets its own whole
+    # header line here instead of "[Steer <sender>, …]".
+    HEADERS = {}.freeze
 
     module_function
 
@@ -89,6 +92,8 @@ module Samagotchi
       return unless [KIND, INPUT_KIND].include?(kind)
 
       source = (message[:source] || message["source"]).to_s
+      return HEADERS[source] if HEADERS.key?(source)
+
       source = "user" if source.empty?
       sender = SENDERS[source] || (kind == KIND ? "from the #{source} plugin" : SENDERS["user"])
       "[Steer #{sender}, #{HEADER_TAIL}"

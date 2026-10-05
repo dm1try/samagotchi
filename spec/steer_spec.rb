@@ -162,6 +162,13 @@ RSpec.describe Samagotchi::Steer do
       }.each { |message, header| expect(described_class.header(message)).to eq(header), message.inspect }
     end
 
+    it "takes a source's own whole header line from HEADERS, for input and steers alike" do
+      stub_const("Samagotchi::Steer::HEADERS", { "robot" => "[Robot says]" })
+      expect(described_class.header({ kind: "input", source: "robot" })).to eq("[Robot says]")
+      expect(described_class.wire_text({ kind: "steer", source: "robot", content: "x" })).to eq("[Robot says]\nx")
+      expect(described_class.header({ kind: "input", source: "chi_send" })).to eq("[Steer sent with chi send, #{tail}")
+    end
+
     it "has none for a prompt, a model message or a note" do
       expect(described_class.header({ role: "user", content: "x" })).to be_nil
       expect(described_class.header({ role: "system", kind: "note", content: "x" })).to be_nil
