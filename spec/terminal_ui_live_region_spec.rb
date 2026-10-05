@@ -254,7 +254,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
 
       expect(@reads.call).to eq(2) # the open prompt, then the one after "hi"
       # A reminder turn continues the chat: no rollback hint.
-      expect(shown.grep(/turn canceled/)).to contain_exactly(match(/\A✕ turn canceled \(Ctrl-C\) · /))
+      expect(shown.grep(/turn canceled/)).to contain_exactly(match(/\A■ turn canceled \(Ctrl-C\) · /))
       expect(shown.grep(/rollback/)).to be_empty
       expect(kernel_calls.last).to include(hash_including(role: "user", content: "hi"))
     end

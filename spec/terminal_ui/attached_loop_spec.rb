@@ -308,7 +308,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     it "says a turn was cancelled and clears the status line" do
       feed({ type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: 3100 })
 
-      expect(screen.lines.last(2)).to eq(["✕ turn canceled (Ctrl-C) · 3.1s", "  #{Samagotchi::TerminalUI::Formatting::ROLLBACK_HINT}"])
+      expect(screen.lines.last(2)).to eq(["■ turn canceled (Ctrl-C) · 3.1s", "  #{Samagotchi::TerminalUI::Formatting::ROLLBACK_HINT}"])
       expect(screen.statuses.last).to be_nil
       expect(attached).not_to be_running
     end
@@ -1322,10 +1322,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
 
   it "points at !rollback after a cancelled prompt turn, not after a cancelled continue" do
     feed({ type: :turn_started, prompt: "go", origin: { client_id: "tui:1" } }, { type: :turn_canceled, cancellation_reason: "ctrl_c" })
-    expect(screen.lines.last(2)).to eq(["✕ turn canceled (Ctrl-C)", "  partial progress kept; !rollback restores the pre-turn state"])
+    expect(screen.lines.last(2)).to eq(["■ turn canceled (Ctrl-C)", "  partial progress kept; !rollback restores the pre-turn state"])
 
     feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "tui:1" } }, { type: :turn_canceled, cancellation_reason: "ctrl_c" })
-    expect(screen.lines.last).to eq("✕ turn canceled (Ctrl-C)")
+    expect(screen.lines.last).to eq("■ turn canceled (Ctrl-C)")
   end
 end
 

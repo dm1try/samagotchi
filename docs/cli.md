@@ -849,12 +849,12 @@ While a turn runs, you can cancel it without exiting the process:
 Behavior notes:
 
 - Cancellation returns control to the prompt immediately; what you typed there stays.
-- The turn ends with one line, `✕ turn canceled (Ctrl-C) · 3.1s`, and for a prompt turn a dim
+- The turn ends with one line, `■ turn canceled (Ctrl-C) · 3.1s` (`■`, a stop someone chose, in amber), and for a prompt turn a dim
   `partial progress kept; !rollback restores the pre-turn state` under it (a canceled continue is back where it
   started). A failed turn ends with `✕ turn failed: <summary> · 2.0s` and a dim `prompt restored for retry`. The
-  REPL and attached mode say the same; the web says `✕ canceled (Ctrl-C)` (`stopped` for its Stop button,
-  `by a hook` for a hook's). A turn a bundle's plugin stopped names it: `✕ turn stopped by loop-guard` (the web:
-  `✕ stopped by loop-guard`).
+  REPL and attached mode say the same; the web says `■ canceled (Ctrl-C)` (`stopped` for its Stop button,
+  `by a hook` for a hook's). A turn a bundle's plugin stopped names it: `■ turn stopped by loop-guard` (the web:
+  `■ stopped by loop-guard`).
 - Visible text the canceled request had streamed stays in the conversation, marked `[interrupted]`, so the next
   message (or a continue) picks up from the half-finished reply; the canceled request's thinking and any unfinished
   tool call are dropped.

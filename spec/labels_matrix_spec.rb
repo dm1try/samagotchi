@@ -23,18 +23,20 @@ RSpec.describe "Shared labels matrix (TUI side)" do
     end.new
   end
 
+  let(:stop_mark) { matrix.fetch("cancel_reasons").fetch("mark") }
+
   def event(hash) = Samagotchi::TerminalUI::EventRenderer.symbolize(hash)
 
   cases(matrix, "cancel_reasons").each do |entry|
     it "names cancel reason #{entry["reason"].inspect}" do
       label = expected(entry)
-      expect(fmt.turn_canceled_line(entry["reason"], nil)).to eq("✕ turn canceled#{" (#{label})" if label}")
+      expect(fmt.turn_canceled_line(entry["reason"], nil)).to eq("#{stop_mark} turn canceled#{" (#{label})" if label}")
     end
   end
 
   cases(matrix, "cancelled_by").each do |entry|
     it "names who stopped a #{entry["reason"]} turn: #{entry["by"].inspect}" do
-      expect(fmt.turn_canceled_line(entry["reason"], nil, by: entry["by"])).to eq("✕ turn #{expected(entry)}")
+      expect(fmt.turn_canceled_line(entry["reason"], nil, by: entry["by"])).to eq("#{stop_mark} turn #{expected(entry)}")
     end
   end
 

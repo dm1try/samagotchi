@@ -37,6 +37,8 @@ and commands may change between minor versions. How releases are made:
   source's `remote_host:` lists that host, so it can't link to the local checkout's host.
 - Web stage: the running-tool row no longer reads `thinking…` once the turn has ended (answered, canceled or
   failed): it is idle, with no word.
+- The REPL and attached mode end a canceled turn with an amber `■` (`■ turn canceled (Ctrl-C)`, `■ turn stopped by
+  loop-guard`), as the web does, instead of `✕`: a stop someone chose, not an error; a failed turn keeps `✕`.
 - Web stage: a call a guardrail blocked has a red tick and a red `✕` in the trail, as its `✕ BLOCKED` row, instead
   of its tool kind's colour.
 - Web: a command step with more than one heredoc says so on its chip, `EOF · 3 lines +1`, and the chip's hover
