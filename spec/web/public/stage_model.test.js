@@ -82,6 +82,17 @@ test("liveSlots: writing while the step's narration streams, waiting for you wit
   assert.deepEqual(liveSlots(newTurn()).headline, { text: "…", thinking: false });
 });
 
+test("liveSlots: the now row's quiet word while no call runs, none once the turn has ended", () => {
+  const thinking = turnOf({ type: "generation_chunk", iteration: 1, thinking: "Hmm." });
+  assert.equal(liveSlots(thinking).quiet, "thinking…");
+  const writing = turnOf({ type: "generation_chunk", iteration: 1, thinking: "t", text: "Let me" });
+  assert.equal(liveSlots(writing).quiet, "writing…");
+  for (const ended of ["completed", "canceled", "failed"]) {
+    assert.equal(liveSlots(thinking, { ended }).quiet, "", ended);
+    assert.equal(liveSlots(writing, { ended }).quiet, "", ended);
+  }
+});
+
 test("liveSlots: at the end an answer-only step is no step (as the block summary counts)", () => {
   const turn = turnOf(started(1, 1, "read"), done(1, 1, "read"), { type: "generation_started", iteration: 2 }, { type: "generation_chunk", iteration: 2, text: "Done." });
   assert.equal(liveSlots(turn).step, 2);
