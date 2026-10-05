@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
 - A command the user's Stop killed (or kept from starting) is saved as `stopped`, not `error`: the web shows it with
   ■ and `stopped`, and the turn's `(N failed)` and the session's tool errors no longer count it.
 - Web: the stop-task confirm names a task from an earlier turn by its command (the wait row's title), not its id.
+- A canceled turn's last step keeps the thinking it streamed, so reloading it shows the thought instead of an empty
+  step (both loops).
 
 ## [0.29.0] - 2026-10-05
 

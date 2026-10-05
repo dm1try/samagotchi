@@ -1628,6 +1628,38 @@ Need to inspect the filesystem first.
       expect(salvaged[:content]).to include("[interrupted]")
     end
 
+    it "keeps the thinking streamed before a cancel on the salvaged partial" do
+      allow(client).to receive(:complete) do |*_args, **kwargs|
+        kwargs[:on_chunk]&.call(content: "<|channel>thought\nweighing it<channel|>Let me check ", payload: {})
+        kwargs[:on_chunk]&.call(content: "the file", payload: {})
+        raise Samagotchi::Client::RequestCancelled, :ctrl_c
+      end
+
+      result = kernel.run([{ role: "user", content: "hi" }])
+
+      salvaged = result.conversation.find { |m| m[:interrupted] }
+      expect(salvaged[:content]).to eq("Let me check the file\n[interrupted]")
+      expect(salvaged[:thinking]).to eq("\nweighing it")
+    end
+
+    it "keeps only the cut generation's thinking, not an earlier step's" do
+      calls = 0
+      allow(client).to receive(:complete) do |*_args, **kwargs|
+        calls += 1
+        if calls == 1
+          kwargs[:on_chunk]&.call(content: "<|channel>thought\nfirst step<channel|>", payload: {})
+          next %(<|channel>thought\nfirst step<channel|><|tool_call>call:execute{command: "echo hi"}<tool_call|>)
+        end
+        kwargs[:on_chunk]&.call(content: "<|channel>thought\nsecond step<channel|>Now ", payload: {})
+        raise Samagotchi::Client::RequestCancelled, :ctrl_c
+      end
+
+      result = kernel.run([{ role: "user", content: "hi" }])
+
+      salvaged = result.conversation.find { |m| m[:interrupted] }
+      expect(salvaged[:thinking]).to eq("\nsecond step")
+    end
+
     it "drops an unterminated tool_call fragment from the salvaged partial" do
       allow(client).to receive(:complete) do |*_args, **kwargs|
         # Visible prose followed by an OPEN tool_call block that never closes:
