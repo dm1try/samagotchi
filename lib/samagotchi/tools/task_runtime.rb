@@ -236,7 +236,13 @@ module Samagotchi
         "#{error} (that is a session id; task ids come from task_create, and task_list lists them)"
       end
 
+      # Exactly the shape generate_task_id makes. Anything else (../x, an
+      # absolute path) is no task, so a model's id never leaves tmp/tasks.
+      TASK_ID_SHAPE = /\A\d{14}-\h{8}\z/
+
       def load_record(task_id)
+        return nil unless TASK_ID_SHAPE.match?(task_id.to_s)
+
         path = metadata_path(task_id)
         return nil unless File.exist?(path)
 
