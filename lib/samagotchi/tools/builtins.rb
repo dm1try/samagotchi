@@ -18,6 +18,7 @@ require_relative "cancel_reminder"
 require_relative "list_reminders"
 require_relative "list_sessions"
 require_relative "send_note"
+require_relative "context_read"
 require_relative "delegate"
 require_relative "delegate_result"
 require_relative "ask_user_question"
@@ -50,6 +51,7 @@ module Samagotchi
         ListReminders,
         ListSessions,
         SendNote,
+        ContextRead,
         Delegate,
         DelegateResult,
         AskUserQuestion
@@ -92,6 +94,9 @@ module Samagotchi
         ListReminders::NAME => ->(call, kctx) { ListReminders.call(call[:content], reminder_store: kctx.reminder_store) },
         ListSessions::NAME => ->(call, kctx) { ListSessions.call(call[:content], peers: kctx.peers, cwd: call[:cwd]) },
         SendNote::NAME => ->(call, kctx) { SendNote.call(call[:content], session: call[:session], peers: kctx.peers) },
+        ContextRead::NAME => lambda do |call, kctx|
+          ContextRead.call(call[:content], offset: call[:offset], limit: call[:limit], peers: kctx.peers)
+        end,
         Delegate::NAME => lambda do |call, kctx|
           Delegate.call(call[:content], model: call[:model], session: call[:session], wait: call[:wait],
                                         timeout: call[:timeout], peers: kctx.peers)

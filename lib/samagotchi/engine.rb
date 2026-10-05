@@ -1462,6 +1462,7 @@ module Samagotchi
     PeerView = Struct.new(:engine) do
       def session_id = engine.session&.id
       def cwd = engine.session&.working_directory
+      def project_root = engine.session&.project_root
       def state_dir = engine.peer_state_dir
       def cancelled? = !!engine.active_cancel_controller&.cancelled?
       def relay = engine.relay_peer
