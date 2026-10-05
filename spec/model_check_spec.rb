@@ -5,9 +5,10 @@ require "spec_helper"
 require "samagotchi/model_profile"
 require "samagotchi/model_list_store"
 
-# Refusing a model id the host's last saved list doesn't have, at spawn
-# time: an unknown id used to spawn a worker whose first turn failed.
-RSpec.describe Samagotchi::ModelProfile, ".check_model!" do
+# Warning about a model id the host's last saved list doesn't have, at
+# spawn time: the session still starts (some hosts serve ids they don't
+# list: a one-model llama.cpp server takes any name, OpenRouter's :nitro).
+RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
   let(:state_home) { Dir.mktmpdir("model-check") }
   let(:config_home) { Dir.mktmpdir("model-check-config") }
   let(:hosts) { { "main" => {}, "box" => {} } }
@@ -42,59 +43,56 @@ RSpec.describe Samagotchi::ModelProfile, ".check_model!" do
   end
 
   def check(name, **kwargs)
-    described_class.check_model!(name, hosts: hosts, **kwargs)
+    described_class.model_warning(name, hosts: hosts, **kwargs)
   end
 
-  it "passes a host's id that its saved list has, and returns the name" do
+  it "says nothing for a host's id that its saved list has" do
     save("box", %w[gemma-small qwen3])
 
-    expect(check("box:gemma-small")).to eq("box:gemma-small")
-    expect(check("box:qwen3")).to eq("box:qwen3")
+    expect(check("box:gemma-small")).to be_nil
+    expect(check("box:qwen3")).to be_nil
   end
 
   it "matches an id by case, as routing does" do
     save("box", %w[gemma-small])
 
-    expect(check("box:GEMMA-SMALL")).to eq("box:GEMMA-SMALL")
+    expect(check("box:GEMMA-SMALL")).to be_nil
   end
 
-  it "refuses an id the host's list doesn't have, with a did-you-mean" do
+  it "warns about an id the host's list doesn't have, with a did-you-mean" do
     save("box", %w[gemma-small gemma-smal3 qwen3])
 
-    expect { check("box:gemma-smal") }
-      .to raise_error(Samagotchi::ModelProfile::UnknownModel,
-                      "unknown model 'gemma-smal' on host 'box' (did you mean: gemma-smal3, gemma-small?); " \
-                      "`chi models` lists what the hosts serve")
+    expect(check("box:gemma-smal"))
+      .to eq("host 'box' doesn't list model 'gemma-smal' (did you mean: gemma-smal3, gemma-small?); " \
+             "started it anyway; `chi models` lists what the hosts serve")
   end
 
   it "says nothing more when no id is close" do
     save("box", %w[gemma-small])
 
-    expect { check("box:zzzzzzzz") }
-      .to raise_error(Samagotchi::ModelProfile::UnknownModel,
-                      "unknown model 'zzzzzzzz' on host 'box'; `chi models` lists what the hosts serve")
+    expect(check("box:zzzzzzzz"))
+      .to eq("host 'box' doesn't list model 'zzzzzzzz'; started it anyway; `chi models` lists what the hosts serve")
   end
 
   it "names the id without the host prefix in the message" do
     save("box", %w[org/model])
 
-    expect { check("box:org/model-2") }
-      .to raise_error(Samagotchi::ModelProfile::UnknownModel, %r{\Aunknown model 'org/model-2' on host 'box'})
+    expect(check("box:org/model-2")).to start_with("host 'box' doesn't list model 'org/model-2'")
   end
 
   it "checks an alias's resolved id, not the alias" do
     save("box", %w[gemma-small])
 
-    expect(check("box:small")).to eq("box:small")
-    expect { check("box:smaller") }.to raise_error(Samagotchi::ModelProfile::UnknownModel)
+    expect(check("box:small")).to be_nil
+    expect(check("box:smaller")).to include("doesn't list")
   end
 
-  it "refuses an alias whose target names a host and an unknown id" do
+  it "warns about an alias whose target names a host and an unknown id" do
     save("box", %w[gemma-small])
     File.write(File.join(config_home, "samagotchi", "config.yml"), "#{config}  typo: box:nosuch\n")
     Samagotchi::Config.reload!(cli_overrides: {})
 
-    expect { check("typo") }.to raise_error(Samagotchi::ModelProfile::UnknownModel, /unknown model 'nosuch' on host 'box'/)
+    expect(check("typo")).to start_with("host 'box' doesn't list model 'nosuch'")
   end
 
   it "checks nothing for a ref that names no host, even when its id is in no list" do
@@ -102,44 +100,44 @@ RSpec.describe Samagotchi::ModelProfile, ".check_model!" do
 
     # A bare id goes to whichever host lists it (HostRegistry#host_for_model),
     # so one host's list alone can't judge it.
-    expect(check("locl-model")).to eq("locl-model")
-    expect(check("anything-at-all")).to eq("anything-at-all")
-    expect(check("gemma-small")).to eq("gemma-small")
+    expect(check("locl-model")).to be_nil
+    expect(check("anything-at-all")).to be_nil
+    expect(check("gemma-small")).to be_nil
   end
 
   it "checks nothing for an alias that resolves to no host" do
     save("main", %w[gemma-small])
 
-    expect(check("plain")).to eq("plain")
+    expect(check("plain")).to be_nil
   end
 
   it "checks nothing for a bare id whose ':' is an Ollama-style tag" do
     save("box", %w[gemma-small])
 
-    %w[qwen3:8b mistral:7b openai/gpt-4o:free].each { |name| expect(check(name)).to eq(name) }
+    %w[qwen3:8b mistral:7b openai/gpt-4o:free].each { |name| expect(check(name)).to be_nil }
   end
 
   it "checks nothing without a saved list for that host" do
     save("main", %w[local-model])
 
-    %w[box:anything box:org/model1 box:nosuch].each { |name| expect(check(name)).to eq(name) }
+    %w[box:anything box:org/model1 box:nosuch].each { |name| expect(check(name)).to be_nil }
   end
 
   it "checks nothing without any saved list" do
-    expect(check("box:nosuch")).to eq("box:nosuch")
-    expect(check("locl-model")).to eq("locl-model")
+    expect(check("box:nosuch")).to be_nil
+    expect(check("locl-model")).to be_nil
   end
 
   it "passes every id of a stale list (a week old: the host may have changed)" do
     save("box", %w[gemma-small], at: Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS - 60)
 
-    expect(check("box:nosuch")).to eq("box:nosuch")
+    expect(check("box:nosuch")).to be_nil
   end
 
   it "checks a list saved exactly at the TTL (not stale yet)" do
     save("box", %w[gemma-small], at: Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS)
 
-    expect { check("box:nosuch") }.to raise_error(Samagotchi::ModelProfile::UnknownModel)
+    expect(check("box:nosuch")).to include("doesn't list")
   end
 
   it "never asks a host (no network on this path)" do
@@ -147,8 +145,8 @@ RSpec.describe Samagotchi::ModelProfile, ".check_model!" do
     save("box", %w[gemma-small])
     allow_any_instance_of(Samagotchi::Client).to receive(:list_models).and_raise("a host was asked")
 
-    expect(check("box:gemma-small")).to eq("box:gemma-small")
-    expect { check("box:nosuch") }.to raise_error(Samagotchi::ModelProfile::UnknownModel)
+    expect(check("box:gemma-small")).to be_nil
+    expect(check("box:nosuch")).to include("doesn't list")
   end
 
   it "takes a store to read (ModelListStore by default)" do
@@ -157,20 +155,14 @@ RSpec.describe Samagotchi::ModelProfile, ".check_model!" do
       define_singleton_method(:read) { |**| { "box" => Samagotchi::ModelListStore::Saved.new(host: "box", ids: ["gemma-small"], at: at) } }
     end
 
-    expect(check("box:gemma-small", lists: store)).to eq("box:gemma-small")
-    expect { check("box:nosuch", lists: store) }.to raise_error(Samagotchi::ModelProfile::UnknownModel)
-  end
-
-  it "is a MissingModel, so every surface reporting a missing model reports it the same way" do
-    save("box", %w[gemma-small])
-
-    expect { check("box:nosuch") }.to raise_error(Samagotchi::ModelProfile::MissingModel)
+    expect(check("box:gemma-small", lists: store)).to be_nil
+    expect(check("box:nosuch", lists: store)).to include("doesn't list")
   end
 
   it "checks nothing when the store's file is unreadable" do
     FileUtils.mkdir_p(File.dirname(Samagotchi::ModelListStore.path))
     File.write(Samagotchi::ModelListStore.path, "{bad")
 
-    expect(check("box:nosuch")).to eq("box:nosuch")
+    expect(check("box:nosuch")).to be_nil
   end
 end

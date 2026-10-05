@@ -130,18 +130,20 @@ module Samagotchi
     # @param images_from [String, nil] the session dir the seed's images are in
     # @param title [String, nil] what the lists show before the first turn
     #   (the prompt's preview by default, else the seed's first user message)
-    # @return [Session] with #seed_images_dropped: refs whose file was gone
+    # @return [Session] with #seed_images_dropped: refs whose file was gone,
+    #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
                            title: nil)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
-      # alias is retargeted), with the name as typed beside it. Both checks
-      # run before anything is saved or spawned: a wrong host or a model id
-      # the host's saved list doesn't have (it was listed in this state dir,
-      # ModelListStore) refuses here rather than in the worker's first turn.
+      # alias is retargeted), with the name as typed beside it. A wrong host
+      # refuses here, before anything is saved or spawned; a model id the
+      # host's saved list doesn't have (ModelListStore) only warns
+      # (#model_warning on the session), as some hosts serve ids they don't
+      # list.
       typed = Samagotchi::ModelProfile.check_host!(Samagotchi::ModelProfile.required_model_name(model_name))
-      Samagotchi::ModelProfile.check_model!(typed)
+      model_warning = Samagotchi::ModelProfile.model_warning(typed)
       ref = ConfigFile.model_ref(typed).ref
       session = Session.new_session(
         mode: mode,
@@ -153,6 +155,7 @@ module Samagotchi
         parent_id: parent_id,
         messages: messages
       )
+      session.model_warning = model_warning
       # With no prompt there is no first turn to run (an attaching UI sends
       # the prompts), so the session starts idle.
       session.status = prompt.to_s.strip.empty? ? Session::STATUS_IDLE : Session::STATUS_RUNNING

@@ -51,16 +51,18 @@ module Samagotchi
         wait = parse_wait(wait)
         timeout = parse_timeout(timeout)
 
-        child_id = if session.to_s.strip.empty?
-                     start_child(task, parent: parent, model: model, state_dir: sd)
-                   else
-                     follow_up(task, session: session.to_s.strip, parent: parent, state_dir: sd)
-                   end
+        child_id, warning = if session.to_s.strip.empty?
+                              start_child(task, parent: parent, model: model, state_dir: sd)
+                            else
+                              follow_up(task, session: session.to_s.strip, parent: parent, state_dir: sd)
+                            end
         return child_id if child_id.start_with?("Error:")
-        return DelegateWait.call(child_id, peers: peers, timeout: timeout) if wait
+
+        note = warning ? "Warning: #{warning}\n" : ""
+        return note + DelegateWait.call(child_id, peers: peers, timeout: timeout) if wait
 
         started = session.to_s.strip.empty? ? "Started a delegate session" : "Sent the follow-up to delegate #{child_id[0, 8]}"
-        "session: #{child_id}\nstatus: running\n#{started}; delegate_result waits for its reply. " \
+        "#{note}session: #{child_id}\nstatus: running\n#{started}; delegate_result waits for its reply. " \
           "It shows in chi sessions list and the web as a child of this session; the user can attach to it."
       rescue ArgumentError => e
         "Error: #{e.message}"
@@ -84,7 +86,7 @@ module Samagotchi
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
                                              parent_id: parent.id, state_dir: state_dir)
         DelegateWait.mark_started(parent.id, child)
-        child.id
+        [child.id, child.model_warning]
       end
       private_class_method :start_child
 
@@ -119,9 +121,9 @@ module Samagotchi
 
       # The model as typed (spawn_session stores its resolved ref), else the
       # parent's. No existence check here: spawn_session checks the host
-      # (check_host!) and the id against the host's saved model list
-      # (ModelProfile.check_model!), and its UnknownHost/UnknownModel comes
-      # back to the model as this tool's Error: line.
+      # (check_host!, its UnknownHost comes back as this tool's Error: line)
+      # and warns about an id the host's saved model list doesn't have
+      # (ModelProfile.model_warning, added to this tool's result).
       def self.child_model(model, parent)
         return parent.model_name if model.to_s.strip.empty?
 

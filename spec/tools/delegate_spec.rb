@@ -131,22 +131,22 @@ RSpec.describe "delegate tools" do
       expect(session_files).to contain_exactly(parent.id)
     end
 
-    it "refuses an unknown model id the host's saved list knows, naming the hint, creating nothing" do
+    it "starts the child for an id the host's saved list doesn't have, with the hint as a warning" do
       saved_models(%w[gemma-small qwen3])
 
       out = described_class.call("quick look", model: "default:gemma-smal", wait: "false", peers: peers)
 
-      expect(out).to eq("Error: unknown model 'gemma-smal' on host 'default' (did you mean: gemma-small?); " \
-                        "`chi models` lists what the hosts serve")
-      expect(session_files).to contain_exactly(parent.id)
-      expect(Process).not_to have_received(:spawn)
+      expect(out).to start_with("Warning: host 'default' doesn't list model 'gemma-smal' (did you mean: gemma-small?); " \
+                                "started it anyway; `chi models` lists what the hosts serve\nsession: ")
+      expect(session_files.size).to eq(2)
     end
 
     it "starts the child for an id the host's saved list has" do
       saved_models(%w[gemma-small])
 
-      described_class.call("quick look", model: "default:gemma-small", wait: "false", peers: peers)
+      out = described_class.call("quick look", model: "default:gemma-small", wait: "false", peers: peers)
 
+      expect(out).to start_with("session: ")
       child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
       expect(child.model_name).to eq("default:gemma-small")
     end

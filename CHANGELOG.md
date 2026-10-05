@@ -12,10 +12,11 @@ and commands may change between minor versions. How releases are made:
 
 - chi saves the model ids each host last listed (`~/.local/state/samagotchi/model_lists.json`), so a command that
   starts a session without listing the hosts itself knows what they serve.
-- `chi send --new --model` and the `delegate` tool's `model:` now refuse an unknown model id before anything is
-  spawned when the name (or the alias it names) goes to a known host: `unknown model 'gemma-smal' on host 'box'
-  (did you mean: gemma-small?)`, instead of starting a worker whose first turn failed. A name that names no host, a
-  host with no saved list, and one over a week old are not checked.
+- `chi send --new --model` and the `delegate` tool's `model:` warn about a model id the named host's saved list
+  doesn't have: `host 'box' doesn't list model 'gemma-smal' (did you mean: gemma-small?); started it anyway`, on
+  stderr / in the tool's result. The session still starts: some hosts serve ids they don't list (a one-model
+  llama.cpp server takes any name, OpenRouter's `:nitro`). A name that names no host, a host with no saved list, and
+  a list over a week old are not checked.
 
 ### Changed
 

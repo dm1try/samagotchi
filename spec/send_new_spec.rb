@@ -72,7 +72,8 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
   end
 
   # The model id is checked against the host's saved list (ModelListStore)
-  # in spawn_session, so a typo is refused here and no worker starts.
+  # in spawn_session: a typo is named on stderr, and the session starts
+  # anyway (some hosts serve ids they don't list).
   describe "an unknown --model with a saved model list" do
     before do
       require "samagotchi/model_list_store"
@@ -81,15 +82,14 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       allow(Process).to receive(:detach)
     end
 
-    it "refuses it in one line, spawns nothing and saves no session" do
+    it "warns in one line on stderr and starts the session anyway" do
       Samagotchi::ModelListStore.save("default", %w[gemma-small qwen3])
 
-      expect(run("--new", "--model", "default:gemma-smal", "-m", "hi")).to eq(1)
-      expect(err.string).to eq("chi send: could not start a session: unknown model 'gemma-smal' on host 'default' " \
-                               "(did you mean: gemma-small?); `chi models` lists what the hosts serve\n")
-      expect(out.string).to be_empty
-      expect(Process).not_to have_received(:spawn)
-      expect(Dir.glob(File.join(tmpdir, "*"))).to be_empty
+      expect(run("--new", "--model", "default:gemma-smal", "-m", "hi")).to eq(0)
+      expect(err.string).to eq("chi send: warning: host 'default' doesn't list model 'gemma-smal' " \
+                               "(did you mean: gemma-small?); started it anyway; `chi models` lists what the hosts serve\n")
+      expect(out.string).to match(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}  started\n\z/)
+      expect(Process).to have_received(:spawn)
     end
 
     it "starts the session for an id the list has" do
@@ -97,6 +97,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
 
       expect(run("--new", "--model", "default:gemma-small", "-m", "hi")).to eq(0)
       expect(out.string).to match(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}  started\n\z/)
+      expect(err.string).not_to include("warning")
       expect(Process).to have_received(:spawn)
     end
 

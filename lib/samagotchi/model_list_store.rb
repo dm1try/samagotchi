@@ -10,10 +10,10 @@ require_relative "paths"
 module Samagotchi
   # The model ids each host last listed, saved in
   # <state dir>/model_lists.json for the processes that spawn a worker but
-  # never list a host themselves: `chi send --new --model`, the `delegate`
-  # tool and the web refuse an unknown model id up front from it
-  # (ModelProfile.check_model!) instead of letting the worker's first turn
-  # fail. It is a cache of the hosts' own lists, so it never raises: no
+  # never list a host themselves: `chi send --new --model` and the
+  # `delegate` tool warn about an unknown model id up front from it
+  # (ModelProfile.model_warning) instead of only the worker's first turn
+  # failing. It is a cache of the hosts' own lists, so it never raises: no
   # file, an unreadable one or bad JSON reads as no list at all. Only a
   # successful listing writes (a host that is down keeps the ids we know),
   # and a list older than TTL_SECONDS is no evidence about the host any
@@ -31,7 +31,7 @@ module Samagotchi
     Saved = Data.define(:host, :ids, :at) do
       def age(now: Time.now.to_i) = now.to_i - at.to_i
 
-      # Too old to check an id against (ModelProfile.check_model!): a model
+      # Too old to check an id against (ModelProfile.model_warning): a model
       # may have been added or removed since.
       def stale?(now: Time.now.to_i) = age(now: now) > ModelListStore::TTL_SECONDS
 

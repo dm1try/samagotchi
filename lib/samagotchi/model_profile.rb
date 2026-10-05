@@ -25,12 +25,6 @@ module Samagotchi
     class UnknownHost < MissingModel
     end
 
-    # A model id the host's last saved list doesn't have (a MissingModel
-    # too: `chi send --new` and the web report it as one refusal, before a
-    # worker starts).
-    class UnknownModel < MissingModel
-    end
-
     # Gemma 4 thinks in a channel: `<|channel>thought` … `<channel|>`. The
     # one source for the parser, the stream splitter, the literal guard and
     # the web's saved-message reader.
@@ -185,13 +179,15 @@ module Samagotchi
       raise UnknownHost, "unknown host '#{host}' in model '#{ref}'#{hint}; the configured hosts are #{names.join(", ")}"
     end
 
-    # Raises UnknownModel when +model_name+ resolves to a model id a host's
-    # saved list doesn't have (ModelListStore: what a `chi models`, a
-    # /models or the web's GET /api/models last listed for that host).
+    # A warning when +model_name+ resolves to a model id a host's saved
+    # list doesn't have (ModelListStore: what a `chi models`, a /models or
+    # the web's GET /api/models last listed for that host), else nil.
     # Called where a session is spawned without listing the hosts itself
-    # (`chi send --new --model`, the delegate tool, the web), so an unknown
-    # id is refused before a worker starts and fails its first turn. Never
-    # asks a host.
+    # (`chi send --new --model`, the delegate tool), so a typo is
+    # named before the worker's first turn fails on it. Only a warning: some
+    # hosts serve ids they don't list (a one-model llama.cpp server takes any
+    # name, OpenRouter's :nitro variants), so the session starts anyway.
+    # Never asks a host.
     #
     # Only a ref that names a host is checked (its alias resolved first, as
     # ModelRef.parse does), and only against that host's own list: a bare id
@@ -202,29 +198,28 @@ module Samagotchi
     # @param hosts [Hash, nil] the hosts a prefix may name (a HostRegistry's
     #   entries); config.yml's by default
     # @param lists [#read] ModelListStore by default
-    # @return [String] +model_name+
-    def self.check_model!(model_name, env: ENV, hosts: nil, lists: nil)
+    # @return [String, nil]
+    def self.model_warning(model_name, env: ENV, hosts: nil, lists: nil)
       require_relative "config"
       require_relative "model_list_store"
       hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
       lists ||= Samagotchi::ModelListStore
       parsed = Samagotchi::ConfigFile.model_ref(model_name, env: env, hosts: hosts)
       host = parsed.host_name
-      return model_name unless host
+      return nil unless host
 
       list = lists.read(env: env)[host.to_s.strip.downcase]
-      return model_name if list.nil? || list.stale?
-      return model_name if list.known?(parsed.id)
+      return nil if list.nil? || list.stale? || list.known?(parsed.id)
 
-      raise UnknownModel, unknown_model_message(parsed.id, host, list.ids)
+      unknown_model_message(parsed.id, host, list.ids)
     end
 
-    # The line an unknown model id is refused with, with up to three close
+    # The warning for an id the host doesn't list, with up to three close
     # ids (Config.near_names) when there are any.
     def self.unknown_model_message(id, host, ids)
       near = Samagotchi::Config.near_names(id, ids).first(3)
       hint = near.empty? ? "" : " (did you mean: #{near.join(", ")}?)"
-      "unknown model '#{id}' on host '#{host}'#{hint}; `chi models` lists what the hosts serve"
+      "host '#{host}' doesn't list model '#{id}'#{hint}; started it anyway; `chi models` lists what the hosts serve"
     end
 
     # The prefix of "box:x" when box is a host config.yml has with
