@@ -89,6 +89,9 @@ module Samagotchi
       @discard = false
       # The exit asked for is a restart (POST /exit restart: true).
       @exit_restart = false
+      # The lines the running turn's drain merged ([prompt, origin]), for a
+      # failed prompt turn to hand back; reset as each turn begins.
+      @merged_this_turn = []
     end
 
     # Whether the session was empty as the worker left it, so the caller
@@ -355,7 +358,6 @@ module Samagotchi
       user_input(origin&.dig(:client_id))
       @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn
-      @merged_this_turn = []
       run_engine_turn(prompt, origin: origin, max_iterations: max_iterations(no_interrupt),
                               images: images) do |result, error|
         if error
@@ -496,6 +498,9 @@ module Samagotchi
     # @yieldparam result [Object, nil] Engine#run_turn's, nil on a failure
     # @yieldparam error [StandardError, nil]
     def run_engine_turn(prompt, **turn_args)
+      # Every kind of turn merges steering (a reminder turn too, which may be
+      # a fresh worker's first), so the list is this turn's from the start.
+      @merged_this_turn = []
       begin
         @session.status = Session::STATUS_RUNNING
         @session.save(state_dir: @state_dir)
