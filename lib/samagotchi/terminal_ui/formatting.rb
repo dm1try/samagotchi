@@ -118,10 +118,21 @@ module Samagotchi
       CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder", "delegate" => "delegate",
                         "child" => "delegate report" }.freeze
 
-      # "web> <prompt>": a prompt, labelled by who sent it.
+      # Who sent a line, by its client_id: CLIENT_LABELS by prefix, and a
+      # turn an attached context source started (context:<name>) as
+      # "context <name> changed"; +fallback+ for anything else.
+      def client_label(client_id, fallback = "user")
+        return fallback unless client_id
+
+        prefix, rest = client_id.to_s.split(":", 2)
+        return "context #{rest} changed" if prefix == Steer::CONTEXT_CLIENT_PREFIX.delete_suffix(":") && !rest.to_s.empty?
+
+        CLIENT_LABELS.fetch(prefix, fallback)
+      end
+
+      # "web> <prompt>": a prompt, labelled by who sent it; nil: the label alone.
       def prompt_line(client_id, prompt)
-        label = client_id ? CLIENT_LABELS.fetch(client_id.to_s.split(":", 2).first, "user") : "user"
-        "#{paint("#{label}>", 35)} #{prompt}"
+        "#{paint("#{client_label(client_id)}>", 35)}#{" #{prompt}" unless prompt.nil?}"
       end
 
       # "delegate report> 3f2a1c9e answered: <the reply's first line>": a

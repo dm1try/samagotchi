@@ -574,7 +574,7 @@ module Samagotchi
         asked = @offer_asked
         @offer_asked = false
         sync_continue_slot
-        who = event[:client_id] ? CLIENT_LABELS.fetch(event[:client_id].to_s.split(":", 2).first, "another UI") : "another UI"
+        who = client_label(event[:client_id], "another UI")
         outcome = if event[:decision] == "dropped"
                     "(dropped: #{own?(event[:client_id]) ? "you" : who} sent a new prompt)"
                   elsif own?(event[:client_id])
@@ -1167,7 +1167,7 @@ module Samagotchi
 
         continues = turn[:prompt].nil?
         unless continues && reminder_origin?(turn[:origin] || {})
-          @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || "(continuing)"))
+          @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || continuing_text(turn[:origin] || {})))
         end
         tail = nil
         lane = :writing
@@ -1224,8 +1224,9 @@ module Samagotchi
         if event[:prompt].nil?
           # A continue turn (after the offer's yes) has no prompt to show; a
           # reminder turn shows its reminders (:reminder_injected).
-          # A turn run for delegate reports shows them as they merge.
-          @screen.commit(prompt_line(origin[:client_id], "(continuing)")) unless reminder_origin?(origin) || report_origin?(origin)
+          # A turn run for delegate reports shows them as they merge; one
+          # an attached context change started, its label (the note is above).
+          @screen.commit(prompt_line(origin[:client_id], continuing_text(origin))) unless reminder_origin?(origin) || report_origin?(origin)
         elsif !(own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id]))
           @screen.commit(prompt_line(origin[:client_id], event[:prompt]))
         end
@@ -1269,6 +1270,9 @@ module Samagotchi
 
       def reminder_origin?(origin) = origin[:client_id].to_s.start_with?("system:")
       def report_origin?(origin) = origin[:client_id].to_s.start_with?(Steer::CHILD_CLIENT_PREFIX)
+      def context_origin?(origin) = origin[:client_id].to_s.start_with?(Steer::CONTEXT_CLIENT_PREFIX)
+      # A turn with no prompt: "(continuing)"; a context wake's label alone.
+      def continuing_text(origin) = context_origin?(origin) ? nil : "(continuing)"
     end
   end
 end

@@ -34,6 +34,9 @@ module Samagotchi
     DELEGATE_CLIENT_PREFIX = "delegate:"
     # A delegate child's report (ChildReports::CLIENT_PREFIX).
     CHILD_CLIENT_PREFIX = "child:"
+    # A turn chi ran because an attached context source changed
+    # (context:<name>, Worker's context wake).
+    CONTEXT_CLIENT_PREFIX = "context:"
     DELEGATE_REPORT = "delegate_report"
     PLUGIN_CLIENT = "plugin"
 

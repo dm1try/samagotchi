@@ -1192,6 +1192,7 @@ module Samagotchi
       client_id = origin.is_a?(Hash) ? origin[:client_id].to_s : ""
       source = if client_id.start_with?("#{Tools::Delegate::CLIENT_PREFIX}:") then "delegate"
                elsif client_id.start_with?(ChildReports::CLIENT_PREFIX) then "delegate_report"
+               elsif client_id.start_with?(Steer::CONTEXT_CLIENT_PREFIX) then "context"
                elsif client_id == SessionManager::REMINDER_CLIENT_ID then "reminder"
                else "client"
                end

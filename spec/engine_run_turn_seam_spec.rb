@@ -184,12 +184,13 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect(session.last_turn).to include("outcome" => "canceled", "cancel_reason" => "ctrl_c")
     end
 
-    it "maps the origin: a delegate, a delegate report, a reminder, a client, none" do
+    it "maps the origin: a delegate, a delegate report, a reminder, an attached context change, a client, none" do
       allow(kernel).to receive(:run).and_return(kernel_result)
       {
         { client_id: "delegate:abcd1234" } => "delegate",
         { client_id: "child:abcd1234" } => "delegate_report",
         { client_id: "system:reminder" } => "reminder",
+        { client_id: "context:pr-123" } => "context",
         { client_id: "web:tab-1" } => "client",
         nil => "client"
       }.each do |origin, expected|
