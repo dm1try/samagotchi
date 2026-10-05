@@ -180,6 +180,23 @@ test("turnHistoryHtml: a delegate report keeps its label on reload: a wake turn'
   assert.equal((html.match(/origin-label/g) || []).length, 2);
 });
 
+test("turnHistoryHtml: the text that answered a delegate report mid-turn stays visible after its bubble, unless it is the answer", () => {
+  const items = [
+    { role: "user", content: "rename it", turn_id: "T1" },
+    { role: "assistant", content: "Reading." },
+    { role: "user", content: "session: c1", source: "delegate_report", merged: true, step: 2 },
+    { role: "assistant", content: "The delegate found the bug. Back to the rename." },
+    { role: "assistant", content: "Renamed." },
+    { role: "user", content: "next", turn_id: "T2" },
+    { role: "assistant", content: "Reading." },
+    { role: "user", content: "session: c2", source: "delegate_report", merged: true, step: 2 },
+    { role: "assistant", content: "Done; the delegate said ok." },
+  ];
+  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }, { id: "T2", duration_ms: 5 }] }), { thumbs });
+  assert.match(html, /session: c1<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output report-reply"[^>]*>The delegate found the bug\. Back to the rename\.<\/div><div class="bubble output[^"]*"[^>]*>Renamed\./);
+  assert.equal((html.match(/report-reply/g) || []).length, 1);
+});
+
 test("turnHistoryHtml: a steer in a turn with no block is a bubble after the prompt", () => {
   const items = [{ role: "user", content: "p" }, { role: "steer", content: "s", source: "check-in", step: 1 }, { role: "assistant", content: "a" }];
   const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs });
