@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Web: an open step whose label is its narration's first line or its first call's title shows only its call count,
+  so it doesn't repeat the words its body starts with; closed, the label is unchanged.
 - Web stage: an answered turn says its step count once (in the cloud's chip) and its time once (in the status row).
 - Web stage: `execute` and the task tools are blue in the running-tool row and the ticks, as in the tool rows under
   them; purple is thinking's colour only (other tools' ticks are a quieter blue-grey).

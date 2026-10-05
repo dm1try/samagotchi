@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { blockSummary, currentGen, genLabel, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { blockSummary, currentGen, genLabel, genLabelParts, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
@@ -172,6 +172,15 @@ test("genLabel: the narration's first line, else the tools, else thinking", () =
   assert.equal(genLabel(gen({ tools: ["a", "b", "c", "d"].map((tool) => ({ tool })) })), "working with a, b, c, … · 4 tool calls");
   assert.equal(genLabel(gen({ thinking: "just thinking" })), "thinking");
   assert.equal(genLabel(gen({ text: `${"x".repeat(100)} y` })), `${"x".repeat(80).trimEnd()}…`);
+});
+
+test("genLabelParts: the head repeats the body's first words when it is the narration or the first call's title", () => {
+  const gen = (o) => ({ iteration: 1, thinking: "", text: "", tools: [], ...o });
+  assert.deepEqual(genLabelParts(gen({ text: "Look.\nMore.", tools: [{ tool: "read" }] })), { head: "Look.", calls: "1 tool call", repeats: true });
+  assert.deepEqual(genLabelParts(gen({ tools: [{ tool: "execute", title: "rspec", status: "error" }] })),
+    { head: "execute rspec", calls: "1 tool call (1 failed)", repeats: true });
+  assert.deepEqual(genLabelParts(gen({ tools: [{ tool: "execute" }, { tool: "read" }] })), { head: "working with execute, read", calls: "2 tool calls", repeats: false });
+  assert.deepEqual(genLabelParts(gen({ thinking: "t" })), { head: "thinking", calls: "", repeats: false });
 });
 
 test("genLabel: a step whose calls failed says how many, as the block's tally does (error only)", () => {

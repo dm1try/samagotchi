@@ -236,6 +236,8 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .gen>summary::-webkit-details-marker{display:none}
 .gen>summary::before{content:"▸ ";color:var(--text-faint)}
 .gen[open]>summary::before{content:"▾ "}
+/* Open, a step whose label starts with its body's first words (turn_view.js labelParts) says only its calls. */
+.gen[open]>summary.repeats>:is(.gen-head,.gen-sep){display:none}
 /* A step with a failed call (status error): its chevron in the danger colour. */
 .gen.has-failed>summary::before{color:var(--danger)}
 .gen.live{border-top-color:transparent;background:var(--accent-tint);border-radius:8px;padding:6px 9px 8px calc(9px + var(--step-indent));margin-left:-9px;margin-right:-9px}
