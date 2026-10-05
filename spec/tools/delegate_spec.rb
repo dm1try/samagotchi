@@ -109,7 +109,8 @@ RSpec.describe "delegate tools" do
       expect(child.delegate?).to be(true)
       expect(child.status).to eq("running")
       expect(child.last_prompt).to eq("count the specs")
-      expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; delegate_result waits for its reply. " \
+      expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; chi brings its reply to you by itself " \
+                        "when it ends its turn (a delegate report); don't poll with delegate_result. " \
                         "It shows in chi sessions list and the web as a child of this session; the user can attach to it.")
       expect(Process).to have_received(:spawn)
     end
@@ -298,7 +299,14 @@ RSpec.describe "delegate tools" do
       it "returns at once without waiting" do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
         out = described_class.call("more", session: child.id, wait: false, peers: peers)
-        expect(out).to start_with("session: #{child.id}\nstatus: running\nSent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits")
+        expect(out).to start_with("session: #{child.id}\nstatus: running\nSent the follow-up to delegate #{child.id[0, 8]}; chi brings its reply")
+      end
+
+      it "says delegate_result waits for the reply when delegate reports are off" do
+        allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("off")
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+        out = described_class.call("more", session: child.id, wait: false, peers: peers)
+        expect(out).to include("Sent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits for its reply.")
       end
     end
   end
@@ -341,6 +349,13 @@ RSpec.describe "delegate tools" do
       expect(out).to include("  stop: chi answer #{child.id} --question c1 --option Stop --text WHY")
       expect(out).to include("send it a narrower follow-up with delegate session: #{child.id} (that drops the question)")
       expect(out).to end_with("delegate_result #{child.id} waits again once it is answered.")
+
+      # A delegate report of it (ChildReports) says chi brings the next reply instead.
+      report = described_class.finish(Samagotchi::ReplyWait.call(child.id, state_dir: tmpdir, cursor: nil, timeout: 0),
+                                      child.id, timeout: 0, report: true)
+      expect(report).to include("  continue: chi answer #{child.id} --question c1 --option Continue\n")
+      expect(report).to end_with("chi brings the child's next reply here by itself; don't wait for it with delegate_result.")
+      expect(report).not_to include("waits again")
     end
 
     it "says the child's worker is gone, not that its question waits, when the worker died asking" do

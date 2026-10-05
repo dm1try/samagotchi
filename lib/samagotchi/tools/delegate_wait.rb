@@ -110,6 +110,8 @@ module Samagotchi
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+      REPORT_NEXT_REPLY = "chi brings the child's next reply here by itself; don't wait for it with delegate_result."
+
       # Outcomes that tell the parent something about the child's state.
       REPORTED = %i[done no_reply error stopped waiting_for_answer worker_gone].freeze
 
@@ -131,8 +133,10 @@ module Samagotchi
 
       # The tool result for how the wait ended.
       # @param wait [ReplyWait::Result]
+      # @param report [Boolean] a delegate report's text (ChildReports), not
+      #   the tool's: a question's last line says chi brings the next reply
       # @return [String]
-      def finish(wait, child_id, timeout:)
+      def finish(wait, child_id, timeout:, report: false)
         status = ParentReport.status(wait)
         case wait.status
         when :done
@@ -142,7 +146,7 @@ module Samagotchi
         when :stopped
           result(child_id, status, "the child was stopped (chi sessions stop); delegate with session: #{child_id} starts it again with a message")
         when :waiting_for_answer
-          result(child_id, status, waiting_text(child_id, wait.question))
+          result(child_id, status, waiting_text(child_id, wait.question, report: report))
         when :canceled
           canceled_result(child_id)
         when :no_reply
@@ -199,13 +203,17 @@ module Samagotchi
       # decide (it isn't relayed: Continue grants no permission): continue
       # it with chi answer through execute, send a follow-up instead, or
       # report back.
-      def waiting_text(child_id, pending)
+      # A report's last line differs (+report+): "waits again" made models
+      # call delegate_result right after answering Continue.
+      def waiting_text(child_id, pending, report: false)
         text = "Child #{child_id} is #{ParentReport.question_text(pending, session_id: child_id)}"
         if ParentReport.continue?(pending)
           text += "The child ran out of steps before it answered. Decide: continue it (run the chi answer command " \
                   "above with execute) if it is getting somewhere; send it a narrower follow-up with delegate " \
                   "session: #{child_id} (that drops the question); or stop it and report back to your user.\n"
         end
+        return "#{text}#{REPORT_NEXT_REPLY}" if report
+
         "#{text}delegate_result #{child_id} waits again once it is answered."
       end
 

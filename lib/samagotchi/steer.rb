@@ -69,8 +69,18 @@ module Samagotchi
     }.freeze
     USER_HEADER = "[Steer #{SENDERS["user"]}, #{HEADER_TAIL}".freeze
     # A source whose message is not a steer at all gets its own whole
-    # header line here instead of "[Steer <sender>, …]".
-    HEADERS = {}.freeze
+    # header line here instead of "[Steer <sender>, …]". A delegate
+    # child's report (ChildReports) is chi's news, not the user's: its
+    # wording was picked on small models (it keeps them on their own task
+    # mid-turn and off delegate_result; "Follow it" made one apply the
+    # child's fix unasked).
+    HEADERS = {
+      "delegate_report" => "[Delegate report, delivered by chi when your delegate session ended its turn; " \
+                           "not your user's message. Tell your user what it found or what went wrong, in your own " \
+                           "words; if you are in the middle of a task, include it in your reply and finish the task. " \
+                           "Don't call delegate_result for it; to retry or redirect that child, use delegate with " \
+                           "its session:.]"
+    }.freeze
 
     module_function
 

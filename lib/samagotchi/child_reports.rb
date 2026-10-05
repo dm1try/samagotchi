@@ -96,7 +96,7 @@ module Samagotchi
     CLIENT_PREFIX = "child:"
 
     # A report for the model: the text delegate_result would return
-    # (DelegateWait.finish), the cursor it moves the child to,
+    # (DelegateWait.finish, its report variant), the cursor it moves the child to,
     # and the cursor it was read from (a commit after the model moved it
     # itself, with delegate_result, leaves it alone).
     Report = Data.define(:child_id, :text, :before, :after, :rings) do
@@ -190,7 +190,7 @@ module Samagotchi
 
       after = before.with(reply_file: wait.status == :done ? wait.file : before.reply_file)
                     .with_baseline(ReplyWait.baseline_of(wait.session))
-      text = Tools::DelegateWait.finish(wait, child_id, timeout: 0)
+      text = Tools::DelegateWait.finish(wait, child_id, timeout: 0, report: true)
       Report.new(child_id: child_id, text: text, before: before, after: after, rings: rings)
     rescue ArgumentError
       nil # the child is gone

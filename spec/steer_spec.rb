@@ -169,6 +169,15 @@ RSpec.describe Samagotchi::Steer do
       expect(described_class.header({ kind: "input", source: "chi_send" })).to eq("[Steer sent with chi send, #{tail}")
     end
 
+    it "gives a delegate report its own header: chi's news for the user, not a steer to follow" do
+      header = described_class.header({ kind: "input", source: "delegate_report" })
+      expect(header).to start_with("[Delegate report, delivered by chi when your delegate session ended its turn; " \
+                                   "not your user's message. Tell your user what it found or what went wrong")
+      expect(header).to end_with("include it in your reply and finish the task. Don't call delegate_result for it; " \
+                                 "to retry or redirect that child, use delegate with its session:.]")
+      expect(header).not_to include("Follow it")
+    end
+
     it "has none for a prompt, a model message or a note" do
       expect(described_class.header({ role: "user", content: "x" })).to be_nil
       expect(described_class.header({ role: "system", kind: "note", content: "x" })).to be_nil
