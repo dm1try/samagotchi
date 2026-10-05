@@ -103,7 +103,7 @@ RSpec.describe Samagotchi::ContextSources do
       loc.record_error("a", "exit 1: boom\nmore", now: Time.utc(2026, 10, 5, 10))
       again = loc.record_error("a", "exit 1: again", now: Time.utc(2026, 10, 5, 11))
 
-      expect(again).to have_attributes(text: "good", error: "exit 1: again", error_since: "2026-10-05T10:00:00Z")
+      expect(again).to have_attributes(text: "good", error: "exit 1: again", error_since: "2026-10-05T10:00:00.000000Z")
       expect(loc.record_text("a", fetched("good"))).to have_attributes(error: nil, error_since: nil, serial: 1)
     end
 

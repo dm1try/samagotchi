@@ -197,7 +197,8 @@ module Samagotchi
       # @return [Snapshot] the one written
       def record_error(name, message, now: Time.now)
         previous = snapshot(name)
-        stamp = now.utc.iso8601
+        # Microseconds: two runs of failures never share a start.
+        stamp = now.utc.iso8601(6)
         write_snapshot(name, previous.with(error: ContextSources.one_line(message, LINE_MAX_CHARS),
                                            error_since: previous.error_since || stamp))
       end
