@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-10-06
+
 ### Added
 
 - Delegate reports: a child started with `delegate` (`wait: false`) brings its reply to its parent by itself when
@@ -47,6 +49,8 @@ and commands may change between minor versions. How releases are made:
   a second corrupt generation fails the turn ("malformed generation from host …"). The half tool call never runs.
 - On llama.cpp, a parent's turn-end warm-up no longer waits behind a delegate child generating on the same slot, and
   its next turn no longer waits behind that warm-up: the warm-up is skipped when `/slots` says the slot is busy.
+
+Update with `chi update` and restart `chi web`.
 
 ## [0.30.0] - 2026-10-05
 
@@ -1592,7 +1596,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/dm1try/samagotchi/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/dm1try/samagotchi/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/dm1try/samagotchi/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/dm1try/samagotchi/compare/v0.27.0...v0.28.0
