@@ -101,9 +101,9 @@ RSpec.describe Samagotchi::Commands::Registry do
     let(:builtins) { Samagotchi::SessionCommands.builtin_registry }
 
     it "offers the same Tab lists in the REPL and the attached TUI, but /detach (the REPL owns its session)" do
-      expect(builtins.completions(:repl)).to eq(%w[/archive /continue /exit /guardrails /help /model /models /quit /recap /stats])
+      expect(builtins.completions(:repl)).to eq(%w[/archive /context /continue /exit /guardrails /help /model /models /quit /recap /stats])
       expect(builtins.completions(:attached))
-        .to eq(%w[/archive /continue /detach /exit /guardrails /help /model /models /quit /recap /stats])
+        .to eq(%w[/archive /context /continue /detach /exit /guardrails /help /model /models /quit /recap /stats])
     end
 
     # Both terminal UIs dispatch their own commands on these ids.
@@ -121,7 +121,7 @@ RSpec.describe Samagotchi::Commands::Registry do
     it "is frozen, and each command #run runs has a handler" do
       expect(builtins).to be_frozen
       runnable = builtins.entries.reject(&:local)
-      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails model help])
+      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model help])
       expect(runnable.map(&:handler)).to all(be_a(Proc))
     end
   end

@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::SessionCommands do
       lines = result.output.lines.map(&:rstrip)
       expect(lines.first).to eq("commands:")
       expect(lines.map { |l| l.split.first }.drop(1))
-        .to eq(%w[!<cmd> !rollback /continue /guardrails /help /model /models /hello /side /archive /detach /exit /quit /recap /stats])
+        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /model /models /hello /side /archive /detach /exit /quit /recap /stats])
       expect(lines).to include("  /hello       greet  (sample-plugin)", "  /side        ask aside  (btw; mid-turn too)",
                                "  /detach      leave and keep the worker running  (attached only)",
                                "  /stats       show the session's stats  (terminal only)")
@@ -377,6 +377,24 @@ RSpec.describe Samagotchi::SessionCommands do
 
       expect(result).to have_attributes(status: :error, output: "answer yes, no, or no, <reason>")
       expect(turn_flow.awaiting_continue?).to be(true)
+    end
+  end
+
+  describe "/context" do
+    let(:state) { Dir.mktmpdir("cmd-context") }
+    let(:state_dir) { File.join(state, "samagotchi", "sessions") }
+
+    before { engine.guardrail_state_dir = state_dir }
+    after { FileUtils.rm_rf(state) }
+
+    it "lists the session's attached context, as context_read without a name does, mid-turn too" do
+      own = Samagotchi::ContextSources.session_location(engine.session.id, state_dir: state_dir)
+      expect(commands.run("/context").output).to eq("No attached context in this session.")
+
+      own.add(Samagotchi::ContextSources::Source.new(name: "notes", cmd: nil, every_seconds: nil, why: "spec", hint: nil,
+                                                     scope: "session", added_by: "cli", created_at: nil))
+      expect(commands.run("/context").output).to eq("Attached context (1):\n- notes; why: spec; no text yet")
+      expect(engine.command_registry.lookup("/context").anytime).to be(true)
     end
   end
 
