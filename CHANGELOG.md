@@ -8,6 +8,20 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: an open step whose label is its narration's first line or its first call's title shows only its call count,
+  so it doesn't repeat the words its body starts with; closed, the label is unchanged.
+- Web stage: an answered turn says its step count once (in the cloud's chip) and its time once (in the status row).
+- Web stage: `execute` and the task tools are blue in the running-tool row and the ticks, as in the tool rows under
+  them; purple is thinking's colour only (other tools' ticks are a quieter blue-grey).
+
+### Fixed
+
+- A command the user's Stop killed (or kept from starting) is saved as `stopped`, not `error`: the web shows it with
+  ■ and `stopped`, and the turn's `(N failed)` and the session's tool errors no longer count it.
+- Web: the stop-task confirm names a task from an earlier turn by its command (the wait row's title), not its id.
+
 ## [0.29.0] - 2026-10-05
 
 ### Added

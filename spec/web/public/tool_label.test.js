@@ -100,5 +100,5 @@ test("a reloaded row shows the saved title in place of the params, its step is t
   const html = turnHistoryHtml(items, timing, { thumbs: () => "" });
   // The full params line stays on hover.
   assert.match(html, /<span class="activity-params" title="command=&quot;cd \/x &amp;&amp; rspec&quot;">rspec<\/span>/);
-  assert.match(html, /<summary>execute rspec · 1 tool call<\/summary>/);
+  assert.match(html, /<summary class="repeats"><span class="gen-head">execute rspec<\/span><span class="gen-sep"> · <\/span><span class="gen-calls">1 tool call<\/span><\/summary>/);
 });

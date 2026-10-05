@@ -23,7 +23,7 @@ test("turnHistoryHtml: a reloaded tool turn is a collapsed block of steps, then 
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<details class="turn-work done"><summary>2 steps · 2 tool calls</summary>' +
-    '<details class="gen"><summary>Let me &lt;check&gt;. · 1 tool call</summary><div class="gen-text">Let me &lt;check&gt;.</div>' +
+    '<details class="gen"><summary class="repeats"><span class="gen-head">Let me &lt;check&gt;.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><div class="gen-text">Let me &lt;check&gt;.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span><span class="activity-duration">7ms</span></div></div></details>' +
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
     '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">read</span><span class="activity-duration">1.2s</span></div></div></details>' +
@@ -62,7 +62,7 @@ test("turnHistoryHtml with parts: each step expands to its thinking, text and ca
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<details class="turn-work done"><summary>3 steps · 2 tool calls</summary>' +
-    '<details class="gen"><summary>Let me check. · 1 tool call</summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
+    '<details class="gen"><summary class="repeats"><span class="gen-head">Let me check.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span>' +
     '<span class="activity-params">command=&quot;true&quot;</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
