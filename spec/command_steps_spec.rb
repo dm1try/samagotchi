@@ -108,6 +108,63 @@ RSpec.describe Samagotchi::CommandSteps do
     end
   end
 
+  # Since ShellLex reads a $(…) to its own ) (quotes, heredocs inside):
+  # a substitution stays inside the step that holds it, never a step of
+  # its own, and its operators split nothing.
+  describe "$(…) in real-world commands" do
+    it "a commit message heredoc whose body holds quotes, a ) line and $(…)" do
+      text = "git add -A && git commit -m \"$(cat <<'EOF'\nFix the \"thing\"\n)\nSee $(subst) and `tick`.\nEOF\n)\" && git push"
+      expect(parse(text)).to eq(
+        steps: [{ text: "git add -A" }, { text: %(git commit -m "$(cat <<'EOF')"), op: "&&", heredoc: { tag: "EOF", lines: 3 } },
+                { text: "git push", op: "&&" }]
+      )
+    end
+
+    it "an assignment from $(…) with a pipe inside, then a use" do
+      expect(parse(%(files=$(git diff --name-only main...HEAD | grep ".rb$") && bundle exec rubocop $files))).to eq(
+        steps: [{ text: %(files=$(git diff --name-only main...HEAD | grep ".rb$")) },
+                { text: "bundle exec rubocop $files", op: "&&" }]
+      )
+      expect(parse(%(x=$(git rev-parse HEAD); echo "$x" | cut -c1-7))).to eq(
+        steps: [{ text: "x=$(git rev-parse HEAD)" }, { text: %(echo "$x"), op: ";" }, { text: "cut -c1-7", op: "|" }]
+      )
+    end
+
+    it "a multi-line $(…) assignment is one step" do
+      expect(parse(%(out=$(\n  git status --short\n  git log -1\n) && echo "$out"))).to eq(
+        steps: [{ text: "out=$(\n  git status --short\n  git log -1\n)" }, { text: %(echo "$out"), op: "&&" }]
+      )
+    end
+
+    it "nested quotes and substitutions inside a quoted argument" do
+      text = %(git tag -a v1 -m "$(printf 'Release\\n%s' "$(git log -1 --format=%s)")" && git push --tags)
+      expect(parse(text)).to eq(
+        steps: [{ text: %(git tag -a v1 -m "$(printf 'Release\\n%s' "$(git log -1 --format=%s)")") },
+                { text: "git push --tags", op: "&&" }]
+      )
+      expect(parse(%(echo "a $(echo 'b && c; d' | tr a-z A-Z) e" | wc -c))).to eq(
+        steps: [{ text: %(echo "a $(echo 'b && c; d' | tr a-z A-Z) e") }, { text: "wc -c", op: "|" }]
+      )
+      expect(parse(%(test -n "$(git status --porcelain)" && echo dirty || echo clean))).to eq(
+        steps: [{ text: %(test -n "$(git status --porcelain)") }, { text: "echo dirty", op: "&&" },
+                { text: "echo clean", op: "||" }]
+      )
+    end
+
+    it "a heredoc to a file, its body's operators and $(…) cut out with it" do
+      expect(parse("cat > /tmp/notes.md <<'EOF'\n# $(date) && more\nline; two | three\nEOF\nwc -l /tmp/notes.md")).to eq(
+        steps: [{ text: "cat > /tmp/notes.md <<'EOF'", heredoc: { tag: "EOF", lines: 2 } },
+                { text: "wc -l /tmp/notes.md", op: "\n" }]
+      )
+    end
+
+    it "a heredoc $(…) as an assignment, unquoted" do
+      expect(parse(%(msg=$(cat <<EOF\nfoo && bar\nEOF\n); echo "$msg"))).to eq(
+        steps: [{ text: "msg=$(cat <<EOF)", heredoc: { tag: "EOF", lines: 1 } }, { text: %(echo "$msg"), op: ";" }]
+      )
+    end
+  end
+
   describe "fallback (nil)" do
     [
       "for f in *.rb; do ruby -c $f; done", "while read l; do echo $l; done < x", "ls | while read f; do :; done",
