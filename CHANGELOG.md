@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
 - Web stage: an answered turn says its step count once (in the cloud's chip) and its time once (in the status row).
 - Web stage: `execute` and the task tools are blue in the running-tool row and the ticks, as in the tool rows under
   them; purple is thinking's colour only (other tools' ticks are a quieter blue-grey).
+- Web stage: `edit` and `write` are blue in the running-tool row and the ticks too, as in the tool rows; green is a
+  finished call's `✓` and an answered turn's only.
 
 ### Fixed
 
