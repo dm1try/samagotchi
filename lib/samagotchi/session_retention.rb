@@ -9,6 +9,7 @@ require_relative "log"
 require_relative "model_profile"
 require_relative "session_manager"
 require_relative "plugin_session_state"
+require_relative "context_sources"
 
 module Samagotchi
   # Which sessions go: `chi sessions prune` / `clean` (.prune) and the lazy
@@ -83,6 +84,7 @@ module Samagotchi
         unless dry_run
           FileUtils.rm_rf(dir)
           PluginSessionState.remove(name)
+          ContextSources.remove_session(name, state_dir: state_dir)
         end
         name
       rescue SystemCallError
@@ -251,6 +253,7 @@ module Samagotchi
             sidecar = File.join(state_dir, session.id)
             FileUtils.rm_rf(sidecar)
             PluginSessionState.remove(session.id)
+            ContextSources.remove_session(session.id, state_dir: state_dir)
             deleted << session.id
           rescue StandardError
             skipped << session.id

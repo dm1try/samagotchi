@@ -42,6 +42,20 @@ RSpec.describe Samagotchi::SessionRetention do
       FileUtils.rm_rf(File.join(Samagotchi::Paths.state_dir, "plugins"))
     end
 
+    it "removes a pruned session's attached context" do
+      require "samagotchi/context_sources"
+      s = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: true)
+      s.save(state_dir: tmpdir)
+      loc = Samagotchi::ContextSources.session_location(s.id, state_dir: tmpdir)
+      loc.mute("pr-1")
+
+      described_class.apply(state_dir: tmpdir, days: 0, max_count: 0, test_only: true, any_age: true)
+
+      expect(Dir.exist?(loc.dir)).to be false
+    ensure
+      FileUtils.rm_rf(loc.dir) if loc
+    end
+
     it "deletes sessions older than days" do
       s_old = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       s_old.save(state_dir: tmpdir)
