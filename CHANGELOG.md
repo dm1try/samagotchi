@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
   stopped calls' amber, live and after a reload, not as a red error; a worker that exited mid-turn stays red `✕`.
 - Web stage: a call the Stop cut has an amber tick and an amber `■` in the trail, as its `■ STOPPED` row, instead of
   its tool kind's colour.
+- A call still running when its turn is canceled is saved in the session's tool records as `stopped` (was
+  `canceled`), the word its row uses; one cut by a failed turn stays `canceled`.
 
 ## [0.29.0] - 2026-10-05
 

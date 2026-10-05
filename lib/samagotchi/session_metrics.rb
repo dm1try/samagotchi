@@ -481,9 +481,12 @@ module Samagotchi
           # A turn that failed mid-stream never saw its generation end:
           # what it got to still counts.
           close_generation if @turn.gen_open
-          # A call still running when the turn ends (a cancel, a failure)
-          # never completes: its record says so, as the count already has it.
-          @turn.tool_calls_by_id.each_value { |active| finish_tool_record(active, "canceled") }
+          # A call still running when the turn ends never completes: its
+          # record says so, as the count already has it. A cancel stopped it
+          # ("stopped", as ToolActivity names a call the Stop cut); a
+          # failure left it "canceled".
+          cut = status == "canceled" ? "stopped" : "canceled"
+          @turn.tool_calls_by_id.each_value { |active| finish_tool_record(active, cut) }
           @turn.tool_calls_by_id.clear
           finished_at = now
           record = {

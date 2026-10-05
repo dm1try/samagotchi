@@ -709,7 +709,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(woken.snapshot).to include(served_model: "ornith", served_model_for: "qwen")
   end
 
-  it "saves a call still running when its turn ends as canceled, so the records match the count" do
+  it "saves a call still running when its turn is canceled as stopped, so the records match the count" do
     state_dir = Dir.mktmpdir
     metrics = described_class.new
     metrics.state_dir = state_dir
@@ -720,7 +720,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     metrics.call(type: :turn_canceled, cancellation_reason: :user)
 
     snap = metrics.snapshot
-    expect(snap[:tool_records].map { |r| [r[:tool], r[:status]] }).to eq([%w[read ok], %w[execute canceled]])
+    expect(snap[:tool_records].map { |r| [r[:tool], r[:status]] }).to eq([%w[read ok], %w[execute stopped]])
     expect(snap[:tool_calls_total]).to eq(2)
     expect(snap[:tool_calls_by_tool]).to eq("read" => 1, "execute" => 1)
     expect(snap[:turn_records].last[:tool_calls]).to eq(snap[:tool_records].size)
@@ -731,6 +731,17 @@ RSpec.describe Samagotchi::SessionMetrics do
     woken.state_dir = state_dir
     woken.session_id = "cut"
     expect(woken.snapshot).to include(tool_calls_total: 2, tool_calls_by_tool: { "read" => 1, "execute" => 1 })
+  end
+
+  it "saves a call still running when its turn fails as canceled: no one stopped it" do
+    metrics = described_class.new
+    metrics.call(type: :turn_started, session_id: "broke", prompt: "x")
+    metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute")
+    metrics.call(type: :turn_failed, error: "boom")
+
+    snap = metrics.snapshot
+    expect(snap[:tool_records].map { |r| [r[:tool], r[:status]] }).to eq([%w[execute canceled]])
+    expect(snap[:tool_calls_total]).to eq(1)
   end
 
   it "measures the session's duration from its first start, across collectors" do
