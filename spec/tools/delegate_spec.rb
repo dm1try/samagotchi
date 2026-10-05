@@ -77,6 +77,12 @@ RSpec.describe "delegate tools" do
 
   def session_files = Dir.glob(File.join(tmpdir, "*.json")).map { |p| File.basename(p, ".json") }
 
+  # A host's saved model list, as `chi models` leaves it (ModelListStore).
+  def saved_models(ids, host: "default", at: Time.now.to_i)
+    require "samagotchi/model_list_store"
+    Samagotchi::ModelListStore.save(host, ids, at: at)
+  end
+
   # The child's turn as its worker plays it, on another thread.
   def later(delay = 0.15, &)
     Thread.new do
@@ -123,6 +129,42 @@ RSpec.describe "delegate tools" do
 
       expect(out).to match(%r{\AError: unknown host 'nosuch' in model 'nosuch:org/model'; the configured hosts are })
       expect(session_files).to contain_exactly(parent.id)
+    end
+
+    it "refuses an unknown model id the host's saved list knows, naming the hint, creating nothing" do
+      saved_models(%w[gemma-small qwen3])
+
+      out = described_class.call("quick look", model: "default:gemma-smal", wait: "false", peers: peers)
+
+      expect(out).to eq("Error: unknown model 'gemma-smal' on host 'default' (did you mean: gemma-small?); " \
+                        "`chi models` lists what the hosts serve")
+      expect(session_files).to contain_exactly(parent.id)
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "starts the child for an id the host's saved list has" do
+      saved_models(%w[gemma-small])
+
+      described_class.call("quick look", model: "default:gemma-small", wait: "false", peers: peers)
+
+      child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
+      expect(child.model_name).to eq("default:gemma-small")
+    end
+
+    it "starts the child for an unknown id when the list is stale (a week old)" do
+      saved_models(%w[gemma-small], at: Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS - 60)
+
+      described_class.call("quick look", model: "default:nosuch", wait: "false", peers: peers)
+
+      expect(session_files.size).to eq(2)
+    end
+
+    it "starts the child for a bare id the saved list doesn't have (routing picks the host)" do
+      saved_models(%w[gemma-small])
+
+      described_class.call("quick look", model: "nosuch", wait: "false", peers: peers)
+
+      expect(session_files.size).to eq(2)
     end
 
     it "refuses in a session that is itself a delegate, creating nothing" do

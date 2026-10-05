@@ -118,8 +118,10 @@ module Samagotchi
       private_class_method :follow_up
 
       # The model as typed (spawn_session stores its resolved ref), else the
-      # parent's. No existence check: an unknown model fails the child's
-      # first turn.
+      # parent's. No existence check here: spawn_session checks the host
+      # (check_host!) and the id against the host's saved model list
+      # (ModelProfile.check_model!), and its UnknownHost/UnknownModel comes
+      # back to the model as this tool's Error: line.
       def self.child_model(model, parent)
         return parent.model_name if model.to_s.strip.empty?
 

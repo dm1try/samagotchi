@@ -25,6 +25,12 @@ module Samagotchi
     class UnknownHost < MissingModel
     end
 
+    # A model id the host's last saved list doesn't have (a MissingModel
+    # too: `chi send --new` and the web report it as one refusal, before a
+    # worker starts).
+    class UnknownModel < MissingModel
+    end
+
     # Gemma 4 thinks in a channel: `<|channel>thought` … `<channel|>`. The
     # one source for the parser, the stream splitter, the literal guard and
     # the web's saved-message reader.
@@ -177,6 +183,48 @@ module Samagotchi
       near = Samagotchi::Config.near_names(host, names).first(3)
       hint = near.empty? ? "" : " (did you mean #{near.map { |n| "'#{n}'" }.join(" or ")}?)"
       raise UnknownHost, "unknown host '#{host}' in model '#{ref}'#{hint}; the configured hosts are #{names.join(", ")}"
+    end
+
+    # Raises UnknownModel when +model_name+ resolves to a model id a host's
+    # saved list doesn't have (ModelListStore: what a `chi models`, a
+    # /models or the web's GET /api/models last listed for that host).
+    # Called where a session is spawned without listing the hosts itself
+    # (`chi send --new --model`, the delegate tool, the web), so an unknown
+    # id is refused before a worker starts and fails its first turn. Never
+    # asks a host.
+    #
+    # Only a ref that names a host is checked (its alias resolved first, as
+    # ModelRef.parse does), and only against that host's own list: a bare id
+    # goes to whichever host lists it (HostRegistry#host_for_model), so no
+    # single list can judge it. Nothing is checked either without a saved
+    # list for the host or with one older than ModelListStore::TTL_SECONDS
+    # (a week: the host may serve different models by now).
+    # @param hosts [Hash, nil] the hosts a prefix may name (a HostRegistry's
+    #   entries); config.yml's by default
+    # @param lists [#read] ModelListStore by default
+    # @return [String] +model_name+
+    def self.check_model!(model_name, env: ENV, hosts: nil, lists: nil)
+      require_relative "config"
+      require_relative "model_list_store"
+      hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
+      lists ||= Samagotchi::ModelListStore
+      parsed = Samagotchi::ConfigFile.model_ref(model_name, env: env, hosts: hosts)
+      host = parsed.host_name
+      return model_name unless host
+
+      list = lists.read(env: env)[host.to_s.strip.downcase]
+      return model_name if list.nil? || list.stale?
+      return model_name if list.known?(parsed.id)
+
+      raise UnknownModel, unknown_model_message(parsed.id, host, list.ids)
+    end
+
+    # The line an unknown model id is refused with, with up to three close
+    # ids (Config.near_names) when there are any.
+    def self.unknown_model_message(id, host, ids)
+      near = Samagotchi::Config.near_names(id, ids).first(3)
+      hint = near.empty? ? "" : " (did you mean: #{near.join(", ")}?)"
+      "unknown model '#{id}' on host '#{host}'#{hint}; `chi models` lists what the hosts serve"
     end
 
     # The prefix of "box:x" when box is a host config.yml has with

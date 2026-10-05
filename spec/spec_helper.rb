@@ -132,6 +132,10 @@ RSpec.configure do |config|
     end
     # ConfigFile prints each config warning once per process.
     Samagotchi::ConfigFile.reset_warnings! if defined?(Samagotchi::ConfigFile)
+    # The saved host model lists (ModelListStore) are a file in the state dir
+    # this whole suite shares: a spec that lists a fake host's models must
+    # not make the next example's model look unknown (nor hide a real one).
+    FileUtils.rm_f(Samagotchi::ModelListStore.path) if defined?(Samagotchi::ModelListStore)
     # The attached TUI's status ticker thread draws until the spinner
     # finishes, and many specs start one they never finish: it would write
     # into later specs' output (AttachedLoop builds its view with the default

@@ -47,8 +47,8 @@ RSpec.describe Samagotchi::ModelListStore do
 
       list = described_class.find("box")
       expect([list.host, list.ids, list.at]).to eq(["box", ["gemma-small"], 100])
-      expect(list.include?("GEMMA-SMALL")).to be(true)
-      expect(list.include?("gemma")).to be(false)
+      expect(list.known?("GEMMA-SMALL")).to be(true)
+      expect(list.known?("gemma")).to be(false)
     end
 
     it "keeps the other hosts' entries" do

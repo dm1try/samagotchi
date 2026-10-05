@@ -31,12 +31,13 @@ module Samagotchi
     Saved = Data.define(:host, :ids, :at) do
       def age(now: Time.now.to_i) = now.to_i - at.to_i
 
-      # Too old to check an id against (ModelProfile.check_model!).
+      # Too old to check an id against (ModelProfile.check_model!): a model
+      # may have been added or removed since.
       def stale?(now: Time.now.to_i) = age(now: now) > ModelListStore::TTL_SECONDS
 
-      # A host's list spells its ids, and resolution matches them by case
-      # (HostRegistry's model index is downcased): so does this.
-      def include?(id) = ids.any? { |known| known.casecmp?(id.to_s.strip) }
+      # A host's own list spells its ids, and resolution matches them by
+      # case (the registry's model index is downcased): so does this.
+      def known?(id) = ids.any? { |known| known.casecmp?(id.to_s.strip) }
     end
 
     module_function
@@ -46,18 +47,21 @@ module Samagotchi
       File.join(Paths.state_dir(env: env), FILE)
     end
 
+    # Every saved list by host name, the lists as [Saved] (empty without a
+    # file, with bad JSON, or with nothing readable in it).
+    # @return [Hash{String => Saved}]
+    def read(env: ENV)
+      all(env: env).each_with_object({}) do |(name, entry), acc|
+        list = saved_from(name, entry)
+        acc[name] = list if list
+      end
+    end
+
     # One host's saved list.
     # @return [Saved, nil] nil without a file, with bad JSON, or with no
     #   entry for the host
     def find(host, env: ENV)
-      entry = all(env: env)[host.to_s.strip.downcase]
-      return nil unless entry.is_a?(Hash)
-
-      ids = Array(entry["ids"]).map { |id| id.to_s.strip }.reject(&:empty?)
-      at = entry["at"].to_i
-      return nil if ids.empty? || at <= 0
-
-      Saved.new(host: host.to_s.strip.downcase, ids: ids, at: at)
+      read(env: env)[host.to_s.strip.downcase]
     end
 
     # Save the ids +host+ just listed, keeping every other host's entry.
@@ -98,5 +102,16 @@ module Samagotchi
     rescue StandardError
       {}
     end
+
+    # One +entry+ of the file as a Saved, or nil when it holds no ids or no
+    # time.
+    def saved_from(name, entry)
+      ids = Array(entry["ids"]).map { |id| id.to_s.strip }.reject(&:empty?)
+      at = entry["at"].to_i
+      return nil if ids.empty? || at <= 0
+
+      Saved.new(host: name, ids: ids, at: at)
+    end
+    private_class_method :saved_from
   end
 end

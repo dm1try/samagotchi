@@ -484,6 +484,61 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Dir.glob(File.join(tmpdir, "sessions", "*"))).to be_empty
     end
 
+    # A host's saved model list (ModelListStore: what `chi models` last
+    # listed) refuses an id it doesn't have, before anything is saved.
+    describe "an unknown model id, with a saved list for the host" do
+      before do
+        require "samagotchi/model_list_store"
+        stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" =>
+          JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+        Samagotchi::ModelListStore.save("main", %w[gemma-small qwen3])
+        allow(Process).to receive(:spawn).and_return(12_345)
+      end
+
+      it "refuses it before anything is saved or spawned, with a did-you-mean" do
+        expect { described_class.spawn_session(prompt: "hi", model_name: "main:gemma-smal", state_dir: tmpdir) }
+          .to raise_error(Samagotchi::ModelProfile::UnknownModel,
+                          "unknown model 'gemma-smal' on host 'main' (did you mean: gemma-small?); " \
+                          "`chi models` lists what the hosts serve")
+        expect(Process).not_to have_received(:spawn)
+        expect(Dir.glob(File.join(tmpdir, "sessions", "*"))).to be_empty
+      end
+
+      it "starts the session for an id the list has" do
+        session = described_class.spawn_session(prompt: nil, model_name: "main:gemma-small", state_dir: tmpdir)
+
+        expect(Process).to have_received(:spawn)
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).model_name).to eq("main:gemma-small")
+      end
+
+      it "checks the host the ref names, whatever the configured default is" do
+        expect { described_class.spawn_session(prompt: nil, model_name: "main:nosuch", state_dir: tmpdir) }
+          .to raise_error(Samagotchi::ModelProfile::UnknownModel, /unknown model 'nosuch' on host 'main'/)
+      end
+
+      it "checks nothing for an id with no host in front of it (routing picks the host)" do
+        expect { described_class.spawn_session(prompt: nil, model_name: "anything-at-all", state_dir: tmpdir) }
+          .not_to raise_error
+        expect(Process).to have_received(:spawn)
+      end
+
+      it "checks nothing for a stale list (a week old)" do
+        Samagotchi::ModelListStore.save("main", %w[gemma-small], at: Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS - 60)
+
+        expect { described_class.spawn_session(prompt: nil, model_name: "main:nosuch", state_dir: tmpdir) }
+          .not_to raise_error
+        expect(Process).to have_received(:spawn)
+      end
+
+      it "starts the session anyway when no list is saved for its host" do
+        FileUtils.rm_f(Samagotchi::ModelListStore.path)
+
+        expect { described_class.spawn_session(prompt: nil, model_name: "main:nosuch", state_dir: tmpdir) }
+          .not_to raise_error
+        expect(Process).to have_received(:spawn)
+      end
+    end
+
     it "starts a session with no prompt idle, with nothing to run" do
       allow(Process).to receive(:spawn).and_return(12_345)
 

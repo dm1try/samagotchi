@@ -136,8 +136,12 @@ module Samagotchi
                            title: nil)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
-      # alias is retargeted), with the name as typed beside it.
+      # alias is retargeted), with the name as typed beside it. Both checks
+      # run before anything is saved or spawned: a wrong host or a model id
+      # the host's saved list doesn't have (it was listed in this state dir,
+      # ModelListStore) refuses here rather than in the worker's first turn.
       typed = Samagotchi::ModelProfile.check_host!(Samagotchi::ModelProfile.required_model_name(model_name))
+      Samagotchi::ModelProfile.check_model!(typed)
       ref = ConfigFile.model_ref(typed).ref
       session = Session.new_session(
         mode: mode,

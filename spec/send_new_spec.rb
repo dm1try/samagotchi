@@ -71,6 +71,55 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     expect(spawned).to be_empty
   end
 
+  # The model id is checked against the host's saved list (ModelListStore)
+  # in spawn_session, so a typo is refused here and no worker starts.
+  describe "an unknown --model with a saved model list" do
+    before do
+      require "samagotchi/model_list_store"
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_call_original
+      allow(Process).to receive(:spawn).and_return(12_345)
+      allow(Process).to receive(:detach)
+    end
+
+    it "refuses it in one line, spawns nothing and saves no session" do
+      Samagotchi::ModelListStore.save("default", %w[gemma-small qwen3])
+
+      expect(run("--new", "--model", "default:gemma-smal", "-m", "hi")).to eq(1)
+      expect(err.string).to eq("chi send: could not start a session: unknown model 'gemma-smal' on host 'default' " \
+                               "(did you mean: gemma-small?); `chi models` lists what the hosts serve\n")
+      expect(out.string).to be_empty
+      expect(Process).not_to have_received(:spawn)
+      expect(Dir.glob(File.join(tmpdir, "*"))).to be_empty
+    end
+
+    it "starts the session for an id the list has" do
+      Samagotchi::ModelListStore.save("default", %w[gemma-small])
+
+      expect(run("--new", "--model", "default:gemma-small", "-m", "hi")).to eq(0)
+      expect(out.string).to match(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}  started\n\z/)
+      expect(Process).to have_received(:spawn)
+    end
+
+    it "starts the session anyway when no list is saved for the host" do
+      expect(run("--new", "--model", "default:gemma-smal", "-m", "hi")).to eq(0)
+      expect(Process).to have_received(:spawn)
+    end
+
+    it "starts the session for a stale list (a week old)" do
+      Samagotchi::ModelListStore.save("default", %w[gemma-small], at: Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS - 60)
+
+      expect(run("--new", "--model", "default:gemma-smal", "-m", "hi")).to eq(0)
+      expect(Process).to have_received(:spawn)
+    end
+
+    it "starts the session for a bare id the list doesn't have (routing picks the host)" do
+      Samagotchi::ModelListStore.save("default", %w[gemma-small])
+
+      expect(run("--new", "--model", "gemma-smal", "-m", "hi")).to eq(0)
+      expect(Process).to have_received(:spawn)
+    end
+  end
+
   it "reports a failed start in one line" do
     allow(Samagotchi::SessionManager).to receive(:spawn_session).and_raise(RuntimeError, "no default model")
     expect(run("--new", "-m", "hi")).to eq(1)

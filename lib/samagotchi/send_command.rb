@@ -241,9 +241,10 @@ module Samagotchi
 
     # A worker session like the web start page's: saved as running with the
     # message before its worker spawns, so lists and the web show it at
-    # once. The full id, so a script can pass it on. Only the model's host
-    # is checked here (in spawn_session, as in the web): a wrong model id
-    # fails in the worker.
+    # once. The full id, so a script can pass it on. The model is checked
+    # here (in spawn_session, as in the web): an unknown host, or an id the
+    # host's saved model list doesn't have, is refused before anything is
+    # spawned.
     # @return [Integer] the exit status
     def run_new(prompt, options)
       images = !@images.empty?
