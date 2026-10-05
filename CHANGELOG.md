@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A message sent while a reminder turn ran was lost when that reminder turn was the session worker's first turn
+  (a fresh or restarted worker): the turn took the message and dropped it. It now joins the turn as steering does.
+
 ## [0.30.0] - 2026-10-05
 
 ### Added

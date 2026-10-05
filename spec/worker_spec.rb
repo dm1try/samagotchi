@@ -333,6 +333,22 @@ RSpec.describe Samagotchi::Worker do
         Samagotchi::Steer.inject!(conversation, -> { lines.first(1) }, iteration: 1, emit: ->(_) {}, cancel_controller: nil)
         expect(conversation).to eq([{ role: "user", kind: "input", source: "chi_send", content: "line 0" }])
       end
+
+      # A reminder turn that is the worker's first turn: no prompt turn set
+      # up the merge list before it, and the drain must still hand the line
+      # over (it claims and deletes the input file first).
+      it "merges a line into a reminder turn that is the worker's first turn" do
+        allow(engine).to receive(:reminders_due?).and_return(true)
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer me", client_id: "web:x")
+          turns << [prompt, mono, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(poll_interval: 60)
+        @reminder_callback.call(["stretch"])
+
+        expect(next_turn(timeout: 5)&.last).to eq([Samagotchi::Steer::Line.new(text: "steer me", source: nil)])
+      end
     end
 
     it "runs a turn posted while another runs right after it" do
