@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind,
+  flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailMark,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
@@ -226,4 +226,11 @@ test("liveSlots: a task_wait titled by its task's command keeps its id line (the
   assert.deepEqual(slots.trail, [{ name: "task_get", title: "npm test", status: "ok", command: 'id="t1"' }]);
   assert.deepEqual(slots.tool,
     { name: "task_wait", title: "npm test · up to 600s", kind: "exec", command: 'id="t1" timeout="600"', taskId: "t1", key: "1:2" });
+});
+
+test("trailMark: a call a Stop cut is ■, not a failure's ✕", () => {
+  assert.equal(trailMark("ok"), "✓");
+  assert.equal(trailMark("error"), "✕");
+  assert.equal(trailMark("blocked"), "✕");
+  assert.equal(trailMark("stopped"), "■");
 });

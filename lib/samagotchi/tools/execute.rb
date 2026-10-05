@@ -21,6 +21,8 @@ module Samagotchi
       STOP_POLL_INTERVAL_SEC = 0.05
       WAIT_SLICE_SEC = 0.2
       NOT_RUN_ON_STOP = "Error: not run, the user stopped the turn"
+      # The first words of a command the user's Stop killed.
+      STOPPED_BY_USER = "Error: command stopped by the user"
       TIMEOUT_HINT = "(killed at the limit; for a long command use task_create, then task_wait)"
       # How long the output may stay open once the shell has exited: a
       # `server &` child keeps the pipes, and the read would never end.
@@ -67,7 +69,7 @@ module Samagotchi
         # a long command, and return whatever it printed before it was killed.
         stopped_result("Error: command timed out after #{timeout_sec}s\n#{TIMEOUT_HINT}", e)
       rescue CommandCancelled => e
-        stopped_result("Error: command stopped by the user after #{e.elapsed.round}s (killed; rerun it if still needed)", e)
+        stopped_result("#{STOPPED_BY_USER} after #{e.elapsed.round}s (killed; rerun it if still needed)", e)
       rescue StandardError => e
         "Error: #{e.message}"
       end

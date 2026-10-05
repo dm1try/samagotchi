@@ -101,6 +101,15 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_status("wait_result: canceled", "read")).to eq("ok")
     end
 
+    it "calls a command the user's Stop killed or kept from starting stopped, not an error" do
+      killed = "Error: command stopped by the user after 3s (killed; rerun it if still needed)\nstdout:\nhalf\n"
+      expect(described_class.tool_activity_status(killed, "execute")).to eq("stopped")
+      expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_STOP, "execute")).to eq("stopped")
+      expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_STOP, "task_create")).to eq("stopped")
+      expect(described_class.tool_activity_status("Error: command timed out after 120s", "execute")).to eq("error")
+      expect(described_class.tool_activity_status(killed, "read")).to eq("error")
+    end
+
     it "calls a task_wait whose task was stopped (by the user or the model) stopped" do
       stopped = "task_id: t1\nstatus: stopped\nexit_code: \nstop_reason: stopped_by_user\noutput_path: x"
       expect(described_class.tool_activity_status(stopped, "task_wait")).to eq("stopped")
