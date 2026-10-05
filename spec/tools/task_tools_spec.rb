@@ -177,7 +177,7 @@ RSpec.describe "task tools" do
 
       expect(described_class.call("../x")).to eq("Error: task not found: ../x")
       expect(Samagotchi::Tools::TaskStop.call("../x")).to eq("Error: task not found: ../x")
-      expect(Samagotchi::Tools::TaskWait.call("../x")).to include("Error: task not found")
+      expect(Samagotchi::Tools::TaskWait.call("../x")).to eq("Error: task not found: ../x")
     end
 
     it "notes a user stop, and not a model stop" do
