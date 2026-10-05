@@ -145,6 +145,33 @@ RSpec.describe Samagotchi::ToolCallParser do
     end
   end
 
+  describe "#malformed" do
+    let(:gemma) { described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4)) }
+
+    it "names a Gemma tool call never closed" do
+      expect(gemma.malformed("<|tool_call>call:execute{command:<|\"|>ls<|\"|>")).to eq("unclosed tool call")
+      expect(gemma.malformed("<|tool_call>call:a{}<tool_call|><|tool_call>call:b{")).to eq("unclosed tool call")
+    end
+
+    it "names a thought header after answer text" do
+      expect(gemma.malformed("<|channel>thought\nx<channel|>Answer.<|channel>thought\n<channel|>More"))
+        .to eq("thought header after the answer")
+    end
+
+    it "passes thoughts, closed calls and plain answers" do
+      expect(gemma.malformed("<|channel>thought\nx<channel|>Answer.")).to be_nil
+      expect(gemma.malformed("<|channel>thought\n<channel|><|tool_call>call:a{}<tool_call|>")).to be_nil
+      expect(gemma.malformed("Checking.<|tool_call>call:a{}<tool_call|><|tool_call>call:b{}<tool_call|>")).to be_nil
+      expect(gemma.malformed("plain")).to be_nil
+      expect(gemma.malformed(nil)).to be_nil
+    end
+
+    it "leaves Qwen's open call to its own recovery" do
+      qwen = described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36))
+      expect(qwen.malformed("<tool_call><function=execute>")).to be_nil
+    end
+  end
+
   describe "Qwen#strip_thought" do
     let(:parser) { described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36)) }
 

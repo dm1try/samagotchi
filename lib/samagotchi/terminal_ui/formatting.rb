@@ -61,9 +61,13 @@ module Samagotchi
       end
 
       # "↻ empty answer, asking again (1/1)": the loop retries an empty answer;
-      # "↻ cut by loop-guard, asking again (1/1)" after a plugin cut it.
+      # "↻ cut by loop-guard, asking again (1/1)" after a plugin cut it;
+      # "↻ malformed answer, …" after a corrupt native generation.
       def format_empty_retry_line(event)
-        what = event[:stopped_by] ? "cut by #{event[:stopped_by]}" : "empty answer"
+        what = if event[:stopped_by] then "cut by #{event[:stopped_by]}"
+               elsif event[:malformed] then "malformed answer"
+               else "empty answer"
+               end
         paint("↻ #{what}, asking again (#{event[:attempt]}/#{event[:of]})", 90)
       end
 

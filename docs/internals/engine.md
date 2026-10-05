@@ -294,7 +294,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:generation_retrying` | the transport retries the request | `{iteration, ...}` (the retry's fields) |
 | `:generation_completed` | a generation ended, or was cut | `{iteration, content_length, thinking_chars, served_model, requested_model, finish_reason, ...}`; a cut adds `stopped_by`, `stop_reason`; the Engine adds `speed`, `tokens` |
 | `:generation_cancelled` | the turn was cancelled mid-loop | `{iteration, reason, stopped_by}` |
-| `:empty_answer_retry` | an empty or cut answer is asked again | `{iteration, attempt, of, finish_reason, thinking_chars, ...}` |
+| `:empty_answer_retry` | an empty, cut or malformed answer is asked again | `{iteration, attempt, of, finish_reason, thinking_chars, stopped_by?, malformed?}` |
 | `:steer_cut` | a steer cut the generation | `{iteration, source}` |
 | `:pending_input_merged` | queued input joined the conversation | `{iteration, count, content, steers?, answer}` |
 | `:tool_dispatch_started` / `:tool_dispatch_completed` | around a batch | `{iteration, call_count}` |

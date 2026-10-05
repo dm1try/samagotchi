@@ -97,6 +97,8 @@ module Samagotchi
 
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
+    # How much of a malformed generation's end the warning keeps.
+    MALFORMED_TAIL_CHARS = 400
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
     # @param tools [Tools::Registry, nil] the tools calls dispatch to (the
@@ -242,7 +244,8 @@ module Samagotchi
     # the prefill, and what the caller gave.
     Turn = Struct.new(:conversation, :context, :empty_retry, :tool_activity, :buffer, :streamed_thinking, :qwen_attempts,
                       :qwen_partial, :prefill, :pending_tool_calls, :model_name, :pending_input, :on_stream_event,
-                      :cancel_controller, :cap, :emit, :iteration, :empty_steps, :ended_empty, keyword_init: true)
+                      :cancel_controller, :cap, :emit, :iteration, :empty_steps, :ended_empty, :malformed_retried,
+                      :uncached_next, keyword_init: true)
     # One request: the prompt and its images as sent, the images' token
     # estimate, and the window it was measured against.
     Request = Struct.new(:prompt, :images, :image_tokens, :window, :prefill, keyword_init: true)
@@ -250,9 +253,10 @@ module Samagotchi
     # generation's own server counts, the model the server named, the
     # thinking it streamed, and why it stopped (the transport's finish
     # reason, Client::Transport#finish_reason_from; nil when not named),
-    # and its prompt-cache counts (the largest seen: they come cumulative).
+    # and its prompt-cache counts (the largest seen: they come cumulative),
+    # and where its visible text starts in the turn's buffer.
     Generation = Struct.new(:response, :cut, :usage, :served_model, :streamed_thinking, :finish_reason, :cache,
-                            keyword_init: true)
+                            :buffer_mark, keyword_init: true)
     private_constant :Turn, :Request, :Generation
 
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:)
@@ -278,6 +282,9 @@ module Samagotchi
       request = prepare_request(turn)
       generation = generate(turn, request)
       return after_cut(turn, generation) if generation.cut
+      if (reason = parser.malformed(generation.response))
+        return after_malformed(turn, generation, reason)
+      end
 
       turn.conversation << { role: "model", content: request.prefill + generation.response.to_s }
       # Profile-specific parse (incl. Qwen unterminated-block recovery); the
@@ -330,10 +337,13 @@ module Samagotchi
       # thinking_chars=N content_length=…).
       generation = Generation.new(usage: nil, served_model: nil, streamed_thinking: 0)
       fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if @hooks
-      buffer_mark = turn.buffer.length
+      buffer_mark = generation.buffer_mark = turn.buffer.length
       # A cancel salvages only this generation's thinking: the earlier
       # steps' is on their own messages already.
       turn.streamed_thinking = +""
+      # Only the retry of a malformed generation skips the prompt cache.
+      uncached = turn.uncached_next
+      turn.uncached_next = false
       generation.response = with_generation(turn.cancel_controller) do |generation_controller|
         request_generation(
           request.prompt,
@@ -341,6 +351,7 @@ module Samagotchi
           cancel_controller: turn.cancel_controller,
           model_name: turn.model_name,
           sampling: turn.empty_retry.request_sampling(@turn_settings.sampling),
+          cache_prompt: !uncached,
           on_chunk: ->(chunk) { stream_chunk(turn, generation, stream_splitter, chunk) },
           on_retry: lambda { |retry_event|
             # The retry streams from the start: its counts replace these.
@@ -460,6 +471,31 @@ module Samagotchi
       turn.cancel_controller.cancel!(:hook, cut)
       emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: :hook, stopped_by: cut[:by])
       cancelled_result(turn.conversation, tool_activity: turn.tool_activity, reason: :hook, partial_assistant_text: "")
+    end
+
+    # A corrupt generation (ToolCallParser#malformed) is no answer and runs
+    # no tool: it is logged and dropped, with its streamed text, and the
+    # same prompt goes once more without the server's prompt cache (a
+    # poisoned cache made it, ggml-org/llama.cpp#27148), shown as the loop
+    # asking again. A second one fails the turn. Returns :next.
+    def after_malformed(turn, generation, reason)
+      response = generation.response.to_s
+      Log.warn(:model, "generation_malformed", iteration: turn.iteration, reason: reason, id_slot: @last_slot,
+                                               cache_n: generation.cache&.dig(:cached), finish_reason: generation.finish_reason,
+                                               retried: turn.malformed_retried ? true : false,
+                                               payload: response[-MALFORMED_TAIL_CHARS..] || response)
+      turn.buffer.slice!(generation.buffer_mark..)
+      if turn.malformed_retried
+        label = @client.respond_to?(:host_name) && @client.host_name ? @client.host_name : "llama.cpp"
+        raise LLM::MalformedGeneration.new("#{label}: #{reason}, again without the prompt cache; nothing was saved",
+                                           host: label)
+      end
+
+      turn.malformed_retried = true
+      turn.uncached_next = true
+      emit(turn, type: :empty_answer_retry, iteration: turn.iteration, attempt: 1, of: 1,
+                 finish_reason: generation.finish_reason, malformed: true)
+      :next
     end
 
     # A generation with no tool calls: a Qwen call left open is asked to be
@@ -612,8 +648,11 @@ module Samagotchi
     end
 
     # +sampling+: this request's (EmptyAnswerRetry#request_sampling).
-    def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil, images: [], sampling: nil)
+    # +cache_prompt+: false for a malformed generation's retry (only then sent).
+    def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil, images: [], sampling: nil,
+                        cache_prompt: true)
       kwargs = {}
+      kwargs[:cache_prompt] = false unless cache_prompt
       # Only a request with images names them: a text-only call is unchanged.
       kwargs[:images] = images unless images.empty?
       kwargs[:on_chunk] = on_chunk if on_chunk

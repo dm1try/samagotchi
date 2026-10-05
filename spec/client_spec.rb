@@ -231,6 +231,24 @@ RSpec.describe Samagotchi::Client do
       expect(JSON.parse(request.body)).to include("cache_prompt" => true)
     end
 
+    it "skips the prompt cache when asked (a malformed generation's retry)" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response", code: "200")
+      request = nil
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) do |built_request, &block|
+        request = built_request
+        block.call(response)
+      end
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      client.complete("prompt", stop: ["done"], cache_prompt: false)
+
+      expect(JSON.parse(request.body)).to include("cache_prompt" => false)
+    end
+
     it "pins the request to a slot only when asked, and only on llama.cpp" do
       bodies = []
       allow(Net::HTTP).to receive(:start) do |*_args, **_opts, &block|
