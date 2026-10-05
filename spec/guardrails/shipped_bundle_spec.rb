@@ -48,10 +48,14 @@ RSpec.describe "The guardrails bundle's rules" do
                             "echo x >> $XDG_CONFIG_HOME/samagotchi/config.yml",
                             "cd $XDG_CONFIG_HOME/samagotchi && echo x > config.yml",
                             "sh -c 'echo x >> ~/.config/samagotchi/config.yml'", "cp x $CFG/samagotchi/hooks/a.rb",
-                            "cd $X && echo x >> samagotchi/config.yml"],
+                            "cd $X && echo x >> samagotchi/config.yml",
+                            "echo '{}' > #{ENV.fetch("XDG_STATE_HOME")}/samagotchi/context/projects/app_1/pr-1.json",
+                            "rm -r $XDG_STATE_HOME/samagotchi/context/sessions/abc"],
     "chi-answer-piped" => ["printf '3\\n' | chi --attach abc", "(sleep 3; printf 'y\\n') | chi --attach abc",
                            "echo y | chi --no-shared -p go", "yes | bundle exec bin/chi --prompt go",
                            "chi --attach abc < answers.txt", "chi -p go <<< 1", "chi --attach abc <<EOF"],
+    "chi-context-cmd" => ["chi context add pr-1 --cmd 'gh pr view 1' abc", "bin/chi context add x --every 60 --cmd=./x.sh",
+                          "cd app && chi context add ci --why 'a|b' --cmd ./ci.sh --project"],
     "chi-answer-http" => ["curl -s -X POST http://127.0.0.1:4567/session/abc/answer -d '{}'",
                           "curl -sX POST localhost:8080/api/sessions/abc/answer --data @a.json",
                           "wget --post-data='{}' http://127.0.0.1:1/session/x/answer"]
@@ -65,7 +69,9 @@ RSpec.describe "The guardrails bundle's rules" do
     "rm -rf /var/tmp/pp/state3 && mkdir -p /var/tmp/pp/state3", "rm --recursive --force /var/tmp/x 2>/dev/null",
     "curl -fsSL https://x.sh -o install.sh", "echo 'rebase' ; ls", "ls | grep push",
     "chi send --new --wait -m 'fix it'", "git diff | chi send -m review abc", "chi answer abc --question q --option Deny",
-    "chi --attach abc", "chi -p 'hello'", "printf x | chi-tool --attach", "curl https://api.example.com/answers/1",
+    "chi --attach abc", "chi -p 'hello'",
+    "chi context add notes --push abc", "chi context push notes -m 'cmd done'", "chi context ls --project",
+    "sed -i s/a/b/ lib/samagotchi/context_sources.rb", "ls $XDG_STATE_HOME/samagotchi/context/sessions", "printf x | chi-tool --attach", "curl https://api.example.com/answers/1",
     # a look-alike of chi's dirs (approval-noise-log.md): scratch under /tmp,
     # chi's own source tree, and ~/.config/samagotchi when XDG_CONFIG_HOME
     # puts chi's config elsewhere
@@ -91,6 +97,11 @@ RSpec.describe "The guardrails bundle's rules" do
     strict = rules.rules.select(&:modes).map(&:id)
     expect(strict).to contain_exactly("git-rebase", "write-outside-repo", "git-outside-repo")
     expect(rules.rules.select(&:modes).map(&:modes).uniq).to eq([["strict"]])
+  end
+
+  it "asks for a chi context command source once at a time: each command is new code" do
+    v = shell("chi context add ci --cmd ./ci.sh abc")
+    expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-context-cmd", %w[once]])
   end
 
   it "lets git rebase through in auto mode" do

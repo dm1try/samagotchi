@@ -182,11 +182,13 @@ module Samagotchi
     def protected_paths
       @protected ||= begin
         require_relative "memory_bundle/provenance"
+        require_relative "context_sources"
         Guardrails::ProtectedPaths.new(
           store_dir: File.dirname(@approvals.path),
           bundles_dir: MemoryBundle::Provenance.bundles_dir,
           config_path: Samagotchi::ConfigFile.global_path,
-          hooks_dir: Hooks::Loader.hooks_dir
+          hooks_dir: Hooks::Loader.hooks_dir,
+          context_dir: ContextSources.root
         )
       end
     end

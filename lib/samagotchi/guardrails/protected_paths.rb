@@ -5,9 +5,10 @@ module Samagotchi
     # Core checks on what the file tools (write, edit, memory_write) touch,
     # after the hooks and before the rules. Paths are compared with
     # symlinks resolved (on the longest existing parent).
-    #   deny: the approval store's dir and installed bundles (.bundles/:
-    #         hooks, rules, manifests); nothing legitimate writes there
-    #         through the file tools.
+    #   deny: the approval store's dir, installed bundles (.bundles/:
+    #         hooks, rules, manifests) and attached context (a source's
+    #         command runs later, outside the gate; chi context writes
+    #         it); nothing legitimate writes there through the file tools.
     #   ask (once / session): config.yml and the plain hooks dir. The
     #         system bundle's config protocol edits config.yml with
     #         write/edit, so this keeps the user in the loop without
@@ -22,10 +23,12 @@ module Samagotchi
       # @param bundles_dir [String] <memories>/.bundles
       # @param config_path [String] config.yml
       # @param hooks_dir [String] the plain hooks dir
-      def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:)
+      # @param context_dir [String, nil] <state dir>/context (ContextSources.root)
+      def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:, context_dir: nil)
         @deny = [
           ["guardrail-store", store_dir, "the approval store belongs to the user"],
-          ["installed-bundles", bundles_dir, "installed bundles (hooks, rules, manifests) are changed by chi bundle install"]
+          ["installed-bundles", bundles_dir, "installed bundles (hooks, rules, manifests) are changed by chi bundle install"],
+          ["chi-context", context_dir, "attached context sources run commands; change them with chi context"]
         ]
         @ask = [
           ["chi-config", config_path, "changes chi's config.yml"],

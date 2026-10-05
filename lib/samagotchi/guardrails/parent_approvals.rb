@@ -41,11 +41,14 @@ module Samagotchi
       # (guardrails.md, sub-agent.md).
       AGENT_MARKERS = ["CLAUDECODE", "AI_AGENT", "CODEX_THREAD_ID", PARENT_SESSION_ENV].freeze
       # Rules that ask about chi's own config and hooks: the core
-      # ProtectedPaths asks and the guardrails bundle's shell rule.
-      PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi].freeze
-      # A shell command naming chi's config, hooks or guardrails as text
-      # (broad: a parent may not allow what only looks like one).
-      CHI_TEXT = %r{\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|memories/\.bundles}
+      # ProtectedPaths asks and the guardrails bundle's shell rule; and a
+      # command source for attached context (it runs later, ungated).
+      PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd].freeze
+      # A shell command naming chi's config, hooks, guardrails or attached
+      # context as text (broad: a parent may not allow what only looks like
+      # one). samagotchi/context stops before a word character or a dot, so
+      # chi's own lib/samagotchi/context_*.rb isn't one.
+      CHI_TEXT = %r{\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|samagotchi/context(?![\w.])|memories/\.bundles}
       # The guardrails bundle's shell-touches-chi, for a word it can't
       # resolve to a path (Guardrails::ShellPaths): CHI_TEXT and .git/hooks.
       CHI_SHELL_TEXT = Regexp.union(CHI_TEXT, %r{\.git/hooks})
@@ -110,7 +113,7 @@ module Samagotchi
       def chi_dirs
         hooks = begin Hooks::Loader.hooks_dir rescue nil end
         bundles = begin MemoryPaths.bundles_dir rescue nil end
-        [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails"), bundles]
+        [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails"), bundles, File.join(Paths.state_dir, "context")]
           .compact.map { |dir| dir.to_s.chomp("/") }.reject(&:empty?).uniq
       end
 
