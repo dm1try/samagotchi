@@ -472,6 +472,12 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #composer .actions-col button{white-space:nowrap;font-size:12px;padding:0 12px;height:28px;min-height:28px;line-height:28px}
 #composer .actions-col .split{order:3;display:flex;gap:4px;margin-left:auto}
 #composer #actionBtn{min-width:64px;font-weight:600}
+/* In a session the composer is one row: the text field (one line, growing with its text; fitPrompt sets its height)
+   and Cancel · Send at its bottom right. The key hint is in the placeholder there, so its row goes. */
+body.has-session #composer{flex-direction:row;align-items:flex-end;padding:10px}
+body.has-session #composer textarea{min-height:0}
+body.has-session #composeHint{display:none}
+body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 /* The model picker (start page only): reads as a label, "host:model ▾", left of Start; a native select under a drawn caret. */
 /* A select is as wide as its widest option: a hidden copy of the chosen name (data-value) sizes the box to that name instead, and the select fills it. */
 #composer .actions-col .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;min-height:28px;padding:0 22px 0 8px;border-radius:8px;overflow:hidden;background:transparent;color:var(--text-muted);font-size:12px;line-height:28px;text-align:left;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
