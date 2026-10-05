@@ -226,6 +226,14 @@ RSpec.describe Samagotchi::Steer do
     expect(described_class.turn_prompt?(described_class.message(text: "x", source: "s"))).to be(false)
   end
 
+  it ".turn_prompt? is also a context wake turn's note (system, turn_start), not any other note" do
+    note = { role: "system", kind: "note", content: "[CONTEXT NOTE …]" }
+    expect(described_class.turn_prompt?(note.merge(turn_start: true, turn_id: "t1"))).to be(true)
+    expect(described_class.turn_prompt?({ "role" => "system", "kind" => "note", "turn_start" => true })).to be(true)
+    expect(described_class.turn_prompt?(note)).to be(false)
+    expect(described_class.turn_prompt?({ role: "system", content: "sys" })).to be(false)
+  end
+
   it ".prompt? is a user message that is not a steer, with either key kind" do
     expect(described_class.prompt?({ role: "user", content: "x" })).to be(true)
     expect(described_class.prompt?({ "role" => "user", "content" => "x" })).to be(true)

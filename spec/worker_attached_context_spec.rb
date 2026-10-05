@@ -73,8 +73,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     push(name, text)
   end
 
-  def push(name, text)
-    own.record_text(name, Samagotchi::ContextSources::Fetched.new(text: text, summary: nil, wake: false, hint: nil))
+  def push(name, text, wake: false, summary: nil)
+    own.record_text(name, Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: wake, hint: nil))
   end
 
   def saved_context_notes
@@ -140,6 +140,96 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     reloaded.first_preview = nil
     reloaded.compute_first_preview!
     expect(reloaded.first_preview).to be_nil
+  end
+
+  describe "a change that asks to wake (C4)" do
+    let(:config) { { "session.max_wakes" => 10, "context.wake" => true } }
+    let(:wake_turns) { Queue.new }
+
+    before do
+      stub_const("Samagotchi::Worker::WAKE_START_GRACE", 0)
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      config.each_key { |key| allow(Samagotchi::Config).to receive(:get).with(key) { config[key] } }
+      allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
+        wake_turns << [prompt, kwargs, turn_session.messages.last]
+        if @fail_next
+          @fail_next = false
+          raise Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500)
+        end
+        result
+      end
+    end
+
+    # Attached and noted, so the next text is an update.
+    def attach_seen(name)
+      attach(name, "v1")
+      expect(wait_until { own.subscription(name).seen }).to be_truthy
+    end
+
+    it "starts a continue turn from context:<name> whose first message is the wake note, marked as the turn's start" do
+      start_worker
+      attach_seen("pr-7")
+
+      push("pr-7", "v2", wake: true, summary: "review: changes requested by @bob")
+
+      prompt, kwargs, last = wake_turns.pop(timeout: 3)
+      expect(prompt).to be_nil
+      expect(kwargs).to include(continue: true, origin: { client_id: "context:pr-7" })
+      expect(last).to include(role: "system", kind: "note", context_source: "pr-7", turn_start: true, turn_id: kwargs[:id])
+      expect(last[:content]).to include("> review: changes requested by @bob\nchi started this turn because the source changed")
+      expect(own.subscription("pr-7").wakes_at).to be_truthy
+      expect(saved_context_notes.last).to include(turn_start: true, turn_id: kwargs[:id])
+    end
+
+    it "wakes once per source in 10 minutes: a second change arrives as a plain note" do
+      start_worker
+      attach_seen("pr-7")
+      push("pr-7", "v2", wake: true)
+      expect(wake_turns.pop(timeout: 3)).not_to be_nil
+
+      push("pr-7", "v3", wake: true)
+      expect(wait_until { saved_context_notes.size == 3 }).to be(true)
+      expect(saved_context_notes.last[:content]).to include("don't act on it unless your user asks you to")
+      expect(saved_context_notes.last).not_to have_key(:turn_start)
+      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+    end
+
+    it "doesn't wake with context.wake false" do
+      config["context.wake"] = false
+      start_worker
+      attach_seen("pr-7")
+      push("pr-7", "v2", wake: true)
+
+      expect(wait_until { saved_context_notes.size == 2 }).to be(true)
+      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+    end
+
+    it "shares session.max_wakes with delegate reports: past it changes are plain notes" do
+      config["session.max_wakes"] = 1
+      start_worker
+      attach_seen("a")
+      attach_seen("b")
+      push("a", "v2", wake: true)
+      expect(wake_turns.pop(timeout: 3)).not_to be_nil
+
+      push("b", "v2", wake: true)
+      expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
+      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+    end
+
+    it "pauses wakes after a failed wake turn, keeping its note" do
+      start_worker
+      attach_seen("a")
+      attach_seen("b")
+      @fail_next = true
+      push("a", "v2", wake: true)
+      expect(wake_turns.pop(timeout: 3)).not_to be_nil
+      expect(wait_until { saved_context_notes.any? { |m| m[:turn_start] } }).to be(true)
+
+      push("b", "v2", wake: true)
+      expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
+      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+    end
   end
 
   describe "a failing save" do

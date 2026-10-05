@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "securerandom"
+require "time"
 
+require_relative "config"
 require_relative "events"
 require_relative "session"
 require_relative "session_inbox"
@@ -53,6 +56,9 @@ module Samagotchi
     # gets it over the Bridge a moment after it starts, and that message's
     # turn goes first (the reports join it).
     WAKE_START_GRACE = 2.0
+    # One context wake per source in this long (D5): later changes inside
+    # it arrive as notes.
+    CONTEXT_WAKE_WINDOW = 600
     # How much of a command's output goes into its :command_ran.
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
@@ -233,8 +239,9 @@ module Samagotchi
           next if run_queued_commands
 
           # Between turns, so the next turn (the first one too) sees them.
+          # A change that asks to wake may start a turn here (C4).
           absorb_notes
-          absorb_context
+          next if absorb_context(wake: nothing_queued?)
 
           if (prompt = take_initial_prompt)
             run_initial_prompt(prompt) unless initial_command(prompt)
@@ -391,21 +398,96 @@ module Samagotchi
     # run): auto-attached context alone doesn't make a session worth
     # keeping. Saved, then the subscriptions written (a crash between the
     # two re-delivers; the note ids dedupe).
-    def absorb_context(before_turn: false)
-      return unless before_turn || conversation_started?
-      return if stopped_on_disk?
+    # +wake+: the session is idle with nothing queued, so an update whose
+    # source asked to wake may start a turn (#context_wake_for): its note
+    # goes in as the turn's first message.
+    # @return [Boolean] whether a wake turn ran
+    def absorb_context(before_turn: false, wake: false)
+      return false unless before_turn || conversation_started?
+      return false if stopped_on_disk?
 
       batch = @context_absorber.pending
-      return unless batch
+      return false unless batch
 
-      batch.notes.each { |note| @engine.add_context_note(@session, note) }
+      waking = wake ? context_wake_for(batch) : nil
+      turn_id = SecureRandom.uuid if waking
+      batch.deliveries.each do |delivery|
+        next unless delivery.note
+
+        note = delivery == waking ? delivery.wake_note.merge(turn_start: true, turn_id: turn_id) : delivery.note
+        @engine.add_context_note(@session, note)
+      end
       # Saved even when every note was there already: after a failed save
       # they are in memory only.
-      return if batch.notes.any? && !save_or_log(:context) { @session.save(state_dir: @state_dir) }
+      return false if batch.notes.any? && !save_or_log(:context) { @session.save(state_dir: @state_dir) }
 
-      @context_absorber.commit(batch)
+      @context_absorber.commit(waking ? woken(batch, waking) : batch)
+      return false unless waking
+
+      run_context_wake_turn(waking.name, turn_id)
+      true
     rescue SystemCallError, IOError => e
       Log.exception(:worker, "context_failed", e)
+      false
+    end
+
+    # No input file or queued command waits: the loop would go idle.
+    def nothing_queued? = @command_queue.empty? && SessionInbox.find_new_input_files(@session_dir).empty?
+
+    # The update in +batch+ that may start a wake turn now: its source
+    # asked (wake: true), context.wake is on, the shared wake step's
+    # conditions hold (no continue offer, wakes not paused by a failed one,
+    # under session.max_wakes in a row with no human input, past the start
+    # grace) and the source hasn't woken the session in the last
+    # CONTEXT_WAKE_WINDOW. The others stay plain notes. Within the start
+    # grace a change is a note: it came while the session was away.
+    def context_wake_for(batch, now: Time.now)
+      candidates = batch.deliveries.select(&:wake_note)
+      return nil if candidates.empty? || !context_wakes_on?
+      return nil if @wakes_paused || @turn_flow.awaiting_continue? || wake_grace_left.positive?
+
+      if @wakes_in_a_row >= max_wakes
+        Log.info(:worker, "context_wake_held", reason: "max_wakes", names: candidates.map(&:name).join(","))
+        return nil
+      end
+      candidates.find { |delivery| !woke_lately?(delivery.subscription, now) }
+    end
+
+    def context_wakes_on? = Config.get("context.wake") != false
+
+    def woke_lately?(subscription, now)
+      at = subscription&.wakes_at && Time.iso8601(subscription.wakes_at)
+      at ? now - at < CONTEXT_WAKE_WINDOW : false
+    rescue ArgumentError
+      false
+    end
+
+    # +batch+ with +waking+'s subscription recording the wake (the 10-minute window).
+    def woken(batch, waking)
+      stamped = waking.with(subscription: waking.subscription.with(wakes_at: Time.now.iso8601))
+      batch.with(deliveries: batch.deliveries.map { |delivery| delivery == waking ? stamped : delivery })
+    end
+
+    # A turn nobody typed for a changed source (a context wake): a continue
+    # turn from context:<name> whose first message is the wake note already
+    # in the conversation (named by +turn_id+), on the same rules as a
+    # delegate report's wake turn: it counts toward session.max_wakes, and
+    # a failure goes back to before the turn (the note stays: it was saved
+    # before the checkpoint) and pauses wakes until a human's input.
+    def run_context_wake_turn(name, turn_id)
+      @wakes_in_a_row += 1
+      Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes_in_a_row)
+      @turn_flow.before_prompt_turn
+      run_engine_turn(nil, continue: true, origin: { client_id: "#{Steer::CONTEXT_CLIENT_PREFIX}#{name}" },
+                           id: turn_id, max_iterations: IterationLimit.for) do |result, error|
+        if error
+          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message)
+          @turn_flow.prompt_turn_failed(note: note)
+          @wakes_paused = true
+        else
+          @continue_offer.after_turn(result)
+        end
+      end
     end
 
     # Whether the session has had a turn: a user or assistant message.

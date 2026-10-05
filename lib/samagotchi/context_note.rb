@@ -17,11 +17,14 @@ module Samagotchi
 
     module_function
 
-    # Takes SessionInbox.read_note's keys.
+    # Takes SessionInbox.read_note's keys. +turn_start+ / +turn_id+: the
+    # note starts a turn chi runs for it (a context wake), as a wake turn's
+    # delegate report does (Steer.turn_prompt?).
     # @return [Hash] the conversation message
-    def message(note_id:, text:, source:, created_at: nil, from_session: nil, from_cwd: nil, context_source: nil, **)
+    def message(note_id:, text:, source:, created_at: nil, from_session: nil, from_cwd: nil, context_source: nil,
+                turn_start: nil, turn_id: nil, **)
       { role: "system", kind: KIND, note_id: note_id, source: source, from_session: from_session,
-        from_cwd: from_cwd, context_source: context_source,
+        from_cwd: from_cwd, context_source: context_source, turn_start: (true if turn_start == true), turn_id: turn_id,
         content: frame(text, source: source, created_at: created_at, from_session: from_session,
                              from_cwd: from_cwd) }.compact
     end

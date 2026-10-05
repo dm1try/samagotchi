@@ -173,10 +173,16 @@ module Samagotchi
 
     # A prompt that started a turn: not a steer, not input merged into a
     # running turn, except the input a turn with no prompt starts with (a
-    # wake turn's delegate report, marked turn_start). What the turns a
-    # page shows count.
+    # wake turn's delegate report, marked turn_start); also the context note
+    # a context wake turn starts with (role system, marked turn_start). What
+    # the turns a page shows count.
     def turn_prompt?(message)
-      prompt?(message) && (!input?(message) || (message[:turn_start] || message["turn_start"]) == true)
+      return false unless message.is_a?(Hash)
+
+      start = (message[:turn_start] || message["turn_start"]) == true
+      return start if (message[:role] || message["role"]).to_s == "system"
+
+      prompt?(message) && (!input?(message) || start)
     end
 
     # Call a loop's drain: +at_answer+ goes only to a drain that takes it
