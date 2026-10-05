@@ -579,7 +579,6 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-spin{flex:none;width:11px;height:11px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:init-spin .8s linear infinite}
 .ts-idle{flex:none;width:11px;height:11px;border:2px solid var(--border-strong);border-radius:50%}
 .ts-tool{flex:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;color:var(--accent)}
-.ts-tool.exec{color:var(--think-text)}
 .ts-tool.edit{color:var(--ok-text)}
 .ts-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--text-2)}
 .ts-title.quiet{font-family:inherit;font-style:italic;color:var(--text-faint)}
@@ -617,9 +616,10 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-ticks{display:flex;flex-wrap:nowrap;justify-content:flex-end;overflow:hidden;gap:2px;flex:0 1 auto;min-width:0}
 .ts-tick{flex:none}
 .ts-tick{width:5px;height:12px;border-radius:1.5px;background:var(--text-faint);opacity:.55;cursor:pointer}
-.ts-tick.exec{background:var(--think);opacity:.85}
+/* exec is the rows' tool blue (purple is thinking's); other a quieter blue-grey. */
+.ts-tick.exec{background:var(--accent);opacity:.85}
 .ts-tick.edit{background:var(--ok);opacity:.85}
-.ts-tick.other{background:var(--accent);opacity:.7}
+.ts-tick.other{background:var(--narr);opacity:.7}
 .ts-tick.error{background:var(--danger);opacity:1}
 .ts-tick.running{background:var(--warn);opacity:1;animation:ts-blink 1s ease-in-out infinite}
 @keyframes ts-blink{50%{opacity:.35}}

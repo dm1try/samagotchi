@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web stage: `execute` and the task tools are blue in the running-tool row and the ticks, as in the tool rows under
+  them; purple is thinking's colour only (other tools' ticks are a quieter blue-grey).
+
 ### Fixed
 
 - A command the user's Stop killed (or kept from starting) is saved as `stopped`, not `error`: the web shows it with
