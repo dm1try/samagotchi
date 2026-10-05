@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::ContextCommand do
 
   it "prints its usage for no arguments and --help, and refuses an unknown subcommand" do
     expect(run).to eq(0)
-    expect(out.string).to include("chi context <add|push|ls|show|rm|mute|unmute>")
+    expect(out.string).to include("chi context <add|push|ls|show|refresh|rm|mute|unmute>")
     expect(run("bogus")).to eq(2)
     expect(err.string).to include("unknown subcommand bogus")
   end
@@ -193,6 +193,37 @@ RSpec.describe Samagotchi::ContextCommand do
       run("show", "notes", "--json", a.id)
       expect(JSON.parse(out.string)).to include("source" => include("name" => "notes"),
                                                 "snapshot" => include("text" => "the text", "serial" => 1))
+    end
+  end
+
+  describe "refresh" do
+    it "runs the command here, in the session's folder, and says what came of it" do
+      a = make
+      run("add", "where", "--cmd", "pwd", a.id)
+      reset_out
+
+      expect(run("refresh", "where", a.id)).to eq(0), err.string
+      expect(out.string).to start_with("#{a.id[0, 8]}  where: new text (")
+      expect(own(a).snapshot("where").text.strip).to eq(File.realpath(repo))
+      run("refresh", "where", a.id)
+      expect(out.string.lines.last).to include("where: unchanged (")
+    end
+
+    it "fails for a failing command, a push source and a source being fetched" do
+      a = make
+      run("add", "broken", "--cmd", "echo nope >&2; exit 2", a.id)
+      run("add", "notes", "--push", a.id)
+
+      expect(run("refresh", "broken", a.id)).to eq(1)
+      expect(err.string).to include("broken failed: exit 2: nope")
+      expect(run("refresh", "notes", a.id)).to eq(1)
+      expect(err.string).to include("notes is pushed (chi context push), it has no command to run")
+
+      File.open(own(a).lock_path("broken"), File::RDWR | File::CREAT) do |lock|
+        lock.flock(File::LOCK_EX)
+        expect(run("refresh", "broken", a.id)).to eq(1)
+      end
+      expect(err.string).to include("broken is being fetched right now")
     end
   end
 

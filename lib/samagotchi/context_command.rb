@@ -3,6 +3,7 @@
 require "json"
 require "time"
 require_relative "context_sources"
+require_relative "context_fetch"
 require_relative "memory_paths"
 require_relative "session"
 require_relative "cli/command"
@@ -18,7 +19,7 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi context <add|push|ls|show|rm|mute|unmute> [options] [TARGET]
+      Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute> [options] [TARGET]
         add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] TARGET
               a source: CMD prints its text (plain, or JSON {"text", "summary", "wake", "hint"});
               --push: text comes from chi context push. --every: how often CMD runs
@@ -27,6 +28,7 @@ module Samagotchi
         push NAME [-m TEXT] [TARGET]        new text for NAME (stdin without -m; text or JSON)
         ls [TARGET] [--format json]         the sources, their age and state
         show NAME [--json] [TARGET]         the text (--json: the source and its snapshot)
+        refresh NAME [TARGET]               run NAME's command now, here (a live worker absorbs the result)
         rm NAME TARGET                      detach a source
         mute|unmute NAME ID...              a project's source, ignored by one session
       TARGET: session ids or unique prefixes, or --project (this git repository's
@@ -34,7 +36,7 @@ module Samagotchi
         session. Find ids with: chi sessions list [--live]
     TEXT
 
-    SUBCOMMANDS = %w[add push ls show rm mute unmute].freeze
+    SUBCOMMANDS = %w[add push ls show refresh rm mute unmute].freeze
 
     FLAGS = {
       "add" => CLI::Flags.new(help: HELP_WORDS) do |f|
@@ -57,14 +59,16 @@ module Samagotchi
         f.switch "--json"
         f.switch "--project"
       end,
+      "refresh" => CLI::Flags.new(help: HELP_WORDS) { |f| f.switch "--project" },
       "rm" => CLI::Flags.new(help: HELP_WORDS) { |f| f.switch "--project" },
       "mute" => CLI::Flags.new(help: HELP_WORDS),
       "unmute" => CLI::Flags.new(help: HELP_WORDS)
     }.freeze
 
     # Where a command acts: a session (its own sources, then its project's)
-    # or a project's sources. +label+ names it in the output.
-    Target = Data.define(:session_id, :project_root, :label) do
+    # or a project's sources. +label+ names it in the output, +cwd+ is
+    # where its session's sources run (ContextPoller's choice).
+    Target = Data.define(:session_id, :project_root, :cwd, :label) do
       def project? = session_id.nil?
     end
 
@@ -184,6 +188,41 @@ module Samagotchi
       0
     end
 
+    # Runs the command in this process, not the worker's: the result shows
+    # here, and the worker sees the new snapshot on its next loop. The
+    # source's lock keeps the two from running it at once.
+    def run_refresh(options, args)
+      name = args.shift
+      return usage_error("give the source's NAME") unless name
+
+      each_target(options, args) do |target|
+        attached = find(target, name) or next false
+        if attached.source.push?
+          error_line("#{command_name}: #{name} is pushed (chi context push), it has no command to run")
+          next false
+        end
+
+        cwd = attached.location.session? || !target.project_root ? target.cwd : target.project_root
+        outcome = ContextFetch.fetch(attached, cwd: cwd)
+        refresh_line(target, name, outcome)
+      end
+    end
+
+    def refresh_line(target, name, outcome)
+      case outcome.status
+      when :new, :same
+        @stdout.puts("#{target.label}  #{name}: #{outcome.status == :new ? "new text" : "unchanged"} " \
+                     "(#{outcome.snapshot.revision[0, 12]})")
+        true
+      when :busy
+        error_line("#{command_name}: #{name} is being fetched right now (by its worker); try again in a moment")
+        false
+      else
+        error_line("#{command_name}: #{name} failed: #{outcome.error}")
+        false
+      end
+    end
+
     def run_rm(options, args)
       name = args.shift
       return usage_error("give the source's NAME") unless name
@@ -266,13 +305,13 @@ module Samagotchi
       end
 
       root = MemoryPaths.project_root(@cwd)
-      Target.new(session_id: nil, project_root: root, label: "project #{File.basename(root)}")
+      Target.new(session_id: nil, project_root: root, cwd: root, label: "project #{File.basename(root)}")
     end
 
     def session_target(given)
       id = Session.resolve_id(given, state_dir: @state_dir)
       session = Session.load(id, state_dir: @state_dir)
-      Target.new(session_id: id, project_root: session.project_root, label: id[0, 8])
+      Target.new(session_id: id, project_root: session.project_root, cwd: session.working_directory, label: id[0, 8])
     rescue ArgumentError => e
       message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
       error_line("#{command_name}: #{message}")

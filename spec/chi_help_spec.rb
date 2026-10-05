@@ -46,7 +46,7 @@ RSpec.describe "chi --help" do
     out, _err, status = Open3.capture3(RbConfig.ruby, chi, "context", "--help", stdin_data: "")
 
     expect(status.exitstatus).to eq(0)
-    expect(out).to start_with("Usage: chi context <add|push|ls|show|rm|mute|unmute>")
+    expect(out).to start_with("Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute>")
   end
 
   it "prints its version with --version" do
