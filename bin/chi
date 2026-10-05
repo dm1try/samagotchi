@@ -40,6 +40,8 @@ SUBCOMMANDS = {
   "sessions" => ["samagotchi/sessions_command", "SessionsCommand"],
   # a context note for sessions (-m, --source, --all)
   "note" => ["samagotchi/note_command", "NoteCommand"],
+  # live external text attached to sessions (add, push, ls, show, rm, mute)
+  "context" => ["samagotchi/context_command", "ContextCommand"],
   # a message into sessions as the user's (-m)
   "send" => ["samagotchi/send_command", "SendCommand"],
   # answer the question a session waits on, then wait (--question, --option)
@@ -93,6 +95,7 @@ parser = OptionParser.new do |opts|
            chi web [--port PORT] [--open] [--scope=all]   the web UI
            chi sessions <list|stop|archive|unarchive|delete|prune|clean>
            chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
+           chi context <add|push|ls|show|refresh|rm|mute|unmute>   live external text attached to sessions
            chi send [-m TEXT] ID...|--new   a message into sessions, as if typed there
            chi answer ID --question QID --option N   answer a question a session waits on
            chi bundle <install|upgrade|uninstall|status|diff|list|build>

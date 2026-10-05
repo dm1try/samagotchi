@@ -3,7 +3,10 @@
 Every tool call the model makes passes one check before it runs, in both
 loops (native and chat hosts). The verdict is **allow**, **ask** or
 **deny**; the strictest vote wins, and a deny can't be undone by a later
-voter.
+voter. Of two asks the first one names the rule, except a rule only the
+user may allow (`chi-config`, `chi-hooks`, `shell-touches-chi`,
+`chi-context-cmd`): it takes over, and only the scopes both asks offer
+are offered.
 
 Who votes, in order:
 

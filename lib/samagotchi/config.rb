@@ -132,6 +132,9 @@ module Samagotchi
       Entry.new(key: "context.chars_per_token",  yaml_path: %w[context chars_per_token],  type: :float,   default: 4.0,             expose: %i[env config cli]),
       Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds], type: :string, default: "20,40,60,80",    expose: %i[env config cli]),
       Entry.new(key: "context.status_cadence",   yaml_path: %w[context status_cadence],   type: :integer, default: 0,               expose: %i[env config cli]),
+      # Attached context (ContextSources): how often a source's command runs when it names no --every (seconds; less
+      # than 30 counts as 30).
+      Entry.new(key: "context.every_seconds",    yaml_path: %w[context every_seconds],    type: :integer, default: 300,             expose: %i[env config]),
 
       Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
       # How much models think: off|low|medium|high|default, parsed by Thinking

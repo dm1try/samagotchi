@@ -26,6 +26,7 @@ require_relative "archive_store"
 require_relative "continue_offer"
 require_relative "image_store"
 require_relative "plugin_session_state"
+require_relative "context_sources"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -749,8 +750,9 @@ module Samagotchi
       end
     end
 
-    # Delete one session: its <id>.json and the whole <id>/ directory
-    # (history sidecars, input, output, notes, images). The CLI, the TUI's
+    # Delete one session: its <id>.json, the whole <id>/ directory
+    # (history sidecars, input, output, notes, images) and its attached
+    # context (ContextSources: its sources, subscriptions, mute markers). The CLI, the TUI's
     # /exit --delete and the web all come here.
     # @param id_or_prefix [String] a session id or a unique prefix of one
     # @param stop [Boolean] stop a live worker first (waits +wait+ seconds)
@@ -786,6 +788,7 @@ module Samagotchi
         removed << dir
       end
       PluginSessionState.remove(id)
+      removed.concat(ContextSources.remove_session(id, state_dir: sd))
       { id: id, removed: removed, stopped: !owner.nil? }
     end
 

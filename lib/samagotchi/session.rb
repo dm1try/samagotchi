@@ -489,9 +489,10 @@ module Samagotchi
 
     private
 
-    # @return [String, nil] the first context note as a preview
+    # @return [String, nil] the first context note as a preview (not an
+    # attached context source's: that is chi's, not something sent here)
     def note_preview
-      note = @messages.find { |m| ContextNote.note?(m) }
+      note = @messages.find { |m| ContextNote.note?(m) && ContextNote.fetch(m, :context_source).nil? }
       return nil unless note
 
       text = self.class.preview_of(ContextNote.text_of(note))

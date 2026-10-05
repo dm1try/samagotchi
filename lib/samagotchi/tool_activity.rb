@@ -19,6 +19,7 @@ require_relative "tools/web_fetch"
 require_relative "tools/ask_user_question"
 require_relative "tools/list_sessions"
 require_relative "tools/send_note"
+require_relative "tools/context_read"
 require_relative "tools/delegate"
 require_relative "tools/delegate_result"
 
@@ -167,6 +168,7 @@ module Samagotchi
       when Tools::AskUserQuestion::NAME then "asking user"
       when Tools::ListSessions::NAME then "listing sessions"
       when Tools::SendNote::NAME then "sending a note"
+      when Tools::ContextRead::NAME then "reading attached context"
       when Tools::Delegate::NAME then "delegating"
       when Tools::DelegateResult::NAME then "waiting for a delegate"
       else registry_entry(registry, tool_name)&.label || "calling tool"
@@ -257,6 +259,12 @@ module Samagotchi
         call[:cwd].to_s.strip.empty? ? nil : "cwd=#{preview_tool_param(call[:cwd])}"
       when Tools::SendNote::NAME
         "session=#{preview_tool_param(call[:session])} text=#{preview_tool_param(call[:content])}"
+      when Tools::ContextRead::NAME
+        parts = []
+        parts << "name=#{preview_tool_param(call[:content])}" unless call[:content].to_s.strip.empty?
+        parts << "offset=#{preview_tool_param(call[:offset])}" unless call[:offset].to_s.strip.empty?
+        parts << "limit=#{preview_tool_param(call[:limit])}" unless call[:limit].to_s.strip.empty?
+        parts.empty? ? nil : parts.join(" ")
       when Tools::Delegate::NAME
         parts = []
         parts << "session=#{preview_tool_param(call[:session])}" unless call[:session].to_s.strip.empty?

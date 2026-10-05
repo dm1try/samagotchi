@@ -18,6 +18,8 @@ require_relative "iteration_limit"
 require_relative "session_commands"
 require_relative "model_profile"
 require_relative "child_reports"
+require_relative "context_absorber"
+require_relative "context_poller"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -168,6 +170,9 @@ module Samagotchi
       })
       # This session's own delegate children's news (rings in children/).
       @child_reports = ChildReports.new(session_id: @session_id, state_dir: @state_dir)
+      # Its attached context's notes (ContextSources).
+      @context_absorber = ContextAbsorber.new(session_id: @session_id, state_dir: @state_dir,
+                                              project_root: @session.project_root)
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.
       @default_model = ModelProfile.required_model_name(nil)
@@ -211,6 +216,11 @@ module Samagotchi
         # the background, shown by the UIs; a turn waits only for the ones
         # that bring tools.
         @engine.start_init_tasks!
+        # Attached context's commands, in the background; a new text wakes
+        # the loop to absorb it. Not activity: the idle exit stops it.
+        @context_poller = ContextPoller.new(session_id: @session_id, state_dir: @state_dir,
+                                            project_root: @session.project_root, cwd: @session.working_directory,
+                                            on_change: -> { @waker.wake }).start
         loop do
           # Check if the session was externally marked as stopped. Not
           # stopped_on_disk?, which reads a vanished file as "not stopped":
@@ -224,6 +234,7 @@ module Samagotchi
 
           # Between turns, so the next turn (the first one too) sees them.
           absorb_notes
+          absorb_context
 
           if (prompt = take_initial_prompt)
             run_initial_prompt(prompt) unless initial_command(prompt)
@@ -263,6 +274,9 @@ module Samagotchi
         # step-limit question stays in the file (a save here would write
         # over a stop's status): with no live worker the lists don't read
         # it as waiting, and the next worker drops it (drop_dead_question).
+        # The context poller first: a command it runs goes (its process
+        # group) before the Engine does.
+        @context_poller&.stop
         @engine&.shutdown
         @bridge&.stop
       end
@@ -372,6 +386,33 @@ module Samagotchi
       claimed.each { |file| FileUtils.rm_f(file) }
     end
 
+    # The attached context's notes (ContextAbsorber), between turns. Not
+    # into a session with no turn yet (+before_turn+: one is about to
+    # run): auto-attached context alone doesn't make a session worth
+    # keeping. Saved, then the subscriptions written (a crash between the
+    # two re-delivers; the note ids dedupe).
+    def absorb_context(before_turn: false)
+      return unless before_turn || conversation_started?
+      return if stopped_on_disk?
+
+      batch = @context_absorber.pending
+      return unless batch
+
+      batch.notes.each { |note| @engine.add_context_note(@session, note) }
+      # Saved even when every note was there already: after a failed save
+      # they are in memory only.
+      return if batch.notes.any? && !save_or_log(:context) { @session.save(state_dir: @state_dir) }
+
+      @context_absorber.commit(batch)
+    rescue SystemCallError, IOError => e
+      Log.exception(:worker, "context_failed", e)
+    end
+
+    # Whether the session has had a turn: a user or assistant message.
+    def conversation_started?
+      Array(@session.messages).any? { |m| %w[user assistant model].include?((m[:role] || m["role"]).to_s) }
+    end
+
     # The first prompt (spawn_session's): a delegate child's task, which is
     # its parent's although no client sent it.
     def run_initial_prompt(prompt)
@@ -400,6 +441,8 @@ module Samagotchi
     #   its continue turn
     # @param images [Array<Hash>] the prompt's image refs ({file:, name:})
     def run_prompt(prompt, origin, no_interrupt: false, images: [])
+      # A first turn sees the context attached before it.
+      absorb_context(before_turn: true)
       user_input(origin&.dig(:client_id))
       @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn

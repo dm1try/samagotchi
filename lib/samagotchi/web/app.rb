@@ -29,6 +29,7 @@ require_relative "../config"
 require_relative "../output_formatter"
 require_relative "../image_store"
 require_relative "../context_note"
+require_relative "../context_sources"
 require_relative "../recap_store"
 require_relative "markdown_renderer"
 require_relative "message_parts"
@@ -150,6 +151,9 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command],
         ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload],
         ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image],
+        ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list],
+        ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show],
+        ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete]
       ].freeze
@@ -1115,6 +1119,69 @@ module Samagotchi
         error_response(409, e.reason.to_s, "#{e.message}; try again in a moment")
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # ── Attached context (ContextSources): the session bar's chips ───────
+      # A source's command isn't shown (the page may be on a phone over the
+      # LAN), and the web adds no source: a URL through a provider comes later.
+
+      # GET /api/sessions/:id/context: the sources this session sees, muted
+      # ones marked, with what the chips show.
+      def handle_context_list(_req, id)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        own = ContextSources.session_location(id, state_dir: default_state_dir)
+        subs = own.subscriptions
+        rows = attached_context(session).map { |attached| context_row(attached, own, subs) }
+        json_response(200, { session_id: id, sources: rows })
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      # GET /api/sessions/:id/context/:name: one source with its text.
+      def handle_context_show(_req, id, name)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        attached = find_context(session, name) or return error_response(404, "not_found", "no source #{name[0, 40]}")
+        own = ContextSources.session_location(id, state_dir: default_state_dir)
+        json_response(200, context_row(attached, own, own.subscriptions).merge(text: attached.snapshot.text))
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      # DELETE /api/sessions/:id/context/:name: the session's own source is
+      # detached; a project's is muted for this session only.
+      def handle_context_delete(_req, id, name)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        attached = find_context(session, name) or return error_response(404, "not_found", "no source #{name[0, 40]}")
+        if attached.location.session?
+          attached.location.remove(attached.name)
+          json_response(200, { status: "detached", name: attached.name })
+        else
+          ContextSources.session_location(id, state_dir: default_state_dir).mute(attached.name)
+          json_response(200, { status: "muted", name: attached.name })
+        end
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      def attached_context(session)
+        ContextSources.attached(session.id, project_root: session.project_root, state_dir: default_state_dir)
+      end
+
+      # @return [ContextSources::Attached, nil]
+      def find_context(session, name)
+        ContextSources.check_name!(name)
+        attached_context(session).find { |attached| attached.name == name }
+      rescue ContextSources::Invalid
+        nil
+      end
+
+      def context_row(attached, own, subs)
+        source = attached.source
+        snapshot = attached.snapshot
+        { name: source.name, scope: source.scope, kind: source.push? ? "push" : "cmd", every_seconds: source.every_seconds,
+          why: source.why, hint: snapshot.hint || source.hint, summary: snapshot.summary, error: snapshot.error,
+          fetched_at: snapshot.fetched_at, has_text: snapshot.text?, muted: own.muted?(source.name),
+          unread: snapshot.text? && subs[source.name]&.read != snapshot.revision }
       end
 
       def handle_stream(req, id)

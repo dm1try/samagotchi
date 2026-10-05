@@ -310,6 +310,21 @@ RSpec.describe Samagotchi::SessionManager do
       FileUtils.rm_rf(plugins)
     end
 
+    it "removes the session's attached context (context/sessions/<id>/), not another's" do
+      require "samagotchi/context_sources"
+      own = Samagotchi::ContextSources.session_location(session.id, state_dir: tmpdir)
+      other = Samagotchi::ContextSources.session_location("11111111-2222-3333-4444-555555555555", state_dir: tmpdir)
+      [own, other].each { |loc| loc.mute("pr-1") }
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir)
+
+      expect(result[:removed]).to include(own.dir)
+      expect([Dir.exist?(own.dir), Dir.exist?(other.dir)]).to eq([false, true])
+    ensure
+      # The root is next to tmpdir, shared with other spec processes: only ours goes.
+      [own, other].each { |loc| FileUtils.rm_rf(loc.dir) }
+    end
+
     it "takes a unique id prefix" do
       result = described_class.delete_session(session.id[0, 6], state_dir: tmpdir)
 

@@ -104,7 +104,7 @@ rules:
 
   # ── chi's own config, hooks, rules and approvals, from the shell ───────
   # The real dirs (config.yml's dir, hooks, the approval store, installed
-  # bundles, this repo's git hooks), not a look-alike under /tmp or chi's
+  # bundles, attached context sources, this repo's git hooks), not a look-alike under /tmp or chi's
   # own lib/samagotchi/hooks source; a word that can't be resolved ($VAR,
   # $(…), a glob) is matched as text. A command that only reads them (ls,
   # cat, rg, sed -n) isn't asked about.
@@ -113,7 +113,20 @@ rules:
     touches: chi_dirs
     skip_read_only: true
     verdict: ask
-    reason: the command names chi's config, hooks, guardrails or git hooks
+    reason: the command names chi's config, hooks, guardrails, attached context or git hooks
+
+  # ── attached context: a source's command runs later, outside the gate ──
+  # Every chi context add --cmd asks, once at a time (each command is new
+  # code). add NAME --push and chi context push don't run anything. Quoted
+  # words ("context", '--cmd=…') and backslash-newline continuations still
+  # match; xargs chi context add asks whatever it is fed (its arguments
+  # aren't in the command).
+  - id: chi-context-cmd
+    tool: shell
+    command: '\bchi["'']?[\s\\]+["'']?context["'']?[\s\\]+["'']?add\b(?:[^\n]|\\\n)*[\s"''\\]--cmd(?:[\s="''\\]|$)|\bxargs\b[^;&|\n]*\bchi["'']?[\s\\]+["'']?context["'']?[\s\\]+["'']?add\b'
+    verdict: ask
+    scopes: [once]
+    reason: attaches a command chi will run every few minutes, outside the guardrails
 
   # ── answering chi's own questions around chi answer ───────────────────
   # A parent agent answers a child's approval with chi answer, which holds it

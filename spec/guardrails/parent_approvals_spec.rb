@@ -123,6 +123,7 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
         facts(source: "core", rule: "chi-config", paths: ["/elsewhere/config.yml"]),
         facts(source: "core", rule: "chi-hooks"),
         facts(tool: "execute", source: "bundle guardrails", rule: "shell-touches-chi", command: "ls"),
+        facts(tool: "execute", source: "bundle guardrails", rule: "chi-context-cmd", command: "chi context add x --cmd y"),
         facts(rule: "write-outside-repo", paths: [File.join(config_home, "samagotchi", "config.yml")]),
         facts(rule: "write-outside-repo", paths: [File.join(config_home, "samagotchi", "memories", ".bundles", "x", "r.yml")]),
         facts(tool: "edit", rule: "write-outside-repo", paths: [File.join(config_home, "samagotchi", "hooks", "h.rb")]),
@@ -137,9 +138,10 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
       end
     end
 
-    it "lists the config, hooks, approval store and installed bundles dirs as chi's" do
+    it "lists the config, hooks, approval store, installed bundles and attached context dirs as chi's" do
       expect(described_class.chi_dirs).to include(File.join(config_home, "samagotchi"),
-                                                  Samagotchi::MemoryPaths.bundles_dir.chomp("/"))
+                                                  Samagotchi::MemoryPaths.bundles_dir.chomp("/"),
+                                                  File.join(Samagotchi::Paths.state_dir, "context"))
     end
 
     it "covers a hooks_dir set in config.yml" do

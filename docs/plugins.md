@@ -816,7 +816,7 @@ bundles:
   loop-guard:
     deny_after: 2        # same call, same result this many times: deny the next one
     stop_after: 4        # stop the turn at this many denies
-    ignore_tools: [task_wait, task_get, delegate_result, list_sessions, list_reminders]
+    ignore_tools: [task_wait, task_get, delegate_result, list_sessions, list_reminders, context_read]
     mode: deny           # deny | notify: notify only warns, once per call per turn
 ```
 

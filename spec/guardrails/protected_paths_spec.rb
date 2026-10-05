@@ -11,7 +11,8 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     described_class.new(store_dir: File.join(root, "state", "guardrails"),
                         bundles_dir: File.join(config_dir, "memories", ".bundles"),
                         config_path: File.join(config_dir, "config.yml"),
-                        hooks_dir: File.join(config_dir, "hooks"))
+                        hooks_dir: File.join(config_dir, "hooks"),
+                        context_dir: File.join(root, "state", "context"))
   end
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: root) }
 
@@ -29,6 +30,11 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     expect([v.decision, v.rule, v.source]).to eq([:deny, "guardrail-store", "core"])
     v = verdict_for(name: "edit", path: "config/memories/.bundles/b/hooks/g.rb", content: "x")
     expect([v.decision, v.rule]).to eq([:deny, "installed-bundles"])
+  end
+
+  it "denies writes to attached context: a source's command runs later, outside the gate" do
+    v = verdict_for(name: "write", path: "state/context/sessions/abc/pr-1.json", content: "{}")
+    expect([v.decision, v.rule, v.source]).to eq([:deny, "chi-context", "core"])
   end
 
   it "follows symlinks: a link into .bundles is denied too" do

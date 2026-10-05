@@ -660,7 +660,7 @@ module Samagotchi
         replace_session_messages(session, Array(session.messages) + [message])
         announce({ type: :context_added, session_id: session.id, note_id: note[:note_id], source: note[:source],
                    label: ContextNote.label_of(message), from_session: note[:from_session],
-                   from_cwd: note[:from_cwd], text: note[:text],
+                   from_cwd: note[:from_cwd], text: note[:text], context_source: note[:context_source],
                    created_at: note[:created_at] }.compact)
         message
       end
@@ -1462,6 +1462,7 @@ module Samagotchi
     PeerView = Struct.new(:engine) do
       def session_id = engine.session&.id
       def cwd = engine.session&.working_directory
+      def project_root = engine.session&.project_root
       def state_dir = engine.peer_state_dir
       def cancelled? = !!engine.active_cancel_controller&.cancelled?
       def relay = engine.relay_peer

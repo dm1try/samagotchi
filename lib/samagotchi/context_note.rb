@@ -11,16 +11,19 @@ module Samagotchi
     KIND = "note"
     # The message keys a note carries besides role and content; everything
     # that copies messages field by field must keep them.
-    KEYS = %i[kind note_id source from_session from_cwd].freeze
+    # context_source: the attached context source a note is about
+    # (ContextAbsorber), so the UIs can tie it to its chip.
+    KEYS = %i[kind note_id source from_session from_cwd context_source].freeze
 
     module_function
 
     # Takes SessionInbox.read_note's keys.
     # @return [Hash] the conversation message
-    def message(note_id:, text:, source:, created_at: nil, from_session: nil, from_cwd: nil, **)
+    def message(note_id:, text:, source:, created_at: nil, from_session: nil, from_cwd: nil, context_source: nil, **)
       { role: "system", kind: KIND, note_id: note_id, source: source, from_session: from_session,
-        from_cwd: from_cwd, content: frame(text, source: source, created_at: created_at,
-                                                 from_session: from_session, from_cwd: from_cwd) }.compact
+        from_cwd: from_cwd, context_source: context_source,
+        content: frame(text, source: source, created_at: created_at, from_session: from_session,
+                             from_cwd: from_cwd) }.compact
     end
 
     def frame(text, source:, created_at: nil, from_session: nil, from_cwd: nil)

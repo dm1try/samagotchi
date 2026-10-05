@@ -6,11 +6,13 @@ require_relative "served_model"
 require_relative "turn_flow"
 require_relative "tools/execute"
 require_relative "tools/builtins"
+require_relative "tools/context_read"
+require_relative "tools/peers"
 require_relative "commands/registry"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
-  # /models, /guardrails, !rollback, !cmd and the answer to a continue offer. They act on
+  # /models, /guardrails, /context, !rollback, !cmd and the answer to a continue offer. They act on
   # the Engine and its TurnFlow; the host prints the result's output and
   # runs a continue turn when asked to (#run never runs a turn).
   #
@@ -22,6 +24,7 @@ module Samagotchi
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
     GUARDRAILS_COMMAND = "/guardrails"
+    CONTEXT_COMMAND = "/context"
     HELP_COMMAND = "/help"
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
@@ -62,6 +65,11 @@ module Samagotchi
       end
       registry.register(GUARDRAILS_COMMAND, "list the guardrail rules and approvals (/guardrails revoke N)") do |text|
         guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
+      end
+      # It only reads the store: mid-turn too.
+      registry.register(CONTEXT_COMMAND, "list the attached context (chi context)", anytime: true,
+                                                                                   match: ->(text) { text.casecmp?(CONTEXT_COMMAND) }) do |_text|
+        reply(context_listing)
       end
       registry.register(MODEL_COMMAND, "show or switch the model",
                         match: ->(text) { text.match?(%r{\A/model(?:\s+.*)?\z}) }) { |text| model(text) }
@@ -225,6 +233,15 @@ module Samagotchi
 
     # /guardrails: the rules (by source), what failed to load, the stored
     # approvals, numbered; /guardrails revoke N removes approval N.
+    # /context: what context_read without a name gives the model.
+    def context_listing
+      session = @engine.session
+      return "no session yet" unless session
+
+      peers = Tools::Peers.new(session_id: session.id, cwd: session.working_directory, state_dir: @engine.peer_state_dir)
+      Tools::ContextRead.call("", peers: peers)
+    end
+
     def guardrails(args)
       return guardrails_revoke(args.delete_prefix("revoke").strip) if args.start_with?("revoke")
       return reply("usage: /guardrails [revoke N]", status: :error) unless args.empty?

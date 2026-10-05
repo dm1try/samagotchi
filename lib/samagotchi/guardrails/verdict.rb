@@ -5,9 +5,17 @@ module Samagotchi
     # The gate's verdict for one tool call. Voters (hooks now, rules later)
     # call #deny! or #ask!; the strictest vote wins (deny > ask > allow) and
     # a vote never relaxes it, so a deny is sticky. Of two equal votes the
-    # first one stays.
+    # first one stays, except that a protected rule's ask (PROTECTED_RULES)
+    # takes over an unprotected ask: its rule id is what a parent's answer
+    # and a stored approval are checked against, and the offered scopes
+    # narrow to both asks' common ones.
     class Verdict
       STRICTNESS = { allow: 0, ask: 1, deny: 2 }.freeze
+      # Rules that ask about chi's own config and hooks: the core
+      # ProtectedPaths asks and the guardrails bundle's shell rule; and a
+      # command source for attached context (it runs later, ungated). Only
+      # the user may allow them (ParentApprovals).
+      PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd].freeze
       SCOPES = %w[once session repo rule].freeze
       DO_NOT_RETRY = "Do not retry it or reach the same result another way; ask the user how to proceed."
 
@@ -46,12 +54,17 @@ module Samagotchi
       # @param scopes [Array<String>, nil] which approval scopes the user may
       #   pick (default all of SCOPES)
       def ask!(reason, scopes: nil, rule: nil, source: nil, decided_by: "hook")
+        earlier = ask? ? @scopes : nil
         return self unless vote(:ask, reason, rule: rule, source: source, decided_by: decided_by)
 
         picked = Array(scopes).map(&:to_s) & SCOPES
-        @scopes = picked.empty? ? SCOPES : picked
+        picked = SCOPES if picked.empty?
+        picked &= earlier if earlier
+        @scopes = picked.empty? ? %w[once] : picked
         self
       end
+
+      def self.protected_rule?(rule) = PROTECTED_RULES.include?(rule.to_s)
 
       # A before_tool_call hook set the old event[:blocked] flag. Its model
       # text stays "blocked by guardrail: <reason>".
@@ -118,7 +131,7 @@ module Samagotchi
       end
 
       def vote(decision, reason, decided_by:, rule: nil, source: nil)
-        return false unless STRICTNESS.fetch(decision) > STRICTNESS.fetch(@decision)
+        return false unless STRICTNESS.fetch(decision) > STRICTNESS.fetch(@decision) || takes_over?(decision, rule)
 
         @decision = decision
         @reason = reason.to_s.strip
@@ -128,6 +141,11 @@ module Samagotchi
         @voter = decided_by
         @legacy = false
         true
+      end
+
+      # A protected rule's ask over an unprotected one.
+      def takes_over?(decision, rule)
+        decision == :ask && ask? && Verdict.protected_rule?(rule) && !Verdict.protected_rule?(@rule)
       end
     end
   end
