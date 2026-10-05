@@ -121,6 +121,7 @@ module Samagotchi
       end
 
       error, status = wait(pid, timeout: timeout, over: -> { over }, cancelled: cancelled)
+      reaped = true
       # Whatever the command left running in its group goes with it.
       signal_group(pid, "KILL")
       [out_reader, err_reader].each { |thread| thread.join(KILL_GRACE_SECONDS) || thread.kill }
@@ -136,6 +137,10 @@ module Samagotchi
     rescue SystemCallError => e
       Run.new(output: nil, error: "couldn't run it: #{e.message}", stderr: "", cancelled: false)
     ensure
+      # Cut short (Ctrl-C in chi context refresh, an exception, a killed
+      # poller thread): the group doesn't get the terminal's SIGINT
+      # (pgroup), so stop and reap it here.
+      abandon(pid, [out_reader, err_reader]) if pid && !reaped
       [out_r, out_w, err_r, err_w].each { |io| io&.close unless io&.closed? }
     end
 
@@ -155,6 +160,13 @@ module Samagotchi
 
         sleep(0.05)
       end
+    end
+
+    def abandon(pid, readers)
+      stop_group(pid)
+      readers.each { |thread| thread&.kill }
+    rescue StandardError => e
+      Log.warn(:context, "stop_failed", pid: pid, error: e.class.name)
     end
 
     # TERM, then KILL after a grace; @return [Process::Status, nil]

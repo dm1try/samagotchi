@@ -73,6 +73,35 @@ RSpec.describe Samagotchi::ContextFetch do
     expect(wait_until { !alive?(child) }).to be(true)
   end
 
+  # Review 2026-10-06: Ctrl-C in chi context refresh (or a worker thread
+  # killed at stop) left the command's group running: pgroup: true keeps
+  # the terminal's SIGINT from it.
+  it "stops the command's whole group and reaps it when an Interrupt cuts the fetch" do
+    sh_file = File.join(work, "sh.pid")
+    child_file = File.join(work, "child.pid")
+    attached = source("echo $$ > sh.pid; sleep 30 & echo $! > child.pid; wait")
+    interrupt = -> { File.size?(child_file) ? raise(Interrupt) : false }
+
+    expect { fetch(attached, cancelled: interrupt) }.to raise_error(Interrupt)
+
+    # kill(0) still finds a zombie: sh gone means it was reaped too.
+    expect(alive?(File.read(sh_file).to_i)).to be(false)
+    expect(wait_until { !alive?(File.read(child_file).to_i) }).to be(true)
+  end
+
+  it "stops the group when the fetching thread is killed (a poller left behind at exit)" do
+    sh_file = File.join(work, "sh.pid")
+    child_file = File.join(work, "child.pid")
+    attached = source("echo $$ > sh.pid; sleep 30 & echo $! > child.pid; wait")
+    thread = Thread.new { fetch(attached) }
+    expect(wait_until { File.size?(child_file) }).to be_truthy
+
+    thread.kill.join(5)
+
+    expect(alive?(File.read(sh_file).to_i)).to be(false)
+    expect(wait_until { !alive?(File.read(child_file).to_i) }).to be(true)
+  end
+
   # Smoke 2026-10-06: a worker's idle exit cut a project source's fetch,
   # and every other session of the project got "couldn't refresh".
   it "kills it when the caller cancels (the worker stops), recording nothing: a stop isn't the source's failure" do
