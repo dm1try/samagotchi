@@ -91,6 +91,19 @@ RSpec.describe Samagotchi::ContextFetch do
     expect(outcome.error).to eq("it printed more than 1 MiB")
   end
 
+  # Review 2026-10-06: a command just over the cap that exited before the
+  # next 50 ms tick was saved as a good, cut snapshot. A blocking wait2
+  # makes "exited before the cap was seen" certain.
+  it "refuses output just over 1 MiB from a command that exits at once" do
+    allow(Process).to(receive(:wait2).and_wrap_original { |original, pid, *_flags| original.call(pid) })
+    attached = source("head -c #{Samagotchi::ContextSources::TEXT_MAX_BYTES + 10_000} /dev/zero | tr '\\0' x")
+
+    outcome = fetch(attached)
+
+    expect(outcome).to have_attributes(status: :error, error: "it printed more than 1 MiB")
+    expect(loc.snapshot("src").text).to be_nil
+  end
+
   it "says when its folder is gone" do
     outcome = described_class.fetch(source("echo hi"), cwd: File.join(tmpdir, "gone"))
     expect(outcome.error).to eq("its folder #{File.join(tmpdir, "gone")} is gone")

@@ -21,6 +21,7 @@ module Samagotchi
     READ_CHUNK = 64 * 1024
     # How long a group gets after TERM before KILL.
     KILL_GRACE_SECONDS = 1.0
+    OVER_CAP = "it printed more than 1 MiB"
 
     # +status+: :new (a new revision), :same (the same text), :error (the
     # fetch failed: +error+), :busy (another process holds the lock),
@@ -127,6 +128,9 @@ module Samagotchi
       Log.debug(:context, "stderr", text: stderr_text[-1000..] || stderr_text) unless stderr_text.strip.empty?
       return Run.new(output: nil, error: nil, stderr: stderr_text, cancelled: true) if error == :cancelled
 
+      # Checked again once the reader is done: a command that exits before
+      # wait's next tick never gets an over from it.
+      error = OVER_CAP if over
       error ||= exit_error(status, stderr_text)
       Run.new(output: output, error: error, stderr: stderr_text, cancelled: false)
     rescue SystemCallError => e
@@ -143,7 +147,7 @@ module Samagotchi
         _, status = Process.wait2(pid, Process::WNOHANG)
         return [nil, status] if status
 
-        reason = if over.call then "it printed more than 1 MiB"
+        reason = if over.call then OVER_CAP
                  elsif cancelled.call then :cancelled
                  elsif Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline then "timed out after #{timeout.round} s"
                  end
