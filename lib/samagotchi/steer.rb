@@ -58,10 +58,15 @@ module Samagotchi
       end
 
       # The :pending_input_merged fields beside iteration and answer;
-      # steers: only when there are some, so plain merges stay as they were.
+      # steers: only when there are some, so plain merges stay as they were;
+      # reports: the delegate reports' text, one per report (a UI shows
+      # each as the child's, not as a merged message).
       def event_fields
         fields = { count: count, content: content }
         fields[:steers] = steers unless steers.empty?
+        reports = inputs.select { |input| input[:source] == DELEGATE_REPORT }
+                        .flat_map { |input| input[:content].split(/\n\n(?=session: )/) }
+        fields[:reports] = reports unless reports.empty?
         fields
       end
     end

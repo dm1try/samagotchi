@@ -57,6 +57,13 @@ RSpec.describe Samagotchi::Steer do
       expect(described_class.turn_prompt?(message.except(:turn_start))).to be(false)
     end
 
+    it "lists the delegate reports apart in the merge event, one per report" do
+      reports = ["session: c1\nstatus: answered\n---\n3", "session: c2\nstatus: failed\nboom"]
+      merge = described_class.merge(["hi", *reports.map { |r| described_class::Line.new(text: r, source: "delegate_report") }])
+      expect(merge.event_fields).to include(count: 3, reports: reports)
+      expect(described_class.merge(["hi"]).event_fields).not_to have_key(:reports)
+    end
+
     it "skips blank Lines" do
       expect(described_class.merge([described_class::Line.new(text: " ", source: "chi_send")])).to be_empty
     end

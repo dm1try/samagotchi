@@ -51,6 +51,13 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(["(1 message merged into the running turn)", "check-in> nudged: status?", "check-in> nudged: again"])
   end
 
+  it "prints a delegate report as the child's line, and counts only the other merged messages" do
+    view.define_singleton_method(:report_line) { |report| "report> #{report.lines.first.strip}" }
+    renderer.call({ type: :pending_input_merged, count: 3, content: "x", reports: ["session: c1\nstatus: answered", "session: c2\nstatus: failed"] })
+
+    expect(view.lines).to eq(["report> session: c1", "report> session: c2", "(1 message merged into the running turn)"])
+  end
+
   it "prints a line when the loop asks again after an empty answer, ending the spinner first" do
     view.define_singleton_method(:format_empty_retry_line) { |event| "retry #{event[:attempt]}/#{event[:of]}" }
     renderer.call({ type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1 })
@@ -331,5 +338,39 @@ RSpec.describe Samagotchi::TerminalUI::Formatting, "#format_empty_retry_line" do
     expect(view.format_empty_retry_line({ attempt: 1, of: 2 })).to eq("↻ empty answer, asking again (1/2)")
     expect(view.format_empty_retry_line({ attempt: 1, of: 1, stopped_by: "loop-guard" }))
       .to eq("↻ cut by loop-guard, asking again (1/1)")
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::Formatting, "#report_line" do
+  let(:view) do
+    Class.new do
+      include Samagotchi::TerminalUI::Formatting
+
+      def color_output? = false
+    end.new
+  end
+
+  it "names the child and its status, then the reply's first line, cut" do
+    expect(view.report_line("session: 3f2a1c9e-aaaa\nstatus: answered\n---\n3 lines\nmore")).to eq("delegate report> 3f2a1c9e answered: 3 lines")
+    expect(view.report_line("session: 3f2a1c9e-aaaa\nstatus: failed\nthe child's turn failed; its session shows what happened"))
+      .to eq("delegate report> 3f2a1c9e failed: the child's turn failed; its session shows what happened")
+    expect(view.report_line("session: 3f2a1c9e\nstatus: answered\n---\n#{"a" * 100}")).to eq("delegate report> 3f2a1c9e answered: #{"a" * 79}…")
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::Formatting, "#join_prompt_line" do
+  let(:view) do
+    Class.new do
+      include Samagotchi::TerminalUI::Formatting
+
+      def color_output? = false
+    end.new
+  end
+
+  it "shows a wake turn's reports as the child's lines, a prompt as the user's" do
+    reports = { role: "user", kind: "input", source: "delegate_report",
+                content: "session: aaaaaaaa-1\nstatus: answered\n---\n3\n\nsession: bbbbbbbb-2\nstatus: answered\n---\n2" }
+    expect(view.join_prompt_line(reports)).to eq("delegate report> aaaaaaaa answered: 3\ndelegate report> bbbbbbbb answered: 2")
+    expect(view.join_prompt_line({ role: "user", content: "hi" })).to eq("user> hi")
   end
 end

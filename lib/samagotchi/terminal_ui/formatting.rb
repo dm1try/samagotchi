@@ -3,6 +3,7 @@
 require_relative "../served_model"
 require_relative "../image_store"
 require_relative "../turn_note"
+require_relative "../steer"
 
 module Samagotchi
   class TerminalUI
@@ -117,6 +118,26 @@ module Samagotchi
       def prompt_line(client_id, prompt)
         label = client_id ? CLIENT_LABELS.fetch(client_id.to_s.split(":", 2).first, "user") : "user"
         "#{paint("#{label}>", 35)} #{prompt}"
+      end
+
+      # "delegate report> 3f2a1c9e answered: <the reply's first line>": a
+      # delegate child's report (ChildReports) merged into the turn.
+      def report_line(report)
+        id = report[/\Asession: (\S+)/, 1].to_s[0, 8]
+        status = report[/^status: (.*)$/, 1]
+        rest = report.split("\n").drop(2).reject { |line| line.strip.empty? || line == "---" }.first.to_s
+        rest = "#{rest[0, STEER_PREVIEW - 1]}…" if rest.length > STEER_PREVIEW
+        "#{paint("#{CLIENT_LABELS["child"]}>", 35)} #{[id, status].compact.join(" ")}#{": #{rest}" unless rest.empty?}"
+      end
+
+      # The last prompt as a join shows it: a delegate report (a wake
+      # turn's) as the child's lines, anything else as the user's.
+      def join_prompt_line(message)
+        source = (message[:source] || message["source"]).to_s
+        content = (message[:content] || message["content"]).to_s
+        return prompt_line(nil, content) unless source == Steer::DELEGATE_REPORT
+
+        content.split(/\n\n(?=session: )/).map { |report| report_line(report) }.join("\n")
       end
 
       # "reminder: a, b": the reminders a turn runs for (names or hashes).
