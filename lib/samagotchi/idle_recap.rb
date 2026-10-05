@@ -54,6 +54,7 @@ module Samagotchi
       TOOL_OUTPUT_HEADER_RE = /\A\[([\w.:-]+)\]/
       # The text the web sends for a turn of images alone (images.js turnText).
       IMAGE_ONLY_RE = /\A\s*(?:\[image: [^\]\n]*\]\s*)+\z/
+      DELEGATE_REPORT_LINE = "(a delegate session's report, delivered by chi; not the user's words)"
 
       module_function
 
@@ -71,6 +72,9 @@ module Samagotchi
             # An image is a line naming it (refs only, never its bytes), unless
             # the text is only the web's placeholder naming it already.
             content = message["content"].to_s
+            # A delegate child's report (ChildReports) is chi's news, not
+            # what the user said.
+            content = "#{DELEGATE_REPORT_LINE}\n#{content}" if message["source"].to_s == Steer::DELEGATE_REPORT
             images = IMAGE_ONLY_RE.match?(content) ? [] : image_lines(message["images"])
             [content, *images].reject(&:empty?).join("\n")
           when "model", "assistant"

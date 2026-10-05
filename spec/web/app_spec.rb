@@ -683,6 +683,21 @@ RSpec.describe Samagotchi::Web::App do
                            { role: "assistant", content: "found it" }])
     end
 
+    it "sends a merged line's sender, and a wake turn's report as its turn's start, not merged" do
+      report = Samagotchi::Steer::Line.new(text: "session: c1\nstatus: answered", source: "delegate_report",
+                                           mark: { turn_start: true, turn_id: "T2" })
+      messages = [{ role: "user", content: "look", turn_id: "T1" }, { role: "model", content: "ok" },
+                  *Samagotchi::Steer.merge([report]).messages, { role: "model", content: "the child found it" },
+                  *Samagotchi::Steer.merge([Samagotchi::Steer::Line.new(text: "sent", source: "chi_send")]).messages]
+
+      shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
+
+      expect(shown).to eq([{ role: "user", content: "look", turn_id: "T1" }, { role: "assistant", content: "ok" },
+                           { role: "user", content: "session: c1\nstatus: answered", source: "delegate_report", turn_id: "T2" },
+                           { role: "assistant", content: "the child found it" },
+                           { role: "user", content: "sent", merged: true, step: 2, source: "chi_send" }])
+    end
+
     it "includes last_event_seq = nil when no bridge is live" do
       manager = FakeResponsesManager.new(responses: %w[one two three])
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)

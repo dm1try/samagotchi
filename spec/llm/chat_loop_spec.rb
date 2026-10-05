@@ -1050,6 +1050,15 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  describe "a wake turn's delegate report (its turn's start)" do
+    it "keeps turn_start with the input's kind, source and turn id, and sends none of them" do
+      report = { role: "user", content: "session: c1", kind: "input", source: "delegate_report", turn_start: true, turn_id: "t-2" }
+
+      expect(backend.plain([report])).to eq([report])
+      expect(backend.send(:wire_messages, [report]).first.keys).to eq(%i[role content])
+    end
+  end
+
   describe "a context note" do
     let(:note) do
       { role: "system", kind: "note", note_id: "n1", source: "session", from_session: "abc", from_cwd: "/w",

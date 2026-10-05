@@ -58,6 +58,11 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(described_class.build(messages)).to eq("Hello")
       end
 
+      it "marks a delegate report as chi's news, not the user's words" do
+        messages = [{ "role" => "user", "kind" => "input", "source" => "delegate_report", "content" => "session: c1" }]
+        expect(described_class.build(messages)).to eq("(a delegate session's report, delivered by chi; not the user's words)\nsession: c1")
+      end
+
       it "leaves a plugin's steer out: it is a prod to the model, not what the user said" do
         messages = [{ "role" => "user", "content" => "Hello" },
                     { "role" => "user", "kind" => "steer", "source" => "check-in", "content" => "status?" },

@@ -27,6 +27,7 @@
       { "client_id": "tui:123", "expected": "tui" },
       { "client_id": "system:reminders", "expected": "reminder" },
       { "client_id": "delegate:3f2a1c9e", "expected": "delegate" },
+      { "client_id": "child:3f2a1c9e", "expected": "delegate report" },
       { "client_id": "other:1", "expected": "user" },
       { "client_id": null, "ruby": "user", "js": null }
     ]
@@ -68,6 +69,7 @@
       { "source": "parent_agent", "expected": "parent agent" },
       { "source": "chi_send", "expected": "chi send" },
       { "source": "plugin_send", "expected": "plugin" },
+      { "source": "delegate_report", "expected": "delegate report" },
       { "source": "", "expected": "" }
     ]
   },

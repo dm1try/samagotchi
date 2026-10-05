@@ -95,6 +95,11 @@ module Samagotchi
       Entry.new(key: "session.keep_empty",            yaml_path: %w[session keep_empty],            type: :bool,    default: false, expose: %i[env config]),
       # The most sessions one session may have delegated and still running (the delegate tool); a guard against a runaway model.
       Entry.new(key: "session.max_children",          yaml_path: %w[session max_children],          type: :integer, default: 4,     expose: %i[env config]),
+      # A delegate child's turn end reaches its parent (ChildReports): wake runs an idle parent's turn for it, queue waits
+      # for the parent's next turn, off is the old behaviour (only delegate_result asks).
+      Entry.new(key: "session.delegate_reports",      yaml_path: %w[session delegate_reports],      type: :enum,    default: "wake", expose: %i[env config], enum_values: %w[wake queue off]),
+      # Turns a parent runs for delegate reports in a row with no human input; past it reports wait for the next turn.
+      Entry.new(key: "session.max_wakes",             yaml_path: %w[session max_wakes],             type: :integer, default: 10,    expose: %i[env config]),
 
       # Images sent to a model (ImageStore): the long side they are downscaled
       # to, the most bytes one may take (bigger → re-encoded as jpeg), and how

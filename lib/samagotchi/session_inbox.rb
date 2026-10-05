@@ -10,7 +10,8 @@ require_relative "session"
 module Samagotchi
   # A session directory's file inbox and outbox (see SessionManager for the
   # layout): input/ holds one JSON file per queued turn, notes/ the context
-  # notes a worker adds between turns, output/ one text file per reply.
+  # notes a worker adds between turns, output/ one text file per reply,
+  # children/ the rings of delegate children that have news (ChildReports).
   # Writers are any process (the web, chi send, chi note, send_note); the
   # worker claims input and notes by renaming them to *.processing.
   module SessionInbox
@@ -20,6 +21,8 @@ module Samagotchi
     NOTES_DIR  = "notes"
     NOTE_MAX_BYTES = 16 * 1024
     OUTPUT_DIR = "output"
+    # A delegate child's doorbell: "look at me", not the report itself.
+    CHILDREN_DIR = "children"
     # Input-file format this worker reads (JSON with the sender's ids and
     # images: refs), advertised in the Bridge sidecar so a chi from before
     # it (one that wrote plain .txt to a worker not advertising 2, or held
@@ -114,6 +117,36 @@ module Samagotchi
         source: data["source"].to_s.empty? ? "cli" : data["source"].to_s,
         from_session: data["from_session"], from_cwd: data["from_cwd"], created_at: data["created_at"] }
     rescue JSON::ParserError, SystemCallError, NoMethodError, TypeError
+      nil
+    end
+
+    # Ring a parent: a file naming the child and why. The caller makes sure
+    # the parent's session exists (no orphan dir for a deleted one).
+    # @param why [String] "turn_end", "question" or "crash"
+    # @return [String] the ring file's path
+    def self.write_ring(session_dir, child_id:, why:)
+      dir = File.join(session_dir, CHILDREN_DIR)
+      FileUtils.mkdir_p(dir)
+      path = File.join(dir, "#{Time.now.strftime("%Y%m%d%H%M%S%9N")}-#{child_id.to_s[0, 8]}.json")
+      AtomicFile.write(path, JSON.generate({ "child_id" => child_id, "why" => why, "at" => Time.now.iso8601(3) }))
+      path
+    end
+
+    # The rings waiting, oldest first.
+    def self.find_ring_files(session_dir)
+      dir = File.join(session_dir, CHILDREN_DIR)
+      return [] unless Dir.exist?(dir)
+
+      Dir.glob(File.join(dir, "*.json")).sort_by { |p| File.basename(p) }
+    end
+
+    # @return [Hash, nil] {child_id:, why:, at:}, nil for a file that holds none
+    def self.read_ring(ring_file)
+      data = JSON.parse(File.read(ring_file))
+      return nil unless data.is_a?(Hash) && !data["child_id"].to_s.empty?
+
+      { child_id: data["child_id"].to_s, why: data["why"].to_s, at: data["at"] }
+    rescue JSON::ParserError, SystemCallError
       nil
     end
 

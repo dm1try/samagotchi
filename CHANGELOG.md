@@ -8,6 +8,22 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Delegate reports: a child started with `delegate` (`wait: false`) brings its reply to its parent by itself when
+  it ends its turn, fails or asks the parent something. A parent mid-turn gets it at the next step; an idle parent
+  runs a turn for it and tells its user, waking its worker when that had exited. The report carries the reply, so
+  the model doesn't poll with `delegate_result`. The web shows a "delegate report" bubble, the attached terminal
+  `delegate report> <child> answered: …`, and the bell rings when such a turn ends. A stopped or archived parent
+  isn't woken: its reports join its next turn. New settings `session.delegate_reports` (`wake`, `queue`, `off`) and
+  `session.max_wakes` (default 10 turns in a row with no human input; then reports wait for your next message).
+
+### Changed
+
+- The parent's record of which delegate replies its model already had is kept on disk (`delegates.json`), so a
+  restarted worker no longer hands the model a reply again; `delegate_result` asked again about a question it
+  already reported waits for its answer instead of repeating it.
+
 ### Fixed
 
 - A message sent while a reminder turn ran was lost when that reminder turn was the session worker's first turn

@@ -72,6 +72,8 @@ session:
   # idle_exit_minutes: 30   # an unused worker exits after this (0 = never)
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
   # max_children: 4         # running sessions one session may have delegated at a time (the delegate tool)
+  # delegate_reports: wake  # a child's reply reaches its parent by itself: wake (an idle parent runs a turn), queue, off
+  # max_wakes: 10           # turns in a row a parent runs for delegate reports with no human input
 
 # Baseline memories preloaded into the system prompt (same shape as --memory);
 # name entries you have, or chi warns at each start.
@@ -884,6 +886,8 @@ described in their own sections.
 | `session.idle_exit_minutes` | `30` | yes | An unused worker exits after this; `0` = never. |
 | `session.keep_empty` | `false` | | Keep sessions nothing happened in. |
 | `session.max_children` | `4` | | Running delegated sessions one session may have. |
+| `session.delegate_reports` | `wake` | | When a delegate child ends a turn, its reply reaches the parent: `wake` runs an idle parent's turn for it, `queue` waits for the parent's next turn, `off` leaves it to `delegate_result`. |
+| `session.max_wakes` | `10` | | Turns a parent runs for delegate reports in a row with no human input; past it reports wait for the next turn. |
 | `session.retention_days` | `14` | yes | Delete sessions not updated for N days; `0` = forever. See [Sessions](sessions.md). |
 | `session.max_count` | `500` | yes | Keep the newest N; `0` = uncapped. |
 | `session.keep_status` | none | yes | Comma list of statuses never pruned (a session a worker or `chi` has open is never pruned anyway). |

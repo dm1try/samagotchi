@@ -186,7 +186,9 @@ module Samagotchi
       def render_merge(event)
         @view.finish_thinking_spinner
         @view.print_line(event[:answer]) unless event[:answer].to_s.strip.empty?
-        count = event[:count].to_i
+        reports = Array(event[:reports])
+        reports.each { |report| @view.print_line(@view.report_line(report)) }
+        count = event[:count].to_i - reports.size
         @view.print_line("(#{count} message#{"s" unless count == 1} merged into the running turn)") if count.positive?
         Array(event[:steers]).each { |steer| @view.print_line(@view.format_steer_line(source: steer[:source], text: steer[:text])) }
       end

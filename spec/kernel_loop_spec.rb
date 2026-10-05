@@ -1514,6 +1514,22 @@ Need to inspect the filesystem first.
         .to eq([["after the tool", nil], ["after the answer", "first answer"]])
     end
 
+    it "starts a prompt-less (wake) turn with a delegate report: keys kept, read under the report's header" do
+      prompts = []
+      allow(client).to receive(:complete) { |prompt, **| prompts << prompt.to_s and "The child found 3." }
+      report = Samagotchi::Steer::Line.new(text: "session: c1\nstatus: answered\n---\n3", source: "delegate_report",
+                                           mark: { turn_start: true, turn_id: "T2" })
+      drains = [[report]]
+
+      result = kernel.run([{ role: "user", content: "hi" }, { role: "model", content: "started it" }],
+                          pending_input: ->(at_answer: false) { drains.shift || [] })
+
+      expect(result.conversation[2]).to eq(role: "user", kind: "input", source: "delegate_report", turn_start: true,
+                                           turn_id: "T2", content: "session: c1\nstatus: answered\n---\n3")
+      expect(prompts.first).to include("[Delegate report, delivered by chi when your delegate session ended its turn; ")
+      expect(prompts.first).to include("its session:.]\nsession: c1\nstatus: answered")
+    end
+
     describe "plugin steers (items from the Engine's drain)" do
       it "appends a steer as its own user message after the merged user line, mid-turn" do
         responses = [%(<|tool_call>call:execute{command: "true"}<tool_call|>), "done"]

@@ -1082,6 +1082,18 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class).not_to have_received(:delete_session)
     end
 
+    it "starts a new worker after an idle exit when delegate reports wait to wake it, not when they were held back" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      allow(described_class).to receive(:resume_session)
+      [true, false].each do |due|
+        worker = instance_double(Samagotchi::Worker, run: :idle_exit, discard?: false, wake_due?: due)
+        allow(Samagotchi::Worker).to receive(:new).and_return(worker)
+        described_class.run_session_loop(session.id, state_dir: tmpdir)
+      end
+      expect(described_class).to have_received(:resume_session).once
+    end
+
     it "logs a worker crash with its backtrace (its stderr is /dev/null) and re-raises" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)

@@ -24,8 +24,6 @@ RSpec.describe "delegate tools" do
 
   before do
     stub_const("Samagotchi::Tools::DelegateWait::POLL_INTERVAL", 0.05)
-    Samagotchi::Tools::DelegateWait.seen.clear
-    Samagotchi::Tools::DelegateWait.baselines.clear
     allow(Process).to receive(:spawn).and_return(12_345)
     allow(Process).to receive(:detach)
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -108,9 +106,11 @@ RSpec.describe "delegate tools" do
       expect(child.working_directory).to eq("/work/app")
       expect(child.model_name).to eq("big-model")
       expect(child.preloaded_memory_names).to eq(["system/delegated"])
+      expect(child.delegate?).to be(true)
       expect(child.status).to eq("running")
       expect(child.last_prompt).to eq("count the specs")
-      expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; delegate_result waits for its reply. " \
+      expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; chi brings its reply to you by itself " \
+                        "when it ends its turn (a delegate report); don't poll with delegate_result. " \
                         "It shows in chi sessions list and the web as a child of this session; the user can attach to it.")
       expect(Process).to have_received(:spawn)
     end
@@ -299,7 +299,14 @@ RSpec.describe "delegate tools" do
       it "returns at once without waiting" do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
         out = described_class.call("more", session: child.id, wait: false, peers: peers)
-        expect(out).to start_with("session: #{child.id}\nstatus: running\nSent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits")
+        expect(out).to start_with("session: #{child.id}\nstatus: running\nSent the follow-up to delegate #{child.id[0, 8]}; chi brings its reply")
+      end
+
+      it "says delegate_result waits for the reply when delegate reports are off" do
+        allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("off")
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+        out = described_class.call("more", session: child.id, wait: false, peers: peers)
+        expect(out).to include("Sent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits for its reply.")
       end
     end
   end
@@ -342,6 +349,13 @@ RSpec.describe "delegate tools" do
       expect(out).to include("  stop: chi answer #{child.id} --question c1 --option Stop --text WHY")
       expect(out).to include("send it a narrower follow-up with delegate session: #{child.id} (that drops the question)")
       expect(out).to end_with("delegate_result #{child.id} waits again once it is answered.")
+
+      # A delegate report of it (ChildReports) says chi brings the next reply instead.
+      report = described_class.finish(Samagotchi::ReplyWait.call(child.id, state_dir: tmpdir, cursor: nil, timeout: 0),
+                                      child.id, timeout: 0, report: true)
+      expect(report).to include("  continue: chi answer #{child.id} --question c1 --option Continue\n")
+      expect(report).to end_with("chi brings the child's next reply here by itself; don't wait for it with delegate_result.")
+      expect(report).not_to include("waits again")
     end
 
     it "says the child's worker is gone, not that its question waits, when the worker died asking" do
@@ -403,6 +417,43 @@ RSpec.describe "delegate tools" do
 
     it "says so when the child's session is gone" do
       expect(described_class.call("no-such-id", peers: peers, timeout: 1)).to eq("Error: Session not found: no-such-id")
+    end
+
+    describe "the cursor on disk (DelegateCursors)" do
+      let(:idle) { make(parent_id: parent.id, prompt: "task", status: "idle") }
+
+      it "keeps it in the parent's delegates.json, so a respawned parent doesn't repeat a reply" do
+        write_reply(idle, "the reply")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to end_with("---\nthe reply")
+
+        data = JSON.parse(File.read(File.join(Samagotchi::Session.session_dir(parent.id, state_dir: tmpdir), "delegates.json")))
+        expect(data[idle.id]).to include("reply_file" => end_with(".txt"), "messages" => 0)
+
+        # Nothing is kept in memory: a new worker reads the same file.
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet")
+      end
+
+      it "re-baselines after a reply, so a later turn that fails reports no_reply, not the old reply" do
+        write_reply(idle, "first")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to end_with("---\nfirst")
+
+        fail_turn(idle, at: "2026-10-05T10:00:00.000Z")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: failed")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet")
+      end
+
+      it "reports a question once; the next wait waits for its answer" do
+        set_status(idle, "idle", pending_question: { id: "q9", question: "Which one?", options: %w[A B] })
+        own(idle)
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: question")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet")
+      end
+
+      it "moves nothing on a timeout" do
+        idle
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("no reply yet")
+        expect(Samagotchi::Tools::DelegateCursors.get(parent.id, idle.id, state_dir: tmpdir).baseline).to be_nil
+      end
     end
   end
 

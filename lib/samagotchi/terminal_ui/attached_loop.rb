@@ -1041,7 +1041,7 @@ module Samagotchi
         render_join_notes(messages)
         return unless last_user
 
-        @screen.commit(prompt_line(nil, exchange[last_user][:content]))
+        @screen.commit(join_prompt_line(exchange[last_user]))
         Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         from = messages.index { |m| m.equal?(exchange[last_user]) }
         render_join_steps(messages, from, durations: join_tool_records(exchange[last_user]))
@@ -1224,7 +1224,8 @@ module Samagotchi
         if event[:prompt].nil?
           # A continue turn (after the offer's yes) has no prompt to show; a
           # reminder turn shows its reminders (:reminder_injected).
-          @screen.commit(prompt_line(origin[:client_id], "(continuing)")) unless reminder_origin?(origin)
+          # A turn run for delegate reports shows them as they merge.
+          @screen.commit(prompt_line(origin[:client_id], "(continuing)")) unless reminder_origin?(origin) || report_origin?(origin)
         elsif !(own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id]))
           @screen.commit(prompt_line(origin[:client_id], event[:prompt]))
         end
@@ -1267,6 +1268,7 @@ module Samagotchi
       end
 
       def reminder_origin?(origin) = origin[:client_id].to_s.start_with?("system:")
+      def report_origin?(origin) = origin[:client_id].to_s.start_with?(Steer::CHILD_CLIENT_PREFIX)
     end
   end
 end

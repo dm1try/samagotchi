@@ -17,6 +17,7 @@ require_relative "continue_offer"
 require_relative "iteration_limit"
 require_relative "session_commands"
 require_relative "model_profile"
+require_relative "child_reports"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -45,6 +46,11 @@ module Samagotchi
   # turn) is refused as busy.
   class Worker
     FALLBACK_TICK_SECONDS = 5
+    # A worker just started runs no wake turn for delegate reports this
+    # long: a worker spawned for a message (chi send to a stopped parent)
+    # gets it over the Bridge a moment after it starts, and that message's
+    # turn goes first (the reports join it).
+    WAKE_START_GRACE = 2.0
     # How much of a command's output goes into its :command_ran.
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
@@ -92,12 +98,34 @@ module Samagotchi
       # The lines the running turn's drain merged ([prompt, origin]), for a
       # failed prompt turn to hand back; reset as each turn begins.
       @merged_this_turn = []
+      # A delegate child's side (ChildRing): whether the running turn is
+      # its parent's (it rings when it ends), whether that turn rang a
+      # question, and whether the next turn rings whatever its origin (it
+      # follows a question the parent was rung about: D10).
+      @reporting_turn = false
+      @asked_parent = false
+      @owes_parent = false
+      @initial_turn = false
+      # A parent's side: turns run for delegate reports since the last human
+      # input (session.max_wakes), whether a failed one paused them until
+      # then, whether the budget notice went out, and the reports a wake
+      # turn's first boundary hands over.
+      @wakes_in_a_row = 0
+      @wakes_paused = false
+      @budget_noticed = false
+      @wake_reports = nil
     end
 
     # Whether the session was empty as the worker left it, so the caller
     # deletes it once the lock is free (SessionManager.run_session_loop
     # checks again then).
     def discard? = @discard
+
+    # Whether delegate reports wait that an idle parent runs a turn for
+    # (#wake_state): SessionManager.run_session_loop starts a new worker
+    # for them after this one leaves. Reports the budget or a failure held
+    # back wait for the next human input instead.
+    def wake_due? = wake_state == :due
 
     # What a new session starts on (and /model resets to); nil before #run.
     attr_reader :default_model
@@ -108,6 +136,7 @@ module Samagotchi
     #   (chi stop), :crashed when the loop raised (the session is marked
     #   errored); SessionManager.run_session_loop turns it into the exit
     def run
+      @started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @session = Session.load(@session_id, state_dir: @state_dir)
       drop_dead_question
       @engine = build_engine
@@ -117,7 +146,7 @@ module Samagotchi
       @engine.session = @session
       # Input already waiting in the inbox starts the next turn at once: no
       # turn-end warm-up then.
-      @engine.next_turn_waiting = -> { SessionInbox.find_new_input_files(@session_dir).any? }
+      @engine.next_turn_waiting = -> { SessionInbox.find_new_input_files(@session_dir).any? || wake_due? }
       @turn_flow = TurnFlow.new(engine: @engine)
       # Its question's answer is queued as the matching /continue (the
       # Bridge exists by the time anyone answers).
@@ -134,7 +163,11 @@ module Samagotchi
       @turn_end_seq = 0
       @engine.subscribe(observer: lambda { |event|
         @turn_end_seq = event[:event_seq] if Events::TURN_END.include?(event[:type])
+        @turn_id = event[:turn_id] if event[:type] == :turn_started
+        ring_question(event) if event[:type] == :question_requested
       })
+      # This session's own delegate children's news (rings in children/).
+      @child_reports = ChildReports.new(session_id: @session_id, state_dir: @state_dir)
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.
       @default_model = ModelProfile.required_model_name(nil)
@@ -193,17 +226,18 @@ module Samagotchi
           absorb_notes
 
           if (prompt = take_initial_prompt)
-            run_prompt(prompt, nil) unless initial_command(prompt)
+            run_initial_prompt(prompt) unless initial_command(prompt)
             next
           end
 
           input_files = SessionInbox.find_new_input_files(@session_dir)
           if input_files.empty?
+            next if run_wake_turn
             next if run_due_reminders
             return left(:idle_exit) if @idle_exit.due? && leave_idle
             return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
 
-            @waker.wait(@poll_interval)
+            @waker.wait(idle_wait)
             next
           end
 
@@ -219,6 +253,8 @@ module Samagotchi
         # Its stderr is /dev/null: the log is the only trace of why.
         Log.exception(:worker, "crashed", e)
         Session.mark_error(@session_id, reason: e.message, state_dir: @state_dir)
+        # A delegate's parent hears of it (best effort).
+        ChildRing.ring(@session, why: "crash", state_dir: @state_dir) if @session
         :crashed
       ensure
         # The anytime commands finish and the plugins' services stop (a
@@ -336,6 +372,15 @@ module Samagotchi
       claimed.each { |file| FileUtils.rm_f(file) }
     end
 
+    # The first prompt (spawn_session's): a delegate child's task, which is
+    # its parent's although no client sent it.
+    def run_initial_prompt(prompt)
+      @initial_turn = true
+      run_prompt(prompt, nil)
+    ensure
+      @initial_turn = false
+    end
+
     def run_input_file(input_file)
       claimed_file = SessionInbox.claim_input_file(input_file)
       return unless claimed_file
@@ -387,6 +432,85 @@ module Samagotchi
       run_engine_turn(nil, continue: true, origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
                            max_iterations: IterationLimit.for) { @turn_flow.after_reminder_turn }
       true
+    end
+
+    # :due when an idle parent should run a turn for its delegate
+    # children's reports now (session.delegate_reports: wake): rings wait,
+    # no continue offer does (they merge into its turn), wakes aren't paused
+    # by a failed one, and the wake budget isn't spent; :budget when only
+    # the budget stops it; nil otherwise.
+    def wake_state
+      return nil unless @child_reports && ChildRing.mode == "wake"
+      return nil if @wakes_paused || @turn_flow&.awaiting_continue?
+      return nil unless @child_reports.waiting?
+
+      @wakes_in_a_row < max_wakes ? :due : :budget
+    end
+
+    # Run a turn nobody typed for the reports the rings bring (a wake turn):
+    # a continue turn (no prompt bubble) whose first boundary merges them,
+    # with origin child:<id8>. A failure goes back to the checkpoint, keeps
+    # the rings and pauses wakes until a human's input (a provider outage
+    # doesn't loop).
+    # @return [Boolean] whether a wake turn ran
+    def run_wake_turn
+      return false if wake_grace_left.positive?
+
+      state = wake_state
+      budget_notice if state == :budget
+      return false unless state == :due
+
+      reports, = take_child_reports
+      # The turn must not generate with nothing to say: the drain gets this
+      # exact list at its first boundary.
+      return false if reports.empty?
+
+      @wake_reports = reports
+      @wakes_in_a_row += 1
+      Log.info(:worker, "delegate_wake_turn", reports: reports.size, in_a_row: @wakes_in_a_row)
+      @turn_flow.before_prompt_turn
+      run_engine_turn(nil, continue: true, origin: reports.first.origin, max_iterations: IterationLimit.for) do |result, error|
+        if error
+          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message)
+          @turn_flow.prompt_turn_failed(note: note)
+          @wakes_paused = true
+        else
+          @continue_offer.after_turn(result)
+        end
+      end
+      true
+    ensure
+      @wake_reports = nil
+    end
+
+    def wake_grace_left
+      WAKE_START_GRACE - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started_at)
+    end
+
+    # The idle loop's sleep: the fallback tick, or less while reports wait
+    # out the start grace.
+    def idle_wait
+      left = wake_grace_left
+      left.positive? && wake_state == :due ? [left, @poll_interval].min : @poll_interval
+    end
+
+    def max_wakes
+      value = Integer(Config.get(ChildRing::MAX_WAKES_KEY), exception: false)
+      value&.positive? ? value : ChildRing::MAX_WAKES_DEFAULT
+    rescue StandardError
+      ChildRing::MAX_WAKES_DEFAULT
+    end
+
+    # The wake budget is spent: the parent's UIs hear once that reports
+    # wait for the next message.
+    def budget_notice
+      return if @budget_noticed
+
+      @budget_noticed = true
+      count = SessionInbox.find_ring_files(@session_dir).map { |f| SessionInbox.read_ring(f)&.dig(:child_id) }.uniq.size
+      @engine.announce(type: :hook_notice, hook: "delegate", level: :info, between_turns: true,
+                       text: "#{count} delegate report#{"s" if count != 1} waiting; #{count == 1 ? "it joins" : "they join"} " \
+                             "your next message (#{max_wakes} turn#{"s" if max_wakes != 1} ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
     end
 
     def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)
@@ -501,6 +625,7 @@ module Samagotchi
       # Every kind of turn merges steering (a reminder turn too, which may be
       # a fresh worker's first), so the list is this turn's from the start.
       @merged_this_turn = []
+      @reporting_turn = reports_to_parent?(turn_args[:origin])
       begin
         @session.status = Session::STATUS_RUNNING
         @session.save(state_dir: @state_dir)
@@ -524,6 +649,51 @@ module Samagotchi
         SessionInbox.write_output(@session_dir, response)
       end
       save_or_log(:turn) { save_session }
+      settle_child_reports(error)
+      ring_parent_after_turn
+    end
+
+    # The delegate reports this turn took: a kept turn moves the cursors on
+    # and deletes their rings; a failed one (rolled back) leaves the rings
+    # for the next turn.
+    def settle_child_reports(error)
+      error ? @child_reports.release : @child_reports.commit
+    end
+
+    # A delegate child's turn that was its parent's (#reports_to_parent?)
+    # rings the parent, after the save: the parent reads a settled child.
+    # A question it rang about that still waits makes the next turn ring
+    # too, whoever starts it (the user answering Continue on the web).
+    def ring_parent_after_turn
+      ChildRing.ring(@session, why: "turn_end", state_dir: @state_dir) if @reporting_turn
+      @owes_parent = @asked_parent && !@session.pending_question.nil?
+      @asked_parent = false
+      @reporting_turn = false
+    end
+
+    # Whether the turn starting now is a delegate child's parent's: its
+    # task (the initial prompt), a follow-up, a continue the parent
+    # answered, a reminder, anything but a human typing into the child
+    # (ArchiveStore.user_input?), and any turn after a question the parent
+    # was rung about.
+    def reports_to_parent?(origin)
+      return false unless @session.delegate?
+
+      @initial_turn || @owes_parent || !ArchiveStore.user_input?(origin&.dig(:client_id))
+    end
+
+    # The Engine published a question (after the question desk saved it).
+    # In a turn that reports to the parent, the model's own question and
+    # the step-limit continue ring it; approvals and hooks' questions are
+    # the user's, on this session's card.
+    def ring_question(event)
+      return unless @reporting_turn
+
+      kind = event.dig(:pending_question, :kind).to_s
+      return unless ["", ContinueOffer::KIND].include?(kind)
+
+      ChildRing.ring(@session, why: "question", state_dir: @state_dir)
+      @asked_parent = true
     end
 
     # A save between turns (the turn's own, a command's, the notes', the
@@ -593,14 +763,42 @@ module Samagotchi
           end
         end
         merged.each { |_prompt, origin| user_input(origin&.dig(:client_id)) }
-        unless merged.empty?
-          @engine.announce(type: :input_merged, count: merged.size, origins: merged.filter_map(&:last))
+        # Delegate children's reports: never handed back on a failure
+        # (their rings stay for the next turn), so not in @merged_this_turn.
+        reports, mark = take_child_reports
+        unless merged.empty? && reports.empty?
+          @engine.announce(type: :input_merged, count: merged.size + reports.size,
+                           origins: merged.filter_map(&:last) + reports.map(&:origin))
           @merged_this_turn.concat(merged)
         end
         # Each line keeps its sender (Steer.source_for_client): a chi send or
         # a delegating parent's line is saved and shown to the model as theirs.
-        merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) }
+        lines = merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) } +
+                reports.map(&:line)
+        # A wake turn starts with its first line, whoever sent it.
+        lines[0] = lines[0].with(mark: mark) if mark && lines.any?
+        lines
       end
+    end
+
+    # The reports for rings that came in since the turn last looked. A
+    # failure to read them must not take the turn's steering with it.
+    # A wake turn's first call gets the reports it was started for (their
+    # message is the turn's start: turn_start, turn_id, so a reload shows
+    # the turn as its own).
+    # @return [Array(Array<ChildReports::Report>, Hash|nil)] the reports
+    #   and the mark of their message
+    def take_child_reports
+      if @wake_reports
+        reports = @wake_reports
+        @wake_reports = nil
+        return [reports, { turn_start: true, turn_id: @turn_id }.compact]
+      end
+
+      [@child_reports.take, nil]
+    rescue StandardError => e
+      Log.warn(:worker, "delegate_reports_failed", error: e.class.name, msg: e.message)
+      [[], nil]
     end
 
     # Check again with the event log held, which the Bridge holds while it
@@ -701,8 +899,14 @@ module Samagotchi
 
     # A human's input (ArchiveStore.user_input?) un-archives the session;
     # a delegate's, a plugin's or a reminder's doesn't.
+    # It also resets the delegate-report wakes (budget and pause).
     def user_input(client_id)
-      ArchiveStore.user_input(@session_id, state_dir: @state_dir) if ArchiveStore.user_input?(client_id)
+      return unless ArchiveStore.user_input?(client_id)
+
+      ArchiveStore.user_input(@session_id, state_dir: @state_dir)
+      @wakes_in_a_row = 0
+      @wakes_paused = false
+      @budget_noticed = false
     end
 
     def stopped_on_disk?

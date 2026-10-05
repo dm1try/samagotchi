@@ -30,6 +30,8 @@ module Samagotchi
     # resume removes it. A file from before the marker says "stopped" in
     # its status field, which reads the same.
     STOPPED_FILE = "stopped"
+    # The memory a delegate child starts with (Tools::Delegate::CHILD_MEMORIES).
+    DELEGATE_MEMORY = "system/delegated"
 
     SORT_KEYS = %w[created_at updated_at].freeze
     SORT_ORDERS = %w[asc desc].freeze
@@ -54,13 +56,18 @@ module Samagotchi
     # plugin forked it from (ctx.sessions.fork), else nil.
     # Set before the spawn and kept on respawns, like preloaded_memory_names.
     attr_accessor :parent_id
+    # Started by the `delegate` tool (a fork has a parent_id too, but isn't
+    # one): see #delegate?.
+    attr_writer :delegate
     # A `chi scratch` session: deleted when its REPL ends, and by the next
     # sweep (or `chi sessions clean`) when the process died first.
     attr_accessor :scratch
     # How the last turn ended, for the web's notifications (the hub sends
     # it in the summary): {"outcome" => "completed"|"failed"|"canceled",
     # "ended_at" => iso8601, "seconds" => Float, "origin" =>
-    # "client"|"reminder"|"delegate"}; nil before the first turn.
+    # "client"|"reminder"|"delegate"|"delegate_report"}; nil before the
+    # first turn. delegate_report: a turn a parent ran for its delegate
+    # children's reports (ChildReports).
     attr_accessor :last_turn
 
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
@@ -89,7 +96,7 @@ module Samagotchi
                    first_preview: "", test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
-                   last_turn: nil, model_typed: nil)
+                   last_turn: nil, model_typed: nil, delegate: false)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -111,7 +118,18 @@ module Samagotchi
       @parent_id = parent_id&.to_s
       @scratch = !!scratch
       @last_turn = last_turn
+      @delegate = !!delegate
       @archived = false
+    end
+
+    # A `delegate` child: its turns report to its parent (ChildReports). A
+    # child saved before the field is known by the memory every delegate
+    # starts with; a fork is neither.
+    def delegate?
+      return true if @delegate
+      return false unless @parent_id
+
+      @preloaded_memory_names.include?(DELEGATE_MEMORY)
     end
 
     # The question this session waits on, as the lists show it: {id:, kind:}
@@ -151,7 +169,7 @@ module Samagotchi
     #   seed); [] by default
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
-                         scratch: false, model_typed: nil)
+                         scratch: false, model_typed: nil, delegate: false)
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -174,7 +192,8 @@ module Samagotchi
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: muted_memory_names,
         parent_id: parent_id,
-        scratch: scratch
+        scratch: scratch,
+        delegate: delegate
       )
     end
 
@@ -228,7 +247,8 @@ module Samagotchi
       "muted_memory_names" => [],
       "parent_id" => nil,
       "scratch" => false,
-      "last_turn" => nil
+      "last_turn" => nil,
+      "delegate" => false
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the
@@ -346,6 +366,7 @@ module Samagotchi
                 when "messages" then @messages.map { |msg| scrub_utf8(stringify_message_keys(msg)) }
                 when "pending_question" then @pending_question && scrub_utf8(stringify_message_keys(@pending_question))
                 when "test_run" then !!@test_run
+                when "delegate" then @delegate
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names"
                   Array(instance_variable_get(:"@#{key}"))
                 else instance_variable_get(:"@#{key}")

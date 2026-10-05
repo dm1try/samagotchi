@@ -134,7 +134,7 @@ module Samagotchi
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
-                           title: nil)
+                           title: nil, delegate: false)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -153,7 +153,8 @@ module Samagotchi
         preloaded_memory_names: memories,
         muted_memory_names: muted_memories,
         parent_id: parent_id,
-        messages: messages
+        messages: messages,
+        delegate: delegate
       )
       session.model_warning = model_warning
       # With no prompt there is no first turn to run (an attaching UI sends
@@ -460,6 +461,32 @@ module Samagotchi
       session.save(state_dir: sd)
       spawn_worker_for_session(session, state_dir: sd)
       session
+    end
+
+    # A delegate child rang a parent that has no worker (ChildRing): start
+    # one, which runs a turn for the report. Not for a parent that is gone,
+    # stopped, archived, a scratch session, or open in a chi REPL: the ring
+    # waits on disk for whoever runs it next (#resume_session itself would
+    # clear the stop). A stop landing between the check and the resume is
+    # a small window, left as is.
+    # @return [Symbol] :woken, or why not (:gone, :stopped, :archived,
+    #   :scratch, :owned)
+    def self.wake_for_report(session_id, state_dir: nil)
+      sd = state_dir || Session.default_state_dir
+      return :gone unless Session.exist?(session_id, state_dir: sd)
+      return :owned if session_owner(session_id, state_dir: sd)
+      return :stopped if Session.stopped_marker?(session_id, state_dir: sd)
+      return :archived if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
+
+      session = Session.load(session_id, state_dir: sd)
+      return :stopped if session.status == Session::STATUS_STOPPED
+      return :scratch if session.scratch
+
+      resume_session(session_id, state_dir: sd)
+      Log.info(:worker, "delegate_woke_parent", parent: session_id[0, 8])
+      :woken
+    rescue OwnedByTUI
+      :owned
     end
 
     # How long after a spawn a resume trusts that worker to take the
@@ -832,8 +859,10 @@ module Samagotchi
       # owner after its write and wakes one, or this finds its input.
       # A restart starts its successor here, on the newest chi installed
       # (worker_command), once this one's lock is free.
+      # Delegate reports that rang while it left wake one too.
       if result == :restart ||
-         (%i[idle_exit exit_requested].include?(result) && !SessionInbox.find_new_input_files(session_dir).empty?)
+         (%i[idle_exit exit_requested].include?(result) &&
+          (!SessionInbox.find_new_input_files(session_dir).empty? || worker.wake_due?))
         resume_session(session_id, state_dir: sd)
       elsif worker.discard?
         discard_left_session(session_id, state_dir: sd, default_model: worker.default_model)

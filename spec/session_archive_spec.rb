@@ -65,7 +65,7 @@ RSpec.describe "Session archive" do
     it "counts a human's input only: web, tui, chi send and no client id" do
       expect(%w[web:ab12 tui:4242 cli:send].map { |id| described_class.user_input?(id) }).to all(be(true))
       expect(described_class.user_input?(nil)).to be(true)
-      expect(%w[delegate:1234abcd plugin system:reminder].map { |id| described_class.user_input?(id) }).to all(be(false))
+      expect(%w[delegate:1234abcd child:1234abcd plugin system:reminder].map { |id| described_class.user_input?(id) }).to all(be(false))
     end
   end
 

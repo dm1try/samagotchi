@@ -67,8 +67,6 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
 
   before do
     stub_const("Samagotchi::Tools::DelegateWait::POLL_INTERVAL", 0.05)
-    described_class.seen.clear
-    described_class.baselines.clear
     allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
   end
 
@@ -285,7 +283,8 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     update(child, pending_question: { id: "q1", question: "Which one?", options: %w[A B] })
     expect(wait).to include("status: question\nChild #{child.id} is waiting for an answer (question): Which one?")
 
-    update(child, pending_question: approval)
+    # A new question (the one reported above moved the parent's cursor past it).
+    update(child, pending_question: approval.merge(id: "q2"))
     plain = Samagotchi::Tools::Peers.new(session_id: parent.id, state_dir: tmpdir, cancelled: false)
     expect(described_class.call(child.id, peers: plain, timeout: 5)).to include("waiting for an answer (approval)")
     expect(relay.cards).to be_empty

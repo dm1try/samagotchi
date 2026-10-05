@@ -5,6 +5,7 @@ require_relative "../config"
 require_relative "../model_profile"
 require_relative "peers"
 require_relative "delegate_wait"
+require_relative "../child_reports"
 
 module Samagotchi
   # Loaded on first use: session_manager requires terminal_ui, which
@@ -30,7 +31,7 @@ module Samagotchi
       STARTING_GRACE_SECONDS = 15
       # The memory every child starts with, scoped so a project memory of
       # the same name cannot shadow it.
-      CHILD_MEMORIES = ["system/delegated"].freeze
+      CHILD_MEMORIES = [Session::DELEGATE_MEMORY].freeze
 
       def self.name = NAME
 
@@ -62,11 +63,19 @@ module Samagotchi
         return note + DelegateWait.call(child_id, peers: peers, timeout: timeout) if wait
 
         started = session.to_s.strip.empty? ? "Started a delegate session" : "Sent the follow-up to delegate #{child_id[0, 8]}"
-        "#{note}session: #{child_id}\nstatus: running\n#{started}; delegate_result waits for its reply. " \
+        "#{note}session: #{child_id}\nstatus: running\n#{started}; #{running_hint} " \
           "It shows in chi sessions list and the web as a child of this session; the user can attach to it."
       rescue ArgumentError => e
         "Error: #{e.message}"
       end
+
+      # How the reply of a child left running comes back.
+      def self.running_hint
+        return "delegate_result waits for its reply." if ChildRing.mode == "off"
+
+        "chi brings its reply to you by itself when it ends its turn (a delegate report); don't poll with delegate_result."
+      end
+      private_class_method :running_hint
 
       # @return [String] the new child's id, or an Error: line
       def self.start_child(task, parent:, model:, state_dir:)
@@ -84,8 +93,8 @@ module Samagotchi
 
         child = SessionManager.spawn_session(prompt: task, working_directory: parent.working_directory,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
-                                             parent_id: parent.id, state_dir: state_dir)
-        DelegateWait.mark_started(parent.id, child)
+                                             parent_id: parent.id, delegate: true, state_dir: state_dir)
+        DelegateWait.mark_started(parent.id, child, state_dir: state_dir)
         [child.id, child.model_warning]
       end
       private_class_method :start_child

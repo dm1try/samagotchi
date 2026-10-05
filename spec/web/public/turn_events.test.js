@@ -127,6 +127,17 @@ test("input_merged steers every known origin; pending_input_merged adds the rest
   assert.deepEqual(promptOps(text, { myId: ME, known, unmatchedMerge: false }), []);
 });
 
+test("a delegate report's merge (origin child:<id8>, no enqueued_id) gets a labelled bubble: plain in a wake turn, steered mid-turn", () => {
+  const known = () => false;
+  const merged = { type: "input_merged", count: 1, origins: [{ client_id: "child:3f2a1c9e" }] };
+  assert.deepEqual(promptOps(merged, { myId: ME, known }), [{ op: "report" }]);
+  const text = { type: "pending_input_merged", content: "session: c1\nstatus: answered" };
+  assert.deepEqual(promptOps(text, { myId: ME, known, unmatchedMerge: "report", wakeStart: true }), [
+    { op: "add", enqueuedId: null, prompt: "session: c1\nstatus: answered", state: null, label: "delegate report" },
+  ]);
+  assert.equal(promptOps(text, { myId: ME, known, unmatchedMerge: "report" })[0].state, "steered");
+});
+
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 // Shared contract: spec/shared/turn_snapshot.json, the running turn a join

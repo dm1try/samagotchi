@@ -330,7 +330,7 @@ module Samagotchi
       },
       {
         name: "delegate",
-        description: "Hand a task to a child chi session that runs in parallel in this folder and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. A tool call the child needs approved goes to your user as one of your own approvals; you only see how it was answered, as a line in the result. Children keep running if this turn is canceled; delegate_result waits for them later. A child stays until stopped: once its work is done, stop it with execute `chi sessions stop ID` (a follow-up with session wakes it again).",
+        description: "Hand a task to a child chi session that runs in parallel in this folder and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. A tool call the child needs approved goes to your user as one of your own approvals; you only see how it was answered, as a line in the result. Children keep running if this turn is canceled. With wait false, chi brings each child's reply to you by itself when the child ends its turn (a delegate report, also when you are idle): don't poll it with delegate_result. To retry or redirect a child, use delegate with its session (task_* tools are for background commands, not sessions). A child stays until stopped: once its work is done, stop it with execute `chi sessions stop ID` (a follow-up with session wakes it again).",
         parameters: {
           type: "object",
           properties: {
@@ -360,7 +360,7 @@ module Samagotchi
       },
       {
         name: "delegate_result",
-        description: "Wait for a delegated child session's next reply: the child named, or this session's newest running child. Returns early if the child waits for a question the user must answer. A tool call the child needs approved goes to your user while this waits; the result says how it was answered.",
+        description: "Wait for a delegated child session's next reply: the child named, or this session's newest running child (name the child when a delegate report is about it). A delegate report already carries the reply: don't call this for it. Returns early if the child waits for a question the user must answer. A tool call the child needs approved goes to your user while this waits; the result says how it was answered.",
         parameters: {
           type: "object",
           properties: {

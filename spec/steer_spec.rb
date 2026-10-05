@@ -47,6 +47,23 @@ RSpec.describe Samagotchi::Steer do
                                        steers: [{ source: "check-in", text: "n" }])
     end
 
+    it "puts a Line's mark on its input message: a wake turn's report starts its turn" do
+      mark = { turn_start: true, turn_id: "T9" }
+      line = described_class::Line.new(text: "report", source: "delegate_report", mark: mark)
+      expect(line).not_to eq(described_class::Line.new(text: "report", source: "delegate_report"))
+      message = described_class.merge([line]).messages.first
+      expect(message).to eq(role: "user", kind: "input", source: "delegate_report", turn_start: true, turn_id: "T9", content: "report")
+      expect(described_class.turn_prompt?(message)).to be(true)
+      expect(described_class.turn_prompt?(message.except(:turn_start))).to be(false)
+    end
+
+    it "lists the delegate reports apart in the merge event, one per report" do
+      reports = ["session: c1\nstatus: answered\n---\n3", "session: c2\nstatus: failed\nboom"]
+      merge = described_class.merge(["hi", *reports.map { |r| described_class::Line.new(text: r, source: "delegate_report") }])
+      expect(merge.event_fields).to include(count: 3, reports: reports)
+      expect(described_class.merge(["hi"]).event_fields).not_to have_key(:reports)
+    end
+
     it "skips blank Lines" do
       expect(described_class.merge([described_class::Line.new(text: " ", source: "chi_send")])).to be_empty
     end
@@ -56,9 +73,11 @@ RSpec.describe Samagotchi::Steer do
     it "maps a worker input's client id to the saved source (nil = the user)" do
       expect({ nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
                "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil,
-               "other" => nil }.to_h { |id, _| [id, described_class.source_for_client(id)] })
+               "child:abcd1234" => nil, "other" => nil }.to_h { |id, _| [id, described_class.source_for_client(id)] })
         .to eq(nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
-               "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil, "other" => nil)
+               "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil,
+               "child:abcd1234" => "delegate_report", "other" => nil)
+      expect(described_class.cuts?("delegate_report")).to be(false)
     end
 
     it "uses the same literals as the senders" do
@@ -160,6 +179,22 @@ RSpec.describe Samagotchi::Steer do
         { kind: "steer", source: "parent_agent" } => "[Steer from the parent agent that started this session, #{tail}",
         { "kind" => "steer", "source" => "check-in" } => "[Steer from the check-in plugin, #{tail}"
       }.each { |message, header| expect(described_class.header(message)).to eq(header), message.inspect }
+    end
+
+    it "takes a source's own whole header line from HEADERS, for input and steers alike" do
+      stub_const("Samagotchi::Steer::HEADERS", { "robot" => "[Robot says]" })
+      expect(described_class.header({ kind: "input", source: "robot" })).to eq("[Robot says]")
+      expect(described_class.wire_text({ kind: "steer", source: "robot", content: "x" })).to eq("[Robot says]\nx")
+      expect(described_class.header({ kind: "input", source: "chi_send" })).to eq("[Steer sent with chi send, #{tail}")
+    end
+
+    it "gives a delegate report its own header: chi's news for the user, not a steer to follow" do
+      header = described_class.header({ kind: "input", source: "delegate_report" })
+      expect(header).to start_with("[Delegate report, delivered by chi when your delegate session ended its turn; " \
+                                   "not your user's message. Tell your user what it found or what went wrong")
+      expect(header).to end_with("include it in your reply and finish the task. Don't call delegate_result for it; " \
+                                 "to retry or redirect that child, use delegate with its session:.]")
+      expect(header).not_to include("Follow it")
     end
 
     it "has none for a prompt, a model message or a note" do
