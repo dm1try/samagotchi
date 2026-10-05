@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
 - Web: the stop-task confirm names a task from an earlier turn by its command (the wait row's title), not its id.
 - Web: a canceled turn's end line (the Stop, Ctrl-C, a hook, the session's stop) reads `■ canceled (stopped)` in the
   stopped calls' amber, live and after a reload, not as a red error; a worker that exited mid-turn stays red `✕`.
+- Web stage: a call the Stop cut has an amber tick and an amber `■` in the trail, as its `■ STOPPED` row, instead of
+  its tool kind's colour.
 
 ## [0.29.0] - 2026-10-05
 

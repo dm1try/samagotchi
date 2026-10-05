@@ -591,6 +591,7 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-trail-item{flex:none;max-width:36ch;overflow:hidden;text-overflow:ellipsis}
 .ts-trail-item.error{color:var(--danger-text)}
 .ts-trail-item.warn{color:var(--warn-text)}
+.ts-trail-item.stopped{color:var(--warn-text);opacity:.8}
 .ts-trail-item.info,.ts-trail-item.steer{color:var(--accent)}
 .ts-trail-item.none{font-style:italic}
 /* A card waits: the tool row and trail give it their room. */
@@ -626,6 +627,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-tick.edit{background:var(--ok);opacity:.85}
 .ts-tick.other{background:var(--narr);opacity:.7}
 .ts-tick.error{background:var(--danger);opacity:1}
+/* A call the user's Stop cut: the ■ STOPPED rows' amber, still (running blinks). */
+.ts-tick.stopped{background:var(--warn-text);opacity:.8}
 .ts-tick.running{background:var(--warn);opacity:1;animation:ts-blink 1s ease-in-out infinite}
 @keyframes ts-blink{50%{opacity:.35}}
 .ts-cloud-body{max-height:calc(var(--stage-max,60vh) * .62);overflow:auto;scrollbar-width:thin;border-left:1px solid var(--border);margin-left:6px;padding-left:10px}
