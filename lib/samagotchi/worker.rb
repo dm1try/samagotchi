@@ -46,6 +46,11 @@ module Samagotchi
   # turn) is refused as busy.
   class Worker
     FALLBACK_TICK_SECONDS = 5
+    # A worker just started runs no wake turn for delegate reports this
+    # long: a worker spawned for a message (chi send to a stopped parent)
+    # gets it over the Bridge a moment after it starts, and that message's
+    # turn goes first (the reports join it).
+    WAKE_START_GRACE = 2.0
     # How much of a command's output goes into its :command_ran.
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
@@ -131,6 +136,7 @@ module Samagotchi
     #   (chi stop), :crashed when the loop raised (the session is marked
     #   errored); SessionManager.run_session_loop turns it into the exit
     def run
+      @started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @session = Session.load(@session_id, state_dir: @state_dir)
       drop_dead_question
       @engine = build_engine
@@ -231,7 +237,7 @@ module Samagotchi
             return left(:idle_exit) if @idle_exit.due? && leave_idle
             return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
 
-            @waker.wait(@poll_interval)
+            @waker.wait(idle_wait)
             next
           end
 
@@ -448,6 +454,8 @@ module Samagotchi
     # doesn't loop).
     # @return [Boolean] whether a wake turn ran
     def run_wake_turn
+      return false if wake_grace_left.positive?
+
       state = wake_state
       budget_notice if state == :budget
       return false unless state == :due
@@ -473,6 +481,17 @@ module Samagotchi
       true
     ensure
       @wake_reports = nil
+    end
+
+    def wake_grace_left
+      WAKE_START_GRACE - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started_at)
+    end
+
+    # The idle loop's sleep: the fallback tick, or less while reports wait
+    # out the start grace.
+    def idle_wait
+      left = wake_grace_left
+      left.positive? && wake_state == :due ? [left, @poll_interval].min : @poll_interval
     end
 
     def max_wakes
@@ -754,8 +773,11 @@ module Samagotchi
         end
         # Each line keeps its sender (Steer.source_for_client): a chi send or
         # a delegating parent's line is saved and shown to the model as theirs.
-        merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) } +
-          reports.each_with_index.map { |report, i| report.line(mark: i.zero? ? mark : nil) }
+        lines = merged.map { |prompt, origin| Steer::Line.new(text: prompt, source: Steer.source_for_client(origin&.dig(:client_id))) } +
+                reports.map(&:line)
+        # A wake turn starts with its first line, whoever sent it.
+        lines[0] = lines[0].with(mark: mark) if mark && lines.any?
+        lines
       end
     end
 

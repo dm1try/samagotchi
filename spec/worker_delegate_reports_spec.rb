@@ -321,6 +321,34 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(wake_turns.pop(timeout: 3)).not_to be_nil
       end
 
+      it "lets the message a fresh worker was started for go first; the report joins its turn (D5)" do
+        child_answers("found it")
+        start_worker(parent)
+        # Delivered just after the worker started (chi send to a stopped parent).
+        send_turn(parent, "anything new?", "cli:send")
+
+        prompt, _kwargs, lines = next_turn
+        expect(prompt).to eq("anything new?")
+        expect(lines.map(&:source)).to eq(["delegate_report"])
+        sleep(0.3)
+        expect(wake_turns).to be_empty
+      end
+
+      it "starts the wake turn with its first merged line, whoever sent it" do
+        start_worker(parent)
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          send_turn(parent, "me too", "web:tab1")
+          wake_turns << [prompt, kwargs, kwargs[:pending_input].call]
+          result
+        end
+        child_answers("found it")
+
+        _prompt, _kwargs, lines = wake_turns.pop(timeout: 5)
+        expect(lines.map(&:source)).to eq([nil, "delegate_report"])
+        expect(lines.first.mark).to include(turn_start: true)
+        expect(lines.last.mark).to be_nil
+      end
+
       it "doesn't wake in queue mode: the report joins the next turn" do
         allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("queue")
         start_worker(parent)
