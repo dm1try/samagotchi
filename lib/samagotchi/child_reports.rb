@@ -162,8 +162,6 @@ module Samagotchi
       @taken = {}
     end
 
-    def taken? = !@taken.empty?
-
     private
 
     def taken_rings

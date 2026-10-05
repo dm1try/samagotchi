@@ -3,16 +3,21 @@
 require "json"
 require "samagotchi/guardrails/shell_lex"
 
-# ShellLex.lex_with_spans: lex's tokens with where each was read from, for
-# a display (CommandSteps). Additive: lex itself must not change.
-RSpec.describe Samagotchi::Guardrails::ShellLex, ".lex_with_spans" do
+# ShellLex::Lexer#spans: where each of lex's tokens was read from, for a
+# display (CommandSteps). Additive: lex itself must not change.
+RSpec.describe Samagotchi::Guardrails::ShellLex, "Lexer#spans" do
   fixtures = File.expand_path("../fixtures/command_steps", __dir__)
   corpus = JSON.parse(File.read(File.join(fixtures, "corpus.json")))
   # lex / simple_commands over the corpus, recorded before spans were added.
   golden = JSON.parse(File.read(File.join(fixtures, "corpus_lex.json")))
 
+  def with_spans(text)
+    lexer = described_class::Lexer.new(text)
+    lexer.tokens.zip(lexer.spans).map { |token, span| [*token, span] }
+  end
+
   def slices(text)
-    described_class.lex_with_spans(text).map { |*token, span| [token[0], token[1], text[span]] }
+    with_spans(text).map { |*token, span| [token[0], token[1], text[span]] }
   end
 
   it "leaves lex and simple_commands as they were on the corpus" do
@@ -25,9 +30,9 @@ RSpec.describe Samagotchi::Guardrails::ShellLex, ".lex_with_spans" do
 
   it "gives lex's tokens, each with a range inside the text" do
     corpus.each do |text|
-      with_spans = described_class.lex_with_spans(text)
-      expect(with_spans.map { |token| token[0..-2] }).to eq(described_class.lex(text))
-      expect(with_spans.map(&:last)).to all(satisfy { |r| r.is_a?(Range) && r.end <= text.size && r.begin <= r.end })
+      spanned = with_spans(text)
+      expect(spanned.map { |token| token[0..-2] }).to eq(described_class.lex(text))
+      expect(spanned.map(&:last)).to all(satisfy { |r| r.is_a?(Range) && r.end <= text.size && r.begin <= r.end })
     end
   end
 

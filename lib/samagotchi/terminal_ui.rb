@@ -618,9 +618,6 @@ module Samagotchi
       end
     end
 
-    # Ctrl-D or /exit came during a turn: the REPL ends after it.
-    def exit_after_turn? = @exit_after_turn == true
-
     private
 
     # Interactive REPL loop. Session seed + messages are built by #run and

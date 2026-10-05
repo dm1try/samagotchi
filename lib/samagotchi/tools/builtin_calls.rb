@@ -99,8 +99,6 @@ module Samagotchi
       # @return [Row, nil]
       def row(name) = rows[name.to_s]
 
-      def builtin?(name) = rows.key?(name.to_s)
-
       # The internal call for a parsed one.
       # @param name [String]
       # @param args [Hash] string keys, as the model gave them

@@ -33,15 +33,6 @@ module Samagotchi
         Lexer.new(text).tokens
       end
 
-      # lex's tokens, each with the range of +text+ it was read from
-      # appended ([:word, "x", specials, 0...1] / [:op, "&&", 2...4]), for a
-      # display that slices the original text. A heredoc body's range is
-      # the body and its terminator line. lex itself is unchanged by this.
-      def self.lex_with_spans(text)
-        lexer = Lexer.new(text)
-        lexer.tokens.zip(lexer.spans).map { |token, span| [*token, span] }
-      end
-
       # The token stream split at operators into word lists; ( and ) become
       # :open / :close markers.
       def self.simple_commands(tokens)

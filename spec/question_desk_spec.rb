@@ -175,7 +175,6 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(desk.pending).to include(id: pending[:id], kind: "continue", limit: 3, status: "pending")
       expect(saved).to include(id: pending[:id], kind: "continue")
       expect(events.last).to include(type: :question_requested, standing: true)
-      expect(desk).to be_standing
     end
 
     it "hands an answer to on_answer with who answered, after it is cleared and announced" do
