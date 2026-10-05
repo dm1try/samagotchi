@@ -62,25 +62,35 @@ module Samagotchi
     # many); +error+ is the last failure, +error_since+ when the failures
     # began (cleared by a success), so a session hears about each run of
     # failures once. +summary+, +wake+ and +hint+ come with the revision.
-    Snapshot = Data.define(:text, :summary, :revision, :serial, :fetched_at, :wake, :hint, :error, :error_since) do
+    # +fetched_at+ is the last success, +checked_at+ the last try (the
+    # poller's clock: a failing source isn't run again every tick).
+    Snapshot = Data.define(:text, :summary, :revision, :serial, :fetched_at, :checked_at, :wake, :hint, :error,
+                           :error_since) do
       def self.empty
-        new(text: nil, summary: nil, revision: nil, serial: 0, fetched_at: nil, wake: false, hint: nil,
+        new(text: nil, summary: nil, revision: nil, serial: 0, fetched_at: nil, checked_at: nil, wake: false, hint: nil,
             error: nil, error_since: nil)
       end
 
       def to_h
         { "text" => text, "summary" => summary, "revision" => revision, "serial" => serial,
-          "fetched_at" => fetched_at, "wake" => (wake ? true : nil), "hint" => hint, "error" => error,
-          "error_since" => error_since }.compact
+          "fetched_at" => fetched_at, "checked_at" => checked_at, "wake" => (wake ? true : nil), "hint" => hint,
+          "error" => error, "error_since" => error_since }.compact
       end
 
       def self.from_h(data)
         new(text: data["text"], summary: data["summary"], revision: data["revision"], serial: data["serial"].to_i,
-            fetched_at: data["fetched_at"], wake: data["wake"] == true, hint: data["hint"], error: data["error"],
-            error_since: data["error_since"])
+            fetched_at: data["fetched_at"], checked_at: data["checked_at"] || data["fetched_at"],
+            wake: data["wake"] == true, hint: data["hint"], error: data["error"], error_since: data["error_since"])
       end
 
       def text? = !text.nil?
+
+      # Seconds since the last try; nil for never.
+      def age(now = Time.now)
+        checked_at && (now - Time.iso8601(checked_at))
+      rescue ArgumentError
+        nil
+      end
     end
 
     # What one session has had of a source: +seen+ the revision its last
@@ -184,10 +194,10 @@ module Samagotchi
         revision = ContextSources.revision_of(fetched.text)
         stamp = now.utc.iso8601
         written = if revision == previous.revision
-                    previous.with(fetched_at: stamp, error: nil, error_since: nil)
+                    previous.with(fetched_at: stamp, checked_at: stamp, error: nil, error_since: nil)
                   else
                     Snapshot.new(text: fetched.text, revision: revision, serial: previous.serial + 1, fetched_at: stamp,
-                                 summary: fetched.summary || ContextSources.plain_summary(previous.text, fetched.text),
+                                 checked_at: stamp, summary: fetched.summary || ContextSources.plain_summary(previous.text, fetched.text),
                                  wake: fetched.wake, hint: fetched.hint || previous.hint, error: nil, error_since: nil)
                   end
         write_snapshot(name, written)
@@ -200,7 +210,7 @@ module Samagotchi
         # Microseconds: two runs of failures never share a start.
         stamp = now.utc.iso8601(6)
         write_snapshot(name, previous.with(error: ContextSources.one_line(message, LINE_MAX_CHARS),
-                                           error_since: previous.error_since || stamp))
+                                           error_since: previous.error_since || stamp, checked_at: stamp))
       end
 
       # Session only: the markers and the worker's subscription file.

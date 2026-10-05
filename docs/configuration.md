@@ -742,7 +742,7 @@ One record is one line, plus indented payload lines at debug level:
   control characters (terminal colours in tool output) are escaped.
 - Tags: `turn` (a session's event trail), `http` (model requests),
   `worker`, `bridge`, `web`, `attached`, `repl`, `idle`, `recap`, `hooks`,
-  `plugins`, `guardrails`, `config`, `memory`, `model` (debug dumps).
+  `plugins`, `guardrails`, `config`, `memory`, `model` (debug dumps), `context` (attached context fetches).
 - The format is parsed by `Samagotchi::LogLine` (`parse`, `each_record`);
   keep tools that read it on that parser.
 
@@ -909,6 +909,7 @@ described in their own sections.
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |
 | `context.status_thresholds` | `20,40,60,80` | yes | Percentages that trigger a status. |
 | `context.status_cadence` | `0` | yes | Also every N rounds; `0` = thresholds only. |
+| `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See `chi context --help`. |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |

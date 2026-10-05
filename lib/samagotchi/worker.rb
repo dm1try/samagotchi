@@ -19,6 +19,7 @@ require_relative "session_commands"
 require_relative "model_profile"
 require_relative "child_reports"
 require_relative "context_absorber"
+require_relative "context_poller"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -215,6 +216,11 @@ module Samagotchi
         # the background, shown by the UIs; a turn waits only for the ones
         # that bring tools.
         @engine.start_init_tasks!
+        # Attached context's commands, in the background; a new text wakes
+        # the loop to absorb it. Not activity: the idle exit stops it.
+        @context_poller = ContextPoller.new(session_id: @session_id, state_dir: @state_dir,
+                                            project_root: @session.project_root, cwd: @session.working_directory,
+                                            on_change: -> { @waker.wake }).start
         loop do
           # Check if the session was externally marked as stopped. Not
           # stopped_on_disk?, which reads a vanished file as "not stopped":
@@ -268,6 +274,9 @@ module Samagotchi
         # step-limit question stays in the file (a save here would write
         # over a stop's status): with no live worker the lists don't read
         # it as waiting, and the next worker drops it (drop_dead_question).
+        # The context poller first: a command it runs goes (its process
+        # group) before the Engine does.
+        @context_poller&.stop
         @engine&.shutdown
         @bridge&.stop
       end

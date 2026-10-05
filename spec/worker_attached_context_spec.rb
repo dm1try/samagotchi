@@ -96,6 +96,16 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     expect(turns.pop(timeout: 0.3)).to be_nil
   end
 
+  it "runs a command source at start, notes its text, and still exits idle on time (polling isn't activity)" do
+    own.add(Samagotchi::ContextSources::Source.new(name: "date", cmd: "date +%s%N", every_seconds: 30, why: nil,
+                                                   hint: nil, scope: "session", added_by: "cli", created_at: nil))
+    start_worker(idle_exit_minutes: 0.01)
+
+    expect(wait_until { saved_context_notes.any? }).to be(true)
+    expect(saved_context_notes.first[:content]).to include("Attached: date.")
+    expect(@thread.join(5)&.value).to eq(:idle_exit)
+  end
+
   context "in a session with no turn yet" do
     let(:history) { [] }
 
