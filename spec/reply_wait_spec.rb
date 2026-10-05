@@ -56,6 +56,27 @@ RSpec.describe Samagotchi::ReplyWait do
     described_class.call(session.id, state_dir: tmpdir, cursor: cursor, timeout: timeout, poll_interval: 0.02, **opts)
   end
 
+  describe "the session it hands back (a caller's next baseline)" do
+    it "is the session the deciding look loaded" do
+      set(status: "error", last_prompt: "boom")
+      expect(wait.session.status).to eq("error")
+    end
+
+    it "for a reply found before the worker's save, is the session after that save" do
+      write_reply("hi") # the worker writes the reply, then saves idle with the turn's last_turn
+      later(0.1) do
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "idle"
+        s.last_turn = { "outcome" => "completed", "ended_at" => "2026-10-05T10:00:00.000Z" }
+        s.save(state_dir: tmpdir)
+      end
+
+      result = wait
+      expect(result.status).to eq(:done)
+      expect(result.session.last_turn["ended_at"]).to eq("2026-10-05T10:00:00.000Z")
+    end
+  end
+
   it "returns a reply file past the cursor, with its name as the next cursor" do
     write_reply("old")
     cursor = described_class.newest_reply(session.id, state_dir: tmpdir)

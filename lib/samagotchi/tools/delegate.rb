@@ -85,7 +85,7 @@ module Samagotchi
         child = SessionManager.spawn_session(prompt: task, working_directory: parent.working_directory,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
                                              parent_id: parent.id, state_dir: state_dir)
-        DelegateWait.mark_started(parent.id, child)
+        DelegateWait.mark_started(parent.id, child, state_dir: state_dir)
         [child.id, child.model_warning]
       end
       private_class_method :start_child

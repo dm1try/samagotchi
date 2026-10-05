@@ -24,8 +24,6 @@ RSpec.describe "delegate tools" do
 
   before do
     stub_const("Samagotchi::Tools::DelegateWait::POLL_INTERVAL", 0.05)
-    Samagotchi::Tools::DelegateWait.seen.clear
-    Samagotchi::Tools::DelegateWait.baselines.clear
     allow(Process).to receive(:spawn).and_return(12_345)
     allow(Process).to receive(:detach)
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -403,6 +401,43 @@ RSpec.describe "delegate tools" do
 
     it "says so when the child's session is gone" do
       expect(described_class.call("no-such-id", peers: peers, timeout: 1)).to eq("Error: Session not found: no-such-id")
+    end
+
+    describe "the cursor on disk (DelegateCursors)" do
+      let(:idle) { make(parent_id: parent.id, prompt: "task", status: "idle") }
+
+      it "keeps it in the parent's delegates.json, so a respawned parent doesn't repeat a reply" do
+        write_reply(idle, "the reply")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to end_with("---\nthe reply")
+
+        data = JSON.parse(File.read(File.join(Samagotchi::Session.session_dir(parent.id, state_dir: tmpdir), "delegates.json")))
+        expect(data[idle.id]).to include("reply_file" => end_with(".txt"), "messages" => 0)
+
+        # Nothing is kept in memory: a new worker reads the same file.
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet")
+      end
+
+      it "re-baselines after a reply, so a later turn that fails reports no_reply, not the old reply" do
+        write_reply(idle, "first")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to end_with("---\nfirst")
+
+        fail_turn(idle, at: "2026-10-05T10:00:00.000Z")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: failed")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet")
+      end
+
+      it "reports a question once; the next wait waits for its answer" do
+        set_status(idle, "idle", pending_question: { id: "q9", question: "Which one?", options: %w[A B] })
+        own(idle)
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: question")
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet")
+      end
+
+      it "moves nothing on a timeout" do
+        idle
+        expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("no reply yet")
+        expect(Samagotchi::Tools::DelegateCursors.get(parent.id, idle.id, state_dir: tmpdir).baseline).to be_nil
+      end
     end
   end
 

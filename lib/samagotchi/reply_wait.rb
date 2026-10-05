@@ -41,8 +41,11 @@ module Samagotchi
     #   (user, hook, ctrl_c, manual)
     # @!attribute stopped_by [String, nil] the hook that canceled it
     #   (loop-guard)
+    # @!attribute session [Session, nil] the session as the look that
+    #   decided the outcome loaded it (a caller's next baseline); nil for
+    #   :canceled and :timeout
     Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, :error_kind, :retryable, :cancel_reason,
-                        :stopped_by, keyword_init: true)
+                        :stopped_by, :session, keyword_init: true)
 
     module_function
 
@@ -78,14 +81,15 @@ module Samagotchi
         session = Session.load(id, state_dir: state_dir)
 
         if (reply = reply_past(id, state_dir: state_dir, cursor: cursor))
+          reply.session = settled(session, id, state_dir: state_dir)
           return reply
         end
 
         case session.status
         when Session::STATUS_ERROR
-          return Result.new(status: :error, text: session.last_prompt.to_s.strip)
+          return Result.new(status: :error, text: session.last_prompt.to_s.strip, session: session)
         when Session::STATUS_STOPPED
-          return Result.new(status: :stopped)
+          return Result.new(status: :stopped, session: session)
         end
 
         # Only a question a live worker holds waits for an answer (the
@@ -94,7 +98,7 @@ module Samagotchi
         pending = session.pending_question
         if pending && !(baseline && pending[:id] == baseline[:question_id]) &&
            session.waiting_question(live: SessionManager.worker_live?(id, state_dir: state_dir))
-          return Result.new(status: :waiting_for_answer, question: pending)
+          return Result.new(status: :waiting_for_answer, question: pending, session: session)
         end
 
         return Result.new(status: :canceled) if cancelled.call
@@ -107,14 +111,15 @@ module Samagotchi
           # file-delivered message its worker has not picked up yet.
           # The worker writes the reply before its idle save, so the read
           # above has it; one more look costs nothing should that change.
-          return reply_past(id, state_dir: state_dir, cursor: cursor) || no_reply(session, baseline)
+          return reply_past(id, state_dir: state_dir, cursor: cursor)&.tap { |r| r.session = session } ||
+                 no_reply(session, baseline)
         end
 
         if owner_grace
           if SessionManager.session_owner(id, state_dir: state_dir)
             gone_since = nil
           elsif monotonic - (gone_since ||= monotonic) > owner_grace
-            return Result.new(status: :worker_gone)
+            return Result.new(status: :worker_gone, session: session)
           end
         end
 
@@ -157,11 +162,37 @@ module Samagotchi
       last = session.last_turn.is_a?(Hash) ? session.last_turn : {}
       fresh = baseline.nil? || !baseline.key?(:last_turn) || (last["ended_at"] && last["ended_at"] != baseline[:last_turn])
       outcome = fresh ? last["outcome"] : nil
-      return Result.new(status: :no_reply, outcome: "exhausted", limit: last["limit"]) if fresh && last["exhausted"]
+      if fresh && last["exhausted"]
+        return Result.new(status: :no_reply, outcome: "exhausted", limit: last["limit"], session: session)
+      end
 
       text = outcome == "failed" ? failure_summary(session.messages) : nil
       why = fresh ? last.slice("error_kind", "retryable", "cancel_reason", "stopped_by").transform_keys(&:to_sym) : {}
-      Result.new(status: :no_reply, outcome: outcome, text: text, **why)
+      Result.new(status: :no_reply, outcome: outcome, text: text, session: session, **why)
+    end
+
+    SETTLE_SECONDS = 1.0
+
+    # The session after the turn that wrote a reply was saved. The worker
+    # writes the reply just before that save, so a look between the two
+    # loaded the session still running, with the turn before's last_turn: a
+    # baseline from it would read the reply's own turn as a later one that
+    # left no reply. Loads again (briefly) until it shows idle or its
+    # last_turn moved on; a session running a next turn by then has the
+    # reply's turn as its last_turn, which is right too.
+    def settled(session, id, state_dir:)
+      return session unless session.status == Session::STATUS_RUNNING
+
+      before = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
+      deadline = monotonic + SETTLE_SECONDS
+      loop do
+        sleep(0.02)
+        fresh = Session.load(id, state_dir: state_dir)
+        ended = fresh.last_turn.is_a?(Hash) ? fresh.last_turn["ended_at"] : nil
+        return fresh if fresh.status != Session::STATUS_RUNNING || ended != before || monotonic > deadline
+      end
+    rescue ArgumentError
+      session
     end
 
     # The summary in the failed-turn note at the conversation's tail, nil

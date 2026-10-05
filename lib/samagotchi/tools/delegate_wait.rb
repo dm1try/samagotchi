@@ -6,18 +6,18 @@ require_relative "../parent_report"
 require_relative "output_guardrails"
 require_relative "peers"
 require_relative "delegate_relay"
+require_relative "delegate_cursor"
 
 module Samagotchi
   module Tools
     # Waiting for a delegated session's next reply, shared by delegate and
     # delegate_result: ReplyWait in the tools' words, with the status words
-    # `chi send --wait` and `chi answer` use (ParentReport.status), with a cursor per
-    # child (the newest reply this parent was already given) and the child
-    # as it was before the message went in (ReplyWait's baseline), so a turn
-    # that ends before the wait's first look (a fast failure) still ends it.
-    # Both live in this process (a worker runs one session), keyed by parent
-    # and child; a worker respawn loses them, which only repeats the newest
-    # reply once or waits for a later turn.
+    # `chi send --wait` and `chi answer` use (ParentReport.status), with a
+    # DelegateCursor per child: the newest reply this parent was already
+    # given, and the child as it was when the parent last heard from it or
+    # sent it a message (ReplyWait's baseline), so a turn that ends before
+    # the wait's first look (a fast failure) still ends it. The cursors are
+    # on disk (DelegateCursors), so a respawned worker doesn't repeat a reply.
     module DelegateWait
       TIMEOUT_DEFAULT = 600
       POLL_INTERVAL = 0.5
@@ -31,16 +31,6 @@ module Samagotchi
       PREVIEW_BYTES = OutputGuardrails::DEFAULT_PREVIEW_BYTES
 
       module_function
-
-      # @return [Hash{Array(String, String) => String}] [parent id, child id] → newest reply filename given
-      def seen
-        @seen ||= {}
-      end
-
-      # @return [Hash{Array(String, String) => Hash}] [parent id, child id] → ReplyWait baseline taken before sending
-      def baselines
-        @baselines ||= {}
-      end
 
       # @return [Hash{Array(String, String) => Array<String>}] [parent id,
       #   child id] → outcome lines of that child's approvals relayed while
@@ -69,18 +59,20 @@ module Samagotchi
         cancelled = -> { peers.cancelled? }
         relay = peers.respond_to?(:relay) ? peers.relay : nil
         others = relay && others_for(peers.session_id, child_id, relay, sd)
-        baseline = baselines[key]
+        cursor = DelegateCursors.get(peers.session_id, child_id, state_dir: sd)
+        baseline = cursor.baseline
         left = timeout.to_i
         outcomes = relayed_outcomes.delete(key) || []
         loop do
           started = monotonic
-          wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: [left, 0].max,
+          wait = ReplyWait.call(child_id, state_dir: sd, cursor: cursor.reply_file, timeout: [left, 0].max,
                                           poll_interval: poll_interval, cancelled: cancelled, baseline: baseline,
                                           owner_grace: owner_grace, interject: others && -> { others.poll })
           left -= monotonic - started
           unless wait.status == :waiting_for_answer && DelegateRelay.relayable?(relay, wait.question)
             outcomes.concat(relayed_outcomes.delete(key) || [])
-            return with_outcomes(finish(wait, child_id, key: key, timeout: timeout), outcomes)
+            advance(peers.session_id, child_id, wait, state_dir: sd)
+            return with_outcomes(finish(wait, child_id, timeout: timeout), outcomes)
           end
 
           outcome = DelegateRelay.call(child_id, wait.question, relay: relay, state_dir: sd, more: others&.count.to_i)
@@ -118,17 +110,32 @@ module Samagotchi
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+      # Outcomes that tell the parent something about the child's state.
+      REPORTED = %i[done no_reply error stopped waiting_for_answer worker_gone].freeze
+
+      # Move the parent's cursor past what +wait+ reported: the reply it
+      # gave, and the child as that same look loaded it (a fresh load could
+      # swallow a turn that ended in between), so a later wait looks for a
+      # later turn and a question already reported isn't reported again.
+      # Nothing moves on a timeout or a cancel.
+      # @param wait [ReplyWait::Result]
+      # @return [DelegateCursor, nil] the new cursor
+      def advance(parent_id, child_id, wait, state_dir:)
+        return nil unless REPORTED.include?(wait.status) && wait.session
+
+        DelegateCursors.update(parent_id, child_id, state_dir: state_dir) do |cursor|
+          cursor = cursor.with(reply_file: wait.file) if wait.status == :done
+          cursor.with_baseline(ReplyWait.baseline_of(wait.session))
+        end
+      end
+
       # The tool result for how the wait ended.
       # @param wait [ReplyWait::Result]
-      # @param key [Array(String, String)] [parent id, child id]
       # @return [String]
-      def finish(wait, child_id, key:, timeout:)
-        # The turn sent to is handed over: a later wait looks for a later one.
-        baselines.delete(key) if %i[done no_reply].include?(wait.status)
+      def finish(wait, child_id, timeout:)
         status = ParentReport.status(wait)
         case wait.status
         when :done
-          seen[key] = wait.file
           reply_result(child_id, status, wait.text)
         when :error
           result(child_id, status, "the child's worker failed: #{wait.text}; its session shows what happened")
@@ -153,14 +160,18 @@ module Samagotchi
       # child's baseline before the follow-up goes in.
       # @param child [Session] the child as loaded before sending
       def mark_seen(parent_id, child, state_dir:)
-        seen[[parent_id, child.id]] = ReplyWait.newest_reply(child.id, state_dir: state_dir)
-        baselines[[parent_id, child.id]] = ReplyWait.baseline_of(child)
+        newest = ReplyWait.newest_reply(child.id, state_dir: state_dir)
+        DelegateCursors.update(parent_id, child.id, state_dir: state_dir) do |cursor|
+          cursor.with(reply_file: newest).with_baseline(ReplyWait.baseline_of(child))
+        end
       end
 
       # A new child's baseline: as spawned, before its first turn ran.
       # @param child [Session] the session spawn_session returned
-      def mark_started(parent_id, child)
-        baselines[[parent_id, child.id]] = ReplyWait.baseline_of(child, question_id: nil)
+      def mark_started(parent_id, child, state_dir:)
+        DelegateCursors.update(parent_id, child.id, state_dir: state_dir) do |cursor|
+          cursor.with_baseline(ReplyWait.baseline_of(child, question_id: nil))
+        end
       end
 
       def reply_result(child_id, status, text)
