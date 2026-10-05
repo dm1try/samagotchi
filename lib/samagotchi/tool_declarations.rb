@@ -179,13 +179,13 @@ module Samagotchi
       },
       {
         name: "task_get",
-        description: "Get full metadata for a task by id. Use read on output_path to inspect command output.",
+        description: "Get a background task's metadata by its task id (from task_create or task_list; not a session id). Use read on output_path to inspect command output.",
         parameters: {
           type: "object",
           properties: {
             id: {
               type: "string",
-              description: "Task id returned by task_create"
+              description: "Task id from task_create/task_list, e.g. 20261005093000-1a2b3c4d"
             }
           },
           required: ["id"]
@@ -201,13 +201,13 @@ module Samagotchi
       },
       {
         name: "task_stop",
-        description: "Stop a running background task by id.",
+        description: "Stop a running background task by its task id (from task_create or task_list). Session ids don't work here.",
         parameters: {
           type: "object",
           properties: {
             id: {
               type: "string",
-              description: "Task id to stop"
+              description: "Task id from task_create/task_list, e.g. 20261005093000-1a2b3c4d"
             }
           },
           required: ["id"]
@@ -221,7 +221,7 @@ module Samagotchi
           properties: {
             task_id: {
               type: "string",
-              description: "Task id returned by task_create"
+              description: "Task id from task_create/task_list, e.g. 20261005093000-1a2b3c4d"
             },
             timeout: {
               type: "integer",

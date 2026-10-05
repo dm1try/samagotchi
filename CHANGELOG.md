@@ -23,6 +23,10 @@ and commands may change between minor versions. How releases are made:
 - The parent's record of which delegate replies its model already had is kept on disk (`delegates.json`), so a
   restarted worker no longer hands the model a reply again; `delegate_result` asked again about a question it
   already reported waits for its answer instead of repeating it.
+- A delegated child does only what its task asks: a question gets a report with the change it would make, not
+  file edits; it edits files only when the task asks for a change, and then only the files that takes.
+- `task_get`, `task_stop` and `task_wait` say they take a task id (from `task_create` or `task_list`, with an example),
+  not a session id: models passed session ids to them.
 
 ### Fixed
 
