@@ -673,6 +673,32 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
+/* Attached context (context_chips.js): a row of its own under the meta; not the composer's #chips/.chip. */
+#contextChips{order:5;flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+#contextChips[hidden]{display:none}
+#infoBar .ctx-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font:600 11px/1.5 ui-monospace,monospace;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3);border:1px solid var(--border-strong);white-space:nowrap}
+#infoBar .ctx-chip:hover,#infoBar .ctx-chip.open{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .ctx-chip.empty{color:var(--text-faint);border-style:dashed}
+#infoBar .ctx-chip.error{color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 55%,transparent);background:var(--danger-bg-dim)}
+.ctx-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
+.ctx-popover{position:fixed;z-index:60;max-height:min(60vh,520px);overflow:auto;padding:12px 14px;border-radius:12px;background:var(--bg-panel);color:var(--text-2);border:1px solid var(--border-strong);box-shadow:var(--toast-shadow);font-size:13px;line-height:1.45;display:flex;flex-direction:column;gap:6px}
+.ctx-popover[hidden]{display:none}
+.ctx-pop-head{display:flex;align-items:baseline;gap:8px}
+.ctx-pop-head strong{font-family:ui-monospace,monospace;color:var(--text-bright)}
+.ctx-pop-kind{font-size:11px;color:var(--text-muted)}
+.ctx-pop-close{margin-left:auto;padding:0 6px;border:none;background:transparent;color:var(--text-muted);font-size:16px;line-height:1}
+.ctx-pop-close:hover{color:var(--text)}
+.ctx-pop-why{color:var(--text)}
+.ctx-pop-hint{font-size:12px;color:var(--accent);word-break:break-all}
+.ctx-pop-summary{padding:6px 8px;border-radius:8px;background:var(--bg-inset);border-left:3px solid var(--accent-border)}
+.ctx-pop-meta{font-size:11px;color:var(--text-muted)}
+.ctx-pop-error{font-size:12px;color:var(--danger-text)}
+.ctx-pop-text{margin:0;max-height:240px;overflow:auto;padding:8px;border-radius:8px;background:var(--bg-inset);font:12px/1.45 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;color:var(--text-2)}
+.ctx-pop-actions{display:flex;gap:8px;justify-content:flex-end}
+.ctx-pop-actions button{padding:3px 10px;border-radius:7px;font-size:12px;font-weight:600;background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong)}
+.ctx-pop-actions button:hover{color:var(--text-hover)}
+.ctx-pop-actions .ctx-pop-detach{color:var(--text-muted);background:transparent}
+.ctx-pop-actions .ctx-pop-detach:hover{color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 55%,transparent)}
 /* Phones: the footer is one line; its meta scrolls sideways (all of it stays reachable) and the first-message line, the strip card's title, goes. */
 @media(max-width:600px){
   /* The key hint: cut off at this width, and phones have no Shift+Enter. */
@@ -689,6 +715,11 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   /* After the status (same order, later in the DOM): the meta scrolls, and only its start is in sight. */
   #infoBar .meta .mem-chip{display:inline;order:-1}
   #infoBar .meta .dir{word-break:normal}
+  /* The chips get a second line of their own (only when there are some), scrolling sideways. */
+  #infoBar:has(#contextChips:not([hidden])){flex-wrap:wrap;row-gap:4px}
+  #contextChips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  #contextChips::-webkit-scrollbar{display:none}
+  #contextChips>*{flex-shrink:0}
   #infoBar button{padding:4px 8px}
   /* Icon-only buttons (the words stay as the accessible name, the title says more): the meta gets the width. */
   #infoBar>button{font-size:0;line-height:0;padding:5px 7px}
@@ -892,6 +923,7 @@ a{color:var(--accent)}
       </div>
       <div id="infoBar">
         <div class="info" id="infoText"></div>
+        <div id="contextChips" aria-label="Attached context" hidden></div>
         <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
         <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
         <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>

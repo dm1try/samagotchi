@@ -17,6 +17,16 @@ and commands may change between minor versions. How releases are made:
   `delegate report> <child> answered: …`, and the bell rings when such a turn ends. A stopped or archived parent
   isn't woken: its reports join its next turn. New settings `session.delegate_reports` (`wake`, `queue`, `off`) and
   `session.max_wakes` (default 10 turns in a row with no human input; then reports wait for your next message).
+- Attached context: `chi context add NAME --cmd CMD` (or `--push`) attaches live external text to a session or,
+  with `--project`, to every session of the repository. A session's worker runs the command every so often
+  (`--every`, else the new setting `context.every_seconds`, 300) and leaves the model a short note when the text
+  changes; the model reads it with the new `context_read` tool when the user's request is about it. A command may
+  print plain text or JSON `{text, summary, wake, hint}`. Also `chi context push|ls|show|refresh|rm|mute|unmute`,
+  `/context` in every UI, and chips in the web's session bar (name · age, a dot for a change the model hasn't read,
+  red for a failing refresh) with a popover to read the text, detach or mute. Nothing reaches a session before its
+  first turn. The guardrails protect the store: the file tools can't write it, the shell asks (`shell-touches-chi`),
+  and the guardrails bundle (0.6.0) asks before each `chi context add --cmd` (`chi-context-cmd`, once at a time;
+  only the user may answer it).
 
 ### Changed
 
