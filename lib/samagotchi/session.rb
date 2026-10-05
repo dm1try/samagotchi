@@ -79,6 +79,11 @@ module Samagotchi
     # sets it); not saved.
     attr_accessor :seed_images_dropped
 
+    # The warning for a model id its host's saved list doesn't have
+    # (ModelProfile.model_warning; SessionManager.spawn_session sets it);
+    # not saved.
+    attr_accessor :model_warning
+
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", test_run: false, pending_question: nil,

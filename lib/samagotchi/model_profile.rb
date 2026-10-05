@@ -179,6 +179,49 @@ module Samagotchi
       raise UnknownHost, "unknown host '#{host}' in model '#{ref}'#{hint}; the configured hosts are #{names.join(", ")}"
     end
 
+    # A warning when +model_name+ resolves to a model id a host's saved
+    # list doesn't have (ModelListStore: what a `chi models`, a /models or
+    # the web's GET /api/models last listed for that host), else nil.
+    # Called where a session is spawned without listing the hosts itself
+    # (`chi send --new --model`, the delegate tool), so a typo is
+    # named before the worker's first turn fails on it. Only a warning: some
+    # hosts serve ids they don't list (a one-model llama.cpp server takes any
+    # name, OpenRouter's :nitro variants), so the session starts anyway.
+    # Never asks a host.
+    #
+    # Only a ref that names a host is checked (its alias resolved first, as
+    # ModelRef.parse does), and only against that host's own list: a bare id
+    # goes to whichever host lists it (HostRegistry#host_for_model), so no
+    # single list can judge it. Nothing is checked either without a saved
+    # list for the host or with one older than ModelListStore::TTL_SECONDS
+    # (a week: the host may serve different models by now).
+    # @param hosts [Hash, nil] the hosts a prefix may name (a HostRegistry's
+    #   entries); config.yml's by default
+    # @param lists [#read] ModelListStore by default
+    # @return [String, nil]
+    def self.model_warning(model_name, env: ENV, hosts: nil, lists: nil)
+      require_relative "config"
+      require_relative "model_list_store"
+      hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
+      lists ||= Samagotchi::ModelListStore
+      parsed = Samagotchi::ConfigFile.model_ref(model_name, env: env, hosts: hosts)
+      host = parsed.host_name
+      return nil unless host
+
+      list = lists.read(env: env)[host.to_s.strip.downcase]
+      return nil if list.nil? || list.stale? || list.known?(parsed.id)
+
+      unknown_model_message(parsed.id, host, list.ids)
+    end
+
+    # The warning for an id the host doesn't list, with up to three close
+    # ids (Config.near_names) when there are any.
+    def self.unknown_model_message(id, host, ids)
+      near = Samagotchi::Config.near_names(id, ids).first(3)
+      hint = near.empty? ? "" : " (did you mean: #{near.join(", ")}?)"
+      "host '#{host}' doesn't list model '#{id}'#{hint}; started it anyway; `chi models` lists what the hosts serve"
+    end
+
     # The prefix of "box:x" when box is a host config.yml has with
     # enabled: false (left out of +hosts+), else nil.
     def self.disabled_host_prefix(ref, hosts, env)

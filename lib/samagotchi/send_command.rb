@@ -241,9 +241,10 @@ module Samagotchi
 
     # A worker session like the web start page's: saved as running with the
     # message before its worker spawns, so lists and the web show it at
-    # once. The full id, so a script can pass it on. Only the model's host
-    # is checked here (in spawn_session, as in the web): a wrong model id
-    # fails in the worker.
+    # once. The full id, so a script can pass it on. The model's host is
+    # checked here (in spawn_session, as in the web): an unknown one is
+    # refused before anything is spawned; an id the host's saved model list
+    # doesn't have starts with a warning on stderr.
     # @return [Integer] the exit status
     def run_new(prompt, options)
       images = !@images.empty?
@@ -264,6 +265,7 @@ module Samagotchi
         error_line("chi send: could not start a session: #{e.message}")
         return 1
       end
+      error_line("chi send: warning: #{session.model_warning}") if session.model_warning
       if through_worker
         return 1 unless deliver_new(session, prompt)
       else
