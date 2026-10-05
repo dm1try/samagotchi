@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-05
+
 ### Added
 
 - chi saves the model ids each host last listed (`~/.local/state/samagotchi/model_lists.json`), so a command that
@@ -51,10 +53,12 @@ and commands may change between minor versions. How releases are made:
   loop-guard`), as the web does, instead of `✕`: a stop someone chose, not an error; a failed turn keeps `✕`.
 - Web stage: a call a guardrail blocked has a red tick and a red `✕` in the trail, as its `✕ BLOCKED` row, instead
   of its tool kind's colour.
-- Web: a command step with more than one heredoc says so on its chip, `EOF · 3 lines +1`, and the chip's hover
-  lists them all.
-- A step with more than one heredoc (`-f body="$(cat <<EOF …)" -f title="$(cat <<EOF …)"`) cuts out every body;
-  the step's chip still names the first (the web shows one chip for now).
+- A command step with more than one heredoc (`-f body="$(cat <<EOF …)" -f title="$(cat <<EOF …)"`) cuts every body
+  out of its text, and its chip says so: `EOF · 3 lines +1`, with all of them on hover.
+- A session worker survives a failed save between turns too (its first prompt, a command, taken notes, a dropped
+  question): it logs it and keeps going; notes whose save failed are kept and saved on the next pass.
+
+Update with `chi update` (source-links 0.3.4, mcp 0.4.4) and restart `chi web`.
 
 ## [0.29.0] - 2026-10-05
 
@@ -1548,7 +1552,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/dm1try/samagotchi/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/dm1try/samagotchi/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/dm1try/samagotchi/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/dm1try/samagotchi/compare/v0.26.0...v0.27.0
