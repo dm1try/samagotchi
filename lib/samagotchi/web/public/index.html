@@ -588,7 +588,7 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-title.quiet{font-family:inherit;font-style:italic;color:var(--text-faint)}
 .ts-trail{height:18px;display:flex;gap:10px;overflow:hidden;font-size:12px;line-height:18px;color:var(--text-faint);white-space:nowrap}
 .ts-trail-item{flex:none;max-width:36ch;overflow:hidden;text-overflow:ellipsis}
-.ts-trail-item.error{color:var(--danger-text)}
+.ts-trail-item:is(.error,.blocked){color:var(--danger-text)}
 .ts-trail-item.warn{color:var(--warn-text)}
 .ts-trail-item.stopped{color:var(--warn-text);opacity:.8}
 .ts-trail-item.info,.ts-trail-item.steer{color:var(--accent)}
@@ -625,6 +625,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-tick:is(.exec,.edit){background:var(--accent);opacity:.85}
 .ts-tick.other{background:var(--narr);opacity:.7}
 .ts-tick.error{background:var(--danger);opacity:1}
+/* A call a guardrail blocked: its ✕ BLOCKED row's red. */
+.ts-tick.blocked{background:var(--danger-text);opacity:1}
 /* A call the user's Stop cut: the ■ STOPPED rows' amber, still (running blinks). */
 .ts-tick.stopped{background:var(--warn-text);opacity:.8}
 .ts-tick.running{background:var(--warn);opacity:1;animation:ts-blink 1s ease-in-out infinite}

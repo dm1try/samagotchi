@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailMark,
+  flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
@@ -111,6 +111,14 @@ test("liveSlots: a completed turn with no answer (turn_summary.empty_answer) rea
   assert.equal(liveSlots(turn, { ended: "failed", emptyAnswer: true }).phase, "failed");
   // Not over yet: the flag means nothing.
   assert.equal(liveSlots(turn, { emptyAnswer: true }).phase, "thinking");
+});
+
+test("trailTone: error and blocked red, stopped amber, as their rows; ok and unknown none", () => {
+  assert.equal(trailTone("error"), "error");
+  assert.equal(trailTone("blocked"), "blocked");
+  assert.equal(trailTone("stopped"), "stopped");
+  assert.equal(trailTone("ok"), "");
+  assert.equal(trailTone(undefined), "");
 });
 
 test("isPlain: one step, no thinking, no tool rows, not over", () => {
