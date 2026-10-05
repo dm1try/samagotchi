@@ -657,7 +657,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar .meta .copy-attach{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong)}
 #infoBar .meta .copy-attach:hover{color:var(--text-hover);border-color:var(--border-strong)}
 #infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px}
-#infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);word-break:break-all}
+/* The whole path on one line: a long one loses its start ("…/project/dir", the end is what tells dirs apart); the title holds all of it. */
+#infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:48ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 /* The footer sits on the card's glass: its chips are tinted, not solid, so the glass reads through them. */
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3)}
 /* The memory chip ("mem 2", when the session used some): phones only, where the "mem: …" line is hidden. */
@@ -669,7 +670,7 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar .meta .worker-restart{padding:1px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--warn-bright);border:1px solid var(--warn-border)}
 #infoBar .meta .worker-restart:hover:not(:disabled){background:var(--warn-border);color:var(--on-warn)}
 #infoBar .meta .worker-restart:disabled{opacity:.7;cursor:default}
-#infoBar .preview-line{font-size:13px;word-break:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;line-height:1.4;max-height:2.8em}
+#infoBar .preview-line{font-size:13px;word-break:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;line-clamp:1;overflow:hidden;line-height:1.4;max-height:1.4em}
 #infoBar .preview-line .preview, #infoBar .preview-line .mem{word-break:break-word}
 #infoBar .mem{font-size:12px;color:var(--text-muted)}
 #infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
@@ -720,7 +721,6 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   #infoBar .meta .status{order:-1}
   /* After the status (same order, later in the DOM): the meta scrolls, and only its start is in sight. */
   #infoBar .meta .mem-chip{display:inline;order:-1}
-  #infoBar .meta .dir{word-break:normal}
   /* The chips get a second line of their own (only when there are some), scrolling sideways. */
   #infoBar:has(#contextChips:not([hidden])){flex-wrap:wrap;row-gap:4px}
   #contextChips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
