@@ -24,10 +24,13 @@ module Samagotchi
 
     # +status+: :new (a new revision), :same (the same text), :error (the
     # fetch failed: +error+), :busy (another process holds the lock),
-    # :fresh (tried within +fresh_within+, by someone else meanwhile).
+    # :fresh (tried within +fresh_within+, by someone else meanwhile),
+    # :cancelled (the caller stopped it: nothing recorded, since a worker
+    # leaving isn't the source failing).
     Outcome = Data.define(:status, :snapshot, :error)
-    # What the command did: +output+ its stdout, +error+ nil or why it failed.
-    Run = Data.define(:output, :error, :stderr)
+    # What the command did: +output+ its stdout, +error+ nil or why it
+    # failed, +cancelled+ the caller stopped it.
+    Run = Data.define(:output, :error, :stderr, :cancelled)
 
     module_function
 
@@ -49,7 +52,11 @@ module Samagotchi
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         run = run_command(attached.source.cmd, cwd: cwd, env: env_for(location, name), timeout: timeout,
                                                cancelled: cancelled)
-        outcome = record(location, name, run, before)
+        outcome = if run.cancelled
+                    Outcome.new(status: :cancelled, snapshot: before, error: nil)
+                  else
+                    record(location, name, run, before)
+                  end
         Log.info(:context, "fetched", name: name, scope: location.scope, status: outcome.status,
                                       ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round,
                                       error: outcome.error)
@@ -81,7 +88,7 @@ module Samagotchi
 
     # @return [Run]
     def run_command(cmd, cwd:, env:, timeout:, cancelled:)
-      return Run.new(output: nil, error: "its folder #{cwd} is gone", stderr: "") unless cwd && Dir.exist?(cwd)
+      return Run.new(output: nil, error: "its folder #{cwd} is gone", stderr: "", cancelled: false) unless cwd && Dir.exist?(cwd)
 
       out_r, out_w = IO.pipe
       err_r, err_w = IO.pipe
@@ -118,15 +125,18 @@ module Samagotchi
       [out_reader, err_reader].each { |thread| thread.join(KILL_GRACE_SECONDS) || thread.kill }
       stderr_text = stderr.dup.force_encoding(Encoding::UTF_8).scrub
       Log.debug(:context, "stderr", text: stderr_text[-1000..] || stderr_text) unless stderr_text.strip.empty?
+      return Run.new(output: nil, error: nil, stderr: stderr_text, cancelled: true) if error == :cancelled
+
       error ||= exit_error(status, stderr_text)
-      Run.new(output: output, error: error, stderr: stderr_text)
+      Run.new(output: output, error: error, stderr: stderr_text, cancelled: false)
     rescue SystemCallError => e
-      Run.new(output: nil, error: "couldn't run it: #{e.message}", stderr: "")
+      Run.new(output: nil, error: "couldn't run it: #{e.message}", stderr: "", cancelled: false)
     ensure
       [out_r, out_w, err_r, err_w].each { |io| io&.close unless io&.closed? }
     end
 
-    # @return [Array(String|nil, Process::Status|nil)] why it was stopped, and its status
+    # @return [Array(String|Symbol|nil, Process::Status|nil)] why it was
+    #   stopped (:cancelled for the caller), and its status
     def wait(pid, timeout:, over:, cancelled:)
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       loop do
@@ -134,7 +144,7 @@ module Samagotchi
         return [nil, status] if status
 
         reason = if over.call then "it printed more than 1 MiB"
-                 elsif cancelled.call then "stopped with the worker"
+                 elsif cancelled.call then :cancelled
                  elsif Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline then "timed out after #{timeout.round} s"
                  end
         return [reason, stop_group(pid)] if reason

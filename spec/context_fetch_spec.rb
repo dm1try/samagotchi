@@ -73,9 +73,17 @@ RSpec.describe Samagotchi::ContextFetch do
     expect(wait_until { !alive?(child) }).to be(true)
   end
 
-  it "kills it when the caller cancels (the worker stops)" do
-    outcome = fetch(source("sleep 30"), cancelled: -> { true })
-    expect(outcome.error).to eq("stopped with the worker")
+  # Smoke 2026-10-06: a worker's idle exit cut a project source's fetch,
+  # and every other session of the project got "couldn't refresh".
+  it "kills it when the caller cancels (the worker stops), recording nothing: a stop isn't the source's failure" do
+    attached = source("if [ -e slow ]; then sleep 30; fi; echo good")
+    fetch(attached)
+    FileUtils.touch(File.join(work, "slow"))
+
+    outcome = fetch(attached, cancelled: -> { true })
+
+    expect(outcome.status).to eq(:cancelled)
+    expect(loc.snapshot("src")).to have_attributes(text: "good\n", error: nil)
   end
 
   it "refuses more than 1 MiB of output" do

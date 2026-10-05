@@ -107,6 +107,6 @@ RSpec.describe Samagotchi::ContextPoller do
     poller.stop
 
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
-    expect(own.snapshot("hang").error).to eq("stopped with the worker")
+    expect(own.snapshot("hang")).to have_attributes(error: nil, checked_at: nil)
   end
 end
