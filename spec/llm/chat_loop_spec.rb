@@ -857,6 +857,19 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.conversation.last).to eq(role: "model", content: "Let me check the fi\n[interrupted]", interrupted: true)
     end
 
+    it "keeps the reasoning streamed before a cancel on the salvaged message" do
+      backend.adapter = FakeChatAdapter.new(lambda { |on_delta:, **|
+        on_delta.call(content: "", reasoning: "weighing the options", payload: {})
+        on_delta.call(content: "Let me check the fi", reasoning: "", payload: {})
+        raise Samagotchi::LLM::RequestCancelled, :ctrl_c
+      })
+
+      result = run(cancel_controller: controller)
+
+      expect(result.conversation.last).to eq(role: "model", content: "Let me check the fi\n[interrupted]", interrupted: true,
+                                             thinking: "weighing the options")
+    end
+
     it "catches a cancel between tool calls before the next request" do
       backend.adapter = adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "first" }]), text("should-not-reach"))
       allow(fake_kernel).to receive(:dispatch_tool_call) do

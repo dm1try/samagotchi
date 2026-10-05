@@ -16,6 +16,7 @@ require_relative "host_registry"
 require_relative "session"
 require_relative "owner_lock"
 require_relative "bridge/card_store"
+require_relative "bridge/pending_card"
 require_relative "engine"
 require_relative "guardrails/parent_approvals"
 require_relative "tools/memory"
@@ -298,7 +299,10 @@ module Samagotchi
     ensure
       # However it ends (the early returns too; the Engine was built in
       # #initialize): the anytime commands finish, the plugins' services
-      # stop (a server process).
+      # stop (a server process). Nothing resolves an open card any more, so
+      # its pending_card.json goes (a scratch session's folder is deleted
+      # below anyway; the others stay).
+      clear_pending_card
       @engine&.shutdown
       # A scratch session goes on every way out: /exit, Ctrl-D, an error,
       # SIGTERM or SIGHUP (Ruby raises those here). Only kill -9 leaves it
@@ -307,6 +311,17 @@ module Samagotchi
     end
 
     EMPTY_ANSWER_ERROR = "chi: the model gave an empty answer"
+
+    # The session is over for this process (its exits and the ensure below):
+    # nothing will resolve the open card any more, so its pending_card.json
+    # goes (the Engine's TURN_END would clear it, but the REPL may end
+    # mid-turn).
+    def clear_pending_card
+      return unless @pending_card_handle
+
+      @pending_card_handle.observer.clear
+      @pending_card_handle = nil
+    end
 
     # A -p --non-interactive turn that failed (bin/chi exits 1): the error,
     # then how to go on. The Engine saved the failed turn with its prompt,
@@ -415,13 +430,28 @@ module Samagotchi
       @surface.commit("Session #{session.id} was not archived (#{e.message}): chi sessions archive #{session.id}")
     end
 
-    # The session's cards.json, kept as a worker's Bridge keeps it (it owns
-    # the session as a worker would): this REPL's kept turns count on from
-    # the saved count, so a card an earlier worker showed stays that many
-    # turns back, and its own cards and notices are saved for the next.
+    # The session's cards.json and pending_card.json, kept as a worker's
+    # Bridge keeps them (it owns the session as a worker would): this REPL's
+    # kept turns count on from the saved count, so a card an earlier worker
+    # showed stays that many turns back, and its own cards and notices are
+    # saved for the next; an open card with actions is on disk, where
+    # `chi web`'s session hub reads it to mark the session as waiting.
     def keep_cards(session)
       path = File.join(Session.session_dir(session.id), Bridge::CardStore::FILE)
       @cards_handle ||= @engine.subscribe(observer: Bridge::CardStore.new(path: path))
+      keep_pending_card(session)
+    end
+
+    # A card a worker that died left isn't open: the file goes before the
+    # observer takes over, as Bridge#start does. Subscribed once: the REPL
+    # keeps one session, and a second observer would fold every card twice
+    # and clear the file at the first turn's end.
+    def keep_pending_card(session)
+      return if @pending_card_handle
+
+      pending = Bridge::PendingCard.new(Session.session_dir(session.id))
+      pending.clear
+      @pending_card_handle = @engine.subscribe(observer: pending)
     end
 
     # Take the session's OwnerLock for this process's lifetime: the TUI runs

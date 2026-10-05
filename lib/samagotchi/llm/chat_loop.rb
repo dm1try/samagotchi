@@ -338,8 +338,8 @@ module Samagotchi
             return canceled(iteration, @cancel_controller.reason) if @cancel_controller&.cancelled?
 
             inject_pending_input(iteration)
-            response, partial = generate(iteration)
-            return canceled(iteration, response, partial) if partial
+            response, partial, thought = generate(iteration)
+            return canceled(iteration, response, partial, thought) if partial
 
             if response.cut
               outcome = after_cut(iteration, response)
@@ -468,7 +468,7 @@ module Samagotchi
                                                messages: AnswerDisplay.strip_all(@conversation).map(&:dup).freeze })
           [response, nil]
         rescue RequestCancelled => e
-          [e.reason, streamed]
+          [e.reason, streamed, thought]
         end
 
         # The request runs under the generation's own controller (the turn
@@ -593,11 +593,17 @@ module Samagotchi
         end
 
         # The text streamed before the cancel stays, marked [interrupted],
-        # as the native loop's salvage does.
-        def canceled(iteration, reason, partial = "")
+        # as the native loop's salvage does; the reasoning this generation
+        # streamed rides along on the message (with_thinking's key).
+        def canceled(iteration, reason, partial = "", thinking = "")
           emit(type: :generation_cancelled, iteration: iteration, reason: reason, stopped_by: @cancel_controller&.stopped_by)
           visible = @loop.strip_model_thought(partial.to_s).strip
-          @conversation << { role: "model", content: "#{visible}\n[interrupted]", interrupted: true } unless visible.empty?
+          unless visible.empty?
+            message = { role: "model", content: "#{visible}\n[interrupted]", interrupted: true }
+            thought = thinking.to_s
+            message[:thinking] = thought unless thought.strip.empty?
+            @conversation << message
+          end
           conversation = @loop.plain(@conversation)
           conversation.last[:interrupted] = true unless visible.empty?
           ModelResult.new(text: "", conversation: conversation, canceled: true,

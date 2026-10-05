@@ -197,7 +197,8 @@ module Samagotchi
         emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: e.reason,
                    stopped_by: turn.cancel_controller&.stopped_by)
         return cancelled_result(turn.conversation, tool_activity: turn.tool_activity, reason: e.reason,
-                                                   partial_assistant_text: turn.buffer)
+                                                   partial_assistant_text: turn.buffer,
+                                                   streamed_thinking: turn.streamed_thinking)
       end
       finish(turn)
     rescue StandardError => e
@@ -239,8 +240,8 @@ module Samagotchi
     # context tracker and the retry budget, the tool activity, the visible
     # text streamed so far (salvaged on a cancel), the Qwen recovery state,
     # the prefill, and what the caller gave.
-    Turn = Struct.new(:conversation, :context, :empty_retry, :tool_activity, :buffer, :qwen_attempts, :qwen_partial,
-                      :prefill, :pending_tool_calls, :model_name, :pending_input, :on_stream_event,
+    Turn = Struct.new(:conversation, :context, :empty_retry, :tool_activity, :buffer, :streamed_thinking, :qwen_attempts,
+                      :qwen_partial, :prefill, :pending_tool_calls, :model_name, :pending_input, :on_stream_event,
                       :cancel_controller, :cap, :emit, :iteration, :empty_steps, :ended_empty, keyword_init: true)
     # One request: the prompt and its images as sent, the images' token
     # estimate, and the window it was measured against.
@@ -258,7 +259,8 @@ module Samagotchi
       conversation = prepare_conversation(messages)
       Turn.new(
         conversation: conversation, context: ContextStatus.new(conversation: conversation),
-        empty_retry: EmptyAnswerRetry.new, empty_steps: [], tool_activity: [], buffer: +"", qwen_attempts: 0, qwen_partial: nil,
+        empty_retry: EmptyAnswerRetry.new, empty_steps: [], tool_activity: [], buffer: +"", streamed_thinking: +"",
+        qwen_attempts: 0, qwen_partial: nil,
         # Qwen with thinking off: an empty thought after the cue, so the model
         # answers at once. Kept in the turn's model messages, so each tool-loop
         # prompt starts with what the server already has cached.
@@ -329,6 +331,9 @@ module Samagotchi
       generation = Generation.new(usage: nil, served_model: nil, streamed_thinking: 0)
       fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if @hooks
       buffer_mark = turn.buffer.length
+      # A cancel salvages only this generation's thinking: the earlier
+      # steps' is on their own messages already.
+      turn.streamed_thinking = +""
       generation.response = with_generation(turn.cancel_controller) do |generation_controller|
         request_generation(
           request.prompt,
@@ -342,6 +347,7 @@ module Samagotchi
             generation.usage = nil
             generation.cache = nil
             generation.streamed_thinking = 0
+            turn.streamed_thinking = +""
             generation.finish_reason = nil
             turn.emit.call({ type: :generation_retrying, iteration: turn.iteration }.merge(retry_event)) if turn.on_stream_event
           },
@@ -368,6 +374,7 @@ module Samagotchi
       generation.finish_reason = chunk[:finish_reason] if chunk[:finish_reason]
       split = stream_splitter.feed(chunk[:content])
       turn.buffer << split[:text]
+      turn.streamed_thinking << split[:thinking].to_s
       generation.streamed_thinking += split[:thinking].to_s.length
       return unless turn.on_stream_event
 
@@ -625,7 +632,7 @@ module Samagotchi
       ModelProfile.required_model_name(override)
     end
 
-    def cancelled_result(conversation, tool_activity:, reason:, partial_assistant_text: "")
+    def cancelled_result(conversation, tool_activity:, reason:, partial_assistant_text: "", streamed_thinking: "")
       partial = partial_assistant_text.to_s.strip
       conversation = duplicate_conversation(conversation)
       # Salvage the already-streamed visible reply (thought/tool_call lanes
@@ -633,7 +640,13 @@ module Samagotchi
       # cannot leak) so a follow-up steering message continues with the model's
       # half-finished work in context instead of losing it.
       unless partial.empty?
-        conversation << { role: "model", content: "#{partial}\n[interrupted]", interrupted: true }
+        message = { role: "model", content: "#{partial}\n[interrupted]", interrupted: true }
+        # The thinking this generation streamed goes with it (the chat loop's
+        # with_thinking key, which MessageParts reads and the prompt doesn't):
+        # without it, reloading the cut step shows the empty answer it isn't.
+        thinking = streamed_thinking.to_s
+        message[:thinking] = thinking unless thinking.strip.empty?
+        conversation << message
       end
       LLM::ModelResult.new(
         text: "",

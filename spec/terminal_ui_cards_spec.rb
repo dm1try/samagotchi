@@ -64,4 +64,51 @@ RSpec.describe "TerminalUI cards.json" do
 
     expect(written).to be false
   end
+
+  # The web hub reads pending_card.json to mark a session as waiting on an
+  # open card with actions (a worker's Bridge writes it); the REPL keeps the
+  # same file, so a card it shows is on disk too.
+  it "keeps the running turn's open card in pending_card.json, and the card's resolution removes it" do
+    dir = Samagotchi::Session.session_dir(session.id)
+    pending_path = File.join(dir, Samagotchi::Bridge::PendingCard::FILE)
+    ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
+    observer = ui.engine.instance_variable_get(:@session_observer)
+    open_card = { type: :card, id: "check-in-1", source: "check-in", title: "3 tool calls", body: "", in_turn: true,
+                  actions: [{ label: "Nudge", command: "/checkin nudge" }] }
+    seen = {}
+    allow(ui).to receive(:poll_input_with_reminder_check) do
+      observer.notify({ type: :turn_started })
+      observer.notify(open_card)
+      seen[:open] = Samagotchi::Bridge::PendingCard.read(dir)
+      observer.notify(open_card.merge(actions: []))
+      seen[:resolved] = File.exist?(pending_path)
+      "/exit"
+    end
+    allow(ui).to receive(:keep_after_exit)
+
+    ui.run
+
+    expect(seen[:open]).to eq(id: "check-in-1", bundle: "check-in")
+    expect(seen[:resolved]).to be false
+    expect(Samagotchi::Bridge::PendingCard.read(dir)).to be_nil
+  end
+
+  # A Bridge and the REPL never run one session at once (the OwnerLock), but
+  # the REPL's own Engine may already carry a PendingCard: subscribing one
+  # more for the same folder would fold every card twice (and clear the file
+  # on one turn's end while the other still holds it).
+  it "subscribes one PendingCard per session folder" do
+    ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
+    created = 0
+    allow(Samagotchi::Bridge::PendingCard).to receive(:new).and_wrap_original do |original, *args|
+      created += 1
+      original.call(*args)
+    end
+
+    ui.send(:keep_cards, session)
+    second = ui.send(:keep_pending_card, session)
+
+    expect(second).to be_nil
+    expect(created).to eq(1)
+  end
 end

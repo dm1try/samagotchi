@@ -29,6 +29,14 @@ and commands may change between minor versions. How releases are made:
   its tool kind's colour.
 - A call still running when its turn is canceled is saved in the session's tool records as `stopped` (was
   `canceled`), the word its row uses; one cut by a failed turn stays `canceled`.
+- A canceled turn's last step keeps the thinking it streamed, so reloading it shows the thought instead of an empty
+  step (both loops).
+- A plain REPL (`--no-shared`) keeps its session's `pending_card.json` as a worker does, so `chi web` marks a session
+  waiting on an open card it showed.
+- source-links: a ref that names its own repo (`other/repo#12`) takes `{host}` from the git remote only when the
+  source's `remote_host:` lists that host, so it can't link to the local checkout's host.
+- A step with more than one heredoc (`-f body="$(cat <<EOF …)" -f title="$(cat <<EOF …)"`) cuts out every body;
+  the step's chip still names the first (the web shows one chip for now).
 
 ## [0.29.0] - 2026-10-05
 
