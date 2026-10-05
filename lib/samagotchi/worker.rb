@@ -510,7 +510,7 @@ module Samagotchi
       count = SessionInbox.find_ring_files(@session_dir).map { |f| SessionInbox.read_ring(f)&.dig(:child_id) }.uniq.size
       @engine.announce(type: :hook_notice, hook: "delegate", level: :info, between_turns: true,
                        text: "#{count} delegate report#{"s" if count != 1} waiting; #{count == 1 ? "it joins" : "they join"} " \
-                             "your next message (#{max_wakes} turns ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
+                             "your next message (#{max_wakes} turn#{"s" if max_wakes != 1} ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
     end
 
     def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)

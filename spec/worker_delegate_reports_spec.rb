@@ -310,7 +310,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         child_answers("two")
         notice = nil
         expect(wait_until { notice = drain.find { |e| e[:type] == :hook_notice } }).to be_truthy
-        expect(notice[:text]).to start_with("1 delegate report waiting; it joins your next message")
+        expect(notice[:text]).to eq("1 delegate report waiting; it joins your next message (1 turn ran for reports in a row, session.max_wakes)")
         sleep(0.3)
         expect(wake_turns).to be_empty
         expect(drain.count { |e| e[:type] == :hook_notice }).to eq(1)
