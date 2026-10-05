@@ -5,6 +5,7 @@ require_relative "../paths"
 require_relative "../memory_paths"
 require_relative "../hooks/loader"
 require_relative "approval"
+require_relative "verdict"
 require_relative "protected_paths"
 require_relative "parent_continue"
 
@@ -40,10 +41,8 @@ module Samagotchi
       # They survive a PTY wrapper (script, expect). The docs list them too
       # (guardrails.md, sub-agent.md).
       AGENT_MARKERS = ["CLAUDECODE", "AI_AGENT", "CODEX_THREAD_ID", PARENT_SESSION_ENV].freeze
-      # Rules that ask about chi's own config and hooks: the core
-      # ProtectedPaths asks and the guardrails bundle's shell rule; and a
-      # command source for attached context (it runs later, ungated).
-      PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd].freeze
+      # Rules only the user may allow (Verdict::PROTECTED_RULES).
+      PROTECTED_RULES = Verdict::PROTECTED_RULES
       # A shell command naming chi's config, hooks, guardrails or attached
       # context as text (broad: a parent may not allow what only looks like
       # one). samagotchi/context stops before a word character or a dot, so
