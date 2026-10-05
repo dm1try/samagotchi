@@ -313,6 +313,33 @@ module Samagotchi
                  prompt_ms: timings["prompt_ms"]&.round)
     end
 
+    # Whether llama.cpp's slot +slot+ is processing a request now (GET
+    # /slots, its is_processing): :busy or :idle. nil when unknown: no slot,
+    # another transport, the endpoint off (--no-slots), a slot it doesn't
+    # list, a bad body or a network error. One quick attempt (PromptWarmup:
+    # a warm-up pinned to a busy slot waits behind that request, and the
+    # next turn behind the warm-up).
+    # @return [Symbol, nil]
+    def slot_status(slot, model: nil)
+      return nil unless @transport.native? && slot.is_a?(Integer)
+
+      model = model.to_s.strip
+      query = model.empty? ? "" : "?#{URI.encode_www_form(model: model)}"
+      uri = URI("#{@scheme}://#{@host}:#{@port}/slots#{query}")
+      response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false, check_status: false,
+                                  log_fields: { purpose: "slots" },
+                                  open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
+                                  read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT)
+      return nil unless response.code.to_s == "200"
+
+      entry = Array(JSON.parse(response.body.to_s)).find { |s| s.is_a?(Hash) && s["id"] == slot }
+      return nil unless entry&.key?("is_processing")
+
+      entry["is_processing"] == true ? :busy : :idle
+    rescue StandardError
+      nil
+    end
+
     private def stream_completion(prompt, fields, on_chunk, cancel_controller, on_retry)
       uri = completion_uri
       request = Net::HTTP::Post.new(uri)

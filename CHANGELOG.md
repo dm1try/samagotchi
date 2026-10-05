@@ -45,6 +45,8 @@ and commands may change between minor versions. How releases are made:
   cache produced one with another session's answer in it (ggml-org/llama.cpp#27148). chi now logs
   `generation_malformed`, shows `↻ malformed answer, asking again (1/1)` and asks once more without the prompt cache;
   a second corrupt generation fails the turn ("malformed generation from host …"). The half tool call never runs.
+- On llama.cpp, a parent's turn-end warm-up no longer waits behind a delegate child generating on the same slot, and
+  its next turn no longer waits behind that warm-up: the warm-up is skipped when `/slots` says the slot is busy.
 
 ## [0.30.0] - 2026-10-05
 

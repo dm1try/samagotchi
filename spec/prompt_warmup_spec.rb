@@ -11,6 +11,7 @@ RSpec.describe Samagotchi::PromptWarmup do
   let(:gate) { Queue.new }
 
   def start_held(slot: 1)
+    allow(client).to receive(:slot_status).and_return(:idle)
     allow(client).to receive(:warm_up) do
       gate.pop
       Samagotchi::Client::Warmup.new(slot: slot, cache_n: 10, prompt_n: 5, prompt_ms: 7)
@@ -59,7 +60,46 @@ RSpec.describe Samagotchi::PromptWarmup do
     end
   end
 
+  describe "a slot busy with another request (a delegate child's generation)" do
+    it "is not warmed up, and the next request is not pinned behind it" do
+      allow(client).to receive(:slot_status).with(2, model: "m").and_return(:busy)
+      allow(client).to receive(:warm_up)
+      allow(Samagotchi::Log).to receive(:info)
+
+      warmup.start(client: client, prompt: "head", model: "m", slot: 2)
+      expect(warmup.take_pin(client)).to be_nil
+      warmup.wait(2)
+
+      expect(client).not_to have_received(:warm_up)
+      expect(Samagotchi::Log).to have_received(:info).with(:model, "warmup_skipped", slot: 2, why: "slot busy")
+    end
+
+    it "is warmed up when /slots can't say (nil) or the slot is idle" do
+      [nil, :idle].each do |status|
+        allow(client).to receive(:slot_status).and_return(status)
+        allow(client).to receive(:warm_up).and_return(nil)
+
+        warmup.start(client: client, prompt: "head", model: "m", slot: 2)
+        warmup.wait(2)
+      end
+
+      expect(client).to have_received(:warm_up).twice
+    end
+
+    it "asks nothing for a warm-up without a slot" do
+      allow(client).to receive(:slot_status)
+      allow(client).to receive(:warm_up).and_return(nil)
+
+      warmup.start(client: client, prompt: "head", model: "m", slot: nil)
+      warmup.wait(2)
+
+      expect(client).not_to have_received(:slot_status)
+      expect(client).to have_received(:warm_up)
+    end
+  end
+
   it "logs a failed warm-up and never raises" do
+    allow(client).to receive(:slot_status).and_return(nil)
     allow(client).to receive(:warm_up).and_raise(Errno::ECONNREFUSED)
     allow(Samagotchi::Log).to receive(:warn)
 
