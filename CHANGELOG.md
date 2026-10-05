@@ -25,6 +25,8 @@ and commands may change between minor versions. How releases are made:
   step (both loops).
 - A plain REPL (`--no-shared`) keeps its session's `pending_card.json` as a worker does, so `chi web` marks a session
   waiting on an open card it showed.
+- source-links: a ref that names its own repo (`other/repo#12`) takes `{host}` from the git remote only when the
+  source's `remote_host:` lists that host, so it can't link to the local checkout's host.
 
 ## [0.29.0] - 2026-10-05
 

@@ -40,8 +40,12 @@ require "open3"
 # A `url:` template takes {match} (group 1, else the whole ref), {1}…{9}
 # (numbered groups), {name} (named groups), and {repo}/{host}: the named
 # group when it took part, else the project's (Dir.pwd's) git remote, asked
-# of git once per worker. A ref with a placeholder that can't be filled is
-# not linked; a `{word}` that is none of these stays text (warned at load).
+# of git once per worker. A {repo} the ref itself names ("other/repo#12")
+# is that ref's own, so its {host} comes from the remote only when the
+# source's `remote_host:` list has the remote's host: else the ref would
+# link to this checkout's host with someone else's repo. A ref with a
+# placeholder that can't be filled is not linked; a `{word}` that is none
+# of these stays text (warned at load).
 #
 # The note is not stored in the conversation: it is an event, replayed by a
 # UI only while the session's worker lives (a reload keeps it; a stopped
@@ -457,7 +461,7 @@ class SourceLinks
     when /\A\d+\z/ then match[word.to_i]&.then { |value| escape_url(value) }
     when "repo", "host"
       value = match.names.include?(word) ? match[word] : nil
-      value ||= remote_value(word, source)
+      value ||= remote_value(word, source, repo_from_match: match.names.include?("repo") ? match["repo"] : nil)
       word == "repo" ? escape_repo(value) : value&.then { |host| escape_url(host) }
     else match[word]&.then { |value| escape_url(value) }
     end
@@ -466,7 +470,16 @@ class SourceLinks
   # {repo} / {host} from the project's git remote (the source's `remote:`,
   # default origin); nil when there is none, or when its host is not one of
   # the source's `remote_host:` list.
-  def remote_value(word, source)
+  #
+  # +repo_from_match+: the match's own {repo}, when it has one. Such a ref
+  # names its own repo (`other/repo#12`), not the local checkout's, so its
+  # {host} may only come from the remote when the source lists that remote's
+  # host (remote_host:): else the ref would link to the local remote's host
+  # with someone else's repo.
+  def remote_value(word, source, repo_from_match: nil)
+    derived_host = word == "host" && !repo_from_match.to_s.empty?
+    return nil if derived_host && source[:remote_hosts].empty?
+
     remote = project_remote(source[:remote])
     return nil unless remote
 

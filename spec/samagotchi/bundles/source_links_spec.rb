@@ -380,6 +380,14 @@ RSpec.describe "The source-links bundle" do
                            "GitHub rails/rails#5 → https://github.com/rails/rails/issues/5"])
     end
 
+    it "fills {repo} and {host} from the remote for a pattern with no repo group" do
+      repo_with("origin" => "https://gitlab.example.com/group/proj.git")
+      github["pattern"] = '(?<![\w/&])#(\d+)\b'
+      github["url"] = "https://{host}/{repo}/-/issues/{1}"
+      Dir.chdir(tmp) { fire([model("#7")]) }
+      expect(texts).to eq(["sources: GitHub #7 → https://gitlab.example.com/group/proj/-/issues/7"])
+    end
+
     it "reads the remote named by remote:" do
       repo_with("origin" => "git@github.com:me/fork.git", "upstream" => "https://github.com/them/proj.git")
       github["remote"] = "upstream"
@@ -392,6 +400,21 @@ RSpec.describe "The source-links bundle" do
       github["url"] = "https://{host}/{repo}/-/issues/{num}"
       Dir.chdir(tmp) { fire([model("#4")]) }
       expect(texts).to eq(["sources: GitHub #4 → https://gitlab.example.com/group/sub/proj/-/issues/4"])
+    end
+
+    it "does not fill {host} from the remote for a ref that names its own repo" do
+      repo_with("origin" => "https://gitlab.example.com/group/sub/proj.git")
+      github["url"] = "https://{host}/{repo}/-/issues/{num}"
+      Dir.chdir(tmp) { fire([model("#4 and other/repo#12")]) }
+      expect(texts).to eq(["sources: GitHub #4 → https://gitlab.example.com/group/sub/proj/-/issues/4"])
+    end
+
+    it "fills {host} for such a ref when the remote's host is remote_host:" do
+      repo_with("origin" => "https://gitlab.example.com/group/sub/proj.git")
+      github["url"] = "https://{host}/{repo}/-/issues/{num}"
+      github["remote_host"] = "gitlab.example.com"
+      Dir.chdir(tmp) { fire([model("other/repo#12")]) }
+      expect(texts).to eq(["sources: GitHub other/repo#12 → https://gitlab.example.com/other/repo/-/issues/12"])
     end
 
     it "does not link a remote-derived ref when the remote's host is not remote_host:" do
