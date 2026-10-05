@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: the stop-task confirm names a task from an earlier turn by its command (the wait row's title), not its id.
+
 ## [0.29.0] - 2026-10-05
 
 ### Added

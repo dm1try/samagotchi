@@ -27,6 +27,16 @@ test("taskCommand: the command of this turn's task_create that started the task"
   assert.equal(taskCommand(undefined, ID), null);
 });
 
+test("taskCommand: a task from an earlier turn, by its task_wait row's title without the wait", () => {
+  const wait = { ...waitRow(), title: "npm run build +1 · up to 600s" };
+  assert.equal(taskCommand([{ tools: [wait] }], ID), "npm run build +1");
+  assert.equal(taskCommand([{ tools: [{ ...wait, view: { task_id: "other" } }] }], ID), null);
+  assert.equal(taskCommand([{ tools: [{ ...waitRow(), title: null }] }], ID), null);
+  // This turn's task_create still wins: the full command.
+  const create = { tool: "task_create", output: `task_id: ${ID}`, view: { command: "npm run build && npm test" } };
+  assert.equal(taskCommand([{ tools: [wait] }, { tools: [create] }], ID), "npm run build && npm test");
+});
+
 test("confirmText: the command on one line, cut, else the id", () => {
   assert.equal(confirmText(ID, "for i in 1 2;\n  do echo $i; done"), "Stop task for i in 1 2; do echo $i; done?");
   assert.equal(confirmText(ID, null), `Stop task ${ID}?`);
