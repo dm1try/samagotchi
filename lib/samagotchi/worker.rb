@@ -268,7 +268,7 @@ module Samagotchi
 
       Log.info(:worker, "dead_question_dropped", id: @session.pending_question[:id])
       @session.pending_question = nil
-      @session.save(state_dir: @state_dir)
+      save_or_log(:dead_question) { @session.save(state_dir: @state_dir) }
     end
 
     # spawn_session hands the first prompt over in last_prompt, but
@@ -285,7 +285,7 @@ module Samagotchi
 
       prompt = @session.last_prompt
       @session.last_prompt = ""
-      @session.save(state_dir: @state_dir)
+      save_or_log(:initial_prompt) { @session.save(state_dir: @state_dir) }
       prompt
     end
 
@@ -308,14 +308,16 @@ module Samagotchi
       return false unless queue_as_command(prompt, nil)
 
       @session.status = Session::STATUS_IDLE
-      save_session
+      save_or_log(:initial_command) { save_session }
       true
     end
 
     # Add the queued context notes to the conversation (between turns only,
     # on this thread), save, then delete their files: a crash before the
     # delete leaves them claimed, and Engine#add_context_note skips a note
-    # the saved conversation already holds. Not activity: a note alone
+    # the saved conversation already holds. A failed save keeps the files
+    # too: the next pass claims them again, finds them in the conversation
+    # and saves again. Not activity: a note alone
     # neither starts a turn nor keeps an idle worker up.
     def absorb_notes
       files = SessionInbox.find_new_note_files(@session_dir)
@@ -326,7 +328,8 @@ module Samagotchi
         note = SessionInbox.read_note(file)
         @engine.add_context_note(@session, note) if note
       end
-      @session.save(state_dir: @state_dir)
+      return unless save_or_log(:notes) { @session.save(state_dir: @state_dir) }
+
       claimed.each { |file| FileUtils.rm_f(file) }
     end
 
@@ -426,7 +429,7 @@ module Samagotchi
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
         shown.each { |event| @engine.announce(event) }
       end
-      save_session unless Array(result.changed).empty?
+      save_or_log(:command) { save_session } unless Array(result.changed).empty?
       user_input(command[:client_id]) if resolved
       @continue_offer.after_command(result, resolved: resolved)
       @continue_offer.run_continue_turn(command) if result.resume
@@ -515,16 +518,21 @@ module Samagotchi
       unless response.nil? || response.strip.empty? || @continue_offer.awaiting?
         SessionInbox.write_output(@session_dir, response)
       end
-      save_after_turn
+      save_or_log(:turn) { save_session }
     end
 
-    # The turn's own save: the turn ended fine and its messages are in
-    # memory, so a save that fails here (disk full, permissions; the next
-    # save writes them) must not take the worker down with it.
-    def save_after_turn
-      save_session
+    # A save between turns (the turn's own, a command's, the notes', the
+    # first prompt's): what it saves is in memory, so one that fails (disk
+    # full, permissions; the next save writes it) is logged and must not
+    # take the worker down with it.
+    # @param at [Symbol] which save, for the log
+    # @return [Boolean] whether it saved
+    def save_or_log(at)
+      yield
+      true
     rescue SystemCallError, IOError => e
-      Log.exception(:worker, "save_failed", e)
+      Log.exception(:worker, "save_failed", e, at: at)
+      false
     end
 
     # Back to the conversation before the failed turn, as the REPL does (so

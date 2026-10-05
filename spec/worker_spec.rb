@@ -5,6 +5,7 @@ require "tmpdir"
 require "net/http"
 require "json"
 require "support/test_kernel"
+require "support/failing_saves"
 
 require "samagotchi/engine"
 require "samagotchi/bridge"
@@ -198,38 +199,69 @@ RSpec.describe Samagotchi::Worker do
       expect(engine.due_reminder_names).to be_empty
     end
 
-    # Disk full or a permission error on the post-turn save: the turn itself
-    # ended fine, and its messages are in memory (the next save writes them).
-    it "keeps running when the post-turn save fails, and runs the next queued prompt" do
-      failed_saves = []
-      allow(Samagotchi::Log).to receive(:exception).and_wrap_original do |original, *args, **kwargs|
-        failed_saves << args[1] if args[1] == "save_failed"
-        original.call(*args, **kwargs)
+    # Disk full or a permission error on a save between turns: what it
+    # saves is in memory (the next save writes it), so the worker goes on.
+    describe "a failing save (Worker#save_or_log)" do
+      include_context "failing session saves"
+
+      it "keeps running when the post-turn save fails, and runs the next queued prompt" do
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          turns << [prompt, mono, kwargs]
+          saves_fail!
+          result
+        end
+        start_worker(poll_interval: 5)
+
+        post_turn("one")
+        expect(next_turn&.first).to eq("one")
+
+        expect(wait_until { !failed_saves.empty? }).to be(true)
+        expect(failed_saves).to eq([:turn])
+        expect(@thread).to be_alive
+
+        saves_fail!(false)
+        post_turn("two")
+        expect(next_turn&.first).to eq("two")
+        expect(@thread).to be_alive
       end
-      failing = false
-      allow_any_instance_of(Samagotchi::Session).to receive(:save).and_wrap_original do |original, **kwargs|
-        raise Errno::ENOSPC if failing
 
-        original.call(**kwargs)
+      it "starts when dropping a dead question can't be saved; the next save writes the drop" do
+        session.pending_question = { id: "q1", question: "Which?", options: %w[a b] }
+        session.save(state_dir: tmpdir)
+        saves_fail!
+
+        start_worker(poll_interval: 5)
+
+        expect(failed_saves).to eq([:dead_question])
+        expect(engine.session.pending_question).to be_nil
+        expect(@thread).to be_alive
+
+        saves_fail!(false)
+        post_turn("one")
+        expect(next_turn&.first).to eq("one")
+        expect(wait_until { Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question.nil? }).to be(true)
       end
-      allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
-        turns << [prompt, mono, kwargs]
-        failing = true
-        result
+
+      it "stays up when taking its first prompt can't be saved" do
+        session.messages = []
+        session.last_prompt = "first"
+        session.save(state_dir: tmpdir)
+        saves_fail!
+
+        start_worker(poll_interval: 5)
+
+        # The turn's own saves fail too: the one before it keeps it from
+        # beginning (logged as turn_not_begun), the worker stays up.
+        expect(wait_until { failed_saves.include?(:turn) }).to be(true)
+        expect(failed_saves.first).to eq(:initial_prompt)
+        expect(@thread).to be_alive
+
+        saves_fail!(false)
+        post_turn("two")
+        expect(next_turn&.first).to eq("two")
+        # Taken: a later worker won't run it again.
+        expect(wait_until { Samagotchi::Session.load(session.id, state_dir: tmpdir).last_prompt == "" }).to be(true)
       end
-      start_worker(poll_interval: 5)
-
-      post_turn("one")
-      expect(next_turn&.first).to eq("one")
-
-      expect(wait_until { !failed_saves.empty? }).to be(true)
-      expect(failed_saves).to eq(["save_failed"])
-      expect(@thread).to be_alive
-
-      failing = false
-      post_turn("two")
-      expect(next_turn&.first).to eq("two")
-      expect(@thread).to be_alive
     end
 
     describe "an archived session (ArchiveStore)" do
@@ -847,6 +879,44 @@ RSpec.describe Samagotchi::Worker do
         expect(turns).to be_empty
         saved = Samagotchi::Session.load(session.id, state_dir: tmpdir)
         expect([saved.model_name, saved.status, saved.last_prompt]).to eq(["Qwen3-14B", Samagotchi::Session::STATUS_IDLE, ""])
+      end
+
+      describe "a failing save" do
+        include_context "failing session saves"
+
+        it "stays up when a first-prompt command's saves fail" do
+          session.messages = []
+          session.last_prompt = "/model Qwen3-14B"
+          session.status = Samagotchi::Session::STATUS_RUNNING
+          session.save(state_dir: tmpdir)
+          saves_fail!
+
+          start_worker(poll_interval: 5)
+
+          wait_until(timeout: 2) { events_seen.any? { |e| e[:type] == :command_ran } }
+          expect(seen.find { |e| e[:type] == :command_ran }).to include(line: "/model Qwen3-14B", model_name: "Qwen3-14B")
+          expect(failed_saves).to include(:initial_prompt, :initial_command)
+          expect(@thread).to be_alive
+
+          saves_fail!(false)
+          expect(ran(JSON.parse(post_command("/model").body)["command_id"])).to include(status: "ok")
+        end
+
+        it "stays up when the save after a command fails" do
+          start_worker(poll_interval: 5)
+          saves_fail!
+
+          done = ran(JSON.parse(post_command("/model Qwen3-14B").body)["command_id"])
+
+          expect(done).to include(model_name: "Qwen3-14B")
+          expect(wait_until { failed_saves.include?(:command) }).to be(true)
+          expect(@thread).to be_alive
+
+          saves_fail!(false)
+          post_turn("after")
+          expect(wait_until { saved_messages.include?("after") }).to be(true)
+          expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).model_name).to eq("Qwen3-14B")
+        end
       end
 
       # A message queued as a file while no worker was up (chi send).

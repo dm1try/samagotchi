@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
+require "support/failing_saves"
 
 require "samagotchi/engine"
 require "samagotchi/bridge"
@@ -87,6 +88,28 @@ RSpec.describe Samagotchi::Worker, "context notes" do
     # The worker deletes the note files after it saved the session.
     expect(wait_until { Dir.empty?(notes_dir) }).to be(true)
     expect(turns.pop(timeout: 0.3)).to be_nil
+  end
+
+  describe "a failing save" do
+    include_context "failing session saves"
+
+    # Disk full: the note is in memory, and its file stays (claimed) until
+    # a save holds it, so a worker that dies first doesn't lose it.
+    it "stays up, keeps the note's file, and saves the note once a save works" do
+      start_worker
+      saves_fail!
+
+      path = write_note("deploy frozen")
+
+      expect(wait_until { failed_saves.include?(:notes) }).to be(true)
+      expect(@thread).to be_alive
+      expect(Dir.children(notes_dir)).to eq(["#{File.basename(path)}.processing"])
+
+      saves_fail!(false)
+      expect(wait_until { Dir.empty?(notes_dir) }).to be(true)
+      expect(saved_notes.map { |m| m[:note_id] }).to eq([File.basename(path, ".json")])
+      expect(events.count { |e| e[:type] == :context_added }).to eq(1)
+    end
   end
 
   it "takes a note sent during a turn after that turn, and the next turn sees it" do
