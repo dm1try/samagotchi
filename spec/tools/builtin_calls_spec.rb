@@ -65,8 +65,8 @@ RSpec.describe Samagotchi::Tools::BuiltinCalls do
   end
 
   it "says which are built in and how Gemma's fallback finds the main argument" do
-    expect(described_class.builtin?("edit")).to be(true)
-    expect(described_class.builtin?("echo_args")).to be(false)
+    expect(described_class.row("edit")).not_to be_nil
+    expect(described_class.row("echo_args")).to be_nil
     expect(described_class.row("task_wait").fallback_keys).to eq(%w[id task_id])
     expect(described_class.row("list_sessions")).to have_attributes(fallback: :prefix, fallback_keys: %w[cwd])
     expect(described_class.row("ask_user_question").fallback).to eq(:raw)

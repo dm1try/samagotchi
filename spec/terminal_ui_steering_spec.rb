@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       agent.run_engine_turn(session, "go")
 
       expect(surface.lines).to include("(exits after this turn; Ctrl-C cancels it)")
-      expect(agent.exit_after_turn?).to be(true)
+      expect(agent.instance_variable_get(:@exit_after_turn)).to be(true)
       expect(repl_input.pop(timeout: 0)).to be_nil
     end
   end
@@ -219,7 +219,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     agent.run_engine_turn(session, "go")
 
     expect(surface.lines).to include("(exits after this turn and deletes the session; Ctrl-C cancels the turn)")
-    expect(agent.exit_after_turn?).to be(true)
+    expect(agent.instance_variable_get(:@exit_after_turn)).to be(true)
     expect(agent.exit_action).to eq(:delete)
   end
 
@@ -246,7 +246,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     agent.run_engine_turn(session, "go")
 
     expect(surface.lines).to include("(exits after this turn; Ctrl-C cancels it)")
-    expect(agent.exit_after_turn?).to be(true)
+    expect(agent.instance_variable_get(:@exit_after_turn)).to be(true)
   end
 
   it "puts /archive typed during a turn back in the prompt instead of merging it into the turn" do

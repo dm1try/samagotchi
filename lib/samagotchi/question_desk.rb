@@ -180,9 +180,6 @@ module Samagotchi
       true
     end
 
-    # @return [Boolean] the pending question is a standing one
-    def standing? = @lock.synchronize { !@standing.nil? }
-
     private def ask(fields, watch)
       pending = publish(fields)
       id = pending[:id]
