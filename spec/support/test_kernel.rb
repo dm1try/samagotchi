@@ -20,7 +20,7 @@ module TestKernel
 
   # @param stubs [Hash] more Client methods and their answers
   def test_client(**stubs)
-    instance_double(Samagotchi::Client, invalidate_context_window!: nil, server_props: nil, cached_server_props: nil,
+    instance_double(Samagotchi::Client, invalidate_context_window!: nil, server_props: nil, cached_server_props: nil, slot_status: nil,
                                         transport: Samagotchi::Client::Transport.new(:llama_cpp), **stubs)
   end
 end

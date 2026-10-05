@@ -250,11 +250,13 @@ module Samagotchi
     #   this request runs on. PromptWarmup's pin, and only while a warm-up
     #   still runs there: a request pinned to a slot the server has since
     #   cleared skips its prompt cache and prefills everything again
+    # @param cache_prompt [Boolean] llama.cpp only: false prefills the whole
+    #   prompt, reusing nothing cached (a malformed generation's retry)
     # @return [String] the generated text
     def complete(prompt, stop: [], n_predict: nil, model: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil,
-                 images: [], sampling: {}, slot: nil)
+                 images: [], sampling: {}, slot: nil, cache_prompt: true)
       images = Array(images)
-      request = { stop: stop, n_predict: n_predict, model: model, sampling: sampling, slot: slot }
+      request = { stop: stop, n_predict: n_predict, model: model, sampling: sampling, slot: slot, cache_prompt: cache_prompt }
       return stream_completion(LLM::Utf8Scrub.call(prompt), request, on_chunk, cancel_controller, on_retry) if images.empty?
 
       # The media marker is random per server process: a restart between the
@@ -309,6 +311,33 @@ module Samagotchi
       timings = body["timings"].is_a?(Hash) ? body["timings"] : {}
       Warmup.new(slot: body["id_slot"], cache_n: timings["cache_n"], prompt_n: timings["prompt_n"],
                  prompt_ms: timings["prompt_ms"]&.round)
+    end
+
+    # Whether llama.cpp's slot +slot+ is processing a request now (GET
+    # /slots, its is_processing): :busy or :idle. nil when unknown: no slot,
+    # another transport, the endpoint off (--no-slots), a slot it doesn't
+    # list, a bad body or a network error. One quick attempt (PromptWarmup:
+    # a warm-up pinned to a busy slot waits behind that request, and the
+    # next turn behind the warm-up).
+    # @return [Symbol, nil]
+    def slot_status(slot, model: nil)
+      return nil unless @transport.native? && slot.is_a?(Integer)
+
+      model = model.to_s.strip
+      query = model.empty? ? "" : "?#{URI.encode_www_form(model: model)}"
+      uri = URI("#{@scheme}://#{@host}:#{@port}/slots#{query}")
+      response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false, check_status: false,
+                                  log_fields: { purpose: "slots" },
+                                  open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
+                                  read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT)
+      return nil unless response.code.to_s == "200"
+
+      entry = Array(JSON.parse(response.body.to_s)).find { |s| s.is_a?(Hash) && s["id"] == slot }
+      return nil unless entry&.key?("is_processing")
+
+      entry["is_processing"] == true ? :busy : :idle
+    rescue StandardError
+      nil
     end
 
     private def stream_completion(prompt, fields, on_chunk, cancel_controller, on_retry)
@@ -498,7 +527,7 @@ module Samagotchi
       URI("#{@scheme}://#{@host}:#{@port}#{@transport.completion_path}")
     end
 
-    def completion_payload(prompt, stop:, n_predict:, model:, sampling: {}, slot: nil)
+    def completion_payload(prompt, stop:, n_predict:, model:, sampling: {}, slot: nil, cache_prompt: true)
       payload = { prompt: prompt, stop: stop, stream: true }
       # A non-positive cap is dropped, which leaves the length to the server
       # (unbounded): 0 here never means "only process the prompt". The
@@ -508,7 +537,9 @@ module Samagotchi
       payload[:model] = model_name if model_name
       if @transport.native?
         # llama.cpp's default today, sent anyway: chi's next turn relies on it.
-        payload[:cache_prompt] = true
+        # false only for the retry of a malformed generation (KernelLoop),
+        # which a poisoned cache must not produce again.
+        payload[:cache_prompt] = cache_prompt != false
         payload[:id_slot] = slot if slot.is_a?(Integer)
       end
       sendable_sampling(sampling).merge(payload)

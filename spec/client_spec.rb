@@ -68,6 +68,48 @@ RSpec.describe Samagotchi::Client do
     end
   end
 
+  describe "#slot_status" do
+    def answer_slots(code, body)
+      requests = []
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) do |built_request|
+        requests << built_request
+        double("response", code: code, body: body.is_a?(String) ? body : body.to_json)
+      end
+      requests
+    end
+
+    let(:client) { described_class.new(host: "localhost", port: 8080) }
+
+    it "reads the slot's is_processing from GET /slots" do
+      requests = answer_slots("200", [{ "id" => 0, "is_processing" => false }, { "id" => 2, "is_processing" => true }])
+
+      expect(client.slot_status(2, model: "Ornith")).to eq(:busy)
+      expect(client.slot_status(0)).to eq(:idle)
+      expect(requests.first.path).to eq("/slots?model=Ornith")
+      expect(requests.last.path).to eq("/slots")
+    end
+
+    it "can't say (nil) for a slot it doesn't list, the endpoint off, a bad body or a network error" do
+      answer_slots("200", [{ "id" => 0, "is_processing" => true }])
+      expect(client.slot_status(3)).to be_nil
+      answer_slots("501", { "error" => "This server does not support slots endpoint." })
+      expect(client.slot_status(0)).to be_nil
+      answer_slots("200", "not json")
+      expect(client.slot_status(0)).to be_nil
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+      expect(client.slot_status(0)).to be_nil
+    end
+
+    it "asks nothing without a slot or on an OpenAI-compatible transport" do
+      expect(Net::HTTP).not_to receive(:start)
+
+      expect(client.slot_status(nil)).to be_nil
+      expect(described_class.new(host: "localhost", port: 8080, transport: :mlx).slot_status(1)).to be_nil
+    end
+  end
+
   describe "#warm_up" do
     def capture_post(answer)
       request = nil
@@ -229,6 +271,24 @@ RSpec.describe Samagotchi::Client do
       client.complete("prompt", stop: ["done"], sampling: { cache_prompt: false })
 
       expect(JSON.parse(request.body)).to include("cache_prompt" => true)
+    end
+
+    it "skips the prompt cache when asked (a malformed generation's retry)" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response", code: "200")
+      request = nil
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) do |built_request, &block|
+        request = built_request
+        block.call(response)
+      end
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      client.complete("prompt", stop: ["done"], cache_prompt: false)
+
+      expect(JSON.parse(request.body)).to include("cache_prompt" => false)
     end
 
     it "pins the request to a slot only when asked, and only on llama.cpp" do

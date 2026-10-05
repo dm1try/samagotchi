@@ -166,7 +166,7 @@ module Samagotchi
         # this worker runs, where it showed live.
         when :guardrail_warning then push({ type: :guardrail_warning, message: event[:message], label: event[:label] }
                                             .compact.merge(in_turn: false, turns: @turns_done))
-        when :empty_answer_retry then add_turn_row(event.slice(:type, :attempt, :of, :stopped_by)) if @running
+        when :empty_answer_retry then add_turn_row(event.slice(:type, :attempt, :of, :stopped_by, :malformed)) if @running
         when :steer_cut then add_turn_row(event.slice(:type, :source)) if @running
         when :question_requested
           add_turn_row({ type: :question, pending_question: Marshal.load(Marshal.dump(event[:pending_question])) }) if @running

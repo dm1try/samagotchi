@@ -40,6 +40,13 @@ and commands may change between minor versions. How releases are made:
 - `task_get`, `task_stop` and `task_wait` take only an id shaped like task_create's (`20261005093000-1a2b3c4d`): an id
   such as `../x` could read a `task.json` outside `tmp/tasks`. Anything else is `task not found`.
 - `task_wait` for an unknown task said `Error: Error: task not found: …`; it now says it once.
+- A corrupt Gemma 4 generation on a llama.cpp host (a tool call never closed, or a fresh thought header after the
+  answer text) was saved as the answer, and a delegate report passed it on to the parent. A poisoned llama.cpp prompt
+  cache produced one with another session's answer in it (ggml-org/llama.cpp#27148). chi now logs
+  `generation_malformed`, shows `↻ malformed answer, asking again (1/1)` and asks once more without the prompt cache;
+  a second corrupt generation fails the turn ("malformed generation from host …"). The half tool call never runs.
+- On llama.cpp, a parent's turn-end warm-up no longer waits behind a delegate child generating on the same slot, and
+  its next turn no longer waits behind that warm-up: the warm-up is skipped when `/slots` says the slot is busy.
 
 ## [0.30.0] - 2026-10-05
 

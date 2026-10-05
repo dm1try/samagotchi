@@ -11,7 +11,7 @@ module Samagotchi
     module TurnNotice
       FIELDS = {
         hook_notice: %i[hook text level],
-        empty_answer_retry: %i[iteration attempt of stopped_by],
+        empty_answer_retry: %i[iteration attempt of stopped_by malformed],
         steer_cut: %i[iteration source],
         question_requested: %i[pending_question],
         question_answered: %i[id answer],

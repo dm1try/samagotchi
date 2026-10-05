@@ -40,6 +40,8 @@ module Samagotchi
       TOOL_CALL_BODY_RE = /\Acall:([a-z_][a-z0-9_]{0,49})\{/
       THOUGHT_CHANNEL_OPEN  = ModelProfile::GEMMA_THOUGHT_CHANNEL_OPEN
       THOUGHT_CHANNEL_CLOSE = ModelProfile::GEMMA_THOUGHT_CHANNEL_CLOSE
+      # Any channel's header (a thought's is THOUGHT_CHANNEL_OPEN).
+      THOUGHT_CHANNEL_HEADER = "<|channel>"
       CONTROL_TOKEN_START = "<|"
 
       def initialize(profile)
@@ -120,7 +122,42 @@ module Samagotchi
         [parse(response.to_s), nil]
       end
 
+      # Why +text+ (one generation) is corrupt, or nil. A Gemma 4
+      # generation ends a tool call with its close (the stop then comes at
+      # <|tool_response>), and thinks once, before the answer. A poisoned
+      # llama.cpp prompt cache (ggml-org/llama.cpp#27148) broke both: a
+      # call left open, then a fresh thought header and another
+      # conversation's answer.
+      def malformed(text)
+        text = text.to_s
+        return "unclosed tool call" if unclosed_tool_call?(text)
+
+        "thought header after the answer" if thought_after_answer?(strip_tool_calls(text))
+      end
+
       private
+
+      def unclosed_tool_call?(text)
+        pos = 0
+        while (open_pos = text.index(@tool_call_open, pos))
+          close_pos = text.index(@tool_call_close, open_pos + @tool_call_open.length)
+          return true unless close_pos
+
+          pos = close_pos + @tool_call_close.length
+        end
+        false
+      end
+
+      # A <|channel> header with visible text before it.
+      def thought_after_answer?(text)
+        pos = 0
+        while (header = text.index(THOUGHT_CHANNEL_HEADER, pos))
+          return true unless strip_thought(text[0...header]).strip.empty?
+
+          pos = header + THOUGHT_CHANNEL_HEADER.length
+        end
+        false
+      end
 
       # Scan forward from +start+ for the next <| sequence that is NOT the Gemma
       # string delimiter <|"|>.  Returns the position of that <| or nil if none.
@@ -306,6 +343,9 @@ module Samagotchi
       def parse(text)
         read(text).map { |call| Tools::BuiltinCalls.build(call[:name], call[:args]) }
       end
+
+      # An open <tool_call> has its own recovery (#parse_with_recovery).
+      def malformed(_text) = nil
 
       # Each <tool_call> block as {name:, args:}: its <parameter=…>
       # (or <arg_key>/<arg_value>) text by lowercased key, unbuilt.

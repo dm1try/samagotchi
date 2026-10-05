@@ -48,7 +48,8 @@
     "cases": [
       { "event": { "attempt": 1, "of": 1 }, "expected": "↻ empty answer, asking again (1/1)" },
       { "event": { "attempt": 1, "of": 2 }, "expected": "↻ empty answer, asking again (1/2)" },
-      { "event": { "attempt": 1, "of": 1, "stopped_by": "loop-guard" }, "expected": "↻ cut by loop-guard, asking again (1/1)" }
+      { "event": { "attempt": 1, "of": 1, "stopped_by": "loop-guard" }, "expected": "↻ cut by loop-guard, asking again (1/1)" },
+      { "event": { "attempt": 1, "of": 1, "malformed": true }, "expected": "↻ malformed answer, asking again (1/1)" }
     ]
   },
   "steer_cut_lines": {
