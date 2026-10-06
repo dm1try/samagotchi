@@ -58,6 +58,34 @@ test("the all view puts a delegated session right after its parent; the family k
   assert.equal(withChildrenAfterParents(plain), plain);
 });
 
+test("withChildrenAfterParents nests at any depth: a grandchild follows its own parent, depth first", () => {
+  const p = { id: "p" };
+  const c = { id: "c", parent_id: "p" };
+  const g = { id: "g", parent_id: "c" };
+  const x = { id: "x" };
+  assert.deepEqual(withChildrenAfterParents([g, c, p, x]).map((s) => s.id), ["p", "c", "g", "x"]);
+  // Siblings in the list's order, each followed by its own subtree.
+  const c2 = { id: "c2", parent_id: "p" };
+  const g2 = { id: "g2", parent_id: "c2" };
+  assert.deepEqual(withChildrenAfterParents([c2, g, x, c, g2, p]).map((s) => s.id), ["x", "p", "c2", "g2", "c", "g"]);
+});
+
+test("withChildrenAfterParents: a family's place comes from its newest member at any depth", () => {
+  const p = { id: "p", updated_at: "2026-09-25T08:00:00.000Z" };
+  const c = { id: "c", parent_id: "p", updated_at: "2026-09-25T08:30:00.000Z" };
+  const g = { id: "g", parent_id: "c", updated_at: "2026-09-25T12:00:00.000Z" };
+  const o = { id: "o", updated_at: "2026-09-25T10:00:00.000Z" };
+  assert.deepEqual(withChildrenAfterParents([o, c, p, g]).map((s) => s.id), ["p", "c", "g", "o"]);
+});
+
+test("withChildrenAfterParents shows every session of a parent cycle once", () => {
+  const a = { id: "a", parent_id: "b", updated_at: "2026-09-25T09:00:00.000Z" };
+  const b = { id: "b", parent_id: "a", updated_at: "2026-09-25T08:00:00.000Z" };
+  const k = { id: "k", parent_id: "b", updated_at: "2026-09-25T07:00:00.000Z" };
+  const self = { id: "s", parent_id: "s", updated_at: "2026-09-25T10:00:00.000Z" };
+  assert.deepEqual(withChildrenAfterParents([self, a, b, k]).map((s) => s.id), ["s", "a", "b", "k"]);
+});
+
 test("listedSessions leaves archived sessions out unless asked, and keeps the list's order", () => {
   const hidden = { id: "h", archived: true };
   const list = [a, hidden, b];
