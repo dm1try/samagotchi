@@ -58,6 +58,16 @@ test("api errors carry the HTTP status (a 404 means the session is gone)", async
   );
 });
 
+// The page matches on the code, never on the message's words: a turn's
+// refused images are bad_images (not the upload's bad_image).
+test("api errors carry the server's error code", async () => {
+  const fail = (body, status) => api("/api/sessions/1/turn", { fetchImpl: () => Promise.resolve(okResponse(body, status)) });
+  await assert.rejects(() => fail({ error: "bad_images", detail: "unknown image ref" }, 400),
+    (e) => e.code === "bad_images" && e.status === 400 && e.message === "unknown image ref (400)");
+  await assert.rejects(() => fail({ error: "owned_by_tui", detail: "open in a chi REPL" }, 409), (e) => e.code === "owned_by_tui");
+  await assert.rejects(() => fail({}, 500), (e) => e.code === null);
+});
+
 test("listSessions builds sort and order query params", async () => {
   const calls = [];
   await listSessions("updated_at", "desc", {

@@ -87,11 +87,13 @@ test("resultText for questions is unchanged", () => {
 // 4.27: only a 503 (no live bridge) means the session isn't running; any
 // other failure shows what the server or the worker said.
 test("answerErrorText: 503 says restart, anything else shows the detail", () => {
-  const err = (message, status) => Object.assign(new Error(message), status ? { status } : {});
+  const err = (message, status, code) => Object.assign(new Error(message), status ? { status } : {}, code ? { code } : {});
   assert.equal(answerErrorText(err("no live bridge for session s1 (503)", 503)), "Session is not running — restart it to answer.");
   // The status alone is enough: the message needn't spell it out.
   assert.equal(answerErrorText(err("no live bridge for session s1", 503)), "Session is not running — restart it to answer.");
-  assert.equal(answerErrorText(err("not_live (503)")), "Session is not running — restart it to answer.");
+  // The server's code says it too; the message's words don't.
+  assert.equal(answerErrorText(err("gone", null, "not_live")), "Session is not running — restart it to answer.");
+  assert.equal(answerErrorText(err("not_live here (502)", 502)), "not_live here (502)");
   assert.equal(answerErrorText(err("the question desk raised (502)", 502)), "the question desk raised (502)");
   assert.equal(answerErrorText(err("question already answered (409)", 409)), "question already answered (409)");
   assert.equal(answerErrorText(err("Failed to fetch")), "Failed to fetch");
