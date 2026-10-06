@@ -218,6 +218,23 @@ RSpec.describe "delegate reports" do
       expect(rings).to be_empty
     end
 
+    it "still reports the reply after a wait that timed out or was canceled: neither moves the cursor" do
+      own(child)
+      Samagotchi::Session.load(child.id, state_dir: tmpdir).tap { |s| s.status = "running" }.save(state_dir: tmpdir)
+      before = cursor
+      expect(Samagotchi::Tools::DelegateWait.call(child.id, peers: peers, timeout: 0)).to include("no reply yet after 0 s")
+      canceled = Samagotchi::Tools::Peers.new(session_id: parent.id, state_dir: tmpdir, cancelled: -> { true })
+      expect(Samagotchi::Tools::DelegateWait.call(child.id, peers: canceled, timeout: 5)).to include("wait canceled")
+      expect(cursor).to eq(before)
+
+      write_reply(child, "done after the wait")
+      end_turn(child)
+      ring
+
+      taken = reports.take
+      expect(taken.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\ndone after the wait"])
+    end
+
     it "makes one report of two rings from one child" do
       write_reply(child, "the reply")
       end_turn(child)

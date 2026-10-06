@@ -21,6 +21,9 @@ RSpec.describe "delegate tools" do
     Samagotchi::Tools::Peers.new(session_id: parent.id, cwd: parent.working_directory, state_dir: tmpdir,
                                  cancelled: -> { cancelled[0] })
   end
+  # A worker's parent: only its Engine gives a relay, and only it gets
+  # delegate reports (DelegateWait.reports_mode).
+  let(:worker_peers) { peers.dup.tap { |p| p.relay = Object.new } }
 
   before do
     stub_const("Samagotchi::Tools::DelegateWait::POLL_INTERVAL", 0.05)
@@ -97,7 +100,7 @@ RSpec.describe "delegate tools" do
 
     it "starts a child in the parent's folder, on its model, with the delegated memory and the task as its first message" do
       parent
-      out = described_class.call("count the specs", wait: false, peers: peers)
+      out = described_class.call("count the specs", wait: false, peers: worker_peers)
 
       ids = session_files - [parent.id]
       expect(ids.size).to eq(1)
@@ -110,7 +113,8 @@ RSpec.describe "delegate tools" do
       expect(child.status).to eq("running")
       expect(child.last_prompt).to eq("count the specs")
       expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; chi brings its reply to you by itself " \
-                        "when it ends its turn (a delegate report); don't poll with delegate_result. " \
+                        "when it ends its turn (a delegate report), starting a turn for it if you are idle: end your turn or " \
+                        "keep working; don't poll with delegate_result. " \
                         "It shows in chi sessions list and the web as a child of this session; the user can attach to it.")
       expect(Process).to have_received(:spawn)
     end
@@ -298,15 +302,30 @@ RSpec.describe "delegate tools" do
 
       it "returns at once without waiting" do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
-        out = described_class.call("more", session: child.id, wait: false, peers: peers)
+        out = described_class.call("more", session: child.id, wait: false, peers: worker_peers)
         expect(out).to start_with("session: #{child.id}\nstatus: running\nSent the follow-up to delegate #{child.id[0, 8]}; chi brings its reply")
       end
 
       it "says delegate_result waits for the reply when delegate reports are off" do
         allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("off")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+        out = described_class.call("more", session: child.id, wait: false, peers: worker_peers)
+        expect(out).to include("Sent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits for its reply.")
+      end
+
+      it "says the reply joins the next turn, not a wake, when delegate reports queue" do
+        allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("queue")
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+        out = described_class.call("more", session: child.id, wait: false, peers: worker_peers)
+        expect(out).to include("; chi adds its reply to your next turn by itself (a delegate report; you aren't woken while idle); " \
+                               "don't poll with delegate_result.")
+      end
+
+      it "promises no report to a parent that can't get one (a REPL, -p: no relay)" do
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
         out = described_class.call("more", session: child.id, wait: false, peers: peers)
         expect(out).to include("Sent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits for its reply.")
+        expect(out).not_to include("delegate report")
       end
     end
   end
@@ -417,6 +436,62 @@ RSpec.describe "delegate tools" do
 
     it "says so when the child's session is gone" do
       expect(described_class.call("no-such-id", peers: peers, timeout: 1)).to eq("Error: Session not found: no-such-id")
+    end
+
+    # A timeout or a cancel leaves the cursor where it was, so the reply
+    # still comes as a delegate report to a parent that gets them.
+    describe "what a timeout, a cancel or an open question says about the reply to come" do
+      let(:mode) { ["wake"] }
+
+      before { allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports") { mode[0] } }
+
+      def timed_out(p) = described_class.call(child.id, peers: p, timeout: 0)
+
+      def canceled(p)
+        child
+        cancelled[0] = true
+        described_class.call(child.id, peers: p, timeout: 5)
+      end
+
+      # A new question each time: one reported already isn't reported again.
+      def asked(p)
+        @asked = @asked.to_i + 1
+        set_status(child, "running", pending_question: { id: "q#{@asked}", question: "Which one?", options: %w[A B] })
+        described_class.call(child.id, peers: p, timeout: 5)
+      end
+
+      it "wake: the reply comes as a delegate report, also after the turn ends; waiting again only if this turn needs it" do
+        expect(timed_out(worker_peers)).to eq("session: #{child.id}\nstatus: running\nno reply yet after 0 s; the child keeps running. " \
+                                              "chi brings its reply here by itself as a delegate report when it ends its turn " \
+                                              "(also after you end yours), so carry on or end your turn. Only if this turn can't go " \
+                                              "on without it: delegate_result #{child.id} waits again. chi --attach #{child.id} shows it.")
+        expect(asked(worker_peers)).to end_with("Once it is answered, chi brings the child's next reply here as a delegate report; " \
+                                                "delegate_result #{child.id} waits for it only if this turn needs it.")
+        expect(canceled(worker_peers)).to eq("session: #{child.id}\nstatus: running\n" \
+                                             "wait canceled; the child keeps running; chi brings its reply as a delegate report")
+      end
+
+      it "queue: the reply joins this turn's next step or the next turn; no wake" do
+        mode[0] = "queue"
+        expect(timed_out(worker_peers)).to include("no reply yet after 0 s; the child keeps running. chi adds its reply to your " \
+                                                   "turn at its next step, or to your next turn, as a delegate report (you are not " \
+                                                   "woken while idle), so carry on or end your turn.")
+        expect(asked(worker_peers)).to end_with("chi brings the child's next reply here as a delegate report; " \
+                                                "delegate_result #{child.id} waits for it only if this turn needs it.")
+        expect(canceled(worker_peers)).to end_with("chi brings its reply as a delegate report")
+      end
+
+      it "off, or a parent with no relay (a REPL, -p): delegate_result waits again, as before reports" do
+        mode[0] = "off"
+        off = [timed_out(worker_peers), asked(worker_peers)]
+        mode[0] = "wake"
+        expect([timed_out(peers), asked(peers).sub("--question q2", "--question q1")]).to eq(off)
+        expect(off[0]).to eq("session: #{child.id}\nstatus: running\nno reply yet after 0 s; the child keeps running. " \
+                             "delegate_result #{child.id} waits again; chi --attach #{child.id} shows it.")
+        expect(off[1]).to end_with("delegate_result #{child.id} waits again once it is answered.")
+        expect(canceled(peers)).to eq("session: #{child.id}\nstatus: running\n" \
+                                      "wait canceled; the child keeps running; delegate_result #{child.id} waits again")
+      end
     end
 
     describe "the cursor on disk (DelegateCursors)" do

@@ -63,17 +63,24 @@ module Samagotchi
         return note + DelegateWait.call(child_id, peers: peers, timeout: timeout) if wait
 
         started = session.to_s.strip.empty? ? "Started a delegate session" : "Sent the follow-up to delegate #{child_id[0, 8]}"
-        "#{note}session: #{child_id}\nstatus: running\n#{started}; #{running_hint} " \
+        "#{note}session: #{child_id}\nstatus: running\n#{started}; #{running_hint(peers)} " \
           "It shows in chi sessions list and the web as a child of this session; the user can attach to it."
       rescue ArgumentError => e
         "Error: #{e.message}"
       end
 
-      # How the reply of a child left running comes back.
-      def self.running_hint
-        return "delegate_result waits for its reply." if ChildRing.mode == "off"
-
-        "chi brings its reply to you by itself when it ends its turn (a delegate report); don't poll with delegate_result."
+      # How the reply of a child left running comes back: a report only
+      # reaches a parent that can get one (DelegateWait.reports_mode).
+      def self.running_hint(peers)
+        case DelegateWait.reports_mode(peers)
+        when "off" then "delegate_result waits for its reply."
+        when "queue"
+          "chi adds its reply to your next turn by itself (a delegate report; you aren't woken while idle); " \
+            "don't poll with delegate_result."
+        else
+          "chi brings its reply to you by itself when it ends its turn (a delegate report), starting a turn for it " \
+            "if you are idle: end your turn or keep working; don't poll with delegate_result."
+        end
       end
       private_class_method :running_hint
 

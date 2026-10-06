@@ -9,6 +9,10 @@ require_relative "delegate_relay"
 require_relative "delegate_cursor"
 
 module Samagotchi
+  # Loaded on first use: child_reports requires this file (a circular
+  # require otherwise).
+  autoload :ChildRing, File.expand_path("../child_reports", __dir__)
+
   module Tools
     # Waiting for a delegated session's next reply, shared by delegate and
     # delegate_result: ReplyWait in the tools' words, with the status words
@@ -58,6 +62,7 @@ module Samagotchi
         key = [peers.session_id, child_id]
         cancelled = -> { peers.cancelled? }
         relay = peers.respond_to?(:relay) ? peers.relay : nil
+        reports = reports_mode(peers)
         others = relay && others_for(peers.session_id, child_id, relay, sd)
         cursor = DelegateCursors.get(peers.session_id, child_id, state_dir: sd)
         baseline = cursor.baseline
@@ -72,12 +77,12 @@ module Samagotchi
           unless wait.status == :waiting_for_answer && DelegateRelay.relayable?(relay, wait.question)
             outcomes.concat(relayed_outcomes.delete(key) || [])
             advance(peers.session_id, child_id, wait, state_dir: sd)
-            return with_outcomes(finish(wait, child_id, timeout: timeout), outcomes)
+            return with_outcomes(finish(wait, child_id, timeout: timeout, reports: reports), outcomes)
           end
 
           outcome = DelegateRelay.call(child_id, wait.question, relay: relay, state_dir: sd, more: others&.count.to_i)
           outcomes << outcome.line
-          return with_outcomes(canceled_result(child_id), outcomes) if outcome.stopped
+          return with_outcomes(canceled_result(child_id, reports: reports), outcomes) if outcome.stopped
 
           # Wait on with the child as it is now: a turn that ends with no
           # reply after the relay still ends the wait, and the relayed
@@ -104,8 +109,26 @@ module Samagotchi
         text.sub(/\A(session: [^\n]*\nstatus: [^\n]*\n)/) { "#{::Regexp.last_match(1)}#{outcomes.join("\n")}\n" }
       end
 
-      def canceled_result(child_id)
-        result(child_id, "running", "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
+      # How a child's reply reaches this parent when no wait takes it:
+      # "wake" (a delegate report, a turn of its own when idle), "queue" (a
+      # report at its next step or turn, no wake) or "off" (only
+      # delegate_result). Only a worker's session reads its children's rings
+      # (its Engine gives a relay); a REPL, a -p run or a scratch session
+      # never gets a report.
+      # @param peers [Peers]
+      # @return [String] "wake", "queue" or "off"
+      def reports_mode(peers)
+        return "off" unless peers.respond_to?(:relay) && peers.relay
+
+        ChildRing.mode
+      end
+
+      def canceled_result(child_id, reports: "off")
+        if reports == "off"
+          return result(child_id, "running", "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
+        end
+
+        result(child_id, "running", "wait canceled; the child keeps running; chi brings its reply as a delegate report")
       end
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -135,8 +158,10 @@ module Samagotchi
       # @param wait [ReplyWait::Result]
       # @param report [Boolean] a delegate report's text (ChildReports), not
       #   the tool's: a question's last line says chi brings the next reply
+      # @param reports [String] #reports_mode: what a timeout, a cancel or
+      #   a question tells the model about the reply to come
       # @return [String]
-      def finish(wait, child_id, timeout:, report: false)
+      def finish(wait, child_id, timeout:, report: false, reports: "off")
         status = ParentReport.status(wait)
         case wait.status
         when :done
@@ -146,16 +171,16 @@ module Samagotchi
         when :stopped
           result(child_id, status, "the child was stopped (chi sessions stop); delegate with session: #{child_id} starts it again with a message")
         when :waiting_for_answer
-          result(child_id, status, waiting_text(child_id, wait.question, report: report))
+          result(child_id, status, waiting_text(child_id, wait.question, report: report, reports: reports))
         when :canceled
-          canceled_result(child_id)
+          canceled_result(child_id, reports: reports)
         when :no_reply
           result(child_id, status, "#{no_reply_text(wait, child_id)}; its session shows what happened")
         when :worker_gone
           result(child_id, status,
                  "the child's worker is gone (it stopped or crashed); delegate with session: #{child_id} starts it again with a message")
         else
-          timeout_result(child_id, timeout)
+          timeout_result(child_id, timeout, reports: reports)
         end
       end
 
@@ -191,10 +216,24 @@ module Samagotchi
         "session: #{child_id}\nstatus: #{status}\n#{text}"
       end
 
-      def timeout_result(child_id, timeout)
+      # The cursor didn't move (#advance), so the reply still comes as a
+      # delegate report when this parent can get one.
+      def timeout_result(child_id, timeout, reports: "off")
+        head = "no reply yet after #{timeout.to_i} s; the child keeps running."
+        if reports == "off"
+          return result(child_id, "running",
+                        "#{head} delegate_result #{child_id} waits again; chi --attach #{child_id} shows it.")
+        end
+
+        comes = if reports == "queue"
+                  "chi adds its reply to your turn at its next step, or to your next turn, as a delegate report " \
+                    "(you are not woken while idle)"
+                else
+                  "chi brings its reply here by itself as a delegate report when it ends its turn (also after you end yours)"
+                end
         result(child_id, "running",
-               "no reply yet after #{timeout.to_i} s; the child keeps running. delegate_result #{child_id} waits again; " \
-               "chi --attach #{child_id} shows it.")
+               "#{head} #{comes}, so carry on or end your turn. Only if this turn can't go on without it: " \
+               "delegate_result #{child_id} waits again. chi --attach #{child_id} shows it.")
       end
 
       # The whole question, as `chi send --wait` prints it (ParentReport):
@@ -205,7 +244,8 @@ module Samagotchi
       # report back.
       # A report's last line differs (+report+): "waits again" made models
       # call delegate_result right after answering Continue.
-      def waiting_text(child_id, pending, report: false)
+      # The tool's last line follows #reports_mode.
+      def waiting_text(child_id, pending, report: false, reports: "off")
         text = "Child #{child_id} is #{ParentReport.question_text(pending, session_id: child_id)}"
         if ParentReport.continue?(pending)
           text += "The child ran out of steps before it answered. Decide: continue it (run the chi answer command " \
@@ -213,8 +253,10 @@ module Samagotchi
                   "session: #{child_id} (that drops the question); or stop it and report back to your user.\n"
         end
         return "#{text}#{REPORT_NEXT_REPLY}" if report
+        return "#{text}delegate_result #{child_id} waits again once it is answered." if reports == "off"
 
-        "#{text}delegate_result #{child_id} waits again once it is answered."
+        "#{text}Once it is answered, chi brings the child's next reply here as a delegate report; " \
+          "delegate_result #{child_id} waits for it only if this turn needs it."
       end
 
       def cut(text)
