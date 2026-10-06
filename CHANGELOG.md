@@ -22,8 +22,16 @@ and commands may change between minor versions. How releases are made:
 - A parent session shows its delegate children at a glance: a `⑂ 3` chip in its web info bar (how many run, wait,
   are done or failed in the tooltip; the waiting ones in the attention colour; a click opens all sessions), and
   `⑂ 2 running · 1 waiting` in the terminal's status row.
+- A hook's `event[:notify]` and a plugin's `ctx.notify` take `fallback_for: :display`: the line repeats what the
+  answer's display (`event[:present]`) shows, so a UI that renders the display leaves it out. The web with markdown
+  on does; the REPL, the attached TUI, `chi -p` and the web with markdown off still show it. See
+  [docs/hooks.md](docs/hooks.md#what-a-hook-can-do-the-runtime).
 
 ### Changed
+
+- source-links 0.4.0 (needs chi 0.35.0; run `chi update`): with markdown on, the web no longer shows the
+  `sources:` line under an answer that links every ref it names; it still shows when a ref is only in code or
+  markdown is off, and the terminals print it as before.
 
 - `chi note --source broadcast` is refused: that source is `chi broadcast`'s.
 - Web: a parent's delegates fold into its card, on the strip and in all sessions, instead of being cards of their

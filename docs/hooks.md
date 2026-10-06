@@ -82,6 +82,8 @@ class Watchful
     when :after_generation
       # One line in the REPL, the attached TUI and the web ("<bundle>> text",
       # or "hook> text" for a config hook); level: :warn colours it.
+      # fallback_for: :display marks a line a UI that renders the answer's
+      # display may leave out (below).
       event[:notify].call("the model repeated itself", level: :warn)
     when :before_tool_call
       # A single-select question through the question flow (REPL, attached
@@ -113,6 +115,21 @@ end
 `event[:hook]` is the label the notices carry: `known_names.rb (bundle
 known-names)` for a bundle hook, `audit.rb (config)` for a config hook,
 `turn hook` for one registered at runtime.
+
+`event[:notify]` also takes `fallback_for:`, what the line stands in for, so
+that a UI that already shows it can leave the line out. The one value is
+`:display`: the line repeats what the hook's
+[`event[:present]`](#presenting-the-answer-display-only) display shows (its
+links), for a UI that doesn't render that display. The hook never names a UI;
+each decides by what it renders. The web with markdown on (`web.markdown` and
+the commonmarker gem) leaves such a line out, live and after a reload; with
+markdown off it shows, as it does in the REPL, the attached TUI and
+`chi -p`, which print the answer as text. The log keeps the line with
+`fallback_for=display`. Another value, or none, shows the line everywhere.
+Mark a line only when the display really shows all of it (source-links marks
+its note only when the answer links every URL the note names). It needs chi
+0.35.0: an older chi's `event[:notify]` raises `ArgumentError` on the keyword,
+so a bundle that passes it sets `requires_chi: ">= 0.35.0"`.
 
 A steer is saved in the session as `{role: "user", kind: "steer", source:
 "<bundle>", content: "…"}`, its text raw. The model reads it as a user turn
@@ -504,8 +521,8 @@ sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123, JIRA JIRA-10 → 
 ```
 
 The note is **not part of the conversation**: it is an event shown to the
-user, never stored in the session file. A UI replays it while the session's
-worker lives (a page reload keeps it; a stopped worker loses it). Only the
+user, never stored in the session file. A UI replays it with the session's
+cards (a page reload keeps it, after the worker stopped too). Only the
 model's final answer is scanned (the last `role: "model"` message), and only
 the first 20 000 characters of it. A ref that is already a link is skipped —
 inside a bare URL (`https://x.com/JIRA-123`), in a markdown link's target, or
@@ -543,7 +560,11 @@ text stays as it was, and the links survive a reload and a stopped worker
 apply, and a ref in code (a `` `span` `` or a fenced block) or anywhere in a
 markdown link is left as it is; past the first 20 000 characters the answer
 is unchanged. The terminals see only the line; `note: false` drops it and
-keeps the web links.
+keeps the web links. With markdown on, the web leaves the line out when the
+answer links every URL it names, since it would only repeat them as plain
+text ([`fallback_for: :display`](#what-a-hook-can-do-the-runtime)); it shows
+when it names one the answer doesn't link (a ref only in code, two sources on
+one ref) and whenever markdown is off. Bundle 0.4.0 needs chi 0.35.0 for that.
 
 The `prefix:` form compiles to `\b<prefix>-(\d+)\b` and the URL is
 `base_url` + the full ref text (`JIRA-123`). The `pattern:` form takes a
