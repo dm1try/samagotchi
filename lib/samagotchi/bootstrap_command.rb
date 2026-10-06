@@ -83,7 +83,10 @@ module Samagotchi
       return options if options.is_a?(Integer)
 
       key_env = options[:key_env]
-      return fail!("#{key_env} is not set; export it first (the API key; chi only writes its name)") if key_env && unset?(key_env)
+      if key_env && unset?(key_env)
+        fail!("#{key_env} is not set; export it first (the API key; chi only writes its name)")
+        return @exit
+      end
 
       result = find(options, key_env) or return @exit
       unlocked = with_key(result, key_env) or return @exit
