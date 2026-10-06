@@ -520,6 +520,40 @@ test("all sessions: a card's archive button hides it without opening it, the toa
   await expect(card).not.toHaveClass(/archived/);
 });
 
+test("all sessions: select mode archives a Shift-click range and one more pick in one batch, Undo brings them back", async ({ page, script }) => {
+  script("plain");
+  const ids = [];
+  for (const n of [1, 2, 3]) {
+    const res = await page.request.post(new URL("/api/sessions", page.url()).href, { data: { prompt: `Bulk archive pong ${n}` } });
+    ids.push((await res.json()).id);
+  }
+  await page.locator("#allTile").click();
+  await page.locator("#filter").fill("Bulk archive pong");
+  const cards = page.locator("#allList .card[data-id]");
+  // Idle first: a running turn is refused (busy).
+  for (const id of ids) await expect(page.locator(`#allList .card[data-id="${id}"] .status.idle`)).toBeVisible({ timeout: 15_000 });
+  await expect(cards).toHaveCount(3);
+
+  await page.locator("#selectBtn").click();
+  await cards.nth(0).click();
+  await cards.nth(1).click({ modifiers: ["Shift"] });
+  await expect(page.locator("#selectCount")).toHaveText("2 selected");
+  await cards.nth(2).locator(".card-pick").click();
+  await expect(page.locator("#selectCount")).toHaveText("3 selected");
+  await expect(cards.locator(".card-pick:checked")).toHaveCount(3);
+  await expect(page).toHaveURL(/#\/sessions$/);
+
+  await page.locator("#batchArchiveBtn").click();
+  await expect(page.locator("#toast")).toContainText("Archived 3");
+  await expect(cards).toHaveCount(0);
+  await expect(page.locator("#selectCount")).toHaveText("0 selected");
+
+  await page.locator("#toast .toast-action").click();
+  await expect(page.locator("#toast")).toContainText("Unarchived 3");
+  await expect(cards).toHaveCount(3);
+  await expect(cards.locator(".card-pick:checked")).toHaveCount(0);
+});
+
 test("the info bar: copy chi --attach copies the full id, delete removes the session after the confirm", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
