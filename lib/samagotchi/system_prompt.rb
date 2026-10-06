@@ -413,17 +413,25 @@ module Samagotchi
         .find { |path| File.file?(path) }
     end
 
-    # Where the session runs and which project memory folder it uses. The root
-    # line appears only when it differs from the cwd (a worktree or subdir).
+    # Where the session runs and which project memory folder it uses. Only
+    # this checkout is named: its top when the cwd is a subfolder, and in a
+    # linked worktree a line that work stays in it. The repository's main
+    # checkout (MemoryPaths.project_root, which scopes memories and session
+    # lists) is never shown: a model told its path went to work there
+    # (a worktree child committed onto main, 2026-10-03 and 2026-10-06).
     # The home directory is spelled out once so the model copies the right
     # sequence, with the advice to write it as ~ or $HOME instead.
     def project_location
       cwd = Dir.pwd
-      root = MemoryPaths.project_root(cwd)
+      top = MemoryPaths.work_tree_root(cwd)
       lines = ["Current working directory:", cwd]
-      unless root == cwd
-        lines << "Project root (only where shared project memories come from; read, edit, run and commit in the current working directory above):"
-        lines << root
+      if top && top != cwd
+        lines << "Top of this checkout (where the project's commands run from; stay inside it):"
+        lines << top
+      end
+      if top && MemoryPaths.project_root(cwd) != top
+        lines << "This checkout is a linked git worktree: read, edit, run and commit only in it, never in the " \
+                 "repository's other checkouts."
       end
       home = Dir.home
       lines << "Home directory: #{home} (write it as ~ or $HOME in commands and paths)" unless home.to_s.empty?

@@ -15,7 +15,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 | `system` | `$XDG_CONFIG_HOME/samagotchi/memories/`, default `~/.config/samagotchi/memories/` (`MemoryPaths.system_dir`) | User-wide preferences, identity, cross-project knowledge |
 | `project` | `<system dir>/projects/<basename>_<hash>/` (`MemoryPaths.project_dir`: `basename(root)` + 8-char `MD5(root)`, root = `MemoryPaths.project_root`) | Repo-specific conventions, workflow, stack decisions |
 
-- The project root is the git repository: its common git dir, which every linked worktree shares. All worktrees and subdirectories of one repository share one project folder; the system prompt shows the resolved root and folder. Outside a repository the root is the working directory. A separate clone is a different project.
+- The project root is the git repository: its common git dir, which every linked worktree shares. All worktrees and subdirectories of one repository share one project folder; the system prompt shows that folder (not the root: in a linked worktree, work stays in the worktree). Outside a repository the root is the working directory. A separate clone is a different project.
 - `index.md` lives in each scope dir and contains auto-managed lines like `- **name** · scope · date · bytes — description`; a memory a bundle installed adds `· from <bundle>` before the description. Your free-form sections in `index.md` are preserved but managed lines are owned by `memory_write` (and refreshed when `write`/`edit` change a memory's file).
 
 ## Tools you have

@@ -126,26 +126,50 @@ RSpec.describe Samagotchi::Engine do
 
     let(:repo) { File.join(@tmp, "repo") }
 
-    it "shows the project root and memories folder from a linked worktree" do
+    it "in a linked worktree says to work only there and never names the main checkout; memories stay the repository's" do
       tree = File.join(@tmp, "repo-flip")
       git("-C", repo, "worktree", "add", "-q", "-b", "flip", tree)
       folder = Dir.chdir(repo) { Samagotchi::Tools::MemoryRead.memories_dir("project") }
 
-      expect(project_prompt_in(tree)).to include(<<~TEXT.chomp)
+      prompt = project_prompt_in(tree)
+      expect(prompt).to include(<<~TEXT.chomp)
         Current working directory:
         #{tree}
-        Project root (only where shared project memories come from; read, edit, run and commit in the current working directory above):
-        #{repo}
+        This checkout is a linked git worktree: read, edit, run and commit only in it, never in the repository's other checkouts.
         Home directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)
         Project memories folder:
         #{folder}
       TEXT
+      expect(prompt).not_to include("#{repo}\n")
+      expect(prompt).not_to include("Project root")
     end
 
-    it "shows no root line at the repository root" do
+    it "in a subfolder of a linked worktree names that worktree's top, not the main checkout" do
+      tree = File.join(@tmp, "repo-flip")
+      git("-C", repo, "worktree", "add", "-q", "-b", "flip", tree)
+      sub = File.join(tree, "lib")
+      FileUtils.mkdir_p(sub)
+
+      prompt = project_prompt_in(sub)
+      expect(prompt).to include("Current working directory:\n#{sub}\nTop of this checkout (where the project's commands run " \
+                                "from; stay inside it):\n#{tree}\nThis checkout is a linked git worktree")
+      expect(prompt).not_to include("#{repo}\n")
+    end
+
+    it "in a subfolder of the main checkout names its top, with no worktree line" do
+      sub = File.join(repo, "lib")
+      FileUtils.mkdir_p(sub)
+
+      prompt = project_prompt_in(sub)
+      expect(prompt).to include("Current working directory:\n#{sub}\nTop of this checkout (where the project's commands run " \
+                                "from; stay inside it):\n#{repo}\nHome directory:")
+      expect(prompt).not_to include("linked git worktree")
+    end
+
+    it "shows no other location line at the repository root" do
       prompt = project_prompt_in(repo)
       expect(prompt).to include("Current working directory:\n#{repo}\nHome directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)\nProject memories folder:\n")
-      expect(prompt).not_to include("Project root (")
+      expect(prompt).not_to include("Top of this checkout")
     end
 
     it "names the home directory once, with the advice to write it as ~ or $HOME" do
