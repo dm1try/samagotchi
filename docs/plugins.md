@@ -1176,16 +1176,11 @@ by themselves there.
   has Refresh and a `Stop <id>` per running or waiting child (up to 5);
   `/children stop <id>` stops one of this session's own children (by session
   id, as `chi sessions stop` does) and shows the card again.
-- **Guardrails: use strict mode.** A child's guardrails measure from its own
-  worktree, but the rules that ask before a write or a mutating git command
-  outside it (`write-outside-repo`, `git-outside-repo` in the guardrails
-  bundle) run only with `guardrails.mode: strict`. Without the guardrails
-  bundle in strict mode, a child isn't asked before it writes or commits
-  outside its worktree, in your own checkout say. `/coordinate` says so
-  when that is the case, and the plugin logs it once at load
-  (`children_unguarded`). Set it up with `chi bundle install guardrails`
-  (it is in the `core` profile) and `guardrails: {mode: strict}` in
-  `config.yml`.
+- **Children stay in their worktree.** A child asks before it changes
+  anything outside its worktree (your checkout, a sibling's), in every
+  guardrails mode and without the guardrails bundle ([a delegate child's
+  boundary](guardrails.md#a-delegate-childs-boundary)); you answer on its
+  card, or on the parent's while it waits.
 - **Merges.** The parent's merge in its own checkout is a plain `git
   merge`; to be asked before every merge, add a rule ([Rules in
   config.yml](guardrails.md#rules-in-configyml)):

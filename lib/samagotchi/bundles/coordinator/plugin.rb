@@ -18,11 +18,8 @@
 # for the goal. A REPL session (--no-shared) takes no messages: the request
 # is shown for the user to send.
 #
-# Children are asked before writing or committing outside their worktree
-# only with the guardrails bundle in strict mode (its write-outside-repo and
-# git-outside-repo rules are strict-only): /coordinate says so when that is
-# missing, and the plugin logs it once at load (a log line, not a notice:
-# every session of the dev profile loads this plugin).
+# A child is asked before it changes anything outside its worktree by chi
+# itself (the core child-boundary guardrail), in every mode: nothing to set up.
 class Plugin
   CARD_ID = "children"
   # A card takes 6 actions: Refresh and up to 5 Stops.
@@ -31,8 +28,6 @@ class Plugin
   TEXT_CHARS = 80
   USAGE = "usage: /children [all] | /children stop <id>"
   COORDINATE_USAGE = "usage: /coordinate <goal> — chi splits it into tasks, one child session and worktree each"
-  UNGUARDED = "Warning: %s, so a child isn't asked before it writes or commits outside its worktree (in your own " \
-              "checkout, say). To be asked: chi bundle install guardrails, and set guardrails.mode: strict in config.yml."
 
   def initialize(_settings = {}); end
 
@@ -40,10 +35,6 @@ class Plugin
     chi.command "/children", "this session's child sessions: state, branch, last reply; all, stop <id>",
                 anytime: true do |args, ctx|
       children_command(args.to_s.strip, ctx)
-    end
-    chi.init("coordinator: check guardrails", quiet: true) do |ctx|
-      gap = guard_gap
-      ctx.log.warn(:children_unguarded, why: gap) if gap
     end
     chi.command "/coordinate", "run work in parallel: chi splits <goal> into tasks, each in a child session and worktree",
                 anytime: true do |args, ctx|
@@ -107,23 +98,12 @@ class Plugin
     return COORDINATE_USAGE if goal.empty?
 
     request = "Read the skill_coordinator memory and follow it for this goal:\n\n#{goal}"
-    warning = (gap = guard_gap) ? "\n\n#{format(UNGUARDED, gap)}" : ""
     begin
       ctx.sessions.send(ctx.session_id, request)
     rescue Samagotchi::Plugin::Sessions::Error => e
-      return "/coordinate: #{e.message}. Send this yourself:\n\n#{request}#{warning}"
+      return "/coordinate: #{e.message}. Send this yourself:\n\n#{request}"
     end
-    "asked chi to coordinate it; a running turn gets it at its next step#{warning}"
-  end
-
-  # Why children wouldn't be asked before writing outside their worktree,
-  # or nil when the guardrails bundle is installed, on, and strict.
-  def guard_gap
-    return "the guardrails bundle isn't installed" unless Samagotchi::MemoryBundle::Provenance.new(name: "guardrails").installed?
-    return "guardrails are off (guardrails.enabled: false)" if Samagotchi::Config.get("guardrails.enabled") == false
-
-    mode = (Samagotchi::Config.get("guardrails.mode") || "auto").to_s
-    mode == "strict" ? nil : "guardrails.mode is #{mode}, not strict"
+    "asked chi to coordinate it; a running turn gets it at its next step"
   end
 
   def quote(text)

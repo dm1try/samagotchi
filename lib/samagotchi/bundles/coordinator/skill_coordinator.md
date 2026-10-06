@@ -38,10 +38,8 @@ Use when the user hands over work with several independent parts, or asks to "ru
 8. When all are done, report: what merged, what didn't and why, follow-ups found but not fixed.
 
 ## Gotchas
-- Children are asked before writing or committing outside their worktree only with the guardrails
-  bundle in strict mode (`guardrails.mode: strict`). Without it nothing stops a child that wanders
-  into your checkout: say so to the user when /coordinate warned about it, and check where commits
-  landed (step 4) all the more.
+- Children are asked before changing anything outside their worktree (your checkout, a sibling's):
+  the user approves it on the child's card. Still check where commits landed (step 4).
 - Never kill processes by a pid from a file or an old note; stop children with `chi sessions stop <id>`
   and background tasks with task_stop (by task id).
 - A child's tool approvals go to the user on the child's card; tell the user when a report says a

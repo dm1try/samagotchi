@@ -70,8 +70,9 @@ RSpec.describe "The coordinator plugin" do
     found
   end
 
-  let(:guardrails_installed) { true }
-  let(:guardrails) { { "guardrails.enabled" => true, "guardrails.mode" => "strict" } }
+  # The plain setup: no guardrails bundle, auto mode.
+  let(:guardrails_installed) { false }
+  let(:guardrails) { { "guardrails.enabled" => true, "guardrails.mode" => nil } }
 
   before do
     record = instance_double(Samagotchi::MemoryBundle::Provenance, installed?: guardrails_installed)
@@ -182,61 +183,9 @@ RSpec.describe "The coordinator plugin" do
       )
     end
 
-    describe "without guardrails in strict mode" do
-      def warning(why)
-        "Warning: #{why}, so a child isn't asked before it writes or commits outside its worktree (in your own " \
-          "checkout, say). To be asked: chi bundle install guardrails, and set guardrails.mode: strict in config.yml."
-      end
-
-      context "when the guardrails bundle isn't installed" do
-        let(:guardrails_installed) { false }
-
-        it "warns after saying it asked, and in the text to send yourself" do
-          expect(run("/coordinate", "do x"))
-            .to eq("asked chi to coordinate it; a running turn gets it at its next step\n\n#{warning("the guardrails bundle isn't installed")}")
-          ctx.send_error = "no"
-          expect(run("/coordinate", "do x")).to end_with("do x\n\n#{warning("the guardrails bundle isn't installed")}")
-        end
-      end
-
-      context "when guardrails.mode is auto (the default)" do
-        let(:guardrails) { { "guardrails.enabled" => true, "guardrails.mode" => nil } }
-
-        it "warns" do
-          expect(run("/coordinate", "do x")).to end_with(warning("guardrails.mode is auto, not strict"))
-        end
-      end
-
-      context "when guardrails are off" do
-        let(:guardrails) { { "guardrails.enabled" => false, "guardrails.mode" => "strict" } }
-
-        it "warns" do
-          expect(run("/coordinate", "do x")).to end_with(warning("guardrails are off (guardrails.enabled: false)"))
-        end
-      end
-
-      it "logs it once at load, in a quiet init task" do
-        logged = []
-        log = Object.new
-        log.define_singleton_method(:warn) { |event, **fields| logged << [event, fields] }
-        ctx.define_singleton_method(:log) { log }
-        guardrails["guardrails.mode"] = "auto"
-        allow(Samagotchi::Config).to receive(:get).with("guardrails.mode").and_return("auto")
-
-        commands
-        label, quiet, task = inits.first
-        expect([label, quiet]).to eq(["coordinator: check guardrails", true])
-        task.call(ctx)
-        expect(logged).to eq([[:children_unguarded, { why: "guardrails.mode is auto, not strict" }]])
-      end
-    end
-
-    it "says nothing more, and logs nothing at load, with guardrails strict" do
+    it "warns about nothing and checks nothing at load, without the guardrails bundle in auto mode (chi asks a child itself)" do
       expect(run("/coordinate", "do x")).to eq("asked chi to coordinate it; a running turn gets it at its next step")
-      log = Object.new
-      log.define_singleton_method(:warn) { |*| raise "logged" }
-      ctx.define_singleton_method(:log) { log }
-      inits.first.last.call(ctx)
+      expect(inits).to be_empty
     end
 
     it "needs a goal" do
