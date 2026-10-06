@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require_relative "../process_group"
 require_relative "output_guardrails"
 require_relative "shell"
 
@@ -95,7 +96,7 @@ module Samagotchi
 
         Open3.popen3(env || {}, *Shell.argv(command), chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
           stdin.close
-          readers = [OutputReader.new(stdout), OutputReader.new(stderr)]
+          readers = [stdout, stderr].map { |io| ProcessGroup::PipeReader.new(io, chunk: READ_CHUNK_BYTES) }
 
           begin
             until wait_thr.join(WAIT_SLICE_SEC)
@@ -132,7 +133,7 @@ module Samagotchi
               stopped = stop_process_group(wait_thr.pid, readers)
               held_open = (stopped ? :stopped : :detached) if outcome == :grace && !stopping
             end
-            readers.each(&:finish)
+            readers.each { |reader| reader.finish(poll: STOP_POLL_INTERVAL_SEC, grace: STOP_GRACE_SEC) }
             stdout_text, stderr_text = readers.map(&:text)
           end
         end
@@ -162,94 +163,22 @@ module Samagotchi
       # has members holding the output: TERM the group, then KILL it. A process
       # that left the group (setsid) is out of reach; the pipes get closed.
       # True once the output was released, false if something still holds it.
+      # Only the group: the leader's pid is reaped, so it may name another process.
       def self.stop_process_group(pgid, readers)
-        signal_group(pgid, "TERM")
-        return true if await_readers(readers, until_time: monotonic_time + STOP_GRACE_SEC, deadline: nil,
-                                              cancelled: -> { false }) == :done
+        released = -> { readers.all?(&:done?) }
+        wait = ->(seconds) { readers.find { |r| !r.done? }&.wait(seconds) }
+        return true if ProcessGroup.stop(pgid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, stopped: released, wait: wait)
 
-        signal_group(pgid, "KILL")
         await_readers(readers, until_time: monotonic_time + STOP_GRACE_SEC, deadline: nil, cancelled: -> { false }) == :done
       end
       private_class_method :stop_process_group
 
-      # Only the group: the leader's pid is reaped, so it may name another process.
-      def self.signal_group(pgid, signal)
-        Process.kill(signal, -pgid)
-      rescue Errno::ESRCH, Errno::EPERM
-        nil
-      end
-      private_class_method :signal_group
-
-      # Reads a pipe in chunks on its own thread, so the output read so far
-      # survives the pipe being closed under it.
-      class OutputReader
-        def initialize(io)
-          @io = io
-          @buffer = String.new(encoding: Encoding::BINARY)
-          @thread = Thread.new do
-            Thread.current.report_on_exception = false
-            loop { @buffer << io.readpartial(READ_CHUNK_BYTES) }
-          rescue IOError # EOFError is one
-            nil
-          end
-        end
-
-        def done? = !@thread.alive?
-
-        def wait(seconds) = @thread.join(seconds)
-
-        # Closes the pipe (a reader still blocked gets IOError) and ends the
-        # thread; the text is safe to read afterwards.
-        def finish
-          @thread.join(STOP_POLL_INTERVAL_SEC) unless done?
-          close_quietly
-          @thread.kill unless @thread.join(STOP_GRACE_SEC)
-        end
-
-        def text
-          @buffer.dup.force_encoding(@io.external_encoding || Encoding.default_external)
-        end
-
-        private
-
-        def close_quietly
-          @io.close unless @io.closed?
-        rescue IOError
-          nil
-        end
-      end
-      private_constant :OutputReader
-
+      # The shell still runs: TERM its group (or the shell alone, if it left
+      # the group), then KILL it once the grace is over.
       def self.terminate_process_tree(pid)
-        signal_process(pid, "TERM")
-
-        deadline = monotonic_time + STOP_GRACE_SEC
-        sleep(STOP_POLL_INTERVAL_SEC) while process_alive?(pid) && monotonic_time < deadline
-
-        signal_process(pid, "KILL") if process_alive?(pid)
+        ProcessGroup.stop(pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, leader: true)
       end
       private_class_method :terminate_process_tree
-
-      def self.signal_process(pid, signal)
-        Process.kill(signal, -pid)
-      rescue Errno::ESRCH, Errno::EPERM
-        begin
-          Process.kill(signal, pid)
-        rescue Errno::ESRCH, Errno::EPERM
-          nil
-        end
-      end
-      private_class_method :signal_process
-
-      def self.process_alive?(pid)
-        Process.kill(0, pid)
-        true
-      rescue Errno::ESRCH
-        false
-      rescue Errno::EPERM
-        true
-      end
-      private_class_method :process_alive?
 
       def self.monotonic_time
         Process.clock_gettime(Process::CLOCK_MONOTONIC)

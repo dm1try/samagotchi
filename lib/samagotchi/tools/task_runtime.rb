@@ -6,6 +6,7 @@ require "securerandom"
 require "shellwords"
 require "time"
 require_relative "../atomic_file"
+require_relative "../process_group"
 require_relative "shell"
 
 module Samagotchi
@@ -54,13 +55,12 @@ module Samagotchi
 
         wrapped_command = wrapped_shell_command(normalized_command, exit_code_path)
         # Non-login, the shell Execute uses too (Shell).
-        pid = Process.spawn(
+        pid = ProcessGroup.spawn(
           spawn_env,
           *Shell.argv(wrapped_command),
           chdir: resolved_cwd,
           out: output_io,
-          err: output_io,
-          pgroup: true
+          err: output_io
         )
         Process.detach(pid)
 
@@ -189,22 +189,8 @@ module Samagotchi
         write_record(refreshed)
         pid = refreshed["pid"].to_i
 
-        begin
-          Process.kill("TERM", -pid)
-        rescue Errno::ESRCH
-          # Process already exited; status refresh below handles final state.
-        end
-
-        deadline = monotonic_time + STOP_GRACE_SEC
-        sleep(STOP_POLL_INTERVAL_SEC) while process_alive?(pid) && monotonic_time < deadline
-
-        if process_alive?(pid)
-          begin
-            Process.kill("KILL", -pid)
-          rescue Errno::ESRCH
-            # Process exited between checks.
-          end
-        end
+        # A group that isn't ours (EPERM) is an error, not a stop.
+        ProcessGroup.stop(pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, quiet: [Errno::ESRCH])
 
         updated = mark_stopped(refresh_record(refreshed))
         write_record(updated)
@@ -218,7 +204,7 @@ module Samagotchi
         return record unless record["status"] == "running"
 
         pid = record["pid"].to_i
-        return mark_finished_without_exit_code(record) unless process_alive?(pid)
+        return mark_finished_without_exit_code(record) unless ProcessGroup.alive?(pid)
 
         record
       end
@@ -338,15 +324,6 @@ module Samagotchi
         filtered.join(" ")
       end
 
-      def process_alive?(pid)
-        Process.kill(0, pid)
-        true
-      rescue Errno::ESRCH
-        false
-      rescue Errno::EPERM
-        true
-      end
-
       def mark_finished_without_exit_code(record)
         record = current_record(record)
         return record unless record["status"] == "running"
@@ -400,10 +377,6 @@ module Samagotchi
 
       def timestamp
         Time.now.utc.iso8601
-      end
-
-      def monotonic_time
-        Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
     end
   end

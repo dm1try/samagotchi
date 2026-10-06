@@ -4,6 +4,7 @@ require "fileutils"
 require_relative "context_sources"
 require_relative "context_providers"
 require_relative "log"
+require_relative "process_group"
 
 module Samagotchi
   # Runs an attached context source's command once and records the result
@@ -117,47 +118,26 @@ module Samagotchi
 
       out_r, out_w = IO.pipe
       err_r, err_w = IO.pipe
-      pid = Process.spawn(env, "sh", "-c", cmd, chdir: cwd, pgroup: true, in: File::NULL, out: out_w, err: err_w)
+      pid = ProcessGroup.spawn(env, "sh", "-c", cmd, chdir: cwd, in: File::NULL, out: out_w, err: err_w)
       out_w.close
       err_w.close
-      output = +""
-      over = false
-      out_reader = Thread.new do
-        loop do
-          chunk = out_r.readpartial(READ_CHUNK)
-          if output.bytesize + chunk.bytesize > ContextSources::TEXT_MAX_BYTES
-            over = true
-            break
-          end
-          output << chunk
-        end
-      rescue IOError # EOFError too
-        nil
-      end
-      stderr = +""
-      err_reader = Thread.new do
-        loop do
-          stderr << err_r.readpartial(READ_CHUNK)
-          stderr = stderr.byteslice(-STDERR_TAIL_BYTES, STDERR_TAIL_BYTES) if stderr.bytesize > STDERR_TAIL_BYTES
-        end
-      rescue IOError # EOFError too
-        nil
-      end
+      out_reader = ProcessGroup::PipeReader.new(out_r, cap: ContextSources::TEXT_MAX_BYTES, chunk: READ_CHUNK)
+      err_reader = ProcessGroup::PipeReader.new(err_r, cap: STDERR_TAIL_BYTES, keep: :tail, chunk: READ_CHUNK)
 
-      error, status = wait(pid, timeout: timeout, over: -> { over }, cancelled: cancelled)
+      error, status = wait(pid, timeout: timeout, over: -> { out_reader.over? }, cancelled: cancelled)
       reaped = true
       # Whatever the command left running in its group goes with it.
-      signal_group(pid, "KILL")
-      [out_reader, err_reader].each { |thread| thread.join(KILL_GRACE_SECONDS) || thread.kill }
-      stderr_text = stderr.dup.force_encoding(Encoding::UTF_8).scrub
+      ProcessGroup.signal(pid, "KILL")
+      [out_reader, err_reader].each { |reader| reader.wait(KILL_GRACE_SECONDS) || reader.kill }
+      stderr_text = err_reader.text(Encoding::UTF_8).scrub
       Log.debug(:context, "stderr", text: stderr_text[-1000..] || stderr_text) unless stderr_text.strip.empty?
       return Run.new(output: nil, error: nil, stderr: stderr_text, cancelled: true) if error == :cancelled
 
       # Checked again once the reader is done: a command that exits before
       # wait's next tick never gets an over from it.
-      error = OVER_CAP if over
+      error = OVER_CAP if out_reader.over?
       error ||= exit_error(status, stderr_text)
-      Run.new(output: output, error: error, stderr: stderr_text, cancelled: false)
+      Run.new(output: out_reader.text, error: error, stderr: stderr_text, cancelled: false)
     rescue SystemCallError => e
       Run.new(output: nil, error: "couldn't run it: #{e.message}", stderr: "", cancelled: false)
     ensure
@@ -188,30 +168,19 @@ module Samagotchi
 
     def abandon(pid, readers)
       stop_group(pid)
-      readers.each { |thread| thread&.kill }
+      readers.each { |reader| reader&.kill }
     rescue StandardError => e
       Log.warn(:context, "stop_failed", pid: pid, error: e.class.name)
     end
 
     # TERM, then KILL after a grace; @return [Process::Status, nil]
     def stop_group(pid)
-      signal_group(pid, "TERM")
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + KILL_GRACE_SECONDS
-      until Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-        _, status = Process.wait2(pid, Process::WNOHANG)
-        return status if status
+      status = nil
+      reaped = -> { status = Process.wait2(pid, Process::WNOHANG)&.last }
+      return status if ProcessGroup.stop(pid, grace: KILL_GRACE_SECONDS, poll: 0.05, stopped: reaped)
 
-        sleep(0.05)
-      end
-      signal_group(pid, "KILL")
       Process.wait2(pid).last
     rescue Errno::ECHILD
-      nil
-    end
-
-    def signal_group(pid, signal)
-      Process.kill(signal, -pid)
-    rescue Errno::ESRCH, Errno::EPERM
       nil
     end
 
