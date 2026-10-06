@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, heldOrder, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, waitingSearchText, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, batchCounts, batchTargets, batchToastText, heldOrder, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, rangeIds, runBatch, waitingSearchText, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -140,4 +140,87 @@ test("waitingSearchText matches the stopped badge's words too (looped, stopped b
   // for either word finds it.
   assert.equal(waitingSearchText({ pending_question: { id: "q", kind: "question" }, last_turn: { stopped_by: "loop-guard" } }), "waiting question looped");
   assert.equal(waitingSearchText({ status: "idle" }), "");
+});
+
+// ── Select mode ──────────────────────────────────────────────────────────
+
+test("rangeIds: the ids between two drawn ids, both included, either way", () => {
+  const order = ["a", "b", "c", "d", "e"];
+  assert.deepEqual(rangeIds(order, "b", "d"), ["b", "c", "d"]);
+  assert.deepEqual(rangeIds(order, "d", "b"), ["b", "c", "d"]);
+  assert.deepEqual(rangeIds(order, "c", "c"), ["c"]);
+});
+
+test("rangeIds: just the clicked id when the last pick isn't drawn", () => {
+  assert.deepEqual(rangeIds(["a", "b"], null, "b"), ["b"]);
+  assert.deepEqual(rangeIds(["a", "b"], "gone", "a"), ["a"]);
+  assert.deepEqual(rangeIds(["a", "b"], "a", "gone"), []);
+});
+
+test("batchTargets: picked and shown, in the drawn order, by archived state", () => {
+  const byId = new Map([
+    ["a", { id: "a" }], ["b", { id: "b", archived: true }], ["c", { id: "c" }], ["d", { id: "d" }],
+  ]);
+  const picked = new Set(["d", "a", "b", "hidden"]);
+  const shown = ["a", "b", "c", "d"];
+  assert.deepEqual(batchTargets(picked, shown, true, byId), ["a", "d"]);
+  assert.deepEqual(batchTargets(picked, shown, false, byId), ["b"]);
+  // A pick the search hides is not acted on.
+  assert.deepEqual(batchTargets(picked, ["b", "c"], true, byId), []);
+});
+
+const refusal = (code, message, status = 409) => Object.assign(new Error(message), { code, status });
+
+test("runBatch: one at a time, a delegate a parent's answer covered is not sent again", async () => {
+  const sent = [];
+  let inFlight = 0;
+  const act = async (id) => {
+    sent.push(id);
+    inFlight++;
+    assert.equal(inFlight, 1, "one request at a time");
+    await new Promise((r) => setTimeout(r, 1));
+    inFlight--;
+    if (id === "p") return { ok: true, result: { archived: ["p", "c1", "c2"], discarded: ["c3"] } };
+    return { ok: true, result: { archived: [id] } };
+  };
+  const out = await runBatch(["p", "c1", "c3", "x"], act);
+  assert.deepEqual(sent, ["p", "x"]);
+  assert.deepEqual(out.done, ["p", "x"]);
+  assert.deepEqual(out.covered, ["c1", "c3"]);
+  assert.deepEqual(batchCounts(out, true), { done: 4, delegates: 1, skipped: 0, archive: true });
+});
+
+test("runBatch: a refusal mid-batch is skipped with its reason and the rest goes on", async () => {
+  const act = async (id) => (id === "b"
+    ? { ok: false, error: refusal("busy", "session b has a turn running (409)") }
+    : { ok: true, result: { archived: [id] } });
+  const out = await runBatch(["a", "b", "c"], act);
+  assert.deepEqual(out.done, ["a", "c"]);
+  assert.deepEqual(out.skipped, [{ id: "b", code: "busy", reason: "session b has a turn running" }]);
+  assert.equal(batchToastText(batchCounts(out, true)), "Archived 2 · 1 skipped");
+});
+
+test("runBatch: a 404 is gone, not skipped", async () => {
+  const act = async (id) => (id === "a" ? { ok: false, error: refusal("not_found", "no session a (404)", 404) } : { ok: true, result: { unarchived: [id] } });
+  const out = await runBatch(["a", "b"], act);
+  assert.deepEqual(out.gone, ["a"]);
+  assert.deepEqual(out.skipped, []);
+  assert.deepEqual(out.done, ["b"]);
+});
+
+test("runBatch: reports progress after each id, covered ones too", async () => {
+  const calls = [];
+  const act = async () => ({ ok: true, result: { archived: ["a", "b"] } });
+  await runBatch(["a", "b", "c"], act, (n, total) => calls.push([n, total]));
+  assert.deepEqual(calls, [[1, 3], [2, 3], [3, 3]]);
+});
+
+test("batchToastText: the end toast's words", () => {
+  assert.equal(batchToastText({ done: 7, archive: true }), "Archived 7");
+  assert.equal(batchToastText({ done: 3, delegates: 2, archive: true }), "Archived 3 (+2 delegates)");
+  assert.equal(batchToastText({ done: 1, delegates: 1, archive: true }), "Archived 1 (+1 delegate)");
+  assert.equal(batchToastText({ done: 5, skipped: 2, archive: true }), "Archived 5 · 2 skipped");
+  assert.equal(batchToastText({ done: 0, skipped: 2, archive: true }), "None archived: 2 skipped");
+  assert.equal(batchToastText({ done: 7, archive: false }), "Unarchived 7");
+  assert.equal(batchToastText({ done: 6, skipped: 1, archive: false }), "Unarchived 6 · 1 skipped");
 });
