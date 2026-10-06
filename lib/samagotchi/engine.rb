@@ -50,6 +50,7 @@ require_relative "muted_memories"
 require_relative "used_memories"
 require_relative "turn_state"
 require_relative "steer_cut"
+require_relative "engine_peers"
 require_relative "bundle_needs"
 require_relative "model_overlay"
 require_relative "served_model"
@@ -1401,28 +1402,6 @@ module Samagotchi
 
     # @return [Session] current session (Engine owns create/resume)
     attr_reader :session
-
-    # The kernel's Tools::Peers, following the current session. cancelled?
-    # is the running turn's cancel, for a tool that waits (delegate_result):
-    # the controller is set from another thread and a tool gets no other
-    # way to see it.
-    PeerView = Struct.new(:engine) do
-      def session_id = engine.session&.id
-      def cwd = engine.session&.working_directory
-      def project_root = engine.session&.project_root
-      def state_dir = engine.peer_state_dir
-      def cancelled? = !!engine.active_cancel_controller&.cancelled?
-      def relay = engine.relay_peer
-      def model_ref = engine.effective_model_ref
-    end
-
-    # What the approval relay needs from the parent's Engine (Peers#relay):
-    # its own question flow, which every UI attached to it answers.
-    RelayPeer = Struct.new(:engine) do
-      def open_question(fields, watch: nil) = engine.open_question(fields, watch: watch)
-      def interface = engine.interface
-      def relay_desk = engine.relay_desk
-    end
 
     # This worker's relays of its delegates' approvals (memory only).
     # @return [RelayDesk]
