@@ -10,6 +10,7 @@ require_relative "openai_chat"
 require_relative "native_tool_normalizer"
 require_relative "../kernel_loop"
 require_relative "../answer_display"
+require_relative "../cut_policy"
 require_relative "../context_status"
 require_relative "../context_window"
 require_relative "../context_note"
@@ -396,30 +397,18 @@ module Samagotchi
                               thinking_chars: response.reasoning.to_s.length)
         end
 
-        # A generation a plugin cut (stop_generation) is an empty answer made
-        # early. Queued input (a user's line, a plugin's steer) goes in
-        # first, with or without a retry left, and spends no attempt. A
-        # steer's cut (Engine#cut_for_steer) with nothing queued is asked
-        # again as is. Else it is asked again with its own nudge while the
-        # retry budget lasts, else the turn ends as cancelled (hook), with
-        # nothing salvaged and without a spent nudge. A Stop that came right
-        # after the cut is a plain cancel. Returns :retry, or the turn's
-        # result.
+        # A cut generation (CutPolicy): a Stop after it ends the turn as
+        # any cancel, the turn going on is :retry, the hook ending is the
+        # turn's result.
         def after_cut(iteration, response)
-          return canceled(iteration, @cancel_controller.reason) if @cancel_controller.cancelled?
+          outcome = CutPolicy.decide(cut: response.cut, cancel_controller: @cancel_controller, empty_retry: @empty_retry,
+                                     conversation: @conversation, iteration: iteration, emit: method(:emit),
+                                     inject: -> { inject_pending_input(iteration) },
+                                     finish_reason: response.finish_reason,
+                                     thinking_chars: response.reasoning.to_s.length)
+          return canceled(iteration, @cancel_controller.reason) if outcome.stopped?
+          return :retry if outcome.again?
 
-          # The row under the cut step, above the message it was cut for.
-          emit(type: :steer_cut, iteration: iteration, source: response.cut[:source].to_s) if response.cut[:steer]
-          return :retry if inject_pending_input(iteration) || response.cut[:steer]
-
-          if @empty_retry.left?
-            @empty_retry.nudge!(@conversation, TurnNote.cut_retry(response.cut[:by], response.cut[:reason]),
-                                emit: method(:emit), iteration: iteration, finish_reason: response.finish_reason,
-                                thinking_chars: response.reasoning.to_s.length, stopped_by: response.cut[:by])
-            return :retry
-          end
-          @empty_retry.drop_nudge!(@conversation)
-          @cancel_controller.cancel!(:hook, response.cut)
           canceled(iteration, :hook)
         end
 
