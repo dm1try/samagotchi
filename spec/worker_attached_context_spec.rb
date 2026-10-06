@@ -65,6 +65,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
     expect(wait_until { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }).to be(true)
+    worker
   end
 
   def attach(name, text)
@@ -215,6 +216,24 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       push("b", "v2", wake: true)
       expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
       expect(wake_turns.pop(timeout: 0.5)).to be_nil
+    end
+
+    # Review item 3 (part 2): an exit or restart asked for doesn't wait
+    # out a wake turn. A long tick: the loop runs only when woken, so the
+    # change and the request are both there on its next pass.
+    it "doesn't wake for a change that comes with an exit request: the worker leaves, the change a note" do
+      worker = start_worker(poll_interval: 30)
+      waker = worker.instance_variable_get(:@waker)
+      attach("pr-7", "v1")
+      waker.wake
+      expect(wait_until { own.subscription("pr-7").seen }).to be_truthy
+
+      push("pr-7", "v2", wake: true)
+      expect(worker.send(:exit_request, "web:tab")).to be_nil
+
+      expect(@thread.join(5)&.value).to eq(:exit_requested)
+      expect(wake_turns.pop(timeout: 0.2)).to be_nil
+      expect(saved_context_notes.last[:content]).to include("Updated: pr-7.")
     end
 
     it "pauses wakes after a failed wake turn, keeping its note" do

@@ -239,9 +239,10 @@ module Samagotchi
           next if run_queued_commands
 
           # Between turns, so the next turn (the first one too) sees them.
-          # A change that asks to wake may start a turn here (C4).
+          # A change that asks to wake may start a turn here (C4), but not
+          # ahead of an exit or restart a client asked for: it is a note then.
           absorb_notes
-          next if absorb_context(wake: nothing_queued?)
+          next if absorb_context(wake: nothing_queued? && !@exit_requested)
 
           if (prompt = take_initial_prompt)
             run_initial_prompt(prompt) unless initial_command(prompt)
