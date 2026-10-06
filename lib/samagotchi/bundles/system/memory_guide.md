@@ -35,6 +35,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 - `scope` is **required** — never omit. Prefer `project` for repo conventions, `system` for user preferences.
 - `description` is appended to the managed `index.md` line (`— description`): one line, at most 200 characters (longer is refused; newlines become spaces). Replaces previous description if given; a missing or blank one preserves the existing one.
 - To change only the description, pass `name`, `scope` and `description` without `content`: the index line changes (its date becomes today), the file stays as it is. The memory must exist in that scope.
+- To remove a memory, pass `name`, `scope` and `remove: true` (nothing else): its file and model overlays move to the bundle trash (`chi bundle trash` lists and empties it) and its index line goes, a dangling line too. Only when the user asked or a skill's steps say so; the guardrails ask the user first. A memory a bundle installed is refused: `chi bundle uninstall` owns it.
 - For a small change to an existing memory (a step, a line), `edit` its file instead of rewriting it all: the path is in `memory_write`'s result and the scope dirs are in the prompt. Its index line is refreshed either way.
 - On success returns `Memory 'name' saved to <scope> scope (N bytes). File written: <path> Index line refreshed automatically.` — confirm `bytes` and `scope`; the index needs nothing from you.
 

@@ -244,7 +244,12 @@ guardrails:
       scopes: [once, session, rule]
 ```
 
-A rule gives at least one of `tool`, `command`, `path`, `git`, `touches` and `rm`.
+A rule gives at least one of `tool`, `command`, `path`, `git`, `touches`, `rm` and `memory`.
+
+`memory: remove` matches a `memory_write` with `remove: true` (it moves a
+memory into the bundle trash). Nothing else asks about it: a memory's file is
+never outside the repo (below), so without such a rule any session, a delegate
+child included, removes a memory unasked.
 
 `rm: outside_tmp` (shell tools) matches a command whose `rm -r -f` reaches
 outside the tmp folders (`$TMPDIR`, `/tmp`, `/var/tmp`): every such `rm` in a
@@ -408,7 +413,7 @@ rules (`models: small`) are untagged, so they ask a small model in both modes.
 leaves out `(strict only)`.
 
 A rule in config.yml that uses a key this chi doesn't know yet (`modes:`,
-`touches:`, `rm:`, `skip_read_only:` before 0.20) doesn't parse, and a rule
+`touches:`, `rm:`, `skip_read_only:` before 0.20, `memory:` before 0.36) doesn't parse, and a rule
 that doesn't parse denies every tool call (see Failing closed). Bundles say
 which chi they need (`requires_chi`), so their rules don't hit this.
 
@@ -429,7 +434,10 @@ hooks, approvals, bundles or attached context sources, or a `.git/hooks`
 time: a command chi will run every few minutes outside the guardrails; see
 [Attached context](context.md#safety)); `chi broadcast` (`chi-broadcast`,
 once at a time and only by the user: it is the user's command, which also
-refuses to run inside a session; see [Broadcast](broadcast.md)); and answering chi's
+refuses to run inside a session; see [Broadcast](broadcast.md)); removing a
+memory with `memory_write remove: true` (`memory-remove`, once at a time:
+a delegate child could otherwise remove its parent's handoff unasked; see
+[Memory](memory.md)); and answering chi's
 questions around `chi answer`: `chi --attach` or `chi -p` with stdin from a
 pipe, a here-string or a file (`chi-answer-piped`), and `curl`/`wget` to a
 session's `/answer` route (`chi-answer-http`), both once or for the session.

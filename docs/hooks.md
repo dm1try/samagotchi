@@ -424,7 +424,7 @@ stripped of surrounding whitespace, except file text, an edit's
 | `write` | — | `path` | `content` |
 | `edit` | — | `path` | `old_text`, `new_text`, `start_line`, `end_line` |
 | `memory_read` | `name` | — | `scope` |
-| `memory_write` | — | `name` | `content`, `scope`, `description`, `current_model_only` |
+| `memory_write` | — | `name` | `content`, `scope`, `description`, `current_model_only`, `remove` |
 | `task_create` | `command` | — | `cwd`, `env` |
 | `task_get` | `id` or `task_id` | — | — |
 | `task_list` | — | — | — |

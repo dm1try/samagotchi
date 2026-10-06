@@ -12,6 +12,10 @@ and commands may change between minor versions. How releases are made:
 
 - `memory_write` with `name`, `scope` and `description` but no `content` changes only that memory's index line and
   leaves its file as it is (see [docs/memory.md](docs/memory.md)).
+- `memory_write` with `name`, `scope` and `remove: true` removes a memory: its file (and model overlays) move to the
+  bundle trash, which `chi bundle trash` lists and empties, and its index line goes; a line left after the file was
+  deleted by hand goes too. A memory a bundle installed is refused (`chi bundle uninstall` owns it).
+- The guardrails bundle (0.8.0) asks before every memory removal (`memory-remove`, once at a time). Guardrail rules take `memory: remove`.
 
 ### Fixed
 
