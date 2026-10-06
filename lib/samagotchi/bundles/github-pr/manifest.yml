@@ -1,0 +1,22 @@
+---
+name: github-pr
+version: 0.1.0
+scope: system
+description: Attaches the branch's open GitHub pull request to a session as context (and any PR URL with chi context add or the web's "+ URL"); the agent gets a note when reviews, comments, checks or its state change
+trust_level: reviewed
+# requires_chi: set at the release that has context providers and ctx.context (">= 0.32.0"; docs/releasing.md)
+needs:
+- command: gh
+  why: reads the pull request
+  hint: brew install gh, then gh auth login
+plugin:
+  file: plugin.rb
+  sha256: sha256:b0f0f162f306df96d54162a638abb6997e94a749d224b6d0230e32bedf2abef8
+scripts:
+  pr_context.rb: sha256:bdda5d74fbc002e6acf061f441d633c2b8760bd837efcb3bbffaf5dbdde65ab9
+context_providers:
+- match: '\Ahttps://github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)'
+  name: 'pr-\3'
+  cmd: 'ruby {bundle_dir}/scripts/pr_context.rb {url}'
+  why: GitHub PR
+  every_seconds: 300
