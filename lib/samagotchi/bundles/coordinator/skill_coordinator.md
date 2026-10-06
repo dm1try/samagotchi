@@ -22,7 +22,8 @@ Use when the user hands over work with several independent parts, or asks to "ru
    Say the result in one or two lines: done and verified / done with doubts / failed.
 5. Then one of: a follow-up (`delegate session: <id>`, narrower, `wait: false`; then end your turn:
    its report comes by itself, so don't wait for it with delegate_result or task_wait), stop it
-   (`chi sessions stop <id>`; the user can use /children), or tell the user it is ready to merge.
+   (`chi sessions stop <session id>` with execute; task_stop is for task ids, not children; the user
+   can use /children), or tell the user it is ready to merge.
 6. Merging is the user's call: ask (ask_user_question) per branch, "Merge <branch> into <default>?".
    Before merging, in your own folder: `git branch --show-current` must print <default> (if it
    doesn't, stop and ask the user; don't switch branches yourself); then check <default>:
@@ -31,17 +32,21 @@ Use when the user hands over work with several independent parts, or asks to "ru
    child to rebase its branch on <default> (a follow-up that says "rebase only, don't merge") or ask the
    user; don't rebase it from here (the branch is checked out in the child's worktree). Children
    never merge. Never push unless asked.
-7. After a merge: stop the child, then `git worktree remove ../<repo>-<task>`, then
+7. Clean up only a branch that was merged or that the user said to drop: stop its child
+   (`chi sessions stop <session id>`), then `git worktree remove ../<repo>-<task>`, then
    `git branch -d <branch>` (in that order: a branch checked out in a worktree can't be deleted). If
    `-d` refuses, say why to the user; never `-D` unless they say so. Remove only worktrees and
-   branches you created in this session.
-8. When all are done, report: what merged, what didn't and why, follow-ups found but not fixed.
+   branches you created in this session. Every other branch stays as it is, its child, worktree and
+   branch too (the user said "keep it", or didn't say): leave them and tell the user they remain.
+8. When all are done, report: what merged, what didn't and why, what you cleaned up and what remains,
+   follow-ups found but not fixed. Report only what the commands' output showed: a step you planned
+   but didn't run, or whose output you didn't see, is not done; say so.
 
 ## Gotchas
 - Children are asked before changing anything outside their worktree (your checkout, a sibling's):
   the user approves it on the child's card. Still check where commits landed (step 4).
-- Never kill processes by a pid from a file or an old note; stop children with `chi sessions stop <id>`
-  and background tasks with task_stop (by task id).
+- Never kill processes by a pid from a file or an old note; stop children with `chi sessions stop
+  <session id>` (execute) and background tasks with task_stop (task ids only: it doesn't stop a child).
 - A child's tool approvals go to the user on the child's card; tell the user when a report says a
   child waits for one.
 - A report is the child's claim: verify it (step 4) before telling the user it is done, and check
@@ -52,3 +57,4 @@ Use when the user hands over work with several independent parts, or asks to "ru
 
 ## Changelog
 - 2026-10-06 created (coordinator bundle 0.1.0)
+- 2026-10-06 clean up only merged or dropped branches; report only what commands showed (0.1.2)

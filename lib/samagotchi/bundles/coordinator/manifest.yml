@@ -1,12 +1,12 @@
 ---
 name: coordinator
-version: 0.1.1
+version: 0.1.2
 scope: system
 description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, ask before each merge), /coordinate <goal> and /children"
 trust_level: reviewed
 files:
   skill_coordinator.md:
-    sha256: sha256:4e823a101650f54815014be921228e0e46cd96463b804a3bd7ec2aeb48353365
+    sha256: sha256:b21067c3f152c8dfd1b1f70001c6654ad1911616543a36b625727fb13d4ce3f6
     description: "Coordinate parallel work: split it, delegate each task wait:false in its own worktree (cwd:), check each report, ask the user before each merge"
 plugin:
   file: plugin.rb
