@@ -79,7 +79,8 @@ module Samagotchi
             "don't poll with delegate_result."
         else
           "chi brings its reply to you by itself when it ends its turn (a delegate report), starting a turn for it " \
-            "if you are idle: end your turn or keep working; don't poll with delegate_result."
+            "if you are idle. Don't wait for it with delegate_result, also not to collect several children's replies: " \
+            "tell your user what started and end your turn, or keep working."
         end
       end
       private_class_method :running_hint

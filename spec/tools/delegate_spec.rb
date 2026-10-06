@@ -113,8 +113,9 @@ RSpec.describe "delegate tools" do
       expect(child.status).to eq("running")
       expect(child.last_prompt).to eq("count the specs")
       expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; chi brings its reply to you by itself " \
-                        "when it ends its turn (a delegate report), starting a turn for it if you are idle: end your turn or " \
-                        "keep working; don't poll with delegate_result. " \
+                        "when it ends its turn (a delegate report), starting a turn for it if you are idle. Don't wait for it " \
+                        "with delegate_result, also not to collect several children's replies: tell your user what started " \
+                        "and end your turn, or keep working. " \
                         "It shows in chi sessions list and the web as a child of this session; the user can attach to it.")
       expect(Process).to have_received(:spawn)
     end
