@@ -202,8 +202,13 @@ else the parent's checkout). Rule `child-boundary`, source `core`; it asks when
 - `execute` or `task_create` runs mutating git in another dir (`git -C`, `cd`,
   `GIT_DIR`: what `git: outside_repo` matches), or a command that isn't
   read-only starts outside it (its `cwd:`) or names a path in the repository's
-  other checkouts: the main one and sibling worktrees (read from
-  `<common git dir>/worktrees/*/gitdir`).
+  other checkouts (the main one and sibling worktrees, read from
+  `<common git dir>/worktrees/*/gitdir`) or in its common git dir;
+- `execute` or `task_create` runs git that changes what every checkout shares,
+  even from its own worktree: a `git config` write (not `--get`, `--list`,
+  `--worktree`), `update-ref`, `worktree add|remove|move|prune`, `stash
+  drop|clear|pop`, creating or deleting a tag, and deleting, forcing or
+  overwriting a branch other than its own.
 
 Read-only commands (`git -C ../app log`, `cat ../app/x`) and paths elsewhere
 (`/usr/bin`, `~/.gem`) never ask. The answer is once or for the child's

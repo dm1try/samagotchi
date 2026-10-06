@@ -118,8 +118,12 @@ module Samagotchi
     def child_boundary
       return nil unless @session_lookup.call&.delegate?
 
-      @child_boundary ||= Guardrails::ChildBoundary.new(root: -> { boundary_root },
-                                                        worktrees: -> { (root = boundary_root) ? @git.worktrees(root) : [] })
+      @child_boundary ||= Guardrails::ChildBoundary.new(
+        root: -> { boundary_root },
+        worktrees: -> { (root = boundary_root) ? @git.worktrees(root) : [] },
+        common_dir: -> { (root = boundary_root) && @git.common_dir(root) },
+        branch: -> { (root = boundary_root) && @git.branch(root) }
+      )
     end
 
     # The YAML rules: config.yml's `guardrails:` section (rules, disable) and

@@ -41,7 +41,8 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
 
   # The check as the wiring builds it, for a child whose folder is +root+.
   def boundary(root)
-    Samagotchi::Guardrails::ChildBoundary.new(root: -> { git.root(root) || root }, worktrees: -> { git.worktrees(root) })
+    Samagotchi::Guardrails::ChildBoundary.new(root: -> { git.root(root) || root }, worktrees: -> { git.worktrees(root) },
+                                              common_dir: -> { git.common_dir(root) }, branch: -> { git.branch(root) })
   end
 
   # The verdict for +call+ in a child rooted at +root+, the process in +cwd+.
@@ -128,6 +129,68 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(verdict_for({ name: "write", path: File.join(main, "y.rb"), content: "x" }, root: nested)).to be_ask
     end
 
+    describe "git that changes what every checkout shares, run in its own worktree" do
+      it "asks for a config write, not a read or a --worktree one" do
+        v = run("git config core.hooksPath #{child}/h")
+        expect([v.decision, v.rule, v.scopes]).to eq([:ask, "child-boundary", %w[once session]])
+        expect(v.reason).to eq("a delegate child changes git state every checkout of the repository shares, from its folder #{child}: ask the user")
+        expect(run("git config --unset core.hooksPath")).to be_ask
+        expect(run("git config set user.name x")).to be_ask
+        expect(run("git config --global user.name x")).to be_ask
+        expect(run("git config core.hooksPath")).to be_allow
+        expect(run("git config --get core.hooksPath")).to be_allow
+        expect(run("git config --list")).to be_allow
+        expect(run("git config -l")).to be_allow
+        expect(run("git config get user.name")).to be_allow
+        expect(run("git config --worktree core.hooksPath h")).to be_allow
+      end
+
+      it "asks for update-ref, worktree changes and stash drop/clear/pop" do
+        expect(run("git update-ref refs/heads/main HEAD")).to be_ask
+        expect(run("git worktree add -f ../evil main")).to be_ask
+        expect(run("git worktree remove ../sibling")).to be_ask
+        expect(run("git worktree prune")).to be_ask
+        expect(run("git worktree list")).to be_allow
+        expect(run("git stash clear")).to be_ask
+        expect(run("git stash drop")).to be_ask
+        expect(run("git stash pop")).to be_ask
+        expect(run("git stash list")).to be_allow
+        expect(run("git stash")).to be_allow
+      end
+
+      it "asks for creating or deleting a tag, not listing them" do
+        expect(run("git tag v1")).to be_ask
+        expect(run("git tag -d v1")).to be_ask
+        expect(run("git tag -a v1 -m release")).to be_ask
+        expect(run("git tag")).to be_allow
+        expect(run("git tag -l 'v*'")).to be_allow
+      end
+
+      it "asks for deleting, forcing or overwriting another branch, not its own" do
+        expect(run("git branch -D main")).to be_ask
+        expect(run("git branch -d other")).to be_ask
+        expect(run("git branch -f main HEAD")).to be_ask
+        expect(run("git branch -M main")).to be_ask
+        expect(run("git branch -m other renamed")).to be_ask
+        expect(run("git branch -m feat-renamed")).to be_allow
+        expect(run("git branch -f feat HEAD~1")).to be_allow
+        expect(run("git branch new-one")).to be_allow
+        expect(run("git branch --show-current")).to be_allow
+      end
+
+      it "asks for any of them when its own branch is unknown" do
+        unknown = described_class.new(root: -> { child }, branch: -> {})
+        v = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "git branch -f feat HEAD~1" })
+        v.context = Samagotchi::Guardrails::Context.new(cwd: child, git: git)
+        v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
+        expect(unknown.check(v)).to be_ask
+      end
+
+      it "doesn't look into a heredoc body" do
+        expect(run("cat > notes.md <<'EOF'\ngit config core.hooksPath h\nEOF")).to be_allow
+      end
+    end
+
     it "never asks about other tools" do
       expect(verdict_for(name: "memory_write", path: "x", scope: "system", content: "x")).to be_allow
     end
@@ -177,7 +240,9 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       linked = File.join(base, "proj", "wt")
       sh(bare, "worktree", "add", "-q", linked, "-b", "x")
       expect(git.worktrees(linked)).to eq([linked])
-      expect(run("touch #{bare}/x", root: linked)).to be_allow
+      expect(run("echo x > ../.bare/config", root: linked)).to be_ask
+      expect(run("cp hook ../.bare/hooks/post-merge", root: linked)).to be_ask
+      expect(run("cat ../.bare/config", root: linked)).to be_allow
       expect(verdict_for({ name: "write", path: File.join(main, "a.txt"), content: "x" }, root: linked)).to be_ask
     end
   end
