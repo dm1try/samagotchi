@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "securerandom"
-require "time"
 
 require_relative "client_id"
 require_relative "config"
@@ -10,10 +8,10 @@ require_relative "events"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "turn_note"
-require_relative "context_note"
 require_relative "steer"
 require_relative "worker_idle_exit"
 require_relative "worker_wakes"
+require_relative "worker_inbound"
 require_relative "session_manager"
 require_relative "archive_store"
 require_relative "log"
@@ -58,9 +56,6 @@ module Samagotchi
     # gets it over the Bridge a moment after it starts, and that message's
     # turn goes first (the reports join it).
     WAKE_START_GRACE = 2.0
-    # One context wake per source in this long (D5): later changes inside
-    # it arrive as notes.
-    CONTEXT_WAKE_WINDOW = 600
     # How much of a command's output goes into its :command_ran.
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
@@ -174,6 +169,12 @@ module Samagotchi
       # Its attached context's notes (ContextSources).
       @context_absorber = ContextAbsorber.new(session_id: @session_id, state_dir: @state_dir,
                                               project_root: @session.project_root)
+      # What comes in between turns, and how each kind is saved.
+      @inbound = WorkerInbound.new(session: @session, state_dir: @state_dir, session_dir: @session_dir, engine: @engine,
+                                   context_absorber: @context_absorber, wakes: @wakes,
+                                   awaiting_continue: -> { @turn_flow.awaiting_continue? },
+                                   stopped: -> { stopped_on_disk? },
+                                   queue_command: ->(line, client_id) { @bridge.queue_command(line, client_id: client_id) })
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.
       @default_model = ModelProfile.required_model_name(nil)
@@ -236,11 +237,11 @@ module Samagotchi
           # Between turns, so the next turn (the first one too) sees them.
           # A change that asks to wake may start a turn here (C4), but not
           # ahead of an exit or restart a client asked for: it is a note then.
-          absorb_notes
+          @inbound.absorb_notes
           next if absorb_context(wake: nothing_queued? && !@exit_requested)
 
-          if (prompt = take_initial_prompt)
-            run_initial_prompt(prompt) unless initial_command(prompt)
+          if (prompt = @inbound.take_initial_prompt)
+            run_initial_prompt(prompt) unless @inbound.initial_command?(prompt)
             next
           end
 
@@ -259,7 +260,7 @@ module Samagotchi
             # A stop between two queued turns leaves the rest queued.
             break if stopped_on_disk?
 
-            absorb_notes
+            @inbound.absorb_notes
             run_input_file(input_file)
           end
         end
@@ -330,100 +331,15 @@ module Samagotchi
       save_or_log(:dead_question) { @session.save(state_dir: @state_dir) }
     end
 
-    # spawn_session hands the first prompt over in last_prompt, but
-    # last_prompt also records every later turn's prompt (and mark_error's
-    # reason), so only a session with no conversation yet has one pending; a
-    # resumed session must not replay its last turn. Taken once.
-    # @return [String, nil]
-    def take_initial_prompt
-      return nil if @initial_prompt_taken
-
-      @initial_prompt_taken = true
-      # A context note may have come before the first prompt ran.
-      return nil unless @session.messages.all? { |m| ContextNote.note?(m) } && !@session.last_prompt.to_s.strip.empty?
-
-      prompt = @session.last_prompt
-      @session.last_prompt = ""
-      save_or_log(:initial_prompt) { @session.save(state_dir: @state_dir) }
-      prompt
-    end
-
-    # A session command sent as a message (chi send -m "/model x", a web
-    # page's first message) runs as the command, as the Bridge does for a
-    # POST /turn; an unknown /word stays a prompt. Queued: the loop's next
-    # pass runs it.
-    # @return [Boolean] whether +text+ was one
-    def queue_as_command(text, origin)
-      return false unless @engine.command_registry.command?(text.to_s)
-
-      @bridge.queue_command(text, client_id: origin&.dig(:client_id))
-      true
-    end
-
-    # The first prompt as a command: the session was saved as running for a
-    # turn that won't run.
-    # @return [Boolean] whether it was one
-    def initial_command(prompt)
-      return false unless queue_as_command(prompt, nil)
-
-      @session.status = Session::STATUS_IDLE
-      save_or_log(:initial_command) { save_session }
-      true
-    end
-
-    # Add the queued context notes to the conversation (between turns only,
-    # on this thread), save, then delete their files: a crash before the
-    # delete leaves them claimed, and Engine#add_context_note skips a note
-    # the saved conversation already holds. A failed save keeps the files
-    # too: the next pass claims them again, finds them in the conversation
-    # and saves again. Not activity: a note alone
-    # neither starts a turn nor keeps an idle worker up.
-    def absorb_notes
-      files = SessionInbox.find_new_note_files(@session_dir)
-      return if files.empty? || stopped_on_disk?
-
-      claimed = files.filter_map { |file| SessionInbox.claim_note_file(file) }
-      claimed.each do |file|
-        note = SessionInbox.read_note(file)
-        @engine.add_context_note(@session, note) if note
-      end
-      return unless save_or_log(:notes) { @session.save(state_dir: @state_dir) }
-
-      claimed.each { |file| FileUtils.rm_f(file) }
-    end
-
-    # The attached context's notes (ContextAbsorber), between turns. Not
-    # into a session with no turn yet (+before_turn+: one is about to
-    # run): auto-attached context alone doesn't make a session worth
-    # keeping. Saved, then the subscriptions written (a crash between the
-    # two re-delivers; the note ids dedupe).
-    # +wake+: the session is idle with nothing queued, so an update whose
-    # source asked to wake may start a turn (#context_wake_for): its note
-    # goes in as the turn's first message.
+    # The attached context's notes (WorkerInbound#absorb_context), and the
+    # context wake turn one may start. A failure to read or write them (or
+    # in that turn) is logged: the next pass tries again.
     # @return [Boolean] whether a wake turn ran
     def absorb_context(before_turn: false, wake: false)
-      return false unless before_turn || conversation_started?
-      return false if stopped_on_disk?
+      context_wake = @inbound.absorb_context(before_turn: before_turn, wake: wake)
+      return false unless context_wake
 
-      batch = @context_absorber.pending
-      return false unless batch
-
-      waking = wake ? context_wake_for(batch) : nil
-      turn_id = SecureRandom.uuid if waking
-      batch.deliveries.each do |delivery|
-        next unless delivery.note
-
-        note = delivery == waking ? delivery.wake_note.merge(turn_start: true, turn_id: turn_id) : delivery.note
-        @engine.add_context_note(@session, note)
-      end
-      # Saved even when every note was there already: after a failed save
-      # they are in memory only.
-      return false if batch.notes.any? && !save_or_log(:context) { @session.save(state_dir: @state_dir) }
-
-      @context_absorber.commit(waking ? woken(batch, waking) : batch)
-      return false unless waking
-
-      run_context_wake_turn(waking, turn_id)
+      run_context_wake_turn(context_wake)
       true
     rescue SystemCallError, IOError => e
       Log.exception(:worker, "context_failed", e)
@@ -433,55 +349,24 @@ module Samagotchi
     # No input file or queued command waits: the loop would go idle.
     def nothing_queued? = @command_queue.empty? && SessionInbox.find_new_input_files(@session_dir).empty?
 
-    # The update in +batch+ that may start a wake turn now: its source
-    # asked (wake: true), context.wake is on, the shared wake step's
-    # conditions hold (no continue offer, wakes not paused by a failed one,
-    # under session.max_wakes in a row with no human input, past the start
-    # grace) and the source hasn't woken the session in the last
-    # CONTEXT_WAKE_WINDOW. The others stay plain notes. Within the start
-    # grace a change is a note: it came while the session was away.
-    def context_wake_for(batch, now: Time.now)
-      candidates = batch.deliveries.select(&:wake_note)
-      return nil if candidates.empty? || !context_wakes_on?
-      return nil unless @wakes.context_open?(awaiting_continue: @turn_flow.awaiting_continue?,
-                                             names: candidates.map(&:name))
-
-      candidates.find { |delivery| !woke_lately?(delivery.subscription, now) }
-    end
-
-    def context_wakes_on? = Config.get("context.wake") != false
-
-    def woke_lately?(subscription, now)
-      at = subscription&.wakes_at && Time.iso8601(subscription.wakes_at)
-      at ? now - at < CONTEXT_WAKE_WINDOW : false
-    rescue ArgumentError
-      false
-    end
-
-    # +batch+ with +waking+'s subscription recording the wake (the 10-minute window).
-    def woken(batch, waking)
-      stamped = waking.with(subscription: waking.subscription.with(wakes_at: Time.now.iso8601))
-      batch.with(deliveries: batch.deliveries.map { |delivery| delivery == waking ? stamped : delivery })
-    end
-
     # A turn nobody typed for a changed source (a context wake): a continue
     # turn from context:<name> whose first message is the wake note already
     # in the conversation (named by +turn_id+), on the same rules as a
     # delegate report's wake turn: it counts toward session.max_wakes, and
     # a failure goes back to before the turn (the note stays, as a plain
-    # one: #unmark_wake_note) and pauses wakes until a human's input.
-    # +waking+: the ContextAbsorber::Delivery that woke it.
-    def run_context_wake_turn(waking, turn_id)
-      name = waking.name
+    # one: WorkerInbound#unmark_wake) and pauses wakes until a human's input.
+    # +context_wake+: a WorkerInbound::ContextWake.
+    def run_context_wake_turn(context_wake)
+      name = context_wake.name
       Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!)
       @turn_flow.before_prompt_turn
-      run_engine_turn(nil, continue: true, origin: { client_id: "#{ClientId::CONTEXT_PREFIX}#{name}" },
-                           id: turn_id, max_iterations: IterationLimit.for) do |result, error|
+      run_engine_turn(nil, continue: true, origin: context_wake.origin,
+                           id: context_wake.turn_id, max_iterations: IterationLimit.for) do |result, error|
         if error
           note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message,
                                  wake: "the change in attached context #{name}")
           @turn_flow.prompt_turn_failed(note: note)
-          unmark_wake_note(turn_id, waking.note)
+          @inbound.unmark_wake(context_wake)
           @wakes.pause!
         else
           @continue_offer.after_turn(result)
@@ -489,63 +374,34 @@ module Samagotchi
       end
     end
 
-    # A failed wake turn kept nothing but its note: the update goes back to
-    # a plain note (no turn start, the background wording), so a reload
-    # draws no empty turn for it.
-    def unmark_wake_note(turn_id, note)
-      messages = @engine.messages_checkpoint
-      index = messages.index { |m| m[:turn_start] && m[:turn_id] == turn_id }
-      return unless index
-
-      messages[index] = ContextNote.message(**note)
-      @engine.rollback_to(messages)
-    end
-
-    # Whether the session has had a turn: a user or assistant message.
-    def conversation_started?
-      Array(@session.messages).any? { |m| %w[user assistant model].include?((m[:role] || m["role"]).to_s) }
-    end
-
     # The first prompt (spawn_session's): a delegate child's task, which is
     # its parent's although no client sent it.
     def run_initial_prompt(prompt)
       @initial_turn = true
-      run_prompt(prompt, nil)
+      run_prompt(WorkerInbound::Prompt.new(text: prompt))
     ensure
       @initial_turn = false
     end
 
     def run_input_file(input_file)
-      claimed_file = SessionInbox.claim_input_file(input_file)
-      return unless claimed_file
-
-      begin
-        message, origin, no_interrupt, images = SessionInbox.read_input(claimed_file)
-        return if message.to_s.strip.empty?
-        return if Array(images).empty? && queue_as_command(message, origin)
-
-        run_prompt(message, origin, no_interrupt: !!no_interrupt, images: images || [])
-      ensure
-        FileUtils.rm_f(claimed_file)
-      end
+      @inbound.take_input(input_file) { |prompt| run_prompt(prompt) }
     end
 
-    # @param no_interrupt [Boolean] an offer this turn makes keeps it for
-    #   its continue turn
-    # @param images [Array<Hash>] the prompt's image refs ({file:, name:})
-    def run_prompt(prompt, origin, no_interrupt: false, images: [])
+    # @param prompt [WorkerInbound::Prompt]
+    def run_prompt(prompt)
+      origin = prompt.origin
       # A first turn sees the context attached before it.
       absorb_context(before_turn: true)
       user_input(origin&.dig(:client_id))
       @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn
-      run_engine_turn(prompt, origin: origin, max_iterations: max_iterations(no_interrupt),
-                              images: images) do |result, error|
+      run_engine_turn(prompt.text, origin: origin, max_iterations: max_iterations(prompt.no_interrupt),
+                                   images: prompt.images) do |result, error|
         if error
           # The Engine announced :turn_failed (with the error's one line).
-          restore_failed_turn([[prompt, origin, images], *@merged_this_turn], error: error)
+          restore_failed_turn([[prompt.text, origin, prompt.images], *@merged_this_turn], error: error)
         else
-          @continue_offer.after_turn(result, no_interrupt: no_interrupt)
+          @continue_offer.after_turn(result, no_interrupt: prompt.no_interrupt)
         end
       end
     end
@@ -821,19 +677,8 @@ module Samagotchi
       @asked_parent = true
     end
 
-    # A save between turns (the turn's own, a command's, the notes', the
-    # first prompt's): what it saves is in memory, so one that fails (disk
-    # full, permissions; the next save writes it) is logged and must not
-    # take the worker down with it.
-    # @param at [Symbol] which save, for the log
-    # @return [Boolean] whether it saved
-    def save_or_log(at)
-      yield
-      true
-    rescue SystemCallError, IOError => e
-      Log.exception(:worker, "save_failed", e, at: at)
-      false
-    end
+    # WorkerInbound.save_or_log: a failed save between turns is logged.
+    def save_or_log(at, &) = WorkerInbound.save_or_log(at, &)
 
     # Back to the conversation before the failed turn, as the REPL does (so
     # failed prompts don't pile up as consecutive user messages), and each
