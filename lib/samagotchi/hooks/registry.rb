@@ -83,8 +83,9 @@ module Samagotchi
 
     # What a hook can do beyond reading its event: the Engine's
     # callables, each given the hook's label. +notify+ takes
-    # (text:, level:, hook:) and shows one line to the user; +ask_user+
-    # takes (question:, options:, header:, allow_freeform:, hook:) and
+    # (text:, level:, hook:, and fallback_for: when the hook gave one: what
+    # the line stands in for, Engine#hook_notify) and shows one line to the
+    # user; +ask_user+ takes (question:, options:, header:, allow_freeform:, hook:) and
     # returns the answer hash or nil; +stop_turn+ takes (reason:, hook:) and
     # cancels the running turn (true when it did); +steer+ takes (text:,
     # hook:) and puts the text into the running turn (Engine#steer, true
@@ -239,7 +240,10 @@ module Samagotchi
       #
       # All procs get the same hash, so event[:hook] is set before each one;
       # the helpers are set once per fire and read event[:hook] when called:
-      #   event[:notify].call(text, level: :info)   one line to the user
+      #   event[:notify].call(text, level: :info, fallback_for: nil)   one line
+      #     to the user; fallback_for: :display marks a line that stands in
+      #     for the answer's display (event[:present]), which a UI that
+      #     renders the display's links leaves out (Engine#hook_notify)
       #   event[:ask_user].call(question:, options:, header: nil, allow_freeform: false)
       #     -> {selected:, freeform:, selected_indices:} or nil (no one to
       #     ask, cancelled, bad options)
@@ -330,8 +334,10 @@ module Samagotchi
       def with_runtime(event)
         return unless event.is_a?(Hash)
 
-        event[:notify] ||= lambda { |text, level: :info|
-          @runtime&.notify&.call(text: text.to_s, level: level, hook: event[:hook])
+        event[:notify] ||= lambda { |text, level: :info, fallback_for: nil|
+          notice = { text: text.to_s, level: level, hook: event[:hook] }
+          notice[:fallback_for] = fallback_for unless fallback_for.nil?
+          @runtime&.notify&.call(**notice)
           nil
         }
         event[:ask_user] ||= lambda { |question:, options:, header: nil, allow_freeform: false|

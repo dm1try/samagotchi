@@ -13,7 +13,7 @@ module Samagotchi
   module Plugin
     # The Engine's side of a Context: callables, so the Engine itself is
     # never handed out. +messages+ returns the conversation, +notify+ takes
-    # (text, level, label), +ask_user+ takes (question:, options:, header:,
+    # (text, level, label, fallback_for:), +ask_user+ takes (question:, options:, header:,
     # allow_freeform:, hook:) like the hook runtime's, +card+ takes
     # Engine#show_card's keywords and returns the id, +ask_model+ takes
     # (chat messages, timeout:, max_tokens:, cancel_controller:) and returns
@@ -161,11 +161,11 @@ module Samagotchi
       # One line to the user, labelled by the plugin (in every UI by its
       # bundle's name). Every UI shows it, during a turn or between turns.
       # @param level [Symbol] :info or :warn
-      def notify(text, level: :info)
+      def notify(text, level: :info, fallback_for: nil)
         if (helper = event_helper(:notify))
-          helper.call(text.to_s, level: level)
+          helper.call(text.to_s, level: level, fallback_for: fallback_for)
         else
-          @host.notify.call(text.to_s, level, @label)
+          @host.notify.call(text.to_s, level, @label, fallback_for: fallback_for)
         end
         nil
       end

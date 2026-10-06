@@ -444,7 +444,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     let(:host) do
       Samagotchi::Plugin::Host.new(
         session_id: -> { "sid-1" }, cwd: -> { tmpdir }, messages: -> { [{ role: "user", content: "hi" }] },
-        notify: ->(text, level, label) { notices << [text, level, label] },
+        notify: ->(text, level, label, fallback_for:) { notices << [text, level, label, fallback_for] },
         ask_user: ->(**kw) { { selected: [kw[:options].first], hook: kw[:hook] } },
         cancelled: -> {}
       )
@@ -468,7 +468,8 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
 
     it "labels notices and questions by the plugin" do
       ctx.notify("hi", level: :warn)
-      expect(notices).to eq([["hi", :warn, "plugin.rb (bundle b)"]])
+      ctx.notify("sources: a", fallback_for: :display)
+      expect(notices).to eq([["hi", :warn, "plugin.rb (bundle b)", nil], ["sources: a", :info, "plugin.rb (bundle b)", :display]])
       expect(ctx.ask_user(question: "q", options: %w[a b])).to eq(selected: ["a"], hook: "plugin.rb (bundle b)")
     end
 

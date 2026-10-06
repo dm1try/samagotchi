@@ -147,7 +147,7 @@ module Samagotchi
     # hook's, not the user's or the model's).
     def on_hook_notice(event)
       level = event[:level].to_s == "warn" ? :warn : :info
-      log(level, :hook_notice, hook: event[:hook], msg: event[:text].to_s[0, 300])
+      log(level, :hook_notice, hook: event[:hook], fallback_for: event[:fallback_for], msg: event[:text].to_s[0, 300])
     end
 
     # after_turn hooks presented the answer (AnswerDisplay): its size only

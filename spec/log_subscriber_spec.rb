@@ -175,11 +175,14 @@ RSpec.describe Samagotchi::LogSubscriber do
 
   it "writes a hook's notice with its label, at the notice's level" do
     feed({ type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute: x", level: :info },
-         { type: :hook_notice, hook: "turn hook", text: "stopped the turn: y", level: :warn })
+         { type: :hook_notice, hook: "turn hook", text: "stopped the turn: y", level: :warn },
+         { type: :hook_notice, hook: "source_links.rb (bundle source-links)", text: "sources: a", level: :info,
+           fallback_for: :display })
 
     expect(records.map { |r| [r.level, r.event, r.fields] }).to eq([
       ["INFO", "hook_notice", { "hook" => "known_names.rb (bundle known-names)", "msg" => "rejected execute: x" }],
-      ["WARN", "hook_notice", { "hook" => "turn hook", "msg" => "stopped the turn: y" }]
+      ["WARN", "hook_notice", { "hook" => "turn hook", "msg" => "stopped the turn: y" }],
+      ["INFO", "hook_notice", { "hook" => "source_links.rb (bundle source-links)", "fallback_for" => "display", "msg" => "sources: a" }]
     ])
   end
 

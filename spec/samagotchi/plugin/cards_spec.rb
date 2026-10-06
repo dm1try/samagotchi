@@ -116,6 +116,38 @@ RSpec.describe "Cards" do
       expect(notices.first[:hook]).to eq("plugin.rb (bundle sample)")
       expect(store.list.map { |e| [e[:text], e[:in_turn]] }).to eq([["saved", false], ["in a turn", true]])
     end
+
+    it "carries fallback_for between turns and in a turn, and the CardStore keeps it" do
+      ctx = Samagotchi::Plugin::Context.new(bundle: "sample", label: "plugin.rb (bundle sample)", settings: {},
+                                            host: engine.send(:plugin_host))
+      store = Samagotchi::Bridge::CardStore.new
+      engine.subscribe(observer: store)
+      ctx.notify("between", fallback_for: :display)
+      engine.register_hook(:before_turn) { |_e| ctx.notify("in a turn", fallback_for: "display") }
+      engine.run_turn(session, "hi", on_event: ->(_e) {})
+      ctx.notify("plain")
+
+      notices = seen.select { |e| e[:type] == :hook_notice }
+      expect(notices.map { |e| [e[:text], e[:fallback_for]] }).to eq([["between", :display], ["in a turn", :display], ["plain", nil]])
+      expect(store.list.map { |e| [e[:text], e[:in_turn], e[:fallback_for]] })
+        .to eq([["between", false, :display], ["in a turn", true, :display], ["plain", false, nil]])
+      expect(store.list.last).not_to have_key(:fallback_for)
+    end
+
+    it "keeps fallback_for on a notice held while the plugins load" do
+      engine.instance_variable_set(:@loading_plugins, true)
+      engine.send(:hook_notify, "held", :info, "plugin.rb (bundle b)", fallback_for: :display)
+      engine.instance_variable_set(:@loading_plugins, false)
+
+      expect(engine.instance_variable_get(:@plugin_load_events).last).to include(text: "held", fallback_for: :display)
+    end
+
+    it "still takes PluginTasks' positional notify (text, level, source)" do
+      engine.instance_variable_get(:@plugin_tasks).instance_variable_get(:@notify).call("left out", :warn, "b")
+      notice = seen.find { |e| e[:type] == :hook_notice }
+      expect(notice).to include(hook: "b", text: "left out", level: :warn, between_turns: true)
+      expect(notice).not_to have_key(:fallback_for)
+    end
   end
 
   describe Samagotchi::Bridge::CardStore do

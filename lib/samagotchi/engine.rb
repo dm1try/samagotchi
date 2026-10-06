@@ -203,7 +203,7 @@ module Samagotchi
         emit: ->(sink, event) { emit_event(sink, event) },
         show_card: ->(**card) { show_card(**card) },
         tools: -> { @tools },
-        notify: ->(text, level, source) { hook_notify(text, level, source) },
+        notify: ->(text, level, source, fallback_for: nil) { hook_notify(text, level, source, fallback_for: fallback_for) },
         tools_changed: -> { tools_changed! }
       )
       @lifecycle_mutex = Mutex.new
@@ -1223,7 +1223,7 @@ module Samagotchi
     # hook's label (event[:hook]) from the registry.
     def hook_runtime
       Hooks::Runtime.new(
-        notify: ->(text:, level:, hook:) { hook_notify(text, level, hook) },
+        notify: ->(text:, level:, hook:, fallback_for: nil) { hook_notify(text, level, hook, fallback_for: fallback_for) },
         ask_user: ->(question:, options:, header:, allow_freeform:, hook:) { hook_ask_user(question, options, header, allow_freeform, hook) },
         stop_turn: ->(reason:, hook:) { hook_stop_turn(reason, hook) },
         steer: ->(text:, hook:) { steer(text, source: hook_source(hook)) },
@@ -1239,14 +1239,24 @@ module Samagotchi
     end
     private :hook_source
 
+    # What a notice may stand in for (hook_notify's fallback_for:).
+    NOTICE_FALLBACKS = %i[display].freeze
+
     # One line to the user (:hook_notice). During a turn it is a turn
     # event: the turn's sink (the REPL) and the observers (bridge, log).
     # Outside one (a plugin's command at the prompt) it is announced with
     # between_turns: true, which every UI shows as cards are shown.
-    def hook_notify(text, level, hook)
+    #
+    # +fallback_for+ names what the line stands in for (NOTICE_FALLBACKS):
+    # :display, the answer's display (AnswerDisplay), for a UI that doesn't
+    # render its links. A UI that does leaves the line out; the others, the
+    # log among them, show it. An unknown value is dropped, so the line
+    # shows everywhere.
+    def hook_notify(text, level, hook, fallback_for: nil)
       level = (level || :info).to_sym
       level = :info unless %i[info warn].include?(level)
-      notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level }
+      notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level,
+                 fallback_for: notice_fallback(fallback_for, hook) }.compact
       return hold_load_event(notice) && nil if @loading_plugins
 
       in_turn, sink = @turn_state.in_turn_sink
@@ -1262,6 +1272,20 @@ module Samagotchi
       nil
     end
     private :hook_notify
+
+    # A known fallback_for (a String is symbolized), else nil; an unknown
+    # one is logged once at debug.
+    def notice_fallback(value, hook)
+      return if value.nil?
+
+      fallback = value.to_s.to_sym
+      return fallback if NOTICE_FALLBACKS.include?(fallback)
+
+      @unknown_fallbacks ||= Set.new
+      Log.debug(:hooks, "notice_unknown_fallback", hook: hook.to_s, value: value.to_s) if @unknown_fallbacks.add?(fallback)
+      nil
+    end
+    private :notice_fallback
 
     # A guardrails line to the user after load (:guardrail_warning, as the
     # load failures show): a running turn's event, else announced.
@@ -2285,7 +2309,7 @@ module Samagotchi
         cwd: -> { @session&.working_directory },
         messages: -> { plugin_messages },
         messages_partial: -> { turn_running? && @running_turn_messages.nil? },
-        notify: ->(text, level, label) { hook_notify(text, level, label) },
+        notify: ->(text, level, label, fallback_for: nil) { hook_notify(text, level, label, fallback_for: fallback_for) },
         ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
           hook_ask_user(question, options, header, allow_freeform, hook)
         },

@@ -376,9 +376,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                     "plugins> plugin p.rb (bundle c) failed to load (y)")
   end
 
-  it "shows a hook's notice, live and from a snapshot's turn parts" do
+  it "shows a hook's notice, live and from a snapshot's turn parts, one marked fallback_for too" do
     feed({ type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" })
     expect(screen.lines.last).to eq("known-names> rejected execute")
+    feed({ type: :hook_notice, hook: "s.rb (bundle source-links)", text: "sources: JIRA-1", level: "info", fallback_for: "display" })
+    expect(screen.lines.last).to eq("source-links> sources: JIRA-1")
 
     turn = { prompt: "go", parts: [{ kind: "notice", event: { type: "hook_notice", hook: "turn hook", text: "careful", level: "warn" } }] }
     feed(snapshot(current_turn: turn, type: :reset))
@@ -2187,7 +2189,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
                "display_pending" => true, "origin" => origin)
     expect(@thread.join(0.3)).to be_nil
     @push.call("type" => "hook_notice", "hook" => "sources.rb (bundle source-links)", "text" => "sources: JIRA-1",
-               "level" => "info", "between_turns" => true)
+               "level" => "info", "between_turns" => true, "fallback_for" => "display")
     @push.call("type" => "answer_display", "display" => nil)
 
     expect(result).to eq(:detached)

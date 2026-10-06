@@ -103,6 +103,7 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :generation_chunk, iteration: 1, content: "Hm" },
          { type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: :info },
+         { type: :hook_notice, hook: "s.rb", text: "sources: a", level: :info, fallback_for: :display },
          { type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1, finish_reason: "stop", thinking_chars: 40 },
          { type: :empty_answer_retry, iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" },
          { type: :steer_cut, iteration: 2, source: "chi_send" },
@@ -113,6 +114,7 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts]).to eq([
       { kind: "text", iteration: 1, text: "Hm" },
       { kind: "notice", event: { type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: :info } },
+      { kind: "notice", event: { type: "hook_notice", hook: "s.rb", text: "sources: a", level: :info, fallback_for: :display } },
       { kind: "notice", event: { type: "empty_answer_retry", iteration: 1, attempt: 1, of: 1 } },
       { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } },
       { kind: "notice", event: { type: "steer_cut", iteration: 2, source: "chi_send" } },

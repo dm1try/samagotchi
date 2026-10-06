@@ -10,7 +10,7 @@ module Samagotchi
     # here, and draw it with the handler that drew it live, where it was.
     module TurnNotice
       FIELDS = {
-        hook_notice: %i[hook text level],
+        hook_notice: %i[hook text level fallback_for],
         empty_answer_retry: %i[iteration attempt of stopped_by malformed],
         steer_cut: %i[iteration source],
         question_requested: %i[pending_question],

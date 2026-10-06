@@ -54,6 +54,26 @@ RSpec.describe "The hook runtime through the Engine" do
 
       expect(seen.find { |e| e[:type] == :hook_notice }).to include(text: "fyi", level: :info)
     end
+
+    it "carries fallback_for: a known value (a String symbolized); an unknown one or nil leaves the field out" do
+      engine.register_hook(:after_turn) do |e|
+        e[:notify].call("sources: a", fallback_for: :display)
+        e[:notify].call("sources: b", fallback_for: "display")
+        e[:notify].call("odd", fallback_for: :terminal)
+        e[:notify].call("plain", fallback_for: nil)
+      end
+      sink = []
+      seen = []
+      engine.subscribe(observer: ->(e) { seen << e })
+
+      engine.run_turn(session, "hi", on_event: ->(e) { sink << e })
+
+      notices = sink.select { |e| e[:type] == :hook_notice }
+      expect(notices.map { |e| [e[:text], e[:fallback_for]] })
+        .to eq([["sources: a", :display], ["sources: b", :display], ["odd", nil], ["plain", nil]])
+      expect(notices.last(2)).to all(satisfy { |e| !e.key?(:fallback_for) })
+      expect(seen.select { |e| e[:type] == :hook_notice }.map { |e| e[:fallback_for] }).to eq([:display, :display, nil, nil])
+    end
   end
 
   describe "ask_user" do

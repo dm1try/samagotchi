@@ -201,7 +201,7 @@ module Samagotchi
       end
 
       def add_notice(event)
-        notice = event.slice(:type, :hook, :text, :level)
+        notice = event.slice(:type, :hook, :text, :level, :fallback_for)
         if event[:between_turns] || !@running
           push(notice.merge(in_turn: false, turns: @turns_done))
         else

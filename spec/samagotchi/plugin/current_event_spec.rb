@@ -19,7 +19,7 @@ RSpec.describe "a plugin's ctx helpers and the current event" do
   let(:registry) do
     Samagotchi::Hooks::Registry.new.tap do |reg|
       reg.runtime = Samagotchi::Hooks::Runtime.new(
-        notify: ->(text:, level:, hook:) { calls << [:event_notify, text, level, hook] },
+        notify: ->(text:, level:, hook:, fallback_for: nil) { calls << [:event_notify, text, level, hook, fallback_for].compact },
         ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
           calls << [:event_ask_user, question, hook]
           { selected: [options.first], freeform: nil }
@@ -32,7 +32,7 @@ RSpec.describe "a plugin's ctx helpers and the current event" do
   end
   let(:host) do
     Samagotchi::Plugin::Host.new(
-      notify: ->(text, level, label) { calls << [:host_notify, text, level, label] },
+      notify: ->(text, level, label, fallback_for:) { calls << [:host_notify, text, level, label, fallback_for].compact },
       ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
         calls << [:host_ask_user, question, hook]
         { selected: [options.last], freeform: nil }

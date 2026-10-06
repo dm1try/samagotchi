@@ -86,6 +86,12 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(["thinking> warning: off wasn't honoured"])
   end
 
+  it "prints a notice marked fallback_for: display (the terminal doesn't render the display's links)" do
+    renderer.call({ type: :hook_notice, hook: "source_links.rb (bundle source-links)", text: "sources: JIRA-1", level: :info,
+                    fallback_for: :display })
+    expect(view.lines).to eq(["source-links> sources: JIRA-1"])
+  end
+
   describe "cards" do
     let(:view) do
       Class.new do

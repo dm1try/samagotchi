@@ -176,12 +176,12 @@ RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
 
     before { subject.runtime = runtime }
 
-    it "routes notify with the text, level and the calling hook's label" do
+    it "routes notify with the text, level, fallback_for and the calling hook's label" do
       subject.register_bundle("kn", :after_turn, hook_name: "k.rb") { |e| e[:notify].call("looks off", level: :warn) }
-      subject.register(:after_turn) { |e| e[:notify].call("fine") }
+      subject.register(:after_turn) { |e| e[:notify].call("fine", fallback_for: :display) }
       subject.fire(:after_turn, { type: :after_turn })
       expect(calls).to eq([[:notify, { text: "looks off", level: :warn, hook: "k.rb (bundle kn)" }],
-                           [:notify, { text: "fine", level: :info, hook: "turn hook" }]])
+                           [:notify, { text: "fine", level: :info, hook: "turn hook", fallback_for: :display }]])
     end
 
     it "routes ask_user with defaults filled in and returns the runtime's answer" do
