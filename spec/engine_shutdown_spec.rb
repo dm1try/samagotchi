@@ -42,6 +42,12 @@ RSpec.describe "Engine#shutdown" do
     thread.join
   end
 
+  it "ends a turn-end warm-up still running" do
+    warmup = engine.instance_variable_get(:@prompt_warmup)
+    expect(warmup).to receive(:stop).once.and_call_original
+    engine.shutdown
+  end
+
   it "stops the idle jobs, and runs once" do
     scheduler = engine.instance_variable_get(:@idle_scheduler)
     add_service("a")

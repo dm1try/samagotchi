@@ -55,6 +55,8 @@ module Samagotchi
     CANCEL_REASONS = %w[manual user ctrl_c].freeze
     # How long #stop waits for requests it is answering (not open streams).
     REQUEST_GRACE_SECONDS = 1.0
+    # How long #stop waits for each killed RelayWatcher thread to end.
+    RELAY_WATCHER_JOIN_SECONDS = 1.0
     # The largest request body read (images travel as refs, never bytes).
     MAX_BODY_BYTES = 1_000_000
     # A request's deadline (see #handle_post_turn) that isn't epoch seconds.
@@ -198,7 +200,9 @@ module Samagotchi
       await_answers(REQUEST_GRACE_SECONDS)
       @connection_threads.each { |t| t.kill rescue nil }
       @connection_threads.clear
-      @mutex.synchronize { @relay_watchers&.each { |t| t.kill rescue nil } }
+      # Its relay watchers (RelayWatcher) end with it.
+      watchers = @mutex.synchronize { (@relay_watchers || []).tap { @relay_watchers = [] } }
+      watchers.each { |thread| thread.kill.join(RELAY_WATCHER_JOIN_SECONDS) }
       @accept_thread&.join(2)
       remove_sidecar
       nil

@@ -813,6 +813,7 @@ module Samagotchi
       # #stop_idle's work (the scheduler's stop is idempotent), where the
       # callers haven't stopped it already.
       @idle_scheduler&.stop
+      @prompt_warmup.stop
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + join_timeout
       threads.each do |thread|
         next if thread == Thread.current

@@ -118,6 +118,17 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       expect(events.last).to include(type: :question_relay, id: qid, relayed_to: nil, reason: "parent_gone")
     end
 
+    it "ends its relay watchers when it stops" do
+      _box, qid = ask_child
+      relay("opened", "r-1", qid)
+      watchers = @bridges.first.instance_variable_get(:@relay_watchers)
+      expect(watchers.size).to eq(1)
+
+      @bridges.first.stop
+
+      expect(watchers.first).not_to be_alive
+    end
+
     it "answers 409 for a question not pending, 422 in a session with no parent, 400 for a bad request" do
       _box, qid = ask_child
       expect(relay("opened", "r-1", "other").status).to eq(409)

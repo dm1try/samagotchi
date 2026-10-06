@@ -32,6 +32,8 @@ module Samagotchi
     # Seconds #take_pin waits for the busy-slot check (Client#slot_status
     # gives up within 3 s).
     DECIDE_TIMEOUT = 3
+    # Seconds #stop waits for a killed warm-up's thread to end.
+    STOP_JOIN_SECONDS = 1
 
     # Whether cache.warmup allows a warm-up (auto, the default; off, false,
     # no or 0 turn it off; anything else warns once and is auto).
@@ -54,13 +56,16 @@ module Samagotchi
       # The pin (#take_pin forgets it) and the last warm-up's thread.
       @state = nil
       @thread = nil
+      @stopped = false
     end
 
     # Start a warm-up of +prompt+ on +client+ in its own thread.
     # @param slot [Integer, nil] the last request's slot (nil: unpinned, and
     #   nothing to pin the next request to)
-    # @return [Thread]
+    # @return [Thread, nil] nil once #stop ran
     def start(client:, prompt:, model:, slot:, images: [])
+      return nil if @mutex.synchronize { @stopped }
+
       # Whether the warm-up went to its slot (true) or was skipped: the
       # first value pushed is the answer.
       sent = Queue.new
@@ -109,6 +114,20 @@ module Samagotchi
     def running?
       thread = @mutex.synchronize { @thread }
       thread&.alive? || false
+    end
+
+    # Ends a warm-up still running and starts none after (Engine#shutdown:
+    # no next turn will use it). Its request is cut, which frees the slot.
+    def stop(timeout = STOP_JOIN_SECONDS)
+      thread = @mutex.synchronize do
+        @stopped = true
+        @state = nil
+        @thread
+      end
+      return unless thread&.alive?
+
+      thread.kill
+      thread.join(timeout)
     end
 
     # Wait up to +timeout+ seconds for the running warm-up (specs).

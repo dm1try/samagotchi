@@ -98,6 +98,30 @@ RSpec.describe Samagotchi::PromptWarmup do
     end
   end
 
+  describe "#stop" do
+    it "ends a warm-up still running, pins nothing after, and starts none" do
+      entered = Queue.new
+      allow(client).to receive(:slot_status).and_return(:idle)
+      allow(client).to receive(:warm_up) do
+        entered << true
+        gate.pop
+      end
+      warmup.start(client: client, prompt: "head", model: "m", slot: 2)
+      expect(entered.pop(timeout: 2)).to be(true)
+
+      warmup.stop
+
+      expect(warmup.running?).to be(false)
+      expect(warmup.take_pin(client)).to be_nil
+      expect(warmup.start(client: client, prompt: "head", model: "m", slot: 2)).to be_nil
+      expect(client).to have_received(:warm_up).once
+    end
+
+    it "does nothing when no warm-up runs" do
+      expect(warmup.stop).to be_nil
+    end
+  end
+
   it "logs a failed warm-up and never raises" do
     allow(client).to receive(:slot_status).and_return(nil)
     allow(client).to receive(:warm_up).and_raise(Errno::ECONNREFUSED)
