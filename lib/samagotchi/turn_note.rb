@@ -36,8 +36,12 @@ module Samagotchi
     # @param restored [Boolean] the prompt went back to its sender (the
     #   failed user message is not in the conversation any more)
     # @param continued [Boolean] it was a continue turn (no user message)
-    def failed(summary, restored: false, continued: false)
+    # @param wake [String, nil] what woke it, when chi started the turn and
+    #   not the user ("the change in attached context pr-7"): the user
+    #   wrote nothing, and wakes pause until they do
+    def failed(summary, restored: false, continued: false, wake: nil)
       tail = if restored then RESTORED
+             elsif wake then "The wake turn for #{one_line(wake)} was not answered; chi starts no other wake turn until the user writes."
              elsif continued then "The continued turn stopped there."
              else "The user's last message was not answered."
              end

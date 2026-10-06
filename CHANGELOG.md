@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A wake turn (a context source's change, a delegate's report) that fails no longer tells the model the user's
+  message went unanswered: it says the wake wasn't answered, and that no other wake turn starts until you write.
+
 ## [0.33.0] - 2026-10-06
 
 ### Changed

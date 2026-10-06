@@ -488,7 +488,8 @@ module Samagotchi
       run_engine_turn(nil, continue: true, origin: { client_id: "#{ClientId::CONTEXT_PREFIX}#{name}" },
                            id: turn_id, max_iterations: IterationLimit.for) do |result, error|
         if error
-          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message)
+          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message,
+                                 wake: "the change in attached context #{name}")
           @turn_flow.prompt_turn_failed(note: note)
           unmark_wake_note(turn_id, waking.note)
           @wakes_paused = true
@@ -616,7 +617,8 @@ module Samagotchi
       @turn_flow.before_prompt_turn
       run_engine_turn(nil, continue: true, origin: reports.first.origin, max_iterations: IterationLimit.for) do |result, error|
         if error
-          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message)
+          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message,
+                                 wake: reports.size == 1 ? "a delegate's report" : "#{reports.size} delegate reports")
           @turn_flow.prompt_turn_failed(note: note)
           @wakes_paused = true
         else

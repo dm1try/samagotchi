@@ -120,6 +120,8 @@ system message marked `kind: turn_note` (the UIs don't show it; they showed the 
   before any answer: network error after 2 attempts (host main: Errno::ECONNREFUSED). The message went back to
   the user, who may send it again.]` in the REPL and attached mode, where the prompt is given back;
   `… The user's last message was not answered.]` after `-p`, where the prompt stays in the session;
+  `… The wake turn for the change in attached context pr-7 was not answered; chi starts no other wake turn until
+  the user writes.]` after a wake turn chi started (a context source's change, a delegate's report), not the user;
 - cancelled (Ctrl-C, the web's stop): `[SYSTEM: the previous turn was cancelled (ctrl-c) after 12s; the reply
   above ends where it was cut off.]` (an answer or only narration had streamed), or `…; no answer had been shown.]` when only thinking had streamed;
 - ended with nothing visible: `[SYSTEM: the previous turn ended with no visible answer (thinking only, or

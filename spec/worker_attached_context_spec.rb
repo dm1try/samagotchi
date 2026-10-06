@@ -245,6 +245,8 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       expect(wake_turns.pop(timeout: 3)).not_to be_nil
       expect(wait_until { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" })
         .to be(true)
+      expect(Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:content])
+        .to include("The wake turn for the change in attached context a was not answered")
       note = saved_context_notes.last
       expect(note).to include(context_source: "a")
       expect(note).not_to include(:turn_start, :turn_id)

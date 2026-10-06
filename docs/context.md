@@ -154,6 +154,11 @@ update note, whose last line becomes:
 Every UI labels the turn `context <name> changed`, and the web's
 notifications count it as a finished turn however short.
 
+A wake turn that fails goes back to before it and keeps the update as a
+plain note; the model reads `[SYSTEM: the previous turn failed before any
+answer: … The wake turn for the change in attached context <name> was not
+answered; chi starts no other wake turn until the user writes.]`.
+
 ## GitHub PRs: the github-pr bundle
 
 ```sh

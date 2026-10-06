@@ -57,6 +57,13 @@ RSpec.describe Samagotchi::TurnNote do
     expect(note[:content]).to eq("[SYSTEM: the previous turn failed before any answer: network error after 2 attempts (host main: ECONNREFUSED). The user's last message was not answered.]")
   end
 
+  it "says a failed wake turn left the wake unanswered, not a message of the user's" do
+    note = described_class.failed("HTTP 500", continued: true, wake: "the change in attached context\npr-7")
+    expect(note[:content]).to eq("[SYSTEM: the previous turn failed before any answer: HTTP 500. The wake turn for the change in " \
+                                 "attached context pr-7 was not answered; chi starts no other wake turn until the user writes.]")
+    expect(note[:content]).not_to include("user's last message")
+  end
+
   it "says a restored prompt went back to the user" do
     expect(described_class.failed("HTTP 500", restored: true)[:content]).to end_with("The message went back to the user, who may send it again.]")
   end
