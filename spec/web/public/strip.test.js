@@ -41,6 +41,12 @@ test("stripShowParts: counts the sessions that wait on the user (a question, an 
   assert.equal(stripShowParts([{ pending_card: { id: "c" } }]).waiting, "1 waiting");
 });
 
+test("stripShowParts: with cards, the count is the strip's cards (a family is one); live and waiting stay per session", () => {
+  const list = [{ owner: "worker" }, { owner: "worker", pending_question: { id: "q" } }, {}];
+  assert.deepEqual(stripShowParts(list, { cards: 2 }), { count: "2 sessions", live: "2 live", waiting: "1 waiting" });
+  assert.equal(stripShowParts(list, { cards: 1 }).count, "1 session");
+});
+
 test("stripAutoHidden: a short window hides the strip until the pill shows it; the user's hide always holds", () => {
   assert.equal(stripAutoHidden({ saved: false, short: false, shownWhileShort: false }), false);
   assert.equal(stripAutoHidden({ saved: false, short: true, shownWhileShort: false }), true);

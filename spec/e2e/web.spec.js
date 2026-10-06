@@ -557,10 +557,39 @@ test("all sessions: select mode archives a Shift-click range and one more pick i
 // Session families: a parent's delegates fold into its card. Seeded
 // sessions (no worker): a parent and two delegates, then again with one
 // waiting on the user.
-test("a parent's delegates fold into its card: the chip opens them inline, search and a waiting one open them, select mode leaves rows alone", async ({ page, chi }) => {
+test("a parent's delegates fold into its card: one strip card with a popover, inline rows in all sessions, search and a waiting one open them, select mode leaves rows alone", async ({ page, chi }) => {
   const fam = await seedFamily(chi, { tag: "Fold" });
   let waitingFam = null;
   try {
+    // The strip: the family is one card; its chip opens the rows in a popover under it.
+    const stripCard = page.locator(`#topStrip .card[data-id="${fam.parent}"]`);
+    const stripChip = stripCard.locator(".family-chip");
+    const pop = page.locator("#familyPop");
+    await expect(stripChip).toContainText("2 delegates");
+    const familyIds = [fam.parent, ...fam.children].map((id) => `[data-id="${id}"]`).join(",");
+    await expect(page.locator(`#topStrip .card:is(${familyIds})`)).toHaveCount(1);
+    await stripChip.click();
+    await expect(pop).toBeVisible();
+    await expect(pop.locator(".family-row")).toHaveCount(2);
+    await expect(stripChip).toHaveAttribute("aria-expanded", "true");
+    const chipBox = await stripChip.boundingBox();
+    const cardBox = await stripCard.boundingBox();
+    const popBox = await pop.boundingBox();
+    expect(popBox.y).toBeGreaterThanOrEqual(chipBox.y + chipBox.height);
+    expect(Math.abs(popBox.x - cardBox.x)).toBeLessThan(2);
+    await page.keyboard.press("Escape");
+    await expect(pop).toBeHidden();
+    await expect(stripChip).toHaveAttribute("aria-expanded", "false");
+    await stripChip.click();
+    await expect(pop).toBeVisible();
+    await page.locator("#prompt").click();
+    await expect(pop).toBeHidden();
+    await stripChip.click();
+    await pop.locator(`.family-row[data-id="${fam.children[0]}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`#/s/${fam.children[0]}$`));
+    await expect(pop).toBeHidden();
+    await expect(stripCard).toHaveClass(/contains-active/);
+
     await page.locator("#allTile").click();
     const card = page.locator(`#allList .card[data-id="${fam.parent}"]`);
     const chip = card.locator(".family-chip");
@@ -610,6 +639,14 @@ test("a parent's delegates fold into its card: the chip opens them inline, searc
     await expect(waitingCard.locator(`.family-row[data-id="${waitingFam.children[1]}"] .attn`)).toHaveText("question");
     // Waiting families sort first.
     await expect(page.locator("#allList .card[data-id]").first()).toHaveAttribute("data-id", waitingFam.parent);
+    // In the strip too: the waiting family's card first, warn chip, its popover row says what for.
+    await page.locator("#allBack").click();
+    const waitingStrip = page.locator(`#topStrip .card[data-id="${waitingFam.parent}"]`);
+    await expect(page.locator("#topStrip .card[data-id]").first()).toHaveAttribute("data-id", waitingFam.parent);
+    await expect(waitingStrip).toHaveClass(/\bwaiting\b/);
+    await waitingStrip.locator(".family-chip.waiting").click();
+    await expect(page.locator(`#familyPop .family-row[data-id="${waitingFam.children[1]}"] .attn`)).toHaveText("question");
+    await page.keyboard.press("Escape");
   } finally {
     fam.remove();
     waitingFam?.remove();

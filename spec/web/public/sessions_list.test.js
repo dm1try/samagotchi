@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, batchCounts, batchTargets, batchToastText, families, familyId, flattenFamilies, heldOrder, inTree, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, waitingFirstFlat, rangeIds, runBatch, waitingSearchText } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, batchCounts, batchTargets, batchToastText, families, familyId, flattenFamilies, heldOrder, inTree, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, rangeIds, runBatch, waitingSearchText } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -168,19 +168,6 @@ test("waitingFirst moves a nested family, whichever depth waits; a cycle is one 
   assert.deepEqual(flattenFamilies(waitingFirst(fams(waitingC))).map((s) => s.id), ["p", "c", "g", "x"]);
   const cycle = [{ id: "x" }, { id: "a", parent_id: "b", delegate: true }, asks("b", { parent_id: "a", delegate: true })];
   assert.deepEqual(flattenFamilies(waitingFirst(fams(cycle))).map((s) => s.id), ["a", "b", "x"]);
-});
-
-// The strip's flat list until it folds families: a waiting member lifts its
-// family's members, each in its own place.
-test("waitingFirstFlat lifts a flat list's waiting families, members where they are, at any depth", () => {
-  const list = [{ id: "x" }, { id: "p" }, asks("ch", { parent_id: "p", delegate: true }), { id: "y" }];
-  assert.deepEqual(ids(waitingFirstFlat(list)), ["p", "ch", "x", "y"]);
-  const nested = [{ id: "x" }, { id: "g", parent_id: "c", delegate: true }, { id: "p" }, asks("c", { parent_id: "p", delegate: true })];
-  assert.deepEqual(ids(waitingFirstFlat(nested)), ["g", "p", "c", "x"]);
-  const cycle = [{ id: "x" }, { id: "a", parent_id: "b", delegate: true }, asks("b", { parent_id: "a", delegate: true })];
-  assert.deepEqual(ids(waitingFirstFlat(cycle)), ["a", "b", "x"]);
-  const none = [{ id: "a" }];
-  assert.equal(waitingFirstFlat(none), none);
 });
 
 test("heldOrder keeps an order shown before; new sessions go after, gone ones drop", () => {

@@ -57,3 +57,137 @@ test("familyRowsHtml: active, match / dim (a search), archive buttons and the ar
   // No search: nothing marked.
   assert.doesNotMatch(familyRowsHtml(fam, { now: NOW }), /match|dim/);
 });
+
+// ── The strip's popover (createFamilyPop) on fake elements ────────────────
+
+import { createFamilyPop } from "../../../lib/samagotchi/web/public/families_view.js";
+
+function fakeEl({ rect = null, parent = null, card = null } = {}) {
+  const attrs = new Map();
+  const listeners = new Map();
+  const el = {
+    id: "", className: "", hidden: false, style: {}, children: [], parent, innerHTMLSets: 0, focused: 0,
+    _html: "",
+    get innerHTML() { return this._html; },
+    set innerHTML(v) { this._html = v; this.innerHTMLSets += 1; },
+    setAttribute: (k, v) => attrs.set(k, String(v)),
+    getAttribute: (k) => attrs.get(k) ?? null,
+    addEventListener: (type, fn) => listeners.set(type, fn),
+    fire: (type, e) => listeners.get(type)?.(e),
+    appendChild(c) { this.children.push(c); c.parent = this; },
+    contains(other) { for (let at = other; at; at = at.parent) if (at === this) return true; return false; },
+    getBoundingClientRect: () => rect,
+    closest: (sel) => (sel === ".card" ? card : null),
+    focus() { this.focused += 1; },
+  };
+  return el;
+}
+
+function setupPop({ vw = 1440, rows = { p: "<rows p>" } } = {}) {
+  const body = fakeEl();
+  const doc = { body, createElement: () => fakeEl() };
+  const card = fakeEl({ rect: { left: 100, top: 20, bottom: 120, width: 360 } });
+  const chips = { p: fakeEl({ rect: { left: 180, top: 90, bottom: 108, width: 120 }, card }), q: fakeEl({ rect: { left: 500, top: 90, bottom: 108, width: 120 }, card }) };
+  const page = { picked: [], closes: 0, rows, chips };
+  const pop = createFamilyPop({
+    doc, win: { innerWidth: vw },
+    rowsFor: (id) => page.rows[id] ?? null,
+    anchorFor: (id) => page.chips[id] ?? null,
+    onPick: (id) => page.picked.push(id),
+    onClose: () => { page.closes += 1; },
+  });
+  return { pop, page, body, el: () => body.children[0] };
+}
+
+test("familyPop opens under the chip, as wide as its card, in body; toggle closes it", () => {
+  const { pop, page, el } = setupPop();
+  pop.open("p");
+  assert.equal(pop.isOpen(), true);
+  assert.equal(pop.openHead(), "p");
+  assert.equal(el().id, "familyPop");
+  assert.equal(el().hidden, false);
+  assert.equal(el().innerHTML, "<rows p>");
+  assert.deepEqual(el().style, { top: "114px", left: "100px", width: "360px" });
+  assert.equal(page.chips.p.getAttribute("aria-expanded"), "true");
+  pop.toggle("p");
+  assert.equal(pop.isOpen(), false);
+  assert.equal(el().hidden, true);
+  assert.equal(page.chips.p.getAttribute("aria-expanded"), "false");
+  assert.equal(page.closes, 1);
+  // Another family's chip moves it there.
+  pop.open("p");
+  page.rows.q = "<rows q>";
+  pop.toggle("q");
+  assert.equal(pop.openHead(), "q");
+  assert.equal(el().innerHTML, "<rows q>");
+});
+
+test("familyPop: Esc closes it (and stops there, the chip focused), other keys and a closed popover pass", () => {
+  const { pop, page } = setupPop();
+  const key = (k) => ({ key: k, stopped: 0, prevented: 0, stopImmediatePropagation() { this.stopped += 1; }, stopPropagation() { this.stopped += 1; }, preventDefault() { this.prevented += 1; } });
+  const idle = key("Escape");
+  assert.equal(pop.onKeydown(idle), false);
+  assert.equal(idle.stopped, 0);
+  pop.open("p");
+  assert.equal(pop.onKeydown(key("Enter")), false);
+  const esc = key("Escape");
+  assert.equal(pop.onKeydown(esc), true);
+  assert.ok(esc.stopped > 0);
+  assert.equal(pop.isOpen(), false);
+  assert.equal(page.chips.p.focused, 1);
+});
+
+test("familyPop: a pointer down outside closes it; in the popover or on its chip it stays", () => {
+  const { pop, page, el } = setupPop();
+  pop.open("p");
+  const row = fakeEl({ parent: el() });
+  pop.onPointerDown({ target: row });
+  assert.equal(pop.isOpen(), true);
+  pop.onPointerDown({ target: page.chips.p });
+  assert.equal(pop.isOpen(), true);
+  pop.onPointerDown({ target: fakeEl() });
+  assert.equal(pop.isOpen(), false);
+});
+
+test("familyPop: a row's click picks that session", () => {
+  const { pop, page, el } = setupPop();
+  pop.open("p");
+  const row = { dataset: { id: "c1" } };
+  el().fire("click", { target: { closest: (sel) => (sel === ".family-row[data-id]" ? row : null) } });
+  assert.deepEqual(page.picked, ["c1"]);
+  el().fire("click", { target: { closest: () => null } });
+  assert.deepEqual(page.picked, ["c1"]);
+});
+
+test("familyPop.refresh re-anchors to the redrawn chip, rewrites rows only when they changed, closes when the family is gone", () => {
+  const { pop, page, el } = setupPop();
+  pop.open("p");
+  const sets = el().innerHTMLSets;
+  // The strip drew again: a new chip element, the same rows.
+  page.chips.p = fakeEl({ rect: { left: 40, top: 90, bottom: 130, width: 100 }, card: fakeEl({ rect: { left: 30, width: 320 } }) });
+  pop.refresh();
+  assert.equal(el().innerHTMLSets, sets);
+  assert.deepEqual(el().style, { top: "136px", left: "30px", width: "320px" });
+  assert.equal(page.chips.p.getAttribute("aria-expanded"), "true");
+  page.rows.p = "<rows p, a new one>";
+  pop.refresh();
+  assert.equal(el().innerHTML, "<rows p, a new one>");
+  // Its card left the strip: closed.
+  delete page.chips.p;
+  pop.refresh();
+  assert.equal(pop.isOpen(), false);
+  // No members any more: closed.
+  page.chips.p = fakeEl({ rect: { left: 0, top: 0, bottom: 10, width: 10 }, card: fakeEl({ rect: { left: 0, width: 300 } }) });
+  pop.open("p");
+  page.rows.p = null;
+  pop.refresh();
+  assert.equal(pop.isOpen(), false);
+});
+
+test("familyPop: never narrower than 300 px nor past the window's right edge", () => {
+  const narrowCard = fakeEl({ rect: { left: 1300, width: 200 } });
+  const { pop, page, el } = setupPop();
+  page.chips.p = fakeEl({ rect: { left: 1320, top: 0, bottom: 20, width: 60 }, card: narrowCard });
+  pop.open("p");
+  assert.deepEqual(el().style, { top: "26px", left: "1132px", width: "300px" });
+});

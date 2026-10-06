@@ -809,9 +809,13 @@ body.has-session #scope .scope-where{display:none}
 .card .parent{font-family:ui-monospace,monospace;white-space:nowrap;color:var(--text-3)}
 #infoBar .meta a.parent{text-decoration:none}
 #infoBar .meta a.parent:hover{color:var(--accent)}
-.card .children-chip{font-family:ui-monospace,monospace;white-space:nowrap;flex-shrink:0;color:var(--text-3)}
-#topStrip .card .children-chip{cursor:pointer;border-radius:4px}
-#topStrip .card .children-chip:hover{color:var(--accent)}
+/* The strip's family popover (in body, position: fixed: the strip's sideways scroll on a phone would clip it), glass as the cards. */
+#familyPop{position:fixed;z-index:40;max-height:50vh;overflow:auto;padding:6px;border-radius:10px;background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
+#familyPop[hidden]{display:none}
+#familyPop .family-rows{border-top:0;margin:0;padding-top:0}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#familyPop{background:var(--bg-panel)}}
+@media (prefers-reduced-transparency:reduce){#familyPop{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}}
+body.no-glass #familyPop{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
 /* A parent's family chip: its delegates folded into its card; a click opens or closes their list. */
 /* A card with a family chip lets its meta row wrap: the chip goes to a line of its own when the card is narrow. */
 .card .meta:has(.family-chip){flex-wrap:wrap;row-gap:4px}
