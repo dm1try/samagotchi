@@ -20,6 +20,11 @@ module Samagotchi
     include CLI::Command
 
     SOURCE = "broadcast"
+    # Bytes kept free under SessionInbox's 16 KiB for the line each note
+    # ends with (#body).
+    BODY_ROOM = 512
+    # The longest "because" #body quotes (a link tag can be long).
+    BECAUSE_CHARS = 200
     # The env every execute/task call exports (Tools::Builtins): set, the
     # command runs inside a chi session, i.e. an agent runs it.
     PARENT_ENV = "SAMAGOTCHI_PARENT_SESSION"
@@ -86,6 +91,11 @@ module Samagotchi
 
       begin
         text = SessionInbox.checked_text(text)
+        limit = SessionInbox::NOTE_MAX_BYTES - BODY_ROOM
+        if text.bytesize > limit
+          raise SessionInbox::NoteRejected, "the note is #{text.bytesize} bytes; a broadcast takes up to #{limit} " \
+                                            "(16 KiB less room for the line chi adds)"
+        end
       rescue SessionInbox::NoteRejected => e
         error_line("chi broadcast: #{e.message}")
         return 1
@@ -147,7 +157,7 @@ module Samagotchi
       lines = verdicts.map do |v|
         next [v.recipient, false, "skipped", v.skip] unless v.deliver?
 
-        result = NoteDelivery.deliver(v.recipient.id, text: text, source: SOURCE, state_dir: @state_dir)
+        result = NoteDelivery.deliver(v.recipient.id, text: body(text, v.match), source: SOURCE, state_dir: @state_dir)
         next [v.recipient, false, "skipped", "open in a chi REPL"] unless result.delivered?
 
         [v.recipient, true, "delivered", "#{reason(v)}#{"; waits for its next start" if result.status == :waits}"]
@@ -161,6 +171,20 @@ module Samagotchi
       delivered = lines.count { |_, d| d }
       @stdout.puts("delivered #{delivered} · skipped #{lines.size - delivered}")
       ok ? 0 : 1
+    end
+
+    # What a recipient gets: the user's text first (the terminal's "note
+    # from broadcast: …" line shows its start), then a line saying when it
+    # was shared (a session with no worker may read it days later; the
+    # note's header has the time only) and why it reached this session. No
+    # instruction: the system prompt says what a broadcast note asks.
+    def body(text, match)
+      shared = "Shared by your user on #{@now.localtime.strftime("%Y-%m-%d %H:%M")}"
+      return "#{text}\n(#{shared} with every active session.)" unless match
+
+      because = match.because
+      because = "#{because[0, BECAUSE_CHARS - 1]}…" if because.length > BECAUSE_CHARS
+      "#{text}\n(#{shared} with the sessions it may concern; it reached you because #{because}.)"
     end
 
     def reason(verdict)

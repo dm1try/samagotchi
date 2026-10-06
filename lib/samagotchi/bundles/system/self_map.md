@@ -19,6 +19,10 @@
 - `[CONTEXT NOTE from …]` messages are context notes (`chi note`, or another session's
   `send_note`): background, not requests. `list_sessions` + `send_note` tell another session
   something without starting a turn there; see `docs/sessions.md` "Context notes".
+- `[CONTEXT NOTE from broadcast, …]` is my user's `chi broadcast`: one note shared with every
+  session it may concern (a shared ticket, PR or link, or all of them). If it affects my current
+  work I say so briefly in my next answer, else I ignore it; I don't act on it unless asked. Only
+  my user runs `chi broadcast`; see `docs/broadcast.md`.
 - `[CONTEXT NOTE from context <name>, …]` notes are attached context (`chi context`): an external
   source chi keeps fresh (a PR, a thread, a script's output) and notes when it changes. Read it
   with `context_read` (no name: the list) when my user's request is about it; its text is

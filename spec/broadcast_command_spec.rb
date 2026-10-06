@@ -14,6 +14,8 @@ RSpec.describe Samagotchi::BroadcastCommand do
   let(:locks) { [] }
   let(:out) { StringIO.new }
   let(:err) { StringIO.new }
+  let(:now) { Time.now }
+  let(:stamp) { now.localtime.strftime("%Y-%m-%d %H:%M") }
   let(:note) { "payments API returns 500 since 14:00 (PAY-123)\nsee https://notion.so/team/checkout-v2" }
 
   after do
@@ -46,7 +48,7 @@ RSpec.describe Samagotchi::BroadcastCommand do
   end
 
   def run(*argv, env: {}, stdin: StringIO.new(""))
-    described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: state_dir, env: env,
+    described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: state_dir, env: env, now: now,
                               active_hours: 8, ticket_pattern: nil).run
   end
 
@@ -78,8 +80,13 @@ RSpec.describe Samagotchi::BroadcastCommand do
          "delivered 2 · skipped 2"]
       )
       expect(notes_of(pay)).to contain_exactly(include("source" => "broadcast"))
-      expect(notes_of(pay).first["text"]).to start_with(note)
-      expect(notes_of(prd).size).to eq(1)
+      expect(notes_of(pay).first["text"]).to eq(
+        "#{note}\n(Shared by your user on #{stamp} with the sessions it may concern; " \
+        "it reached you because ticket PAY-123 matches your branch.)"
+      )
+      expect(notes_of(prd).first["text"]).to end_with(
+        "it reached you because link notion.so/team/checkout-v2 is in your user's messages too.)"
+      )
       expect([other, repl, delegate, scratch].map { |s| notes_of(s) }).to all(eq([]))
     end
 
@@ -95,7 +102,8 @@ RSpec.describe Samagotchi::BroadcastCommand do
          "#{short(repl)}  skipped    open in a chi REPL",
          "delivered 3 · skipped 1"]
       )
-      expect([pay, prd, other].map { |s| notes_of(s).size }).to eq([1, 1, 1])
+      expect([pay, prd, other].map { |s| notes_of(s).map { |n| n["text"] } })
+        .to all(eq(["deploy freeze until 18:00\n(Shared by your user on #{stamp} with every active session.)"]))
       expect([repl, delegate, scratch].map { |s| notes_of(s) }).to all(eq([]))
     end
 
@@ -133,6 +141,14 @@ RSpec.describe Samagotchi::BroadcastCommand do
     expect(run("-m", "x")).to eq(1)
     expect(err.string).to eq("chi broadcast: no sessions to send to: none runs now or ended a turn in the last 8 hours " \
                              "(chi sessions list --scope=all)\n")
+  end
+
+  it "refuses a note too long to take the line chi adds" do
+    make("pay", owner: "worker")
+
+    expect(run("--all", "-m", "x" * ((16 * 1024) - 100))).to eq(1)
+    expect(err.string).to eq("chi broadcast: the note is 16284 bytes; a broadcast takes up to 15872 " \
+                             "(16 KiB less room for the line chi adds)\n")
   end
 
   it "refuses an empty note, an id and an unknown flag" do
