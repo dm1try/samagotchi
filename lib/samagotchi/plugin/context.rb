@@ -7,6 +7,7 @@ require_relative "../guardrails/context"
 require_relative "../idle_client"
 require_relative "side_question"
 require_relative "sessions"
+require_relative "attached_context"
 
 module Samagotchi
   module Plugin
@@ -208,6 +209,13 @@ module Samagotchi
       # @return [Sessions]
       def sessions
         @sessions ||= Sessions.new(@host)
+      end
+
+      # This session's attached context: attach a URL or a command, list
+      # (AttachedContext).
+      # @return [AttachedContext]
+      def context
+        @context ||= AttachedContext.new(@host, bundle: @bundle)
       end
 
       # A single-select question through the question flow. Inside a
