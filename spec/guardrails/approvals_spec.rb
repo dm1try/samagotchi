@@ -50,6 +50,15 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
     expect(store.match(ask(cwd: other_repo))).to be_nil
   end
 
+  it "lets a child-boundary ask through only on a session entry, not a repo or rule one" do
+    store.add(ask, "repo")
+    store.add(ask(rule: "child-boundary", source: "core", session: "s0"), "rule")
+    expect(store.match(ask(rule: "child-boundary", source: "core"))).to be_nil
+    store.add(ask(rule: "git-push"), "session")
+    expect(store.match(ask(rule: "child-boundary", source: "core"))).to include("scope" => "session")
+    expect(store.match(ask(rule: "child-boundary", source: "core", session: "s2"))).to be_nil
+  end
+
   it "matches a rule entry for any call that rule asks about in the repo, from the same source" do
     store.add(ask, "rule")
     expect(store.match(ask(command: "git push --force"))).to include("scope" => "rule", "rule" => "git-push")

@@ -26,6 +26,10 @@ module Samagotchi
     class Approvals
       FILE = "approvals.json"
       STORED_SCOPES = %w[session repo rule].freeze
+      # Rules a stored answer allows only for its session: their asks offer
+      # once/session, and a repo entry for the same call (from another
+      # rule) would hold in every worktree, for every child.
+      SESSION_ONLY_RULES = %w[child-boundary].freeze
 
       # @param sessions_dir [String] Session's state dir
       #   ($XDG_STATE_HOME/samagotchi/sessions): the store sits beside it,
@@ -69,7 +73,10 @@ module Samagotchi
         repo = verdict.targets&.repo
         here = ->(e) { e["repo"] ? e["repo"] == repo : e["repo_root"] == place }
         session_id = verdict.context&.session_id
+        session_only = SESSION_ONLY_RULES.include?(verdict.rule.to_s)
         list.find do |e|
+          next false if session_only && e["scope"] != "session"
+
           case e["scope"]
           when "session" then session_id && e["session_id"] == session_id && e["key"] == key
           when "repo" then here.call(e) && e["key"] == key
