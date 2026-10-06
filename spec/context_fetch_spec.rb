@@ -115,6 +115,28 @@ RSpec.describe Samagotchi::ContextFetch do
     expect(loc.snapshot("src")).to have_attributes(text: "good\n", error: nil)
   end
 
+  it "KILLs a group that ignores TERM once the grace is over" do
+    stub_const("#{described_class}::KILL_GRACE_SECONDS", 0.2)
+    pid_file = File.join(work, "child.pid")
+    attached = source("trap '' TERM; sleep 31.77 & echo $! > child.pid; wait")
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    outcome = fetch(attached, timeout: 0.3)
+
+    expect(outcome.error).to eq("timed out after 0 s")
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+    expect(wait_until { !alive?(File.read(pid_file).to_i) }).to be(true)
+  end
+
+  it "keeps only stderr's last 4 KiB" do
+    run = described_class.run_command("head -c 9000 /dev/zero | tr '\\0' a >&2; echo >&2; echo END >&2; exit 3",
+                                      cwd: work, env: {}, timeout: 5, cancelled: -> { false })
+
+    expect(run.stderr.bytesize).to be <= described_class::STDERR_TAIL_BYTES
+    expect(run.stderr).to end_with("a\nEND\n")
+    expect(run.error).to eq("exit 3: END")
+  end
+
   it "refuses more than 1 MiB of output" do
     outcome = fetch(source("yes xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | head -c 2000000"))
     expect(outcome.error).to eq("it printed more than 1 MiB")

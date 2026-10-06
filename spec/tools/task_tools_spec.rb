@@ -257,6 +257,37 @@ RSpec.describe "task tools" do
       expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_model")
     end
 
+    def running?(pattern)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 1
+      while (alive = system("pgrep", "-f", pattern, out: File::NULL)) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        sleep 0.05
+      end
+      alive
+    end
+
+    it "stops the task's whole group, a grandchild the shell waits on too" do
+      record, = described_class.create_task("sleep 31.75 & wait")
+      expect(wait_until { system("pgrep", "-f", "sleep 31.75", out: File::NULL) }).to be(true)
+
+      stopped, = described_class.stop_task(record["id"], by: "model")
+
+      expect(stopped).to include("status" => "stopped")
+      expect(running?("sleep 31.75")).to be(false)
+    end
+
+    it "KILLs a task that ignores TERM once the grace is over" do
+      stub_const("#{described_class}::STOP_GRACE_SEC", 0.3)
+      record, = described_class.create_task("trap '' TERM; sleep 31.76")
+      expect(wait_until { system("pgrep", "-f", "sleep 31.76", out: File::NULL) }).to be(true)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      stopped, = described_class.stop_task(record["id"], by: "model")
+
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be_between(0.3, 2)
+      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_model")
+      expect(running?("sleep 31.76")).to be(false)
+    end
+
     it "never shows failed to a reader polling during the stop" do
       record, = described_class.create_task("sleep 30")
       seen = []

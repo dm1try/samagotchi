@@ -254,6 +254,25 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(now - started).to be < 5
         expect(running?("sleep 31.72")).to be(false)
       end
+
+      it "kills the whole group at the timeout, a grandchild the shell waits on too" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+
+        result = described_class.call("sleep 31.73 & wait")
+
+        expect(result).to start_with("Error: command timed out after 1s\n")
+        expect(running?("sleep 31.73")).to be(false)
+      end
+
+      it "KILLs a group that ignores TERM once the grace is over" do
+        stub_const("#{described_class}::STOP_GRACE_SEC", 0.2)
+        started = now
+        result = described_class.call("trap '' TERM; sleep 31.74; echo never", cancelled: -> { now - started > 0.3 })
+
+        expect(now - started).to be < 3
+        expect(result).to start_with("Error: command stopped by the user")
+        expect(running?("sleep 31.74")).to be(false)
+      end
     end
 
     # `cmd &` forks a child that keeps the tool's stdout/stderr pipes: once
