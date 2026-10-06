@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, batchCounts, batchTargets, batchToastText, heldOrder, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, rangeIds, runBatch, waitingSearchText, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, batchCounts, batchTargets, batchToastText, heldOrder, inTree, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, rangeIds, runBatch, waitingSearchText, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -140,6 +140,17 @@ test("waitingSearchText matches the stopped badge's words too (looped, stopped b
   // for either word finds it.
   assert.equal(waitingSearchText({ pending_question: { id: "q", kind: "question" }, last_turn: { stopped_by: "loop-guard" } }), "waiting question looped");
   assert.equal(waitingSearchText({ status: "idle" }), "");
+});
+
+test("inTree: the session itself and its delegates at any depth, not its parent", () => {
+  const list = [{ id: "p" }, { id: "c", parent_id: "p" }, { id: "g", parent_id: "c" }, { id: "x" }, { id: "loop", parent_id: "loop" }];
+  assert.equal(inTree(list, "p", "p"), true);
+  assert.equal(inTree(list, "p", "c"), true);
+  assert.equal(inTree(list, "p", "g"), true);
+  assert.equal(inTree(list, "c", "p"), false);
+  assert.equal(inTree(list, "p", "x"), false);
+  assert.equal(inTree(list, "p", null), false);
+  assert.equal(inTree(list, "p", "loop"), false);
 });
 
 // ── Select mode ──────────────────────────────────────────────────────────
