@@ -159,3 +159,19 @@ test("a row keeps its call's view from tool_call_started; a row synthesized from
   assert.deepEqual(synthesized.view, view);
   assert.equal(addStarted(m, { iteration: 3, call_index: 1, tool: "read", params: "p" }).row.view, null);
 });
+
+test("a call's duration: from the start the page saw, less its approval wait; a snapshot's own; none for a replay", () => {
+  const m = newActivity();
+  addStarted(m, { iteration: 1, call_index: 1, tool: "execute" }, 1000);
+  assert.equal(addCompleted(m, { iteration: 1, call_index: 1, waited_ms: 300 }, 1750).duration_ms, 450);
+  // A snapshot's completion carries the worker's timing.
+  addStarted(m, { iteration: 1, call_index: 2, tool: "read", replayed: true }, 5000);
+  assert.equal(addCompleted(m, { iteration: 1, call_index: 2, duration_ms: 1250, replayed: true }, 5000).duration_ms, 1250);
+  // A replayed start (an older worker's snapshot, no duration_ms) is no clock.
+  addStarted(m, { iteration: 1, call_index: 3, tool: "read", replayed: true }, 5000);
+  assert.equal("duration_ms" in addCompleted(m, { iteration: 1, call_index: 3 }, 9000), false);
+  // A completion with no start seen, or no clock given: no duration.
+  assert.equal("duration_ms" in addCompleted(m, { iteration: 2, call_index: 1, tool: "x" }, 9000), false);
+  addStarted(m, { iteration: 3, call_index: 1, tool: "x" });
+  assert.equal("duration_ms" in addCompleted(m, { iteration: 3, call_index: 1 }), false);
+});

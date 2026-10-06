@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: a tool row shows how long the call took while you watch the turn, as it does after a reload.
+
 ## [0.34.0] - 2026-10-06
 
 ### Added

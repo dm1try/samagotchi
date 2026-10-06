@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { statusParts, turnHistoryHtml } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { turnHistoryHtml } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { commandBlockHtml } from "../../../lib/samagotchi/web/public/command_view.js";
 
@@ -308,15 +308,6 @@ test("turnHistoryHtml with parts: an execute's reloaded row shows its full comma
   assert.ok(html.includes(
     '<span class="activity-params" title="cd /p &amp;&amp; rg -n foo lib |\n  head -5">rg -n foo lib |</span><span class="activity-duration">7ms</span>' +
     `${commandBlockHtml(view)}<div class="activity-output" title="a">a</div>`), html);
-});
-
-test("statusParts: a row's status as a class, a label and the word only exceptions show", () => {
-  assert.deepEqual(statusParts("ok"), { cls: "ok", label: "done", word: "" });
-  assert.deepEqual(statusParts(undefined), { cls: "ok", label: "done", word: "" });
-  assert.deepEqual(statusParts("running"), { cls: "running", label: "running", word: "" });
-  assert.deepEqual(statusParts("error"), { cls: "error", label: "error", word: "error" });
-  assert.deepEqual(statusParts("stopped"), { cls: "stopped", label: "stopped", word: "stopped" });
-  assert.deepEqual(statusParts("blocked"), { cls: "blocked", label: "blocked", word: "blocked" });
 });
 
 test("turnHistoryHtml with parts: a failed call's row keeps its word after the params; its step is marked failed", () => {
