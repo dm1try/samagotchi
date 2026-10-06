@@ -322,3 +322,57 @@ test("batchToastText: the end toast's words", () => {
   assert.equal(batchToastText({ done: 7, archive: false }), "Unarchived 7");
   assert.equal(batchToastText({ done: 6, skipped: 1, archive: false }), "Unarchived 6 · 1 skipped");
 });
+
+// ── Families folded into their parent's card ──────────────────────────────
+
+import { familyChipText, familyOpen, familySummary, filterFamilies } from "../../../lib/samagotchi/web/public/sessions_list.js";
+
+const del = (id, parent, extra = {}) => ({ id, parent_id: parent, delegate: true, status: "idle", ...extra });
+
+test("familySummary counts a family's members at any depth (the shared delegatesSummary); none is null", () => {
+  const [fam] = families([{ id: "p" }, del("c", "p", { owner: "worker", status: "running" }), del("g", "c", { pending_card: { id: "k" } })]);
+  const sum = familySummary(fam);
+  assert.equal(sum.total, 2);
+  assert.equal(sum.live, 1);
+  assert.equal(sum.counts.waiting, 1);
+  assert.equal(familySummary({ head: { id: "x" }, members: [] }), null);
+});
+
+test("familyChipText: singular / plural, then live and waiting when there are some", () => {
+  assert.equal(familyChipText({ total: 1, live: 0, counts: { waiting: 0 } }), "▸ 1 delegate");
+  assert.equal(familyChipText({ total: 3, live: 1, counts: { waiting: 1 } }), "▸ 3 delegates · 1 live · 1 waiting");
+  assert.equal(familyChipText({ total: 2, live: 0, counts: { waiting: 2 } }), "▸ 2 delegates · 2 waiting");
+  assert.equal(familyChipText(null), "");
+});
+
+test("familyOpen: open when a member waits on the user, at any depth; a toggle wins both ways", () => {
+  const [quiet] = families([{ id: "p" }, del("c", "p")]);
+  const [waits] = families([{ id: "p" }, del("c", "p"), del("g", "c", { pending_question: { id: "q" } })]);
+  // The head's own question opens nothing: its card already says it.
+  const [headWaits] = families([{ id: "p", pending_question: { id: "q" } }, del("c", "p")]);
+  assert.equal(familyOpen(quiet, new Map()), false);
+  assert.equal(familyOpen(waits, new Map()), true);
+  assert.equal(familyOpen(headWaits, new Map()), false);
+  assert.equal(familyOpen(waits, new Map([["p", false]])), false);
+  assert.equal(familyOpen(quiet, new Map([["p", true]])), true);
+  // A search that matched a member opens it too, unless toggled.
+  assert.equal(familyOpen(quiet, new Map(), { matched: true }), true);
+  assert.equal(familyOpen(quiet, new Map([["p", false]]), { matched: true }), false);
+});
+
+test("filterFamilies keeps a family whose head or any member matches; matchIds are the matching members", () => {
+  const list = [{ id: "p", t: "plan" }, del("c1", "p", { t: "fix the bug" }), del("c2", "p", { t: "docs" }), { id: "o", t: "other bug" }, { id: "z", t: "zzz" }];
+  const fams = families(list, { order: "list" });
+  const hit = (q) => filterFamilies(fams, (s) => s.t.includes(q));
+  assert.deepEqual(hit("bug").map((f) => [f.head.id, [...f.matchIds]]), [["p", ["c1"]], ["o", []]]);
+  assert.deepEqual(hit("plan").map((f) => [f.head.id, [...f.matchIds]]), [["p", []]]);
+  assert.deepEqual(hit("nothing"), []);
+  // The family keeps all its members: the rows that don't match stay, dimmed.
+  assert.equal(hit("bug")[0].members.length, 2);
+});
+
+test("waitingBadge inside its parent's family: a relayed approval says its plain kind, not 'in parent'", () => {
+  const relayed = { id: "c", parent_id: "p", pending_question: { id: "q", kind: "approval", relayed_to: "pppp1111" } };
+  assert.equal(waitingBadge(relayed).text, "in parent pppp1111");
+  assert.equal(waitingBadge(relayed, { inFamily: true }).text, "approval");
+});

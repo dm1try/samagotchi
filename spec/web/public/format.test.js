@@ -251,7 +251,7 @@ test("memChipText / memChipTitle: the phone's memory chip counts them, the toolt
   assert.equal(memChipTitle([]), "no memories in this session");
 });
 
-import { childrenSummary } from "../../../lib/samagotchi/web/public/format.js";
+import { childrenSummary, delegatesSummary } from "../../../lib/samagotchi/web/public/format.js";
 
 test("childrenSummary: no delegates (none at all, only a fork, only archived, no parent) is null", () => {
   const parent = { id: "p1" };
@@ -279,6 +279,7 @@ test("childrenSummary: mixed delegates count by state; forks and other parents' 
   assert.deepEqual(childrenSummary(parent, sessions), {
     total: 7,
     counts: { running: 2, waiting: 0, done: 1, failed: 2, stopped: 1, idle: 1 },
+    live: 0,
     text: "⑂ 7",
     waitingText: null,
     title: "7 delegates: 2 running · 1 done · 2 failed · 1 stopped · 1 idle",
@@ -298,4 +299,18 @@ test("childrenSummary: waiting is decided first: a running child with an open qu
   assert.equal(sum.waitingText, "2 waiting");
   assert.equal(sum.title, "3 delegates: 1 running · 2 waiting");
   assert.equal(childrenSummary(parent, sessions.slice(1, 2)).title, "1 delegate: 1 running");
+});
+
+test("delegatesSummary: the counter childrenSummary and the family chip share; live counts the worker-owned ones", () => {
+  assert.equal(delegatesSummary([]), null);
+  assert.equal(delegatesSummary(null), null);
+  const sum = delegatesSummary([
+    { id: "c1", status: "running", owner: "worker" },
+    { id: "c2", status: "idle", owner: "worker", pending_question: { id: "q", kind: "question" } },
+    { id: "c3", status: "idle", last_turn: { outcome: "completed" } },
+  ]);
+  assert.equal(sum.total, 3);
+  assert.equal(sum.live, 2);
+  assert.equal(sum.waitingText, "1 waiting");
+  assert.equal(sum.title, "3 delegates: 1 running · 1 waiting · 1 done");
 });
