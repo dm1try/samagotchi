@@ -7,8 +7,10 @@ require "stringio"
 require "samagotchi/bootstrap_command"
 require_relative "support/fake_provider_server"
 
-# `chi bootstrap` end to end: bin/chi against a fake model server, with a
-# temp XDG_CONFIG_HOME.
+# `chi bootstrap` end to end against a fake model server, with a temp
+# XDG_CONFIG_HOME. The examples call BootstrapCommand in this process with
+# that env in ENV and as its +env+ (what bin/chi hands it); the ones marked
+# "through bin/chi" run the real executable for the wiring.
 RSpec.describe "chi bootstrap" do
   around { |example| FakeProviderServer.without_webmock { example.run } }
 
@@ -28,23 +30,37 @@ RSpec.describe "chi bootstrap" do
     FileUtils.rm_rf(home)
   end
 
+  # `chi bootstrap ARGS` in this process, stdin a non-tty.
+  # @return [Array(String, String, Integer)] stdout, stderr, exit status
   def bootstrap(*args, extra_env: {})
-    Open3.capture3(env.merge(extra_env), RbConfig.ruby, chi, "bootstrap", *args, stdin_data: "")
+    vars = env.merge(extra_env)
+    out = StringIO.new
+    err = StringIO.new
+    code = with_env(vars) do
+      Samagotchi::BootstrapCommand.new(args, stdin: StringIO.new(""), stdout: out, stderr: err, env: vars.compact).run
+    end
+    [out.string, err.string, code]
+  end
+
+  # The same through bin/chi in a child process.
+  def spawn_bootstrap(*args)
+    out, err, status = Open3.capture3(env, RbConfig.ruby, chi, "bootstrap", *args, stdin_data: "")
+    [out, err, status.exitstatus]
   end
 
   def models(*ids) = { object: "list", data: ids.map { |id| { id: id } } }
   def bundles_dir = File.join(home, "config", "samagotchi", "memories", ".bundles")
   def written = YAML.safe_load_file(config)
 
-  it "writes a native llama.cpp host with its model, n_ctx and profile" do
+  it "writes a native llama.cpp host with its model, n_ctx and profile, through bin/chi" do
     server.default("/props", json: { model_alias: "qwen-a", build_info: "b1", chat_template: "<|im_start|> <function=",
                                      default_generation_settings: { n_ctx: 32_768 } })
     server.default("/v1/models", json: models("qwen-a"))
     server.default("/v1/chat/completions", json: chat_ok)
 
-    out, err, status = bootstrap(target)
+    out, err, status = spawn_bootstrap(target)
 
-    expect([err, status.exitstatus]).to eq(["", 0])
+    expect([err, status]).to eq(["", 0])
     expect(out).to include("found: llama.cpp at http://#{target} (build b1)", "model: qwen-a", "context: 32768 tokens",
                            "profile: qwen36 (chat template: <|im_start|> + <function=)", "test: answered in",
                            "config: #{config} (new)", "next:  chi ")
@@ -67,7 +83,7 @@ RSpec.describe "chi bootstrap" do
     FileUtils.rm_rf(File.join(bundles_dir, "check-in"))
     out, err, status = bootstrap(target, "--no-test")
 
-    expect([err, status.exitstatus]).to eq(["", 0])
+    expect([err, status]).to eq(["", 0])
     expect(out).to include("already has this server", "system bundle: v#{Samagotchi::VERSION} up to date\n",
                            "core bundles: nothing new to install\n")
     expect(File.mtime(File.join(bundles_dir, "loop-guard", "manifest.json"))).to eq(installed_at)
@@ -79,7 +95,7 @@ RSpec.describe "chi bootstrap" do
 
     out, err, status = bootstrap(target, "--no-test", "--dry-run")
 
-    expect([err, status.exitstatus]).to eq(["", 0])
+    expect([err, status]).to eq(["", 0])
     expect(out).to include("dry run: would write", "system bundle: would install v#{Samagotchi::VERSION}\n",
                            "core bundles: would install loop-guard, check-in, guardrails\n")
     expect(File.exist?(config)).to be(false)
@@ -92,7 +108,7 @@ RSpec.describe "chi bootstrap" do
 
     out, _err, status = bootstrap(target, "--name", "splash")
 
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(out).to include("found: an OpenAI-compatible API at http://#{target}/v1")
     expect(written["hosts"]).to eq("splash" => { "host" => "127.0.0.1", "port" => server.port, "api" => "openai" })
     expect(written.dig("default", "model")).to eq("splash:splash")
@@ -103,23 +119,25 @@ RSpec.describe "chi bootstrap" do
 
     _out, err, status = bootstrap(target)
 
-    expect(status.exitstatus).to eq(2)
+    expect(status).to eq(2)
     expect(err).to include("wants an API key (HTTP 401)", "--key-env VAR")
 
     server.default("/v1/models", json: models("m"))
     server.default("/v1/chat/completions", json: chat_ok)
     _out, _err, status = bootstrap(target, "--key-env", "FAKE_KEY", extra_env: { "FAKE_KEY" => "sk-1" })
 
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(written.dig("hosts", "local")).to include("api_key_env" => "FAKE_KEY")
     expect(File.read(config)).not_to include("sk-1")
     expect(server.requests.last.header("Authorization")).to eq("Bearer sk-1")
   end
 
-  it "refuses --key-env naming an unset variable" do
-    _out, err, status = bootstrap(target, "--key-env", "FAKE_KEY")
+  # Through bin/chi: in process #run answers nil here (fail! without
+  # @exit), and bin/chi's exit(nil) raises a TypeError that exits 1.
+  it "refuses --key-env naming an unset variable, through bin/chi" do
+    _out, err, status = spawn_bootstrap(target, "--key-env", "FAKE_KEY")
 
-    expect(status.exitstatus).to eq(1)
+    expect(status).to eq(1)
     expect(err).to include("FAKE_KEY is not set")
   end
 
@@ -128,16 +146,16 @@ RSpec.describe "chi bootstrap" do
     server.default("/v1/chat/completions", json: chat_ok)
 
     _out, err, status = bootstrap(target)
-    expect(status.exitstatus).to eq(2)
+    expect(status).to eq(2)
     expect(err).to include("has 2 models:", "  alpha", "  Beta", "--model ID")
     expect(File.exist?(config)).to be(false)
 
     _out, err, status = bootstrap(target, "--model", "gamma")
-    expect(status.exitstatus).to eq(1)
+    expect(status).to eq(1)
     expect(err).to include("has no model gamma")
 
     _out, _err, status = bootstrap(target, "--model", "beta")
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(written.dig("default", "model")).to eq("local:Beta")
   end
 
@@ -146,7 +164,7 @@ RSpec.describe "chi bootstrap" do
 
     out, _err, status = bootstrap(target, "--dry-run", "--no-test")
 
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(out).to include("dry run: would write a new file", "  hosts:\n    local:\n")
     expect(File.exist?(config)).to be(false)
     expect(server.requests.map(&:path)).not_to include("/v1/chat/completions")
@@ -158,7 +176,7 @@ RSpec.describe "chi bootstrap" do
 
     out, _err, status = bootstrap(target)
 
-    expect(status.exitstatus).to eq(1)
+    expect(status).to eq(1)
     expect(out).to include("test: failed: HTTP 500: out of memory", "(new)")
     expect(File.exist?(config)).to be(true)
   end
@@ -171,7 +189,7 @@ RSpec.describe "chi bootstrap" do
 
     out, _err, status = bootstrap(target, "--no-test")
 
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(File.read(config)).to eq("#{original}  local:\n    host: \"127.0.0.1\"\n    port: #{server.port}\n    api: \"openai\"\n")
     expect(out).to include("hosts entry 'local' added; backup config.yml.bak-", "use it: chi --model local:m")
     expect(Dir["#{config}.bak-*"].map { |b| File.read(b) }).to eq([original])
@@ -184,7 +202,7 @@ RSpec.describe "chi bootstrap" do
 
     out, _err, status = bootstrap(target, "--no-test")
 
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(out).to include("already has this server as 'box'; nothing written", "chi --model box:m")
     expect(Dir["#{config}.bak-*"]).to be_empty
   end
@@ -196,27 +214,27 @@ RSpec.describe "chi bootstrap" do
 
     out, _err, status = bootstrap(target, "--no-test")
 
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(out).to include("a host named local already exists; saved as local-2, use --name to choose")
     expect(written["hosts"]).to include("local-2")
   end
 
-  it "reports a closed port in one line" do
+  it "reports a closed port in one line, through bin/chi" do
     port = TCPServer.open("127.0.0.1", 0) { |s| s.addr[1] }
 
-    _out, err, status = bootstrap("127.0.0.1:#{port}")
+    _out, err, status = spawn_bootstrap("127.0.0.1:#{port}")
 
-    expect([err, status.exitstatus]).to eq(["chi bootstrap: can't reach 127.0.0.1:#{port} (connection refused)\n", 1])
+    expect([err, status]).to eq(["chi bootstrap: can't reach 127.0.0.1:#{port} (connection refused)\n", 1])
   end
 
   it "prints its usage with --help" do
     out, _err, status = bootstrap("--help")
 
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(out).to start_with("Usage: chi bootstrap [TARGET]")
   end
 
-  it "is in chi --help" do
+  it "is in chi --help, through bin/chi" do
     out, = Open3.capture3(env, RbConfig.ruby, chi, "--help", stdin_data: "")
 
     expect(out).to include("chi bootstrap [HOST[:PORT]|URL]")
