@@ -169,6 +169,7 @@ module Samagotchi
         # or nil; recap: the saved recap's first sentence, or nil; project:
         # its git project's root, or nil
         # parent_id: the session that delegated it (the delegate tool), or nil
+        # delegate: started by the delegate tool (a fork has a parent_id too)
         # archived: hidden from the lists (only with --archived can it be true)
         # scratch: a `chi scratch` session (deleted when its REPL ends, a
         # leftover one at the next sweep)
@@ -177,8 +178,8 @@ module Samagotchi
         # hook: chi answer or the web answers it), or nil; waiting_id: its
         # id, for chi answer --question; relayed_to: the parent session (short
         # id) whose card it also waits in (the approval relay), or nil
-        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived scratch ctx_pct waiting
-                  waiting_id relayed_to stopped_by]
+        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id delegate archived scratch ctx_pct
+                  waiting waiting_id relayed_to stopped_by]
         @stdout.puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| @stdout.puts "#{summary[:id]}\t#{summary[:desc]}" }

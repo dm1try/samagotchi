@@ -266,8 +266,9 @@ module Samagotchi
     # @param include_archived [Boolean] archived sessions too
     # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:, project:,
     #   updated_at:, status:, live:, busy:, owner:, recap:, parent_id:,
-    #   parent_short_id:, archived:, scratch:, test_run:, waiting:, waiting_id:, stopped_by:}; busy = live with
-    #   a turn running, recap = the saved recap's first sentence, project =
+    #   parent_short_id:, delegate:, archived:, scratch:, test_run:, waiting:, waiting_id:, stopped_by:}; busy =
+    #   live with a turn running, delegate = started by the delegate tool
+    #   (Session#delegate?; a fork has a parent_id but isn't one), recap = the saved recap's first sentence, project =
     #   Session#project_root, waiting = the kind of question it waits on
     #   ("question", "approval", "hook"; Session#waiting_question) or nil,
     #   waiting_id = that question's id or nil, relayed_to = the parent
@@ -291,7 +292,7 @@ module Samagotchi
           project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
           owner: owner&.kind, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
           ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd))&.round(1),
-          parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), archived: s.archived,
+          parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), delegate: s.delegate?, archived: s.archived,
           scratch: s.scratch, test_run: s.test_run, stopped_by: s.stopped_by }.merge(waiting_fields(s.waiting_question(live: owned)))
       end
       (limit ? summaries.first(limit) : summaries.to_a)

@@ -1787,6 +1787,18 @@ RSpec.describe Samagotchi::SessionManager do
                                  cwd: "/work/app", updated_at: "2026-09-24T10:00:00Z", live: true, busy: true)
     end
 
+    it "tells a delegate child from a fork: both carry the parent, only one is a delegate" do
+      parent = make(prompt: "plan")
+      fork = make(parent_id: parent.id)
+      delegate = make(parent_id: parent.id).tap do |s|
+        s.delegate = true
+        s.save(state_dir: tmpdir)
+      end
+
+      rows = described_class.session_summaries(state_dir: tmpdir).to_h { |s| [s[:id], s[:delegate]] }
+      expect(rows.values_at(parent.id, fork.id, delegate.id)).to eq([false, false, true])
+    end
+
     it "carries the parent link, and .children_of lists a parent's children newest first" do
       parent = make(prompt: "plan", updated: "2026-09-24T09:00:00Z")
       older = make(prompt: "first task", updated: "2026-09-24T10:00:00Z", parent_id: parent.id)

@@ -163,7 +163,7 @@ RSpec.describe "chi sessions list" do
     expect(by_id).to include(counted.id => 12.3, unknown.id => nil)
   end
 
-  it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id" do
+  it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id (delegate false: no delegate tool started it)" do
     parent = make("the plan")
     child = make("count the specs", live: true, parent_id: parent.id)
 
@@ -176,8 +176,8 @@ RSpec.describe "chi sessions list" do
     expect(out).to include("#{child.id}  live      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  app · count the specs  ↳ #{parent.id[0, 8]}\n")
 
     out, _err, _status = run_chi("--format=json")
-    by_id = JSON.parse(out).to_h { |row| [row["id"], row["parent_id"]] }
-    expect(by_id).to eq(parent.id => nil, child.id => parent.id)
+    by_id = JSON.parse(out).to_h { |row| [row["id"], row.values_at("parent_id", "delegate")] }
+    expect(by_id).to eq(parent.id => [nil, false], child.id => [parent.id, false])
   end
 
   it "marks a session waiting for an answer, in the plain and the --live listings; json has waiting" do
@@ -314,7 +314,7 @@ RSpec.describe "chi sessions list" do
     expect(status).to eq(0), err
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
-                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
+                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil, "delegate" => false,
                                      "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
                                      "waiting_id" => nil, "relayed_to" => nil, "stopped_by" => nil }])
   end
