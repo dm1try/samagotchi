@@ -80,7 +80,7 @@ RSpec.describe "Turn policy characterization" do
     lambda do |on_chunk:|
       if %i[cut steer_cut].include?(kind)
         on_chunk&.call(content: loop_name == :gemma ? "<|channel>thought\nloop " : "<think>loop ", payload: {})
-        kind == :cut ? controller.cancel_generation!(:hook, cut) : controller.cancel_generation!(:steer, steer_cut)
+        kind == :cut ? controller.cancel_generation!(:hook, cut) : controller.cancel_generation!(:steer, steer_detail(options))
         raise Samagotchi::LLM::RequestCancelled, kind == :cut ? :hook : :steer
       end
       text = native_text(loop_name, step)
@@ -115,10 +115,15 @@ RSpec.describe "Turn policy characterization" do
     when :cut, :steer_cut
       lambda do |on_delta:, **|
         on_delta&.call(content: "", reasoning: "loop ", payload: {})
-        kind == :cut ? controller.cancel_generation!(:hook, cut) : controller.cancel_generation!(:steer, steer_cut)
+        kind == :cut ? controller.cancel_generation!(:hook, cut) : controller.cancel_generation!(:steer, steer_detail(options))
         raise Samagotchi::LLM::RequestCancelled, kind == :cut ? :hook : :steer
       end
     end
+  end
+
+  # A [:steer_cut, { source: "chi_send" }] step: the steer's own source.
+  define_method(:steer_detail) do |options|
+    options[:source] ? steer_cut.merge(source: options[:source]) : steer_cut
   end
 
   # ── the run ──────────────────────────────────────────────────────────────
@@ -264,6 +269,10 @@ RSpec.describe "Turn policy characterization" do
     Array(row[:also]).each do |extra|
       case extra
       when :ctx_display then observed[:ctx_display] = result.context_status&.dig(:bucket)
+      # What event_line leaves out of a cut's rows.
+      when :cut_fields
+        observed[:cut_fields] = events.select { |e| %i[empty_answer_retry generation_cancelled steer_cut].include?(e[:type]) }
+                                      .map { |e| e.except(:iteration, :attempt, :of) }
       when :finish
         observed[:finish] = events.select { |e| %i[generation_completed empty_answer_retry].include?(e[:type]) }
                                   .map { |e| "#{e[:type]}=#{e[:finish_reason].inspect}" }
@@ -288,6 +297,11 @@ RSpec.describe "Turn policy characterization" do
   merged = lambda do |answer, count: 1, steers: nil|
     ["gen", "done", "merged(count=#{count} answer=#{answer.inspect}#{" steers=#{steers}" if steers})", "gen", "done"]
   end
+  # A cut's :empty_answer_retry fields, with the thinking the cut step streamed.
+  cut_retry = lambda do |thinking_chars|
+    { type: :empty_answer_retry, finish_reason: "stopped", thinking_chars: thinking_chars, stopped_by: "loop-guard" }
+  end
+  hook_ending = { type: :generation_cancelled, reason: :hook, stopped_by: "loop-guard" }
   line_at_first = [{ on: :generation_completed, iteration: 1, items: ["user line"] }]
   window = { "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => "1000" }
 
@@ -338,6 +352,11 @@ RSpec.describe "Turn policy characterization" do
     { name: "cut, then Stop", steps: [[:cut], [:text, "PONG"]], stop_after_cut: true,
       expected: { events: ["gen", "done(stopped)", "cancelled(user)"], conversation: ["user:hi"],
                   result: res.call("", canceled: true, reason: :user), temps: [nil], activity: [] } },
+    # The chat loop's next iteration checks for a Stop too: only on the
+    # last one does a cut's Stop differ from the turn going on.
+    { name: "cut, then Stop on the last iteration", max_iterations: 1, steps: [[:cut]], stop_after_cut: true,
+      expected: { events: ["gen", "done(stopped)", "cancelled(user)"], conversation: ["user:hi"],
+                  result: res.call("", canceled: true, reason: :user), temps: [nil], activity: [] } },
     { name: "cut with a line queued", steps: [[:cut], [:text, "PONG"]], queue: line_at_first,
       expected: { events: ["gen", "done(stopped)", "merged(count=1 answer=nil)", "gen", "done"],
                   conversation: ["user:hi", "user:input", "model:PONG"], result: res.call("PONG"), temps: [nil, nil],
@@ -367,6 +386,30 @@ RSpec.describe "Turn policy characterization" do
     { name: "steer cut, then Stop", steps: [[:steer_cut], [:text, "PONG"]], stop_after_cut: true, queue: line_at_first,
       expected: { events: ["gen", "done(stopped)", "cancelled(user)"], conversation: ["user:hi"],
                   result: res.call("", canceled: true, reason: :user), temps: [nil], activity: [] } },
+    # The fields event_line leaves out: a cut's retry (finish_reason
+    # "stopped", the bundle that cut, the thinking it streamed) and the
+    # hook ending (stopped_by the bundle).
+    { name: "cut, then an answer: the fields", also: %i[cut_fields], steps: [[:cut], [:text, "PONG"]],
+      expected: { events: ["gen", "done(stopped)", "retry 1/1 cut", "gen", "done"],
+                  conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.call("PONG"), temps: [nil, 0.6],
+                  activity: [], cut_fields: [cut_retry.call(5)] },
+      gemma: { cut_fields: [cut_retry.call(6)] } },
+    { name: "cut twice: the fields", also: %i[cut_fields], steps: [[:cut], [:cut]],
+      expected: { events: ["gen", "done(stopped)", "retry 1/1 cut", "gen", "done(stopped)", "cancelled(hook)"],
+                  conversation: ["user:hi"], result: res.call("", canceled: true, reason: :hook), temps: [nil, 0.6],
+                  activity: [], cut_fields: [cut_retry.call(5), hook_ending] },
+      gemma: { cut_fields: [cut_retry.call(6), hook_ending] } },
+    # A steer cut spends no attempt: the empty answer after it still gets
+    # its retry.
+    { name: "steer cut, nothing queued, budget left, then an empty answer",
+      steps: [[:steer_cut], [:thought], [:text, "PONG"]],
+      expected: { events: ["gen", "done(stopped)", "steer_cut(\"\")", "gen", "done", "retry 1/1", "gen", "done"],
+                  conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.call("PONG"), temps: [nil, nil, 0.6],
+                  activity: [] } },
+    { name: "steer cut from chi send", also: %i[cut_fields], steps: [[:steer_cut, { source: "chi_send" }], [:text, "PONG"]],
+      expected: { events: ["gen", "done(stopped)", "steer_cut(\"chi_send\")", "gen", "done"],
+                  conversation: ["user:hi", "model:PONG"], result: res.call("PONG"), temps: [nil, nil], activity: [],
+                  cut_fields: [{ type: :steer_cut, source: "chi_send" }] } },
     { name: "user line queued at an empty answer", steps: [[:thought], [:text, "PONG"]], queue: line_at_first,
       expected: { events: merged.call(nil), conversation: ["user:hi", "user:input", "model:PONG"], result: res.call("PONG"),
                   temps: [nil, nil], activity: [] } },
