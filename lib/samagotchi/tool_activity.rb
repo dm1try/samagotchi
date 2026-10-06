@@ -39,7 +39,7 @@ module Samagotchi
     #   worker runs in its session's working directory)
     def tool_activity_event(tool_name, call, result, registry: nil, cwd: Dir.pwd)
       event = {
-        action: tool_activity_action(tool_name, registry: registry),
+        action: tool_activity_action(tool_name, registry: registry, call: call),
         tool: tool_name,
         params: tool_activity_params(tool_name, call, registry: registry),
         status: tool_activity_status(result, tool_name)
@@ -151,14 +151,15 @@ module Samagotchi
       parts.drop(base.length).join("/")
     end
 
-    def tool_activity_action(tool_name, registry: nil)
+    # @param call [Hash, nil] the call, for a label that depends on its form
+    def tool_activity_action(tool_name, registry: nil, call: nil)
       case tool_name
       when Tools::Execute::NAME then "running command"
       when Tools::Read::NAME then "reading file"
       when Tools::Write::NAME then "writing file"
       when Tools::Edit::NAME then "editing file"
       when Tools::MemoryRead::NAME then "reading memory"
-      when Tools::MemoryWrite::NAME then "saving memory"
+      when Tools::MemoryWrite::NAME then memory_write_action(call)
       when Tools::TaskCreate::NAME then "starting background task"
       when Tools::TaskGet::NAME then "checking task"
       when Tools::TaskList::NAME then "listing tasks"
@@ -182,6 +183,14 @@ module Samagotchi
     # whose task was stopped (the stop-task button, or the model's task_stop),
     # and for a command the user's Stop killed or kept from starting: a
     # cancel, not a failure (its text still starts "Error:" for the model).
+    # memory_write's label: a call with only a description changes the index line.
+    def memory_write_action(call)
+      return "saving memory" unless call.is_a?(Hash)
+      return "updating memory description" if call[:content].to_s.empty? && !call[:description].to_s.strip.empty?
+
+      "saving memory"
+    end
+
     def tool_activity_status(result, tool_name = nil)
       text = result.to_s
       return "stopped" if text == Tools::Execute::NOT_RUN_ON_STOP

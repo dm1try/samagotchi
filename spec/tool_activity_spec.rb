@@ -40,6 +40,15 @@ RSpec.describe Samagotchi::ToolActivity do
                                                registry: registry)).not_to have_key(:description)
   end
 
+  it "labels a memory_write with only a description as updating the description" do
+    only = { name: "memory_write", path: "n", scope: "project", description: "OPEN: 1/2" }
+    expect(described_class.tool_activity_event("memory_write", only, "ok", registry: registry)[:action])
+      .to eq("updating memory description")
+    expect(described_class.tool_activity_event("memory_write", only.merge(content: "x"), "ok", registry: registry)[:action])
+      .to eq("saving memory")
+    expect(described_class.tool_activity_action("memory_write")).to eq("saving memory")
+  end
+
   it "says calling tool with no params for a tool the registry doesn't know" do
     expect(described_class.tool_activity_event("nope", { name: "nope", content: "x" }, "Error: …", registry: registry))
       .to eq(action: "calling tool", tool: "nope", params: nil, status: "error")

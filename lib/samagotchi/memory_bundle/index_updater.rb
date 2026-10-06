@@ -25,7 +25,7 @@ module Samagotchi
           pattern = managed_pattern(entry_name)
           if content.match?(pattern)
             existing = content[pattern].to_s.chomp
-            resolved_desc = description&.to_s&.strip || extract_description(existing)
+            resolved_desc = blank_description?(description) ? extract_description(existing) : description
             resolved_source = source.nil? ? extract_source(existing) : (source || nil)
             new_line = managed_line(entry_name, scope, byte_count, resolved_desc, resolved_source)
             next content.sub(pattern) { new_line + $1 }
@@ -72,10 +72,13 @@ module Samagotchi
       def self.managed_line(name, scope, byte_count, description, source = nil)
         line = "- **#{name}** · #{scope} · #{date_str} · #{byte_count}"
         line += " · from #{source}" unless source.to_s.strip.empty?
-        desc = description&.to_s&.strip
-        line += " — #{desc}" unless desc.to_s.empty?
+        desc = description.to_s.gsub(/\s+/, " ").strip
+        line += " — #{desc}" unless desc.empty?
         line
       end
+
+      # A blank description (nil, "", whitespace) keeps the line's own.
+      def self.blank_description?(description) = description.to_s.strip.empty?
 
       def self.extract_description(line)
         if line =~ /\s—\s(.*)\s*\z/

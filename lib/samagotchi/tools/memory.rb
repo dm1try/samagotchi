@@ -150,13 +150,27 @@ module Samagotchi
         /^- \*\*#{Regexp.escape(name)}\*\*[ \t]*(?:[·•].*|:.*)?(\r?\n|\z)/
       end
 
+      # The longest description an index line takes: the line lands in
+      # every session's prompt for the repo.
+      DESCRIPTION_LIMIT = 200
+
       def self.call(content, path:, scope:, description: nil, current_model_only: false, model_key: nil)
         entry_name = path.to_s.strip
         body = content.to_s
         return "Error: entry name is required" if entry_name.empty?
         return MemoryRead.invalid_name_error(entry_name) if MemoryRead.invalid_name?(entry_name)
         return "Error: scope is required" if scope.to_s.strip.empty?
-        return "Error: content is required" if body.empty?
+
+        description = normalize_description(description)
+        if description && description.length > DESCRIPTION_LIMIT
+          return "Error: description is #{description.length} characters; the limit is #{DESCRIPTION_LIMIT} " \
+                 "(one line: what the memory is for)"
+        end
+        if body.empty?
+          return "Error: content is required (or pass only description to change the index line)" unless description
+
+          return update_description(entry_name, scope, description, current_model_only)
+        end
 
         resolved_scope = MemoryRead.normalize_scope(scope)
 
@@ -203,6 +217,32 @@ module Samagotchi
         message
       rescue StandardError => e
         "Error: #{e.message}"
+      end
+
+      # A description as the index line takes it: whitespace (newlines too)
+      # collapsed to single spaces; nil when blank, which keeps the stored one.
+      def self.normalize_description(description)
+        text = description.to_s.gsub(/\s+/, " ").strip
+        text.empty? ? nil : text
+      end
+
+      # The description-only form: name, scope and description, no content.
+      # Rewrites that entry's index line (size and date too) and leaves its
+      # file alone, so a status kept in the description costs no rewrite of
+      # the body.
+      def self.update_description(entry_name, scope, description, current_model_only)
+        return "Error: the index has no index line of its own; pass content to write it" if entry_name == MEMORY_INDEX
+        if current_model_only
+          return "Error: a model overlay has no index line; pass content to write the overlay, or drop " \
+                 "current_model_only to change the base entry's description"
+        end
+
+        resolved_scope = MemoryRead.normalize_scope(scope)
+        file_path = File.join(MemoryRead.memories_dir(resolved_scope), "#{entry_name}.md")
+        return "Error: no memory '#{entry_name}' in #{resolved_scope} scope; pass content to create it" unless File.file?(file_path)
+
+        manage_index(resolved_scope, entry_name, File.size(file_path), description)
+        "Memory '#{entry_name}' description updated in #{resolved_scope} scope (file unchanged)."
       end
 
       # Adds or refreshes a single managed line for `entry_name` in the given

@@ -346,6 +346,86 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       end
     end
 
+    describe "description only (no content)" do
+      def index_line(name, dir = project_memories_dir)
+        File.read(File.join(dir, "index.md")).lines.find { |l| l.start_with?("- **#{name}**") }
+      end
+
+      it "changes only that entry's index line and leaves the file as it is" do
+        described_class.call("body text", path: "handoff_x", scope: "project", description: "OPEN: 0/2 merged")
+        described_class.call("other", path: "notes", scope: "project", description: "notes")
+        before_notes = index_line("notes")
+        file = File.join(project_memories_dir, "handoff_x.md")
+        File.utime(Time.now - 3600, Time.now - 3600, file)
+        mtime = File.mtime(file)
+
+        result = described_class.call("", path: "handoff_x", scope: "project", description: "OPEN: 1/2 merged")
+        expect(result).to eq("Memory 'handoff_x' description updated in project scope (file unchanged).")
+        expect(File.read(file)).to eq("body text")
+        expect(File.mtime(file)).to eq(mtime)
+        expect(index_line("handoff_x")).to end_with(" · 9 — OPEN: 1/2 merged\n")
+        expect(index_line("notes")).to eq(before_notes)
+      end
+
+      it "works with nil content (a call without the content field)" do
+        described_class.call("body", path: "k", scope: "system", description: "first")
+        result = described_class.call(nil, path: "k", scope: "system", description: "second")
+        expect(result).to include("description updated in system scope")
+        expect(index_line("k", system_memories_dir)).to end_with("— second\n")
+      end
+
+      it "refuses an entry that has no file in that scope" do
+        File.write(File.join(system_memories_dir, "k.md"), "in system")
+        result = described_class.call("", path: "k", scope: "project", description: "x")
+        expect(result).to eq("Error: no memory 'k' in project scope; pass content to create it")
+        expect(File.exist?(File.join(project_memories_dir, "index.md"))).to be(false)
+      end
+
+      it "refuses the index and a model overlay" do
+        File.write(File.join(project_memories_dir, "index.md"), "# idx\n")
+        expect(described_class.call("", path: "index", scope: "project", description: "x")).to start_with("Error:")
+        expect(File.read(File.join(project_memories_dir, "index.md"))).to eq("# idx\n")
+        described_class.call("base", path: "k", scope: "project")
+        result = described_class.call("", path: "k", scope: "project", description: "x",
+                                          current_model_only: true, model_key: "qwen3")
+        expect(result).to start_with("Error:")
+        expect(result).to include("overlay")
+      end
+
+      it "asks for content or a description when both are missing" do
+        result = described_class.call("", path: "k", scope: "project", description: "  ")
+        expect(result).to eq("Error: content is required (or pass only description to change the index line)")
+      end
+    end
+
+    describe "descriptions" do
+      def index_line(name)
+        File.read(File.join(project_memories_dir, "index.md")).lines.find { |l| l.start_with?("- **#{name}**") }
+      end
+
+      it "keeps the stored description when a write passes a blank one (it was wiped)" do
+        described_class.call("v1", path: "k", scope: "project", description: "kept")
+        described_class.call("v2", path: "k", scope: "project", description: "")
+        described_class.call("v3", path: "k", scope: "project", description: " \n ")
+        expect(index_line("k")).to end_with("— kept\n")
+      end
+
+      it "collapses whitespace and newlines to single spaces, leaving one line" do
+        described_class.call("v1", path: "k", scope: "project", description: "line one\n\n  line\ttwo ")
+        index = File.read(File.join(project_memories_dir, "index.md"))
+        expect(index_line("k")).to end_with("— line one line two\n")
+        expect(index).not_to include("line\ttwo")
+        expect(index.lines.last).to eq(index_line("k"))
+      end
+
+      it "refuses one longer than 200 characters and writes nothing" do
+        result = described_class.call("v1", path: "k", scope: "project", description: "a" * 201)
+        expect(result).to eq("Error: description is 201 characters; the limit is 200 (one line: what the memory is for)")
+        expect(File.exist?(File.join(project_memories_dir, "k.md"))).to be(false)
+        expect(described_class.call("v1", path: "k", scope: "project", description: "a" * 200)).to include("saved")
+      end
+    end
+
     it "says the index line was refreshed, without the index path, on a normal write" do
       result = described_class.call("hello", path: "greet", scope: "project")
       expect(result).to include("greet")

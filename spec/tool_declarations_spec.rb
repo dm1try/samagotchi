@@ -57,6 +57,12 @@ RSpec.describe Samagotchi::ToolDeclarations, ".chat_schemas" do
     end
   end
 
+  it "lets memory_write go without content (the description-only form)" do
+    params = schemas.find { |schema| schema[:name] == "memory_write" }[:parameters]
+    expect(params[:required]).to eq(%w[name scope])
+    expect(params[:properties][:description][:description]).to include("without content")
+  end
+
   it "closes every tool's parameters with additionalProperties: false" do
     expect(schemas.map { |schema| schema[:parameters][:additionalProperties] }.uniq).to eq([false])
   end

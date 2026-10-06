@@ -56,4 +56,13 @@ RSpec.describe Samagotchi::MemoryBundle::IndexUpdater do
     described_class.remove_index("system", "guide")
     expect(line("guide")).to be_nil
   end
+
+  it "keeps the stored description for a blank one, and writes a multi-line one on one line" do
+    described_class.update_index("system", "guide", 12, "How to")
+    described_class.update_index("system", "guide", 12, "  ")
+    expect(line("guide")).to eq("- **guide** · system · #{today} · 12 — How to\n")
+    described_class.update_index("system", "other", 3, "a\nb")
+    expect(line("other")).to eq("- **other** · system · #{today} · 3 — a b\n")
+    expect(line("guide")).to eq("- **guide** · system · #{today} · 12 — How to\n")
+  end
 end

@@ -127,7 +127,7 @@ module Samagotchi
       },
       {
         name: "memory_write",
-        description: "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim. For a small change to an existing memory (a step, a line), `edit` its file (<scope dir>/<name>.md) instead of rewriting it all; its index line is refreshed either way. If the user asks to save guidance for the current model only, pass current_model_only: true to save a model-specific overlay.",
+        description: "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim. For a small change to an existing memory (a step, a line), `edit` its file (<scope dir>/<name>.md) instead of rewriting it all; its index line is refreshed either way. To change only an entry's index line, pass name, scope and description without content. If the user asks to save guidance for the current model only, pass current_model_only: true to save a model-specific overlay.",
         parameters: {
           type: "object",
           properties: {
@@ -137,7 +137,7 @@ module Samagotchi
             },
             content: {
               type: "string",
-              description: "Markdown content to write"
+              description: "Markdown content to write; leave it out to change only the description"
             },
             scope: {
               type: "string",
@@ -145,14 +145,14 @@ module Samagotchi
             },
             description: {
               type: "string",
-              description: "Optional short description appended to the managed index line"
+              description: "Optional one-line description (at most 200 characters) appended to the managed index line; without content, it changes only that line"
             },
             current_model_only: {
               type: "boolean",
               description: "Set true to save this entry as a model-specific overlay for the current model only (<name>.<model>.md); it is auto-appended when the entry is read under that model and never listed in the index."
             }
           },
-          required: %w[name content scope]
+          required: %w[name scope]
         }
       },
       {
