@@ -21,7 +21,7 @@
     ]
   },
   "client_labels": {
-    "note": "The label on a prompt by its sender's client_id prefix (Formatting#prompt_line \"label> prompt\"; turn_events.js clientLabel). No client_id: the TUI's history/own prompt shows user>, the web's own bubble has no label.",
+    "note": "The label on a prompt by its sender's client_id, whole or by prefix (Formatting#prompt_line \"label> prompt\"; turn_events.js clientLabel). An id chi doesn't know is automatic, never the user. No client_id: the TUI's history/own prompt shows user>, the web's own bubble has no label.",
     "cases": [
       { "client_id": "web:abc", "expected": "web" },
       { "client_id": "tui:123", "expected": "tui" },
@@ -29,7 +29,13 @@
       { "client_id": "delegate:3f2a1c9e", "expected": "delegate" },
       { "client_id": "child:3f2a1c9e", "expected": "delegate report" },
       { "client_id": "context:pr-123", "expected": "context pr-123 changed" },
-      { "client_id": "other:1", "expected": "user" },
+      { "client_id": "cli:send", "expected": "chi send" },
+      { "client_id": "cli:answer", "expected": "chi answer" },
+      { "client_id": "plugin", "expected": "plugin" },
+      { "client_id": "other:1", "expected": "automatic" },
+      { "client_id": "plugin:x", "expected": "automatic" },
+      { "client_id": "web", "expected": "automatic" },
+      { "client_id": "", "ruby": "automatic", "js": null },
       { "client_id": null, "ruby": "user", "js": null }
     ]
   },

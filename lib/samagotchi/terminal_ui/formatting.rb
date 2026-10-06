@@ -114,22 +114,29 @@ module Samagotchi
         " #{paint("+#{get.call(:added).to_i}", 32)} #{paint("\u2212#{get.call(:removed).to_i}", 31)}"
       end
 
-      # Prompt labels by the sender's client_id prefix (turn_events.js
-      # CLIENT_LABELS; spec/shared/labels_matrix.json).
+      # Prompt labels by the sender's client_id: a whole id, or a prefix
+      # (ending in ":") it starts with (turn_events.js CLIENT_LABELS;
+      # spec/shared/labels_matrix.json).
       CLIENT_LABELS = { ClientId::WEB_PREFIX => "web", ClientId::TUI_PREFIX => "tui", ClientId::SYSTEM_PREFIX => "reminder",
-                        ClientId::DELEGATE_PREFIX => "delegate", ClientId::CHILD_PREFIX => "delegate report" }.freeze
+                        ClientId::DELEGATE_PREFIX => "delegate", ClientId::CHILD_PREFIX => "delegate report",
+                        ClientId::CLI_SEND => "chi send", ClientId::CLI_ANSWER => "chi answer",
+                        ClientId::PLUGIN => "plugin" }.freeze
+      # A client id chi doesn't know: not the user (ClientId.human?).
+      AUTOMATIC_LABEL = "automatic"
 
-      # Who sent a line, by its client_id: CLIENT_LABELS by prefix (the id
-      # up to its first ":"), and a
-      # turn an attached context source started (context:<name>) as
-      # "context <name> changed"; +fallback+ for anything else.
+      # Who sent a line, by its client_id: CLIENT_LABELS by the whole id or
+      # its prefix, a turn an attached context source started
+      # (context:<name>) as "context <name> changed", AUTOMATIC_LABEL for
+      # an id chi doesn't know; +fallback+ for none (the user's own).
       def client_label(client_id, fallback = "user")
         return fallback unless client_id
 
-        prefix, rest = client_id.to_s.split(":", 2)
-        return "context #{rest} changed" if "#{prefix}:" == ClientId::CONTEXT_PREFIX && !rest.to_s.empty?
+        id = client_id.to_s
+        name = id.delete_prefix(ClientId::CONTEXT_PREFIX)
+        return "context #{name} changed" if id.start_with?(ClientId::CONTEXT_PREFIX) && !name.empty?
 
-        CLIENT_LABELS.fetch("#{prefix}:", fallback)
+        prefix = id[/\A[^:]*:/]
+        CLIENT_LABELS[id] || (prefix && CLIENT_LABELS[prefix]) || AUTOMATIC_LABEL
       end
 
       # "web> <prompt>": a prompt, labelled by who sent it; nil: the label alone.

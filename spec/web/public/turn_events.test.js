@@ -60,7 +60,7 @@ test("clientLabel names the sender's kind; own/unknown have none", () => {
   assert.equal(clientLabel("web:abc"), "web");
   assert.equal(clientLabel("system:reminder"), "reminder");
   assert.equal(clientLabel("delegate:3f2a1c9e"), "delegate");
-  assert.equal(clientLabel("other:1"), "user");
+  assert.equal(clientLabel("other:1"), "automatic");
   assert.equal(clientLabel(null), null);
   assert.equal(isOwn(ME, ME), true);
   assert.equal(isOwn(null, ME), false);
