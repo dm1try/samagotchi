@@ -109,4 +109,19 @@ RSpec.describe Samagotchi::ContextPoller do
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
     expect(own.snapshot("hang")).to have_attributes(error: nil, checked_at: nil)
   end
+
+  # R4 (part 1 review): stop ends an in-flight fetch's whole group before
+  # it returns (the cancel the fetch polls, not a thread kill).
+  it "leaves no process of a running fetch's group once stop returns" do
+    pids = File.join(tmpdir, "pids")
+    add(own, "hang", "sleep 30 & echo $$ $! > #{pids}; wait")
+    poller.start
+    expect(wait_until { File.size?(pids) }).to be_truthy
+
+    poller.stop
+
+    File.read(pids).split.map(&:to_i).each do |pid|
+      expect { Process.kill(0, pid) }.to raise_error(Errno::ESRCH)
+    end
+  end
 end
