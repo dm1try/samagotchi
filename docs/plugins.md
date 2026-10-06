@@ -1163,10 +1163,27 @@ by themselves there.
   agent may have merged the branch already), merges `--ff-only` and never
   pushes unless you ask. After a merge it stops the
   child and removes only the worktrees and branches it made.
+- **A handoff memory.** The conversation is lost when the session ends, so
+  the skill keeps a project memory `handoff_<epic-slug>` with only what git
+  and the session list can't rebuild: the split (branch, worktree, child id
+  per task), your decisions, its verdicts and the follow-ups. Its index
+  description is the status, descriptive only and naming the session that
+  owns it ("OPEN coordinator handoff calc-v2 (session ab12cd34): 2/3 merged",
+  later "DONE: …"): every session in the repo sees that line. The model saves
+  a decision there before acting on it, and changes the status with
+  `memory_write`'s description-only form. When everything is done it marks
+  the handoff DONE and asks whether to remove it (`memory_write remove:
+  true`, which the guardrails bundle asks you to confirm). Children are told
+  not to touch it.
+- **Resume.** A new coordinator session (or one asked "where were we?")
+  reads the open handoff, checks it against git and the session list (git
+  wins; mismatches are reported) and goes on from the first open step.
 - **`/coordinate <goal>`** sends this session a turn asking the model to
   follow the skill for the goal (in a `--no-shared` REPL it shows the text to
   send yourself). Asking "do this in parallel" works too: the index line leads
-  the model to the skill.
+  the model to the skill. **`/coordinate resume`** asks it to resume this
+  project's open handoff; with several open it shows a card with a Resume
+  action each (`/coordinate resume <name>` picks one), with none it says so.
 - **`/children [all]`** shows the session's children as a card, newest first,
   one line each: `` `ab12cd34` · running · fix/flaky · "fix the flaky spec" ``,
   `` `9a8b7c6d` · done · feat/x · reported · "All 12 specs pass" `` (`not

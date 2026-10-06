@@ -15,7 +15,13 @@ and commands may change between minor versions. How releases are made:
 - `memory_write` with `name`, `scope` and `remove: true` removes a memory: its file (and model overlays) move to the
   bundle trash, which `chi bundle trash` lists and empties, and its index line goes; a line left after the file was
   deleted by hand goes too. A memory a bundle installed is refused (`chi bundle uninstall` owns it).
-- The guardrails bundle (0.8.0) asks before every memory removal (`memory-remove`, once at a time). Guardrail rules take `memory: remove`.
+- The coordinator bundle (0.2.0) keeps a project memory `handoff_<epic>` with what git and the session list can't
+  rebuild (the split, your decisions, its verdicts, follow-ups), its status in the index description, and resumes
+  from it in a new session after checking git and the session list; `/coordinate resume` picks up an open handoff.
+  When the work is done it marks the handoff DONE and asks whether to remove it. See
+  [docs/plugins.md](docs/plugins.md#the-coordinator-bundle).
+- The guardrails bundle (0.8.0) asks before every memory removal (`memory-remove`, once at a time). Guardrail rules
+  take `memory: remove`.
 
 ### Fixed
 
