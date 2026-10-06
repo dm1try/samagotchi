@@ -20,6 +20,20 @@ and commands may change between minor versions. How releases are made:
   first turn. The guardrails protect the store: the file tools can't write it, the shell asks (`shell-touches-chi`),
   and the guardrails bundle (0.6.0) asks before each `chi context add --cmd` (`chi-context-cmd`, once at a time;
   only the user may answer it).
+- Attached context, part 2. A source whose update says `"wake": true` starts a turn in a live, idle session
+  (labelled "context <name> changed") that only tells the user what changed: the new setting `context.wake`
+  (default on), one wake per source per 10 minutes, within `session.max_wakes`. `chi context add <URL>` and a
+  "+ URL" chip in the web attach a URL through a bundle's provider (manifest `context_providers:` and `scripts:`);
+  plugins attach with `ctx.context` and can check `ctx.scratch?` / `ctx.delegate?`. The new `github-pr` bundle (in
+  `dev`; needs `gh`) attaches the branch's open PR when a session starts and wakes it for a review requesting
+  changes, checks turning red, or the PR merged or closed; its summaries carry counts, authors and states, never
+  comment text. See [docs/context.md](docs/context.md).
+
+### Fixed
+
+- Attached context: a fetch no longer writes back a source removed while it ran; `chi context push` takes the
+  source's lock and refuses a command source; a project source runs in the session's folder when the project root
+  is a bare git dir.
 
 ## [0.31.0] - 2026-10-06
 

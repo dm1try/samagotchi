@@ -120,6 +120,7 @@ chi web --open                            # web UI: this project's sessions (--s
 chi web --web-host lan                    # the web UI on your phone too: scan the QR code it prints
 chi sessions list                         # this project's saved sessions (--scope=all: every one)
 pbpaste | chi note --source slack <id>    # background context for a session (no turn)
+chi context add <PR URL> <id>             # attached context: chi keeps it fresh, the agent hears when it changes
 pbpaste | chi send -m "same bug?" <id>    # a message to a session, the clipboard quoted above it
 chi send --new --wait -m "review feat/x"  # a new session you can watch in the web; prints the answer
 ```
@@ -158,6 +159,17 @@ stopped on, which the agent answers with `chi answer`. See
 [chi as a sub-agent](docs/sub-agent.md) for a snippet to paste into its
 `CLAUDE.md` / `AGENTS.md`.
 
+### Attached context
+
+`chi context` attaches outside text that keeps changing to a session: a
+command chi runs every few minutes, text you push, or a URL. With the
+`github-pr` bundle (in `dev`; needs `gh`) a session on a branch with an open
+pull request gets it attached by itself. The agent gets a short note when it
+changes (a summary of what changed, never the comments' words) and reads the
+text with `context_read` when your request is about it; a review requesting
+changes, red checks or a merge can start a turn in a live, idle session that
+only tells you (`context.wake`). See [Attached context](docs/context.md).
+
 ### Send to chi (macOS)
 
 `chi desktop install` builds a small native helper: select text in any app →
@@ -186,6 +198,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Configuration](docs/configuration.md): `config.yml`, hosts, model server transports, timeouts, retries, logs
 - [Memory](docs/memory.md): scopes and model-specific overlays
 - [Sessions](docs/sessions.md): storage, retention, `chi sessions`
+- [Attached context](docs/context.md): `chi context`, sources, scopes, waking, the github-pr bundle, safety
 - [chi as a sub-agent](docs/sub-agent.md): `chi send --wait --format json`, `chi answer`, instructions for a parent agent
 - [Desktop helper](docs/desktop.md): `chi desktop`, the macOS "Send to chi" Service and hotkey
 - [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals
