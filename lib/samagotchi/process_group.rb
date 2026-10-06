@@ -5,11 +5,8 @@ module Samagotchi
   # started too: TERM the group, a grace, then KILL it. Execute, TaskRuntime
   # and ContextFetch spawn and stop their commands here, each with its own
   # grace and its own "has it stopped?" check (the leader gone, the pipes
-  # closed, the pid reaped).
-  #
-  # The mcp bundle's client keeps its own copy (stdin closed first, then
-  # the group): a bundle may use chi's classes only from the chi its
-  # requires_chi names, and no released chi has this one yet.
+  # closed, the pid reaped). The mcp bundle's client stops its server here
+  # too (after closing its stdin), so it requires chi >= 0.33.0.
   module ProcessGroup
     # A group that is gone, or one that isn't ours to signal.
     QUIET = [Errno::ESRCH, Errno::EPERM].freeze

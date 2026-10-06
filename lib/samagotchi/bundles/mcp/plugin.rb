@@ -31,6 +31,7 @@
 require "digest"
 require "json"
 require "open3"
+require "samagotchi/process_group"
 require "time"
 require "shellwords"
 require "tmpdir"
@@ -59,6 +60,9 @@ class Plugin
     class Dead < Error; end
 
     POLL_SECONDS = 0.1
+    # How long close waits for the server after closing its stdin, after
+    # TERM, and after KILL.
+    STOP_GRACE_SECONDS = 1
 
     attr_reader :pid
 
@@ -136,14 +140,15 @@ class Plugin
     end
 
     # End the process: stdin closed first (most servers leave then), then
-    # TERM and KILL to its process group.
+    # TERM and KILL to its process group (chi's ProcessGroup), a second's
+    # grace each.
     def close
       @mutex.synchronize { @closing = true }
       [@stdin].each { |io| io.close unless io.closed? }
-      unless @wait.join(1)
-        signal("TERM")
-        signal("KILL") unless @wait.join(1)
-        @wait.join(1)
+      unless @wait.join(STOP_GRACE_SECONDS)
+        Samagotchi::ProcessGroup.stop(@pid, grace: STOP_GRACE_SECONDS, poll: STOP_GRACE_SECONDS,
+                                            stopped: -> { !@wait.alive? }, wait: ->(seconds) { @wait.join(seconds) })
+        @wait.join(STOP_GRACE_SECONDS)
       end
       [@stdout, @stderr].each { |io| io.close unless io.closed? }
       [@reader, @err_reader].each { |t| t.join(1) }
@@ -232,12 +237,6 @@ class Plugin
       end
       waiting.each { |queue| queue.push({ dead: reason }) }
       @on_exit&.call(reason) unless closing
-    end
-
-    def signal(name)
-      Process.kill(name, -@pid)
-    rescue Errno::ESRCH, Errno::EPERM
-      nil
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
