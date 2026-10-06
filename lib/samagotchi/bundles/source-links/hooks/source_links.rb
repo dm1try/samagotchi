@@ -8,7 +8,9 @@ require "open3"
 # web, each ref in the answer becomes a link (`[JIRA-123](https://…)`,
 # through event[:present]: display only, the model's text stays as it was,
 # and it survives a reload). Every UI also gets one line right after the
-# turn, the terminals' only view of the links:
+# turn, the terminals' only view of the links (marked fallback_for:
+# :display when the answer links every URL it names, so the web with
+# markdown on leaves it out; needs chi 0.35.0):
 #
 #   sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123, JIRA JIRA-10 → https://myjira.com/browse/JIRA-10
 #
@@ -48,8 +50,8 @@ require "open3"
 # of these stays text (warned at load).
 #
 # The note is not stored in the conversation: it is an event, replayed by a
-# UI only while the session's worker lives (a reload keeps it; a stopped
-# worker loses it). The links are stored as the answer's display. A ref in
+# UI with the session's cards (a reload keeps it, after the worker stopped
+# too: cards.json). The links are stored as the answer's display. A ref in
 # code (a `span` or a fenced block) or in a markdown link is not linked in
 # the answer. The hook is inert until sources are configured.
 class SourceLinks
@@ -114,16 +116,33 @@ class SourceLinks
     return if text.nil? || text.empty?
 
     hits = occurrences(text[0, MAX_SCAN])
-    if @note
-      found = collect(hits)
-      event[:notify]&.call(line(found), level: :info) unless found.empty?
-    end
-    # The answer as shown: the model's text unless an earlier hook changed
-    # it (then its offsets differ, so it is scanned again).
-    event[:present]&.call { |shown| link(shown, shown == text ? hits : nil) }
+    linked = present_links(event[:present], text, hits)
+    return unless @note
+
+    found = collect(hits)
+    return if found.empty?
+
+    # The display links every URL the note names: the note only stands in
+    # for it, and a UI that renders the display's links leaves it out.
+    covered = linked && found.all? { |_name, _ref, url| linked.key?(url.downcase) }
+    event[:notify]&.call(line(found), level: :info, fallback_for: covered ? :display : nil)
   end
 
   private
+
+  # Links the refs in the answer as shown: the model's text unless an
+  # earlier hook changed it (then its offsets differ, so it is scanned
+  # again). The URLs it linked (downcased, as #collect dedups), or nil when
+  # the display didn't take them (no event[:present], nothing to present, or
+  # the presenter rejected the text).
+  def present_links(present, text, hits)
+    return nil unless present
+
+    linked = {}
+    ours = nil
+    shown = present.call { |display| ours = link(display, display == text ? hits : nil, linked) }
+    ours.nil? || shown != ours ? nil : linked
+  end
 
   # The content of the last `role: "model"` message, or nil. Handles both
   # string- and symbol-keyed messages. A turn that ended without a visible
@@ -198,8 +217,8 @@ class SourceLinks
 
   # +text+ with each ref as a markdown link, every occurrence; the part
   # beyond MAX_SCAN stays as it is. +hits+ are the scan of that text when
-  # the caller has it.
-  def link(text, hits = nil)
+  # the caller has it; +linked+ gets each linked URL, downcased.
+  def link(text, hits = nil, linked = {})
     head = text[0, MAX_SCAN]
     hits ||= occurrences(head)
     out = +""
@@ -208,6 +227,7 @@ class SourceLinks
       next if hit[:quiet] || hit[:start] < pos # two sources on one ref: the first wins
 
       out << head[pos...hit[:start]] << "[#{hit[:ref].gsub(/[\[\]]/) { |c| "\\#{c}" }}](#{link_target(hit[:url])})"
+      linked[hit[:url].downcase] = true
       pos = hit[:finish]
     end
     return text if pos.zero?

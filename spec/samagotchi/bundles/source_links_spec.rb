@@ -657,9 +657,58 @@ RSpec.describe "The source-links bundle" do
       expect(notices).to be_empty
     end
 
-    it "does nothing on a chi without event[:present] but the note" do
+    it "does nothing on a chi without event[:present] but the note, unmarked" do
       expect { fire([model("see JIRA-1")]) }.not_to raise_error
       expect(notices.size).to eq(1)
+      expect(notices.first).not_to have_key(:fallback_for)
+    end
+
+    describe "the note's fallback_for: :display (a UI that renders the links leaves it out)" do
+      it "marks the note when the display links every ref it names" do
+        present("See JIRA-1, then JIRA-2 and JIRA-1 again.")
+        expect(notices.map { |n| n[:fallback_for] }).to eq([:display])
+      end
+
+      it "marks it on an earlier hook's display too, when that links every ref" do
+        present("see JIRA-1", display: "**see** JIRA-1")
+        expect(notices.map { |n| n[:fallback_for] }).to eq([:display])
+      end
+
+      it "leaves it unmarked when a ref is only in code (named, not linked)" do
+        present("See JIRA-1 and `JIRA-2`.")
+        expect(notices.size).to eq(1)
+        expect(notices.first).not_to have_key(:fallback_for)
+      end
+
+      it "marks it when a ref in code is linked elsewhere in the answer" do
+        present("See JIRA-1 and `JIRA-1`.")
+        expect(notices.map { |n| n[:fallback_for] }).to eq([:display])
+      end
+
+      it "leaves it unmarked when two sources name one ref (the display links the first only)" do
+        settings["sources"] << { "name" => "Any", "pattern" => "\\b[A-Z]+-\\d+\\b", "url" => "https://any.test/{match}" }
+        present("see JIRA-1")
+        expect(notices.first[:text]).to include("https://any.test/JIRA-1")
+        expect(notices.first).not_to have_key(:fallback_for)
+      end
+
+      it "leaves it unmarked when the display rejected the links (present returns the old text)" do
+        messages = [user("q"), model("see JIRA-1")]
+        event = { type: :after_turn, status: "completed", messages: messages, present: lambda { |&block|
+          block.call("see JIRA-1")
+          "see JIRA-1"
+        } }
+        registry.fire(:after_turn, event)
+        expect(notices.size).to eq(1)
+        expect(notices.first).not_to have_key(:fallback_for)
+      end
+
+      it "leaves it unmarked when the turn has nothing to present (present returns nil)" do
+        event = { type: :after_turn, status: "completed", messages: [model("see JIRA-1")], present: ->(&_block) {} }
+        registry.fire(:after_turn, event)
+        expect(notices.size).to eq(1)
+        expect(notices.first).not_to have_key(:fallback_for)
+      end
     end
   end
 
