@@ -79,3 +79,30 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     end
   end
 end
+
+# ctx.scratch? and ctx.delegate?: what a plugin's auto-attach skips (D12).
+RSpec.describe Samagotchi::Plugin::Context, "session kind" do
+  let(:tmpdir) { Dir.mktmpdir("plugin-kind") }
+  let(:state_dir) { File.join(tmpdir, "sessions").tap { |d| FileUtils.mkdir_p(d) } }
+
+  after { FileUtils.rm_rf(tmpdir) }
+
+  def ctx_for(session, scratch: false)
+    host = Samagotchi::Plugin::Host.new(session_id: -> { session&.id }, cwd: -> { tmpdir }, state_dir: -> { state_dir },
+                                        scratch: -> { scratch })
+    described_class.new(bundle: "b", label: "l", settings: {}, host: host)
+  end
+
+  def make(**opts)
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir, **opts)
+                       .tap { |s| s.save(state_dir: state_dir) }
+  end
+
+  it "says whether the session is a scratch one or a delegate child" do
+    parent = make
+    expect(ctx_for(parent)).to have_attributes(scratch?: false, delegate?: false)
+    expect(ctx_for(parent, scratch: true).scratch?).to be(true)
+    expect(ctx_for(make(parent_id: parent.id, delegate: true)).delegate?).to be(true)
+    expect(ctx_for(nil).delegate?).to be(false)
+  end
+end

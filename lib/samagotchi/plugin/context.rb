@@ -99,6 +99,20 @@ module Samagotchi
       #   current_model_only names it
       def model_key = @host.model_key&.call
 
+      # Whether the session is a `chi scratch` one (deleted when it ends).
+      def scratch? = !!@host.scratch&.call
+
+      # Whether the session is a delegate child (Session#delegate?): a task
+      # another session handed over, not the user's own.
+      def delegate?
+        id = session_id
+        return false unless id
+
+        Session.load(id, state_dir: @host.state_dir&.call || Session.default_state_dir).delegate?
+      rescue ArgumentError
+        false
+      end
+
       # @return [String] the session's working directory
       def cwd = @host.cwd.call || Dir.pwd
 
