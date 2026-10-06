@@ -836,6 +836,13 @@ bundles:
   closed, then TERM and KILL go to the server's process group.
 - **`/mcp`** (anytime) shows a card with the servers, their state (cached
   (not started), running with its pid, failed, stopped) and their tools.
+  A cached or running server's line says roughly how many tokens its tool
+  definitions take (`~4,232 tokens`), and the last line totals the servers
+  whose tools the model has: what every request carries. It is an estimate:
+  the definitions' JSON as the chat API gets it (`api: openai`), divided by
+  4. The native prompts (Gemma, Qwen) render a flatter schema, so there they
+  take less. The log records each server's estimate when it changes
+  (`mcp_tools_estimated`).
 - The server's stderr goes to the debug log (`plugins` records, bundle=mcp).
 - **Guardrails.** A rule's `tool:` can be a glob, so one rule covers every
   MCP tool:

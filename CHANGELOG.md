@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
   [docs/plugins.md](docs/plugins.md#the-coordinator-bundle).
 - The guardrails bundle (0.8.0) asks before every memory removal (`memory-remove`, once at a time). Guardrail rules
   take `memory: remove`.
+- `/mcp` shows roughly how many tokens each MCP server's tool definitions take in every request, and the total
+  (mcp 0.5.0; run `chi update`). See [docs/plugins.md](docs/plugins.md#the-mcp-bundle).
 
 ### Fixed
 
