@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../client_id"
 require_relative "../served_model"
 require_relative "../image_store"
 require_relative "../turn_note"
@@ -115,19 +116,20 @@ module Samagotchi
 
       # Prompt labels by the sender's client_id prefix (turn_events.js
       # CLIENT_LABELS; spec/shared/labels_matrix.json).
-      CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder", "delegate" => "delegate",
-                        "child" => "delegate report" }.freeze
+      CLIENT_LABELS = { ClientId::WEB_PREFIX => "web", ClientId::TUI_PREFIX => "tui", ClientId::SYSTEM_PREFIX => "reminder",
+                        ClientId::DELEGATE_PREFIX => "delegate", ClientId::CHILD_PREFIX => "delegate report" }.freeze
 
-      # Who sent a line, by its client_id: CLIENT_LABELS by prefix, and a
+      # Who sent a line, by its client_id: CLIENT_LABELS by prefix (the id
+      # up to its first ":"), and a
       # turn an attached context source started (context:<name>) as
       # "context <name> changed"; +fallback+ for anything else.
       def client_label(client_id, fallback = "user")
         return fallback unless client_id
 
         prefix, rest = client_id.to_s.split(":", 2)
-        return "context #{rest} changed" if prefix == Steer::CONTEXT_CLIENT_PREFIX.delete_suffix(":") && !rest.to_s.empty?
+        return "context #{rest} changed" if "#{prefix}:" == ClientId::CONTEXT_PREFIX && !rest.to_s.empty?
 
-        CLIENT_LABELS.fetch(prefix, fallback)
+        CLIENT_LABELS.fetch("#{prefix}:", fallback)
       end
 
       # "web> <prompt>": a prompt, labelled by who sent it; nil: the label alone.
@@ -142,7 +144,7 @@ module Samagotchi
         status = report[/^status: (.*)$/, 1]
         rest = report.split("\n").drop(2).reject { |line| line.strip.empty? || line == "---" }.first.to_s
         rest = "#{rest[0, STEER_PREVIEW - 1]}…" if rest.length > STEER_PREVIEW
-        "#{paint("#{CLIENT_LABELS["child"]}>", 35)} #{[id, status].compact.join(" ")}#{": #{rest}" unless rest.empty?}"
+        "#{paint("#{CLIENT_LABELS[ClientId::CHILD_PREFIX]}>", 35)} #{[id, status].compact.join(" ")}#{": #{rest}" unless rest.empty?}"
       end
 
       # The last prompt as a join shows it: a delegate report (a wake

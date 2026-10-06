@@ -30,8 +30,6 @@ module Samagotchi
     # rewrite would be "allow everything" from then on.
     module ParentApprovals
       KEY = "guardrails.parent_approvals"
-      # The client id chi answer posts its answers with.
-      CLIENT_ID = "cli:answer"
       # Set by chi's execute and task_create for the commands they run: a
       # chi started there answers as a parent (#parent_process?).
       PARENT_SESSION_ENV = "SAMAGOTCHI_PARENT_SESSION"

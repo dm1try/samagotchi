@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "client_id"
 require_relative "session"
 require_relative "bridge_client"
 require_relative "worker_sidecar"
@@ -15,9 +16,6 @@ module Samagotchi
   # answers its own question with that, only when it is about this session
   # and the question pending now, and is answered.
   class RelayVerifier
-    # The client id a relayed answer is recorded with: relay:<parent8>.
-    CLIENT_PREFIX = "relay"
-
     # @param engine [Engine] this (the child's) worker's Engine
     def initialize(engine:, state_dir:, session_id:)
       @engine = engine
@@ -44,7 +42,7 @@ module Samagotchi
     def apply(relay, parent_id:, question_id:, relay_id:)
       answer = relay["answer"].is_a?(Hash) ? relay["answer"] : {}
       parent_agent = relay["by"] != "user"
-      client_id = "#{CLIENT_PREFIX}:#{parent_id[0, 8]}"
+      client_id = "#{ClientId::RELAY_PREFIX}#{parent_id[0, 8]}"
       if answer["dismissed"]
         return not_pending(question_id) unless @engine.cancel_question("dismissed", id: question_id)
 

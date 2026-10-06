@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "client_id"
+
 module Samagotchi
   # A plugin's steer: text a plugin puts into the running turn (Engine#steer),
   # the way a UI's steering does. The drain a loop gets returns items: a
@@ -27,18 +29,7 @@ module Samagotchi
       def initialize(text:, source:, mark: nil) = super
     end
 
-    # The client ids whose input is not the user's own words. Literals, not
-    # SendCommand::CLIENT_ID / Tools::Delegate::CLIENT_PREFIX, so this file
-    # needs no requires (a spec pins them equal).
-    CHI_SEND_CLIENT = "cli:send"
-    DELEGATE_CLIENT_PREFIX = "delegate:"
-    # A delegate child's report (ChildReports::CLIENT_PREFIX).
-    CHILD_CLIENT_PREFIX = "child:"
-    # A turn chi ran because an attached context source changed
-    # (context:<name>, Worker's context wake).
-    CONTEXT_CLIENT_PREFIX = "context:"
     DELEGATE_REPORT = "delegate_report"
-    PLUGIN_CLIENT = "plugin"
 
     # What one drain brought: the merged user text (nil when none) and how
     # many lines made it, the input messages' text grouped by sender
@@ -105,10 +96,10 @@ module Samagotchi
     # user (no client id, the web, an attached TUI, anything unknown).
     def source_for_client(client_id)
       id = client_id.to_s
-      if id == CHI_SEND_CLIENT then "chi_send"
-      elsif id.start_with?(DELEGATE_CLIENT_PREFIX) then "parent_agent"
-      elsif id.start_with?(CHILD_CLIENT_PREFIX) then DELEGATE_REPORT
-      elsif id == PLUGIN_CLIENT then "plugin_send"
+      if id == ClientId::CLI_SEND then "chi_send"
+      elsif id.start_with?(ClientId::DELEGATE_PREFIX) then "parent_agent"
+      elsif id.start_with?(ClientId::CHILD_PREFIX) then DELEGATE_REPORT
+      elsif id == ClientId::PLUGIN then "plugin_send"
       end
     end
 

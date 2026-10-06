@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../client_id"
 require_relative "../session"
 require_relative "../config"
 require_relative "../model_profile"
@@ -21,7 +22,6 @@ module Samagotchi
     # reply comes back (DelegateWait), never its trace.
     class Delegate
       NAME = "delegate"
-      CLIENT_PREFIX = "delegate"
       MAX_CHILDREN_KEY = "session.max_children"
       MAX_CHILDREN_DEFAULT = 4
       # A child spawned this many seconds ago counts as running even before
@@ -113,7 +113,7 @@ module Samagotchi
 
         # Only a reply after this delivery counts as the follow-up's.
         DelegateWait.mark_seen(parent.id, child, state_dir: state_dir)
-        delivered = SessionManager.deliver_turn(id, prompt: task, client_id: "#{CLIENT_PREFIX}:#{parent.id[0, 8]}",
+        delivered = SessionManager.deliver_turn(id, prompt: task, client_id: "#{ClientId::DELEGATE_PREFIX}#{parent.id[0, 8]}",
                                                     state_dir: state_dir)
         case delivered[:status]
         when :accepted then id

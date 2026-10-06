@@ -5,6 +5,7 @@ require "json"
 require "time"
 require "securerandom"
 require "rbconfig"
+require_relative "client_id"
 require_relative "atomic_file"
 require_relative "config"
 
@@ -59,9 +60,6 @@ module Samagotchi
   autoload :SessionRetention, File.expand_path("session_retention", __dir__)
 
   class SessionManager
-    # Origin of the synthetic turn queued when reminders are due.
-    REMINDER_CLIENT_ID = "system:reminder"
-
     # Raised when the interactive TUI owns the session: it runs its own Engine
     # and reads no input files, so a worker must not be spawned or signalled.
     class OwnedByTUI < StandardError
@@ -583,7 +581,7 @@ module Samagotchi
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [RestartRefused]
     # @raise [ArgumentError] no such session
-    def self.restart_session(session_id, state_dir: nil, wait: RESTART_WAIT, client_id: "cli:restart")
+    def self.restart_session(session_id, state_dir: nil, wait: RESTART_WAIT, client_id: ClientId::CLI_RESTART)
       sd = state_dir || Session.default_state_dir
       Session.load(session_id, state_dir: sd) # ArgumentError for none
       owner = refuse_tui!(session_id, state_dir: sd)

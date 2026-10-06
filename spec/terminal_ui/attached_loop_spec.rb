@@ -915,7 +915,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
         expect(prompts.last).to eq("? ")
         finish
         expect(client).to have_received(:answer).with(id: "a1", selected: ["Allow this call in this repo"], freeform: nil,
-                                                      client_id: Samagotchi::Guardrails::ParentApprovals::CLIENT_ID)
+                                                      client_id: Samagotchi::ClientId::CLI_ANSWER)
       end
     end
 

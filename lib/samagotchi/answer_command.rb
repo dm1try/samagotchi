@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "client_id"
 require_relative "session"
 require_relative "session_manager"
 require_relative "bridge_client"
@@ -189,7 +190,7 @@ module Samagotchi
                   client.dismiss_question(id: qid)
                 else
                   client.answer(id: qid, selected: selected, freeform: options[:text],
-                                client_id: Guardrails::ParentApprovals::CLIENT_ID)
+                                client_id: ClientId::CLI_ANSWER)
                 end
         break unless reply.status == 408
       end

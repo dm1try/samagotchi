@@ -5,6 +5,7 @@ require "fileutils"
 require "io/console"
 require "reline"
 
+require_relative "client_id"
 require_relative "iteration_limit"
 require_relative "model_profile"
 require_relative "turn_note"
@@ -1281,7 +1282,7 @@ module Samagotchi
         end
 
         begin
-          parent = parent_answers? ? { client_id: Guardrails::ParentApprovals::CLIENT_ID } : {}
+          parent = parent_answers? ? { client_id: ClientId::CLI_ANSWER } : {}
           @engine.answer_question(id: prompt.id, selected: answer.selected, freeform: answer.freeform, **parent)
           close_question_widget(prompt, prompt.answer_text(answer))
           return true

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../client_id"
 require_relative "event_renderer"
 require_relative "formatting"
 require_relative "../prompt_history"
@@ -773,7 +774,7 @@ module Samagotchi
           return @screen.commit(answer.error)
         end
 
-        parent = @parent_answers ? { client_id: Guardrails::ParentApprovals::CLIENT_ID } : {}
+        parent = @parent_answers ? { client_id: ClientId::CLI_ANSWER } : {}
         reply = @client.answer(id: @question.id, selected: answer.selected, freeform: answer.freeform, **parent)
         case reply.status
         when 200
@@ -1268,9 +1269,9 @@ module Samagotchi
         nil
       end
 
-      def reminder_origin?(origin) = origin[:client_id].to_s.start_with?("system:")
-      def report_origin?(origin) = origin[:client_id].to_s.start_with?(Steer::CHILD_CLIENT_PREFIX)
-      def context_origin?(origin) = origin[:client_id].to_s.start_with?(Steer::CONTEXT_CLIENT_PREFIX)
+      def reminder_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::SYSTEM_PREFIX)
+      def report_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::CHILD_PREFIX)
+      def context_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::CONTEXT_PREFIX)
       # A turn with no prompt: "(continuing)"; a context wake's label alone.
       def continuing_text(origin) = context_origin?(origin) ? nil : "(continuing)"
     end

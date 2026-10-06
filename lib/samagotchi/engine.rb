@@ -6,6 +6,7 @@ require "securerandom"
 require "time"
 require "yaml"
 
+require_relative "client_id"
 require_relative "iteration_limit"
 require_relative "config"
 require_relative "context_note"
@@ -1191,10 +1192,10 @@ module Samagotchi
     # @param event [Hash] the turn's end event (#stop_facts)
     def record_last_turn(session, outcome, seconds, origin, event, limit: nil)
       client_id = origin.is_a?(Hash) ? origin[:client_id].to_s : ""
-      source = if client_id.start_with?("#{Tools::Delegate::CLIENT_PREFIX}:") then "delegate"
-               elsif client_id.start_with?(ChildReports::CLIENT_PREFIX) then "delegate_report"
-               elsif client_id.start_with?(Steer::CONTEXT_CLIENT_PREFIX) then "context"
-               elsif client_id == SessionManager::REMINDER_CLIENT_ID then "reminder"
+      source = if client_id.start_with?(ClientId::DELEGATE_PREFIX) then "delegate"
+               elsif client_id.start_with?(ClientId::CHILD_PREFIX) then "delegate_report"
+               elsif client_id.start_with?(ClientId::CONTEXT_PREFIX) then "context"
+               elsif client_id == ClientId::REMINDER then "reminder"
                else "client"
                end
       session.last_turn = { "outcome" => outcome, "ended_at" => Time.now.iso8601(3),

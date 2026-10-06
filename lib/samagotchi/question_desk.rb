@@ -5,6 +5,7 @@ require "monitor"
 require "securerandom"
 require "time"
 
+require_relative "client_id"
 require_relative "log"
 require_relative "tools/ask_user_question"
 require_relative "guardrails/parent_approvals"
@@ -266,7 +267,7 @@ module Samagotchi
       sel = Array(selected).map { |v| v.to_s.strip }.reject(&:empty?)
       fm = freeform.to_s.strip
       fm = nil if fm.empty?
-      parent_agent = client_id.to_s == Guardrails::ParentApprovals::CLIENT_ID if parent_agent.nil?
+      parent_agent = client_id.to_s == ClientId::CLI_ANSWER if parent_agent.nil?
       # Read before the lock (config may touch the disk); this worker's own.
       parent_setting = Guardrails::ParentApprovals.setting if parent_agent
       parent_continue = Guardrails::ParentContinue.allowed? if parent_agent

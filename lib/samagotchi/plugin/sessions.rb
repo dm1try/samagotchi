@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../client_id"
 require_relative "../session"
 require_relative "../bridge_client"
 require_relative "../bridge/turn_accumulator"
@@ -62,7 +63,7 @@ module Samagotchi
 
         state_dir = self.state_dir
         sid = resolve(id, state_dir)
-        delivered = SessionManager.deliver_turn(sid, prompt: text.to_s, client_id: "plugin", state_dir: state_dir)
+        delivered = SessionManager.deliver_turn(sid, prompt: text.to_s, client_id: ClientId::PLUGIN, state_dir: state_dir)
         case delivered[:status]
         when :accepted then sid
         when :refused then raise Error, "session #{sid[0, 8]} refused the message (#{delivered.dig(:ack, "error")})"

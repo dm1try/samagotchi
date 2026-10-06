@@ -9,6 +9,7 @@ require "uri"
 require "rack"
 require "rack/request"
 
+require_relative "../client_id"
 require_relative "../answer_tail"
 require_relative "../bridge_client"
 require_relative "../bridge/bounded_queue"
@@ -1069,7 +1070,7 @@ module Samagotchi
       # {error: "held" | "not_running" | "unsupported" | "failed", reason, detail} in words; 409
       # owned_by_tui; 404.
       def handle_restart(_req, id)
-        result = @manager.restart_session(id, state_dir: @state_dir, client_id: "web:restart")
+        result = @manager.restart_session(id, state_dir: @state_dir, client_id: ClientId::WEB_RESTART)
         @hub&.touch(id)
         json_response(200, { status: "restarted", session_id: id, from_version: result.from_version,
                              version: result.version })

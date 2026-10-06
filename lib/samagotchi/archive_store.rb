@@ -17,12 +17,6 @@ module Samagotchi
   # file from memory (and bumps updated_at) at every turn.
   module ArchiveStore
     FILE = "archived"
-    # Input a human typed: a web tab, a chi TUI, `chi send`, and nil (a
-    # worker's initial prompt; a web client may send none). Delegates,
-    # plugins and reminders are not (an allowlist, so a new automatic
-    # origin stays out).
-    USER_CLIENT_PREFIXES = %w[web: tui:].freeze
-    USER_CLIENT_IDS = ["cli:send"].freeze
 
     # @return [Hash, nil] the marker (string keys), nil when none or unreadable
     def self.read(session_dir)
@@ -57,15 +51,7 @@ module Samagotchi
       write(session_id, { "unarchived_at" => Time.now.iso8601(3) }, state_dir: state_dir)
     end
 
-    # Whether +client_id+ (a turn's origin) is a human's input.
-    def self.user_input?(client_id)
-      return true if client_id.nil?
-
-      id = client_id.to_s
-      USER_CLIENT_IDS.include?(id) || USER_CLIENT_PREFIXES.any? { |prefix| id.start_with?(prefix) }
-    end
-
-    # A human's input came into the session: it is back in the lists. Its
+    # A human's input (ClientId.human?) came into the session: it is back in the lists. Its
     # children stay archived. Never raises.
     # @return [Boolean] whether it was archived
     def self.user_input(session_id, state_dir:)

@@ -4,6 +4,7 @@ require "fileutils"
 require "securerandom"
 require "time"
 
+require_relative "client_id"
 require_relative "config"
 require_relative "events"
 require_relative "session"
@@ -481,7 +482,7 @@ module Samagotchi
       @wakes_in_a_row += 1
       Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes_in_a_row)
       @turn_flow.before_prompt_turn
-      run_engine_turn(nil, continue: true, origin: { client_id: "#{Steer::CONTEXT_CLIENT_PREFIX}#{name}" },
+      run_engine_turn(nil, continue: true, origin: { client_id: "#{ClientId::CONTEXT_PREFIX}#{name}" },
                            id: turn_id, max_iterations: IterationLimit.for) do |result, error|
         if error
           note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message)
@@ -566,11 +567,11 @@ module Samagotchi
       @engine.clear_due_reminder_names!
       return false unless @engine.reminders_due?
 
-      @continue_offer.drop({ client_id: SessionManager::REMINDER_CLIENT_ID })
+      @continue_offer.drop({ client_id: ClientId::REMINDER })
       # A failure has no prompt to hand back (the Engine announced
       # :turn_failed). The offer went before the turn
       # (ContinueOffer#drop); either way the rollback window closes.
-      run_engine_turn(nil, continue: true, origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
+      run_engine_turn(nil, continue: true, origin: { client_id: ClientId::REMINDER },
                            max_iterations: IterationLimit.for) { @turn_flow.after_reminder_turn }
       true
     end
@@ -818,12 +819,12 @@ module Samagotchi
     # Whether the turn starting now is a delegate child's parent's: its
     # task (the initial prompt), a follow-up, a continue the parent
     # answered, a reminder, anything but a human typing into the child
-    # (ArchiveStore.user_input?), and any turn after a question the parent
+    # (ClientId.human?), and any turn after a question the parent
     # was rung about.
     def reports_to_parent?(origin)
       return false unless @session.delegate?
 
-      @initial_turn || @owes_parent || !ArchiveStore.user_input?(origin&.dig(:client_id))
+      @initial_turn || @owes_parent || !ClientId.human?(origin&.dig(:client_id))
     end
 
     # The Engine published a question (after the question desk saved it).
@@ -1041,11 +1042,11 @@ module Samagotchi
       Log.info(:worker, "idle_exit", idle_s: @idle_exit.idle_seconds.round)
     end
 
-    # A human's input (ArchiveStore.user_input?) un-archives the session;
+    # A human's input (ClientId.human?) un-archives the session;
     # a delegate's, a plugin's or a reminder's doesn't.
     # It also resets the delegate-report wakes (budget and pause).
     def user_input(client_id)
-      return unless ArchiveStore.user_input?(client_id)
+      return unless ClientId.human?(client_id)
 
       ArchiveStore.user_input(@session_id, state_dir: @state_dir)
       @wakes_in_a_row = 0

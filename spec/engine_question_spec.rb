@@ -348,7 +348,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         header: "Approve tool call?", multi_select: false, allow_freeform: true, kind: "approval",
         approval: { tool: "execute", scopes: %w[once session] } }
     end
-    let(:parent) { Samagotchi::Guardrails::ParentApprovals::CLIENT_ID }
+    let(:parent) { Samagotchi::ClientId::CLI_ANSWER }
 
     def open_approval(engine, fields = approval_fields)
       result = {}

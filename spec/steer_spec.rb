@@ -79,14 +79,6 @@ RSpec.describe Samagotchi::Steer do
                "child:abcd1234" => "delegate_report", "other" => nil)
       expect(described_class.cuts?("delegate_report")).to be(false)
     end
-
-    it "uses the same literals as the senders" do
-      require "samagotchi/send_command"
-      require "samagotchi/tools/delegate"
-
-      expect(described_class::CHI_SEND_CLIENT).to eq(Samagotchi::SendCommand::CLIENT_ID)
-      expect(described_class::DELEGATE_CLIENT_PREFIX).to eq("#{Samagotchi::Tools::Delegate::CLIENT_PREFIX}:")
-    end
   end
 
   describe ".drain" do

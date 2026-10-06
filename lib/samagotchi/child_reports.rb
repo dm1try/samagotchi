@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require_relative "client_id"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "reply_wait"
@@ -93,7 +94,6 @@ module Samagotchi
   # failed: the next turn reads the same rings again.
   class ChildReports
     SOURCE = Steer::DELEGATE_REPORT
-    CLIENT_PREFIX = Steer::CHILD_CLIENT_PREFIX
 
     # A report for the model: the text delegate_result would return
     # (DelegateWait.finish, its report variant), the cursor it moves the child to,
@@ -101,7 +101,7 @@ module Samagotchi
     # itself, with delegate_result, leaves it alone).
     Report = Data.define(:child_id, :text, :before, :after, :rings) do
       def line(mark: nil) = Steer::Line.new(text: text, source: ChildReports::SOURCE, mark: mark)
-      def origin = { client_id: "#{ChildReports::CLIENT_PREFIX}#{child_id[0, 8]}" }
+      def origin = { client_id: "#{ClientId::CHILD_PREFIX}#{child_id[0, 8]}" }
     end
 
     def initialize(session_id:, state_dir:)

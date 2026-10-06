@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "client_id"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "session_manager"
@@ -26,7 +27,7 @@ module Samagotchi
     include CLI::Command
     include CLI::ParentWait
 
-    CLIENT_ID = "cli:send"
+    CLIENT_ID = ClientId::CLI_SEND
     # The cap on one turn's images the Bridge checks.
     MAX_IMAGES = ImageStore::MAX_TURN_REFS
 
