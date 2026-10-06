@@ -7,6 +7,7 @@ require_relative "../guardrails/context"
 require_relative "../idle_client"
 require_relative "side_question"
 require_relative "sessions"
+require_relative "attached_context"
 
 module Samagotchi
   module Plugin
@@ -97,6 +98,20 @@ module Samagotchi
       #   (`<name>.<key>.md`, ModelOverlay.key_for), as memory_write
       #   current_model_only names it
       def model_key = @host.model_key&.call
+
+      # Whether the session is a `chi scratch` one (deleted when it ends).
+      def scratch? = !!@host.scratch&.call
+
+      # Whether the session is a delegate child (Session#delegate?): a task
+      # another session handed over, not the user's own.
+      def delegate?
+        id = session_id
+        return false unless id
+
+        Session.load(id, state_dir: @host.state_dir&.call || Session.default_state_dir).delegate?
+      rescue ArgumentError
+        false
+      end
 
       # @return [String] the session's working directory
       def cwd = @host.cwd.call || Dir.pwd
@@ -208,6 +223,13 @@ module Samagotchi
       # @return [Sessions]
       def sessions
         @sessions ||= Sessions.new(@host)
+      end
+
+      # This session's attached context: attach a URL or a command, list
+      # (AttachedContext).
+      # @return [AttachedContext]
+      def context
+        @context ||= AttachedContext.new(@host, bundle: @bundle)
       end
 
       # A single-select question through the question flow. Inside a

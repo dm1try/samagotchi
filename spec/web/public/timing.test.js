@@ -94,6 +94,20 @@ test("turnGroups: a turn's steps come from its iterations (tool records), its te
   ]);
 });
 
+test("turnGroups: a context wake turn's note (turn_start) opens its turn, paired with its record by turn_id; a plain note doesn't", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "a" },
+    { role: "note", content: "n" },
+    { role: "note", content: "u", turn_start: true, turn_id: "T2" },
+    { role: "assistant", content: "told" },
+  ];
+  const groups = turnGroups(items, TIMING);
+  assert.deepEqual(groups.map((g) => [g.kind, g.user ?? g.i, g.answer]), [["turn", 0, 1], ["note", 2, undefined], ["turn", 3, 4]]);
+  assert.equal(groups[2].record, TIMING.turnRecords[1]);
+  assert.deepEqual(timedTurnIndexes(items), [null, 0, null, null, 1]);
+});
+
 test("turnGroups: a plain answer has no steps; an assistant message before any prompt is its own answer", () => {
   const items = [{ role: "assistant", content: "hello" }, { role: "user", content: "p" }, { role: "assistant", content: "PONG" }];
   const groups = turnGroups(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }));

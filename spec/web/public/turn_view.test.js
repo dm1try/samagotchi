@@ -345,3 +345,18 @@ test("turnHistoryHtml: a task_wait titled by its task's command shows it, its id
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.match(html, /<span class="activity-tool">task_wait<\/span><span class="activity-params" title="id=&quot;t1&quot; timeout=&quot;600&quot;">bundle exec rspec · up to 600s<\/span>/);
 });
+
+test("turnHistoryHtml: a context wake turn starts with its note (turn_start): the note bubble, then its own answer and timing", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "PONG" },
+    { role: "note", content: "Updated: pr-1.", label: "context pr-1", turn_start: true, turn_id: "T2" },
+    { role: "assistant", content: "Bob asked for changes." },
+  ];
+  const two = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }, { id: "T2", duration_ms: 2000 }] });
+  assert.equal(turnHistoryHtml(items, two, { thumbs }),
+    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
+    '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>' +
+    '<div class="bubble note"><div class="note-line">note from context pr-1</div><div class="note-text">Updated: pr-1.</div></div>' +
+    '<div class="bubble output">Bob asked for changes.</div><div class="turn-timing">turn 2 · 2.0s</div>');
+});

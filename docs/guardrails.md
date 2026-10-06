@@ -181,7 +181,9 @@ sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
 Built in, for `write`, `edit` and `memory_write` (symlinks resolved):
 
-- deny: the approval store's dir, and installed bundles (`memories/.bundles/`);
+- deny: the approval store's dir, installed bundles (`memories/.bundles/`),
+  and [attached context](context.md) sources (`<state dir>/context/`: a
+  source's command runs later, outside the gate; `chi context` changes them);
 - ask (once or for the session): `config.yml` and the plain hooks dir.
 
 `execute` can still reach them; the guardrails bundle asks about shell
@@ -391,8 +393,11 @@ route around a deny. In both modes it asks before `git push`, `reset --hard`,
 `clean -f`, `branch -D`, `filter-branch`/`filter-repo`; `rm -rf` on `/`, `~`,
 `$HOME` or `..` paths, unless every target is inside a tmp folder; `curl … |
 sh` and `base64 -d … | sh`; shell commands that name a path in chi's config,
-hooks, approvals or bundles or a `.git/hooks` (`shell-touches-chi`, `touches:
-chi_dirs`), unless they only read (`skip_read_only`); and answering chi's
+hooks, approvals, bundles or attached context sources, or a `.git/hooks`
+(`shell-touches-chi`, `touches: chi_dirs`), unless they only read
+(`skip_read_only`); `chi context add … --cmd` (`chi-context-cmd`, once at a
+time: a command chi will run every few minutes outside the guardrails; see
+[Attached context](context.md#safety)); and answering chi's
 questions around `chi answer`: `chi --attach` or `chi -p` with stdin from a
 pipe, a here-string or a file (`chi-answer-piped`), and `curl`/`wget` to a
 session's `/answer` route (`chi-answer-http`), both once or for the session.

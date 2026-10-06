@@ -9,7 +9,8 @@ RSpec.describe Samagotchi::ContextPoller do
   let(:state_dir) { File.join(tmpdir, "samagotchi", "sessions") }
   let(:session_id) { "11111111-2222-3333-4444-555555555555" }
   let(:work) { File.join(tmpdir, "work").tap { |d| FileUtils.mkdir_p(d) } }
-  let(:root) { File.join(tmpdir, "repo").tap { |d| FileUtils.mkdir_p(d) } }
+  # A checkout: its .git is there.
+  let(:root) { File.join(tmpdir, "repo").tap { |d| FileUtils.mkdir_p(File.join(d, ".git")) } }
   let(:own) { Samagotchi::ContextSources.session_location(session_id, state_dir: state_dir) }
   let(:project) { Samagotchi::ContextSources.project_location_for(root, state_dir: state_dir) }
   let(:changes) { [] }
@@ -43,6 +44,18 @@ RSpec.describe Samagotchi::ContextPoller do
     expect(own.snapshot("where").text.strip).to eq(File.realpath(work))
     expect(project.snapshot("root").text.strip).to eq(File.realpath(root))
     expect(changes.size).to eq(2)
+  end
+
+  # R3 (part 1 review): a bare repo, proj/.bare or --separate-git-dir
+  # makes the project root the git dir itself, no checkout.
+  context "when the project root is a git dir, not a checkout" do
+    let(:root) { File.join(tmpdir, "proj", ".bare").tap { |d| FileUtils.mkdir_p(File.join(d, "objects")) } }
+
+    it "runs a project's source in the session's folder" do
+      add(project, "root", "pwd")
+      poller.poll
+      expect(project.snapshot("root").text.strip).to eq(File.realpath(work))
+    end
   end
 
   it "runs a source again only once its interval has passed, and leaves push sources alone" do
@@ -108,5 +121,20 @@ RSpec.describe Samagotchi::ContextPoller do
 
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
     expect(own.snapshot("hang")).to have_attributes(error: nil, checked_at: nil)
+  end
+
+  # R4 (part 1 review): stop ends an in-flight fetch's whole group before
+  # it returns (the cancel the fetch polls, not a thread kill).
+  it "leaves no process of a running fetch's group once stop returns" do
+    pids = File.join(tmpdir, "pids")
+    add(own, "hang", "sleep 30 & echo $$ $! > #{pids}; wait")
+    poller.start
+    expect(wait_until { File.size?(pids) }).to be_truthy
+
+    poller.stop
+
+    File.read(pids).split.map(&:to_i).each do |pid|
+      expect { Process.kill(0, pid) }.to raise_error(Errno::ESRCH)
+    end
   end
 end

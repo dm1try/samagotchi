@@ -21,6 +21,7 @@ module Samagotchi
   #   sessions/<id>/<name>.json, …snapshot.json    a session's own
   #   sessions/<id>/subscriptions.json             {name => Subscription}; the worker writes it
   #   sessions/<id>/muted/<name>                   a marker: this session ignores <name>
+  #   sessions/<id>/declined/<name>                a marker (its hint inside): the user removed <name>
   # The guardrails protect the root (ProtectedPaths, CHI_TEXT): a source's
   # command runs later, outside the gate.
   module ContextSources
@@ -37,23 +38,28 @@ module Samagotchi
     SNAPSHOT_SUFFIX = ".snapshot.json"
     SUBSCRIPTIONS_FILE = "subscriptions.json"
     MUTED_DIR = "muted"
+    DECLINED_DIR = "declined"
 
     # A name, a command, a value the store can't take.
     class Invalid < ArgumentError; end
 
     # A source's definition. +cmd+ nil: pushed only (chi context push).
-    Source = Data.define(:name, :cmd, :every_seconds, :why, :hint, :scope, :added_by, :created_at) do
+    # +provider+: the bundle whose context provider made it (a URL), whose
+    # folder its cmd's {bundle_dir} names (ContextProviders.command_for).
+    Source = Data.define(:name, :cmd, :every_seconds, :why, :hint, :scope, :added_by, :created_at, :provider) do
+      def initialize(name:, cmd:, every_seconds:, why:, hint:, scope:, added_by:, created_at:, provider: nil) = super
+
       def push? = cmd.nil?
 
       def to_h
         { "name" => name, "cmd" => cmd, "every_seconds" => every_seconds, "why" => why, "hint" => hint,
-          "scope" => scope, "added_by" => added_by, "created_at" => created_at }.compact
+          "scope" => scope, "added_by" => added_by, "created_at" => created_at, "provider" => provider }.compact
       end
 
       def self.from_h(data)
         new(name: data["name"].to_s, cmd: data["cmd"], every_seconds: data["every_seconds"]&.to_i,
             why: data["why"], hint: data["hint"], scope: data["scope"].to_s, added_by: data["added_by"],
-            created_at: data["created_at"])
+            created_at: data["created_at"], provider: data["provider"])
       end
     end
 
@@ -156,14 +162,40 @@ module Samagotchi
         raise Invalid, "#{source.name} is already attached here (chi context rm #{source.name} first)" if File.exist?(path)
 
         AtomicFile.write(path, "#{JSON.pretty_generate(source.to_h)}\n")
+        # Added again on purpose: no longer declined.
+        FileUtils.rm_f(declined_path(source.name))
         source
       end
 
       # @return [Boolean] whether there was a source to remove
+      # The lock file stays: a fetch running now still holds it, and a new
+      # source of the name must wait for that fetch (which then finds its
+      # source gone and writes nothing: ContextFetch) instead of opening a
+      # fresh lock beside it.
+      # A session's source removed leaves a declined marker holding its hint
+      # (#declined?): an auto-attach (ctx.context, the github-pr bundle) on
+      # the worker's next start must not bring back what the user took off.
       def remove(name)
-        existed = File.exist?(source_path(name))
-        [source_path(name), snapshot_path(name), lock_path(name)].each { |path| FileUtils.rm_f(path) }
-        existed
+        removed = source(name)
+        [source_path(name), snapshot_path(name)].each { |path| FileUtils.rm_f(path) }
+        decline(name, removed.hint) if removed && session?
+        !removed.nil?
+      end
+
+      # Whether the user removed +name+ from this session (#remove).
+      def declined?(name) = File.exist?(declined_path(name))
+
+      # The hints (often URLs) of the sources removed here.
+      def declined_hints
+        folder = File.join(dir, DECLINED_DIR)
+        return [] unless Dir.exist?(folder)
+
+        Dir.children(folder).sort.filter_map do |file|
+          hint = File.read(File.join(folder, file)).strip
+          hint.empty? ? nil : hint
+        rescue SystemCallError
+          nil
+        end
       end
 
       # @return [Snapshot] Snapshot.empty when there is none yet
@@ -203,6 +235,17 @@ module Samagotchi
         write_snapshot(name, written)
       end
 
+      # Run the block holding <name>.lock (blocking), the lock a fetch
+      # holds while it runs and records: a push's read-modify-write of the
+      # snapshot (its serial) doesn't interleave with another writer.
+      def locked(name)
+        FileUtils.mkdir_p(dir)
+        File.open(lock_path(name), File::RDWR | File::CREAT, 0o644) do |lock|
+          lock.flock(File::LOCK_EX)
+          yield
+        end
+      end
+
       # A fetch that failed: the last good text stays.
       # @return [Snapshot] the one written
       def record_error(name, message, now: Time.now)
@@ -211,6 +254,13 @@ module Samagotchi
         stamp = now.utc.iso8601(6)
         write_snapshot(name, previous.with(error: ContextSources.one_line(message, LINE_MAX_CHARS),
                                            error_since: previous.error_since || stamp, checked_at: stamp))
+      end
+
+      def declined_path(name) = File.join(dir, DECLINED_DIR, ContextSources.check_name!(name))
+
+      def decline(name, hint)
+        FileUtils.mkdir_p(File.join(dir, DECLINED_DIR))
+        AtomicFile.write(declined_path(name), "#{hint}\n")
       end
 
       # Session only: the markers and the worker's subscription file.
@@ -289,6 +339,16 @@ module Samagotchi
         list << Attached.new(source: source, location: project, shadowed: hidden) if !hidden || shadowed
       end
       list
+    end
+
+    # Where a project's source runs: the project root when it is a checkout
+    # (its .git is there), else +fallback+ (the session's folder): a bare
+    # repo, proj/.bare or --separate-git-dir makes the root the git dir
+    # itself (MemoryPaths.project_root), and a command run there sees no
+    # files.
+    def project_cwd(project_root, fallback)
+      root = project_root.to_s
+      !root.empty? && File.exist?(File.join(root, ".git")) ? root : fallback
     end
 
     # A deleted session's sources, snapshots, subscriptions and markers.

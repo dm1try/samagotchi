@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require_relative "context_sources"
+require_relative "context_providers"
 require_relative "log"
 
 module Samagotchi
@@ -27,7 +29,8 @@ module Samagotchi
     # fetch failed: +error+), :busy (another process holds the lock),
     # :fresh (tried within +fresh_within+, by someone else meanwhile),
     # :cancelled (the caller stopped it: nothing recorded, since a worker
-    # leaving isn't the source failing).
+    # leaving isn't the source failing), :gone (the source was removed or
+    # replaced while it ran: nothing recorded for it).
     Outcome = Data.define(:status, :snapshot, :error)
     # What the command did: +output+ its stdout, +error+ nil or why it
     # failed, +cancelled+ the caller stopped it.
@@ -51,18 +54,39 @@ module Samagotchi
         return Outcome.new(status: :fresh, snapshot: before, error: nil) if fresh_within && age && age < fresh_within
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        run = run_command(attached.source.cmd, cwd: cwd, env: env_for(location, name), timeout: timeout,
-                                               cancelled: cancelled)
+        run = begin
+          run_command(ContextProviders.command_for(attached.source), cwd: cwd, env: env_for(location, name),
+                                                                     timeout: timeout, cancelled: cancelled)
+        rescue ContextProviders::Invalid => e
+          Run.new(output: nil, error: e.message, stderr: "", cancelled: false)
+        end
         outcome = if run.cancelled
                     Outcome.new(status: :cancelled, snapshot: before, error: nil)
+                  elsif !current?(attached)
+                    Outcome.new(status: :gone, snapshot: nil, error: nil)
                   else
-                    record(location, name, run, before)
+                    record_current(attached, run, before)
                   end
         Log.info(:context, "fetched", name: name, scope: location.scope, status: outcome.status,
                                       ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round,
                                       error: outcome.error)
         outcome
       end
+    end
+
+    # Whether the source is still the one this fetch ran: `chi context rm`
+    # (or rm and add with another command) doesn't take the lock.
+    def current?(attached) = attached.location.source(attached.name) == attached.source
+
+    # #record, then the check again: a removal between the first check and
+    # the write leaves no snapshot behind (the lock is still ours, so the
+    # file is ours too).
+    def record_current(attached, run, before)
+      outcome = record(attached.location, attached.name, run, before)
+      return outcome if current?(attached)
+
+      FileUtils.rm_f(attached.location.snapshot_path(attached.name))
+      Outcome.new(status: :gone, snapshot: nil, error: nil)
     end
 
     def record(location, name, run, before)

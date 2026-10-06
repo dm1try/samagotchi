@@ -302,6 +302,8 @@ module Samagotchi
         # ── Plugin: <file> into <bundle_dir>/plugin/ (docs/plugins.md) ────
         # Like the rules, the bundle's plugin replaces an earlier one.
         plugin_file_for_provenance = install_plugin(manifest, normalized_dir, provenance)
+        # ── Scripts: scripts/<file> into <bundle_dir>/scripts/ ────────────
+        scripts_for_provenance = install_scripts(manifest, normalized_dir, provenance)
         warn_hooks_requires_chi(manifest, all_hooks_in_bundle)
         warn_rules_requires_chi(manifest, incoming_rules)
 
@@ -417,7 +419,9 @@ module Samagotchi
             plugin_file: plugin_file_for_provenance,
             requires_chi: manifest.requires_chi,
             needs: manifest.needs,
-            conflicts: @conflicts.keys
+            conflicts: @conflicts.keys,
+            scripts_files: scripts_for_provenance,
+            context_providers: manifest.context_providers
           )
         end
 
@@ -613,6 +617,44 @@ module Samagotchi
           @warnings << "Checksum mismatch for plugin #{plugin[:file]}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
         end
         dest
+      end
+
+      # The manifest's scripts, copied into <bundle_dir>/scripts/ (the
+      # folder replaced: a script the new version dropped goes). A declared
+      # sha256 that differs warns, as a plugin's does.
+      # @return [Hash{String => String}] file name => installed path
+      def install_scripts(manifest, source_dir, provenance)
+        scripts = manifest&.scripts || {}
+        scripts.each_key do |file|
+          next if File.file?(File.join(source_dir, "scripts", file))
+
+          raise InstallError, "the manifest names scripts/#{file}, which the bundle doesn't have"
+        end
+        return {} if @dry_run
+
+        unchanged = scripts.keys.select do |file|
+          dest = File.join(provenance.scripts_dir, file)
+          File.file?(dest) && FileUtils.identical?(File.join(source_dir, "scripts", file), dest)
+        end
+        FileUtils.rm_rf(provenance.scripts_dir)
+        return {} if scripts.empty?
+
+        FileUtils.mkdir_p(provenance.scripts_dir)
+        scripts.to_h do |file, declared|
+          dest = File.join(provenance.scripts_dir, file)
+          FileUtils.cp(File.join(source_dir, "scripts", file), dest)
+          @results["scripts/#{file}"] = if unchanged.include?(file) then { status: "skipped", reason: "already up to date" }
+                                        elsif @upgrade && provenance.read then { status: "updated" }
+                                        else { status: "installed" }
+                                        end
+          FileUtils.chmod(0o755, dest)
+          actual = Digest::SHA256.hexdigest(File.binread(dest))
+          expected = declared.to_s.delete_prefix("sha256:")
+          if @strict && !expected.empty? && actual != expected
+            @warnings << "Checksum mismatch for script #{file}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
+          end
+          [file, dest]
+        end
       end
 
       # A model overlay (<name>.<key>.md, docs/memory.md) loads only with

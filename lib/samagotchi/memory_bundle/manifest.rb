@@ -3,6 +3,7 @@
 require "yaml"
 require "digest"
 require "fileutils"
+require_relative "../context_providers"
 
 module Samagotchi
   module MemoryBundle
@@ -25,6 +26,15 @@ module Samagotchi
     #       why: reads PRs     #   optional
     #       hint: brew install gh   # optional
     #     - jq                 #   short form: just the command
+    #   scripts:               # optional — files in scripts/ a context
+    #     pr_context.rb: sha256:…   #   provider's command runs (installed into
+    #                          #   the bundle's own dir, scripts/)
+    #   context_providers:     # optional — URL → attached context source
+    #     - match: '\Ahttps://…/pull/(\d+)'   # (ContextProviders)
+    #       name: 'pr-\1'
+    #       cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
+    #       why: GitHub PR      #   optional
+    #       every_seconds: 300  #   optional
     #   includes: [a, b]       # optional — a profile (meta bundle): the
     #                          #   shipped bundles it installs; its dir holds
     #                          #   only manifest.yml (MemoryBundle::Profile)
@@ -33,12 +43,15 @@ module Samagotchi
 
       # A plugin file is a plain .rb name in the bundle's top directory.
       PLUGIN_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\.rb\z/
+      # A script is a plain file name in the bundle's scripts/.
+      SCRIPT_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/
       # A need is a plain executable name: no path, no spaces.
       NEED_COMMAND = /\A[A-Za-z0-9][A-Za-z0-9._+-]*\z/
       # A bundle name, as `chi bundle install <name>` takes a shipped one.
       BUNDLE_NAME = /\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
 
-      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes
+      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
+                  :scripts, :context_providers
 
       def initialize(path:)
         @path = path
@@ -53,6 +66,8 @@ module Samagotchi
         @plugin = parse_plugin(raw["plugin"])
         @requires_chi = parse_requires_chi(raw["requires_chi"])
         @needs = self.class.parse_needs(raw["needs"])
+        @scripts = parse_scripts(raw["scripts"])
+        @context_providers = parse_context_providers(raw["context_providers"])
         @includes = parse_includes(raw["includes"])
       end
 
@@ -213,6 +228,27 @@ module Samagotchi
         { file: file, sha256: sha }
       end
 
+      # scripts: {file => sha256} → the same, "sha256:" prefixed; {} when absent.
+      def parse_scripts(raw)
+        return {} if raw.nil?
+        raise ValidationError, "scripts: must be a mapping of file name to sha256" unless raw.is_a?(Hash)
+
+        raw.to_h do |file, sha|
+          file = file.to_s
+          raise ValidationError, "scripts: #{file.inspect} isn't a plain file name in scripts/" unless file.match?(SCRIPT_FILE)
+
+          sha = sha.to_s.strip
+          [file, sha.empty? || sha.start_with?("sha256:") ? sha : "sha256:#{sha}"]
+        end
+      end
+
+      # @return [Array<ContextProviders::Provider>]
+      def parse_context_providers(raw)
+        ContextProviders.parse_list(raw)
+      rescue ContextProviders::Invalid => e
+        raise ValidationError, e.message
+      end
+
       # includes: → the names in order, duplicates dropped; [] when absent.
       # A meta ships nothing of its own, so files, hooks or a plugin next
       # to it is a ValidationError.
@@ -226,8 +262,8 @@ module Samagotchi
 
           name
         end.uniq
-        if !names.empty? && (!@files.empty? || !@hooks.empty? || @plugin)
-          raise ValidationError, "a bundle with includes: holds only its includes (no files, hooks or plugin)"
+        if !names.empty? && (!@files.empty? || !@hooks.empty? || @plugin || !@scripts.empty?)
+          raise ValidationError, "a bundle with includes: holds only its includes (no files, hooks, plugin or scripts)"
         end
 
         names

@@ -30,6 +30,7 @@ require_relative "../output_formatter"
 require_relative "../image_store"
 require_relative "../context_note"
 require_relative "../context_sources"
+require_relative "../context_providers"
 require_relative "../recap_store"
 require_relative "markdown_renderer"
 require_relative "message_parts"
@@ -153,6 +154,7 @@ module Samagotchi
         ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image],
         ["GET", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_list],
         ["GET", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_show],
+        ["POST", %r{\A/api/sessions/([^/]+)/context\z}, :handle_context_add],
         ["DELETE", %r{\A/api/sessions/([^/]+)/context/([^/]+)\z}, :handle_context_delete],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete]
@@ -1123,7 +1125,8 @@ module Samagotchi
 
       # ── Attached context (ContextSources): the session bar's chips ───────
       # A source's command isn't shown (the page may be on a phone over the
-      # LAN), and the web adds no source: a URL through a provider comes later.
+      # LAN), and the web adds a URL only, through an installed bundle's
+      # provider (ContextProviders): never a command.
 
       # GET /api/sessions/:id/context: the sources this session sees, muted
       # ones marked, with what the chips show.
@@ -1132,7 +1135,7 @@ module Samagotchi
         own = ContextSources.session_location(id, state_dir: default_state_dir)
         subs = own.subscriptions
         rows = attached_context(session).map { |attached| context_row(attached, own, subs) }
-        json_response(200, { session_id: id, sources: rows })
+        json_response(200, { session_id: id, sources: rows, can_add_url: ContextProviders.any? })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end
@@ -1145,6 +1148,37 @@ module Samagotchi
         json_response(200, context_row(attached, own, own.subscriptions).merge(text: attached.snapshot.text))
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # POST /api/sessions/:id/context {url, why}: the source an installed
+      # bundle's provider makes of +url+, attached to this session.
+      def handle_context_add(req, id)
+        session = @session_class.load(id, state_dir: default_state_dir)
+        body = parse_json(request_body(req))
+        return error_response(400, "invalid_json", "give {url, why}") unless body.is_a?(Hash) && body["url"].is_a?(String)
+
+        url = body["url"].strip
+        return error_response(422, "not_a_url", "give an http(s) URL") unless url.match?(%r{\Ahttps?://\S+\z})
+
+        resolved = ContextProviders.resolve(url)
+        return error_response(422, "no_provider", "no installed bundle resolves #{url[0, 200]}") unless resolved
+
+        own = ContextSources.session_location(session.id, state_dir: default_state_dir)
+        own.add(web_source(resolved, body["why"], own.scope))
+        json_response(201, { status: "attached", name: resolved.name })
+      rescue ContextProviders::Invalid => e
+        error_response(422, "no_provider", e.message)
+      rescue ContextSources::Invalid => e
+        error_response(409, "exists", e.message)
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      def web_source(resolved, why, scope)
+        why = ContextSources.one_line(why.is_a?(String) ? why : nil, ContextSources::LINE_MAX_CHARS) || resolved.why
+        ContextSources::Source.new(name: resolved.name, cmd: resolved.cmd, every_seconds: resolved.every_seconds, why: why,
+                                   hint: resolved.hint, scope: scope, added_by: "web", created_at: Time.now.utc.iso8601,
+                                   provider: resolved.bundle)
       end
 
       # DELETE /api/sessions/:id/context/:name: the session's own source is
@@ -1558,7 +1592,14 @@ module Samagotchi
           role = (m[:role] || m["role"]).to_s
           content = (m[:content] || m["content"]).to_s
           if Samagotchi::ContextNote.note?(m)
-            filtered << { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m) }
+            note = { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m) }
+            # A context wake turn's note starts that turn (Steer.turn_prompt?):
+            # the page opens the turn with it and pairs it with its record.
+            if Samagotchi::Steer.turn_prompt?(m)
+              note[:turn_start] = true
+              note[:turn_id] = (m[:turn_id] || m["turn_id"]).to_s
+            end
+            filtered << note
             next
           end
           # A plugin's steer: a row of the step that answered it, which the

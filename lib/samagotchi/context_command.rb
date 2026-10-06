@@ -4,6 +4,7 @@ require "json"
 require "time"
 require_relative "context_sources"
 require_relative "context_fetch"
+require_relative "context_providers"
 require_relative "memory_paths"
 require_relative "session"
 require_relative "cli/command"
@@ -21,11 +22,12 @@ module Samagotchi
     USAGE = <<~TEXT
       Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute> [options] [TARGET]
         add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] TARGET
+        add URL [--why TEXT] TARGET         a URL an installed bundle's provider knows (github-pr: a PR)
               a source: CMD prints its text (plain, or JSON {"text", "summary", "wake", "hint"});
               --push: text comes from chi context push. --every: how often CMD runs
               (seconds, at least 30; default context.every_seconds). --why: why it's attached;
               --hint: one line, often its URL. NAME: a-z, 0-9 and -, up to 40.
-        push NAME [-m TEXT] [TARGET]        new text for NAME (stdin without -m; text or JSON)
+        push NAME [-m TEXT] [TARGET]        new text for a --push source (stdin without -m; text or JSON)
         ls [TARGET] [--format json]         the sources, their age and state
         show NAME [--json] [TARGET]         the text (--json: the source and its snapshot)
         refresh NAME [TARGET]               run NAME's command now, here (a live worker absorbs the result)
@@ -109,10 +111,7 @@ module Samagotchi
     def run_add(options, args)
       name = args.shift
       return usage_error("give the source's NAME") unless name
-      if name.match?(%r{\Ahttps?://})
-        # C6 resolves a URL through the bundles' providers.
-        return fail_line("no provider resolves URLs yet: give a NAME and --cmd CMD or --push")
-      end
+      return add_url(name, options, args) if name.match?(%r{\Ahttps?://})
       return usage_error("give --cmd CMD or --push") unless options[:cmd] || options[:push]
       return usage_error("--cmd and --push don't go together") if options[:cmd] && options[:push]
       return usage_error("--every is for a --cmd source") if options[:every] && options[:push]
@@ -133,6 +132,33 @@ module Samagotchi
       end
     end
 
+    # A URL through the installed bundles' providers (ContextProviders):
+    # the provider gives the name, command, hint and interval. Not gated
+    # like --cmd (chi-context-cmd): the command is the bundle's.
+    def add_url(url, options, args)
+      if options[:cmd] || options[:push] || options[:every]
+        return usage_error("a URL's command comes from its provider: give no --cmd, --push or --every")
+      end
+
+      resolved = ContextProviders.resolve(url)
+      return fail_line("no installed bundle resolves #{url} (chi bundle install github-pr for GitHub PRs)") unless resolved
+
+      source = ContextSources::Source.new(
+        name: resolved.name, cmd: resolved.cmd, every_seconds: resolved.every_seconds,
+        why: ContextSources.one_line(options[:why] || resolved.why, ContextSources::LINE_MAX_CHARS),
+        hint: ContextSources.one_line(options[:hint] || resolved.hint, ContextSources::LINE_MAX_CHARS),
+        scope: nil, added_by: inside_session ? "agent" : "cli", created_at: Time.now.utc.iso8601, provider: resolved.bundle
+      )
+      each_target(options, args) do |target|
+        location = location_of(target)
+        location.add(source.with(scope: location.scope))
+        @stdout.puts("#{target.label}  attached #{source.name}")
+        true
+      end
+    rescue ContextProviders::Invalid => e
+      fail_line(e.message)
+    end
+
     def run_push(options, args)
       name = args.shift
       return usage_error("give the source's NAME") unless name
@@ -143,8 +169,16 @@ module Samagotchi
       fetched = ContextSources.parse_output(text)
       each_target(options, args) do |target|
         attached = find(target, name) or next false
-        before = attached.snapshot.revision
-        written = attached.location.record_text(name, fetched)
+        # A command source's text is its command's (R2): a push between
+        # two fetches would read as a change and then vanish.
+        unless attached.source.push?
+          error_line("#{command_name}: #{name} runs a command, which writes its text: push goes to a --push source")
+          next false
+        end
+
+        before, written = attached.location.locked(name) do
+          [attached.location.snapshot(name).revision, attached.location.record_text(name, fetched)]
+        end
         @stdout.puts("#{target.label}  #{name}: #{written.revision == before ? "unchanged" : "new text"} (#{written.revision[0, 12]})")
         true
       end
@@ -202,7 +236,7 @@ module Samagotchi
           next false
         end
 
-        cwd = attached.location.session? || !target.project_root ? target.cwd : target.project_root
+        cwd = attached.location.session? ? target.cwd : ContextSources.project_cwd(target.project_root, target.cwd)
         outcome = ContextFetch.fetch(attached, cwd: cwd)
         refresh_line(target, name, outcome)
       end
@@ -216,6 +250,9 @@ module Samagotchi
         true
       when :busy
         error_line("#{command_name}: #{name} is being fetched right now (by its worker); try again in a moment")
+        false
+      when :gone
+        error_line("#{command_name}: #{name} was removed while it ran; nothing was kept")
         false
       else
         error_line("#{command_name}: #{name} failed: #{outcome.error}")
@@ -305,7 +342,10 @@ module Samagotchi
       end
 
       root = MemoryPaths.project_root(@cwd)
-      Target.new(session_id: nil, project_root: root, cwd: root, label: "project #{File.basename(root)}")
+      # Its sources run in the root, or in this checkout when the root is a
+      # git dir (ContextSources.project_cwd).
+      Target.new(session_id: nil, project_root: root, cwd: MemoryPaths.work_tree_root(@cwd) || @cwd,
+                 label: "project #{File.basename(root)}")
     end
 
     def session_target(given)

@@ -135,6 +135,9 @@ module Samagotchi
       # Attached context (ContextSources): how often a source's command runs when it names no --every (seconds; less
       # than 30 counts as 30).
       Entry.new(key: "context.every_seconds",    yaml_path: %w[context every_seconds],    type: :integer, default: 300,             expose: %i[env config]),
+      # Whether a source's update with wake: true may start a turn in a live, idle session (Worker; one per source per
+      # 10 minutes, within session.max_wakes); false: it waits as a note for the next turn.
+      Entry.new(key: "context.wake",             yaml_path: %w[context wake],             type: :bool,   default: true,             expose: %i[env config cli]),
 
       Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
       # How much models think: off|low|medium|high|default, parsed by Thinking

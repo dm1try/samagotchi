@@ -149,6 +149,45 @@ RSpec.describe Samagotchi::ContextFetch do
     expect(fetch(attached, fresh_within: 60).status).to eq(:fresh)
   end
 
+  # R1 (part 1 review): a source removed, or removed and added again with
+  # another command, while its fetch runs gets nothing written back, and
+  # the lock outlives the removal, so a fetch of the new one waits.
+  describe "a source removed while its fetch runs" do
+    let(:gate) { File.join(tmpdir, "gate") }
+
+    def removed_mid_fetch(readd: nil)
+      attached = source("while [ ! -e #{gate} ]; do sleep 0.05; done; echo old text")
+      outcome = nil
+      thread = Thread.new { outcome = fetch(attached) }
+      expect(wait_until { File.exist?(loc.lock_path("src")) }).to be(true)
+      loc.remove("src")
+      source(readd) if readd
+      yield if block_given?
+      FileUtils.touch(gate)
+      thread.join(10)
+      outcome
+    end
+
+    it "writes nothing back" do
+      outcome = removed_mid_fetch
+
+      expect(outcome.status).to eq(:gone)
+      expect(File.exist?(loc.snapshot_path("src"))).to be(false)
+    end
+
+    it "leaves the new source of that name alone, whose fetch waits for the lock" do
+      outcome = removed_mid_fetch(readd: "echo new text") do
+        expect(fetch(Samagotchi::ContextSources::Attached.new(source: loc.source("src"), location: loc, shadowed: false)).status)
+          .to eq(:busy)
+      end
+
+      expect(outcome.status).to eq(:gone)
+      expect(loc.snapshot("src").text).to be_nil
+      expect(fetch(Samagotchi::ContextSources::Attached.new(source: loc.source("src"), location: loc, shadowed: false)).snapshot.text)
+        .to eq("new text\n")
+    end
+  end
+
   def alive?(pid)
     Process.kill(0, pid)
     true

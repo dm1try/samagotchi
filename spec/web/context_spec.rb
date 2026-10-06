@@ -24,8 +24,10 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def call(path, method: "GET")
-    status, _headers, chunks = app.call(Rack::MockRequest.env_for(path, "HTTP_HOST" => "127.0.0.1", method: method))
+  def call(path, method: "GET", body: nil)
+    env = Rack::MockRequest.env_for(path, "HTTP_HOST" => "127.0.0.1", method: method,
+                                          input: body && JSON.generate(body), "CONTENT_TYPE" => "application/json")
+    status, _headers, chunks = app.call(env)
     [status, JSON.parse(chunks.to_a.join)]
   end
 
@@ -66,6 +68,48 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
     expect(call("/api/sessions/#{session.id}/context/nope").first).to eq(404)
     expect(call("/api/sessions/#{session.id}/context/Bad..Name").first).to eq(404)
     expect(call("/api/sessions/11111111-2222-3333-4444-555555555555/context").first).to eq(404)
+  end
+
+  describe "POST: a URL through an installed bundle's provider" do
+    around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
+
+    def install_provider
+      dir = File.join(Samagotchi::MemoryPaths.system_dir, ".bundles", "prs")
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "manifest.json"), JSON.generate(
+        "name" => "prs", "version" => "1.0.0", "files" => {},
+        "context_providers" => [{ "match" => '\Ahttps://example\.com/pull/(\d+)', "name" => 'pr-\1',
+                                  "cmd" => "ruby {bundle_dir}/scripts/pr.rb {url}", "why" => "a PR" }]
+      ))
+    end
+
+    it "attaches it to the session, by the web; the list says a URL can be added once a provider is installed" do
+      expect(call("/api/sessions/#{session.id}/context")[1]).to include("can_add_url" => false)
+      install_provider
+      expect(call("/api/sessions/#{session.id}/context")[1]).to include("can_add_url" => true)
+
+      status, body = call("/api/sessions/#{session.id}/context", method: "POST",
+                                                                  body: { url: " https://example.com/pull/9 ", why: "review" })
+
+      expect([status, body]).to eq([201, { "status" => "attached", "name" => "pr-9" }])
+      expect(own.source("pr-9")).to have_attributes(provider: "prs", added_by: "web", why: "review",
+                                                    hint: "https://example.com/pull/9", scope: "session")
+    end
+
+    it "refuses a URL no provider knows, anything but http(s), a name already attached and a bad body" do
+      install_provider
+      path = "/api/sessions/#{session.id}/context"
+
+      expect(call(path, method: "POST", body: { url: "https://nope.example/1" }))
+        .to eq([422, { "error" => "no_provider", "detail" => "no installed bundle resolves https://nope.example/1" }])
+      expect(call(path, method: "POST", body: { url: "file:///etc/passwd" }).first).to eq(422)
+      expect(call(path, method: "POST", body: { cmd: "rm -rf /" }).first).to eq(400)
+      expect(call(path, method: "POST", body: { url: "https://example.com/pull/9" }).first).to eq(201)
+      expect(call(path, method: "POST", body: { url: "https://example.com/pull/9" }))
+        .to match([409, include("error" => "exists")])
+      expect(call("/api/sessions/11111111-2222-3333-4444-555555555555/context", method: "POST",
+                                                                                body: { url: "https://example.com/pull/1" }).first).to eq(404)
+    end
   end
 
   it "detaches a session's source and mutes a project's for this session only" do

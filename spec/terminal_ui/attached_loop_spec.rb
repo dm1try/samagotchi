@@ -1320,6 +1320,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
     expect(screen.lines.last).to eq("web> (continuing)")
   end
 
+  it "renders a turn an attached context change started by its label alone, live and from a join" do
+    feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "context:pr-12" } })
+    expect(screen.lines.last).to eq("context pr-12 changed>")
+
+    other = described_class.new(client: client, screen: screen, client_id: "tui:2")
+    turn = { prompt: nil, continue: true, origin: { client_id: "context:pr-12" }, parts: [] }
+    other.handle_event(JSON.parse(JSON.generate(joined.merge(snapshot: joined[:snapshot].merge(current_turn: turn)))))
+    expect(screen.lines.last).to eq("context pr-12 changed>")
+  end
+
   it "points at !rollback after a cancelled prompt turn, not after a cancelled continue" do
     feed({ type: :turn_started, prompt: "go", origin: { client_id: "tui:1" } }, { type: :turn_canceled, cancellation_reason: "ctrl_c" })
     expect(screen.lines.last(2)).to eq(["■ turn canceled (Ctrl-C)", "  partial progress kept; !rollback restores the pre-turn state"])

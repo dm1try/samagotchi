@@ -28,6 +28,7 @@
       { "client_id": "system:reminders", "expected": "reminder" },
       { "client_id": "delegate:3f2a1c9e", "expected": "delegate" },
       { "client_id": "child:3f2a1c9e", "expected": "delegate report" },
+      { "client_id": "context:pr-123", "expected": "context pr-123 changed" },
       { "client_id": "other:1", "expected": "user" },
       { "client_id": null, "ruby": "user", "js": null }
     ]

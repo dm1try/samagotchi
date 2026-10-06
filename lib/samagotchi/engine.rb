@@ -1192,6 +1192,7 @@ module Samagotchi
       client_id = origin.is_a?(Hash) ? origin[:client_id].to_s : ""
       source = if client_id.start_with?("#{Tools::Delegate::CLIENT_PREFIX}:") then "delegate"
                elsif client_id.start_with?(ChildReports::CLIENT_PREFIX) then "delegate_report"
+               elsif client_id.start_with?(Steer::CONTEXT_CLIENT_PREFIX) then "context"
                elsif client_id == SessionManager::REMINDER_CLIENT_ID then "reminder"
                else "client"
                end
@@ -1599,6 +1600,9 @@ module Samagotchi
     #   stored/validated before :turn_started (which carries their refs), and
     #   a model known not to see images fails the turn before anything of it
     #   is kept (VisionUnsupported).
+    # @param id [String, nil] the turn's id (a new uuid when nil): a caller
+    #   that put the turn's first message in the session already (a context
+    #   wake's note) names it with this id
     #
     # An Interrupt (SIGINT) cancels the turn: the pre-turn conversation plus
     # the prompt is kept in the session and :turn_canceled is emitted, then the
@@ -1609,9 +1613,9 @@ module Samagotchi
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil,
-                 images: [])
+                 images: [], id: nil)
       turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
-                                         continue: continue)
+                                         continue: continue, id: id)
       begin
         # A Stop cuts the /props probes this thread makes for the turn
         # (window, served model, vision) instead of waiting their timeout.
@@ -1655,7 +1659,7 @@ module Samagotchi
     # The turn's state before anything can fail it: the session running,
     # the turn flag, its cancel controller and sink. The cross-thread state
     # is set here and cleared in #release_turn only.
-    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:)
+    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil)
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end
@@ -1678,7 +1682,7 @@ module Samagotchi
 
       Turn.new(session: session, prompt: continue ? nil : prompt, continue: continue, on_event: on_event,
                controller: effective_controller, origin: origin, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
-               id: SecureRandom.uuid)
+               id: id || SecureRandom.uuid)
     end
     private :begin_turn
 

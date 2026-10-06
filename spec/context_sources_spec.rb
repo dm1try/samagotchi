@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::ContextSources do
   describe "a location" do
     let(:loc) { described_class.session_location(session_id, state_dir: state_dir) }
 
-    it "adds, lists and removes sources (with their snapshot and lock), refusing a second of one name" do
+    it "adds, lists and removes sources (with their snapshot; the lock stays for a fetch running), refusing a second of one name" do
       loc.add(source("pr-1", cmd: "gh pr view 1"))
       loc.add(source("notes"))
       loc.record_text("notes", fetched("hello"))
@@ -64,8 +64,34 @@ RSpec.describe Samagotchi::ContextSources do
       expect { loc.add(source("notes")) }.to raise_error(described_class::Invalid, /already attached/)
 
       expect(loc.remove("notes")).to be(true)
-      expect(Dir.children(loc.dir)).to eq(["pr-1.json"])
+      expect(Dir.children(loc.dir).sort).to eq(["declined", "notes.lock", "pr-1.json"])
       expect(loc.remove("notes")).to be(false)
+    end
+
+    # Review item 1: an auto-attach (github-pr) must not bring back what
+    # the user removed.
+    it "leaves a declined marker with the hint when a session's source is removed; an add clears it" do
+      loc.add(source("pr-1", cmd: "x").with(hint: "https://x/1"))
+      expect(loc.declined?("pr-1")).to be(false)
+
+      loc.remove("pr-1")
+
+      expect(loc.declined?("pr-1")).to be(true)
+      expect(loc.declined_hints).to eq(["https://x/1"])
+      expect(loc.sources).to eq([])
+      loc.add(source("pr-1", cmd: "x"))
+      expect(loc.declined?("pr-1")).to be(false)
+      expect(loc.declined_hints).to eq([])
+    end
+
+    it "leaves no declined marker for a project's source, or for a name that wasn't there" do
+      project = described_class.project_location("app_1234", state_dir: state_dir)
+      project.add(source("ci", cmd: "x"))
+      project.remove("ci")
+      loc.remove("nothing")
+
+      expect(project.declined?("ci")).to be(false)
+      expect(loc.declined?("nothing")).to be(false)
     end
 
     it "doesn't list the snapshots, the subscriptions or the markers as sources" do
@@ -150,6 +176,17 @@ RSpec.describe Samagotchi::ContextSources do
       own.add(source("a"))
       expect(described_class.attached(session_id, project_root: nil, state_dir: state_dir).map(&:name)).to eq(["a"])
     end
+  end
+
+  it ".project_cwd: the root when it is a checkout (.git a dir or a file), else the fallback" do
+    checkout = File.join(tmpdir, "app").tap { |d| FileUtils.mkdir_p(File.join(d, ".git")) }
+    linked = File.join(tmpdir, "wt").tap { |d| FileUtils.mkdir_p(d) && File.write(File.join(d, ".git"), "gitdir: x\n") }
+    bare = File.join(tmpdir, "proj", ".bare").tap { |d| FileUtils.mkdir_p(d) }
+
+    expect(described_class.project_cwd(checkout, "/fallback")).to eq(checkout)
+    expect(described_class.project_cwd(linked, "/fallback")).to eq(linked)
+    expect(described_class.project_cwd(bare, "/fallback")).to eq("/fallback")
+    expect(described_class.project_cwd(nil, "/fallback")).to eq("/fallback")
   end
 
   it "removes a deleted session's folder, and nothing for an id that isn't one" do

@@ -39,6 +39,11 @@ test("a turn chi ran for a delegate report is done however short: nobody started
   assert.deepEqual(attentionFor(base, { ...base, last_turn: wake }), { reason: "done", sessionId: "s1", key: "s1:2026-09-28T10:00:00.000Z" });
 });
 
+test("a turn chi ran for an attached context change is done however short, as a report's", () => {
+  const wake = { ...turn("completed", 3), origin: "context" };
+  assert.equal(attentionFor(base, { ...base, last_turn: wake }).reason, "done");
+});
+
 test("a failed turn, however short; a canceled one never", () => {
   assert.equal(attentionFor(base, { ...base, last_turn: turn("failed", 1) }).reason, "failed");
   assert.equal(attentionFor(base, { ...base, last_turn: turn("canceled", 60) }), null);

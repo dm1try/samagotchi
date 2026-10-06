@@ -479,6 +479,8 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.session_id` | the session's id (nil before there is one) |
 | `ctx.cwd` | the session's working directory |
 | `ctx.repo_root` | the git checkout holding `cwd`, or nil |
+| `ctx.scratch?` | whether the session is a `chi scratch` one (deleted when it ends) |
+| `ctx.delegate?` | whether the session is a delegate child: a task another session handed over |
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
 | `ctx.model_key` | that model's memory overlay key (`<name>.<key>.md`, what `memory_write current_model_only` writes) |
 | `ctx.settings` | the bundle's settings, frozen |
@@ -495,6 +497,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.sessions` | fork, send to and read other sessions: see [Other sessions](#other-sessions-ctxsessions) |
+| `ctx.context` | attach outside text to this session and list it: see [Attached context](#attached-context-ctxcontext) |
 
 The Engine itself is never handed to a plugin.
 
@@ -627,6 +630,65 @@ ctx.sessions.read(id)  # => {id:, title:, status:, parent_id:, running:, message
   running turn so far, `running: true`), else as saved. `messages` has no
   system prompt.
 - Each raises `Samagotchi::Plugin::Sessions::Error` with the reason.
+
+## Attached context: `ctx.context`
+
+```ruby
+ctx.context.attach(url: "https://github.com/acme/app/pull/42", why: "branch feat/x has open PR #42")
+ctx.context.attach(name: "ci", cmd: "bin/ci-status", why: "this branch's CI", every_seconds: 120)
+ctx.context.list  # => [{name:, scope:, why:, hint:, fetched_at:, error:, provider:}]
+```
+
+[Attached context](context.md) for the session the plugin runs in: chi runs
+the source's command every so often in the session's worker, and the model
+gets a note when its text changes.
+
+- `attach(url:, name: nil, why: nil)` goes through an installed bundle's
+  provider (below); `name:` and `why:` replace the provider's.
+  `attach(name:, cmd:, why: nil, hint: nil, every_seconds: nil)` attaches a
+  command of the plugin's own. A source of that name already attached stays
+  as it is. It returns the name, or nil when the user removed that name (or
+  that URL) from the session: a plugin doesn't attach it again until the
+  user adds it (`ctx.context.declined?(name)` says so).
+- The source is the session's (not the project's), marked
+  `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
+  the agent's `chi context add --cmd` is.
+- `list` gives the session's sources, its own then its project's.
+- `attach` raises `Samagotchi::Plugin::AttachedContext::Error` with the
+  reason (no session yet, no provider for the URL, a bad name).
+
+The [github-pr bundle](#the-github-pr-bundle) attaches the branch's PR from
+a quiet `chi.init` task.
+
+### Context providers in the manifest
+
+A bundle can turn URLs into sources for every process, without loading
+plugins (`chi context add URL`, the web's "+ URL", `ctx.context.attach(url:)`):
+
+```yaml
+# manifest.yml
+scripts:
+  pr_context.rb: sha256:…        # scripts/pr_context.rb in the bundle
+context_providers:
+  - match: '\Ahttps://github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)'
+    name: 'pr-\3'               # \1… are match's groups; the result must be a source name
+    cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
+    why: GitHub PR               # optional
+    every_seconds: 300           # optional, at least 30
+```
+
+- `scripts:` are files in the bundle's `scripts/` folder. Install copies them
+  into the installed bundle (`<memories>/.bundles/<name>/scripts/`) and
+  records their sha256; a script changed afterwards fails the source's
+  fetch until the bundle is reinstalled. `rake bundles:sha` refreshes their
+  lines in a shipped bundle.
+- The first installed bundle (by name) whose `match` matches the URL makes
+  the source. `{url}` is the part `match` matched, shell-quoted, filled in
+  when the source is attached; `{bundle_dir}` stays in the stored command
+  and becomes the installed bundle's folder each time it runs, so an
+  upgrade moves nothing. `{ruby}` becomes the Ruby chi runs on (a `ruby` on
+  the PATH may be another one, such as macOS's 2.6).
+- The command follows [the contract](context.md#the-command-contract).
 
 ## The btw bundle
 
@@ -1043,6 +1105,20 @@ bundles:
     history_keep: 20   # older versions kept per skill
     nudge: true        # steer once when a followed skill's step fails
 ```
+
+## The github-pr bundle
+
+```sh
+chi bundle install github-pr      # in the dev profile; needs gh, logged in
+```
+
+Attaches the branch's open GitHub pull request to a session as `pr-<n>` when
+its worker starts (not in a scratch session or a delegate child; quietly
+nothing without `gh`, a repository or an open PR), and resolves PR URLs for
+`chi context add` and the web's "+ URL". Its script prints the PR as text
+and a summary of what changed in counts, authors and states only; it wakes
+the session for a review requesting changes, checks turning red, or the PR
+merged or closed. See [Attached context](context.md#github-prs-the-github-pr-bundle).
 
 ## Shutdown
 
