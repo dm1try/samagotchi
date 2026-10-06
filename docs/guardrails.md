@@ -11,7 +11,8 @@ are offered.
 Who votes, in order:
 
 1. `before_tool_call` hooks (Ruby; see [Hooks](hooks.md#guardrails-from-a-hook)).
-2. Core checks: a required guardrail that failed to load, then protected paths.
+2. Core checks: a required guardrail that failed to load, then protected paths, then (a delegate child only)
+   [the child boundary](#a-delegate-childs-boundary).
 3. YAML rules: `config.yml`'s `guardrails:` section, then installed bundles' rule files (by bundle name).
 
 The UI shows the tool line first, then the approval under it.
@@ -188,6 +189,30 @@ Built in, for `write`, `edit` and `memory_write` (symlinks resolved):
 
 `execute` can still reach them; the guardrails bundle asks about shell
 commands that name them.
+
+## A delegate child's boundary
+
+Built in, for [delegate](sessions.md#delegating) children only, in every
+mode (also with `guardrails.enabled: false`) and without the guardrails
+bundle: a child asks before it changes anything outside its folder, the work
+tree top of the folder it was started in (a worktree from `delegate cwd:`,
+else the parent's checkout). Rule `child-boundary`, source `core`; it asks when
+
+- `write` or `edit` names a path outside it (tmp dirs and memory files don't count);
+- `execute` or `task_create` runs mutating git in another dir (`git -C`, `cd`,
+  `GIT_DIR`: what `git: outside_repo` matches), or a command that isn't
+  read-only starts outside it (its `cwd:`) or names a path in the repository's
+  other checkouts: the main one and sibling worktrees (read from
+  `<common git dir>/worktrees/*/gitdir`).
+
+Read-only commands (`git -C ../app log`, `cat ../app/x`) and paths elsewhere
+(`/usr/bin`, `~/.gem`) never ask. The answer is once or for the child's
+session only: a repo or rule answer would hold in every worktree, for every
+child, so a stored repo or rule approval doesn't let it through either. Its
+ask goes before the rules, so with the guardrails bundle in strict mode the
+card still names `child-boundary`. The parent (never a delegate), forks and
+ordinary sessions don't get it. Like the rules it reads command text: a
+`sh -c` body, a script or `$(…)` isn't looked into.
 
 ## Rules in config.yml
 
