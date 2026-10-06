@@ -54,7 +54,10 @@ RSpec.describe "The mcp bundle" do
       next_engine
       expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
       expect(spawned).to eq(1)
-      expect(mcp_card).to eq("**fake**: cached (not started), 3 tools\n- `mcp_fake_add`\n- `mcp_fake_echo`\n- `mcp_fake_slow`")
+      tokens = chat_tokens(mcp_tools)
+      expect(mcp_card).to eq("**fake**: cached (not started), 3 tools, ~#{tokens} tokens\n- `mcp_fake_add`\n- `mcp_fake_echo`\n" \
+                             "- `mcp_fake_slow`\n\nTotal: ~#{tokens} tokens of tool definitions in every request " \
+                             "(estimated: their JSON as the chat API gets it, ÷ 4).")
       expect(spawned).to eq(1)
       expect(call_tool("mcp_fake_echo", { "text" => "lazy" })).to eq("echo: lazy")
       expect(spawned).to eq(2)
@@ -142,7 +145,8 @@ RSpec.describe "The mcp bundle" do
         expect(cache["tools"].map { |t| t["name"] }).to eq(%w[echo])
         expect(Time.iso8601(cache["saved_at"])).to be > Time.now - 60
         expect(mcp_tools).to eq(%w[mcp_fake_echo])
-        expect(mcp_card).to eq("**fake**: cached (not started), 1 tool\n- `mcp_fake_echo`")
+        expect(mcp_card).to start_with("**fake**: cached (not started), 1 tool, ~#{chat_tokens(%w[mcp_fake_echo])} tokens\n" \
+                                       "- `mcp_fake_echo`\n\nTotal: ")
       end
 
       it "leaves the refresh to the worker that holds the lock" do

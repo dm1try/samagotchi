@@ -27,11 +27,14 @@
 # A server that doesn't start, answer or list its tools is skipped with a
 # notice; the rest of chi works. One that exits mid-session starts again on
 # its next call, at most MAX_RESTARTS times a session. /mcp lists the
-# servers and their tools.
+# servers and their tools, with an estimate of the tokens their
+# definitions take in every request.
 require "digest"
 require "json"
 require "open3"
 require "samagotchi/process_group"
+require "samagotchi/token_usage"
+require "samagotchi/tool_declarations"
 require "time"
 require "shellwords"
 require "tmpdir"
@@ -47,6 +50,8 @@ class Plugin
   CACHE_TTL = 24 * 60 * 60
   # Restarts of a server that exited, per session.
   MAX_RESTARTS = 3
+  # The states whose server's tools the model has (what publish declares).
+  OFFERED = %i[running cached exited].freeze
   IMAGE_EXT = { "image/png" => "png", "image/jpeg" => "jpg", "image/gif" => "gif", "image/webp" => "webp" }.freeze
 
   # A JSON-RPC client for one MCP server over stdio: newline-delimited JSON
@@ -244,11 +249,12 @@ class Plugin
 
   # One configured server: its service, state and tools. +listed+ is its
   # tools/list as the server answers it (what the cache keeps), +tools+
-  # the ones chi offers (the tools: filter applied, each with chi_name).
+  # the ones chi offers (the tools: filter applied, each with chi_name),
+  # +tokens+ their definitions' estimated size (#definition_tokens).
   # +client+ is the running process's (a restart replaces it; the
   # service's stop closes the current one), +restarts+ how many it had.
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
-                      :digest, :cached_at, :relist, :relisting, :client, :restarts, keyword_init: true)
+                      :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, keyword_init: true)
 
   def initialize(settings = {})
     @settings = settings
@@ -278,7 +284,7 @@ class Plugin
     configs = {} unless configs.is_a?(Hash)
     @servers = configs.map do |name, config|
       server = Server.new(name: name.to_s, config: config.is_a?(Hash) ? config : {}, state: :starting, tools: [],
-                          restarts: 0)
+                          restarts: 0, tokens: 0)
       server.timeout = positive(server.config["timeout"]) || @timeout
       resolve(server, ctx)
       server.service = chi.service(name) { |svc| start(server, svc, ctx) }
@@ -506,24 +512,43 @@ class Plugin
   # ── Tools ─────────────────────────────────────────────────────────────
 
   # Declare the server's tools on +target+ (chi at load, or the set of
-  # chi.replace_tools later), the tools: filter applied.
+  # chi.replace_tools later), the tools: filter applied. Their estimated
+  # tokens go to the log when they changed.
   def declare(target, server, ctx)
     wanted = server.config["tools"] && Array(server.config["tools"]).map(&:to_s)
     tools = server.listed.map(&:dup)
     tools = tools.select { |tool| wanted.any? { |w| File.fnmatch(w, tool["name"], File::FNM_EXTGLOB) } } if wanted
     server.tools = tools
+    tokens = 0
     tools.each do |tool|
       name = tool_name(server.name, tool["name"])
-      target.tool(name, description(tool), schema: tool["inputSchema"] || { "type" => "object", "properties" => {} },
+      schema = tool["inputSchema"] || { "type" => "object", "properties" => {} }
+      target.tool(name, description(tool), schema: schema,
                                            label: "#{server.name}: #{tool["name"]}", preview: ->(args) { preview(args) }) do |args, call_ctx|
         call(server, tool["name"], args, call_ctx)
       end
       tool["chi_name"] = name
+      tokens += definition_tokens(name, description(tool), schema)
     rescue ArgumentError => e
       text = "MCP tool #{server.name}/#{tool["name"]} left out: #{e.message}"
       ctx.notify(text, level: :warn) unless @left_out.include?(text)
       @left_out << text
     end
+    return if tokens == server.tokens
+
+    server.tokens = tokens
+    ctx.log.info("mcp_tools_estimated", server: server.name, tools: tools.count { |tool| tool["chi_name"] },
+                                        tokens: tokens)
+  end
+
+  # A tool's definition as the chat path sends it (LLM::ChatLoop#tool_definitions:
+  # the chat schema, wrapped as a function), in estimated tokens
+  # (TokenUsage::CHARS_PER_TOKEN). The native prompts (Gemma, Qwen) render a
+  # flatter schema, so it is an upper bound there.
+  def definition_tokens(name, description, schema)
+    spec = Samagotchi::Plugin::Api.tool_spec(name, description, schema: schema) { nil }
+    function = Samagotchi::ToolDeclarations.chat_schemas([spec[:schema]]).first.slice(:name, :description, :parameters)
+    Samagotchi::TokenUsage.estimate(JSON.generate({ type: "function", function: function }))
   end
 
   # The servers' tools changed after load (a live list that differs from
@@ -532,7 +557,7 @@ class Plugin
   def publish(ctx)
     @publish.synchronize do
       @chi.replace_tools do |set|
-        @servers.each { |server| declare(set, server, ctx) if %i[running cached exited].include?(server.state) }
+        @servers.each { |server| declare(set, server, ctx) if OFFERED.include?(server.state) }
       end
     end
   end
@@ -750,26 +775,34 @@ class Plugin
   def listing
     return "No servers. Add them in config.yml under `bundles: mcp: servers:` (docs/plugins.md, The mcp bundle)." if @servers.empty?
 
-    @servers.map do |server|
+    servers = @servers.map do |server|
       head = "**#{server.name}**: #{state_text(server)}"
       # Sorted: a server lists its tools in its own (often grouped) order.
       tools = server.tools.map { |tool| tool["chi_name"] }.compact.sort
       tools.empty? ? head : "#{head}\n#{tools.map { |t| "- `#{t}`" }.join("\n")}"
-    end.join("\n\n")
+    end
+    total = @servers.sum { |server| OFFERED.include?(server.state) ? server.tokens : 0 }
+    [*servers, "Total: ~#{thousands(total)} tokens of tool definitions in every request " \
+               "(estimated: their JSON as the chat API gets it, ÷ #{format("%g", Samagotchi::TokenUsage::CHARS_PER_TOKEN)})."]
+      .join("\n\n")
   end
 
   def state_text(server)
     case server.state
-    when :cached then "cached (not started), #{server.tools.size} tool#{"s" unless server.tools.size == 1}"
+    when :cached then "cached (not started), #{server.tools.size} tool#{"s" unless server.tools.size == 1}, #{tokens_text(server)}"
     when :running
       count = server.tools.count { |tool| tool["chi_name"] }
-      "running (pid #{server.client.pid}), #{count} tool#{"s" unless count == 1}"
+      "running (pid #{server.client.pid}), #{count} tool#{"s" unless count == 1}, #{tokens_text(server)}"
     when :starting then "starting"
     else "#{server.state == :failed ? "failed" : "stopped"}: #{server.error}"
     end
   rescue Samagotchi::Plugin::Service::Stopped
     "stopped"
   end
+
+  def tokens_text(server) = "~#{thousands(server.tokens)} tokens"
+
+  def thousands(number) = number.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
 
   def positive(value)
     number = Float(value.to_s, exception: false)

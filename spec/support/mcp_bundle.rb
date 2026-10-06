@@ -5,6 +5,7 @@ require "fileutils"
 require "json"
 require "rbconfig"
 require "samagotchi/engine"
+require "samagotchi/llm/chat_loop"
 require "samagotchi/session"
 require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
@@ -89,6 +90,14 @@ RSpec.shared_context "the mcp bundle in an Engine" do
     engine
     engine.send(:announce_guardrail_failures, ->(e) { @init_events << e })
     @init_events.select { |e| %i[hook_notice card].include?(e[:type]) }
+  end
+
+  # The tokens /mcp should estimate for these registered tools: what
+  # LLM::ChatLoop#tool_definitions sends for them, its JSON ÷ CHARS_PER_TOKEN.
+  def chat_tokens(names)
+    schemas = names.map { |name| tools[name].schema }
+    chat = Samagotchi::LLM::ChatLoop.new(kernel: Struct.new(:tools).new(Struct.new(:schemas).new(schemas)))
+    chat.tool_definitions.sum { |definition| Samagotchi::TokenUsage.estimate(JSON.generate(definition)) }
   end
 
   def server_pid
