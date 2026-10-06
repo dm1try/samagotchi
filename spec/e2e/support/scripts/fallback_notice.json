@@ -1,0 +1,6 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"text": "E2E_FALLBACK: see [JIRA-1](https://example.test/JIRA-1)."}
+  ]
+}

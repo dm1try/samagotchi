@@ -34,6 +34,7 @@ require_relative "../context_sources"
 require_relative "../context_providers"
 require_relative "../recap_store"
 require_relative "markdown_renderer"
+require_relative "capabilities"
 require_relative "message_parts"
 require_relative "session_summary"
 require_relative "../log"
@@ -634,6 +635,7 @@ module Samagotchi
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
           markdown_warning: @markdown_renderer.warning,
+          capabilities: Capabilities.for(@markdown_renderer).to_h,
           pending_question: pending,
           last_event_seq: last_event_seq,
           # The stream cursor `<seq>-<epoch>`: a later worker resets it
@@ -690,6 +692,7 @@ module Samagotchi
           session: session_json,
           messages: messages,
           markdown_warning: @markdown_renderer.warning,
+          capabilities: Capabilities.for(@markdown_renderer).to_h,
           timing: timing
         })
       rescue ArgumentError => e

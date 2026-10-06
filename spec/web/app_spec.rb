@@ -569,6 +569,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(message).to include("role" => "assistant", "content" => "hi there")
       expect(message).not_to have_key("html")
       expect(JSON.parse(body.first)["markdown_warning"]).to be_nil
+      expect(JSON.parse(body.first)["capabilities"]).to eq("display" => false)
     end
 
     it "reports a warning when Markdown is enabled without commonmarker" do
@@ -577,6 +578,7 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(renderer.available?).to be(false)
       expect(renderer.warning).to include("gem install commonmarker")
+      expect(Samagotchi::Web::Capabilities.for(renderer).to_h).to eq(display: false)
     end
 
     it "includes sanitized Markdown HTML for assistant messages when available" do
@@ -605,6 +607,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(message["html"]).to include('href="https://example.test"')
       expect(message["html"]).to include('target="_blank"')
       expect(message["html"]).to include('rel="noopener noreferrer"')
+      expect(JSON.parse(body.first)["capabilities"]).to eq("display" => true)
     end
 
     it "keeps the history's layout: code indentation and nested lists" do
@@ -947,8 +950,9 @@ RSpec.describe Samagotchi::Web::App do
 
         expect(status).to eq(200)
         payload = JSON.parse(body.first)
-        expect(payload.keys).to contain_exactly("tail", "session", "messages", "markdown_warning", "timing")
+        expect(payload.keys).to contain_exactly("tail", "session", "messages", "markdown_warning", "capabilities", "timing")
         expect(payload["tail"]).to be(true)
+        expect(payload["capabilities"]).to eq("display" => true)
         expect(payload["messages"].size).to eq(1)
         expect(payload["messages"].first).to include("role" => "assistant", "content" => "see [x](https://example.test)")
         expect(payload["messages"].first["html"]).to include('href="https://example.test"')

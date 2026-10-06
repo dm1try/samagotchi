@@ -1047,6 +1047,32 @@ test("a warn card stays in sight when its step closes mid-turn", { tag: "@turn" 
   await expect(page.locator("#history > .plugin-card.warn").filter({ hasText: "e2e warn card" })).toHaveCount(1);
 });
 
+// A notice marked fallback_for: display (here the e2e-fallback-notice test
+// bundle's, after the answer) stands in for the answer's links, which the
+// page renders (web.markdown on): it is never drawn, not even for a moment
+// in the stage, and a reload doesn't bring it back. A plain notice next to
+// it shows.
+test("a notice that stands in for the rendered answer isn't shown, live or after a reload", { tag: "@turn" }, async ({ page, script }) => {
+  await page.evaluate(() => {
+    window.fallbackSeen = false;
+    new MutationObserver(() => {
+      if (document.querySelector("#center").textContent.includes("e2e fallback line")) window.fallbackSeen = true;
+    }).observe(document.querySelector("#center"), { subtree: true, childList: true, characterData: true });
+  });
+  script("fallback_notice");
+  await send(page, "Name the ticket");
+  await turnEnded(page, 1);
+  await expect(page.locator("#history .bubble.output a[href='https://example.test/JIRA-1']")).toHaveCount(1);
+  await expect(page.locator("#history").getByText("e2e plain line")).toHaveCount(1);
+  await expect(page.locator("#center")).not.toContainText("e2e fallback line");
+  expect(await page.evaluate(() => window.fallbackSeen)).toBe(false);
+
+  await page.reload();
+  await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  await expect(page.locator("#history").getByText("e2e plain line")).toHaveCount(1);
+  await expect(page.locator("#center")).not.toContainText("e2e fallback line");
+});
+
 // A check-in card asks the user as a question does: a tab behind shows one
 // "needs you" notification and a badge; resolving the card (here from
 // another client, the tab untouched) drops the badge while the turn runs.

@@ -167,6 +167,10 @@ export async function startEnv({ lan = false, installed = null } = {}) {
     // e2e-warn-card.txt only), for the warn_card scenario.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-warn-card")],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
+    // A test bundle whose plugin sends a notice marked fallback_for: display
+    // and a plain one after an E2E_FALLBACK answer, for that scenario.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-fallback-notice")],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     const webPort = await freePort();
     const webLog = fs.openSync(path.join(root, "web.log"), "a");
     const webArgs = ["web", "--port", String(webPort), ...(lan ? ["--web-host", "lan"] : [])];

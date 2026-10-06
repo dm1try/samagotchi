@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, isCard, isNoticeCard, leavesBlock, noticeCardLine, noticeInnerHtml, NOTICE_CHARS, splitSnapshotCards, turnNoticePlace } from "../../../lib/samagotchi/web/public/card.js";
+import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, isCard, isNoticeCard, leavesBlock, noticeCardLine, noticeInnerHtml, NOTICE_CHARS, shownElsewhere, splitSnapshotCards, turnNoticePlace } from "../../../lib/samagotchi/web/public/card.js";
 
 const card = {
   type: "card", id: "c1", source: "sample-plugin", title: "Hello <you>", body: "hi *there*", level: "info",
@@ -76,6 +76,27 @@ test("splitSnapshotCards: the history's cards and notices, the running turn's ca
     { type: "hook_notice", in_turn: true, current: true }, { type: "empty_answer_retry", in_turn: true, current: true }];
   assert.deepEqual(splitSnapshotCards(cards), { placed: [cards[0], cards[1]], current: [cards[2]], during: [cards[3]] });
   assert.deepEqual(splitSnapshotCards(undefined), { placed: [], current: [], during: [] });
+});
+
+test("shownElsewhere: a notice marked fallback_for a capability the page has; unmarked or without it, shown", () => {
+  const marked = { type: "hook_notice", text: "sources: JIRA-1", fallback_for: "display" };
+  assert.equal(shownElsewhere(marked, { display: true }), true);
+  assert.equal(shownElsewhere(marked, { display: false }), false);
+  assert.equal(shownElsewhere(marked, {}), false);
+  assert.equal(shownElsewhere(marked, undefined), false);
+  assert.equal(shownElsewhere({ type: "hook_notice", text: "plain" }, { display: true }), false);
+  assert.equal(shownElsewhere({ ...marked, fallback_for: "terminal" }, { display: true }), false);
+  assert.equal(shownElsewhere(null, { display: true }), false);
+});
+
+test("splitSnapshotCards: a notice the page shows elsewhere is left out, between turns and of a finished turn", () => {
+  const between = { type: "hook_notice", text: "sources: a", fallback_for: "display", in_turn: false, current: false };
+  const ofTurn = { type: "hook_notice", text: "sources: b", fallback_for: "display", in_turn: true, current: false };
+  const plain = { type: "hook_notice", text: "plain", in_turn: false, current: false };
+  const cards = [between, ofTurn, plain];
+  assert.deepEqual(splitSnapshotCards(cards, { display: true }).placed, [plain]);
+  assert.deepEqual(splitSnapshotCards(cards, { display: false }).placed, cards);
+  assert.deepEqual(splitSnapshotCards(cards).placed, cards);
 });
 
 test("isCard: a card entry (typed or not), not a notice or a row", () => {

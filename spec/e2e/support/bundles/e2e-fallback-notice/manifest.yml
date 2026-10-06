@@ -1,0 +1,8 @@
+---
+name: e2e-fallback-notice
+version: 0.1.0
+scope: system
+description: "The e2e suite's notices marked fallback_for: display and plain"
+plugin:
+  file: plugin.rb
+  sha256: sha256:b6e7d1c42cf460092e002d96799a37ac1d0eb08d162f9799acba07ebd2a8ff22
