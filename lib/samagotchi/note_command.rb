@@ -84,6 +84,8 @@ module Samagotchi
       options = parsed.options.merge(ids: parsed.args)
       return usage_error("give session ids or --all") if options[:ids].empty? && !options[:all]
       return usage_error("--all takes no ids") if options[:all] && options[:ids].any?
+      # The system prompt reads a note from "broadcast" as chi broadcast's.
+      return usage_error("--source broadcast is chi broadcast's own") if options[:source].to_s.strip == "broadcast"
 
       options
     end
