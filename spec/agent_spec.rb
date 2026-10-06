@@ -843,6 +843,15 @@ file2.rb")
       expect(surface.slots[:status].first).to include("mem: refactoring_backlog")
     end
 
+    it "shows this session's delegates in the status row, counted when the row is drawn again" do
+      allow(agent.engine).to receive(:session).and_return(instance_double(Samagotchi::Session, id: "p-1"))
+      allow(Samagotchi::ChildrenStatus).to receive(:counts).with("p-1", state_dir: anything)
+        .and_return(Samagotchi::ChildrenStatus::Counts.new(running: 1, waiting: 1, unreported: 0))
+      agent.send(:refresh_status_row)
+
+      expect(surface.slots[:status].first).to end_with(" | ⑂ 1 running · 1 waiting")
+    end
+
     it "shows the kernel's context estimate in the status row" do
       agent.send(:handle_stream_event, type: :context_status, usage: { estimated_pct: 12.34 }, bucket: "under20")
 

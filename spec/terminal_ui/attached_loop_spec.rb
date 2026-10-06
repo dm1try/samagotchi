@@ -1612,6 +1612,68 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     expect(status).to eq("status> model=m1 | ctx=12.5% (low) | mem: notes")
   end
 
+  describe "the children segment" do
+    let(:counts) { [] }
+    let(:asked) { [] }
+    let(:attached) do
+      described_class.new(client: client, screen: screen, client_id: "tui:1", children_counts: lambda { |id|
+        asked << id
+        running, waiting = counts.first
+        Samagotchi::ChildrenStatus::Counts.new(running: running, waiting: waiting, unreported: 0)
+      })
+    end
+
+    it "counts the delegates at the join" do
+      counts << [2, 1]
+      feed(join)
+
+      expect(status).to eq("status> model=m1 | ⑂ 2 running · 1 waiting")
+      expect(asked).to eq(["s-1234"])
+    end
+
+    it "counts them again when a turn ends, completed or canceled" do
+      counts << [2, 0]
+      feed(join)
+      counts.replace([[1, 0]])
+      feed({ type: :turn_started, prompt: "go", origin: { client_id: "web:1" } },
+           { type: :turn_completed, turn_summary: { tool_activity: [], output: "done", resumable: false } })
+      expect(status).to eq("status> model=m1 | ⑂ 1 running")
+
+      counts.replace([[0, 0]])
+      feed({ type: :turn_started, prompt: "go", origin: { client_id: "web:1" } },
+           { type: :turn_canceled, cancellation_reason: "ctrl_c" })
+      expect(status).to eq("status> model=m1")
+      expect(asked.size).to eq(3)
+    end
+
+    it "counts them again when a delegate's report merges into the turn, not on another merge" do
+      counts << [2, 0]
+      feed(join)
+      counts.replace([[1, 0]])
+      feed({ type: :input_merged, count: 1, origins: [{ client_id: "web:a" }] })
+      expect(status).to eq("status> model=m1 | ⑂ 2 running")
+
+      feed({ type: :input_merged, count: 2, origins: [{ client_id: "web:a" }, { client_id: "child:3f2a1c9e" }] })
+      expect(status).to eq("status> model=m1 | ⑂ 1 running")
+      expect(asked.size).to eq(2)
+    end
+
+    it "asks for nothing with SAMAGOTCHI_STATUS_LINE=off" do
+      ENV["SAMAGOTCHI_STATUS_LINE"] = "off"
+      feed(join, { type: :turn_completed, turn_summary: { tool_activity: [], output: "done", resumable: false } })
+
+      expect(asked).to be_empty
+    end
+
+    it "keeps the row when the counts can't be read" do
+      broken = described_class.new(client: client, screen: screen, client_id: "tui:1",
+                                   children_counts: ->(_id) { raise Errno::EACCES, "delegates.json" })
+      broken.handle_event(JSON.parse(JSON.generate(join)))
+
+      expect(status).to eq("status> model=m1")
+    end
+  end
+
   it "draws none with SAMAGOTCHI_STATUS_LINE=off" do
     ENV["SAMAGOTCHI_STATUS_LINE"] = "off"
 

@@ -36,6 +36,7 @@ require_relative "terminal_ui/one_shot_sink"
 require_relative "terminal_ui/question_prompt"
 require_relative "terminal_ui/repl_input"
 require_relative "terminal_ui/status_row"
+require_relative "children_status"
 require_relative "log"
 
 module Samagotchi
@@ -1136,6 +1137,19 @@ module Samagotchi
     def refresh_status_row
       state = @engine.session_state_snapshot.merge(model_name: @effective_model_name)
       @status_row.take_state(state, default_model: @default_model_name)
+      refresh_children_status
+    end
+
+    # The status row's children segment: this session's delegates, read
+    # from their files (ChildrenStatus.counts) wherever the row is drawn
+    # again. Not read with status.line off; a failed read keeps the row.
+    def refresh_children_status
+      id = @engine.session&.id
+      return unless id && @status_row.enabled?
+
+      @status_row.update(children: ChildrenStatus.counts(id, state_dir: @engine.peer_state_dir || Session.default_state_dir))
+    rescue StandardError => e
+      Log.debug(:repl, "children_counts_failed", error: e.class.name)
     end
 
     # Resolve the recap config (on by default). Returns false when explicitly

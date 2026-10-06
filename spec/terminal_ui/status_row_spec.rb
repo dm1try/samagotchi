@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/terminal_ui/status_row"
+require "samagotchi/children_status"
 require_relative "../support/recording_surface"
 
 RSpec.describe Samagotchi::TerminalUI::StatusRow do
@@ -50,6 +51,38 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
     row.update(model: "m1")
 
     expect(surface.events).to be_empty
+  end
+
+  describe "the children segment" do
+    def counts(running: 0, waiting: 0, unreported: 0)
+      Samagotchi::ChildrenStatus::Counts.new(running: running, waiting: waiting, unreported: unreported)
+    end
+
+    it "follows the parent with the delegates running and waiting (the ones there are)" do
+      row.update(model: "m1", parent_id: "3f2a1c9e-0000", children: counts(running: 2, waiting: 1),
+                 context: { est_pct: 12.34, bucket: "under20" })
+
+      expect(surface.slots[:status]).to eq(["status> model=m1 | ↳ 3f2a1c9e | ⑂ 2 running · 1 waiting | ctx=12.3% (under20)"])
+
+      row.update(children: counts(waiting: 1, unreported: 2))
+      expect(surface.slots[:status]).to eq(["status> model=m1 | ↳ 3f2a1c9e | ⑂ 1 waiting | ctx=12.3% (under20)"])
+    end
+
+    it "is hidden without children, or with none running or waiting (unreported replies aren't shown)" do
+      row.update(model: "m1", children: nil)
+      expect(surface.slots[:status]).to eq(["status> model=m1"])
+
+      row.update(children: counts(unreported: 1))
+      expect(surface.slots[:status]).to eq(["status> model=m1"])
+    end
+
+    it "draws nothing with status.line off" do
+      ENV["SAMAGOTCHI_STATUS_LINE"] = "off"
+      row.update(model: "m1", children: counts(running: 1))
+
+      expect(surface.events).to be_empty
+      expect(row.enabled?).to be(false)
+    end
   end
 
   describe "#take_state" do

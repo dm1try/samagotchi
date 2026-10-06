@@ -22,6 +22,7 @@ require_relative "../output_formatter"
 require_relative "../session_commands"
 require_relative "../session_manager"
 require_relative "../session_metrics"
+require_relative "../children_status"
 require_relative "../guardrails/parent_approvals"
 require_relative "../tool_activity"
 require_relative "../tool_view"
@@ -94,12 +95,15 @@ module Samagotchi
       # @param wait_at_eof [Boolean] lines come from a pipe or a file (`chi -p
       #   X </dev/null`): at their end, detach only once this run's prompts
       #   (the -p one too) have had their turns; if one failed, #run says so
+      # @param children_counts [#call] session id -> its delegates'
+      #   ChildrenStatus::Counts, the status row's children segment
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, wait_at_eof: false, parent_answers: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) },
-                     installed_version: -> { InstalledVersions.new.newest })
+                     installed_version: -> { InstalledVersions.new.newest },
+                     children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: Session.default_state_dir) })
         @client = client
         @installed_version = installed_version
         @delete_session = delete_session
@@ -145,6 +149,7 @@ module Samagotchi
         @continue_offer = nil
         # The status row: the worker's model, ctx, the session's memories.
         @status = StatusRow.new(screen)
+        @children_counts = children_counts
       end
 
       def running? = @running
@@ -245,11 +250,13 @@ module Samagotchi
         when :turn_started then start_turn(event)
         when :turn_completed
           complete_turn(event)
+          refresh_children
           own_turn_ended(event)
         # The renderer says how it ended (the REPL's words too).
         when :turn_canceled, :turn_failed
           @renderer.call(event)
           end_turn
+          refresh_children
           own_turn_ended(event)
         when :prompt_restored then restore_prompt(event)
         # The after_turn hooks are done (their notices came before it).
@@ -270,7 +277,10 @@ module Samagotchi
         when :continue_resolved then continue_resolved(event)
         # The note comes with the kernel's :pending_input_merged (EventRenderer),
         # after the answer the merge follows.
-        when :input_merged then merged_own_prompts(event)
+        when :input_merged
+          merged_own_prompts(event)
+          # A delegate's report: a child's state changed.
+          refresh_children if Array(event[:origins]).any? { |origin| report_origin?(origin) }
         when :question_requested
           # Nothing is left to answer it with.
           return unanswered_question(event[:pending_question]) if @input_ended
@@ -1260,6 +1270,19 @@ module Samagotchi
       # memories the session used.
       def take_session_state(state)
         @status.take_state(state, default_model: (default_model_name if state[:model_name]))
+        refresh_children
+      end
+
+      # The status row's children segment: the delegates' counts, read from
+      # their files here (ChildrenStatus.counts) at the join, when a turn
+      # ends and when a report merges; the worker sends nothing for it.
+      # Not read with status.line off; a failed read keeps the row.
+      def refresh_children
+        return unless @status.enabled?
+
+        @status.update(children: @children_counts.call(@client.session_id))
+      rescue StandardError => e
+        Log.debug(:attached, "children_counts_failed", error: e.class.name)
       end
 
       # The config's default model, as the worker's /model names it.

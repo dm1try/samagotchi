@@ -95,7 +95,10 @@ RSpec.describe Samagotchi::TerminalUI do
 
     it "shows the served model in the status line once a turn reported another one" do
       engine = agent.engine
-      row = -> { agent.send(:refresh_status_row) && agent.instance_variable_get(:@status_row).rows(200).first.to_s }
+      row = lambda do
+        agent.send(:refresh_status_row)
+        agent.instance_variable_get(:@status_row).rows(200).first.to_s
+      end
       expect(row.call).to start_with("status> model=#{engine.effective_model_name}")
 
       engine.metrics.call(type: :generation_completed, served_model: "ornith-x",

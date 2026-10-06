@@ -5,7 +5,7 @@ require_relative "formatting"
 module Samagotchi
   class TerminalUI
     # The status row under the prompt, the same for both TUIs:
-    # `status> model=… | ↳ parent | ctx=12.3% (under20) | mem: … | muted: …`.
+    # `status> model=… | ↳ parent | ⑂ 2 running · 1 waiting | ctx=12.3% (under20) | mem: … | muted: …`.
     # A UI feeds it what it learns (attached mode from the Bridge's events,
     # the REPL from its Engine's) through #update, and the row is redrawn in
     # the surface's status slot only when its text changes.
@@ -20,12 +20,14 @@ module Samagotchi
       #   served                [served, asked]: what the server said it
       #                         served for the name asked (ServedModel)
       #   parent_id             the session that delegated this one
+      #   children              its delegates' ChildrenStatus::Counts, or
+      #                         nil (the segment shows running and waiting)
       #   context               the kernel's estimate {est_pct:, bucket:}
       #   used_memories         the memories the session read
       #   preloaded             its --memory list (shown until a turn
       #                         records them as used)
       #   muted                 its --mute list
-      FIELDS = %i[model default_model served parent_id context used_memories preloaded muted].freeze
+      FIELDS = %i[model default_model served parent_id children context used_memories preloaded muted].freeze
 
       # @param surface [Surface] with #columns
       def initialize(surface)
@@ -84,6 +86,10 @@ module Samagotchi
         end
       end
 
+      # Whether the row is drawn at all (status.line): a UI computes what
+      # only the row shows (the children's counts) only then.
+      def enabled? = status_line_enabled?
+
       # Draw the row unless it shows that already (status.line: off draws
       # nothing).
       def refresh
@@ -103,10 +109,25 @@ module Samagotchi
         parent = @values[:parent_id]
         segments = [model ? status_model_text(model, @values[:default_model], served: served, served_for: served_for) : "",
                     parent ? "↳ #{parent.to_s[0, 8]}" : "",
+                    children_text(@values[:children]),
                     status_context_text(estimate: @values[:context]),
                     status_memory_text(Array(@values[:used_memories]) | Array(@values[:preloaded]), MEMORY_LIMIT),
                     status_memory_text(@values[:muted], MEMORY_LIMIT, label: "muted")].reject(&:empty?)
         status_rows(segments, width)
+      end
+
+      private
+
+      # `⑂ 2 running · 1 waiting`, the counts there are; "" with neither (no
+      # children, or all ended). Not "not reported": a REPL parent is never
+      # given its children's replies (no wakes there), and a worker moves
+      # the cursors only after the turn_completed a terminal refreshes on.
+      def children_text(counts)
+        return "" unless counts
+
+        parts = [[counts.running, "running"], [counts.waiting, "waiting"]]
+                .select { |n, _| n.positive? }.map { |n, word| "#{n} #{word}" }
+        parts.empty? ? "" : "⑂ #{parts.join(" · ")}"
       end
     end
   end
