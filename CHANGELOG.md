@@ -16,6 +16,11 @@ and commands may change between minor versions. How releases are made:
   was given it), and `ctx.sessions.stop(id)` stops one of its own children.
 - Bundles: a `files:` entry in `manifest.yml` may carry a `description:`, which the install writes into the
   memory's `index.md` line.
+- The `coordinator` bundle: chi coordinates parallel work. `/coordinate <goal>` (or asking for it) has chi split
+  the work into tasks, each in a child session in its own git worktree, check each report and ask you before each
+  merge. `/children` shows the session's children: state, branch, last reply and whether it was reported, with a
+  Stop button each. Use it with the guardrails bundle in strict mode: only then is a child asked before it writes
+  outside its worktree (`/coordinate` warns otherwise).
 
 ### Changed
 

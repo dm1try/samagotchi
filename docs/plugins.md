@@ -1139,6 +1139,67 @@ and a summary of what changed in counts, authors and states only; it wakes
 the session for a review requesting changes, checks turning red, or the PR
 merged or closed. See [Attached context](context.md#github-prs-the-github-pr-bundle).
 
+## The coordinator bundle
+
+```sh
+chi bundle install coordinator    # in the dev profile
+```
+
+chi as a coordinator of parallel work, the way you would run several agents
+yourself: split the work, one git worktree and child session per task, keep
+talking while they run, check each report, and merge only with your OK. It
+works in a session with a worker (plain `chi`, the web). A `--no-shared` REPL
+or `-p` gets no delegate reports, so the children's replies wouldn't come back
+by themselves there.
+
+- **The skill.** `skill_coordinator` (system scope; its index line says what
+  it is for, from the manifest's `description:`) holds the steps. The model
+  creates each worktree with `execute` (`git worktree add ../<repo>-<task> -b
+  <branch>`), starts a child there with `delegate wait: false, cwd:`, tells
+  you what started and ends its turn. When a child's report comes, it checks
+  the branch (`git log`, `git diff --stat`, the tests the child names) before
+  telling you. It asks before each merge (`ask_user_question`), checks that its
+  own folder is on the default branch and that branch's log first (another
+  agent may have merged the branch already), merges `--ff-only` and never
+  pushes unless you ask. After a merge it stops the
+  child and removes only the worktrees and branches it made.
+- **`/coordinate <goal>`** sends this session a turn asking the model to
+  follow the skill for the goal (in a `--no-shared` REPL it shows the text to
+  send yourself). Asking "do this in parallel" works too: the index line leads
+  the model to the skill.
+- **`/children [all]`** shows the session's children as a card, newest first,
+  one line each: `` `ab12cd34` · running · fix/flaky · "fix the flaky spec" ``,
+  `` `9a8b7c6d` · done · feat/x · reported · "All 12 specs pass" `` (`not
+  reported yet` when the parent wasn't given that reply), `` `77aa66bb` ·
+  waiting (approval) · open it: chi --attach 77aa66bb ``. A fork is marked
+  `fork`; `all` adds archived children. It runs during a turn too. The card
+  has Refresh and a `Stop <id>` per running or waiting child (up to 5);
+  `/children stop <id>` stops one of this session's own children (by session
+  id, as `chi sessions stop` does) and shows the card again.
+- **Guardrails: use strict mode.** A child's guardrails measure from its own
+  worktree, but the rules that ask before a write or a mutating git command
+  outside it (`write-outside-repo`, `git-outside-repo` in the guardrails
+  bundle) run only with `guardrails.mode: strict`. Without the guardrails
+  bundle in strict mode, a child isn't asked before it writes or commits
+  outside its worktree, in your own checkout say. `/coordinate` says so
+  when that is the case, and the plugin logs it once at load
+  (`children_unguarded`). Set it up with `chi bundle install guardrails`
+  (it is in the `core` profile) and `guardrails: {mode: strict}` in
+  `config.yml`.
+- **Merges.** The parent's merge in its own checkout is a plain `git
+  merge`; to be asked before every merge, add a rule ([Rules in
+  config.yml](guardrails.md#rules-in-configyml)):
+
+  ```yaml
+  guardrails:
+    rules:
+      - id: git-merge
+        tool: shell
+        command: '\bgit\s+merge\b'
+        verdict: ask
+        reason: merging a child's branch
+  ```
+
 ## Shutdown
 
 When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a
