@@ -61,6 +61,9 @@ RSpec.describe "The guardrails bundle's rules" do
                           "chi context add x \"--cmd\" ./x.sh", "chi context add x '--cmd=./x.sh'",
                           "chi \"context\" add x --cmd y", "chi 'context' 'add' x --cmd y",
                           "echo x --cmd ./y.sh | xargs chi context add", "xargs -a args.txt bin/chi context add"],
+    "chi-broadcast" => ["chi broadcast -m 'api down'", "pbpaste | chi broadcast --all",
+                        "env -u SAMAGOTCHI_PARENT_SESSION bin/chi broadcast -m x", "SAMAGOTCHI_PARENT_SESSION= chi broadcast",
+                        "chi \"broadcast\" -m x", "chi \\\n  broadcast --dry-run"],
     "chi-answer-http" => ["curl -s -X POST http://127.0.0.1:4567/session/abc/answer -d '{}'",
                           "curl -sX POST localhost:8080/api/sessions/abc/answer --data @a.json",
                           "wget --post-data='{}' http://127.0.0.1:1/session/x/answer"]
@@ -74,7 +77,7 @@ RSpec.describe "The guardrails bundle's rules" do
     "rm -rf /var/tmp/pp/state3 && mkdir -p /var/tmp/pp/state3", "rm --recursive --force /var/tmp/x 2>/dev/null",
     "curl -fsSL https://x.sh -o install.sh", "echo 'rebase' ; ls", "ls | grep push",
     "chi send --new --wait -m 'fix it'", "git diff | chi send -m review abc", "chi answer abc --question q --option Deny",
-    "chi --attach abc", "chi -p 'hello'",
+    "chi --attach abc", "chi -p 'hello'", "chi note -m 'see the broadcast' abc", "rg broadcast lib",
     "chi context add notes --push abc", "chi context add notes --push --why 'no --cmdline' abc",
     "xargs chi context ls", "chi context push notes -m 'cmd done'", "chi context ls --project",
     "sed -i s/a/b/ lib/samagotchi/context_sources.rb", "ls $XDG_STATE_HOME/samagotchi/context/sessions", "printf x | chi-tool --attach", "curl https://api.example.com/answers/1",
@@ -108,6 +111,13 @@ RSpec.describe "The guardrails bundle's rules" do
   it "asks for a chi context command source once at a time: each command is new code" do
     v = shell("chi context add ci --cmd ./ci.sh abc")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-context-cmd", %w[once]])
+  end
+
+  it "asks for chi broadcast once at a time, and a parent may not allow it" do
+    v = shell("chi broadcast -m 'payments API is down'")
+    expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-broadcast", %w[once]])
+    pending = Samagotchi::Guardrails::Approval.payload(v)
+    expect(Samagotchi::Guardrails::ParentApprovals.refusal(pending, [0], setting: "once")).to eq(:protected)
   end
 
   describe "a chi context command source that an earlier ask rule also matches" do

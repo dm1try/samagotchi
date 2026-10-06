@@ -13,9 +13,10 @@ module Samagotchi
       STRICTNESS = { allow: 0, ask: 1, deny: 2 }.freeze
       # Rules that ask about chi's own config and hooks: the core
       # ProtectedPaths asks and the guardrails bundle's shell rule; and a
-      # command source for attached context (it runs later, ungated). Only
-      # the user may allow them (ParentApprovals).
-      PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd].freeze
+      # command source for attached context (it runs later, ungated); chi
+      # broadcast, which is the user's. Only the user may allow them
+      # (ParentApprovals).
+      PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd chi-broadcast].freeze
       SCOPES = %w[once session repo rule].freeze
       DO_NOT_RETRY = "Do not retry it or reach the same result another way; ask the user how to proceed."
 

@@ -128,6 +128,17 @@ rules:
     scopes: [once]
     reason: attaches a command chi will run every few minutes, outside the guardrails
 
+  # ── chi broadcast: for the user, not an agent ─────────────────────────
+  # chi broadcast refuses to run inside a session (SAMAGOTCHI_PARENT_SESSION
+  # is set there), but an agent can unset that; this asks every time, and
+  # only the user may allow it. Quoted words and continuations still match.
+  - id: chi-broadcast
+    tool: shell
+    command: '\bchi["'']?[\s\\]+["'']?broadcast\b'
+    verdict: ask
+    scopes: [once]
+    reason: shares a note with every session it may concern; chi broadcast is for the user, not an agent
+
   # ── answering chi's own questions around chi answer ───────────────────
   # A parent agent answers a child's approval with chi answer, which holds it
   # to guardrails.parent_approvals. These shapes go around that: chi --attach

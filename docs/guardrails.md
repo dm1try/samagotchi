@@ -5,7 +5,7 @@ loops (native and chat hosts). The verdict is **allow**, **ask** or
 **deny**; the strictest vote wins, and a deny can't be undone by a later
 voter. Of two asks the first one names the rule, except a rule only the
 user may allow (`chi-config`, `chi-hooks`, `shell-touches-chi`,
-`chi-context-cmd`): it takes over, and only the scopes both asks offer
+`chi-context-cmd`, `chi-broadcast`): it takes over, and only the scopes both asks offer
 are offered.
 
 Who votes, in order:
@@ -427,7 +427,9 @@ hooks, approvals, bundles or attached context sources, or a `.git/hooks`
 (`shell-touches-chi`, `touches: chi_dirs`), unless they only read
 (`skip_read_only`); `chi context add … --cmd` (`chi-context-cmd`, once at a
 time: a command chi will run every few minutes outside the guardrails; see
-[Attached context](context.md#safety)); and answering chi's
+[Attached context](context.md#safety)); `chi broadcast` (`chi-broadcast`,
+once at a time and only by the user: it is the user's command, which also
+refuses to run inside a session; see [Broadcast](broadcast.md)); and answering chi's
 questions around `chi answer`: `chi --attach` or `chi -p` with stdin from a
 pipe, a here-string or a file (`chi-answer-piped`), and `curl`/`wget` to a
 session's `/answer` route (`chi-answer-http`), both once or for the session.
