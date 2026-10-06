@@ -128,7 +128,25 @@ RSpec.describe ReleaseTools do
       before { git("tag", "v0.1.0") }
 
       it "passes an unchanged bundle" do
+        git("commit", "-q", "--allow-empty", "-m", "after the tag")
         expect(described_class.bundles_check(tmp)).to eq([[], []])
+      end
+
+      # The release workflow runs on the tag being released, at HEAD.
+      it "compares with the tag before the one on HEAD" do
+        write("#{bundle}/a.md", "two")
+        described_class.refresh_bundle_shas!(tmp)
+        git("commit", "-qam", "two")
+        git("tag", "v0.2.0")
+        expect(described_class.last_tag(tmp)).to eq("v0.1.0")
+        expect(described_class.bundles_check(tmp).first)
+          .to eq(["b: changed since v0.1.0 but still version 0.1.0 (bump its manifest version)"])
+      end
+
+      it "finds no tag when the only one is on HEAD and nothing changed since; with edits, that tag" do
+        expect(described_class.last_tag(tmp)).to be_nil
+        write("#{bundle}/a.md", "two")
+        expect(described_class.last_tag(tmp)).to eq("v0.1.0")
       end
 
       it "fails a bundle changed since the tag at the same version, committed or not" do
@@ -176,6 +194,7 @@ RSpec.describe ReleaseTools do
         end
 
         it "is quiet when the changed bundle requires a newer chi, or the bundle didn't change" do
+          git("commit", "-q", "--allow-empty", "-m", "after the tag")
           expect(described_class.bundles_check(tmp)).to eq([[], []])
           change_bundle(">= 0.1.1")
           expect(described_class.bundles_check(tmp)).to eq([[], []])

@@ -111,8 +111,17 @@ module ReleaseTools
     [out, status.success?]
   end
 
+  # The newest v* tag reachable from HEAD; a tag on HEAD itself only when
+  # tracked files have changed since. In the release workflow HEAD is the
+  # tag being released, with a clean tree: comparing a bundle with it would
+  # find nothing changed, so the one before it counts. Before the tag is cut
+  # (release:check) that is simply the newest tag; edits on top of a tagged
+  # HEAD compare with that tag.
   def last_tag(root)
-    out, ok = git(root, "describe", "--tags", "--abbrev=0", "--match", "v*")
+    _, clean = git(root, "diff", "--quiet", "HEAD")
+    on_head = clean ? git(root, "tag", "--points-at", "HEAD", "--list", "v*").first : ""
+    excludes = on_head.split.flat_map { |tag| ["--exclude", tag] }
+    out, ok = git(root, "describe", "--tags", "--abbrev=0", "--match", "v*", *excludes, "HEAD")
     ok ? out.strip : nil
   end
 
