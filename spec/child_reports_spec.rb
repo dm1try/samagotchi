@@ -108,6 +108,37 @@ RSpec.describe "delegate reports" do
       expect(rings).to be_empty
     end
 
+    describe ".await_wakes" do
+      # The default wake: SessionManager.wake_for_report on a thread.
+      def ring_on_thread
+        described_class.ring(Samagotchi::Session.load(child.id, state_dir: tmpdir), why: "crash", state_dir: tmpdir)
+      end
+
+      it "waits for the wake threads its rings started, once" do
+        allow(Samagotchi::SessionManager).to receive(:wake_for_report) do |id, **|
+          sleep(0.1)
+          (@wakes ||= []) << id
+        end
+        ring_on_thread
+
+        expect(described_class.await_wakes).to eq(0)
+        expect(wakes).to eq([parent.id])
+        expect(described_class.await_wakes(0)).to eq(0)
+      end
+
+      it "waits at most its timeout for a wake that doesn't end" do
+        gate = Queue.new
+        allow(Samagotchi::SessionManager).to receive(:wake_for_report) { gate.pop }
+        ring_on_thread
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        expect(described_class.await_wakes(0.1)).to eq(1)
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      ensure
+        gate << true
+      end
+    end
+
     it "leaves no orphan dir for a deleted parent" do
       child
       File.delete(Samagotchi::Session.session_file(parent.id, state_dir: tmpdir))

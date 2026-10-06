@@ -30,6 +30,13 @@ module Samagotchi
     # Turns an idle parent runs for reports in a row with no human input.
     MAX_WAKES_KEY = "session.max_wakes"
     MAX_WAKES_DEFAULT = 10
+    # How long a leaving worker waits for the parent wakes it started
+    # (#await_wakes): a wake only spawns a worker, well under a second.
+    WAKE_JOIN_SECONDS = 5
+
+    # The wake threads #ring started in this process, until #await_wakes.
+    @wakes = []
+    @wakes_mutex = Mutex.new
 
     module_function
 
@@ -71,15 +78,29 @@ module Samagotchi
     def wake_parent(parent_id, state_dir:, wake:)
       return if SessionManager.session_owner(parent_id, state_dir: state_dir)
 
-      if wake
-        wake.call(parent_id)
-      else
-        Thread.new do
-          SessionManager.wake_for_report(parent_id, state_dir: state_dir)
-        rescue StandardError => e
-          Log.warn(:worker, "delegate_wake_failed", parent: parent_id[0, 8], error: e.class.name, msg: e.message)
-        end
+      return wake.call(parent_id) if wake
+
+      thread = Thread.new do
+        SessionManager.wake_for_report(parent_id, state_dir: state_dir)
+      rescue StandardError => e
+        Log.warn(:worker, "delegate_wake_failed", parent: parent_id[0, 8], error: e.class.name, msg: e.message)
       end
+      @wakes_mutex.synchronize { @wakes = @wakes.select(&:alive?) << thread }
+      thread
+    end
+
+    # Waits up to +timeout+ for the parent wakes this process started: a
+    # worker's teardown, since its process exits right after (a crash's
+    # ring comes just before it) and an exit kills a wake midway, before
+    # it spawned the parent's worker.
+    # @return [Integer] the wakes still running after it
+    def await_wakes(timeout = WAKE_JOIN_SECONDS)
+      threads = @wakes_mutex.synchronize { @wakes.tap { @wakes = [] } }
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      threads.each { |thread| thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max) }
+      left = threads.count(&:alive?)
+      Log.warn(:worker, "delegate_wakes_left", count: left) if left.positive?
+      left
     end
   end
 

@@ -288,6 +288,9 @@ module Samagotchi
         @context_poller&.stop
         @engine&.shutdown
         @bridge&.stop
+        # The process exits next: a parent wake it rang for (a crash's
+        # ring comes just above) must spawn the parent's worker first.
+        ChildRing.await_wakes
       end
     end
 

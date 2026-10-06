@@ -87,6 +87,24 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
   def next_turn(timeout: 3) = turns.pop(timeout: timeout)
 
   describe "a delegate child" do
+    # A5 (2026-10-06): the worker's process exits right after #run returns
+    # (exit 1 on a crash), which killed the wake thread before it spawned
+    # the idle parent's worker: the parent never woke.
+    it "wakes its idle parent before its run returns when it crashes" do
+      child = make_child
+      allow(Samagotchi::SessionManager).to receive(:wake_for_report) do |id, **|
+        sleep(0.2)
+        wakes << id
+      end
+      allow(Samagotchi::SessionInbox).to receive(:find_new_input_files).and_raise(RuntimeError, "boom")
+      dir = Samagotchi::Session.session_dir(child.id, state_dir: tmpdir)
+      worker = described_class.new(session_id: child.id, state_dir: tmpdir, session_dir: dir, idle_exit_minutes: 0, poll_interval: 5)
+
+      expect(worker.run).to eq(:crashed)
+      expect(ring_whys).to eq(["crash"])
+      expect(wakes).to eq([parent.id])
+    end
+
     it "rings its parent after its first turn (the parent's task) is saved, and wakes a parent with no worker" do
       child = make_child(prompt: "count the specs")
       start_worker(child)
