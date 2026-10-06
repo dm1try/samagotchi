@@ -15,6 +15,8 @@ Tool behavior:
 - If `scope` is provided (`project` or `system`), only that scope is read.
 - If `scope` is omitted, read falls back from project to system.
 - `memory_write`: `scope` is required (`project` or `system`). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). On success, the return value includes the full file path. For a small change to an existing memory (a step, a line) the model is told to `edit` that file rather than rewrite it all with `memory_write`.
+- `memory_write`'s `description` is the managed `index.md` line's text: one line (whitespace and newlines collapse to single spaces), at most 200 characters (longer is refused, since every session's prompt for the repo carries it). A missing or blank one keeps the line's description.
+- `memory_write` with `name`, `scope` and `description` but no `content` changes only that entry's index line (its size and date are refreshed; the date becomes today) and leaves the file as it is: a skill that keeps its status in a memory's description changes it without resending the body. The memory must exist in that scope; the form is refused for `index` and with `current_model_only`.
 - `write`/`edit` that change a `*.md` right in a scope dir refresh its managed `index.md` line (date, bytes; the description is kept), as `memory_write` does. A memory created with `write` gets a line with no description; any other `.md` written there gets a line too. Model overlays (`<name>.<key>.md` next to `<name>.md`), files in another project's folder and files changed by `execute` are left out.
 
 ## Model-Specific Memory Overlays

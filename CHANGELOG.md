@@ -8,6 +8,16 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `memory_write` with `name`, `scope` and `description` but no `content` changes only that memory's index line and
+  leaves its file as it is (see [docs/memory.md](docs/memory.md)).
+
+### Fixed
+
+- `memory_write` with a blank `description` keeps the stored one instead of wiping it; a multi-line description is
+  written on one line (it left orphan lines in `index.md`), and one longer than 200 characters is refused.
+
 ## [0.35.0] - 2026-10-06
 
 ### Added

@@ -33,14 +33,15 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 - Parameters: `name: "entry_name"`, `content: "..."`, `scope: "project"|"system"`, optional `description: "one-liner"`, optional `current_model_only: true`.
 - `name` is the entry name **without** `.md` (the tool adds it). Use `name`, **not** `path` — `path` belongs to the file tools and is ignored here. `name: "index"` is a verbatim write to `index.md` (no auto-index update) — rarely needed.
 - `scope` is **required** — never omit. Prefer `project` for repo conventions, `system` for user preferences.
-- `description` is appended to the managed `index.md` line (`— description`). Replaces previous description if given; otherwise preserves existing one.
+- `description` is appended to the managed `index.md` line (`— description`): one line, at most 200 characters (longer is refused; newlines become spaces). Replaces previous description if given; a missing or blank one preserves the existing one.
+- To change only the description, pass `name`, `scope` and `description` without `content`: the index line changes (its date becomes today), the file stays as it is. The memory must exist in that scope.
 - For a small change to an existing memory (a step, a line), `edit` its file instead of rewriting it all: the path is in `memory_write`'s result and the scope dirs are in the prompt. Its index line is refreshed either way.
 - On success returns `Memory 'name' saved to <scope> scope (N bytes). File written: <path> Index line refreshed automatically.` — confirm `bytes` and `scope`; the index needs nothing from you.
 
 **When to write:**
 - After learning a durable preference (e.g. commit style, test command, coding guideline) that the user confirmed or you observed repeatedly — ask before overwriting existing entries where appropriate.
 - Keep entries small and focused (one topic per file). Use clear filenames: `commit_preferences`, `testing_guide`, `project_conventions`.
-- Never store secrets, tokens, or transient state. Memories are shared via bundles.
+- Never store secrets, tokens, or transient state. Memories are shared via bundles. One exception: a skill may keep a working handoff memory (its steps say so) whose status is its description, removed when the work is done.
 
 **Placeholders:**
 - Content may contain placeholder hints written as double-curly braces around a name (e.g., test_command, language). Detected by `Placeholder` (`Placeholder::PLACEHOLDER_RE`) — install warns but does not fail. Fill them when you write. The placeholder syntax is two opening braces, a name, two closing braces.
