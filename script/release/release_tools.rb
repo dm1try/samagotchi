@@ -41,6 +41,7 @@ module ReleaseTools
   #   files:            a.md: sha256:<hex>             (dir/a.md)
   #   hooks:            h.rb:\n    sha256: sha256:<hex> (dir/hooks/h.rb)
   #   plugin:           file: p.rb\n  sha256: sha256:<hex> (dir/p.rb)
+  #   scripts:          s.rb: sha256:<hex>             (dir/scripts/s.rb)
   # Returns [text, [[relative file, old sha, new sha], ...]] for the lines
   # that changed. A named file that's missing raises.
   def refresh_manifest(text, dir)
@@ -77,6 +78,8 @@ module ReleaseTools
       m = line.match(/\A(    sha256: )sha256:\h*\s*\z/) and sub and [File.join("hooks", sub.delete("\"'")), m[1]]
     when "plugin"
       m = line.match(/\A(  sha256: )sha256:\h*\s*\z/) and plugin_file and [plugin_file, m[1]]
+    when "scripts"
+      m = line.match(/\A(  ["']?([^"':]+)["']?: )sha256:\h*\s*\z/) and [File.join("scripts", m[2]), m[1]]
     end
   end
 

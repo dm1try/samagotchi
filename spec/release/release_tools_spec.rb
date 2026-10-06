@@ -80,6 +80,16 @@ RSpec.describe ReleaseTools do
                                  .sub("sha256: sha256:#{sha("old")}", "sha256: sha256:#{sha("new h")}"))
     end
 
+    it "refreshes a scripts: line from scripts/<file>" do
+      write("b/scripts/pr.rb", "new s")
+      text = "---\nname: b\nscripts:\n  pr.rb: sha256:#{sha("old")}\ncontext_providers:\n- match: x\n"
+
+      refreshed, changes = described_class.refresh_manifest(text, dir)
+
+      expect(changes).to eq([["scripts/pr.rb", sha("old"), sha("new s")]])
+      expect(refreshed).to eq(text.sub(sha("old"), sha("new s")))
+    end
+
     it "raises on a file the manifest names but the bundle lacks" do
       FileUtils.rm(File.join(dir, "plugin.rb"))
       expect { described_class.refresh_manifest(manifest, dir) }.to raise_error(ReleaseTools::Error, /names plugin.rb/)

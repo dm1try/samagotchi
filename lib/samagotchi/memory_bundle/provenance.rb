@@ -39,6 +39,12 @@ module Samagotchi
         File.join(@bundle_dir, "plugin")
       end
 
+      # The installed scripts' dir (scripts/<file>): what a context
+      # provider's command finds as {bundle_dir}/scripts.
+      def scripts_dir
+        File.join(@bundle_dir, "scripts")
+      end
+
       # The plugin file as installed, or nil when the bundle has none.
       def plugin_path(data = read)
         file = data && data[:plugin].is_a?(Hash) ? data[:plugin][:file].to_s : ""
@@ -129,8 +135,12 @@ module Samagotchi
       #   edits that conflict with it; their entries get conflict: true
       # @param includes [Array<String>, nil] a profile's recorded members
       #   (MemoryBundle::Profile); nil for a plain bundle
+      # @param scripts_files [Hash] file name => installed script; the
+      #   sha256 of each is recorded (ContextFetch checks it before a run)
+      # @param context_providers [Array<ContextProviders::Provider>]
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
-                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], includes: nil)
+                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], includes: nil,
+                scripts_files: {}, context_providers: [])
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -241,6 +251,12 @@ module Samagotchi
         manifest_data["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
         manifest_data["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } if needs.is_a?(Array) && !needs.empty?
         manifest_data["includes"] = includes.map(&:to_s) if includes.is_a?(Array)
+        unless scripts_files.empty?
+          manifest_data["scripts"] = scripts_files.sort.to_h do |file, path|
+            [file.to_s, { "sha256" => "sha256:#{Digest::SHA256.hexdigest(File.binread(path.to_s))}" }]
+          end
+        end
+        manifest_data["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
 
         write_manifest(manifest_data)
       end
