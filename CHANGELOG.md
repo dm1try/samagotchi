@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-06
+
 ### Added
 
 - `delegate cwd:` starts a child in another folder of the session's repository: a worktree the model made with
@@ -44,6 +46,12 @@ and commands may change between minor versions. How releases are made:
   and session lists still follow the repository.
 - `delegate` refused for too many running children tells a session that gets delegate reports to end its turn (a
   report frees a slot), instead of to wait with `delegate_result`.
+- At a repository's root the system prompt names the checkout the project's commands run in, and calls the project
+  memories folder your notes about the project, not its files: a model no longer goes looking for the repository
+  in the memories folder.
+
+Update with `chi update`: it installs the new `coordinator` bundle for the `dev` profile (dev 0.3.0) and updates mcp
+(0.4.5: stops an MCP server through chi's own process-group handling).
 
 ## [0.33.0] - 2026-10-06
 
@@ -1700,7 +1708,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/dm1try/samagotchi/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/dm1try/samagotchi/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/dm1try/samagotchi/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/dm1try/samagotchi/compare/v0.30.0...v0.31.0
