@@ -9,7 +9,8 @@ RSpec.describe Samagotchi::ContextPoller do
   let(:state_dir) { File.join(tmpdir, "samagotchi", "sessions") }
   let(:session_id) { "11111111-2222-3333-4444-555555555555" }
   let(:work) { File.join(tmpdir, "work").tap { |d| FileUtils.mkdir_p(d) } }
-  let(:root) { File.join(tmpdir, "repo").tap { |d| FileUtils.mkdir_p(d) } }
+  # A checkout: its .git is there.
+  let(:root) { File.join(tmpdir, "repo").tap { |d| FileUtils.mkdir_p(File.join(d, ".git")) } }
   let(:own) { Samagotchi::ContextSources.session_location(session_id, state_dir: state_dir) }
   let(:project) { Samagotchi::ContextSources.project_location_for(root, state_dir: state_dir) }
   let(:changes) { [] }
@@ -43,6 +44,18 @@ RSpec.describe Samagotchi::ContextPoller do
     expect(own.snapshot("where").text.strip).to eq(File.realpath(work))
     expect(project.snapshot("root").text.strip).to eq(File.realpath(root))
     expect(changes.size).to eq(2)
+  end
+
+  # R3 (part 1 review): a bare repo, proj/.bare or --separate-git-dir
+  # makes the project root the git dir itself, no checkout.
+  context "when the project root is a git dir, not a checkout" do
+    let(:root) { File.join(tmpdir, "proj", ".bare").tap { |d| FileUtils.mkdir_p(File.join(d, "objects")) } }
+
+    it "runs a project's source in the session's folder" do
+      add(project, "root", "pwd")
+      poller.poll
+      expect(project.snapshot("root").text.strip).to eq(File.realpath(work))
+    end
   end
 
   it "runs a source again only once its interval has passed, and leaves push sources alone" do

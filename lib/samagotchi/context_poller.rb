@@ -90,11 +90,11 @@ module Samagotchi
     end
 
     # A session's source runs in the session's folder, a project's in the
-    # project root (the session's folder when the root isn't one).
+    # project root (the session's folder when the root is no checkout).
     def cwd_for(attached)
       return @cwd if attached.location.session?
 
-      @project_root && Dir.exist?(@project_root) ? @project_root : @cwd
+      ContextSources.project_cwd(@project_root, @cwd)
     end
   end
 end

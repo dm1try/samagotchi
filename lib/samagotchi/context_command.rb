@@ -236,7 +236,7 @@ module Samagotchi
           next false
         end
 
-        cwd = attached.location.session? || !target.project_root ? target.cwd : target.project_root
+        cwd = attached.location.session? ? target.cwd : ContextSources.project_cwd(target.project_root, target.cwd)
         outcome = ContextFetch.fetch(attached, cwd: cwd)
         refresh_line(target, name, outcome)
       end
@@ -342,7 +342,10 @@ module Samagotchi
       end
 
       root = MemoryPaths.project_root(@cwd)
-      Target.new(session_id: nil, project_root: root, cwd: root, label: "project #{File.basename(root)}")
+      # Its sources run in the root, or in this checkout when the root is a
+      # git dir (ContextSources.project_cwd).
+      Target.new(session_id: nil, project_root: root, cwd: MemoryPaths.work_tree_root(@cwd) || @cwd,
+                 label: "project #{File.basename(root)}")
     end
 
     def session_target(given)

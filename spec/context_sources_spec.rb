@@ -152,6 +152,17 @@ RSpec.describe Samagotchi::ContextSources do
     end
   end
 
+  it ".project_cwd: the root when it is a checkout (.git a dir or a file), else the fallback" do
+    checkout = File.join(tmpdir, "app").tap { |d| FileUtils.mkdir_p(File.join(d, ".git")) }
+    linked = File.join(tmpdir, "wt").tap { |d| FileUtils.mkdir_p(d) && File.write(File.join(d, ".git"), "gitdir: x\n") }
+    bare = File.join(tmpdir, "proj", ".bare").tap { |d| FileUtils.mkdir_p(d) }
+
+    expect(described_class.project_cwd(checkout, "/fallback")).to eq(checkout)
+    expect(described_class.project_cwd(linked, "/fallback")).to eq(linked)
+    expect(described_class.project_cwd(bare, "/fallback")).to eq("/fallback")
+    expect(described_class.project_cwd(nil, "/fallback")).to eq("/fallback")
+  end
+
   it "removes a deleted session's folder, and nothing for an id that isn't one" do
     loc = described_class.session_location(session_id, state_dir: state_dir)
     loc.add(source("a"))
