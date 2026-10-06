@@ -16,6 +16,8 @@
   --diff-add-bg:rgba(26,127,55,.12);--diff-add-text:#116329;--diff-del-bg:rgba(207,34,46,.10);--diff-del-text:#82071e;
   --code-text:#1f2328;--code-keyword:#cf222e;--code-string:#0a3069;--code-comment:#57606a;--code-constant:#0550ae;--code-func:#8250df;--code-type:#953800;
   --card-hover-border:rgba(31,35,40,.18);--on-solid:#fff;--on-warn:#1f2328;--text-hover:#0d1117;--badge-bg:rgba(31,35,40,.06);--badge-ring:rgba(31,35,40,.15);--shadow-strong:rgba(31,35,40,.18);--backdrop:rgba(13,17,23,.85);--toast-shadow:0 6px 24px rgba(31,35,40,.14)}}
+/* Icon masks shared by the phone info bar and the all view's cards (the stroke only shapes the mask; the icon takes currentColor). */
+:root{--icon-archive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E");--icon-unarchive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),radial-gradient(900px 700px at 100% 100%,color-mix(in srgb,var(--think) 9%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
@@ -738,8 +740,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   /* Icon-only buttons (the words stay as the accessible name, the title says more): the meta gets the width. */
   #infoBar>button{font-size:0;line-height:0;padding:5px 7px}
   #infoBar>button::before{content:"";display:block;width:14px;height:14px;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
-  #infoBar #infoArchiveBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E")}
-  #infoBar #infoArchiveBtn.archived{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
+  #infoBar #infoArchiveBtn{--icon:var(--icon-archive)}
+  #infoBar #infoArchiveBtn.archived{--icon:var(--icon-unarchive)}
   #infoBar #infoStopBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2v5.5M4.6 4.4a5 5 0 1 0 6.8 0'/%3E%3C/svg%3E")}
   #infoBar #infoDeleteBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5h11M6 4.5V2.75h4V4.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6M6.75 7.25v4.5M9.25 7.25v4.5'/%3E%3C/svg%3E")}
 }
@@ -855,10 +857,17 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card{padding:12px;border-radius:10px;background:var(--bg-panel);border:1px solid var(--border);cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:72px}
 .card:hover{border-color:var(--border-strong);background:var(--bg-hover)}
 #allList .card{position:relative}
-.card-del{position:absolute;top:6px;right:6px;padding:2px 7px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-muted);font-size:12px;line-height:1.2;cursor:pointer;opacity:0;transition:opacity .15s}
-#allList .card:hover .card-del, .card-del:focus-visible{opacity:1}
+/* A card's tools in the all view: archive (or unarchive) and delete, shown on hover, always under hover:none. */
+#allList .card-tools{position:absolute;top:6px;right:6px;display:flex;gap:2px}
+.card-tools button{padding:2px 7px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-muted);font-size:12px;line-height:1.2;cursor:pointer;opacity:0;transition:opacity .15s}
+#allList .card:hover .card-tools button, .card-tools button:focus-visible{opacity:1}
 .card-del:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
-@media (hover:none){.card-del{opacity:1}}
+.card-arch{display:flex;align-items:center}
+.card-arch::before{content:"";display:block;width:14px;height:14px;background:currentColor;-webkit-mask:var(--icon-archive) center/contain no-repeat;mask:var(--icon-archive) center/contain no-repeat}
+.card.archived .card-arch::before{-webkit-mask-image:var(--icon-unarchive);mask-image:var(--icon-unarchive)}
+.card-arch:hover{color:var(--accent);background:var(--accent-bg);border-color:var(--accent-border)}
+#allList .card:has(.card-tools) .preview{padding-right:56px}
+@media (hover:none){.card-tools button{opacity:1}}
 .card.active{background:var(--accent-bg);border-color:var(--accent-border)}
 .card .preview{font-size:14px;line-height:1.4;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .time{font-variant-numeric:tabular-nums;white-space:nowrap}

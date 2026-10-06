@@ -496,6 +496,30 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(stripCard).toBeVisible();
 });
 
+test("all sessions: a card's archive button hides it without opening it, the toast's Undo brings it back", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Card archive pong");
+  await turnEnded(page, 1);
+  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+
+  await page.locator("#allTile").click();
+  await expect(page).toHaveURL(/#\/sessions$/);
+  const card = page.locator(`#allList .card[data-id="${id}"]`);
+  await card.hover();
+  const arch = card.locator(".card-tools .card-arch");
+  await expect(arch).toHaveAttribute("aria-label", `Archive session ${id.slice(0, 8)}`);
+  await arch.click();
+  await expect(page.locator("#toast")).toContainText(`Archived ${id.slice(0, 8)}`);
+  await expect(card).toHaveCount(0);
+  // Still in the list, not on the session.
+  await expect(page).toHaveURL(/#\/sessions$/);
+
+  await page.locator("#toast .toast-action").click();
+  await expect(page.locator("#toast")).toContainText(`Unarchived ${id.slice(0, 8)}`);
+  await expect(card).toBeVisible();
+  await expect(card).not.toHaveClass(/archived/);
+});
+
 test("the info bar: copy chi --attach copies the full id, delete removes the session after the confirm", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
