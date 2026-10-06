@@ -195,7 +195,7 @@ module Samagotchi
           6. Use write for full-file rewrites or creating new files.
 
         Memory convention:
-          Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the "Project memories folder:" line below)
+          Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the "Project memories folder" line below)
           System scope:  ~/.config/samagotchi/memories/ (cross-project)
           memory_read accepts optional scope (project|system).
           memory_write requires explicit scope and entry name.
@@ -414,8 +414,9 @@ module Samagotchi
     end
 
     # Where the session runs and which project memory folder it uses. Only
-    # this checkout is named: its top when the cwd is a subfolder, and in a
-    # linked worktree a line that work stays in it. The repository's main
+    # this checkout is named: its top (at its root too, so a model doesn't
+    # take the memories folder for the project and cd there, Qwen
+    # 2026-10-06), and in a linked worktree a line that work stays in it. The repository's main
     # checkout (MemoryPaths.project_root, which scopes memories and session
     # lists) is never shown: a model told its path went to work there
     # (a worktree child committed onto main, 2026-10-03 and 2026-10-06).
@@ -428,6 +429,9 @@ module Samagotchi
       if top && top != cwd
         lines << "Top of this checkout (where the project's commands run from; stay inside it):"
         lines << top
+      elsif top
+        lines << "This checkout (the project's files; its commands run here):"
+        lines << top
       end
       if top && MemoryPaths.project_root(cwd) != top
         lines << "This checkout is a linked git worktree: read, edit, run and commit only in it, never in the " \
@@ -435,7 +439,7 @@ module Samagotchi
       end
       home = Dir.home
       lines << "Home directory: #{home} (write it as ~ or $HOME in commands and paths)" unless home.to_s.empty?
-      lines << "Project memories folder:"
+      lines << "Project memories folder (your notes about the project, not its files; never work or run commands there):"
       lines << home_relative(Tools::MemoryRead.memories_dir("project"))
       lines.join("\n")
     rescue StandardError

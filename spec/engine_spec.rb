@@ -135,9 +135,11 @@ RSpec.describe Samagotchi::Engine do
       expect(prompt).to include(<<~TEXT.chomp)
         Current working directory:
         #{tree}
+        This checkout (the project's files; its commands run here):
+        #{tree}
         This checkout is a linked git worktree: read, edit, run and commit only in it, never in the repository's other checkouts.
         Home directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)
-        Project memories folder:
+        Project memories folder (your notes about the project, not its files; never work or run commands there):
         #{folder}
       TEXT
       expect(prompt).not_to include("#{repo}\n")
@@ -166,10 +168,18 @@ RSpec.describe Samagotchi::Engine do
       expect(prompt).not_to include("linked git worktree")
     end
 
-    it "shows no other location line at the repository root" do
+    it "names the checkout at the repository root too, and labels the memories folder as notes, not the project" do
       prompt = project_prompt_in(repo)
-      expect(prompt).to include("Current working directory:\n#{repo}\nHome directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)\nProject memories folder:\n")
+      expect(prompt).to include("Current working directory:\n#{repo}\nThis checkout (the project's files; its commands run here):\n#{repo}\n" \
+                                "Home directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)\n" \
+                                "Project memories folder (your notes about the project, not its files; never work or run commands there):\n")
       expect(prompt).not_to include("Top of this checkout")
+    end
+
+    it "names no checkout outside a repository" do
+      outside = File.join(@tmp, "plain")
+      FileUtils.mkdir_p(outside)
+      expect(project_prompt_in(outside)).to include("Current working directory:\n#{outside}\nHome directory:")
     end
 
     it "names the home directory once, with the advice to write it as ~ or $HOME" do
@@ -183,12 +193,12 @@ RSpec.describe Samagotchi::Engine do
       allow(Samagotchi::Tools::MemoryRead).to receive(:memories_dir).with("project")
         .and_return(File.join(Dir.home, ".config", "samagotchi", "memories", "projects", "repo_abc"))
       expect(project_prompt_in(repo))
-        .to include("Project memories folder:\n~/.config/samagotchi/memories/projects/repo_abc")
+        .to include("Project memories folder (your notes about the project, not its files; never work or run commands there):\n~/.config/samagotchi/memories/projects/repo_abc")
     end
 
     it "points the memory convention at the shown folder instead of a path pattern" do
       prompt = project_prompt_in(repo)
-      expect(prompt).to include("Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the \"Project memories folder:\" line below)")
+      expect(prompt).to include("Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the \"Project memories folder\" line below)")
       expect(prompt).not_to include("<name>_<hash>")
     end
   end
