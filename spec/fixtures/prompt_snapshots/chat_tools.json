@@ -449,7 +449,7 @@
     "type": "function",
     "function": {
       "name": "delegate",
-      "description": "Hand a task to a child chi session that runs in parallel in this folder and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. A tool call the child needs approved goes to your user as one of your own approvals; you only see how it was answered, as a line in the result. Children keep running if this turn is canceled. Use wait false unless this turn can't go on without the reply: the call returns at once, you end your turn or keep working with your user, and chi brings the child's reply to you by itself as a delegate report when the child ends its turn, starting a turn for it if you are idle. After wait false don't call delegate_result for that child, not to check on it and not before ending your turn. To retry or redirect a child, use delegate with its session (task_* tools are for background commands, not sessions). A child stays until stopped: once its work is done, stop it with execute `chi sessions stop ID` (a follow-up with session wakes it again).",
+      "description": "Hand a task to a child chi session that runs in parallel in this folder, or in cwd, and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. A tool call the child needs approved goes to your user as one of your own approvals; you only see how it was answered, as a line in the result. Children keep running if this turn is canceled. Use wait false unless this turn can't go on without the reply: the call returns at once, you end your turn or keep working with your user, and chi brings the child's reply to you by itself as a delegate report when the child ends its turn, starting a turn for it if you are idle. After wait false don't call delegate_result for that child, not to check on it and not before ending your turn. To retry or redirect a child, use delegate with its session (task_* tools are for background commands, not sessions). A child stays until stopped: once its work is done, stop it with execute `chi sessions stop ID` (a follow-up with session wakes it again).",
       "parameters": {
         "type": "object",
         "properties": {
@@ -464,6 +464,10 @@
           "session": {
             "type": "string",
             "description": "A child's id or prefix: send the task there as a follow-up instead of starting a new child"
+          },
+          "cwd": {
+            "type": "string",
+            "description": "The new child's working folder: a worktree or subfolder of this session's repository (create a worktree with execute `git worktree add ../<repo>-<name> -b <branch>` first). Default: this session's folder"
           },
           "wait": {
             "type": "boolean",

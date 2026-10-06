@@ -245,6 +245,115 @@ RSpec.describe "delegate tools" do
       expect(out).to end_with("status: failed\nthe child's turn failed; its session shows what happened")
     end
 
+    describe "a folder of its own (cwd:)" do
+      let(:repo) { File.join(File.realpath(tmpdir), "app") }
+      let(:parent) { make(cwd: repo, prompt: "the plan", model: "big-model") }
+
+      # Kernel#system, not Open3: this file stubs Process.spawn.
+      def git(*args)
+        ok = system("git", "-c", "user.name=x", "-c", "user.email=x@x", "-c", "init.defaultBranch=main", *args,
+                    out: File::NULL, err: File::NULL)
+        raise "git #{args.join(" ")} failed" unless ok
+      end
+
+      def child_folder
+        id = (session_files - [parent.id]).first
+        id && Samagotchi::Session.load(id, state_dir: tmpdir).working_directory
+      end
+
+      before do
+        git("init", "-q", repo)
+        git("-C", repo, "commit", "-q", "--allow-empty", "-m", "init")
+      end
+
+      it "starts the child in a linked worktree of the parent's repository, given relative to the parent's folder" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        out = described_class.call("fix it", cwd: "../app-fix", wait: false, peers: worker_peers)
+
+        expect(out).to include("status: running")
+        expect(child_folder).to eq(File.join(File.dirname(repo), "app-fix"))
+      end
+
+      it "starts the child in a subfolder of the repository" do
+        FileUtils.mkdir_p(File.join(repo, "lib"))
+        described_class.call("look", cwd: File.join(repo, "lib"), wait: false, peers: worker_peers)
+
+        expect(child_folder).to eq(File.join(repo, "lib"))
+      end
+
+      it "keeps the parent's folder for a blank cwd" do
+        described_class.call("look", cwd: " ", wait: false, peers: worker_peers)
+
+        expect(child_folder).to eq(repo)
+      end
+
+      it "refuses another repository, a missing folder and cwd with session:, and starts nothing" do
+        other = File.join(File.realpath(tmpdir), "other")
+        git("init", "-q", other)
+        child = make(parent_id: parent.id, prompt: "first", status: "idle")
+
+        expect(described_class.call("x", cwd: other, wait: false, peers: worker_peers))
+          .to eq("Error: cwd must be a folder of this session's repository (a worktree or subfolder of it), not #{other}")
+        expect(described_class.call("x", cwd: "../nope", wait: false, peers: worker_peers))
+          .to eq("Error: cwd #{File.join(File.dirname(repo), "nope")} is not a folder (create the worktree first)")
+        expect(described_class.call("x", session: child.id, cwd: repo, wait: false, peers: worker_peers))
+          .to eq("Error: cwd starts a new child; a follow-up with session keeps the child's folder")
+        expect(session_files).to contain_exactly(parent.id, child.id)
+      end
+
+      def not_a_work_tree(folder)
+        "Error: cwd #{folder} is not in a work tree of this session's repository (a git dir, or a bare " \
+          "repository's folder): give a worktree's folder or a subfolder of one"
+      end
+
+      it "refuses the repository's git dir and what is inside it, a linked worktree's own git dir too" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        [".git", ".git/objects", ".git/worktrees/app-fix"].each do |inside|
+          expect(described_class.call("x", cwd: inside, wait: false, peers: worker_peers))
+            .to eq(not_a_work_tree(File.join(repo, inside)))
+        end
+        expect(session_files).to eq([parent.id])
+      end
+
+      context "in a bare layout (a .bare repository, a .git file pointing at it, worktrees next to it)" do
+        let(:container) { File.join(File.realpath(tmpdir), "proj") }
+        let(:repo) { File.join(container, "main") }
+
+        before do
+          # The outer before made repo a plain repository with a commit:
+          # clone it bare, then make repo a worktree of the bare one.
+          git("clone", "-q", "--bare", repo, File.join(container, ".bare"))
+          FileUtils.rm_rf(repo)
+          File.write(File.join(container, ".git"), "gitdir: ./.bare\n")
+          git("-C", container, "worktree", "add", "-q", "main", "main")
+        end
+
+        it "refuses the container and .bare, and takes another worktree" do
+          git("-C", container, "worktree", "add", "-q", "-b", "fix", "fix")
+
+          expect(described_class.call("x", cwd: "..", wait: false, peers: worker_peers)).to eq(not_a_work_tree(container))
+          expect(described_class.call("x", cwd: "../.bare", wait: false, peers: worker_peers))
+            .to eq(not_a_work_tree(File.join(container, ".bare")))
+          expect(described_class.call("x", cwd: "../fix", wait: false, peers: worker_peers)).to include("status: running")
+          expect(child_folder).to eq(File.join(container, "fix"))
+        end
+      end
+
+      it "outside git allows only a subfolder of the parent's folder" do
+        plain = File.join(File.realpath(tmpdir), "plain")
+        FileUtils.mkdir_p(File.join(plain, "sub"))
+        FileUtils.mkdir_p(File.join(File.realpath(tmpdir), "plain-sibling"))
+        loose = make(cwd: plain, prompt: "plan")
+        loose_peers = Samagotchi::Tools::Peers.new(session_id: loose.id, cwd: plain, state_dir: tmpdir)
+
+        expect(described_class.call("x", cwd: "../plain-sibling", wait: false, peers: loose_peers))
+          .to start_with("Error: cwd must be a folder of this session's repository")
+        expect(described_class.call("x", cwd: "sub", wait: false, peers: loose_peers)).to include("status: running")
+      end
+    end
+
     describe "a follow-up (session:)" do
       let(:child) { make(parent_id: parent.id, prompt: "first task", status: "idle") }
 

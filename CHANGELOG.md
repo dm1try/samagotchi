@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `delegate cwd:` starts a child in another folder of the session's repository: a worktree the model made with
+  `git worktree add`, or a subfolder. Another repository is refused.
+
 ### Changed
 
 - The `delegate` and `delegate_result` tools tell the model to start a child with `wait: false` unless its turn

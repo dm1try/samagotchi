@@ -4,6 +4,7 @@ require_relative "../client_id"
 require_relative "../session"
 require_relative "../config"
 require_relative "../model_profile"
+require_relative "../memory_paths"
 require_relative "peers"
 require_relative "delegate_wait"
 require_relative "../child_reports"
@@ -15,7 +16,8 @@ module Samagotchi
 
   module Tools
     # Hand a task to a child session: an ordinary chi session in its own
-    # worker, started in this session's folder with the task as its first
+    # worker, started in this session's folder (or cwd:, a worktree or
+    # subfolder of the same repository) with the task as its first
     # user message and the `delegated` system memory preloaded. It shows in
     # every list as a child of this one and the user can attach to it. With
     # session:, a follow-up to a child that exists. Only the child's final
@@ -38,10 +40,11 @@ module Samagotchi
       # @param content [String] the task (the child's user message, verbatim)
       # @param model [String, nil] the child's model (an alias works); the parent's by default
       # @param session [String, nil] a child's id or prefix: send the task there instead
+      # @param cwd [String, nil] the new child's folder (child_cwd checks it); the parent's by default
       # @param wait [Boolean, String, nil] wait for the reply (default true)
       # @param timeout [Integer, String, nil] seconds to wait (default DelegateWait::TIMEOUT_DEFAULT)
       # @param peers [Peers, nil]
-      def self.call(content, model: nil, session: nil, wait: nil, timeout: nil, peers: nil)
+      def self.call(content, model: nil, session: nil, cwd: nil, wait: nil, timeout: nil, peers: nil)
         return "Error: this session's id is not known here" unless peers&.session_id
 
         task = content.to_s.strip
@@ -52,8 +55,11 @@ module Samagotchi
         wait = parse_wait(wait)
         timeout = parse_timeout(timeout)
 
+        cwd = cwd.to_s.strip
         child_id, warning = if session.to_s.strip.empty?
-                              start_child(task, parent: parent, model: model, state_dir: sd)
+                              start_child(task, parent: parent, model: model, cwd: cwd, state_dir: sd)
+                            elsif !cwd.empty?
+                              "Error: cwd starts a new child; a follow-up with session keeps the child's folder"
                             else
                               follow_up(task, session: session.to_s.strip, parent: parent, state_dir: sd)
                             end
@@ -86,10 +92,13 @@ module Samagotchi
       private_class_method :running_hint
 
       # @return [String] the new child's id, or an Error: line
-      def self.start_child(task, parent:, model:, state_dir:)
+      def self.start_child(task, parent:, model:, cwd:, state_dir:)
         if parent.parent_id
           return "Error: this session is a delegate of #{parent.parent_id}; delegated sessions don't delegate further"
         end
+
+        folder = child_cwd(cwd, parent)
+        return folder if folder.start_with?("Error:")
 
         running = running_children(parent.id, state_dir: state_dir)
         max = max_children
@@ -99,13 +108,71 @@ module Samagotchi
                  "(the most is #{max}, #{MAX_CHILDREN_KEY}): #{ids}. delegate_result waits for one; `chi sessions stop ID` stops one."
         end
 
-        child = SessionManager.spawn_session(prompt: task, working_directory: parent.working_directory,
+        child = SessionManager.spawn_session(prompt: task, working_directory: folder,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
                                              parent_id: parent.id, delegate: true, state_dir: state_dir)
         DelegateWait.mark_started(parent.id, child, state_dir: state_dir)
         [child.id, child.model_warning]
       end
       private_class_method :start_child
+
+      # The new child's folder: the parent's, or +cwd+ (relative to the
+      # parent's) when it is a folder of the parent's repository, in any of
+      # its worktrees (one project_root, from the common git dir). Outside
+      # git only a subfolder of the parent's folder. Nothing is created
+      # here: the model makes a worktree with execute, where guardrails see it.
+      # @return [String] an absolute folder, or an Error: line
+      def self.child_cwd(cwd, parent)
+        base = parent.working_directory
+        return base if cwd.empty?
+
+        folder = File.expand_path(cwd, base)
+        return "Error: cwd #{folder} is not a folder (create the worktree first)" unless File.directory?(folder)
+
+        folder = File.realpath(folder)
+        unless same_repository?(folder, base)
+          return "Error: cwd must be a folder of this session's repository (a worktree or subfolder of it), not #{folder}"
+        end
+        if MemoryPaths.in_repo?(base) && !work_tree?(folder)
+          return "Error: cwd #{folder} is not in a work tree of this session's repository (a git dir, or a bare " \
+                 "repository's folder): give a worktree's folder or a subfolder of one"
+        end
+
+        folder
+      end
+      private_class_method :child_cwd
+
+      # A folder git works in: under a checkout's top (work_tree_root), not
+      # inside the git dir (.git, .git/objects, a bare layout's .bare), and
+      # one `git rev-parse` says is in a work tree (it says false in a bare
+      # layout's container too). Read-only; IO.popen, so a spec's
+      # Process.spawn stub doesn't catch it.
+      def self.work_tree?(folder)
+        return false unless MemoryPaths.work_tree_root(folder)
+
+        git_dir = MemoryPaths.git_dir(folder)
+        return false if git_dir && within?(folder, File.realpath(git_dir))
+
+        out = IO.popen(["git", "-C", folder, "rev-parse", "--is-inside-work-tree"], err: File::NULL, &:read)
+        out.strip == "true"
+      rescue SystemCallError
+        false
+      end
+      private_class_method :work_tree?
+
+      def self.within?(path, dir) = path == dir || path.start_with?("#{dir}/")
+      private_class_method :within?
+
+      def self.same_repository?(folder, base)
+        if MemoryPaths.in_repo?(base)
+          MemoryPaths.project_root(folder) == MemoryPaths.project_root(base)
+        else
+          within?(folder, File.realpath(base))
+        end
+      rescue SystemCallError
+        false
+      end
+      private_class_method :same_repository?
 
       # @return [String] the child's id, or an Error: line
       def self.follow_up(task, session:, parent:, state_dir:)

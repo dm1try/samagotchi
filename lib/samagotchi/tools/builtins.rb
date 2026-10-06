@@ -98,8 +98,8 @@ module Samagotchi
           ContextRead.call(call[:content], offset: call[:offset], limit: call[:limit], peers: kctx.peers)
         end,
         Delegate::NAME => lambda do |call, kctx|
-          Delegate.call(call[:content], model: call[:model], session: call[:session], wait: call[:wait],
-                                        timeout: call[:timeout], peers: kctx.peers)
+          Delegate.call(call[:content], model: call[:model], session: call[:session], cwd: call[:cwd],
+                                        wait: call[:wait], timeout: call[:timeout], peers: kctx.peers)
         end,
         DelegateResult::NAME => lambda do |call, kctx|
           DelegateResult.call(call[:content], session: call[:session], timeout: call[:timeout], peers: kctx.peers)
