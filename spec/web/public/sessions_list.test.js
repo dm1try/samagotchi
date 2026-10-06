@@ -129,6 +129,16 @@ test("waitingFirst moves a delegated family together, whichever member waits", (
   assert.deepEqual(ids(waitingFirst([{ id: "x" }, asks("ch", { parent_id: "gone" })])), ["ch", "x"]);
 });
 
+test("waitingFirst moves a nested family together, whichever depth waits; a cycle ends the walk", () => {
+  const family = [{ id: "x" }, { id: "p" }, { id: "c", parent_id: "p" }, { id: "g", parent_id: "c" }];
+  const waitingG = family.map((s) => (s.id === "g" ? asks("g", { parent_id: "c" }) : s));
+  assert.deepEqual(ids(waitingFirst(waitingG)), ["p", "c", "g", "x"]);
+  const waitingC = family.map((s) => (s.id === "c" ? asks("c", { parent_id: "p" }) : s));
+  assert.deepEqual(ids(waitingFirst(waitingC)), ["p", "c", "g", "x"]);
+  const cycle = [{ id: "x" }, { id: "a", parent_id: "b" }, asks("b", { parent_id: "a" })];
+  assert.deepEqual(ids(waitingFirst(cycle)), ["a", "b", "x"]);
+});
+
 test("heldOrder keeps an order shown before; new sessions go after, gone ones drop", () => {
   const list = [asks("b"), { id: "a" }, { id: "n" }, { id: "c" }];
   assert.deepEqual(ids(heldOrder(["a", "b", "c", "gone"], list)), ["a", "b", "c", "n"]);
