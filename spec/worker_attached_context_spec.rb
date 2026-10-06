@@ -236,14 +236,19 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       expect(saved_context_notes.last[:content]).to include("Updated: pr-7.")
     end
 
-    it "pauses wakes after a failed wake turn, keeping its note" do
+    it "pauses wakes after a failed wake turn, keeping its note as a plain one (a reload draws no empty turn)" do
       start_worker
       attach_seen("a")
       attach_seen("b")
       @fail_next = true
       push("a", "v2", wake: true)
       expect(wake_turns.pop(timeout: 3)).not_to be_nil
-      expect(wait_until { saved_context_notes.any? { |m| m[:turn_start] } }).to be(true)
+      expect(wait_until { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" })
+        .to be(true)
+      note = saved_context_notes.last
+      expect(note).to include(context_source: "a")
+      expect(note).not_to include(:turn_start, :turn_id)
+      expect(note[:content]).to include("don't act on it unless your user asks you to")
 
       push("b", "v2", wake: true)
       expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)

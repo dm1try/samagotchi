@@ -425,7 +425,7 @@ module Samagotchi
       @context_absorber.commit(waking ? woken(batch, waking) : batch)
       return false unless waking
 
-      run_context_wake_turn(waking.name, turn_id)
+      run_context_wake_turn(waking, turn_id)
       true
     rescue SystemCallError, IOError => e
       Log.exception(:worker, "context_failed", e)
@@ -473,9 +473,11 @@ module Samagotchi
     # turn from context:<name> whose first message is the wake note already
     # in the conversation (named by +turn_id+), on the same rules as a
     # delegate report's wake turn: it counts toward session.max_wakes, and
-    # a failure goes back to before the turn (the note stays: it was saved
-    # before the checkpoint) and pauses wakes until a human's input.
-    def run_context_wake_turn(name, turn_id)
+    # a failure goes back to before the turn (the note stays, as a plain
+    # one: #unmark_wake_note) and pauses wakes until a human's input.
+    # +waking+: the ContextAbsorber::Delivery that woke it.
+    def run_context_wake_turn(waking, turn_id)
+      name = waking.name
       @wakes_in_a_row += 1
       Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes_in_a_row)
       @turn_flow.before_prompt_turn
@@ -484,11 +486,24 @@ module Samagotchi
         if error
           note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message)
           @turn_flow.prompt_turn_failed(note: note)
+          unmark_wake_note(turn_id, waking.note)
           @wakes_paused = true
         else
           @continue_offer.after_turn(result)
         end
       end
+    end
+
+    # A failed wake turn kept nothing but its note: the update goes back to
+    # a plain note (no turn start, the background wording), so a reload
+    # draws no empty turn for it.
+    def unmark_wake_note(turn_id, note)
+      messages = @engine.messages_checkpoint
+      index = messages.index { |m| m[:turn_start] && m[:turn_id] == turn_id }
+      return unless index
+
+      messages[index] = ContextNote.message(**note)
+      @engine.rollback_to(messages)
     end
 
     # Whether the session has had a turn: a user or assistant message.
