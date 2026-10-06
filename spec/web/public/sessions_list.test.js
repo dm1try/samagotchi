@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, batchCounts, batchTargets, batchToastText, heldOrder, inTree, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, rangeIds, runBatch, waitingSearchText, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, batchCounts, batchTargets, batchToastText, families, familyId, flattenFamilies, heldOrder, inTree, listedSessions, sortedByUpdated, stoppedBadge, waitingBadge, waitingFirst, waitingFirstFlat, rangeIds, runBatch, waitingSearchText } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -44,7 +44,12 @@ test("the all view re-sorts by updated_at desc, as the server lists", () => {
   assert.deepEqual(sortedByUpdated([b, odd, c, a]).map((s) => s.id), ["c", "a", "b", "d"]);
 });
 
-test("the all view puts a delegated session right after its parent; the family keeps its newest member's place", () => {
+// families(): the list grouped by parent_id; flattenFamilies() is the all
+// view's order (a head, then its members depth first).
+const flat = (list, opts) => flattenFamilies(families(list, opts)).map((s) => s.id);
+const shape = (list, opts) => families(list, opts).map((f) => [f.head.id, ...f.members.map((m) => `${m.session.id}@${m.depth}`)]);
+
+test("families: a delegated session right after its parent; the family keeps its newest member's place", () => {
   const parent = { id: "p", updated_at: "2026-09-25T08:00:00.000Z" };
   const child1 = { id: "c1", parent_id: "p", updated_at: "2026-09-25T11:00:00.000Z" };
   const child2 = { id: "c2", parent_id: "p", updated_at: "2026-09-25T09:30:00.000Z" };
@@ -52,38 +57,52 @@ test("the all view puts a delegated session right after its parent; the family k
   const orphan = { id: "x", parent_id: "gone", updated_at: "2026-09-25T09:00:00.000Z" };
   const sorted = sortedByUpdated([parent, child1, child2, other, orphan]);
   assert.deepEqual(sorted.map((s) => s.id), ["c1", "o", "c2", "x", "p"]);
-  assert.deepEqual(withChildrenAfterParents(sorted).map((s) => s.id), ["p", "c1", "c2", "o", "x"]);
-  // Nothing to group: the same array comes back.
-  const plain = [other, orphan];
-  assert.equal(withChildrenAfterParents(plain), plain);
+  assert.deepEqual(flat(sorted), ["p", "c1", "c2", "o", "x"]);
+  // Loners and orphans are families of their own, with no members.
+  assert.deepEqual(shape(sorted), [["p", "c1@1", "c2@1"], ["o"], ["x"]]);
+  assert.deepEqual(shape([other, orphan]), [["o"], ["x"]]);
+  assert.deepEqual(families([]), []);
 });
 
-test("withChildrenAfterParents nests at any depth: a grandchild follows its own parent, depth first", () => {
+test("families nest at any depth: a grandchild follows its own parent, depth first, one step deeper", () => {
   const p = { id: "p" };
   const c = { id: "c", parent_id: "p" };
   const g = { id: "g", parent_id: "c" };
   const x = { id: "x" };
-  assert.deepEqual(withChildrenAfterParents([g, c, p, x]).map((s) => s.id), ["p", "c", "g", "x"]);
+  assert.deepEqual(flat([g, c, p, x]), ["p", "c", "g", "x"]);
+  assert.deepEqual(shape([g, c, p, x]), [["p", "c@1", "g@2"], ["x"]]);
   // Siblings in the list's order, each followed by its own subtree.
   const c2 = { id: "c2", parent_id: "p" };
   const g2 = { id: "g2", parent_id: "c2" };
-  assert.deepEqual(withChildrenAfterParents([c2, g, x, c, g2, p]).map((s) => s.id), ["x", "p", "c2", "g2", "c", "g"]);
+  assert.deepEqual(flat([c2, g, x, c, g2, p]), ["x", "p", "c2", "g2", "c", "g"]);
 });
 
-test("withChildrenAfterParents: a family's place comes from its newest member at any depth", () => {
+test("families: a family's place comes from its newest member at any depth", () => {
   const p = { id: "p", updated_at: "2026-09-25T08:00:00.000Z" };
   const c = { id: "c", parent_id: "p", updated_at: "2026-09-25T08:30:00.000Z" };
   const g = { id: "g", parent_id: "c", updated_at: "2026-09-25T12:00:00.000Z" };
   const o = { id: "o", updated_at: "2026-09-25T10:00:00.000Z" };
-  assert.deepEqual(withChildrenAfterParents([o, c, p, g]).map((s) => s.id), ["p", "c", "g", "o"]);
+  assert.deepEqual(flat([o, c, p, g]), ["p", "c", "g", "o"]);
 });
 
-test("withChildrenAfterParents shows every session of a parent cycle once", () => {
+test("families show every session of a parent cycle once; the cycle's head is its smallest id", () => {
   const a = { id: "a", parent_id: "b", updated_at: "2026-09-25T09:00:00.000Z" };
   const b = { id: "b", parent_id: "a", updated_at: "2026-09-25T08:00:00.000Z" };
   const k = { id: "k", parent_id: "b", updated_at: "2026-09-25T07:00:00.000Z" };
   const self = { id: "s", parent_id: "s", updated_at: "2026-09-25T10:00:00.000Z" };
-  assert.deepEqual(withChildrenAfterParents([self, a, b, k]).map((s) => s.id), ["s", "a", "b", "k"]);
+  assert.deepEqual(flat([self, a, b, k]), ["s", "a", "b", "k"]);
+  // Whichever member is newer, the head stays the smallest id.
+  const b2 = { ...b, updated_at: "2026-09-25T11:00:00.000Z" };
+  assert.deepEqual(shape([self, a, b2, k]), [["a", "b@1", "k@2"], ["s"]]);
+});
+
+test("families in the list's order: a family takes the place of its first-listed member, nothing re-sorts", () => {
+  const p = { id: "p", updated_at: "2026-09-25T08:00:00.000Z" };
+  const c = { id: "c", parent_id: "p", updated_at: "2026-09-25T12:00:00.000Z" };
+  const o = { id: "o", updated_at: "2026-09-25T10:00:00.000Z" };
+  const z = { id: "z", updated_at: "2026-09-25T11:00:00.000Z" };
+  assert.deepEqual(shape([o, c, z, p], { order: "list" }), [["o"], ["p", "c@1"], ["z"]]);
+  assert.deepEqual(shape([o, c, z, p]), [["p", "c@1"], ["z"], ["o"]]);
 });
 
 test("listedSessions leaves archived sessions out unless asked, and keeps the list's order", () => {
@@ -105,43 +124,63 @@ test("waitingBadge says what the session waits on the user for", () => {
 });
 
 const ids = (list) => list.map((s) => s.id);
+const heads = (fams) => fams.map((f) => f.head.id);
 const asks = (id, extra = {}) => ({ id, pending_question: { id: `q-${id}` }, ...extra });
+const fams = (list) => families(list, { order: "list" });
 
-test("waitingFirst lifts the sessions that wait on the user, each part in the list's order", () => {
+test("waitingFirst lifts the families that wait on the user, each part in the list's order", () => {
   const list = [{ id: "a" }, asks("b"), { id: "c" }, { id: "d", pending_card: { id: "k" } }];
-  assert.deepEqual(ids(waitingFirst(list)), ["b", "d", "a", "c"]);
+  assert.deepEqual(heads(waitingFirst(fams(list))), ["b", "d", "a", "c"]);
   // An idle session at its step limit waits too.
   const limited = [{ id: "a" }, { id: "e", status: "idle", pending_question: { id: "c", kind: "continue" } }];
-  assert.deepEqual(ids(waitingFirst(limited)), ["e", "a"]);
+  assert.deepEqual(heads(waitingFirst(fams(limited))), ["e", "a"]);
 });
 
-test("waitingFirst: nobody waiting returns the same list; answered goes back to its place", () => {
-  const list = [{ id: "a" }, { id: "b" }, { id: "c" }];
+test("waitingFirst: nobody waiting returns the same families; answered goes back to its place", () => {
+  const list = fams([{ id: "a" }, { id: "b" }, { id: "c" }]);
   assert.equal(waitingFirst(list), list);
   const answered = [{ id: "a" }, { id: "b", pending_question: null }, { id: "c" }];
-  assert.deepEqual(ids(waitingFirst(answered)), ["a", "b", "c"]);
+  assert.deepEqual(heads(waitingFirst(fams(answered))), ["a", "b", "c"]);
 });
 
-test("waitingFirst moves a delegated family together, whichever member waits", () => {
+test("waitingFirst moves a delegated family, whichever member waits", () => {
   const list = [{ id: "x" }, { id: "p" }, asks("ch", { parent_id: "p" }), { id: "y" }];
-  assert.deepEqual(ids(waitingFirst(list)), ["p", "ch", "x", "y"]);
+  assert.deepEqual(heads(waitingFirst(fams(list))), ["p", "x", "y"]);
   // A child whose parent is not listed is its own family.
-  assert.deepEqual(ids(waitingFirst([{ id: "x" }, asks("ch", { parent_id: "gone" })])), ["ch", "x"]);
+  assert.deepEqual(heads(waitingFirst(fams([{ id: "x" }, asks("ch", { parent_id: "gone" })]))), ["ch", "x"]);
 });
 
-test("waitingFirst moves a nested family together, whichever depth waits; a cycle ends the walk", () => {
+test("waitingFirst moves a nested family, whichever depth waits; a cycle is one family", () => {
   const family = [{ id: "x" }, { id: "p" }, { id: "c", parent_id: "p" }, { id: "g", parent_id: "c" }];
   const waitingG = family.map((s) => (s.id === "g" ? asks("g", { parent_id: "c" }) : s));
-  assert.deepEqual(ids(waitingFirst(waitingG)), ["p", "c", "g", "x"]);
+  assert.deepEqual(flattenFamilies(waitingFirst(fams(waitingG))).map((s) => s.id), ["p", "c", "g", "x"]);
   const waitingC = family.map((s) => (s.id === "c" ? asks("c", { parent_id: "p" }) : s));
-  assert.deepEqual(ids(waitingFirst(waitingC)), ["p", "c", "g", "x"]);
+  assert.deepEqual(flattenFamilies(waitingFirst(fams(waitingC))).map((s) => s.id), ["p", "c", "g", "x"]);
   const cycle = [{ id: "x" }, { id: "a", parent_id: "b" }, asks("b", { parent_id: "a" })];
-  assert.deepEqual(ids(waitingFirst(cycle)), ["a", "b", "x"]);
+  assert.deepEqual(flattenFamilies(waitingFirst(fams(cycle))).map((s) => s.id), ["a", "b", "x"]);
+});
+
+// The strip's flat list until it folds families: a waiting member lifts its
+// family's members, each in its own place.
+test("waitingFirstFlat lifts a flat list's waiting families, members where they are, at any depth", () => {
+  const list = [{ id: "x" }, { id: "p" }, asks("ch", { parent_id: "p" }), { id: "y" }];
+  assert.deepEqual(ids(waitingFirstFlat(list)), ["p", "ch", "x", "y"]);
+  const nested = [{ id: "x" }, { id: "g", parent_id: "c" }, { id: "p" }, asks("c", { parent_id: "p" })];
+  assert.deepEqual(ids(waitingFirstFlat(nested)), ["g", "p", "c", "x"]);
+  const cycle = [{ id: "x" }, { id: "a", parent_id: "b" }, asks("b", { parent_id: "a" })];
+  assert.deepEqual(ids(waitingFirstFlat(cycle)), ["a", "b", "x"]);
+  const none = [{ id: "a" }];
+  assert.equal(waitingFirstFlat(none), none);
 });
 
 test("heldOrder keeps an order shown before; new sessions go after, gone ones drop", () => {
   const list = [asks("b"), { id: "a" }, { id: "n" }, { id: "c" }];
   assert.deepEqual(ids(heldOrder(["a", "b", "c", "gone"], list)), ["a", "b", "c", "n"]);
+});
+
+test("heldOrder holds families by their head's id", () => {
+  const list = fams([asks("b"), { id: "a" }, { id: "k", parent_id: "a" }, { id: "n" }]);
+  assert.deepEqual(heads(heldOrder(["a", "b"], list, familyId)), ["a", "b", "n"]);
 });
 
 test("waitingSearchText: what the all view's search matches for a waiting session (its badge, its kind, waiting)", () => {
