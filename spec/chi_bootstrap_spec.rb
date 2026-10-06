@@ -132,13 +132,18 @@ RSpec.describe "chi bootstrap" do
     expect(server.requests.last.header("Authorization")).to eq("Bearer sk-1")
   end
 
-  # Through bin/chi: in process #run answers nil here (fail! without
-  # @exit), and bin/chi's exit(nil) raises a TypeError that exits 1.
-  it "refuses --key-env naming an unset variable, through bin/chi" do
-    _out, err, status = spawn_bootstrap(target, "--key-env", "FAKE_KEY")
+  it "refuses --key-env naming an unset variable with exit 1" do
+    _out, err, status = bootstrap(target, "--key-env", "FAKE_KEY")
 
     expect(status).to eq(1)
     expect(err).to include("FAKE_KEY is not set")
+  end
+
+  it "refuses --key-env naming an unset variable through bin/chi without a backtrace" do
+    _out, err, status = spawn_bootstrap(target, "--key-env", "FAKE_KEY")
+
+    expect(status).to eq(1)
+    expect(err).to eq("chi bootstrap: FAKE_KEY is not set; export it first (the API key; chi only writes its name)\n")
   end
 
   it "lists several models and exits 2 without a terminal; --model picks one, case-insensitively" do
