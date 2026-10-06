@@ -23,6 +23,7 @@ module Samagotchi
         -m TEXT        the note; without it, stdin is read
         --all          every session a worker runs now, in every project
         Find ids with: chi sessions list --live [--scope=all] [--format tsv]
+        Every session it may concern, without picking them: chi broadcast
     TEXT
 
     FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) do |f|

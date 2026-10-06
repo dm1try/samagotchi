@@ -8,6 +8,22 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi broadcast -m TEXT` (or stdin) shares a note with every session it may concern, without picking them: your
+  own sessions a worker or a chi REPL runs, or that ended a turn in the last 8 hours (`broadcast.active_hours`),
+  delegate children and scratch sessions left out. One gets it when the note shares a tag with it: a ticket id
+  (`broadcast.ticket_pattern`) in its branch or your prompts there, a pull request attached to it, a link. The rest
+  are listed as skipped; `--all` reaches every one, `--dry-run` shows who would get it and why. The model mentions a
+  broadcast briefly when it affects its current work and doesn't act on it unless asked. For you, not for an agent:
+  refused inside a session, and the guardrails bundle's `chi-broadcast` rule asks. See
+  [docs/broadcast.md](docs/broadcast.md).
+- `chi sessions list --format json` has `delegate`: true for a child the `delegate` tool started, false for a fork.
+
+### Changed
+
+- `chi note --source broadcast` is refused: that source is `chi broadcast`'s.
+
 ### Fixed
 
 - Web: a tool row shows how long the call took while you watch the turn, as it does after a reload.
