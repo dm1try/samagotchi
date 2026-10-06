@@ -4,15 +4,20 @@ require "open3"
 require "rbconfig"
 require "tmpdir"
 require "json"
+require "stringio"
 require "spec_helper"
 require "samagotchi/session"
 require "samagotchi/owner_lock"
+require "samagotchi/sessions_command"
 
 # `chi sessions list` as the picker for `chi note` (an Automator dialog,
 # a script): --live, --cwd, --format json|tsv. With none of them the output
 # is what it always was. It lists the current git project's sessions
 # (--scope=all: every project's), so chi runs from a folder in no repo
 # unless a spec says otherwise: /work/app (the fixtures' folder) is in none.
+# The examples call SessionsCommand in this process with that cwd and the
+# env below (what bin/chi hands it); the ones marked "through bin/chi" run
+# the real executable for the wiring.
 RSpec.describe "chi sessions list" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-list") }
@@ -30,8 +35,19 @@ RSpec.describe "chi sessions list" do
     FileUtils.rm_rf(outside)
   end
 
+  # `chi sessions list ARGS` in this process, run from +dir+.
+  # @return [Array(String, String, Integer)] stdout, stderr, exit status
   def run_chi(*args, dir: outside)
-    super("sessions", "list", *args, env: env, chdir: dir)
+    out = StringIO.new
+    err = StringIO.new
+    code = with_env(env) { Dir.chdir(dir) { Samagotchi::SessionsCommand.new(["list", *args], stdout: out, stderr: err).run } }
+    [out.string, err.string, code]
+  end
+
+  # The same through bin/chi in a child process.
+  def spawn_chi(*args, dir: outside)
+    out, err, status = Open3.capture3(env, RbConfig.ruby, chi, *args, stdin_data: "", chdir: dir)
+    [out, err, status.exitstatus]
   end
 
   def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil, scratch: false, last_turn: nil)
@@ -52,7 +68,7 @@ RSpec.describe "chi sessions list" do
 
     out, err, status = run_chi
 
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to include("#{session.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(session.id, state_dir: state_dir).updated_at}  hello there\n")
     expect(out).to include("  a test [test]\n")
     expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
@@ -77,7 +93,7 @@ RSpec.describe "chi sessions list" do
 
     out, err, status = run_chi
 
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to match(/^#{looped.id} .*  kept repeating itself \[looped\]\n/)
     expect(out).to match(/^#{other.id} .*  stopped from the outside \[stopped by check-in\]\n/)
     expect(out).to match(/^#{plain.id} .*  finished\n/)
@@ -89,7 +105,7 @@ RSpec.describe "chi sessions list" do
 
     [%w[--cwd /work], %w[--format text], %w[--live]].each do |args|
       out, err, status = run_chi(*args)
-      expect(status.exitstatus).to eq(0), err
+      expect(status).to eq(0), err
       expect(out).to match(/^#{looped.id} .*  (app · )?kept repeating itself \[looped\]\n/), "#{args.join(" ")}: #{out}"
     end
   end
@@ -99,7 +115,7 @@ RSpec.describe "chi sessions list" do
 
     out, err, status = run_chi
 
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to include("  throwaway [scratch]\n")
   end
 
@@ -109,7 +125,7 @@ RSpec.describe "chi sessions list" do
 
     [%w[--cwd /work], %w[--format text], %w[--live]].each do |args|
       out, err, status = run_chi(*args)
-      expect(status.exitstatus).to eq(0), err
+      expect(status).to eq(0), err
       expect(out).to match(/  (app · )?throwaway \[scratch\]\n/), "#{args.join(" ")}: #{out}"
       expect(out).to match(/  (app · )?kept\n/)
     end
@@ -134,7 +150,7 @@ RSpec.describe "chi sessions list" do
     save_context(unknown, 500, nil)
 
     out, err, status = run_chi
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to include("#{counted.id}  idle      ctx 12%   ")
     expect(out).to match(/#{scratch.id}  idle      ctx 50%   .*  throwaway \[scratch\]\n/)
     expect(out).to include("#{unknown.id}  idle      #{" " * 8}  ")
@@ -152,7 +168,7 @@ RSpec.describe "chi sessions list" do
     child = make("count the specs", live: true, parent_id: parent.id)
 
     out, err, status = run_chi
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to include("#{child.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  count the specs  ↳ #{parent.id[0, 8]}\n")
     expect(out).to match(/#{parent.id}  idle .* the plan\n/)
 
@@ -178,7 +194,7 @@ RSpec.describe "chi sessions list" do
     end
 
     out, err, status = run_chi
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to match(/^#{asking.id}  waiting  .* which file\?\n/)
     expect(out).to match(/^#{approving.id}  waiting  .* run it\n/)
     # A question a dead worker left in the file waits for no one.
@@ -201,7 +217,7 @@ RSpec.describe "chi sessions list" do
     s.save(state_dir: state_dir)
 
     out, err, status = run_chi
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to match(/^#{child.id}  waiting \(in parent pppppppp\)  .* push it\n/)
     out, _err, _status = run_chi("--live")
     expect(out).to match(/^#{child.id}  waiting \(in parent pppppppp\)  /)
@@ -214,7 +230,7 @@ RSpec.describe "chi sessions list" do
 
     out, err, status = run_chi
 
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to include("  answer: the build failed same bug?\n")
   end
 
@@ -225,7 +241,7 @@ RSpec.describe "chi sessions list" do
 
     out, err, status = run_chi
 
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to include("#{session.id}  idle  ").and include("  /model box:gemma\n")
   end
 
@@ -241,7 +257,7 @@ RSpec.describe "chi sessions list" do
     write_recap(recapped, "The user was fixing the login page for the new theme, and the tests. It works now.")
 
     out, err, status = run_chi
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     line = out.lines.find { |l| l.start_with?(recapped.id) }
     expect(line).to end_with("  Fixing the login page for the new theme, and the tests.\n")
     expect(out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  hello there\n")
@@ -271,7 +287,7 @@ RSpec.describe "chi sessions list" do
 
     out, err, status = run_chi("--live", "--format", "tsv")
 
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to eq("#{live.id}\tapp · fix the login page\n")
   end
 
@@ -279,12 +295,12 @@ RSpec.describe "chi sessions list" do
     live = make("a live test", live: true, test_run: true)
 
     out, err, status = run_chi("--live")
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to eq("No sessions.\n")
 
     env["SAMAGOTCHI_ENV"] = "test"
     out, err, status = run_chi("--live")
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(out).to start_with("#{live.id}  live      ")
     expect(out).to include("a live test [test]\n")
     expect(out).to end_with("\n1 session(s)\n")
@@ -295,7 +311,7 @@ RSpec.describe "chi sessions list" do
 
     out, err, status = run_chi("--live", "--format=json", "--cwd", "/work")
 
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
@@ -320,7 +336,7 @@ RSpec.describe "chi sessions list" do
 
     out, err, status = run_chi("--format", "json")
 
-    expect(status.exitstatus).to eq(0), err
+    expect(status).to eq(0), err
     expect(JSON.parse(out).to_h { |row| [row["id"], row["owner"]] }).to eq(live.id => "worker", repl.id => "tui", stopped.id => nil)
     expect(run_chi("--format", "tsv").first.lines).to eq(["#{live.id}\tapp · live\n", "#{repl.id}\tapp · in a repl\n",
                                                           "#{stopped.id}\tapp · stopped\n"])
@@ -330,7 +346,7 @@ RSpec.describe "chi sessions list" do
   it "prints an empty JSON array when nothing matches" do
     out, _err, status = run_chi("--live", "--format", "json")
 
-    expect(status.exitstatus).to eq(0)
+    expect(status).to eq(0)
     expect(JSON.parse(out)).to eq([])
   end
 
@@ -344,13 +360,24 @@ RSpec.describe "chi sessions list" do
   it "refuses an unknown format" do
     _out, err, status = run_chi("--format", "yaml")
 
-    expect(status.exitstatus).to eq(2)
+    expect(status).to eq(2)
     expect(err).to include("--format text|json|tsv")
   end
 
-  it "lists the flags in the help" do
-    out, = Open3.capture3(env, RbConfig.ruby, chi, "sessions", "--help", stdin_data: "")
+  it "lists the flags in the help, through bin/chi" do
+    out, err, status = spawn_chi("sessions", "--help")
+    expect(status).to eq(0), err
     expect(out).to include("--live", "--cwd PATH", "--format text|json|tsv", "--scope=all")
+  end
+
+  it "lists the sessions in the state dir and refuses an unknown format (exit 2), through bin/chi" do
+    session = make("hello there")
+
+    out, err, status = spawn_chi("sessions", "list")
+    expect(status).to eq(0), err
+    expect(out).to start_with("#{session.id}  idle  ").and end_with("  hello there\n\n1 session(s) (sort=updated_at order=desc)\n")
+    _out, err, status = spawn_chi("sessions", "list", "--format", "yaml")
+    expect([status, err]).to match([2, a_string_including("--format text|json|tsv")])
   end
 
   describe "the project scope" do
@@ -380,7 +407,7 @@ RSpec.describe "chi sessions list" do
       [alpha, worktree, File.join(alpha, ".git", "..")].each do |dir|
         out, err, status = run_chi(dir: dir)
 
-        expect(status.exitstatus).to eq(0), err
+        expect(status).to eq(0), err
         expect(ids(out)).to eq([sessions[:wt].id, sessions[:a].id])
         expect(out).to end_with("\n2 session(s) in alpha (--scope=all: every project)\n")
       end
@@ -419,14 +446,14 @@ RSpec.describe "chi sessions list" do
     it "refuses an unknown scope" do
       _out, err, status = run_chi("--scope=mine", dir: alpha)
 
-      expect(status.exitstatus).to eq(2)
+      expect(status).to eq(2)
       expect(err).to include("--scope=project|all")
     end
 
     it "leaves chi note --all global: every live session, whichever project chi runs in" do
-      _out, err, status = Open3.capture3(env, RbConfig.ruby, chi, "note", "--all", "-m", "heads up", stdin_data: "", chdir: alpha)
+      _out, err, status = spawn_chi("note", "--all", "-m", "heads up", dir: alpha)
 
-      expect(status.exitstatus).to eq(0), err
+      expect(status).to eq(0), err
       notes = %i[a b].map do |key|
         Dir.glob(File.join(Samagotchi::Session.session_dir(sessions[key].id, state_dir: state_dir), "notes", "*.json")).size
       end
