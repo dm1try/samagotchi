@@ -2,6 +2,7 @@
 
 require_relative "session"
 require_relative "session_inbox"
+require_relative "note_delivery"
 require_relative "session_manager"
 require_relative "cli/command"
 require_relative "cli/flags"
@@ -125,21 +126,17 @@ module Samagotchi
 
     # @return [Boolean] whether the note was queued
     def deliver(id, text, source)
-      short = id[0, 8]
-      owner = SessionManager.session_owner(id, state_dir: @state_dir)
-      if owner&.tui?
-        @stdout.puts("#{short}  refused: it is open in a chi REPL; notes need attached mode")
-        return false
-      end
+      result = NoteDelivery.deliver(id, text: text, source: source, state_dir: @state_dir)
+      @stdout.puts("#{id[0, 8]}  #{outcome(result)}")
+      result.delivered?
+    end
 
-      path = SessionInbox.write_note(id, text: text, source: source, state_dir: @state_dir)
-      if owner
-        @stdout.puts("#{short}  queued: its worker adds it within a few seconds")
-      else
-        queued = SessionInbox.find_new_note_files(File.dirname(path, 2)).size
-        @stdout.puts("#{short}  waits for the session's next start (#{queued} #{queued == 1 ? "note" : "notes"} queued)")
+    def outcome(result)
+      case result.status
+      when :refused then "refused: it is open in a chi REPL; notes need attached mode"
+      when :queued then "queued: its worker adds it within a few seconds"
+      else "waits for the session's next start (#{result.queued} #{result.queued == 1 ? "note" : "notes"} queued)"
       end
-      true
     end
 
     # The note as UTF-8 whatever the locale says: with no LANG/LC_* (an app

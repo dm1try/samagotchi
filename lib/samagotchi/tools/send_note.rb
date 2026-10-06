@@ -3,13 +3,10 @@
 require_relative "../session"
 require_relative "../context_note"
 require_relative "../session_inbox"
+require_relative "../note_delivery"
 require_relative "peers"
 
 module Samagotchi
-  # Loaded on first use: session_manager requires terminal_ui, which
-  # requires KernelLoop and so these tools (a require cycle otherwise).
-  autoload :SessionManager, File.expand_path("../session_manager", __dir__)
-
   module Tools
     # Tell another chi session something: a context note it sees on its next
     # turn as background from this session. It never starts a turn there.
@@ -29,14 +26,11 @@ module Samagotchi
         Session.load(id, state_dir: peers.state_dir)
         return "Error: #{id[0, 8]} is this session; send_note is for other sessions" if id == peers.session_id
 
-        owner = SessionManager.session_owner(id, state_dir: peers.state_dir)
-        if owner&.tui?
-          return "Error: session #{id[0, 8]} is open in a chi REPL, which can't take notes"
-        end
+        result = NoteDelivery.deliver(id, text: content, source: "session", from_session: peers.session_id,
+                                          from_cwd: peers.cwd, state_dir: peers.state_dir)
+        return "Error: session #{id[0, 8]} is open in a chi REPL, which can't take notes" unless result.delivered?
 
-        SessionInbox.write_note(id, text: content, source: "session", from_session: peers.session_id,
-                                    from_cwd: peers.cwd, state_dir: peers.state_dir)
-        where = owner ? "its worker adds it before its next turn" : "it has no worker now, so it waits for its next start"
+        where = result.status == :queued ? "its worker adds it before its next turn" : "it has no worker now, so it waits for its next start"
         "Queued a note for session #{id[0, 8]}: #{where}. It does not start a turn there."
       rescue Session::AmbiguousId => e
         "Error: #{e.message}"
