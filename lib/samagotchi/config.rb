@@ -84,6 +84,12 @@ module Samagotchi
       # "N-M" or "N" sentences (1-10); unset = 2-4. Parsed by RecapPrompt.sentences_range.
       Entry.new(key: "recap.sentences",          yaml_path: %w[recap sentences],           type: :string,  default: nil,             expose: %i[env config cli]),
 
+      # chi broadcast (Broadcast::Recipients, Broadcast::Tags): a session that ended no turn in this many hours (and
+      # no worker or REPL runs) gets no broadcast; a ticket id in the note and in a session's branch or prompts
+      # delivers it there without triage.
+      Entry.new(key: "broadcast.active_hours",   yaml_path: %w[broadcast active_hours],   type: :float,   default: 8.0,             expose: %i[env config]),
+      Entry.new(key: "broadcast.ticket_pattern", yaml_path: %w[broadcast ticket_pattern], type: :string,  default: '\b[A-Z][A-Z0-9]+-\d+\b', expose: %i[env config]),
+
       Entry.new(key: "session.retention_days",        yaml_path: %w[session retention_days],        type: :integer, default: 14,   expose: %i[env config cli]),
       Entry.new(key: "session.max_count",             yaml_path: %w[session max_count],             type: :integer, default: 500,  expose: %i[env config cli]),
       Entry.new(key: "session.keep_status",           yaml_path: %w[session keep_status],           type: :string, default: "", expose: %i[env config cli]),

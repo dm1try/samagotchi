@@ -882,6 +882,8 @@ described in their own sections.
 | `recap.timeout` | `30` | yes | Seconds a recap request may take. |
 | `recap.min_user_turns` | `2` | yes | Prompts a session needs before it gets a recap. |
 | `recap.sentences` | `2-4` | yes | Recap length, `N` or `N-M` (1–10). |
+| `broadcast.active_hours` | `8` | | `chi broadcast` reaches a session a worker or a chi REPL runs, or whose last turn ended within this many hours. See [Broadcast](broadcast.md). |
+| `broadcast.ticket_pattern` | `\b[A-Z][A-Z0-9]+-\d+\b` | | A Ruby regex for ticket ids; one in the note and in a session's branch (any case) or prompts delivers the broadcast there. See [Broadcast](broadcast.md). |
 | `session.shared` | `true` | | Plain `chi` runs its session in a worker and attaches; `--no-shared` per run. |
 | `session.idle_exit_minutes` | `30` | yes | An unused worker exits after this; `0` = never. |
 | `session.keep_empty` | `false` | | Keep sessions nothing happened in. |
