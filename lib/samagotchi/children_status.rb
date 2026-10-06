@@ -3,7 +3,7 @@
 require "time"
 require_relative "session"
 require_relative "archive_store"
-require_relative "memory_paths"
+require_relative "git_head"
 require_relative "reply_wait"
 require_relative "tools/delegate"
 require_relative "tools/delegate_cursor"
@@ -83,7 +83,7 @@ module Samagotchi
       cursor = Tools::DelegateCursors.get_from(cursors, session.id)
       Child.new(id: session.id, short_id: session.id[0, 8], title: row[:preview].to_s,
                 state: state_of(session, row, reply), waiting: row[:waiting], live: !!row[:live],
-                delegate: session.delegate?, cwd: session.working_directory, branch: branch(session.working_directory),
+                delegate: session.delegate?, cwd: session.working_directory, branch: GitHead.branch(session.working_directory),
                 last_reply: reply && first_line(session.id, reply, state_dir: state_dir),
                 last_reply_at: reply && reply_time(reply), reported: !reply.nil? && cursor.reply_file == reply,
                 updated_at: session.updated_at, archived: !!row[:archived])
@@ -112,20 +112,6 @@ module Samagotchi
         preview: session.last_prompt.to_s }
     end
     private_class_method :summary_of
-
-    # The branch from the folder's own HEAD file (a linked worktree's is
-    # under .git/worktrees/<name>), read without git.
-    # @return [String, nil]
-    def branch(cwd)
-      dir = MemoryPaths.git_dir(cwd.to_s)
-      head = dir && File.read(File.join(dir, "HEAD"), 512).strip
-      return nil if head.nil? || head.empty?
-
-      head.start_with?("ref:") ? head.delete_prefix("ref:").strip.delete_prefix("refs/heads/") : head[0, 8]
-    rescue SystemCallError
-      nil
-    end
-    private_class_method :branch
 
     def first_line(id, file, state_dir:)
       text = File.read(File.join(ReplyWait.reply_dir(id, state_dir: state_dir), file), 4096)
