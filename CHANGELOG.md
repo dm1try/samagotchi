@@ -19,13 +19,18 @@ and commands may change between minor versions. How releases are made:
   refused inside a session, and the guardrails bundle's `chi-broadcast` rule asks. See
   [docs/broadcast.md](docs/broadcast.md).
 - `chi sessions list --format json` has `delegate`: true for a child the `delegate` tool started, false for a fork.
-- A parent session shows its delegate children at a glance: a `⑂ 3` chip on its web card and in its info bar
-  (how many run, wait, are done or failed in the tooltip; the waiting ones in the attention colour; a click opens
-  all sessions), and `⑂ 2 running · 1 waiting` in the terminal's status row.
+- A parent session shows its delegate children at a glance: a `⑂ 3` chip in its web info bar (how many run, wait,
+  are done or failed in the tooltip; the waiting ones in the attention colour; a click opens all sessions), and
+  `⑂ 2 running · 1 waiting` in the terminal's status row.
 
 ### Changed
 
 - `chi note --source broadcast` is refused: that source is `chi broadcast`'s.
+- Web: a parent's delegates fold into its card, on the strip and in all sessions, instead of being cards of their
+  own. A `▸ 3 delegates · 1 live · 1 waiting` chip opens their list (in the card in all sessions, a popover on the
+  strip); it opens by itself while one of them waits on you, and the card then wears the warning colour. A family
+  takes one strip slot, a search finds a parent by its delegates, and select mode picks cards. A fork and a delegate
+  whose parent isn't listed stay cards of their own.
 
 ### Fixed
 
