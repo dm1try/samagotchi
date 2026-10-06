@@ -104,11 +104,22 @@ module Samagotchi
       )
     end
 
-    # The gate's core checks, in order.
+    # The gate's core checks, in order. A delegate child's boundary comes
+    # before the rules, so its ask keeps the child-boundary rule id (and
+    # its once/session scopes) when a strict rule asks too.
     def checks
       rules = self.rules
       [@failures, rules.hook_asks, protected_paths, (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch),
-       rules].compact
+       child_boundary, rules].compact
+    end
+
+    # The delegate child's boundary (Guardrails::ChildBoundary); nil for
+    # any other session.
+    def child_boundary
+      return nil unless @session_lookup.call&.delegate?
+
+      @child_boundary ||= Guardrails::ChildBoundary.new(root: -> { boundary_root },
+                                                        worktrees: -> { (root = boundary_root) ? @git.worktrees(root) : [] })
     end
 
     # The YAML rules: config.yml's `guardrails:` section (rules, disable) and
@@ -220,6 +231,16 @@ module Samagotchi
     end
 
     private
+
+    # The work tree top of the session's working_directory (the folder
+    # itself outside a repo, or when it's gone); never Dir.pwd, which is
+    # the waker's cwd for a worker whose folder is gone.
+    def boundary_root
+      dir = @session_lookup.call&.working_directory.to_s
+      return nil if dir.empty?
+
+      @git.root(dir) || File.expand_path(dir)
+    end
 
     # The rules of a bundle that needs a newer chi: the ones last loaded
     # from it, with one notice per bundle version (restart the session to

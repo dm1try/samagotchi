@@ -50,6 +50,38 @@ module Samagotchi
       def common_dir(dir) = info(dir)[:common_dir]
       def branch(dir) = info(dir)[:branch]
 
+      # Every checkout of +dir+'s repository that is still there: the main
+      # one (the folder holding a common .git dir that isn't bare) and each
+      # linked worktree (<common dir>/worktrees/*/gitdir names its .git
+      # file; a relative one is relative to that admin dir). Read from the
+      # files, no git process, on every call (not memoized: a worktree
+      # added mid-turn counts at once); [] outside a repo.
+      # @return [Array<String>] absolute folders
+      def worktrees(dir)
+        common = common_dir(dir) or return []
+        self.class.checkouts(common)
+      end
+
+      # @param common [String] an absolute common git dir
+      def self.checkouts(common)
+        main = File.basename(common) == ".git" && !bare?(common) ? [File.dirname(common)] : []
+        linked = Dir[File.join(common, "worktrees", "*", "gitdir")].sort.filter_map do |file|
+          gitdir = File.read(file).strip
+          next if gitdir.empty?
+
+          File.dirname(File.expand_path(gitdir, File.dirname(file)))
+        rescue SystemCallError
+          nil
+        end
+        (main + linked).select { |folder| File.directory?(folder) }.uniq
+      end
+
+      def self.bare?(common)
+        File.read(File.join(common, "config")).match?(/^\s*bare\s*=\s*true\s*$/i)
+      rescue SystemCallError
+        false
+      end
+
       private
 
       def info(dir)
