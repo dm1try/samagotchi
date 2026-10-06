@@ -68,7 +68,10 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
     end
 
     it "leaves tmp dirs, memory files and reads alone" do
-      expect(verdict_for(name: "write", path: "/tmp/child-boundary-x.txt", content: "x")).to be_allow
+      # A tmp dir the child's folder isn't in (on Linux the spec repo itself
+      # sits in /tmp, and Outside checks a tmp dir holding the root).
+      tmp = Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| !base.start_with?(File.join(dir, "")) }
+      expect(verdict_for(name: "write", path: File.join(tmp, "child-boundary-x.txt"), content: "x")).to be_allow if tmp
       memory = File.join(Samagotchi::Tools::MemoryRead.memories_dir("system"), "boundary-spec.md")
       expect(verdict_for(name: "write", path: memory, content: "x")).to be_allow
       expect(verdict_for(name: "read", content: File.join(main, "a.txt"))).to be_allow
