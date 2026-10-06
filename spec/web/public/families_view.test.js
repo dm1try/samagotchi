@@ -191,3 +191,12 @@ test("familyPop: never narrower than 300 px nor past the window's right edge", (
   pop.open("p");
   assert.deepEqual(el().style, { top: "26px", left: "1132px", width: "300px" });
 });
+
+test("familyPop on a phone (600 px or less): the window's width minus 16 px gutters", () => {
+  const { pop, el } = setupPop({ vw: 390 });
+  pop.open("p");
+  assert.deepEqual(el().style, { top: "114px", left: "16px", width: "358px" });
+  const edge = setupPop({ vw: 600 });
+  edge.pop.open("p");
+  assert.equal(edge.el().style.width, "568px");
+});
