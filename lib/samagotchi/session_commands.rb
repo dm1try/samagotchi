@@ -277,6 +277,7 @@ module Samagotchi
           ("git #{rule.git}" if rule.git),
           ("touches #{rule.touches}" if rule.touches),
           ("rm #{rule.rm}" if rule.rm),
+          ("memory #{rule.memory}" if rule.memory),
           ("models #{rule.models.join(",")}" if rule.models),
           ("modes #{rule.modes.join(",")}" if rule.modes),
           ("skip_read_only" if rule.skip_read_only)

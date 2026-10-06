@@ -55,6 +55,16 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(verdict_for({ name: "mcp_fs_read", args: {} }, braces)).to be_allow
     end
 
+    it "matches memory: remove on a memory_write that removes, not on one that writes" do
+      set = rules({ id: "memory-remove", tool: "memory_write", memory: "remove", verdict: "ask" })
+      expect(verdict_for({ name: "memory_write", path: "h", scope: "project", remove: true }, set)).to be_ask
+      expect(verdict_for({ name: "memory_write", path: "h", scope: "project", remove: "true" }, set)).to be_ask
+      expect(verdict_for({ name: "memory_write", path: "h", scope: "project", content: "x" }, set)).to be_allow
+      expect(verdict_for({ name: "memory_write", path: "h", scope: "project", remove: false }, set)).to be_allow
+      expect(verdict_for({ name: "execute", content: "memory_write remove" }, rules({ id: "m", memory: "remove", verdict: "ask" })))
+        .to be_allow
+    end
+
     it "matches outside_repo" do
       set = rules({ id: "out", tool: %w[write edit], path: "outside_repo", verdict: "ask" })
       expect(verdict_for({ name: "write", path: "../x", content: "" }, set)).to be_ask
@@ -208,11 +218,12 @@ RSpec.describe Samagotchi::Guardrails::Rules do
 
     it "names the rule and the problem" do
       expect(error_for({ "id" => "x", "verdict" => "block", "tool" => "a" })).to eq('rule x: verdict must be ask or deny (got "block")')
-      expect(error_for({ "id" => "x", "verdict" => "ask" })).to eq("rule x: give at least one of tool, command, path, git, touches, rm")
+      expect(error_for({ "id" => "x", "verdict" => "ask" })).to eq("rule x: give at least one of tool, command, path, git, touches, rm, memory")
       expect(error_for({ "id" => "x", "verdict" => "ask", "touches" => "home" })).to eq("rule x: touches must be chi_dirs")
       expect(error_for({ "id" => "x", "verdict" => "ask", "rm" => "wide" })).to eq("rule x: rm must be outside_tmp")
       expect(error_for({ "id" => "x", "verdict" => "ask", "git" => "anywhere" })).to eq("rule x: git must be outside_repo")
       expect(error_for({ "id" => "x", "verdict" => "ask", "git" => "outside_repo" })).to be_nil
+      expect(error_for({ "id" => "x", "verdict" => "ask", "memory" => "write" })).to eq("rule x: memory must be remove")
       expect(error_for({ "id" => "x", "verdict" => "ask", "comand" => "rm" })).to eq("rule x: unknown key(s) comand")
       expect(error_for({ "id" => "x", "verdict" => "ask", "command" => "(" })).to start_with("rule x: command is not a valid regex")
       expect(error_for({ "verdict" => "ask", "tool" => "a" })).to eq("rule 1: id is required")

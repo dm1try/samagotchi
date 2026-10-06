@@ -1,11 +1,13 @@
 ---
 name: guardrails
-version: 0.7.0
+version: 0.8.0
 scope: system
-description: Optional default guardrail rules (git push/rewrites, rm -rf wide, curl | sh, git hooks, chi's own config and attached context from the shell, chi context add --cmd, chi broadcast, answering chi around chi answer; in strict mode also git rebase and writes and git in another checkout outside the session's repo), asks only small models get (git checkout --/restore, git stash drop), and a note for the model
+description: Optional default guardrail rules (git push/rewrites, rm -rf wide, curl | sh, git hooks, chi's own config and attached context from the shell, chi context add --cmd, chi broadcast, answering chi around chi answer, removing a memory; in strict mode also git rebase and writes and git in another checkout outside the session's repo), asks only small models get (git checkout --/restore, git stash drop), and a note for the model
 trust_level: reviewed
 # models: in small-models.yml (guardrails.small_models) needs 0.8.1; git: in rules.yml needs 0.17.0;
 # skip_read_only:, touches:, rm: and modes: need 0.20.0
 requires_chi: ">= 0.20.0"
+# requires_chi: raise to the release that has a rule's memory: key and memory_write remove: (">= 0.36.0";
+# docs/releasing.md): an older chi refuses the rule set (unknown key), so every guarded call would be refused
 files:
   guardrails.md: sha256:04207fd1738aeeeef3b7a8053fc57597565bddd7862f01acaba784419cbd909b

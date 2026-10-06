@@ -46,6 +46,9 @@ module Samagotchi
       # one). samagotchi/context stops before a word character or a dot, so
       # chi's own lib/samagotchi/context_*.rb isn't one.
       CHI_TEXT = %r{\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|samagotchi/context(?![\w.])|memories/\.bundles}
+      # The guardrails bundle's ask before a memory removal: its paths are in
+      # the config dir, yet a parent may answer it.
+      MEMORY_REMOVE_RULE = "memory-remove"
       # The guardrails bundle's shell-touches-chi, for a word it can't
       # resolve to a path (Guardrails::ShellPaths): CHI_TEXT and .git/hooks.
       CHI_SHELL_TEXT = Regexp.union(CHI_TEXT, %r{\.git/hooks})
@@ -94,6 +97,9 @@ module Samagotchi
         return false unless facts.is_a?(Hash)
         return true if PROTECTED_RULES.include?(fetch(facts, :rule).to_s)
         return true if fetch(facts, :source).to_s == ProtectedPaths::SOURCE
+        # A memory's file sits in the config dir, but removing one is the
+        # memory-remove rule's ask, which a parent may answer.
+        return false if fetch(facts, :rule).to_s == MEMORY_REMOVE_RULE
 
         dirs = chi_dirs
         paths = Array(fetch(facts, :paths)).map(&:to_s).reject(&:empty?)

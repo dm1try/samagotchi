@@ -42,6 +42,11 @@ module Samagotchi
       #   chi's own tools
       attr_reader :args
 
+      # @return [Boolean] a memory_write call that removes a memory (remove:
+      #   true), for a rule's memory: remove
+      attr_reader :memory_remove
+      alias memory_remove? memory_remove
+
       # @param call [Hash] the parsed tool call
       # @param context [Context]
       # @param model_key [String, nil] for a memory_write model overlay, and
@@ -76,8 +81,9 @@ module Samagotchi
           entry = registry && registry[tool]
           args = call[:args] if entry && !entry.core? && call[:args].is_a?(Hash)
         end
+        memory_remove = tool == "memory_write" && call[:remove].to_s.strip.downcase == "true"
         new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd),
-            repo: context.repo(cwd), args: args,
+            repo: context.repo(cwd), args: args, memory_remove: memory_remove,
             model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base,
             chi_dirs: -> { chi_dirs(context, base) })
       end
@@ -128,7 +134,8 @@ module Samagotchi
 
       # @param chi_dirs [#call, nil] → the dirs touches_chi? looks for
       def initialize(tool:, command:, paths:, cwd:, repo_root:, repo: nil, args: nil, model_name: nil, model_key: nil,
-                     session_root: nil, chi_dirs: nil)
+                     session_root: nil, chi_dirs: nil, memory_remove: false)
+        @memory_remove = memory_remove
         @repo = repo
         @chi_dirs = chi_dirs
         @session_root = session_root || repo_root || cwd

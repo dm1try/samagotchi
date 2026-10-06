@@ -113,6 +113,15 @@ RSpec.describe "The guardrails bundle's rules" do
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-context-cmd", %w[once]])
   end
 
+  it "asks before every memory removal, once at a time (a parent may allow it); a write or a description change runs" do
+    v = verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", remove: true })
+    expect([v.decision, v.rule, v.scopes]).to eq([:ask, "memory-remove", %w[once]])
+    pending = Samagotchi::Guardrails::Approval.payload(v)
+    expect(Samagotchi::Guardrails::ParentApprovals.refusal(pending, [0], setting: "once")).to be_nil
+    expect(verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", content: "x" })).to be_allow
+    expect(verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", description: "DONE" })).to be_allow
+  end
+
   it "asks for chi broadcast once at a time, and a parent may not allow it" do
     v = shell("chi broadcast -m 'payments API is down'")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-broadcast", %w[once]])

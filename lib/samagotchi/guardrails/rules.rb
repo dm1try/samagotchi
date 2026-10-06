@@ -28,6 +28,7 @@ module Samagotchi
     #   modes:   "strict", "auto" or a list of them: the rule only votes
     #            in those guardrails.mode values (missing = every mode;
     #            a rule from config.yml without it votes in every mode)
+    #   memory:  "remove": a memory_write call with remove: true
     #   skip_read_only: true: a shell command that only reads
     #            (ReadOnlyShell) doesn't match
     # verdict ask|deny, reason, scopes (for an ask; default all).
@@ -38,14 +39,14 @@ module Samagotchi
     class Rules
       class ParseError < StandardError; end
 
-      KEYS = %w[id tool command path git touches rm models modes skip_read_only verdict reason scopes].freeze
-      MATCH_KEYS = %w[tool command path git touches rm].freeze
+      KEYS = %w[id tool command path git touches rm memory models modes skip_read_only verdict reason scopes].freeze
+      MATCH_KEYS = %w[tool command path git touches rm memory].freeze
       VERDICTS = %w[ask deny].freeze
       # guardrails.mode's values.
       MODES = %w[auto strict].freeze
       GLOB_FLAGS = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB
 
-      Rule = Struct.new(:id, :tools, :command, :path, :git, :touches, :rm, :models, :modes, :skip_read_only, :verdict, :reason,
+      Rule = Struct.new(:id, :tools, :command, :path, :git, :touches, :rm, :memory, :models, :modes, :skip_read_only, :verdict, :reason,
                         :scopes, :source, keyword_init: true) do
         def matches?(targets)
           return false unless targets
@@ -56,6 +57,7 @@ module Samagotchi
           return false if git && !targets.git_outside_repo?
           return false if touches && !targets.touches_chi?
           return false if rm && !targets.rm_outside_tmp?
+          return false if memory && !targets.memory_remove?
           return false if skip_read_only && targets.read_only?
 
           true
@@ -128,7 +130,8 @@ module Samagotchi
 
         Rule.new(id: id, tools: tools_of(raw["tool"], label), command: regex_of(raw["command"], label),
                  path: path_of(raw["path"], label), git: git_of(raw["git"], label),
-                 touches: touches_of(raw["touches"], label), rm: rm_of(raw["rm"], label), models: models_of(raw["models"], label),
+                 touches: touches_of(raw["touches"], label), rm: rm_of(raw["rm"], label), memory: memory_of(raw["memory"], label),
+                 models: models_of(raw["models"], label),
                  modes: modes_of(raw["modes"], label),
                  skip_read_only: flag_of(raw, "skip_read_only", label), verdict: verdict.to_sym,
                  reason: (raw["reason"] || "rule #{id}").to_s, scopes: scopes_of(raw["scopes"], label), source: source)
@@ -181,6 +184,14 @@ module Samagotchi
       def self.rm_of(value, label)
         return nil if value.nil?
         raise ParseError, "#{label}: rm must be outside_tmp" unless value == "outside_tmp"
+
+        value
+      end
+
+      # Only "remove" for now.
+      def self.memory_of(value, label)
+        return nil if value.nil?
+        raise ParseError, "#{label}: memory must be remove" unless value == "remove"
 
         value
       end

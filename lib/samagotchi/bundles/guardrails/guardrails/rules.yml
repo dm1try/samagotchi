@@ -60,6 +60,17 @@ rules:
     verdict: ask
     reason: rm -rf on a path outside the working tree
 
+  # memory_write remove: true moves a memory into the bundle trash. Memory
+  # files don't count as outside the repo, so nothing else asks; a delegate
+  # child could otherwise take its parent's handoff away. Every removal
+  # asks, once at a time.
+  - id: memory-remove
+    tool: memory_write
+    memory: remove
+    verdict: ask
+    scopes: [once]
+    reason: removes a memory (it goes to the bundle trash, which chi bundle trash lists)
+
   # ── running code from the network ──────────────────────────────────────
   - id: pipe-to-shell
     tool: shell
