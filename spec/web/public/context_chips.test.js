@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ageText, chipModel, chipsHtml, hintUrl, popoverHtml } from "../../../lib/samagotchi/web/public/context_chips.js";
+import { addFormHtml, ageText, chipModel, chipsHtml, hintUrl, popoverHtml } from "../../../lib/samagotchi/web/public/context_chips.js";
 import { escapeHtml } from "../../../lib/samagotchi/web/public/format.js";
 
 const NOW = Date.parse("2026-10-05T12:00:00Z");
@@ -51,4 +51,23 @@ test("popoverHtml: why, a link for a URL hint, summary, age, error; detach or mu
   assert.match(project, /<div class="ctx-pop-hint">not a url<\/div>/);
   assert.match(project, />mute here<\/button>/);
   assert.doesNotMatch(project, /view text/);
+});
+
+test("chipsHtml: a + URL chip last when a bundle's provider can attach one", () => {
+  const html = chipsHtml(chipModel([row()], NOW), escapeHtml, { addUrl: true });
+  assert.match(html, /data-name="pr-1".*<button type="button" class="ctx-chip ctx-add" data-act="add" title="[^"]+" aria-haspopup="dialog">\+ URL<\/button>$/);
+  assert.doesNotMatch(chipsHtml(chipModel([row()], NOW), escapeHtml), /ctx-add/);
+  assert.equal(chipsHtml([], escapeHtml, { addUrl: true }).match(/ctx-chip/g).length, 1);
+});
+
+test("addFormHtml: a URL field, an optional why, Attach; an error line when the last try failed", () => {
+  const html = addFormHtml(escapeHtml);
+  assert.match(html, /<strong>Attach a URL<\/strong>/);
+  assert.match(html, /<input[^>]*name="url"[^>]*type="url"[^>]*required/);
+  assert.match(html, /<input[^>]*name="why"/);
+  assert.match(html, /<button type="submit"[^>]*>Attach<\/button>/);
+  assert.doesNotMatch(html, /ctx-pop-error/);
+  const failed = addFormHtml(escapeHtml, { url: "https://x/<1>", error: "no installed bundle resolves it" });
+  assert.match(failed, /value="https:\/\/x\/&lt;1&gt;"/);
+  assert.match(failed, /<div class="ctx-pop-error"[^>]*>no installed bundle resolves it<\/div>/);
 });

@@ -683,6 +683,12 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 /* Attached context (context_chips.js): a row of its own under the meta; not the composer's #chips/.chip. */
 #contextChips{order:5;flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
 #contextChips[hidden]{display:none}
+#contextChips.only-add{flex-basis:auto}
+#infoBar .ctx-chip.ctx-add{border-style:dashed;color:var(--text-muted);background:transparent}
+.ctx-add-form{display:flex;flex-direction:column;gap:6px;margin:0}
+.ctx-add-form .ctx-pop-head strong{font-family:inherit}
+.ctx-add-input{width:100%;box-sizing:border-box;padding:6px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:13px/1.4 inherit}
+.ctx-add-input:focus{outline:none;border-color:var(--accent-border)}
 #infoBar .ctx-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font:600 11px/1.5 ui-monospace,monospace;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3);border:1px solid var(--border-strong);white-space:nowrap}
 #infoBar .ctx-chip:hover,#infoBar .ctx-chip.open{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
 #infoBar .ctx-chip.empty{color:var(--text-faint);border-style:dashed}
@@ -724,6 +730,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   /* The chips get a second line of their own (only when there are some), scrolling sideways. */
   #infoBar:has(#contextChips:not([hidden])){flex-wrap:wrap;row-gap:4px}
   #contextChips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  /* The meta scrolls here: a lone "+ URL" would take its width, so it gets the row too. */
+  #contextChips.only-add{flex-basis:100%}
   #contextChips::-webkit-scrollbar{display:none}
   #contextChips>*{flex-shrink:0}
   #infoBar button{padding:4px 8px}

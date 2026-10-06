@@ -91,6 +91,13 @@ module Samagotchi
       nil
     end
 
+    # Whether an installed bundle declares a provider (the web's "+ URL").
+    def any?
+      MemoryBundle::Provenance.each_installed.any? do |_bundle, data|
+        !data[:error] && data[:context_providers].is_a?(Array) && !data[:context_providers].empty?
+      end
+    end
+
     def providers(bundle, data)
       parse_list(data[:context_providers])
     rescue Invalid => e
