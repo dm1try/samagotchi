@@ -32,6 +32,8 @@ and commands may change between minor versions. How releases are made:
   of steering the model into waiting again with `delegate_result`; so does a question's result.
 - `delegate` with `wait: false` in a session that gets no delegate reports (a `--no-shared` REPL, `-p`) says
   `delegate_result` waits for the reply, instead of promising a report that never comes.
+- `delegate` refused for too many running children tells a session that gets delegate reports to end its turn (a
+  report frees a slot), instead of to wait with `delegate_result`.
 
 ## [0.33.0] - 2026-10-06
 

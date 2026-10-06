@@ -57,7 +57,7 @@ module Samagotchi
 
         cwd = cwd.to_s.strip
         child_id, warning = if session.to_s.strip.empty?
-                              start_child(task, parent: parent, model: model, cwd: cwd, state_dir: sd)
+                              start_child(task, parent: parent, model: model, cwd: cwd, state_dir: sd, peers: peers)
                             elsif !cwd.empty?
                               "Error: cwd starts a new child; a follow-up with session keeps the child's folder"
                             else
@@ -91,8 +91,20 @@ module Samagotchi
       end
       private_class_method :running_hint
 
+      # What to do when session.max_children are running: a parent that
+      # gets reports ends its turn (a report frees a slot); one that
+      # doesn't (DelegateWait.reports_mode off) waits with delegate_result.
+      def self.full_hint(peers)
+        if DelegateWait.reports_mode(peers) == "off"
+          "delegate_result waits for one; `chi sessions stop ID` stops one."
+        else
+          "End your turn: a delegate report frees a slot when a child finishes; or stop one with `chi sessions stop ID`."
+        end
+      end
+      private_class_method :full_hint
+
       # @return [String] the new child's id, or an Error: line
-      def self.start_child(task, parent:, model:, cwd:, state_dir:)
+      def self.start_child(task, parent:, model:, cwd:, state_dir:, peers:)
         if parent.parent_id
           return "Error: this session is a delegate of #{parent.parent_id}; delegated sessions don't delegate further"
         end
@@ -105,7 +117,7 @@ module Samagotchi
         if running.size >= max
           ids = running.map { |s| s[:short_id] }.join(", ")
           return "Error: #{running.size} delegate#{"s" if running.size != 1} of this session #{running.size == 1 ? "is" : "are"} running " \
-                 "(the most is #{max}, #{MAX_CHILDREN_KEY}): #{ids}. delegate_result waits for one; `chi sessions stop ID` stops one."
+                 "(the most is #{max}, #{MAX_CHILDREN_KEY}): #{ids}. #{full_hint(peers)}"
         end
 
         child = SessionManager.spawn_session(prompt: task, working_directory: folder,

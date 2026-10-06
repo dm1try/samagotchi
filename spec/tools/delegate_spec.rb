@@ -192,6 +192,9 @@ RSpec.describe "delegate tools" do
 
       expect(out).to eq("Error: 1 delegate of this session is running (the most is 1, session.max_children): #{busy.id[0, 8]}. " \
                         "delegate_result waits for one; `chi sessions stop ID` stops one.")
+      expect(described_class.call("one more", peers: worker_peers))
+        .to end_with("#{busy.id[0, 8]}. End your turn: a delegate report frees a slot when a child finishes; " \
+                     "or stop one with `chi sessions stop ID`.")
       expect(session_files).to match_array(before)
       expect(Process).not_to have_received(:spawn)
     end
