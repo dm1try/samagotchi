@@ -133,6 +133,30 @@ module Samagotchi
     #   (chi stop), :crashed when the loop raised (the session is marked
     #   errored); SessionManager.run_session_loop turns it into the exit
     def run
+      start
+      serve
+      begin
+        # A session stopped before this worker took the lock (e.g. a stop
+        # right after create) must not run its initial prompt.
+        return :stopped if stopped_on_disk?
+
+        start_background
+        loop do
+          leaving = pass
+          return leaving if leaving
+        end
+      rescue StandardError => e
+        crashed(e)
+      ensure
+        teardown
+      end
+    end
+
+    private
+
+    # The session, its Engine and what runs its turns, before anyone can
+    # reach it.
+    def start
       # The wake turns' budget (delegate reports, attached context), from now.
       @wakes = WorkerWakes.new(grace: WAKE_START_GRACE)
       @session = Session.load(@session_id, state_dir: @state_dir)
@@ -184,7 +208,11 @@ module Samagotchi
       # Start the shared idle scheduler so the worker can trigger turns when
       # reminders are due (even with no user input).
       @engine.start_idle
+    end
 
+    # The Bridge (UIs and clients reach the worker from here on), then the
+    # idle-exit policy.
+    def serve
       @bridge = SessionManager.start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
                                             on_input: -> { @waker.wake },
                                             on_command: lambda { |command|
@@ -208,88 +236,106 @@ module Samagotchi
         awaiting_continue: -> { @turn_flow.awaiting_continue? },
         running_tasks: -> { Tools::TaskRuntime.running_created_in(@engine.messages_checkpoint) }
       )
-
-      begin
-        # A session stopped before this worker took the lock (e.g. a stop
-        # right after create) must not run its initial prompt.
-        return :stopped if stopped_on_disk?
-
-        # Plugins' slow setup (chi.init: an MCP server's first start), in
-        # the background, shown by the UIs; a turn waits only for the ones
-        # that bring tools.
-        @engine.start_init_tasks!
-        # Attached context's commands, in the background; a new text wakes
-        # the loop to absorb it. Not activity: the idle exit stops it.
-        @context_poller = ContextPoller.new(session_id: @session_id, state_dir: @state_dir,
-                                            project_root: @session.project_root, cwd: @session.working_directory,
-                                            on_change: -> { @waker.wake }).start
-        loop do
-          # Check if the session was externally marked as stopped. Not
-          # stopped_on_disk?, which reads a vanished file as "not stopped":
-          # a session file deleted under a running worker crashes it here
-          # instead of being saved back by its next turn.
-          return :stopped if Session.load(@session_id, state_dir: @state_dir).status == Session::STATUS_STOPPED
-
-          # Commands queued before a prompt run first (a /continue sent
-          # before a new prompt still answers the offer).
-          next if run_queued_commands
-
-          # Between turns, so the next turn (the first one too) sees them.
-          # A change that asks to wake may start a turn here (C4), but not
-          # ahead of an exit or restart a client asked for: it is a note then.
-          @inbound.absorb_notes
-          next if absorb_context(wake: nothing_queued? && !@exit_requested)
-
-          if (prompt = @inbound.take_initial_prompt)
-            run_initial_prompt(prompt) unless @inbound.initial_command?(prompt)
-            next
-          end
-
-          input_files = SessionInbox.find_new_input_files(@session_dir)
-          if input_files.empty?
-            next if run_wake_turn
-            next if run_due_reminders
-            return left(:idle_exit) if @idle_exit.due? && leave_idle
-            return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
-
-            @waker.wait(idle_wait)
-            next
-          end
-
-          input_files.sort.each do |input_file|
-            # A stop between two queued turns leaves the rest queued.
-            break if stopped_on_disk?
-
-            @inbound.absorb_notes
-            run_input_file(input_file)
-          end
-        end
-      rescue StandardError => e
-        # Its stderr is /dev/null: the log is the only trace of why.
-        Log.exception(:worker, "crashed", e)
-        Session.mark_error(@session_id, reason: e.message, state_dir: @state_dir)
-        # A delegate's parent hears of it (best effort).
-        ChildRing.ring(@session, why: "crash", state_dir: @state_dir) if @session
-        :crashed
-      ensure
-        # The anytime commands finish and the plugins' services stop (a
-        # server process), whatever the way out; the Bridge last, so a
-        # command's command_ran still reaches its UI on a crash. A
-        # step-limit question stays in the file (a save here would write
-        # over a stop's status): with no live worker the lists don't read
-        # it as waiting, and the next worker drops it (drop_dead_question).
-        # The context poller first: a command it runs goes (its process
-        # group) before the Engine does.
-        @context_poller&.stop
-        @engine&.shutdown
-        @bridge&.stop
-        # The process exits next: a parent wake it rang for (a crash's
-        # ring comes just above) must spawn the parent's worker first.
-        ChildRing.await_wakes
-      end
     end
 
-    private
+    # What runs beside the loop until it leaves.
+    def start_background
+      # Plugins' slow setup (chi.init: an MCP server's first start), in
+      # the background, shown by the UIs; a turn waits only for the ones
+      # that bring tools.
+      @engine.start_init_tasks!
+      # Attached context's commands, in the background; a new text wakes
+      # the loop to absorb it. Not activity: the idle exit stops it.
+      @context_poller = ContextPoller.new(session_id: @session_id, state_dir: @state_dir,
+                                          project_root: @session.project_root, cwd: @session.working_directory,
+                                          on_change: -> { @waker.wake }).start
+    end
+
+    # One pass of the loop: the first work found runs (queued commands, a
+    # context wake turn, the first prompt, the queued input files) and the
+    # next pass looks again; with none, #idle_pass.
+    # @return [Symbol, nil] what #run returns as the worker leaves, nil to go on
+    def pass
+      # Check if the session was externally marked as stopped. Not
+      # stopped_on_disk?, which reads a vanished file as "not stopped":
+      # a session file deleted under a running worker crashes it here
+      # instead of being saved back by its next turn.
+      return :stopped if Session.load(@session_id, state_dir: @state_dir).status == Session::STATUS_STOPPED
+
+      # Commands queued before a prompt run first (a /continue sent
+      # before a new prompt still answers the offer).
+      return if run_queued_commands
+
+      # Between turns, so the next turn (the first one too) sees them.
+      # A change that asks to wake may start a turn here (C4), but not
+      # ahead of an exit or restart a client asked for: it is a note then.
+      @inbound.absorb_notes
+      return if absorb_context(wake: nothing_queued? && !@exit_requested)
+
+      if (prompt = @inbound.take_initial_prompt)
+        run_initial_prompt(prompt) unless @inbound.initial_command?(prompt)
+        return
+      end
+
+      input_files = SessionInbox.find_new_input_files(@session_dir)
+      return idle_pass if input_files.empty?
+
+      run_input_files(input_files)
+    end
+
+    # Nothing queued: a delegate wake turn or a due reminder runs, else
+    # the worker leaves when the idle exit or a client's exit is due, else
+    # it sleeps until woken or the fallback tick.
+    # @return [Symbol, nil] as #pass
+    def idle_pass
+      return if run_wake_turn
+      return if run_due_reminders
+      return left(:idle_exit) if @idle_exit.due? && leave_idle
+      return left(@exit_restart ? :restart : :exit_requested) if @exit_requested && leave_on_request
+
+      @waker.wait(idle_wait)
+      nil
+    end
+
+    # @return [nil]
+    def run_input_files(input_files)
+      input_files.sort.each do |input_file|
+        # A stop between two queued turns leaves the rest queued.
+        break if stopped_on_disk?
+
+        @inbound.absorb_notes
+        run_input_file(input_file)
+      end
+      nil
+    end
+
+    # An error outside a turn: the session is marked errored.
+    # @return [Symbol] :crashed
+    def crashed(error)
+      # Its stderr is /dev/null: the log is the only trace of why.
+      Log.exception(:worker, "crashed", error)
+      Session.mark_error(@session_id, reason: error.message, state_dir: @state_dir)
+      # A delegate's parent hears of it (best effort).
+      ChildRing.ring(@session, why: "crash", state_dir: @state_dir) if @session
+      :crashed
+    end
+
+    # The anytime commands finish and the plugins' services stop (a
+    # server process), whatever the way out; the Bridge last, so a
+    # command's command_ran still reaches its UI on a crash. A
+    # step-limit question stays in the file (a save here would write
+    # over a stop's status): with no live worker the lists don't read
+    # it as waiting, and the next worker drops it (drop_dead_question).
+    # The context poller first: a command it runs goes (its process
+    # group) before the Engine does.
+    def teardown
+      @context_poller&.stop
+      @engine&.shutdown
+      @bridge&.stop
+      # The process exits next: a parent wake it rang for (a crash's
+      # ring comes just above) must spawn the parent's worker first.
+      ChildRing.await_wakes
+    end
 
     def build_engine
       waker = @waker
