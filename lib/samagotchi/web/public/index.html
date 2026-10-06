@@ -729,6 +729,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   #infoBar .meta .status{order:-1}
   /* After the status (same order, later in the DOM): the meta scrolls, and only its start is in sight. */
   #infoBar .meta .mem-chip{display:inline;order:-1}
+  /* A parent's children chip too: its waiting part is what to see. */
+  #infoBar .meta .children-chip{order:-1}
   /* The chips get a second line of their own (only when there are some), scrolling sideways. */
   #infoBar:has(#contextChips:not([hidden])){flex-wrap:wrap;row-gap:4px}
   #contextChips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
@@ -805,6 +807,13 @@ body.has-session #scope .scope-where{display:none}
 .card .parent{font-family:ui-monospace,monospace;white-space:nowrap;color:var(--text-3)}
 #infoBar .meta a.parent{text-decoration:none}
 #infoBar .meta a.parent:hover{color:var(--accent)}
+.card .children-chip{font-family:ui-monospace,monospace;white-space:nowrap;flex-shrink:0;color:var(--text-3)}
+#topStrip .card .children-chip{cursor:pointer;border-radius:4px}
+#topStrip .card .children-chip:hover{color:var(--accent)}
+.children-chip .kids-waiting{font-family:system-ui,sans-serif;font-weight:600;color:var(--warn-text)}
+#infoBar .meta a.children-chip{text-decoration:none;font-family:ui-monospace,monospace;white-space:nowrap}
+#infoBar .meta a.children-chip:hover{color:var(--accent)}
+#infoBar .meta a.children-chip.waiting{background:var(--warn-bg);border:1px solid var(--warn-border);padding:1px 6px}
 .scope-error{grid-column:1/-1;font-size:13px;color:var(--warn-text)}
 .strip-toggle{font-size:11px;padding:3px 10px;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:999px}
 .strip-toggle:hover{color:var(--text-2);border-color:var(--border-strong)}

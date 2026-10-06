@@ -250,3 +250,52 @@ test("memChipText / memChipTitle: the phone's memory chip counts them, the toolt
   assert.equal(memChipTitle(["a", "b"]), "memories: a, b");
   assert.equal(memChipTitle([]), "no memories in this session");
 });
+
+import { childrenSummary } from "../../../lib/samagotchi/web/public/format.js";
+
+test("childrenSummary: no delegates (none at all, only a fork, only archived, no parent) is null", () => {
+  const parent = { id: "p1" };
+  assert.equal(childrenSummary(parent, []), null);
+  assert.equal(childrenSummary(parent, [{ id: "f1", parent_id: "p1", delegate: false, status: "running" }]), null);
+  assert.equal(childrenSummary(parent, [{ id: "c1", parent_id: "p1", delegate: true, archived: true, status: "running" }]), null);
+  assert.equal(childrenSummary(parent, [{ id: "c1", parent_id: "p2", delegate: true, status: "running" }]), null);
+  assert.equal(childrenSummary(null, [{ id: "c1", parent_id: "p1", delegate: true }]), null);
+});
+
+test("childrenSummary: mixed delegates count by state; forks and other parents' children are left out", () => {
+  const parent = { id: "p1" };
+  const sessions = [
+    parent,
+    { id: "c1", parent_id: "p1", delegate: true, status: "running" },
+    { id: "c2", parent_id: "p1", delegate: true, status: "running" },
+    { id: "c3", parent_id: "p1", delegate: true, status: "idle", last_turn: { outcome: "completed" } },
+    { id: "c4", parent_id: "p1", delegate: true, status: "idle", last_turn: { outcome: "failed" } },
+    { id: "c5", parent_id: "p1", delegate: true, status: "error" },
+    { id: "c6", parent_id: "p1", delegate: true, status: "stopped" },
+    { id: "c7", parent_id: "p1", delegate: true, status: "idle", last_turn: { outcome: "canceled" } },
+    { id: "f1", parent_id: "p1", delegate: false, status: "running" },
+    { id: "x1", parent_id: "p9", delegate: true, status: "running" },
+  ];
+  assert.deepEqual(childrenSummary(parent, sessions), {
+    total: 7,
+    counts: { running: 2, waiting: 0, done: 1, failed: 2, stopped: 1, idle: 1 },
+    text: "⑂ 7",
+    waitingText: null,
+    title: "7 delegates: 2 running · 1 done · 2 failed · 1 stopped · 1 idle",
+  });
+});
+
+test("childrenSummary: waiting is decided first: a running child with an open question or card waits, not runs", () => {
+  const parent = { id: "p1" };
+  const sessions = [
+    { id: "c1", parent_id: "p1", delegate: true, status: "running", pending_question: { id: "q1", kind: "approval" } },
+    { id: "c2", parent_id: "p1", delegate: true, status: "running" },
+    { id: "c3", parent_id: "p1", delegate: true, status: "running", pending_card: { id: "k1" } },
+  ];
+  const sum = childrenSummary(parent, sessions);
+  assert.deepEqual(sum.counts, { running: 1, waiting: 2, done: 0, failed: 0, stopped: 0, idle: 0 });
+  assert.equal(sum.text, "⑂ 3");
+  assert.equal(sum.waitingText, "2 waiting");
+  assert.equal(sum.title, "3 delegates: 1 running · 2 waiting");
+  assert.equal(childrenSummary(parent, sessions.slice(1, 2)).title, "1 delegate: 1 running");
+});
