@@ -759,8 +759,11 @@ module Samagotchi
       rescue StandardError => e
         error = e
         # Still running: no turn of the Engine's ended (it never began).
+        # It ends here, failed, as an Engine turn would record it: a wait
+        # (ReplyWait) tells a turn's end by last_turn.
         if @session.status == Session::STATUS_RUNNING
           @session.status = Session::STATUS_IDLE
+          @engine.record_last_turn(@session, "failed", 0, turn_args[:origin], { type: :turn_failed })
           Log.warn(:worker, "turn_not_begun", error: e.class.name, msg: e.message)
         end
       ensure

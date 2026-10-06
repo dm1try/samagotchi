@@ -264,6 +264,24 @@ RSpec.describe Samagotchi::Worker do
       end
     end
 
+    it "records a turn that failed before the Engine began it as last_turn, so a wait ends with no_reply" do
+      allow(engine).to receive(:run_turn).and_raise(RuntimeError, "boom before the turn")
+      start_worker
+      baseline = Samagotchi::ReplyWait.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+
+      post_turn("hi")
+      expect(wait_until do
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status == "idle" && Samagotchi::TurnNote.trailing_index(s.messages)
+      end).to be_truthy
+
+      saved = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      expect(saved.last_turn).to include("outcome" => "failed", "origin" => "client")
+      result = Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 1, poll_interval: 0.02,
+                                                      baseline: baseline)
+      expect(result.to_h).to include(status: :no_reply, outcome: "failed")
+    end
+
     describe "an archived session (ArchiveStore)" do
       def archived? = Samagotchi::ArchiveStore.archived?(session_dir)
 

@@ -1183,7 +1183,8 @@ module Samagotchi
     private :hook_messages
 
     # How the turn ended, on the session (Session#last_turn): the caller's
-    # save puts it in the file the session hub watches.
+    # save puts it in the file the session hub watches. Public for the
+    # Worker's turn that failed before it began (no #end_turn ran).
     # @param limit [Integer, nil] the turn ran out of iterations at this
     #   limit: "exhausted" => true, "limit" => N, so a wait with nobody to
     #   answer the continue offer says so (ReplyWait, ParentReport "limit")
@@ -1201,7 +1202,6 @@ module Samagotchi
       session.last_turn.merge!("exhausted" => true, "limit" => limit) if limit
       session.last_turn.merge!(stop_facts(event))
     end
-    private :record_last_turn
 
     # Why a turn stopped, from its end event, for a parent agent's wait
     # (ReplyWait): a provider error's kind and whether a retry may help, a

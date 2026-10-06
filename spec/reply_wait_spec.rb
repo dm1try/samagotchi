@@ -182,6 +182,16 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(wait(baseline: { messages: 0, question_id: nil }).status).to eq(:no_reply)
     end
 
+    it "waits on past a note that joined between turns (a new worker's context note before the message's turn)" do
+      baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.messages << { role: "system", content: "[CONTEXT NOTE from context notes]", kind: "note" }
+      s.save(state_dir: tmpdir)
+      later(0.2) { write_reply("the answer") }
+
+      expect(wait(baseline: baseline).to_h).to include(status: :done, text: "the answer")
+    end
+
     it "says a turn ran out of iterations when its last_turn is marked exhausted (nobody asked to continue)" do
       baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
       s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
@@ -213,9 +223,10 @@ RSpec.describe Samagotchi::ReplyWait do
       s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       s.last_turn = { "outcome" => "failed", "ended_at" => "2026-10-04T10:00:00.000+00:00", "error_kind" => "credits",
                       "retryable" => false }
-      s.messages << { role: "user", content: "[turn note]" }
+      s.status = "running"
       s.save(state_dir: tmpdir)
       baseline = { messages: 0, question_id: nil, last_turn: "2026-10-04T10:00:00.000+00:00" }
+      later { set(status: "idle") }
 
       expect(wait(baseline: baseline).to_h).to include(status: :no_reply, outcome: nil, error_kind: nil, retryable: nil)
     end

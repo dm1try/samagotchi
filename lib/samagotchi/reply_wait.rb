@@ -62,8 +62,9 @@ module Samagotchi
     #   question already pending then is not the answer's. A nil
     #   messages: skips the count. last_turn: (the session's
     #   last_turn["ended_at"] then, maybe nil) ends the wait on any turn
-    #   that ended since, idle again, however fast it ran: a failure after
-    #   a failure replaces the note and leaves the count as it was.
+    #   that ended since, idle again, however fast it ran (a failure after
+    #   a failure replaces the note and leaves the count as it was), and
+    #   with it the count isn't used: a note between turns grows it too.
     # @param owner_grace [Numeric, nil] seconds with no live worker before
     #   :worker_gone (one that died before its rescue leaves it running)
     # @param interject [#call, nil] called once a poll, before the sleep
@@ -145,13 +146,17 @@ module Samagotchi
     end
 
     # An idle session whose turn ended after the baseline was taken: its
-    # last_turn moved on, or its messages grew (a turn's note).
+    # last_turn moved on. Every turn's end records last_turn as it goes
+    # idle (Engine#end_turn), so with one in the baseline that alone
+    # decides: messages also grow between turns (a new worker's context
+    # note, a chi note) with no turn run. A baseline without it falls back
+    # to the count (a turn's note).
     def turn_ended_since?(session, baseline)
       return false unless baseline
 
       if baseline.key?(:last_turn)
         ended = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
-        return true if ended && ended != baseline[:last_turn]
+        return !ended.nil? && ended != baseline[:last_turn]
       end
       !!(baseline[:messages] && session.messages.size > baseline[:messages])
     end

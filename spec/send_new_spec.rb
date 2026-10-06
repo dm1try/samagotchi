@@ -321,7 +321,10 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
   it "ends without a reply when the turn fails before the first look" do
     idle = make(status: "idle")
     # The whole turn, failed and noted, inside the send.
-    @on_deliver = -> { update(idle, add_message: { role: "user", content: "[turn failed]" }) }
+    @on_deliver = lambda do
+      update(idle, add_message: { role: "user", content: "[turn failed]" },
+                   last_turn: { "ended_at" => "2026-09-30T10:00:05.000+02:00" })
+    end
 
     expect(run("--wait", "-m", "x", idle.id)).to eq(1)
     expect(err.string).to end_with("chi send: the turn ended without a reply (canceled, failed or empty); " \
