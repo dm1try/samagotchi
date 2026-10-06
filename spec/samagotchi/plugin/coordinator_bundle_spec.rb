@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 require "yaml"
+require "samagotchi/memory_paths"
 require "samagotchi/plugin/sessions"
 require "samagotchi/memory_bundle/manifest"
 require "samagotchi/memory_bundle/provenance"
@@ -15,7 +17,7 @@ RSpec.describe "The coordinator plugin" do
   let(:ctx) do
     Class.new do
       attr_reader :cards, :sent, :stopped, :children_asked
-      attr_accessor :session_id, :children, :send_error, :stop_error
+      attr_accessor :session_id, :children, :send_error, :stop_error, :cwd
 
       def initialize
         @cards = []
@@ -194,6 +196,63 @@ RSpec.describe "The coordinator plugin" do
     end
   end
 
+  describe "/coordinate resume" do
+    let(:memories) { Dir.mktmpdir("coord-resume") }
+
+    before do
+      ctx.cwd = "/work/app"
+      allow(Samagotchi::MemoryPaths).to receive(:scope_dir).with("project", cwd: "/work/app").and_return(memories)
+    end
+
+    after { FileUtils.rm_rf(memories) }
+
+    def handoff(name, description, file: true)
+      File.write(File.join(memories, "#{name}.md"), "# #{name}\n") if file
+      line = "- **#{name}** · project · 2026-10-07 · 12#{" — #{description}" if description}\n"
+      File.write(File.join(memories, "index.md"), line, mode: "a")
+    end
+
+    it "asks the model to resume the one open handoff, skipping DONE ones, other memories and lines without a file" do
+      handoff("handoff_calc-v2", "OPEN coordinator handoff calc-v2 (session aaaabbbb): 1/2 merged")
+      handoff("handoff_old", "DONE: all merged")
+      handoff("handoff_gone", "OPEN coordinator handoff gone", file: false)
+      handoff("notes", "OPEN notes")
+
+      expect(run("/coordinate", "resume")).to eq("asked chi to resume handoff_calc-v2; a running turn gets it at its next step")
+      expect(ctx.sent).to eq([[ctx.session_id, "Read the skill_coordinator memory and resume the coordinator handoff " \
+                                               "handoff_calc-v2: follow the skill's Resume (step 0) before anything else."]])
+    end
+
+    it "shows a card with one Resume per open handoff when there are several, and resumes the one picked" do
+      handoff("handoff_a", "OPEN coordinator handoff a: 0/2 merged")
+      handoff("handoff_b", nil)
+
+      expect(run("/coordinate", "resume")).to be_nil
+      expect(ctx.cards.last).to include(id: "coordinate-resume", title: "open handoffs (2)",
+                                        body: "- handoff_a — OPEN coordinator handoff a: 0/2 merged\n- handoff_b")
+      expect(ctx.cards.last[:actions]).to eq([{ label: "Resume a", command: "/coordinate resume handoff_a" },
+                                              { label: "Resume b", command: "/coordinate resume handoff_b" }])
+      expect(ctx.sent).to be_empty
+
+      expect(run("/coordinate", "resume b")).to eq("asked chi to resume handoff_b; a running turn gets it at its next step")
+    end
+
+    it "says when none is open, or the one named isn't" do
+      expect(run("/coordinate", "resume")).to eq("no open coordinator handoff (handoff_* memory) in this project")
+      handoff("handoff_done", "DONE: merged")
+      expect(run("/coordinate", "resume")).to eq("no open coordinator handoff (handoff_* memory) in this project")
+      handoff("handoff_a", "OPEN a")
+      expect(run("/coordinate", "resume handoff_done"))
+        .to eq("/coordinate resume: no open handoff handoff_done in this project (open: handoff_a)")
+      expect(ctx.sent).to be_empty
+    end
+
+    it "takes \"resume\" with more words as a goal" do
+      run("/coordinate", "resume the old work on payments")
+      expect(ctx.sent.last.last).to eq("Read the skill_coordinator memory and follow it for this goal:\n\nresume the old work on payments")
+    end
+  end
+
   describe "the bundle" do
     let(:manifest) { Samagotchi::MemoryBundle::Manifest.read(dir: dir) }
 
@@ -209,6 +268,15 @@ RSpec.describe "The coordinator plugin" do
       expect(skill).to include("ask_user_question", "git merge-base --is-ancestor <branch> <default>", "git branch --show-current", "git merge --ff-only",
                                "Never push unless asked", "Children\n   never merge", "never `-D`",
                                "Work only in <absolute worktree path>", "Don't call delegate_result")
+    end
+
+    it "keeps the handoff memory: status in a descriptive description, resume reads the body, saves first, removes when done" do
+      skill = File.read(File.join(dir, "skill_coordinator.md"))
+      expect(skill).to include("handoff_<epic-slug>", "never what to do", "description only (no content)",
+                               "memory_read the handoff", "list_sessions", "not listed is not proof a child is gone",
+                               "save the answer in the handoff before you act on it",
+                               "git merge-base --is-ancestor <default> <branch>", "status --short --ignored", "never\n   `rm -rf`",
+                               "\"DONE: …\"", "remove: true", "don't write or edit any handoff_* memory")
     end
   end
 end

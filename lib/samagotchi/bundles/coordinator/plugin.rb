@@ -18,6 +18,13 @@
 # for the goal. A REPL session (--no-shared) takes no messages: the request
 # is shown for the user to send.
 #
+# /coordinate resume picks up a coordinator handoff: the open handoff_*
+# memories of this project (an index line whose description doesn't start
+# with DONE, its file there). One: the model is asked to resume it (the
+# skill's step 0); several: a card with a Resume action each
+# (/coordinate resume <name>); none: says so. It reads the project's
+# memories folder, nothing else.
+#
 # A child is asked before it changes anything outside its worktree by chi
 # itself (the core child-boundary guardrail), in every mode: nothing to set up.
 class Plugin
@@ -27,7 +34,12 @@ class Plugin
   STOPPABLE = %w[running waiting].freeze
   TEXT_CHARS = 80
   USAGE = "usage: /children [all] | /children stop <id>"
-  COORDINATE_USAGE = "usage: /coordinate <goal> — chi splits it into tasks, one child session and worktree each"
+  COORDINATE_USAGE = "usage: /coordinate <goal> — chi splits it into tasks, one child session and worktree each; " \
+                     "/coordinate resume [name] — pick up an open handoff"
+  RESUME_CARD_ID = "coordinate-resume"
+  # A card takes 6 actions.
+  MAX_RESUMES = 6
+  HANDOFF_LINE = /^- \*\*(handoff_[^*\s]+)\*\*(.*)$/
 
   def initialize(_settings = {}); end
 
@@ -36,7 +48,8 @@ class Plugin
                 anytime: true do |args, ctx|
       children_command(args.to_s.strip, ctx)
     end
-    chi.command "/coordinate", "run work in parallel: chi splits <goal> into tasks, each in a child session and worktree",
+    chi.command "/coordinate", "run work in parallel: chi splits <goal> into tasks, each in a child session and worktree; " \
+                               "resume: pick up an open handoff",
                 anytime: true do |args, ctx|
       coordinate(args.to_s.strip, ctx)
     end
@@ -97,13 +110,68 @@ class Plugin
   def coordinate(goal, ctx)
     return COORDINATE_USAGE if goal.empty?
 
-    request = "Read the skill_coordinator memory and follow it for this goal:\n\n#{goal}"
+    verb, rest = goal.split(/\s+/, 2)
+    # "resume" and at most a name; "resume the old work" is a goal.
+    return resume(rest.to_s.strip, ctx) if verb == "resume" && !rest.to_s.strip.match?(/\s/)
+
+    ask(ctx, "Read the skill_coordinator memory and follow it for this goal:\n\n#{goal}",
+        "asked chi to coordinate it; a running turn gets it at its next step")
+  end
+
+  # /coordinate resume [name]
+  def resume(name, ctx)
+    open = open_handoffs(ctx)
+    if name.empty?
+      return "no open coordinator handoff (handoff_* memory) in this project" if open.empty?
+      return resume_card(open, ctx) if open.size > 1
+
+      name = open.first[:name]
+    end
+    name = "handoff_#{name}" unless name.start_with?("handoff_")
+    unless open.any? { |handoff| handoff[:name] == name }
+      return "/coordinate resume: no open handoff #{name} in this project (#{open.empty? ? "none is open" : "open: #{open.map { |h| h[:name] }.join(", ")}"})"
+    end
+
+    ask(ctx, "Read the skill_coordinator memory and resume the coordinator handoff #{name}: follow the skill's " \
+             "Resume (step 0) before anything else.",
+        "asked chi to resume #{name}; a running turn gets it at its next step")
+  end
+
+  def resume_card(open, ctx)
+    body = open.map { |handoff| "- #{handoff[:name]}#{" — #{handoff[:description]}" unless handoff[:description].empty?}" }
+    actions = open.first(MAX_RESUMES).map do |handoff|
+      { label: "Resume #{handoff[:name].delete_prefix("handoff_")}", command: "/coordinate resume #{handoff[:name]}" }
+    end
+    ctx.card(id: RESUME_CARD_ID, title: "open handoffs (#{open.size})", body: body.join("\n"), actions: actions)
+    nil
+  end
+
+  # The project's handoff_* memories whose index line isn't DONE, in index
+  # order: [{name:, description:}]. A line without its file is left out.
+  def open_handoffs(ctx)
+    dir = Samagotchi::MemoryPaths.scope_dir("project", cwd: ctx.cwd)
+    index = File.join(dir.to_s, "index.md")
+    return [] unless File.file?(index)
+
+    File.read(index, encoding: "UTF-8").each_line.filter_map do |line|
+      match = line.chomp.match(HANDOFF_LINE) or next
+      description = match[2].split(" — ", 2)[1].to_s.strip
+      next if description.match?(/\ADONE\b/i)
+      next unless File.file?(File.join(dir, "#{match[1]}.md"))
+
+      { name: match[1], description: description }
+    end
+  rescue SystemCallError
+    []
+  end
+
+  def ask(ctx, request, done)
     begin
       ctx.sessions.send(ctx.session_id, request)
     rescue Samagotchi::Plugin::Sessions::Error => e
       return "/coordinate: #{e.message}. Send this yourself:\n\n#{request}"
     end
-    "asked chi to coordinate it; a running turn gets it at its next step"
+    done
   end
 
   def quote(text)
