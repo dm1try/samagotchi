@@ -184,6 +184,43 @@ It needs [`gh`](https://cli.github.com), logged in (`gh auth login`).
 - It wakes for a review requesting changes, checks turning red, and the PR
   merged or closed. Comments alone never wake.
 
+### Line links
+
+In the web, a file reference in an answer links to that line of the pull
+request the session reviews: `lib/foo.rb:28` and `lib/foo.rb:28-34`, also in
+inline code (`` `lib/foo.rb:28` ``). The model writes plain references; the
+links are display only (the model's text stays as it was), and terminals
+show the answer as it is.
+
+- **Which PR**: the session's attached PRs (the branch's, `chi context add
+  <PR URL>`, "+ URL") and the PR URLs in your messages, newest first (a
+  delegate child's task counts: a parent that names the PR there gets links
+  in the child's answers). PR URLs in tool output or answers don't count.
+- **Which file**: a file the PR changes, by its path, a renamed file's old
+  path, a bare name only one PR file has (`source_links.rb:28`), or an
+  absolute path into a checkout (a child's worktree). Any other file isn't
+  linked, nor is a path several of the session's PRs change.
+- **Where to**: the line in the PR's **Files changed**, highlighted, when it
+  is inside a changed hunk (a removed file: on its old side); else the file
+  at the PR's head commit (a removed one: at its base), which has every
+  line.
+- Code blocks, markdown links and URLs are left alone.
+- The PR's files are read with `gh api` in the background when a turn
+  starts (and when a PR is attached while it runs), at most once a minute,
+  and read again only when the PR's head moved; the answer is linked from
+  what was read.
+  So the first answer of a very short turn may come without links, and
+  after a push links may be a few lines off until the next read. Without
+  `gh` or its login, nothing is linked.
+
+Turn it off:
+
+```yaml
+bundles:
+  github-pr:
+    line_links: false
+```
+
 ## Safety
 
 A command source runs **outside the guardrails gate**, every few minutes,

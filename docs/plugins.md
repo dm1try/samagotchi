@@ -1144,7 +1144,9 @@ nothing without `gh`, a repository or an open PR), and resolves PR URLs for
 `chi context add` and the web's "+ URL". Its script prints the PR as text
 and a summary of what changed in counts, authors and states only; it wakes
 the session for a review requesting changes, checks turning red, or the PR
-merged or closed. See [Attached context](context.md#github-prs-the-github-pr-bundle).
+merged or closed. In the web, a `path:line` in an answer links to that line
+of the session's PR ([Line links](context.md#line-links)). See [Attached
+context](context.md#github-prs-the-github-pr-bundle).
 
 ## The coordinator bundle
 

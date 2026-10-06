@@ -22,6 +22,11 @@ and commands may change between minor versions. How releases are made:
   [docs/plugins.md](docs/plugins.md#the-coordinator-bundle).
 - The guardrails bundle (0.8.0) asks before every memory removal (`memory-remove`, once at a time). Guardrail rules
   take `memory: remove`.
+- In the web, a file reference in an answer (`lib/foo.rb:28`, `lib/foo.rb:28-34`, in inline code too) links to that
+  line of the pull request the session reviews: the PR attached to it or named in your messages (a delegate child's
+  task too). Inside a changed hunk it opens the PR's Files changed view at the line, highlighted; elsewhere the file
+  at the PR's head. Display only; `bundles: github-pr: line_links: false` turns it off (github-pr 0.2.0; run
+  `chi update`). See [docs/context.md](docs/context.md#line-links).
 - `/mcp` shows roughly how many tokens each MCP server's tool definitions take in every request, and the total
   (mcp 0.5.0; run `chi update`). See [docs/plugins.md](docs/plugins.md#the-mcp-bundle).
 
