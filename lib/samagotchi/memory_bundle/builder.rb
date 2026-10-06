@@ -208,7 +208,8 @@ module Samagotchi
             requires_chi: requires_chi,
             needs: needs,
             scripts: scripts_to_copy.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
-            context_providers: context_providers
+            context_providers: context_providers,
+            file_descriptions: file_descriptions(prov_data, files_map)
           )
 
           case format
@@ -274,6 +275,18 @@ module Samagotchi
 
         prov_data[:scripts].keys.map(&:to_s).sort.to_h { |file| [file, File.join(prov.scripts_dir, file)] }
                            .select { |_, path| File.file?(path) }
+      end
+
+      # The descriptions the installed bundle's record keeps for the files
+      # being built (its manifest's files: mappings), so a rebuild writes
+      # them back; {} without a record.
+      def file_descriptions(prov_data, files_map)
+        return {} unless prov_data && prov_data[:files].is_a?(Hash)
+
+        prov_data[:files].each_with_object({}) do |(key, entry), acc|
+          text = entry.is_a?(Hash) ? entry[:description].to_s : ""
+          acc[key.to_s] = text if files_map.key?(key.to_s) && !text.empty?
+        end
       end
 
       # Without an allowlist, a memory another installed bundle owns (its

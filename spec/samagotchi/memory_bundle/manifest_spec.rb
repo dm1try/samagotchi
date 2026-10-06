@@ -43,6 +43,30 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       expect(manifest.checksum_for("commit_preferences.md")).to eq("def456")
     end
 
+    it "reads a files: entry given as a mapping: its sha in files, its description apart" do
+      path = write_manifest({
+        "files" => {
+          "identity.md" => "sha256:abc123",
+          "skill_x.md" => { "sha256" => "sha256:def456", "description" => " Use when x " },
+          "plain.md" => { "sha256" => "789" }
+        }
+      })
+      manifest = described_class.new(path: path)
+      expect(manifest.files).to eq("identity.md" => "sha256:abc123", "skill_x.md" => "sha256:def456", "plain.md" => "sha256:789")
+      expect(manifest.checksum_for("skill_x.md")).to eq("def456")
+      expect(manifest.file_descriptions).to eq("skill_x.md" => "Use when x")
+    end
+
+    it "writes files with a description as mappings and the rest as plain sha lines" do
+      described_class.write(dir: tmpdir, name: "b", version: "1.0.0",
+                            files: { "a.md" => "sha256:aa", "skill_x.md" => "sha256:bb" },
+                            file_descriptions: { "skill_x.md" => "Use when x" })
+
+      raw = YAML.load_file(File.join(tmpdir, "manifest.yml"))
+      expect(raw["files"]).to eq("a.md" => "sha256:aa", "skill_x.md" => { "sha256" => "sha256:bb", "description" => "Use when x" })
+      expect(described_class.read(dir: tmpdir).file_descriptions).to eq("skill_x.md" => "Use when x")
+    end
+
     it "strips sha256: prefix from checksum_for when present" do
       path = write_manifest({
         "files" => { "foo.md" => "sha256:abcdef012345" }

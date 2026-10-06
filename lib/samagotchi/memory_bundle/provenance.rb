@@ -140,7 +140,7 @@ module Samagotchi
       # @param context_providers [Array<ContextProviders::Provider>]
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
                 guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], includes: nil,
-                scripts_files: {}, context_providers: [])
+                scripts_files: {}, context_providers: [], file_descriptions: {})
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -158,6 +158,7 @@ module Samagotchi
           File.write(File.join(bases_dir, file_key), content)
           merged_entries[file_key] = { checksum: checksum }
           merged_entries[file_key][:conflict] = true if conflicts.include?(file_key.to_s)
+          merged_entries[file_key][:description] = file_descriptions[file_key.to_s] if file_descriptions[file_key.to_s]
         end
 
         # Prune stale base snapshots for files no longer in the bundle.

@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   `git worktree add`, or a subfolder. Another repository is refused.
 - Plugins: `ctx.sessions.children` lists the session's children (state, branch, last reply and whether the parent
   was given it), and `ctx.sessions.stop(id)` stops one of its own children.
+- Bundles: a `files:` entry in `manifest.yml` may carry a `description:`, which the install writes into the
+  memory's `index.md` line.
 
 ### Changed
 

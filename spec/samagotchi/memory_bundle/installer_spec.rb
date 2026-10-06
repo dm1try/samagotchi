@@ -267,6 +267,22 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(index_content).to include("- **mine** · system · #{Date.today.iso8601} · 7\n")
         end
 
+        it "writes a file's manifest description into its index line and its record" do
+          bundle_dir = write_bundle(tmpdir, { "skill_x.md" => "# Skill: x\n", "identity.md" => "# Identity\n" })
+          manifest = YAML.safe_load_file(File.join(bundle_dir, "manifest.yml"))
+          manifest["files"]["skill_x.md"] = { "sha256" => "sha256:fake", "description" => "Use when x" }
+          File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
+
+          installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+
+          index_content = File.read(File.join(system_memories_dir, "index.md"))
+          expect(index_content).to include("- **skill_x** · system · #{Date.today.iso8601} · 11 · from test-bundle — Use when x\n")
+          expect(index_content).to include("- **identity** · system · #{Date.today.iso8601} · 11 · from test-bundle\n")
+          record = Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle").read
+          expect(record[:files][:"skill_x.md"]).to include(description: "Use when x")
+          expect(record[:files][:"identity.md"]).not_to have_key(:description)
+        end
+
         it "updates index.md for skipped files" do
           FileUtils.mkdir_p(system_memories_dir)
           File.write(File.join(system_memories_dir, "identity.md"), "# Existing\n")

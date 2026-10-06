@@ -90,6 +90,33 @@ RSpec.describe ReleaseTools do
       expect(refreshed).to eq(text.sub(sha("old"), sha("new s")))
     end
 
+    it "refreshes a files: entry given as a mapping with a description" do
+      text = <<~YAML
+        ---
+        name: b
+        files:
+          a.md:
+            sha256: sha256:#{sha("old")}
+            description: "Use when x"
+          q.md: sha256:#{sha("q")}
+      YAML
+
+      refreshed, changes = described_class.refresh_manifest(text, dir)
+
+      expect(changes).to eq([["a.md", sha("old"), sha("new a")]])
+      expect(refreshed).to eq(text.sub(sha("old"), sha("new a")))
+    end
+
+    it "raises on a files: entry it finds no sha line for: a quoted nested sha, a flow mapping" do
+      quoted = "---\nname: b\nfiles:\n  a.md:\n    sha256: \"sha256:#{sha("old")}\"\n    description: x\n"
+      flow = "---\nname: b\nfiles:\n  a.md: {sha256: \"sha256:#{sha("old")}\", description: x}\n  q.md: sha256:#{sha("q")}\n"
+
+      expect { described_class.refresh_manifest(quoted, dir) }
+        .to raise_error(ReleaseTools::Error, %r{b/manifest.yml: no sha line to refresh for files: a.md \(})
+      expect { described_class.refresh_manifest(flow, dir) }
+        .to raise_error(ReleaseTools::Error, /no sha line to refresh for files: a.md \(/)
+    end
+
     it "raises on a file the manifest names but the bundle lacks" do
       FileUtils.rm(File.join(dir, "plugin.rb"))
       expect { described_class.refresh_manifest(manifest, dir) }.to raise_error(ReleaseTools::Error, /names plugin.rb/)

@@ -16,7 +16,9 @@ module Samagotchi
     #   description: "…"       # optional
     #   files:
     #     identity.md: sha256:abc123...
-    #     commit_preferences.md: sha256:def456...
+    #     skill_x.md:          # or a mapping: the description is the
+    #       sha256: sha256:def456...   #   memory's index.md line
+    #       description: "Use when …"
     #   plugin:                # optional — the bundle's plugin.rb (docs/plugins.md)
     #     file: plugin.rb
     #     sha256: sha256:0a1b...
@@ -50,7 +52,9 @@ module Samagotchi
       # A bundle name, as `chi bundle install <name>` takes a shipped one.
       BUNDLE_NAME = /\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
 
-      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
+      # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
+      # the description a mapping gave, for the files that have one.
+      attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
                   :scripts, :context_providers
 
       def initialize(path:)
@@ -62,6 +66,7 @@ module Samagotchi
         @description = (raw["description"] || "").to_s
         @files    = parse_files(raw["files"] || {})
         @hooks    = parse_hooks(raw["hooks"] || {})
+        @file_descriptions = parse_file_descriptions(raw["files"])
         @trust_level = (raw["trust_level"] || "experimental").to_s
         @plugin = parse_plugin(raw["plugin"])
         @requires_chi = parse_requires_chi(raw["requires_chi"])
@@ -123,8 +128,9 @@ module Samagotchi
       end
 
       # Writes a fresh manifest.yml from computed checksums at `dir`.
+      # +file_descriptions+ (name → text) writes those files as mappings.
       def self.write(dir:, name:, version:, files:, scope: nil, description: "", hooks: nil, trust_level: nil,
-                     plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [])
+                     plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], file_descriptions: {})
         FileUtils.mkdir_p(dir)
         manifest = {
           "name" => name,
@@ -132,7 +138,10 @@ module Samagotchi
           "description" => description
         }
         manifest["scope"] = scope if scope
-        manifest["files"] = files # { "file.md" => "sha256:abc..." }
+        manifest["files"] = files.to_h do |key, sha| # { "file.md" => "sha256:abc..." }
+          text = file_descriptions[key].to_s.strip
+          [key, text.empty? ? sha : { "sha256" => sha, "description" => text }]
+        end
         if hooks && !hooks.empty?
           # Normalize hooks to string-keyed with sha256 prefix preserved
           manifest["hooks"] = hooks.transform_keys(&:to_s).transform_values do |v|
@@ -205,12 +214,24 @@ module Samagotchi
         raw.each_with_object({}) do |(k, v), acc|
           next unless k.is_a?(String) && !k.empty?
 
-          str = v.to_s
+          str = (v.is_a?(Hash) ? v["sha256"] : v).to_s
           acc[k] = if str.start_with?("sha256:")
                      str
                    else
                      "sha256:#{str}"
                    end
+        end
+      end
+
+      # The descriptions of the files: entries given as a mapping.
+      def parse_file_descriptions(raw)
+        return {} unless raw.is_a?(Hash)
+
+        raw.each_with_object({}) do |(k, v), acc|
+          next unless k.is_a?(String) && v.is_a?(Hash)
+
+          text = v["description"].to_s.strip
+          acc[k] = text unless text.empty?
         end
       end
 

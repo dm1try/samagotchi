@@ -92,6 +92,7 @@ module Samagotchi
         FileUtils.mkdir_p(target_dir)
 
         # Copy .md files and update index for each.
+        @file_descriptions = manifest&.file_descriptions || {}
         all_files_in_bundle = []
         provenance = Provenance.new(name: @name)
         existing_provenance = provenance.read
@@ -421,7 +422,8 @@ module Samagotchi
             needs: manifest.needs,
             conflicts: @conflicts.keys,
             scripts_files: scripts_for_provenance,
-            context_providers: manifest.context_providers
+            context_providers: manifest.context_providers,
+            file_descriptions: manifest.file_descriptions
           )
         end
 
@@ -695,7 +697,9 @@ module Samagotchi
           # Index lines use the entry name (as memory_write does); drop the
           # legacy "name.md" line older installs wrote.
           IndexUpdater.remove_index(scope, file_key) unless entry_name == file_key
-          IndexUpdater.update_index(scope, entry_name, byte_count, source: owned ? @name : nil)
+          # A manifest's description: for the file; nil keeps the line's.
+          description = owned ? @file_descriptions&.[](file_key) : nil
+          IndexUpdater.update_index(scope, entry_name, byte_count, description, source: owned ? @name : nil)
         rescue StandardError => e
           # Not fatal (the file is in place): a warning says so.
           @warnings << "index.md: line for #{entry_name} not updated (#{e.message})"

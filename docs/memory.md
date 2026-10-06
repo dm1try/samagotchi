@@ -102,6 +102,22 @@ for a file another bundle installed.
   `- **memory_guide** · system · 2026-10-03 · 5120 · from samagotchi-system —
   …`. `memory_write`, `write` and `edit` keep it. A bundle installed by chi
   0.16 or earlier gets it on its next install or upgrade.
+- **A bundle can give a memory its index description.** A `files:` entry
+  may be a mapping instead of a sha line:
+
+  ```yaml
+  files:
+    identity.md: sha256:…
+    skill_coordinator.md:
+      sha256: sha256:…
+      description: "Coordinate parallel work: …"
+  ```
+
+  The install writes that description into the memory's `index.md` line
+  (after `— `), so the model can tell what a shipped skill is for from the
+  index alone. The bundle's record keeps it, `chi bundle build` writes the
+  mapping back, and `rake bundles:sha` refreshes the nested sha. A file
+  with a plain sha line keeps the description its line already has.
 - **Uninstall moves, it doesn't delete.** The bundle's memory files go to
   `$XDG_CONFIG_HOME/samagotchi/memories/.bundles/.trash/<bundle>-<YYYYmmdd-HHMMSS>/`,
   and the output names them and the dir:

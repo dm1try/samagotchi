@@ -40,15 +40,20 @@ module ReleaseTools
   # The manifest text with every sha256 line recomputed from the file it
   # names, the layout otherwise untouched. The three shapes:
   #   files:            a.md: sha256:<hex>             (dir/a.md)
+  #                     a.md:\n    sha256: sha256:<hex> (dir/a.md, with description:)
   #   hooks:            h.rb:\n    sha256: sha256:<hex> (dir/hooks/h.rb)
   #   plugin:           file: p.rb\n  sha256: sha256:<hex> (dir/p.rb)
   #   scripts:          s.rb: sha256:<hex>             (dir/scripts/s.rb)
   # Returns [text, [[relative file, old sha, new sha], ...]] for the lines
-  # that changed. A named file that's missing raises.
+  # that changed. A named file that's missing raises, and so does a files:
+  # entry none of those shapes matched (a quoted sha, a flow mapping), which
+  # would otherwise be skipped without a word.
   def refresh_manifest(text, dir)
-    plugin_file = (YAML.safe_load(text) || {}).dig("plugin", "file")
+    parsed = YAML.safe_load(text) || {}
+    plugin_file = parsed.dig("plugin", "file")
     top = sub = nil
     changes = []
+    seen = []
     lines = text.lines.map do |line|
       if line.match?(/\A[^\s#]/)
         top = line[/\A([^\s#][^:]*):/, 1]
@@ -58,6 +63,8 @@ module ReleaseTools
       file, prefix = sha_line(line, top, sub, plugin_file)
       next line unless file
 
+      seen << file if top == "files"
+
       path = File.join(dir, file)
       raise Error, "#{File.basename(dir)}/manifest.yml names #{file}, which isn't there" unless File.file?(path)
 
@@ -65,6 +72,11 @@ module ReleaseTools
       new = Digest::SHA256.hexdigest(File.binread(path))
       changes << [file, old, new] unless old == new
       "#{prefix}sha256:#{new}#{"\n" if line.end_with?("\n")}"
+    end
+    unread = (parsed["files"].is_a?(Hash) ? parsed["files"].keys.map(&:to_s) : []) - seen
+    unless unread.empty?
+      raise Error, "#{File.basename(dir)}/manifest.yml: no sha line to refresh for files: #{unread.join(", ")} " \
+                   "(write `name: sha256:<hex>`, or a mapping with an unquoted `sha256: sha256:<hex>` line)"
     end
     [lines.join, changes]
   end
@@ -74,6 +86,7 @@ module ReleaseTools
   def sha_line(line, top, sub, plugin_file)
     case top
     when "files"
+      m = line.match(/\A(    sha256: )sha256:\h*\s*\z/) and return sub && [sub.delete("\"'"), m[1]]
       m = line.match(/\A(  ["']?([^"':]+)["']?: )sha256:\h*\s*\z/) and [m[2], m[1]]
     when "hooks"
       m = line.match(/\A(    sha256: )sha256:\h*\s*\z/) and sub and [File.join("hooks", sub.delete("\"'")), m[1]]

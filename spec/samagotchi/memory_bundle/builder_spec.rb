@@ -139,6 +139,21 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect(Samagotchi::MemoryBundle::Manifest.read(dir: out).context_providers.map(&:to_h)).to eq([provider])
   end
 
+  it "keeps the installed bundle's file descriptions, so a rebuild's manifest has the same mappings" do
+    src = write_bundle_with_hooks({ "skill_x.md" => "# Skill: x\n", "identity.md" => "# Id\n" }, {}, name: "skills-ish")
+    manifest = YAML.load_file(File.join(src, "manifest.yml"))
+    manifest["files"]["skill_x.md"] = { "sha256" => manifest["files"]["skill_x.md"], "description" => "Use when x" }
+    File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
+    Samagotchi::MemoryBundle::Installer.new(source: src, name: "skills-ish", scope: "system", strict: true).run
+
+    out = File.join(tmpdir, "out-descriptions")
+    described_class.new(scope: "system", name: "skills-ish", out: out).run
+
+    built = Samagotchi::MemoryBundle::Manifest.read(dir: out)
+    expect(built.file_descriptions).to eq("skill_x.md" => "Use when x")
+    expect(built.checksum_for("skill_x.md")).to eq(Digest::SHA256.hexdigest("# Skill: x\n"))
+  end
+
   it "names a project bundle after the repository, also from a linked worktree" do
     repo = File.join(File.realpath(tmpdir), "My Repo")
     FileUtils.mkdir_p(repo)
