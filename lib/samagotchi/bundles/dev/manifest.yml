@@ -4,8 +4,7 @@ version: 0.2.0
 scope: system
 description: "Developer tools"
 trust_level: reviewed
-requires_chi: ">= 0.8.0"
-# requires_chi: raise to the release that ships github-pr (">= 0.32.0"; docs/releasing.md)
+requires_chi: ">= 0.32.0"
 includes:
 - known-names
 - mcp

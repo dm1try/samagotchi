@@ -4,7 +4,7 @@ version: 0.1.0
 scope: system
 description: Attaches the branch's open GitHub pull request to a session as context (and any PR URL with chi context add or the web's "+ URL"); the agent gets a note when reviews, comments, checks or its state change
 trust_level: reviewed
-# requires_chi: set at the release that has context providers and ctx.context (">= 0.32.0"; docs/releasing.md)
+requires_chi: ">= 0.32.0"
 needs:
 - command: gh
   why: reads the pull request

@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-06
+
 ### Added
 
 - Attached context: `chi context add NAME --cmd CMD` (or `--push`) attaches live external text to a session or,
@@ -27,13 +29,24 @@ and commands may change between minor versions. How releases are made:
   plugins attach with `ctx.context` and can check `ctx.scratch?` / `ctx.delegate?`. The new `github-pr` bundle (in
   `dev`; needs `gh`) attaches the branch's open PR when a session starts and wakes it for a review requesting
   changes, checks turning red, or the PR merged or closed; its summaries carry counts, authors and states, never
-  comment text. See [docs/context.md](docs/context.md).
+  comment text; a PR you detach stays detached until you add it again. See [docs/context.md](docs/context.md).
+
+### Changed
+
+- Web: in a session the composer is one compact row (the text field, then Cancel and Send); its box starts at one
+  line and the placeholder carries the key hint. The session footer keeps the first message to one line and shows the
+  end of a long path.
 
 ### Fixed
 
+- `chi bootstrap --key-env VAR` with `VAR` unset printed a TypeError backtrace; it now exits 1 with just its message.
 - Attached context: a fetch no longer writes back a source removed while it ran; `chi context push` takes the
   source's lock and refuses a command source; a project source runs in the session's folder when the project root
   is a bare git dir.
+
+Update with `chi update` and restart `chi web`: it installs the new `github-pr` bundle for the `dev` profile (dev
+0.2.0) and updates guardrails (0.6.0: asks before `chi context add --cmd`, protects attached context) and loop-guard
+(0.3.5: ignores `context_read`).
 
 ## [0.31.0] - 2026-10-06
 
@@ -1623,7 +1636,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/dm1try/samagotchi/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/dm1try/samagotchi/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/dm1try/samagotchi/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/dm1try/samagotchi/compare/v0.28.0...v0.29.0
