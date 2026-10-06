@@ -98,6 +98,21 @@ RSpec.describe Samagotchi::ContextAbsorber do
       TEXT
     end
 
+    it "keeps a wake asked since the last absorb when a change that doesn't ask comes after it" do
+      add(own, "pr-123")
+      push(own, "pr-123", "v1")
+      absorb
+      push(own, "pr-123", "v2", summary: "review: changes requested by @bob", wake: true)
+      push(own, "pr-123", "v3", summary: "1 new comment")
+
+      delivery = absorber.pending(now: now).deliveries.first
+      expect(delivery.wake_note[:text]).to include("> changed 2 times; latest: 1 new comment\n",
+                                                   described_class::WAKE_LAST_LINE)
+      absorb
+      push(own, "pr-123", "v4", summary: "another comment")
+      expect(absorber.pending(now: now).deliveries.first.wake_note).to be_nil
+    end
+
     it "has none for a change that doesn't ask, for a first text (attached) and for a failure" do
       add(own, "notes")
       push(own, "notes", "v1", wake: true)

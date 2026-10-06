@@ -118,7 +118,8 @@ module Samagotchi
       if sub.seen != snapshot.revision
         args = { name: name, hint: hint, summary: snapshot.summary, changes: snapshot.serial - sub.seen_serial }
         found = delivery(name, text_note_id(name, snapshot), self.class.updated_text(**args), now, seen(sub, snapshot))
-        return found unless snapshot.wake
+        # Any revision since the one the session last saw may have asked.
+        return found unless snapshot.wake_serial.to_i > sub.seen_serial
 
         return found.with(wake_note: found.note.merge(text: self.class.updated_text(**args, wake: true)))
       end

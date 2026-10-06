@@ -135,7 +135,9 @@ attaches a URL; the web never adds a command.
 A change can start a turn by itself, so the agent tells you about it while
 you're away from the terminal. All of these must hold:
 
-- the source asked (`"wake": true`; a plain-text source never does);
+- the source asked (`"wake": true`; a plain-text source never does), in
+  any change since the session last heard of it: a later change that doesn't
+  ask doesn't take the wake back;
 - `context.wake` is on (default `true`);
 - the session's worker is up and idle: no turn running, nothing queued, no
   question or continue offer waiting, not just started;

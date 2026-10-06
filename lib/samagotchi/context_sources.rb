@@ -67,26 +67,35 @@ module Samagotchi
     # +serial+ counts the revisions (an absorb that missed some says how
     # many); +error+ is the last failure, +error_since+ when the failures
     # began (cleared by a success), so a session hears about each run of
-    # failures once. +summary+, +wake+ and +hint+ come with the revision.
+    # failures once. +summary+, +wake+ and +hint+ come with the revision;
+    # +wake_serial+ is the serial of the newest revision that asked to wake
+    # (nil: none), so a change that doesn't ask, recorded before an absorb,
+    # doesn't hide a wake asked since the session's last one.
     # +fetched_at+ is the last success, +checked_at+ the last try (the
     # poller's clock: a failing source isn't run again every tick).
-    Snapshot = Data.define(:text, :summary, :revision, :serial, :fetched_at, :checked_at, :wake, :hint, :error,
-                           :error_since) do
+    Snapshot = Data.define(:text, :summary, :revision, :serial, :fetched_at, :checked_at, :wake, :wake_serial, :hint,
+                           :error, :error_since) do
       def self.empty
-        new(text: nil, summary: nil, revision: nil, serial: 0, fetched_at: nil, checked_at: nil, wake: false, hint: nil,
-            error: nil, error_since: nil)
+        new(text: nil, summary: nil, revision: nil, serial: 0, fetched_at: nil, checked_at: nil, wake: false,
+            wake_serial: nil, hint: nil, error: nil, error_since: nil)
       end
 
       def to_h
         { "text" => text, "summary" => summary, "revision" => revision, "serial" => serial,
-          "fetched_at" => fetched_at, "checked_at" => checked_at, "wake" => (wake ? true : nil), "hint" => hint,
+          "fetched_at" => fetched_at, "checked_at" => checked_at, "wake" => (wake ? true : nil),
+          "wake_serial" => wake_serial, "hint" => hint,
           "error" => error, "error_since" => error_since }.compact
       end
 
+      # A snapshot 0.32.0 wrote has no wake_serial: its wake is the latest
+      # revision's.
       def self.from_h(data)
-        new(text: data["text"], summary: data["summary"], revision: data["revision"], serial: data["serial"].to_i,
-            fetched_at: data["fetched_at"], checked_at: data["checked_at"] || data["fetched_at"],
-            wake: data["wake"] == true, hint: data["hint"], error: data["error"], error_since: data["error_since"])
+        serial = data["serial"].to_i
+        wake = data["wake"] == true
+        new(text: data["text"], summary: data["summary"], revision: data["revision"], serial: serial,
+            fetched_at: data["fetched_at"], checked_at: data["checked_at"] || data["fetched_at"], wake: wake,
+            wake_serial: data["wake_serial"]&.to_i || (serial if wake), hint: data["hint"], error: data["error"],
+            error_since: data["error_since"])
       end
 
       def text? = !text.nil?
@@ -230,7 +239,8 @@ module Samagotchi
                   else
                     Snapshot.new(text: fetched.text, revision: revision, serial: previous.serial + 1, fetched_at: stamp,
                                  checked_at: stamp, summary: fetched.summary || ContextSources.plain_summary(previous.text, fetched.text),
-                                 wake: fetched.wake, hint: fetched.hint || previous.hint, error: nil, error_since: nil)
+                                 wake: fetched.wake, wake_serial: fetched.wake ? previous.serial + 1 : previous.wake_serial,
+                                 hint: fetched.hint || previous.hint, error: nil, error_since: nil)
                   end
         write_snapshot(name, written)
       end
