@@ -6,11 +6,16 @@ require "tmpdir"
 require "digest"
 require "json"
 require "fileutils"
+require "stringio"
 require "spec_helper"
+require "samagotchi/bundle_command"
 
-# `chi bundle` through bin/chi, as a user runs it: the text on each stream
-# and the exit codes, pinned before the command moved out of bin/chi. Each
-# run gets its own config and state folders and a cwd in no git repo.
+# `chi bundle` as a user runs it: the text on each stream and the exit
+# codes, pinned before the command moved out of bin/chi. Each run gets its
+# own config and state folders and a cwd in no git repo. The examples call
+# BundleCommand in this process with those folders in ENV (what bin/chi
+# hands it); "through bin/chi" at the end runs the real executable for the
+# wiring: argv, the streams, exit codes, XDG_* from the environment.
 RSpec.describe "chi bundle (CLI)" do
   CHI_BUNDLE_BIN = File.expand_path("../bin/chi", __dir__)
   BUNDLE_FIXTURES = File.expand_path("fixtures", __dir__)
@@ -81,11 +86,32 @@ RSpec.describe "chi bundle (CLI)" do
     root
   end
 
+  def self.sandbox_env(root)
+    { "XDG_CONFIG_HOME" => File.join(root, "cfg"), "XDG_STATE_HOME" => File.join(root, "state") }
+  end
+
+  # `chi bundle ARGS` in this process: the sandbox's folders in ENV and its
+  # cwd, as bin/chi would run it there (stdin a non-tty).
+  # @return [Array(String, String, Integer)] stdout, stderr, exit status
   def self.run_in(root, *args, stdin_data: "")
-    env = { "XDG_CONFIG_HOME" => File.join(root, "cfg"), "XDG_STATE_HOME" => File.join(root, "state"),
-            "CI" => nil, "RACK_ENV" => nil, "SAMAGOTCHI_ENV" => nil }
+    env = sandbox_env(root)
+    saved = env.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+    env.each { |key, value| ENV[key] = value }
+    out = StringIO.new
+    err = StringIO.new
+    code = Dir.chdir(File.join(root, "cwd")) do
+      Samagotchi::BundleCommand.new(args, stdin: StringIO.new(stdin_data), stdout: out, stderr: err).run
+    end
+    [out.string, err.string, code]
+  ensure
+    saved&.each { |key, value| ENV[key] = value }
+  end
+
+  # The same through bin/chi in a child process.
+  def self.spawn_in(root, *args)
+    env = sandbox_env(root).merge("CI" => nil, "RACK_ENV" => nil, "SAMAGOTCHI_ENV" => nil)
     out, err, status = Open3.capture3(env, RbConfig.ruby, CHI_BUNDLE_BIN, "bundle", *args,
-                                      stdin_data: stdin_data, chdir: File.join(root, "cwd"))
+                                      stdin_data: "", chdir: File.join(root, "cwd"))
     [out, err, status.exitstatus]
   end
 
@@ -549,6 +575,29 @@ Hooks removed: 1\n\z})
       expect(out).to match(/\AWould delete: sample-hooks-bundle-\d{8}-\d{6}/)
       # Trash should still exist
       expect(Dir.glob(File.join(memories, ".bundles", ".trash", "*"))).not_to be_empty
+    end
+  end
+
+  # The shared mechanism, once each, through the real executable: bin/chi
+  # dispatches "bundle" with the rest of argv, prints on the right stream,
+  # exits with the command's status (0, a usage error's 2, a failure's 1),
+  # and finds the config and state folders from XDG_* in its environment.
+  context "through bin/chi" do
+    before { @root = self.class.sandbox }
+    after { FileUtils.rm_rf(@root) }
+
+    def spawn(*args) = self.class.spawn_in(@root, *args)
+
+    it "prints the usage (exit 0) and refuses a missing source (exit 2)" do
+      expect(spawn("--help")).to eq([TOP_USAGE, "", 0])
+      expect(spawn("install")).to eq(["", "Usage: chi bundle install <source> [--scope system|project] [--force]\n", 2])
+    end
+
+    it "installs into XDG_CONFIG_HOME, status reads it back, and a failure exits 1" do
+      expect(spawn("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle")))
+        .to eq(["Installed: identity.md, guardrails.rb\nHooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}", "", 0])
+      expect(spawn("status")).to eq(["  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n", "", 0])
+      expect(spawn("uninstall", "nope")).to eq(["", "Uninstall failed: Bundle 'nope' is not installed\n", 1])
     end
   end
 end
