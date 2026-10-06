@@ -186,6 +186,7 @@ module Samagotchi
     # memory_write's label: a call with only a description changes the index line.
     def memory_write_action(call)
       return "saving memory" unless call.is_a?(Hash)
+      return "removing memory" if call[:remove].to_s.strip.downcase == "true"
       return "updating memory description" if call[:content].to_s.empty? && !call[:description].to_s.strip.empty?
 
       "saving memory"
@@ -241,6 +242,7 @@ module Samagotchi
         parts << "scope=#{preview_tool_param(scope)}" unless scope.empty?
         desc = call[:description].to_s.strip
         parts << "description=#{preview_tool_param(desc)}" unless desc.empty?
+        parts << "remove=true" if call[:remove].to_s.strip.downcase == "true"
         parts.join(" ")
       when Tools::TaskCreate::NAME
         parts = ["command=#{preview_tool_param(call[:content])}"]

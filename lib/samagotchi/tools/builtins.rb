@@ -63,7 +63,7 @@ module Samagotchi
         MemoryWrite::NAME => lambda do |call, kctx|
           MemoryWrite.call(call[:content], path: call[:path], scope: call[:scope], description: call[:description],
                                            current_model_only: truthy?(call[:current_model_only]),
-                                           model_key: kctx.model_key)
+                                           model_key: kctx.model_key, remove: truthy?(call[:remove]))
         end,
         Write::NAME => ->(call, _kctx) { Write.call(call[:content], path: call[:path]) },
         Read::NAME => lambda do |call, _kctx|

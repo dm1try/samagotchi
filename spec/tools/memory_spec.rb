@@ -4,6 +4,7 @@ require "samagotchi/tools/memory"
 require "tmpdir"
 require "fileutils"
 require "date"
+require "json"
 
 RSpec.describe Samagotchi::Tools::MemoryRead do
   let(:project_memories_dir) { Dir.mktmpdir }
@@ -395,6 +396,83 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       it "asks for content or a description when both are missing" do
         result = described_class.call("", path: "k", scope: "project", description: "  ")
         expect(result).to eq("Error: content is required (or pass only description to change the index line)")
+      end
+    end
+
+    describe "remove: true" do
+      let(:trash_root) { File.join(system_memories_dir, ".bundles", ".trash") }
+
+      def index_text(dir = project_memories_dir) = File.read(File.join(dir, "index.md"))
+      def trashed = Dir.glob(File.join(trash_root, "*", "*")).map { |f| File.basename(f) }.sort
+
+      it "moves the file into the bundle trash and drops its index line, leaving the others" do
+        described_class.call("plan", path: "handoff_x", scope: "project", description: "DONE: merged")
+        described_class.call("keep", path: "notes", scope: "project", description: "notes")
+        result = described_class.call("", path: "handoff_x", scope: "project", remove: true)
+
+        expect(result).to start_with("Memory 'handoff_x' removed from project scope: moved to #{trash_root}/memory-handoff_x-")
+        expect(result).to include("chi bundle trash")
+        expect(File.exist?(File.join(project_memories_dir, "handoff_x.md"))).to be(false)
+        expect(trashed).to eq(["handoff_x.md"])
+        expect(Dir.children(trash_root).first).to match(/\Amemory-handoff_x-\d{8}-\d{6}\z/)
+        expect(index_text).not_to include("handoff_x")
+        expect(index_text).to include("- **notes**")
+        expect(Samagotchi::MemoryBundle::Trash.entries.map(&:files)).to eq([1])
+      end
+
+      it "takes the entry's model overlays along, not a dotted memory with a line of its own" do
+        described_class.call("base", path: "handoff_x", scope: "project")
+        described_class.call("v2 memory", path: "handoff_x.v2", scope: "project")
+        File.write(File.join(project_memories_dir, "handoff_x.qwen3-6.md"), "overlay")
+        File.write(File.join(project_memories_dir, "handoff_x.Not_A_Key.md"), "other")
+        described_class.call("", path: "handoff_x", scope: "project", remove: true)
+
+        expect(trashed).to eq(%w[handoff_x.md handoff_x.qwen3-6.md])
+        expect(Dir.children(project_memories_dir)).to include("handoff_x.v2.md", "handoff_x.Not_A_Key.md")
+        expect(index_text).to include("- **handoff_x.v2**")
+      end
+
+      it "drops a dangling index line whose file is already gone" do
+        described_class.call("x", path: "gone", scope: "project", description: "left behind")
+        File.delete(File.join(project_memories_dir, "gone.md"))
+        result = described_class.call(nil, path: "gone", scope: "project", remove: true)
+        expect(result).to eq("Memory 'gone' had no file in project scope; its dangling index line was dropped.")
+        expect(index_text).not_to include("gone")
+        expect(Dir.exist?(trash_root)).to be(false)
+      end
+
+      it "says so when there is neither a file nor a line" do
+        expect(described_class.call("", path: "nope", scope: "system", remove: true))
+          .to eq("Error: no memory 'nope' in system scope")
+      end
+
+      it "refuses the index, content, a description and current_model_only" do
+        File.write(File.join(project_memories_dir, "index.md"), "# idx\n")
+        described_class.call("x", path: "k", scope: "project")
+        expect(described_class.call("", path: "index", scope: "project", remove: true)).to start_with("Error: the index")
+        expect(described_class.call("new", path: "k", scope: "project", remove: true))
+          .to eq("Error: remove: true takes only name and scope (no content, description or current_model_only)")
+        expect(described_class.call("", path: "k", scope: "project", description: "d", remove: true)).to start_with("Error: remove")
+        expect(described_class.call("", path: "k", scope: "project", remove: true, current_model_only: true, model_key: "q"))
+          .to start_with("Error: remove")
+        expect(File.read(File.join(project_memories_dir, "k.md"))).to eq("x")
+      end
+
+      it "refuses a memory a bundle owns: listed in an installed bundle's record, or tagged on its line" do
+        described_class.call("guide", path: "guide", scope: "system")
+        record = File.join(system_memories_dir, ".bundles", "my-bundle")
+        FileUtils.mkdir_p(record)
+        File.write(File.join(record, "manifest.json"),
+                   JSON.generate({ name: "my-bundle", scope: "system", files: { "guide.md" => { checksum: "x" } } }))
+        expect(described_class.call("", path: "guide", scope: "system", remove: true))
+          .to eq("Error: memory 'guide' came from bundle my-bundle; `chi bundle uninstall my-bundle` removes it")
+
+        described_class.call("tagged", path: "tagged", scope: "project")
+        Samagotchi::MemoryBundle::IndexUpdater.update_index("project", "tagged", 6, nil, source: "other")
+        expect(described_class.call("", path: "tagged", scope: "project", remove: true))
+          .to eq("Error: memory 'tagged' came from bundle other; `chi bundle uninstall other` removes it")
+        expect(File.exist?(File.join(system_memories_dir, "guide.md"))).to be(true)
+        expect(File.exist?(File.join(project_memories_dir, "tagged.md"))).to be(true)
       end
     end
 

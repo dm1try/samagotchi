@@ -49,6 +49,13 @@ RSpec.describe Samagotchi::ToolActivity do
     expect(described_class.tool_activity_action("memory_write")).to eq("saving memory")
   end
 
+  it "labels a memory_write remove and shows remove=true" do
+    call = { name: "memory_write", path: "handoff_x", scope: "project", remove: true }
+    event = described_class.tool_activity_event("memory_write", call, "ok", registry: registry)
+    expect(event[:action]).to eq("removing memory")
+    expect(event[:params]).to eq('name="handoff_x" scope="project" remove=true')
+  end
+
   it "says calling tool with no params for a tool the registry doesn't know" do
     expect(described_class.tool_activity_event("nope", { name: "nope", content: "x" }, "Error: …", registry: registry))
       .to eq(action: "calling tool", tool: "nope", params: nil, status: "error")

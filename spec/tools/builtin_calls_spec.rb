@@ -29,7 +29,8 @@ RSpec.describe Samagotchi::Tools::BuiltinCalls do
     expect(described_class.build("read", { "path" => "a.rb" }))
       .to eq(name: "read", content: "a.rb", path: nil, scope: nil, start_line: nil, end_line: nil)
     expect(described_class.build("memory_write", { "name" => "n", "body" => " c ", "scope" => "system" }))
-      .to eq(name: "memory_write", content: " c ", path: "n", scope: "system", description: nil, current_model_only: nil)
+      .to eq(name: "memory_write", content: " c ", path: "n", scope: "system", description: nil, current_model_only: nil,
+             remove: nil)
     expect(described_class.build("task_list", {})).to eq(name: "task_list", content: "", path: nil, scope: nil)
   end
 

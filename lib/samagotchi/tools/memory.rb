@@ -154,12 +154,22 @@ module Samagotchi
       # every session's prompt for the repo.
       DESCRIPTION_LIMIT = 200
 
-      def self.call(content, path:, scope:, description: nil, current_model_only: false, model_key: nil)
+      # @param remove [Boolean] move the entry (and its model overlays) into
+      #   the bundle trash and drop its index line (#remove)
+      def self.call(content, path:, scope:, description: nil, current_model_only: false, model_key: nil, remove: false)
         entry_name = path.to_s.strip
         body = content.to_s
         return "Error: entry name is required" if entry_name.empty?
         return MemoryRead.invalid_name_error(entry_name) if MemoryRead.invalid_name?(entry_name)
         return "Error: scope is required" if scope.to_s.strip.empty?
+
+        if remove
+          if !body.empty? || !description.to_s.strip.empty? || current_model_only
+            return "Error: remove: true takes only name and scope (no content, description or current_model_only)"
+          end
+
+          return remove(entry_name, scope)
+        end
 
         description = normalize_description(description)
         if description && description.length > DESCRIPTION_LIMIT
@@ -243,6 +253,57 @@ module Samagotchi
 
         manage_index(resolved_scope, entry_name, File.size(file_path), description)
         "Memory '#{entry_name}' description updated in #{resolved_scope} scope (file unchanged)."
+      end
+
+      # remove: true. Moves <name>.md and its model overlays into one
+      # MemoryBundle::Trash dir (memory-<name>-<time>, which `chi bundle
+      # trash` lists and empties) and drops the index line; a line whose
+      # file is already gone is dropped alone. A memory a bundle owns (an
+      # installed bundle's record lists it, or its line says "· from
+      # <bundle>") is the uninstaller's, and the index isn't a memory.
+      def self.remove(entry_name, scope)
+        return "Error: the index can't be removed; it is kept up to date for you" if entry_name == MEMORY_INDEX
+
+        require_relative "../memory_bundle/index_updater"
+        require_relative "../memory_bundle/provenance"
+        require_relative "../memory_bundle/trash"
+        resolved_scope = MemoryRead.normalize_scope(scope)
+        dir = MemoryRead.memories_dir(resolved_scope)
+        index = File.join(dir, "#{MEMORY_INDEX}.md")
+        index_text = File.file?(index) ? File.read(index, encoding: "UTF-8") : ""
+        line = index_text[managed_pattern(entry_name)]
+        file = File.join(dir, "#{entry_name}.md")
+
+        owner = Samagotchi::MemoryBundle::Provenance.claimants("#{entry_name}.md", scope: resolved_scope).first ||
+                (line && Samagotchi::MemoryBundle::IndexUpdater.extract_source(line))
+        return "Error: memory '#{entry_name}' came from bundle #{owner}; `chi bundle uninstall #{owner}` removes it" if owner
+
+        unless File.file?(file)
+          return "Error: no memory '#{entry_name}' in #{resolved_scope} scope" unless line
+
+          Samagotchi::MemoryBundle::IndexUpdater.remove_index(resolved_scope, entry_name)
+          return "Memory '#{entry_name}' had no file in #{resolved_scope} scope; its dangling index line was dropped."
+        end
+
+        trash = Samagotchi::MemoryBundle::Trash.new("memory-#{entry_name}")
+        ([file] + overlay_files(dir, entry_name, index_text)).each { |path| trash.move(path) }
+        Samagotchi::MemoryBundle::IndexUpdater.remove_index(resolved_scope, entry_name)
+        "Memory '#{entry_name}' removed from #{resolved_scope} scope: moved to #{trash.dir} " \
+          "(`chi bundle trash` lists and empties it); index line dropped."
+      end
+
+      # The entry's model overlays: <name>.<key>.md with a key ModelOverlay
+      # makes, unless that stem is a memory of its own (names may have dots:
+      # handoff_x.v2 has an index line).
+      def self.overlay_files(dir, entry_name, index_text)
+        pattern = /\A#{Regexp.escape(entry_name)}\.([a-z0-9-]+)\.md\z/
+        Dir.children(dir).sort.filter_map do |child|
+          key = child[pattern, 1] or next
+          next if index_text.match?(managed_pattern("#{entry_name}.#{key}"))
+
+          path = File.join(dir, child)
+          path if File.file?(path)
+        end
       end
 
       # Adds or refreshes a single managed line for `entry_name` in the given
