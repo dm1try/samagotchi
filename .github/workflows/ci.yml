@@ -84,6 +84,25 @@ jobs:
       - name: RuboCop (.rubocop.yml; TargetRubyVersion 3.3)
         run: bundle exec rake lint
 
+  bundles:
+    name: bundles:check
+    runs-on: ubuntu-latest
+    steps:
+      # The full history and tags: the version check diffs each bundle
+      # against the last v* tag (a shallow clone has none and skips it).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      # Sha lines strict for every bundle; a bundle changed since the last
+      # tag needs a higher version, the system bundle aside (release:bump
+      # moves it with VERSION). The release workflow runs the full check.
+      - name: Bundle manifests (rake 'bundles:check[ci]')
+        run: bundle exec rake 'bundles:check[ci]'
+
   web:
     name: npm test
     runs-on: ubuntu-latest

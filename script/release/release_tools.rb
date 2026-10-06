@@ -12,7 +12,8 @@ module ReleaseTools
   REPO_URL = "https://github.com/dm1try/samagotchi"
   BUNDLES_DIR = "lib/samagotchi/bundles"
   VERSION_FILE = "lib/samagotchi/version.rb"
-  SYSTEM_MANIFEST = "#{BUNDLES_DIR}/system/manifest.yml".freeze
+  SYSTEM_BUNDLE = "system"
+  SYSTEM_MANIFEST = "#{BUNDLES_DIR}/#{SYSTEM_BUNDLE}/manifest.yml".freeze
   CHANGELOG = "CHANGELOG.md"
   VERSION_PATTERN = /\A\d+\.\d+\.\d+(?:\.[0-9A-Za-z.]+)?\z/
 
@@ -119,8 +120,11 @@ module ReleaseTools
   # edits to tracked files) must carry a higher version: only the system
   # bundle upgrades by itself; users upgrade the others with `chi bundle
   # upgrade`, which compares versions. A bundle new since the tag is fine.
-  def unbumped_bundles(root, tag)
+  # +skip+: bundle names left out (CI mode leaves out the system bundle).
+  def unbumped_bundles(root, tag, skip: [])
     bundle_dirs(root).filter_map do |dir|
+      next if skip.include?(File.basename(dir))
+
       rel = dir.delete_prefix("#{File.expand_path(root)}/")
       _, same = git(root, "diff", "--quiet", tag, "--", rel)
       next if same
@@ -154,12 +158,16 @@ module ReleaseTools
     end
   end
 
-  # [problems, notes] for `rake bundles:check`.
-  def bundles_check(root)
+  # [problems, notes] for `rake bundles:check`. +ci+ (`rake
+  # bundles:check[ci]`, the CI workflow): the changed-bundle version check
+  # leaves out the system bundle, whose version moves only with VERSION at
+  # `rake release:bump`, so it is changed and unbumped between releases.
+  # The sha lines stay strict for every bundle.
+  def bundles_check(root, ci: false)
     problems = stale_shas(root)
     notes = []
     if (tag = last_tag(root))
-      problems += unbumped_bundles(root, tag)
+      problems += unbumped_bundles(root, tag, skip: ci ? [SYSTEM_BUNDLE] : [])
       notes += stale_requires_chi(root, tag)
     else
       notes << "No v* tag yet: skipped the changed-bundle version check."

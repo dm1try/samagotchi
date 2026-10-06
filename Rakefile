@@ -69,9 +69,13 @@ namespace :bundles do
     end
   end
 
-  desc "Check the bundle manifests: sha256 lines match; a bundle changed since the last v* tag has a higher version (and a warning when its requires_chi admits that tag)"
-  task :check do
-    problems, notes = ReleaseTools.bundles_check(ROOT)
+  desc "Check the bundle manifests: sha256 lines match; a bundle changed since the last v* tag has a higher version " \
+       "(and a warning when its requires_chi admits that tag). bundles:check[ci], the CI workflow's: the version " \
+       "check leaves out the system bundle (release:bump moves it with VERSION)"
+  task :check, [:mode] do |_t, args|
+    abort "usage: rake bundles:check or rake 'bundles:check[ci]'" unless [nil, "ci"].include?(args[:mode])
+
+    problems, notes = ReleaseTools.bundles_check(ROOT, ci: args[:mode] == "ci")
     notes.each { |n| puts "note: #{n}" }
     abort "bundles:check failed:\n  #{problems.join("\n  ")}" unless problems.empty?
     puts "bundles:check OK (#{ReleaseTools.bundle_dirs(ROOT).size} bundles)"

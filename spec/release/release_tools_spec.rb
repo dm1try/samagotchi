@@ -181,6 +181,38 @@ RSpec.describe ReleaseTools do
           expect(described_class.bundles_check(tmp)).to eq([[], []])
         end
       end
+
+      # Between releases the system bundle is changed at its tagged version:
+      # release:bump moves it with VERSION.
+      context "in CI mode" do
+        let(:system) { "lib/samagotchi/bundles/system" }
+
+        before do
+          write("#{system}/s.md", "one")
+          write("#{system}/manifest.yml", "name: system\nversion: 0.1.0\nfiles:\n  s.md: sha256:#{sha("one")}\n")
+          git("add", ".")
+          git("commit", "-q", "-m", "system")
+          git("tag", "-f", "v0.1.0")
+          write("#{system}/s.md", "two")
+          described_class.refresh_bundle_shas!(tmp)
+        end
+
+        it "passes the system bundle changed since the tag at its version; the full check fails it" do
+          expect(described_class.bundles_check(tmp, ci: true)).to eq([[], []])
+          expect(described_class.bundles_check(tmp).first)
+            .to eq(["system: changed since v0.1.0 but still version 0.1.0 (bump its manifest version)"])
+        end
+
+        it "still fails another bundle changed without a bump, and a stale sha line in any bundle" do
+          write("#{bundle}/a.md", "two")
+          described_class.refresh_bundle_shas!(tmp)
+          expect(described_class.bundles_check(tmp, ci: true).first)
+            .to eq(["b: changed since v0.1.0 but still version 0.1.0 (bump its manifest version)"])
+          write("#{system}/s.md", "three")
+          expect(described_class.bundles_check(tmp, ci: true).first)
+            .to include("system: stale sha256 for s.md (rake bundles:sha)")
+        end
+      end
     end
   end
 
