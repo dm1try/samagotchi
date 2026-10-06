@@ -790,11 +790,19 @@ changes:
 
 ```
 status> model=Qwen3.6-35B | ↳ 3f2a1c9e | ctx=12.3% (under20) | mem: notes, cli_usage | muted: gh-helper
+status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | ctx=8.1% (under20) | mem: skill_coordinator
 ```
 
 - `model=`: the model in use, `(default: …)` beside it when it isn't the config's default, and
   `model=<served> (served; asked <name>)` when the server said it served another model.
 - `↳ <id>`: the session that delegated this one.
+- `⑂ …`: this session's delegate children (forks aren't counted): how many run and how many wait
+  for an answer; only the counts there are, nothing when none does (`/children` has the rest:
+  done, failed, whether a reply was reported). The terminal reads them from the children's files
+  (the delegates in the session's `delegates.json`): an attached one when it joins, when a turn
+  ends and when a delegate's report merges into a turn, the REPL whenever it draws the row. A
+  child that starts waiting on an approval (which doesn't wake the parent) shows at the next of
+  those.
 - `ctx=`: the kernel's context estimate and its bucket, updated during a turn (on hosts that
   report none, `api: openai`, at the turn's end).
 - `mem:`: the memories the session read, with its `--memory` list; `muted:` its `--mute` list.

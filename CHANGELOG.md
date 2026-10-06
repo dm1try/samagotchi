@@ -19,6 +19,9 @@ and commands may change between minor versions. How releases are made:
   refused inside a session, and the guardrails bundle's `chi-broadcast` rule asks. See
   [docs/broadcast.md](docs/broadcast.md).
 - `chi sessions list --format json` has `delegate`: true for a child the `delegate` tool started, false for a fork.
+- A parent session shows its delegate children at a glance: a `⑂ 3` chip on its web card and in its info bar
+  (how many run, wait, are done or failed in the tooltip; the waiting ones in the attention colour; a click opens
+  all sessions), and `⑂ 2 running · 1 waiting` in the terminal's status row.
 
 ### Changed
 
