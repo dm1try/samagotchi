@@ -89,6 +89,19 @@ RSpec.describe Samagotchi::MemoryPaths do
       expect(described_class.project_key(tree)).to start_with("repo_")
     end
 
+    it "gives the git dir holding a folder's own HEAD: .git in the main checkout, the linked worktree's own, nil outside git" do
+      repo = File.join(real_tmp, "repo")
+      repo_with_commit(repo)
+      tree = File.join(real_tmp, "repo-feature")
+      git("-C", repo, "worktree", "add", "-q", "-b", "feature", tree)
+      FileUtils.mkdir_p(File.join(tree, "lib"))
+      FileUtils.mkdir_p(File.join(@tmp, "plain"))
+
+      expect(described_class.git_dir(repo)).to eq(File.join(repo, ".git"))
+      expect(described_class.git_dir(File.join(tree, "lib"))).to eq(File.join(repo, ".git", "worktrees", "repo-feature"))
+      expect(described_class.git_dir(File.join(@tmp, "plain"))).to be_nil
+    end
+
     it "keys a submodule-shaped .git file (no commondir) by that gitdir" do
       gitdir = File.join(real_tmp, "sup", ".git", "modules", "sub")
       FileUtils.mkdir_p(gitdir)

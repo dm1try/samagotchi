@@ -222,7 +222,10 @@ module Samagotchi
         SessionManager.children_of(parent_id, state_dir: state_dir).select { |s| running?(s) }
       end
 
-      # busy (a worker runs its turn), or running with a worker on its way.
+      # busy (a worker runs its turn), or running with a worker on its way
+      # (ChildrenStatus asks it too).
+      # @param summary [Hash] a children_of row, or the same keys: busy,
+      #   status, live, updated_at
       def self.running?(summary)
         return true if summary[:busy]
         return false unless summary[:status] == Session::STATUS_RUNNING && !summary[:live]
@@ -231,7 +234,6 @@ module Samagotchi
       rescue ArgumentError
         false
       end
-      private_class_method :running?
 
       def self.max_children
         value = Integer(Config.get(MAX_CHILDREN_KEY), exception: false)

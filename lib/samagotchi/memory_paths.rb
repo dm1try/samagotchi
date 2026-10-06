@@ -59,6 +59,16 @@ module Samagotchi
       dot_git && File.dirname(dot_git)
     end
 
+    # The git dir of the work tree holding +cwd+: .git itself in a main
+    # checkout, the worktree's own dir under .git/worktrees in a linked one
+    # (where HEAD is that worktree's); nil outside any repository.
+    def git_dir(cwd = Dir.pwd)
+      dot_git = find_dot_git(cwd)
+      return nil unless dot_git
+
+      File.directory?(dot_git) ? dot_git : gitdir_from_file(dot_git)
+    end
+
     # Is +cwd+ inside a git repository (a .git somewhere above it)?
     def in_repo?(cwd = Dir.pwd)
       !find_dot_git(cwd).nil?
