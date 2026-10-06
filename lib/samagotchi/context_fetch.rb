@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "context_sources"
+require_relative "context_providers"
 require_relative "log"
 
 module Samagotchi
@@ -51,8 +52,12 @@ module Samagotchi
         return Outcome.new(status: :fresh, snapshot: before, error: nil) if fresh_within && age && age < fresh_within
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        run = run_command(attached.source.cmd, cwd: cwd, env: env_for(location, name), timeout: timeout,
-                                               cancelled: cancelled)
+        run = begin
+          run_command(ContextProviders.command_for(attached.source), cwd: cwd, env: env_for(location, name),
+                                                                     timeout: timeout, cancelled: cancelled)
+        rescue ContextProviders::Invalid => e
+          Run.new(output: nil, error: e.message, stderr: "", cancelled: false)
+        end
         outcome = if run.cancelled
                     Outcome.new(status: :cancelled, snapshot: before, error: nil)
                   else

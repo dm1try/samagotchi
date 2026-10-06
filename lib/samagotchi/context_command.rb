@@ -4,6 +4,7 @@ require "json"
 require "time"
 require_relative "context_sources"
 require_relative "context_fetch"
+require_relative "context_providers"
 require_relative "memory_paths"
 require_relative "session"
 require_relative "cli/command"
@@ -21,6 +22,7 @@ module Samagotchi
     USAGE = <<~TEXT
       Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute> [options] [TARGET]
         add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] TARGET
+        add URL [--why TEXT] TARGET         a URL an installed bundle's provider knows (github-pr: a PR)
               a source: CMD prints its text (plain, or JSON {"text", "summary", "wake", "hint"});
               --push: text comes from chi context push. --every: how often CMD runs
               (seconds, at least 30; default context.every_seconds). --why: why it's attached;
@@ -109,10 +111,7 @@ module Samagotchi
     def run_add(options, args)
       name = args.shift
       return usage_error("give the source's NAME") unless name
-      if name.match?(%r{\Ahttps?://})
-        # C6 resolves a URL through the bundles' providers.
-        return fail_line("no provider resolves URLs yet: give a NAME and --cmd CMD or --push")
-      end
+      return add_url(name, options, args) if name.match?(%r{\Ahttps?://})
       return usage_error("give --cmd CMD or --push") unless options[:cmd] || options[:push]
       return usage_error("--cmd and --push don't go together") if options[:cmd] && options[:push]
       return usage_error("--every is for a --cmd source") if options[:every] && options[:push]
@@ -131,6 +130,33 @@ module Samagotchi
         @stdout.puts("#{target.label}  attached #{name}")
         true
       end
+    end
+
+    # A URL through the installed bundles' providers (ContextProviders):
+    # the provider gives the name, command, hint and interval. Not gated
+    # like --cmd (chi-context-cmd): the command is the bundle's.
+    def add_url(url, options, args)
+      if options[:cmd] || options[:push] || options[:every]
+        return usage_error("a URL's command comes from its provider: give no --cmd, --push or --every")
+      end
+
+      resolved = ContextProviders.resolve(url)
+      return fail_line("no installed bundle resolves #{url} (chi bundle install github-pr for GitHub PRs)") unless resolved
+
+      source = ContextSources::Source.new(
+        name: resolved.name, cmd: resolved.cmd, every_seconds: resolved.every_seconds,
+        why: ContextSources.one_line(options[:why] || resolved.why, ContextSources::LINE_MAX_CHARS),
+        hint: ContextSources.one_line(options[:hint] || resolved.hint, ContextSources::LINE_MAX_CHARS),
+        scope: nil, added_by: inside_session ? "agent" : "cli", created_at: Time.now.utc.iso8601, provider: resolved.bundle
+      )
+      each_target(options, args) do |target|
+        location = location_of(target)
+        location.add(source.with(scope: location.scope))
+        @stdout.puts("#{target.label}  attached #{source.name}")
+        true
+      end
+    rescue ContextProviders::Invalid => e
+      fail_line(e.message)
     end
 
     def run_push(options, args)

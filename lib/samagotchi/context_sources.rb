@@ -42,18 +42,22 @@ module Samagotchi
     class Invalid < ArgumentError; end
 
     # A source's definition. +cmd+ nil: pushed only (chi context push).
-    Source = Data.define(:name, :cmd, :every_seconds, :why, :hint, :scope, :added_by, :created_at) do
+    # +provider+: the bundle whose context provider made it (a URL), whose
+    # folder its cmd's {bundle_dir} names (ContextProviders.command_for).
+    Source = Data.define(:name, :cmd, :every_seconds, :why, :hint, :scope, :added_by, :created_at, :provider) do
+      def initialize(name:, cmd:, every_seconds:, why:, hint:, scope:, added_by:, created_at:, provider: nil) = super
+
       def push? = cmd.nil?
 
       def to_h
         { "name" => name, "cmd" => cmd, "every_seconds" => every_seconds, "why" => why, "hint" => hint,
-          "scope" => scope, "added_by" => added_by, "created_at" => created_at }.compact
+          "scope" => scope, "added_by" => added_by, "created_at" => created_at, "provider" => provider }.compact
       end
 
       def self.from_h(data)
         new(name: data["name"].to_s, cmd: data["cmd"], every_seconds: data["every_seconds"]&.to_i,
             why: data["why"], hint: data["hint"], scope: data["scope"].to_s, added_by: data["added_by"],
-            created_at: data["created_at"])
+            created_at: data["created_at"], provider: data["provider"])
       end
     end
 

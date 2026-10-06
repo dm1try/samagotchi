@@ -94,7 +94,7 @@ RSpec.describe Samagotchi::ContextCommand do
       expect(own(a).sources).to be_empty
     end
 
-    it "refuses a bad name, a name already attached, an unknown session, and (until providers) a URL" do
+    it "refuses a bad name, a name already attached, an unknown session, and a URL no bundle resolves" do
       a = make
       expect(run("add", "Bad/Name", "--push", a.id)).to eq(1)
       expect(run("add", "x", "--push", a.id)).to eq(0)
@@ -103,7 +103,43 @@ RSpec.describe Samagotchi::ContextCommand do
       expect(run("add", "y", "--push", "ffffffff")).to eq(1)
       expect(err.string).to include("no session ffffffff")
       expect(run("add", "https://github.com/x/y/pull/1", a.id)).to eq(1)
-      expect(err.string).to include("no provider resolves URLs yet")
+      expect(err.string).to include("no installed bundle resolves https://github.com/x/y/pull/1 " \
+                                    "(chi bundle install github-pr for GitHub PRs)")
+    end
+
+    describe "a URL" do
+      around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
+
+      before do
+        dir = File.join(Samagotchi::MemoryPaths.system_dir, ".bundles", "prs")
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "manifest.json"), JSON.generate(
+          "name" => "prs", "version" => "1.0.0", "files" => {},
+          "context_providers" => [{ "match" => '\Ahttps://example\.com/pull/(\d+)', "name" => 'pr-\1',
+                                    "cmd" => "ruby {bundle_dir}/scripts/pr.rb {url}", "why" => "a PR",
+                                    "every_seconds" => 120 }]
+        ))
+      end
+
+      it "attaches the source a bundle's provider makes of it; --why replaces the provider's" do
+        a = make
+        expect(run("add", "https://example.com/pull/7", a.id)).to eq(0)
+        expect(out.string).to include("#{a.id[0, 8]}  attached pr-7")
+        expect(own(a).source("pr-7")).to have_attributes(
+          cmd: "ruby {bundle_dir}/scripts/pr.rb https://example.com/pull/7", provider: "prs", why: "a PR",
+          hint: "https://example.com/pull/7", every_seconds: 120, added_by: "cli", scope: "session"
+        )
+
+        b = make
+        expect(run("add", "https://example.com/pull/8", "--why", "review it", b.id)).to eq(0)
+        expect(own(b).source("pr-8").why).to eq("review it")
+      end
+
+      it "takes no --cmd, --push or --every: the provider gives them" do
+        a = make
+        expect(run("add", "https://example.com/pull/7", "--cmd", "x", a.id)).to eq(2)
+        expect(err.string).to include("a URL's command comes from its provider: give no --cmd, --push or --every")
+      end
     end
   end
 

@@ -1,6 +1,14 @@
 # frozen_string_literal: true
 
+require "shellwords"
+
 module Samagotchi
+  autoload :ContextSources, File.expand_path("context_sources", __dir__)
+  autoload :Log, File.expand_path("log", __dir__)
+  module MemoryBundle
+    autoload :Provenance, File.expand_path("memory_bundle/provenance", __dir__)
+  end
+
   # Declarative context providers (attached context, §3.9): a bundle's
   # manifest maps a URL pattern to a source, so any process (the CLI, the
   # web server, a worker) can attach a URL without loading plugins:
@@ -63,6 +71,67 @@ module Samagotchi
       end
       Provider.new(match: data["match"], name: data["name"], cmd: data["cmd"], why: data["why"]&.to_s,
                    every_seconds: every(data["every_seconds"]))
+    end
+
+    # The source the installed bundles' providers make of +url+: the first
+    # bundle (by name) whose provider matches. A bundle whose providers
+    # don't parse is skipped (logged).
+    # @return [Resolved, nil] nil when none matches
+    # @raise [Invalid] the provider makes a name that isn't a source name
+    def resolve(url)
+      url = url.to_s.strip
+      MemoryBundle::Provenance.each_installed do |bundle, data|
+        next if data[:error] || !data[:context_providers].is_a?(Array)
+
+        providers(bundle, data).each do |provider|
+          match = provider.regexp.match(url) or next
+          return resolved(bundle, provider, match)
+        end
+      end
+      nil
+    end
+
+    def providers(bundle, data)
+      parse_list(data[:context_providers])
+    rescue Invalid => e
+      Log.warn(:context, "providers_unreadable", bundle: bundle, msg: e.message)
+      []
+    end
+
+    def resolved(bundle, provider, match)
+      url = match[0]
+      name = provider.name.gsub(/\\(\d)/) { match[Regexp.last_match(1).to_i].to_s }
+      begin
+        ContextSources.check_name!(name)
+      rescue ContextSources::Invalid
+        raise Invalid, "bundle #{bundle} makes #{name.inspect} of it, which isn't a source name"
+      end
+      Resolved.new(bundle: bundle, name: name, cmd: provider.cmd.gsub(URL) { Shellwords.escape(url) },
+                   why: provider.why, hint: url, every_seconds: provider.every_seconds)
+    end
+
+    # +source+'s command as it runs: {bundle_dir} is its provider's
+    # installed folder, once that bundle is there and its scripts are as
+    # installed (they run outside the guardrails gate, as a plugin loads:
+    # checked the same way).
+    # @return [String]
+    # @raise [Invalid] the bundle is gone or a script changed
+    def command_for(source)
+      return source.cmd unless source.provider
+
+      provenance = MemoryBundle::Provenance.new(name: source.provider)
+      data = provenance.read
+      raise Invalid, "bundle #{source.provider} isn't installed" unless data
+
+      scripts = data[:scripts].is_a?(Hash) ? data[:scripts] : {}
+      scripts.each do |file, meta|
+        path = File.join(provenance.scripts_dir, file.to_s)
+        recorded = MemoryBundle::Provenance.recorded_sha(meta.is_a?(Hash) ? meta[:sha256] : nil)
+        next if File.file?(path) && MemoryBundle::Provenance.file_sha(path) == recorded
+
+        raise Invalid, "bundle #{source.provider}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
+      end
+      source.cmd.gsub(BUNDLE_DIR) { Shellwords.escape(provenance.bundle_dir) }
     end
 
     def every(value)
