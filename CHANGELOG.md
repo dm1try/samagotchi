@@ -18,6 +18,7 @@ and commands may change between minor versions. How releases are made:
 
 - A wake turn (a context source's change, a delegate's report) that fails no longer tells the model the user's
   message went unanswered: it says the wake wasn't answered, and that no other wake turn starts until you write.
+  For a delegate's report it adds that the report comes again with your next message.
 - A delegate wait that timed out or was canceled says the child's reply still comes as a delegate report, instead
   of steering the model into waiting again with `delegate_result`; so does a question's result.
 - `delegate` with `wait: false` in a session that gets no delegate reports (a `--no-shared` REPL, `-p`) says

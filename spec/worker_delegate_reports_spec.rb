@@ -310,7 +310,8 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(wake_turns).to be_empty
         expect(rings.size).to eq(1)
         expect(Samagotchi::Session.load(parent.id, state_dir: tmpdir).messages.last[:content])
-          .to include("The wake turn for a delegate's report was not answered")
+          .to include("The wake turn for a delegate's report was not answered; chi starts no other wake turn until the user writes. " \
+                      "chi keeps the report and brings it again with the user's next message.")
 
         send_turn(parent, "hello", "web:tab1")
         prompt, _kwargs, lines = next_turn

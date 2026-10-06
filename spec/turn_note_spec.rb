@@ -64,6 +64,13 @@ RSpec.describe Samagotchi::TurnNote do
     expect(note[:content]).not_to include("user's last message")
   end
 
+  it "says what becomes of a failed wake turn's news when the caller keeps it" do
+    note = described_class.failed("HTTP 500", continued: true, wake: "a delegate's report",
+                                              kept: "chi keeps the report and brings it again with the user's next message.")
+    expect(note[:content]).to end_with("chi starts no other wake turn until the user writes. " \
+                                       "chi keeps the report and brings it again with the user's next message.]")
+  end
+
   it "says a restored prompt went back to the user" do
     expect(described_class.failed("HTTP 500", restored: true)[:content]).to end_with("The message went back to the user, who may send it again.]")
   end

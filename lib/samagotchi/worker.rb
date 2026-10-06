@@ -617,8 +617,11 @@ module Samagotchi
       @turn_flow.before_prompt_turn
       run_engine_turn(nil, continue: true, origin: reports.first.origin, max_iterations: IterationLimit.for) do |result, error|
         if error
+          # The rings stay (settle_child_reports): the user's next turn takes them.
           note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message,
-                                 wake: reports.size == 1 ? "a delegate's report" : "#{reports.size} delegate reports")
+                                 wake: reports.size == 1 ? "a delegate's report" : "#{reports.size} delegate reports",
+                                 kept: "chi keeps #{reports.size == 1 ? "the report and brings it" : "the reports and brings them"} " \
+                                       "again with the user's next message.")
           @turn_flow.prompt_turn_failed(note: note)
           @wakes_paused = true
         else

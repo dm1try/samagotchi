@@ -39,9 +39,13 @@ module Samagotchi
     # @param wake [String, nil] what woke it, when chi started the turn and
     #   not the user ("the change in attached context pr-7"): the user
     #   wrote nothing, and wakes pause until they do
-    def failed(summary, restored: false, continued: false, wake: nil)
+    # @param kept [String, nil] what becomes of the wake's news, after
+    #   that (a delegate report's rings stay for the user's next turn)
+    def failed(summary, restored: false, continued: false, wake: nil, kept: nil)
       tail = if restored then RESTORED
-             elsif wake then "The wake turn for #{one_line(wake)} was not answered; chi starts no other wake turn until the user writes."
+             elsif wake
+               "The wake turn for #{one_line(wake)} was not answered; chi starts no other wake turn until the user writes." +
+                 (kept ? " #{one_line(kept)}" : "")
              elsif continued then "The continued turn stopped there."
              else "The user's last message was not answered."
              end
