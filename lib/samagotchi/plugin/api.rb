@@ -47,8 +47,8 @@ module Samagotchi
       # show (a String) or nil for nothing. A raise is shown as an error.
       # @param name [String] "/name"; a name the session already has
       #   (built-in or another bundle's) is a load error
-      # @param anytime [Boolean] may run while a turn runs (from P2; today
-      #   it runs as other commands do)
+      # @param anytime [Boolean] runs at once on its own thread, beside a
+      #   running turn, instead of being refused as busy (docs/plugins.md)
       def command(name, description, anytime: false, &block)
         raise ArgumentError, "command #{name.inspect} needs a block" unless block
 
