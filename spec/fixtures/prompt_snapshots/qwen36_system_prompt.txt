@@ -370,7 +370,7 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
   },
   {
     "name": "delegate",
-    "description": "Hand a task to a child chi session that runs in parallel in this folder and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. A tool call the child needs approved goes to your user as one of your own approvals; you only see how it was answered, as a line in the result. Children keep running if this turn is canceled. With wait false, chi brings each child's reply to you by itself when the child ends its turn (a delegate report, also when you are idle): don't poll it with delegate_result. To retry or redirect a child, use delegate with its session (task_* tools are for background commands, not sessions). A child stays until stopped: once its work is done, stop it with execute `chi sessions stop ID` (a follow-up with session wakes it again).",
+    "description": "Hand a task to a child chi session that runs in parallel in this folder and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. A tool call the child needs approved goes to your user as one of your own approvals; you only see how it was answered, as a line in the result. Children keep running if this turn is canceled. Use wait false unless this turn can't go on without the reply: the call returns at once, you end your turn or keep working with your user, and chi brings the child's reply to you by itself as a delegate report when the child ends its turn, starting a turn for it if you are idle. After wait false don't call delegate_result for that child, not to check on it and not before ending your turn. To retry or redirect a child, use delegate with its session (task_* tools are for background commands, not sessions). A child stays until stopped: once its work is done, stop it with execute `chi sessions stop ID` (a follow-up with session wakes it again).",
     "parameters": {
       "type": "object",
       "properties": {
@@ -388,11 +388,11 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
         },
         "wait": {
           "type": "boolean",
-          "description": "Wait for the reply (default true); false returns at once so several children can run side by side"
+          "description": "true (default): this call waits for the reply; pick it only when this turn needs the reply to go on. false: returns at once and the reply comes later as a delegate report (also when you are idle); pick it for work that takes minutes, several children side by side, or to keep talking with your user"
         },
         "timeout": {
           "type": "integer",
-          "description": "Maximum seconds to wait (default: 600; 0 checks once without waiting); a timed-out child keeps running"
+          "description": "Maximum seconds to wait (default: 600; 0 checks once without waiting); a timed-out child keeps running and its reply still comes as a delegate report"
         }
       },
       "required": [
@@ -402,7 +402,7 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
   },
   {
     "name": "delegate_result",
-    "description": "Wait for a delegated child session's next reply: the child named, or this session's newest running child (name the child when a delegate report is about it). A delegate report already carries the reply: don't call this for it. Returns early if the child waits for a question the user must answer. A tool call the child needs approved goes to your user while this waits; the result says how it was answered.",
+    "description": "Wait for a delegated child session's next reply, only when this turn can't go on without it: the child named, or this session's newest running child (name the child when a delegate report is about it). After delegate with wait false you don't need this: chi brings each child's reply by itself as a delegate report, also when you are idle, so end your turn or keep working instead of waiting here. A delegate report already carries the reply: don't call this for it. Returns early if the child waits for a question the user must answer. A tool call the child needs approved goes to your user while this waits; the result says how it was answered.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -412,7 +412,7 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
         },
         "timeout": {
           "type": "integer",
-          "description": "Maximum seconds to wait (default: 600; 0 checks once without waiting)"
+          "description": "Maximum seconds to wait (default: 600; 0 checks once without waiting); on a timeout the child keeps running and its reply comes as a delegate report"
         }
       }
     }

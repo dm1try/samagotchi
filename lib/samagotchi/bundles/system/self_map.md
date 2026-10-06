@@ -30,8 +30,10 @@
   `chi send --new --wait -m TEXT` starts a session the user can watch in the web and prints its
   answer (exit 3: it waits for the user's answer); see "Starting a session".
 - `delegate` hands a task to a child session that runs in parallel and returns only its final
-  reply (`delegate_result` waits for it; with `wait: false` chi brings the reply to me by itself
-  as a delegate report when the child ends its turn; `session:` sends a follow-up to a child). A child is a
+  reply (`wait: false` is the usual way: I end my turn or keep talking with my user, and chi
+  brings the reply to me by itself as a delegate report when the child ends its turn, starting a
+  turn for it if I'm idle; `delegate_result` only when this turn can't go on without the reply;
+  `session:` sends a follow-up to a child). A child is a
   normal session: it shows in `chi sessions list` with `↳ <parent>`, and the user can steer it
   with `chi --attach <id>`. While I wait for a child, its tool approvals go to my user as my own
   approvals (I see only how each was answered); see `docs/sessions.md` "Delegating".

@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- The `delegate` and `delegate_result` tools tell the model to start a child with `wait: false` unless its turn
+  can't go on without the reply, then end its turn or keep talking with you: the reply comes back by itself as a
+  delegate report. `delegate_result` is only for a reply the turn needs now.
+
 ### Fixed
 
 - A wake turn (a context source's change, a delegate's report) that fails no longer tells the model the user's
