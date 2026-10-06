@@ -122,9 +122,12 @@ Its `source` is the hook's bundle (a config or turn hook's label otherwise).
 Lines typed into a running turn are saved as `{role: "user", kind: "input",
 content: "…"}`: part of that turn, not a turn of their own. They carry a
 `source` when they are not the user's own: `chi_send` (`chi send -m`),
-`parent_agent` (a delegate's follow-up) or `plugin_send` (`ctx.sessions.send`).
-The model reads them with the same kind of header (`[Steer from the user, …]`,
-`[Steer sent with chi send, …]`, and so on).
+`parent_agent` (a delegate's follow-up), `plugin_send` (`ctx.sessions.send`),
+or `automatic:<client id>` for a client id chi doesn't know (an unknown sender
+is never taken for the user). The model reads them with the same kind of
+header (`[Steer from the user, …]`, `[Steer sent with chi send, …]`, and so
+on; `[Automatic input from <client id>, sent mid-task; not your user's
+message. …]` for an unknown one).
 
 Timing: a notice from `:after_turn` or `:session_end` shows after the turn's
 end line. A question from `:before_tool_call` shows **before** the tool

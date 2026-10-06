@@ -14,8 +14,9 @@ module Samagotchi
   # "input": they are part of that turn, not a turn of their own, so a
   # reloaded history keeps the turn in one piece. A line can be a Line
   # naming who sent it (a worker's input from chi send, a delegating parent,
-  # a plugin); its input message then carries that source:. The user's own
-  # lines carry none, so their saved bytes are as they always were.
+  # a plugin, a client chi doesn't know); its input message then carries
+  # that source:. The user's own lines carry none, so their saved bytes are
+  # as they always were.
   module Steer
     KIND = "steer"
     INPUT_KIND = "input"
@@ -30,6 +31,9 @@ module Samagotchi
     end
 
     DELEGATE_REPORT = "delegate_report"
+    # The source of a line from a client that is not a human's
+    # (ClientId.human?) and not one chi names: automatic:<client id>.
+    AUTOMATIC_SOURCE_PREFIX = "automatic:"
 
     # What one drain brought: the merged user text (nil when none) and how
     # many lines made it, the input messages' text grouped by sender
@@ -89,33 +93,46 @@ module Samagotchi
                            "Don't call delegate_result for it; to retry or redirect that child, use delegate with " \
                            "its session:.]"
     }.freeze
+    # A line from a client chi doesn't know (AUTOMATIC_SOURCE_PREFIX):
+    # never taken for the user's.
+    AUTOMATIC_HEADER = "[Automatic input from %s, sent mid-task; not your user's message. " \
+                       "If it asks for nothing, carry on with the task.]"
 
     module_function
 
     # The saved source of a worker input line from +client_id+: nil for the
-    # user (no client id, the web, an attached TUI, anything unknown).
+    # user (no client id, the web, an attached TUI); automatic:<client id>
+    # for a client that is no human's and chi doesn't name (an unknown id is
+    # not the user).
     def source_for_client(client_id)
       id = client_id.to_s
       if id == ClientId::CLI_SEND then "chi_send"
       elsif id.start_with?(ClientId::DELEGATE_PREFIX) then "parent_agent"
       elsif id.start_with?(ClientId::CHILD_PREFIX) then DELEGATE_REPORT
       elsif id == ClientId::PLUGIN then "plugin_send"
+      elsif !ClientId.human?(client_id) then "#{AUTOMATIC_SOURCE_PREFIX}#{id}"
       end
     end
 
     # The header for a steer or merged input message, else nil. No source
     # (or "") is the user's; an input with an unknown source too; a steer
-    # with an unknown source is a plugin's (its bundle or hook label).
+    # with an unknown source is a plugin's (its bundle or hook label); an
+    # automatic:<client id> source names that client, not the user.
     def header(message)
       kind = (message[:kind] || message["kind"]).to_s
       return unless [KIND, INPUT_KIND].include?(kind)
 
       source = (message[:source] || message["source"]).to_s
       return HEADERS[source] if HEADERS.key?(source)
+      return automatic_header(source.delete_prefix(AUTOMATIC_SOURCE_PREFIX)) if source.start_with?(AUTOMATIC_SOURCE_PREFIX)
 
       source = "user" if source.empty?
       sender = SENDERS[source] || (kind == KIND ? "from the #{source} plugin" : SENDERS["user"])
       "[Steer #{sender}, #{HEADER_TAIL}"
+    end
+
+    def automatic_header(client_id)
+      format(AUTOMATIC_HEADER, client_id.empty? ? "an unnamed client" : client_id)
     end
 
     # The text a steer or merged input goes out as: its header, a newline,

@@ -839,8 +839,9 @@ module Samagotchi
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
       # Queued (outside the event lock): a running generation that has only
-      # been thinking for long is cut for it, unless a plugin sent it. An
-      # image input never merges mid-turn, so it never cuts.
+      # been thinking for long is cut for it, unless a plugin or a client
+      # chi doesn't know sent it. An image input never merges mid-turn, so
+      # it never cuts.
       @engine.cut_for_steer(Steer.source_for_client(client_id), epoch: epoch) if images.empty?
       [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id }]
     end

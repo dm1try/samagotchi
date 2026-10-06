@@ -350,7 +350,8 @@ module Samagotchi
     # again with the message, no nudge, no retry spent. Too early, the
     # message waits (WaitingSteer) and cuts once the thinking passes it
     # (#recheck_waiting_steer, on each thinking chunk), unless a boundary
-    # hands it to the model first. A plugin's message never cuts.
+    # hands it to the model first. A plugin's message never cuts, nor an
+    # unknown client's (automatic:<id>).
     # Call it after the message is queued, with the #input_epoch read
     # before queueing it. Outside any lock; a cut that lands just after the
     # generation ended is harmless (the loop re-asks).

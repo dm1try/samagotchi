@@ -71,13 +71,23 @@ RSpec.describe Samagotchi::Steer do
 
   describe ".source_for_client" do
     it "maps a worker input's client id to the saved source (nil = the user)" do
-      expect({ nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
-               "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil,
-               "child:abcd1234" => nil, "other" => nil }.to_h { |id, _| [id, described_class.source_for_client(id)] })
-        .to eq(nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
-               "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send", "cli:answer" => nil,
-               "child:abcd1234" => "delegate_report", "other" => nil)
+      expected = { nil => nil, "web:abc" => nil, "tui:123" => nil, "cli:send" => "chi_send",
+                   "delegate:abcd1234" => "parent_agent", "plugin" => "plugin_send",
+                   "child:abcd1234" => "delegate_report", "context:pr-1" => "automatic:context:pr-1",
+                   "system:reminder" => "automatic:system:reminder", "cli:answer" => "automatic:cli:answer",
+                   "other" => "automatic:other", "" => "automatic:" }
+      expect(expected.keys.to_h { |id| [id, described_class.source_for_client(id)] }).to eq(expected)
       expect(described_class.cuts?("delegate_report")).to be(false)
+    end
+
+    it "never takes a line from a client it doesn't know for the user's: it doesn't cut, its header names the client" do
+      source = described_class.source_for_client("ci:nightly")
+      expect(described_class.cuts?(source)).to be(false)
+      expect(described_class.wire_text({ kind: "input", source: source, content: "rebase done" }))
+        .to eq("[Automatic input from ci:nightly, sent mid-task; not your user's message. " \
+               "If it asks for nothing, carry on with the task.]\nrebase done")
+      expect(described_class.header({ kind: "input", source: described_class.source_for_client("") }))
+        .to start_with("[Automatic input from an unnamed client, sent mid-task;")
     end
   end
 
