@@ -647,7 +647,9 @@ gets a note when its text changes.
   provider (below); `name:` and `why:` replace the provider's.
   `attach(name:, cmd:, why: nil, hint: nil, every_seconds: nil)` attaches a
   command of the plugin's own. A source of that name already attached stays
-  as it is. It returns the name.
+  as it is. It returns the name, or nil when the user removed that name (or
+  that URL) from the session: a plugin doesn't attach it again until the
+  user adds it (`ctx.context.declined?(name)` says so).
 - The source is the session's (not the project's), marked
   `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
   the agent's `chi context add --cmd` is.

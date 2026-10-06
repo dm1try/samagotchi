@@ -21,6 +21,7 @@ module Samagotchi
   #   sessions/<id>/<name>.json, …snapshot.json    a session's own
   #   sessions/<id>/subscriptions.json             {name => Subscription}; the worker writes it
   #   sessions/<id>/muted/<name>                   a marker: this session ignores <name>
+  #   sessions/<id>/declined/<name>                a marker (its hint inside): the user removed <name>
   # The guardrails protect the root (ProtectedPaths, CHI_TEXT): a source's
   # command runs later, outside the gate.
   module ContextSources
@@ -37,6 +38,7 @@ module Samagotchi
     SNAPSHOT_SUFFIX = ".snapshot.json"
     SUBSCRIPTIONS_FILE = "subscriptions.json"
     MUTED_DIR = "muted"
+    DECLINED_DIR = "declined"
 
     # A name, a command, a value the store can't take.
     class Invalid < ArgumentError; end
@@ -160,6 +162,8 @@ module Samagotchi
         raise Invalid, "#{source.name} is already attached here (chi context rm #{source.name} first)" if File.exist?(path)
 
         AtomicFile.write(path, "#{JSON.pretty_generate(source.to_h)}\n")
+        # Added again on purpose: no longer declined.
+        FileUtils.rm_f(declined_path(source.name))
         source
       end
 
@@ -168,10 +172,30 @@ module Samagotchi
       # source of the name must wait for that fetch (which then finds its
       # source gone and writes nothing: ContextFetch) instead of opening a
       # fresh lock beside it.
+      # A session's source removed leaves a declined marker holding its hint
+      # (#declined?): an auto-attach (ctx.context, the github-pr bundle) on
+      # the worker's next start must not bring back what the user took off.
       def remove(name)
-        existed = File.exist?(source_path(name))
+        removed = source(name)
         [source_path(name), snapshot_path(name)].each { |path| FileUtils.rm_f(path) }
-        existed
+        decline(name, removed.hint) if removed && session?
+        !removed.nil?
+      end
+
+      # Whether the user removed +name+ from this session (#remove).
+      def declined?(name) = File.exist?(declined_path(name))
+
+      # The hints (often URLs) of the sources removed here.
+      def declined_hints
+        folder = File.join(dir, DECLINED_DIR)
+        return [] unless Dir.exist?(folder)
+
+        Dir.children(folder).sort.filter_map do |file|
+          hint = File.read(File.join(folder, file)).strip
+          hint.empty? ? nil : hint
+        rescue SystemCallError
+          nil
+        end
       end
 
       # @return [Snapshot] Snapshot.empty when there is none yet
@@ -230,6 +254,13 @@ module Samagotchi
         stamp = now.utc.iso8601(6)
         write_snapshot(name, previous.with(error: ContextSources.one_line(message, LINE_MAX_CHARS),
                                            error_since: previous.error_since || stamp, checked_at: stamp))
+      end
+
+      def declined_path(name) = File.join(dir, DECLINED_DIR, ContextSources.check_name!(name))
+
+      def decline(name, hint)
+        FileUtils.mkdir_p(File.join(dir, DECLINED_DIR))
+        AtomicFile.write(declined_path(name), "#{hint}\n")
       end
 
       # Session only: the markers and the worker's subscription file.

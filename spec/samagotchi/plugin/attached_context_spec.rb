@@ -56,6 +56,22 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     expect(own.source("date").cmd).to eq("date")
   end
 
+  it "doesn't attach again what was removed from the session (by its name or its URL), until an explicit add" do
+    install_provider
+    ctx.context.attach(url: "https://example.com/pull/4", name: "pr-4")
+    own.remove("pr-4")
+
+    expect(ctx.context.attach(url: "https://example.com/pull/4", name: "pr-4")).to be_nil
+    expect(ctx.context.attach(url: "https://example.com/pull/4", name: "other")).to be_nil
+    expect(ctx.context.declined?("pr-4")).to be(true)
+    expect(own.sources).to eq([])
+
+    # The user's own add (chi context add, the web's + URL) clears it.
+    own.add(Samagotchi::ContextSources::Source.new(name: "pr-4", cmd: "x", every_seconds: nil, why: nil, hint: nil,
+                                                   scope: "session", added_by: "cli", created_at: nil))
+    expect(ctx.context.declined?("pr-4")).to be(false)
+  end
+
   it "lists the session's sources" do
     ctx.context.attach(name: "date", cmd: "date", why: "the time")
     expect(ctx.context.list).to eq([{ name: "date", scope: "session", why: "the time", hint: nil, fetched_at: nil,

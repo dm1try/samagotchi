@@ -25,18 +25,29 @@ module Samagotchi
       # Attach a source to this session. +url+: through an installed
       # bundle's provider (+name+ and +why+ replace the provider's); else
       # +name+ and +cmd+ (+hint+, +every_seconds+). A source of that name
-      # already attached stays as it is.
-      # @return [String] the source's name
+      # already attached stays as it is. One the user removed from the
+      # session (its name, or its URL) isn't attached again (#declined?)
+      # until the user adds it again.
+      # @return [String, nil] the source's name; nil when declined
       # @raise [Error]
       def attach(url: nil, name: nil, cmd: nil, why: nil, hint: nil, every_seconds: nil)
         own = location or raise Error, "this session has no id yet"
         source = url ? from_url(url, name: name, why: why) : from_cmd(name: name, cmd: cmd, why: why, hint: hint, every_seconds: every_seconds)
+        return nil if own.declined?(source.name) || (url && own.declined_hints.include?(source.hint))
         return source.name if own.source(source.name)
 
         own.add(source.with(scope: own.scope))
         source.name
       rescue ContextSources::Invalid, ContextProviders::Invalid => e
         raise Error, e.message
+      end
+
+      # Whether the user removed +name+ from this session (so #attach skips it).
+      def declined?(name)
+        own = location
+        own ? own.declined?(name) : false
+      rescue ContextSources::Invalid
+        false
       end
 
       # This session's sources (its own, then its project's).

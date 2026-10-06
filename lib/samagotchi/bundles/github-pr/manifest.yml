@@ -11,7 +11,7 @@ needs:
   hint: brew install gh, then gh auth login
 plugin:
   file: plugin.rb
-  sha256: sha256:b0f0f162f306df96d54162a638abb6997e94a749d224b6d0230e32bedf2abef8
+  sha256: sha256:b825731983a402d0cd006a17236794ef03e31ab1b160e853756f4d63b295f664
 scripts:
   pr_context.rb: sha256:bdda5d74fbc002e6acf061f441d633c2b8760bd837efcb3bbffaf5dbdde65ab9
 context_providers:

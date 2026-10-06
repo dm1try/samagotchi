@@ -76,6 +76,15 @@ RSpec.describe "The github-pr bundle" do
     expect(plugin.attach_branch_pr(ctx)).to eq("pr-42 is attached already")
   end
 
+  it "doesn't attach the PR again once the user removed it (chi context rm, the web's detach)" do
+    on_branch_with("number" => 42, "url" => "https://github.com/acme/app/pull/42", "state" => "OPEN")
+    plugin.attach_branch_pr(ctx)
+    own.remove("pr-42")
+
+    expect(plugin.attach_branch_pr(ctx)).to eq("pr-42 was removed from this session; not attached again")
+    expect(own.sources).to eq([])
+  end
+
   it "attaches nothing for a closed PR, no PR, no branch, or no gh" do
     on_branch_with("number" => 42, "url" => "https://github.com/acme/app/pull/42", "state" => "MERGED")
     expect(plugin.attach_branch_pr(ctx)).to eq("pull request #42 isn't open")

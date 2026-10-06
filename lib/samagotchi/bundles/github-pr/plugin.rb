@@ -34,8 +34,8 @@ class Plugin
     name = "pr-#{pr["number"]}"
     return "#{name} is attached already" if ctx.context.list.any? { |source| source[:name] == name || source[:hint] == pr["url"] }
 
-    ctx.context.attach(url: pr["url"], name: name, why: "branch #{branch} has open PR ##{pr["number"]}")
-    "attached #{name}"
+    attached = ctx.context.attach(url: pr["url"], name: name, why: "branch #{branch} has open PR ##{pr["number"]}")
+    attached ? "attached #{name}" : "#{name} was removed from this session; not attached again"
   rescue StandardError => e
     ctx.log.info(:pr_not_attached, error: e.class.name, msg: e.message.to_s[0, 200])
     "no pull request attached"

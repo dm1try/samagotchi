@@ -163,7 +163,10 @@ It needs [`gh`](https://cli.github.com), logged in (`gh auth login`).
 - When a session's worker starts on a branch with an open pull request, the
   bundle attaches it as `pr-<number>` (a session source: "branch feat/x has
   open PR #42"). Not in a `chi scratch` session or a delegate child, and
-  quietly nothing without `gh`, a login, a repository or an open PR.
+  quietly nothing without `gh`, a login, a repository or an open PR. Once
+  you remove it (`chi context rm`, the chip's detach) it stays removed:
+  the next start doesn't bring it back; `chi context add <PR URL>` or "+ URL"
+  does.
 - `chi context add <PR URL>` and the web's "+ URL" attach any PR.
 - The text: title, state, branch, description, reviews, comments (oldest
   first) and checks, every 5 minutes.
@@ -208,6 +211,7 @@ projects/<project_key>/<name>.snapshot.json   its last good text
 sessions/<id>/<name>.json, …snapshot.json     a session's own
 sessions/<id>/subscriptions.json              what the session has seen and read (its worker writes it)
 sessions/<id>/muted/<name>                    a project source this session mutes
+sessions/<id>/declined/<name>                 a source you removed (its hint inside): auto-attach skips it
 ```
 
 Deleting a session deletes its folder. A source and its snapshot go with

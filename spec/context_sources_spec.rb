@@ -64,8 +64,34 @@ RSpec.describe Samagotchi::ContextSources do
       expect { loc.add(source("notes")) }.to raise_error(described_class::Invalid, /already attached/)
 
       expect(loc.remove("notes")).to be(true)
-      expect(Dir.children(loc.dir).sort).to eq(["notes.lock", "pr-1.json"])
+      expect(Dir.children(loc.dir).sort).to eq(["declined", "notes.lock", "pr-1.json"])
       expect(loc.remove("notes")).to be(false)
+    end
+
+    # Review item 1: an auto-attach (github-pr) must not bring back what
+    # the user removed.
+    it "leaves a declined marker with the hint when a session's source is removed; an add clears it" do
+      loc.add(source("pr-1", cmd: "x").with(hint: "https://x/1"))
+      expect(loc.declined?("pr-1")).to be(false)
+
+      loc.remove("pr-1")
+
+      expect(loc.declined?("pr-1")).to be(true)
+      expect(loc.declined_hints).to eq(["https://x/1"])
+      expect(loc.sources).to eq([])
+      loc.add(source("pr-1", cmd: "x"))
+      expect(loc.declined?("pr-1")).to be(false)
+      expect(loc.declined_hints).to eq([])
+    end
+
+    it "leaves no declined marker for a project's source, or for a name that wasn't there" do
+      project = described_class.project_location("app_1234", state_dir: state_dir)
+      project.add(source("ci", cmd: "x"))
+      project.remove("ci")
+      loc.remove("nothing")
+
+      expect(project.declined?("ci")).to be(false)
+      expect(loc.declined?("nothing")).to be(false)
     end
 
     it "doesn't list the snapshots, the subscriptions or the markers as sources" do
