@@ -26,7 +26,8 @@ module PrContext
   TITLE_MAX = 80
 
   # What a text says, read back from it: the PR's state, its comments and
-  # reviews (author, time[, state]) and its checks (name → result).
+  # reviews (author, time[, state]) and its checks (name → result; a
+  # second check of the same name, a matrix job, is "name #2").
   Facts = Struct.new(:state, :comments, :reviews, :checks, keyword_init: true) do
     def failing = checks.count { |_name, result| result == "failing" }
     def pending = checks.count { |_name, result| result == "pending" }
@@ -135,10 +136,18 @@ module PrContext
       elsif (m = line.match(/\A## (\w+)/)) then section = m[1]
       elsif section == "Comments" && (m = line.match(/\A- @(\S+), (\S+):\z/)) then found.comments << [m[1], m[2]]
       elsif section == "Reviews" && (m = line.match(/\A- @(\S+): (\w+), (\S*)\z/)) then found.reviews << [m[1], m[2], m[3]]
-      elsif section == "Checks" && (m = line.match(/\A- (.+): (passing|failing|pending)\z/)) then found.checks[m[1]] = m[2]
+      elsif section == "Checks" && (m = line.match(/\A- (.+): (passing|failing|pending)\z/)) then add_check(found.checks, m[1], m[2])
       end
     end
     found
+  end
+
+  # Matrix jobs share a name: each later one gets " #n", so none hides another.
+  def add_check(checks, name, result)
+    key = name
+    n = 1
+    key = "#{name} ##{n += 1}" while checks.key?(key)
+    checks[key] = result
   end
 
   # The first summary: title (cut), state, counts, checks.

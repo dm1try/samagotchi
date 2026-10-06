@@ -13,7 +13,7 @@ plugin:
   file: plugin.rb
   sha256: sha256:b825731983a402d0cd006a17236794ef03e31ab1b160e853756f4d63b295f664
 scripts:
-  pr_context.rb: sha256:39081f692e43daeb8ac66d667b8b309124b9c4fad883109db42f771288504a8e
+  pr_context.rb: sha256:a883d2780e89c68c0d7b6d5e0fcb22c273f17bb167e79064e0e99db6bd2ee6f0
 context_providers:
 - match: '\Ahttps://github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)'
   name: 'pr-\3'

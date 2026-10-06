@@ -78,6 +78,16 @@ RSpec.describe PrContext do
     expect(running).to include("summary" => "checks: 1 pending", "wake" => false)
   end
 
+  # Review item 4 (part 2): matrix jobs share a name.
+  it "tells same-named checks apart: one of them turning red wakes" do
+    job = ->(conclusion) { { "name" => "rspec", "status" => "COMPLETED", "conclusion" => conclusion } }
+    before = described_class.render(with(statusCheckRollup: [job.call("SUCCESS"), job.call("SUCCESS")]))
+
+    result = described_class.contract(with(statusCheckRollup: [job.call("FAILURE"), job.call("SUCCESS")]), before)
+
+    expect(result).to include("summary" => "checks: 1 failing", "wake" => true)
+  end
+
   it "wakes when the PR is merged or closed" do
     before = described_class.render(pr)
     expect(described_class.contract(with(state: "MERGED"), before)).to include("summary" => "PR merged", "wake" => true)
