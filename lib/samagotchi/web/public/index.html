@@ -5,13 +5,13 @@
 <title>Chi</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{color-scheme:dark;--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150;--accent-tint:color-mix(in srgb,var(--accent) 7%,transparent);--narr:color-mix(in srgb,var(--accent) 38%,var(--text-muted));
+:root{color-scheme:dark;--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150;--pick-border:#79c0ff;--accent-tint:color-mix(in srgb,var(--accent) 7%,transparent);--narr:color-mix(in srgb,var(--accent) 38%,var(--text-muted));
   --glass-bg:color-mix(in srgb,var(--bg-panel) 70%,transparent);--glass-border:rgba(255,255,255,.08);--glass-highlight:rgba(255,255,255,.05);--glass-shadow:0 8px 30px rgba(0,0,0,.35);
   --diff-add-bg:rgba(63,185,80,.14);--diff-add-text:#aff5b4;--diff-del-bg:rgba(248,81,73,.14);--diff-del-text:#ffc1bc;
   --code-text:#c9d1d9;--code-keyword:#ff7b72;--code-string:#a5d6ff;--code-comment:#8b949e;--code-constant:#79c0ff;--code-func:#d2a8ff;--code-type:#ffa657;
   --card-hover-border:rgba(255,255,255,.14);--on-solid:#fff;--on-warn:#fff;--text-hover:#fff;--badge-bg:rgba(255,255,255,.08);--badge-ring:rgba(255,255,255,.18);--shadow-strong:rgba(0,0,0,.5);--backdrop:rgba(0,0,0,.85);--toast-shadow:0 6px 24px rgba(0,0,0,.25)}
 /* Light palette: follows the system setting. :not([data-theme="dark"]) leaves room for a later in-page toggle (data-theme on <html>); there is none yet. Each palette sets color-scheme, so native radios, inputs and scrollbars follow it. */
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f5f6f8;--bg-panel:#ffffff;--bg-inset:#f1f3f6;--bg-raised:#e8ebf0;--bg-hover:#eceff4;--border:#dde1e7;--border-strong:#c3c9d2;--text:#1f2328;--text-bright:#0d1117;--text-2:#2f363d;--text-3:#475160;--text-muted:#57606a;--text-faint:#636c76;--accent:#0b5cd5;--accent-strong:#0550ae;--accent-bg:#e2ecfd;--accent-ring:rgba(11,92,213,.2);--primary:#1f6feb;--ok:#1a7f37;--ok-text:#116329;--ok-bg:#dafbe1;--warn:#9a6700;--warn-text:#7d4e00;--warn-bright:#875c00;--warn-bg:#fff6cc;--warn-border:#d4a72c;--danger:#cf222e;--danger-bg:#cf222e;--danger-text:#a40e26;--danger-bg-dim:#ffebe9;--think:#8250df;--think-text:#6639ba;--accent-border:#b8cef5;
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){color-scheme:light;--bg:#f5f6f8;--bg-panel:#ffffff;--bg-inset:#f1f3f6;--bg-raised:#e8ebf0;--bg-hover:#eceff4;--border:#dde1e7;--border-strong:#c3c9d2;--text:#1f2328;--text-bright:#0d1117;--text-2:#2f363d;--text-3:#475160;--text-muted:#57606a;--text-faint:#636c76;--accent:#0b5cd5;--accent-strong:#0550ae;--accent-bg:#e2ecfd;--accent-ring:rgba(11,92,213,.2);--primary:#1f6feb;--ok:#1a7f37;--ok-text:#116329;--ok-bg:#dafbe1;--warn:#9a6700;--warn-text:#7d4e00;--warn-bright:#875c00;--warn-bg:#fff6cc;--warn-border:#d4a72c;--danger:#cf222e;--danger-bg:#cf222e;--danger-text:#a40e26;--danger-bg-dim:#ffebe9;--think:#8250df;--think-text:#6639ba;--accent-border:#b8cef5;--pick-border:#0969da;
   --glass-border:rgba(31,35,40,.10);--glass-highlight:rgba(255,255,255,.7);--glass-shadow:0 8px 30px rgba(31,35,40,.10);
   --diff-add-bg:rgba(26,127,55,.12);--diff-add-text:#116329;--diff-del-bg:rgba(207,34,46,.10);--diff-del-text:#82071e;
   --code-text:#1f2328;--code-keyword:#cf222e;--code-string:#0a3069;--code-comment:#57606a;--code-constant:#0550ae;--code-func:#8250df;--code-type:#953800;
@@ -837,6 +837,18 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #allPath[hidden]{display:none}
 #allPath code{font-family:ui-monospace,monospace;background:var(--bg-hover);padding:1px 4px;border-radius:4px}
 #allHead .count{font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+#allHead #selectBtn{padding:6px 10px;font-size:12px}
+#selectBar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#selectBar[hidden],#selectBtn[hidden],#selectBar [hidden]{display:none}
+#selectBar button{padding:6px 10px;font-size:12px;white-space:nowrap}
+#selectBar button:disabled{opacity:.5;cursor:default}
+#selectCount{font-size:12px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums;margin-right:2px}
+/* Select mode: a checkbox at the card's top left; a pick wears its own outline (.active is the open session's). */
+#allView.selecting #allList .card{padding-left:38px;user-select:none}
+#allList .card-pick{position:absolute;top:13px;left:13px;width:16px;height:16px;margin:0;accent-color:var(--pick-border);cursor:pointer}
+#allList .card.picked,#allList .card.picked:hover{border-color:var(--pick-border);box-shadow:inset 0 0 0 1px var(--pick-border),var(--glass-shadow);background:color-mix(in srgb,var(--pick-border) 9%,var(--glass-bg))}
+.card .skip-reason{font-size:11px;line-height:1.35;color:var(--warn-text);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word}
+@media(max-width:600px){#allHead{flex-wrap:wrap}#allHead input#filter{flex-basis:140px}#allView.selecting #allHead .count{display:none}#selectBar{flex-basis:100%;order:5}#selectCount{flex-basis:100%}#allList .card-pick{width:20px;height:20px;top:12px;left:11px}}
 #allHead .include-archived{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer;user-select:none}
 .card.archived{opacity:.6}
 .card.archived:hover{opacity:.85}
@@ -959,6 +971,14 @@ a{color:var(--accent)}
       <input id="filter" type="search" placeholder="Search… (preview / id / status)" autocomplete="off">
       <label class="include-archived" title="Show archived sessions too"><input id="includeArchived" type="checkbox"> include archived</label>
       <span class="count" id="count"></span>
+      <button class="ghost" id="selectBtn" title="Pick sessions to archive several at once">Select</button>
+      <div id="selectBar" role="toolbar" aria-label="Selected sessions" hidden>
+        <span id="selectCount" aria-live="polite"></span>
+        <button class="ghost" id="selectAllBtn" title="Pick every session the search shows">Select all shown</button>
+        <button id="batchArchiveBtn" title="Archive the picked sessions that are shown (their delegates too)">Archive 0</button>
+        <button class="ghost" id="batchUnarchiveBtn" title="Unarchive the picked archived sessions that are shown" hidden>Unarchive 0</button>
+        <button class="ghost" id="selectDoneBtn" title="Leave select mode (Esc)">Done</button>
+      </div>
     </div>
     <div id="allPath" hidden>Stored in <code></code></div>
     <div id="allList"></div>
