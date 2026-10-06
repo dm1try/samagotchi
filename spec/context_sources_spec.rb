@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::ContextSources do
   describe "a location" do
     let(:loc) { described_class.session_location(session_id, state_dir: state_dir) }
 
-    it "adds, lists and removes sources (with their snapshot and lock), refusing a second of one name" do
+    it "adds, lists and removes sources (with their snapshot; the lock stays for a fetch running), refusing a second of one name" do
       loc.add(source("pr-1", cmd: "gh pr view 1"))
       loc.add(source("notes"))
       loc.record_text("notes", fetched("hello"))
@@ -64,7 +64,7 @@ RSpec.describe Samagotchi::ContextSources do
       expect { loc.add(source("notes")) }.to raise_error(described_class::Invalid, /already attached/)
 
       expect(loc.remove("notes")).to be(true)
-      expect(Dir.children(loc.dir)).to eq(["pr-1.json"])
+      expect(Dir.children(loc.dir).sort).to eq(["notes.lock", "pr-1.json"])
       expect(loc.remove("notes")).to be(false)
     end
 

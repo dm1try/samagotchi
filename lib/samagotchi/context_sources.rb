@@ -164,9 +164,13 @@ module Samagotchi
       end
 
       # @return [Boolean] whether there was a source to remove
+      # The lock file stays: a fetch running now still holds it, and a new
+      # source of the name must wait for that fetch (which then finds its
+      # source gone and writes nothing: ContextFetch) instead of opening a
+      # fresh lock beside it.
       def remove(name)
         existed = File.exist?(source_path(name))
-        [source_path(name), snapshot_path(name), lock_path(name)].each { |path| FileUtils.rm_f(path) }
+        [source_path(name), snapshot_path(name)].each { |path| FileUtils.rm_f(path) }
         existed
       end
 

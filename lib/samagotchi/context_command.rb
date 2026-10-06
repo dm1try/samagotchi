@@ -243,6 +243,9 @@ module Samagotchi
       when :busy
         error_line("#{command_name}: #{name} is being fetched right now (by its worker); try again in a moment")
         false
+      when :gone
+        error_line("#{command_name}: #{name} was removed while it ran; nothing was kept")
+        false
       else
         error_line("#{command_name}: #{name} failed: #{outcome.error}")
         false
