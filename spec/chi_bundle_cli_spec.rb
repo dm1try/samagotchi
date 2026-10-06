@@ -224,7 +224,7 @@ Hooks removed: 1\n\z})
       # every shipped bundle is in a profile: the profiles list them
       expect(out.lines.drop(3).map { |l| l.split.first }).to eq(%w[core dev])
       expect(out).to match(/^  core +v\S+  .*\(loop-guard, check-in, guardrails\)$/)
-      expect(out).to match(/^  dev +v\S+  .*\(known-names, mcp, btw, skills, source-links, github-pr\)$/)
+      expect(out).to match(/^  dev +v\S+  .*\(known-names, mcp, btw, skills, source-links, github-pr, coordinator\)$/)
 
       out, err, code = chi("install", "btw")
       expect([err, code]).to eq(["", 0])

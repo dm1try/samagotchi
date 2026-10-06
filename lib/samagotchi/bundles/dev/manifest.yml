@@ -1,10 +1,10 @@
 ---
 name: dev
-version: 0.2.0
+version: 0.3.0
 scope: system
 description: "Developer tools"
 trust_level: reviewed
-requires_chi: ">= 0.32.0"
+requires_chi: ">= 0.34.0"
 includes:
 - known-names
 - mcp
@@ -12,3 +12,4 @@ includes:
 - skills
 - source-links
 - github-pr
+- coordinator

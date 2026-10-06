@@ -13,7 +13,7 @@ can run the whole release; the user approves the notes before the tag and the
   and `rake release:check` enforce it). The system bundle upgrades itself when
   chi starts.
 - **Every other shipped bundle** (btw, check-in, guardrails, known-names,
-  loop-guard, mcp, skills, source-links, github-pr, and the profiles core and dev) has its own semver in its
+  loop-guard, mcp, skills, source-links, github-pr, coordinator, and the profiles core and dev) has its own semver in its
   `manifest.yml` and, when it needs a newer chi, a `requires_chi:` line. They never upgrade by themselves: users run
   `chi update` (all of them, with the gem) or `chi bundle upgrade NAME`. So:
   - a change to a bundle's files bumps that bundle's `version:`

@@ -69,7 +69,7 @@ RSpec.describe "chi bootstrap" do
     expect(server.requests.map(&:path)).to include("/props", "/v1/chat/completions")
     expect(out).to include("system bundle: v#{Samagotchi::VERSION} installed\n",
                            "core bundles: installed loop-guard, check-in, guardrails\n")
-    expect(out).to match(/^ +chi bundle install dev +# more bundles \(known-names, mcp, btw, skills, source-links, github-pr\)$/)
+    expect(out).to match(/^ +chi bundle install dev +# more bundles \(known-names, mcp, btw, skills, source-links, github-pr, coordinator\)$/)
     expect(out).not_to include("optional bundles", "Also install dev")
     expect(Dir.children(bundles_dir).reject { |e| e.end_with?(".lock") }.sort)
       .to eq(%w[check-in core guardrails loop-guard samagotchi-system])
@@ -293,16 +293,20 @@ RSpec.describe "chi bootstrap" do
     def installed = Samagotchi::MemoryBundle::Provenance.each_installed.map { |name, _| name }
 
     it "asks about dev and installs it on yes, and doesn't ask again once it is in" do
+      # A shipped bundle's requires_chi names the next release before the
+      # version bump (coordinator, dev): run as that release would.
+      major, minor, = Samagotchi::VERSION.split(".").map(&:to_i)
+      stub_const("Samagotchi::VERSION", "#{major}.#{minor + 1}.0")
       server.default("/v1/models", json: models("m"))
 
       code, out, err = run_command("y\n", target, "--no-test")
 
       expect([code, err]).to eq([0, ""])
       expect(out).to include("core bundles: installed loop-guard, check-in, guardrails\n",
-                             "Also install dev (known-names, mcp, btw, skills, source-links, github-pr)? [y/N] ",
-                             "dev bundles: installed known-names, mcp, btw, skills, source-links, github-pr\n")
+                             "Also install dev (known-names, mcp, btw, skills, source-links, github-pr, coordinator)? [y/N] ",
+                             "dev bundles: installed known-names, mcp, btw, skills, source-links, github-pr, coordinator\n")
       expect(out).to match(/^ +chi bundle list +# the installed bundles$/)
-      expect(installed).to eq(%w[btw check-in core dev github-pr guardrails known-names loop-guard mcp samagotchi-system skills source-links])
+      expect(installed).to eq(%w[btw check-in coordinator core dev github-pr guardrails known-names loop-guard mcp samagotchi-system skills source-links])
 
       _, again, = run_command("", target, "--no-test")
       expect(again).not_to include("Also install dev")

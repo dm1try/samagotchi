@@ -178,7 +178,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     expect(described_class.plan.map(&:name)).to eq(["btw"])
     expect(described_class.not_installed.map(&:name)).not_to include("btw", "samagotchi-system")
     expect(described_class.not_installed.map(&:name)).to eq(%w[core dev])
-    expect(described_class.not_installed.find { |s| s.name == "dev" }.includes).to eq(%w[known-names mcp skills source-links github-pr])
+    expect(described_class.not_installed.find { |s| s.name == "dev" }.includes).to eq(%w[known-names mcp skills source-links github-pr coordinator])
   end
 
   it "fails one row without stopping the rest" do

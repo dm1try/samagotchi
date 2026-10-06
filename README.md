@@ -145,7 +145,10 @@ never takes orders from. The web and the attached terminal show it as a dim
 a note reaches (`id<TAB>description`). Agents can do the same: `list_sessions`
 finds another session, `send_note` tells it something, and `delegate` hands a
 task to a child session that runs in parallel and reports back only its final
-reply (a normal session: `chi --attach <id>` steers it).
+reply (a normal session: `chi --attach <id>` steers it). With the `coordinator`
+bundle (in `dev`), `/coordinate <goal>` has chi split the work into tasks, each
+in a child session in its own git worktree, check each report and ask you
+before each merge; `/children` shows the children and their state.
 
 `chi send` is the other half: the text goes in as your message, the same as
 typing it in the attached terminal or the web composer, and a turn runs. Piped
