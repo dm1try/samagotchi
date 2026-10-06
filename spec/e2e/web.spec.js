@@ -1,7 +1,7 @@
 // Happy paths of the web UI against a scripted fake model (support/scripts).
 // Assertions are on page state only; every wait is on the DOM, no sleeps.
 import { test, expect } from "./support/fixtures.js";
-import { APPROVAL_COMMAND, EDIT_ASK_FILE } from "./support/env.js";
+import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedFamily } from "./support/env.js";
 
 // The stage view (the default; the turn project runs @turn scenarios again
 // on ?view=turn): a running turn's rows are in #turnStage until the hand-off
@@ -552,6 +552,68 @@ test("all sessions: select mode archives a Shift-click range and one more pick i
   await expect(page.locator("#toast")).toContainText("Unarchived 3");
   await expect(cards).toHaveCount(3);
   await expect(cards.locator(".card-pick:checked")).toHaveCount(0);
+});
+
+// Session families: a parent's delegates fold into its card. Seeded
+// sessions (no worker): a parent and two delegates, then again with one
+// waiting on the user.
+test("a parent's delegates fold into its card: the chip opens them inline, search and a waiting one open them, select mode leaves rows alone", async ({ page, chi }) => {
+  const fam = await seedFamily(chi, { tag: "Fold" });
+  let waitingFam = null;
+  try {
+    await page.locator("#allTile").click();
+    const card = page.locator(`#allList .card[data-id="${fam.parent}"]`);
+    const chip = card.locator(".family-chip");
+    const rows = card.locator(".family-row");
+    await expect(chip).toContainText("2 delegates");
+    await expect(chip).toHaveAttribute("aria-expanded", "false");
+    await expect(rows).toHaveCount(0);
+    for (const id of fam.children) await expect(page.locator(`#allList .card[data-id="${id}"]`)).toHaveCount(0);
+    await expect(page.locator("#count")).toHaveText(/^\d+ \(\+\d+ delegates\)$/);
+
+    await chip.click();
+    await expect(chip).toHaveAttribute("aria-expanded", "true");
+    await expect(rows).toHaveCount(2);
+    await expect(card.locator(`.family-row[data-id="${fam.children[0]}"]`)).toContainText("Fold child one fixes");
+    await expect(page).toHaveURL(/#\/sessions$/);
+    await chip.click();
+    await expect(rows).toHaveCount(0);
+
+    // A search that matches a delegate brings its family, open, the row marked.
+    await page.locator("#filter").fill("fold child two");
+    await expect(page.locator("#allList .card[data-id]")).toHaveCount(1);
+    await expect(card.locator(`.family-row.match[data-id="${fam.children[1]}"]`)).toBeVisible();
+    await expect(card.locator(`.family-row.dim[data-id="${fam.children[0]}"]`)).toBeVisible();
+    await page.locator("#filter").fill("");
+
+    // Select mode: the chip still opens the list; rows have no checkbox and pick nothing.
+    await page.locator("#selectBtn").click();
+    await chip.click();
+    await expect(rows).toHaveCount(2);
+    await expect(card.locator(".family-row .card-pick, .family-row .card-arch")).toHaveCount(0);
+    await rows.nth(0).click();
+    await expect(page.locator("#selectCount")).toHaveText("0 selected");
+    await expect(page).toHaveURL(/#\/sessions$/);
+    await page.locator("#selectDoneBtn").click();
+
+    // A row opens its delegate.
+    await card.locator(`.family-row[data-id="${fam.children[1]}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`#/s/${fam.children[1]}$`));
+
+    // A delegate that waits on the user opens its family and marks the parent.
+    waitingFam = await seedFamily(chi, { tag: "Waits", waiting: true });
+    await page.locator("#allTile").click();
+    const waitingCard = page.locator(`#allList .card[data-id="${waitingFam.parent}"]`);
+    await expect(waitingCard).toHaveClass(/\bwaiting\b/);
+    await expect(waitingCard.locator(".family-chip.waiting")).toContainText("2 delegates · 1 live · 1 waiting");
+    await expect(waitingCard.locator(".family-chip")).toHaveAttribute("aria-expanded", "true");
+    await expect(waitingCard.locator(`.family-row[data-id="${waitingFam.children[1]}"] .attn`)).toHaveText("question");
+    // Waiting families sort first.
+    await expect(page.locator("#allList .card[data-id]").first()).toHaveAttribute("data-id", waitingFam.parent);
+  } finally {
+    fam.remove();
+    waitingFam?.remove();
+  }
 });
 
 test("the info bar: copy chi --attach copies the full id, delete removes the session after the confirm", async ({ page, script }) => {

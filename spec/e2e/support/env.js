@@ -240,3 +240,62 @@ export async function stopEnv(env) {
   else fs.rmSync(root, { recursive: true, force: true });
   if (left.length) throw new Error(`e2e: processes under ${root} survived SIGKILL: ${left.join(" ")}`);
 }
+
+// A parent and two delegates (delegate: true, parent_id) written straight
+// into the state dir, as a worker saves them (tmp + rename): chi web's hub
+// lists them within its next scan. No worker runs them, except with
+// +waiting+: the second delegate has an open question, and a stand-in
+// worker (a ruby holding its owner lock as kind "worker", OwnerLock) makes
+// it live, which a question needs to count as open (Session#waiting_question).
+// Returns their ids; remove() stops the stand-in and deletes the files (the
+// hub drops them), so later scenarios of this worker don't see them.
+export async function seedFamily(env, { waiting = false, tag = "Family" } = {}) {
+  const dir = path.join(env.dirs.state, "samagotchi", "sessions");
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = `${Date.now().toString(16)}${Math.floor(Math.random() * 0xfff).toString(16)}`;
+  const ids = { parent: `e2e-parent-${stamp}`, children: [`e2e-child-a-${stamp}`, `e2e-child-b-${stamp}`] };
+  const now = new Date().toISOString();
+  const session = (id, prompt, extra = {}) => ({
+    metadata_version: 3, id, mode: "assist", model_name: "fake-script", model_typed: null,
+    working_directory: env.dirs.project, messages: [{ role: "user", content: prompt }],
+    created_at: now, updated_at: now, status: "idle", last_prompt: prompt, first_preview: prompt,
+    test_run: false, pending_question: null, used_memory_names: [], project_root: env.dirs.project,
+    preloaded_memory_names: [], muted_memory_names: [], parent_id: null, scratch: false, last_turn: null,
+    delegate: false, ...extra,
+  });
+  const files = [
+    session(ids.parent, `${tag} parent coordinates`),
+    session(ids.children[0], `${tag} child one fixes`, { parent_id: ids.parent, delegate: true }),
+    session(ids.children[1], `${tag} child two documents`, {
+      parent_id: ids.parent, delegate: true,
+      ...(waiting ? { pending_question: { id: `q-${stamp}`, kind: "question", question: "Which one?" } } : {}),
+    }),
+  ];
+  let holder = null;
+  if (waiting) {
+    const lockDir = path.join(dir, ids.children[1]);
+    holder = spawn("ruby", ["-I", path.join(CHECKOUT, "lib"), "-rsamagotchi/owner_lock", "-e",
+      "lock = Samagotchi::OwnerLock.acquire(ARGV[0], kind: 'worker') or abort('locked'); $stdout.puts('held'); $stdout.flush; $stdin.read",
+      lockDir], { stdio: ["pipe", "pipe", "ignore"] });
+    env.procs.push(holder);
+    await new Promise((resolve, reject) => {
+      holder.stdout.once("data", resolve);
+      holder.once("exit", (code) => reject(new Error(`the owner lock stand-in exited (${code})`)));
+    });
+  }
+  for (const s of files) {
+    const file = path.join(dir, `${s.id}.json`);
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(s, null, 2));
+    fs.renameSync(`${file}.tmp`, file);
+  }
+  return {
+    ...ids,
+    remove() {
+      if (holder && holder.exitCode === null) holder.stdin.end();
+      for (const s of files) {
+        fs.rmSync(path.join(dir, `${s.id}.json`), { force: true });
+        fs.rmSync(path.join(dir, s.id), { recursive: true, force: true });
+      }
+    },
+  };
+}

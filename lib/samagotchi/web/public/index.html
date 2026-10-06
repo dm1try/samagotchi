@@ -24,6 +24,8 @@ body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
 #dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 #topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:var(--card-hover-border)}
 #topStrip .card.active,#allList .card.active{background:color-mix(in srgb,var(--accent-bg) 75%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+/* A parent whose folded family holds the open session: a quieter mark than .active. */
+#topStrip .card.contains-active,#allList .card.contains-active{border-color:color-mix(in srgb,var(--accent) 22%,transparent)}
 /* A session that waits on the user (a question, an approval, a card with actions): the warning colour of its question card, also when active or hovered. */
 #topStrip .card.waiting,#allList .card.waiting{border-color:color-mix(in srgb,var(--warn) 75%,transparent)}
 #topStrip .card.waiting:hover,#allList .card.waiting:hover{border-color:var(--warn)}
@@ -810,6 +812,35 @@ body.has-session #scope .scope-where{display:none}
 .card .children-chip{font-family:ui-monospace,monospace;white-space:nowrap;flex-shrink:0;color:var(--text-3)}
 #topStrip .card .children-chip{cursor:pointer;border-radius:4px}
 #topStrip .card .children-chip:hover{color:var(--accent)}
+/* A parent's family chip: its delegates folded into its card; a click opens or closes their list. */
+/* A card with a family chip lets its meta row wrap: the chip goes to a line of its own when the card is narrow. */
+.card .meta:has(.family-chip){flex-wrap:wrap;row-gap:4px}
+.card .family-chip{font-family:ui-monospace,monospace;font-size:11px;line-height:1.4;white-space:nowrap;flex-shrink:0;padding:1px 7px;border-radius:999px;border:1px solid var(--border-strong);background:transparent;color:var(--text-3);cursor:pointer}
+.card .family-chip:hover:not(:disabled){filter:none;color:var(--accent);border-color:var(--accent-border);background:var(--accent-bg)}
+.card .family-chip.waiting{color:var(--warn-text);background:var(--warn-bg);border-color:var(--warn-border)}
+.card .family-chip.waiting:hover:not(:disabled){color:var(--warn-bright);border-color:var(--warn);background:var(--warn-bg)}
+.family-chip .fc-arrow{display:inline-block;margin-right:4px;transition:transform .15s ease}
+.family-chip[aria-expanded="true"] .fc-arrow{transform:rotate(90deg)}
+.family-chip .live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:3px;vertical-align:1px}
+.family-chip .fc-waiting{font-family:system-ui,sans-serif;font-weight:600}
+/* The family's list: one compact row per delegate, indented per depth. */
+.family-rows{display:flex;flex-direction:column;gap:1px;border-top:1px solid var(--border);margin:2px -6px 0;padding-top:4px;cursor:default}
+.family-row{display:flex;align-items:center;border-radius:6px;padding-left:calc((var(--depth,1) - 1) * 14px)}
+.family-row:hover{background:var(--bg-hover)}
+.family-row .fr-open{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:6px;background:transparent;color:var(--text-2);border-radius:6px;font-size:12px;line-height:1.3;text-align:left}
+.family-row .fr-open:hover:not(:disabled){filter:none}
+.family-row .fr-preview{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.family-row .time{font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.family-row.active{background:var(--accent-bg)}
+.family-row.active .fr-preview{color:var(--text-bright)}
+.family-row.dim{opacity:.5}
+.family-row.match .fr-preview{color:var(--text-bright);font-weight:600}
+.family-row.archived{opacity:.6}
+.family-row .card-arch{flex-shrink:0;padding:4px 7px;margin-right:2px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-muted);opacity:0;transition:opacity .15s}
+.family-row:hover .card-arch,.family-row .card-arch:focus-visible{opacity:1}
+.card .family-row .card-arch::before{-webkit-mask-image:var(--icon-archive);mask-image:var(--icon-archive)}
+.card .family-row.archived .card-arch::before{-webkit-mask-image:var(--icon-unarchive);mask-image:var(--icon-unarchive)}
+@media (hover:none){.family-row .card-arch{opacity:1}}
 .children-chip .kids-waiting{font-family:system-ui,sans-serif;font-weight:600;color:var(--warn-text)}
 #infoBar .meta a.children-chip{text-decoration:none;font-family:ui-monospace,monospace;white-space:nowrap}
 #infoBar .meta a.children-chip:hover{color:var(--accent)}
@@ -861,7 +892,7 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #allHead .include-archived{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer;user-select:none}
 .card.archived{opacity:.6}
 .card.archived:hover{opacity:.85}
-.card .archived-badge{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border-strong);color:var(--text-muted)}
+.card .archived-badge,.family-row .archived-badge{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border-strong);color:var(--text-muted)}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;z-index:50;display:flex;gap:12px;align-items:center;padding:8px 14px;border-radius:10px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-strong);box-shadow:var(--toast-shadow);font-size:13px}
 #toast[hidden]{display:none}
 #toast .toast-action{background:transparent;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:2px 4px}
@@ -898,25 +929,25 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card .recap{font-size:12px;line-height:1.4;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:-2px 0 2px}
 .card .meta{font-size:11px;color:var(--text-muted);display:flex;gap:6px;align-items:center}
 /* A card's status is a dot (its word is the tooltip); the .status.* pills below are the info bar's. */
-.card .dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-muted)}
-.card .dot.running{background:var(--ok);animation:dot-pulse 1.6s ease-in-out infinite}
-.card .dot.idle{background:var(--text-muted)}
-.card .dot.stopped{background:transparent;border:1px solid var(--text-faint)}
-.card .dot.completed{background:var(--accent)}
-.card .dot.error{background:var(--danger)}
+.card .dot,.family-row .dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-muted)}
+.card .dot.running,.family-row .dot.running{background:var(--ok);animation:dot-pulse 1.6s ease-in-out infinite}
+.card .dot.idle,.family-row .dot.idle{background:var(--text-muted)}
+.card .dot.stopped,.family-row .dot.stopped{background:transparent;border:1px solid var(--text-faint)}
+.card .dot.completed,.family-row .dot.completed{background:var(--accent)}
+.card .dot.error,.family-row .dot.error{background:var(--danger)}
 @keyframes dot-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 0%,transparent)}}
-.card .dot.waiting{background:var(--warn);animation:attn-pulse 1.6s ease-in-out infinite}
+.card .dot.waiting,.family-row .dot.waiting{background:var(--warn);animation:attn-pulse 1.6s ease-in-out infinite}
 @keyframes attn-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 60%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 0%,transparent)}}
-@media (prefers-reduced-motion:reduce){.card .dot.running,.card .dot.waiting{animation:none}}
-.card .attn{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
-.card .stopped-badge{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn);color:var(--bg)}
+@media (prefers-reduced-motion:reduce){.card .dot.running,.card .dot.waiting,.family-row .dot.running,.family-row .dot.waiting{animation:none}}
+.card .attn,.family-row .attn{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
+.card .stopped-badge,.family-row .stopped-badge{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn);color:var(--bg)}
 .status.running{background:var(--ok-bg);color:var(--ok-text)}
 .status.idle{background:var(--bg-raised)}
 .status.completed{background:var(--accent-bg);color:var(--accent)}
 .status.error{background:var(--danger-bg-dim);color:var(--danger-text)}
-.card .owner{font-size:11px;padding:2px 6px;border-radius:999px}
-.card .owner.worker{background:var(--ok-bg);color:var(--ok-text)}
-.card .owner.tui{background:var(--warn-bg);color:var(--warn-text)}
+.card .owner,.family-row .owner{font-size:11px;padding:2px 6px;border-radius:999px}
+.card .owner.worker,.family-row .owner.worker{background:var(--ok-bg);color:var(--ok-text)}
+.card .owner.tui,.family-row .owner.tui{background:var(--warn-bg);color:var(--warn-text)}
 @media(max-width:900px){
   #topStrip{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:72%;overflow-x:auto;min-height:0}
   #topStrip #allTile{width:auto}
