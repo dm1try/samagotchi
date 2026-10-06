@@ -13,6 +13,7 @@ require_relative "turn_note"
 require_relative "context_note"
 require_relative "steer"
 require_relative "worker_idle_exit"
+require_relative "worker_wakes"
 require_relative "session_manager"
 require_relative "archive_store"
 require_relative "log"
@@ -115,14 +116,6 @@ module Samagotchi
       @asked_parent = false
       @owes_parent = false
       @initial_turn = false
-      # A parent's side: turns run for delegate reports since the last human
-      # input (session.max_wakes), whether a failed one paused them until
-      # then, whether the budget notice went out, and the reports a wake
-      # turn's first boundary hands over.
-      @wakes_in_a_row = 0
-      @wakes_paused = false
-      @budget_noticed = false
-      @wake_reports = nil
     end
 
     # Whether the session was empty as the worker left it, so the caller
@@ -145,7 +138,8 @@ module Samagotchi
     #   (chi stop), :crashed when the loop raised (the session is marked
     #   errored); SessionManager.run_session_loop turns it into the exit
     def run
-      @started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      # The wake turns' budget (delegate reports, attached context), from now.
+      @wakes = WorkerWakes.new(grace: WAKE_START_GRACE)
       @session = Session.load(@session_id, state_dir: @state_dir)
       drop_dead_question
       @engine = build_engine
@@ -449,12 +443,9 @@ module Samagotchi
     def context_wake_for(batch, now: Time.now)
       candidates = batch.deliveries.select(&:wake_note)
       return nil if candidates.empty? || !context_wakes_on?
-      return nil if @wakes_paused || @turn_flow.awaiting_continue? || wake_grace_left.positive?
+      return nil unless @wakes.context_open?(awaiting_continue: @turn_flow.awaiting_continue?,
+                                             names: candidates.map(&:name))
 
-      if @wakes_in_a_row >= max_wakes
-        Log.info(:worker, "context_wake_held", reason: "max_wakes", names: candidates.map(&:name).join(","))
-        return nil
-      end
       candidates.find { |delivery| !woke_lately?(delivery.subscription, now) }
     end
 
@@ -482,8 +473,7 @@ module Samagotchi
     # +waking+: the ContextAbsorber::Delivery that woke it.
     def run_context_wake_turn(waking, turn_id)
       name = waking.name
-      @wakes_in_a_row += 1
-      Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes_in_a_row)
+      Log.info(:worker, "context_wake_turn", name: name, in_a_row: @wakes.count!)
       @turn_flow.before_prompt_turn
       run_engine_turn(nil, continue: true, origin: { client_id: "#{ClientId::CONTEXT_PREFIX}#{name}" },
                            id: turn_id, max_iterations: IterationLimit.for) do |result, error|
@@ -492,7 +482,7 @@ module Samagotchi
                                  wake: "the change in attached context #{name}")
           @turn_flow.prompt_turn_failed(note: note)
           unmark_wake_note(turn_id, waking.note)
-          @wakes_paused = true
+          @wakes.pause!
         else
           @continue_offer.after_turn(result)
         end
@@ -587,10 +577,8 @@ module Samagotchi
     # the budget stops it; nil otherwise.
     def wake_state
       return nil unless @child_reports && ChildRing.mode == "wake"
-      return nil if @wakes_paused || @turn_flow&.awaiting_continue?
-      return nil unless @child_reports.waiting?
 
-      @wakes_in_a_row < max_wakes ? :due : :budget
+      @wakes.delegate_state(awaiting_continue: @turn_flow&.awaiting_continue?) { @child_reports.waiting? }
     end
 
     # Run a turn nobody typed for the reports the rings bring (a wake turn):
@@ -600,7 +588,7 @@ module Samagotchi
     # doesn't loop).
     # @return [Boolean] whether a wake turn ran
     def run_wake_turn
-      return false if wake_grace_left.positive?
+      return false if @wakes.in_grace?
 
       state = wake_state
       budget_notice if state == :budget
@@ -611,9 +599,8 @@ module Samagotchi
       # exact list at its first boundary.
       return false if reports.empty?
 
-      @wake_reports = reports
-      @wakes_in_a_row += 1
-      Log.info(:worker, "delegate_wake_turn", reports: reports.size, in_a_row: @wakes_in_a_row)
+      @wakes.hand_over(reports)
+      Log.info(:worker, "delegate_wake_turn", reports: reports.size, in_a_row: @wakes.count!)
       @turn_flow.before_prompt_turn
       run_engine_turn(nil, continue: true, origin: reports.first.origin, max_iterations: IterationLimit.for) do |result, error|
         if error
@@ -623,44 +610,29 @@ module Samagotchi
                                  kept: "chi keeps #{reports.size == 1 ? "the report and brings it" : "the reports and brings them"} " \
                                        "again with the user's next message.")
           @turn_flow.prompt_turn_failed(note: note)
-          @wakes_paused = true
+          @wakes.pause!
         else
           @continue_offer.after_turn(result)
         end
       end
       true
     ensure
-      @wake_reports = nil
-    end
-
-    def wake_grace_left
-      WAKE_START_GRACE - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started_at)
+      @wakes.drop_handed
     end
 
     # The idle loop's sleep: the fallback tick, or less while reports wait
     # out the start grace.
-    def idle_wait
-      left = wake_grace_left
-      left.positive? && wake_state == :due ? [left, @poll_interval].min : @poll_interval
-    end
-
-    def max_wakes
-      value = Integer(Config.get(ChildRing::MAX_WAKES_KEY), exception: false)
-      value&.positive? ? value : ChildRing::MAX_WAKES_DEFAULT
-    rescue StandardError
-      ChildRing::MAX_WAKES_DEFAULT
-    end
+    def idle_wait = @wakes.idle_wait(@poll_interval) { wake_state == :due }
 
     # The wake budget is spent: the parent's UIs hear once that reports
     # wait for the next message.
     def budget_notice
-      return if @budget_noticed
+      return unless @wakes.notice_budget!
 
-      @budget_noticed = true
       count = SessionInbox.find_ring_files(@session_dir).map { |f| SessionInbox.read_ring(f)&.dig(:child_id) }.uniq.size
       @engine.announce(type: :hook_notice, hook: "delegate", level: :info, between_turns: true,
                        text: "#{count} delegate report#{"s" if count != 1} waiting; #{count == 1 ? "it joins" : "they join"} " \
-                             "your next message (#{max_wakes} turn#{"s" if max_wakes != 1} ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
+                             "your next message (#{@wakes.max} turn#{"s" if @wakes.max != 1} ran for reports in a row, #{ChildRing::MAX_WAKES_KEY})")
     end
 
     def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)
@@ -942,9 +914,7 @@ module Samagotchi
     # @return [Array(Array<ChildReports::Report>, Hash|nil)] the reports
     #   and the mark of their message
     def take_child_reports
-      if @wake_reports
-        reports = @wake_reports
-        @wake_reports = nil
+      if (reports = @wakes.take_handed)
         return [reports, { turn_start: true, turn_id: @turn_id }.compact]
       end
 
@@ -1057,9 +1027,7 @@ module Samagotchi
       return unless ClientId.human?(client_id)
 
       ArchiveStore.user_input(@session_id, state_dir: @state_dir)
-      @wakes_in_a_row = 0
-      @wakes_paused = false
-      @budget_noticed = false
+      @wakes.human_input!
     end
 
     def stopped_on_disk?
