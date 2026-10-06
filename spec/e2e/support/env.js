@@ -149,7 +149,14 @@ export async function startEnv({ lan = false, installed = null } = {}) {
 
     // Nothing from the caller's chi settings leaks in (SAMAGOTCHI_WEB_PORT, …).
     const childEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("SAMAGOTCHI_")));
+    // A fake gh (support/fake_gh.sh) for the github-pr bundle's line links:
+    // first on PATH, so no scenario reaches GitHub.
+    const bin = path.join(root, "bin");
+    fs.mkdirSync(bin);
+    fs.copyFileSync(path.join(HERE, "fake_gh.sh"), path.join(bin, "gh"));
+    fs.chmodSync(path.join(bin, "gh"), 0o755);
     Object.assign(childEnv, {
+      PATH: `${bin}${path.delimiter}${process.env.PATH}`,
       HOME: dirs.home,
       XDG_CONFIG_HOME: dirs.config,
       XDG_STATE_HOME: dirs.state,
@@ -170,6 +177,9 @@ export async function startEnv({ lan = false, installed = null } = {}) {
     // A test bundle whose plugin sends a notice marked fallback_for: display
     // and a plain one after an E2E_FALLBACK answer, for that scenario.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-fallback-notice")],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
+    // github-pr (shipped), for the PR line links scenario: its gh is the fake.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "github-pr"],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     const webPort = await freePort();
     const webLog = fs.openSync(path.join(root, "web.log"), "a");

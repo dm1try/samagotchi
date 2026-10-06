@@ -1,0 +1,6 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"hold": 3, "text": "The guard at `lib/foo.rb:28` misses nil; lib/foo.rb:100 is fine."}
+  ]
+}

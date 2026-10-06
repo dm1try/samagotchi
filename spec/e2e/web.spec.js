@@ -1073,6 +1073,22 @@ test("a notice that stands in for the rendered answer isn't shown, live or after
   await expect(page.locator("#center")).not.toContainText("e2e fallback line");
 });
 
+// The github-pr bundle's line links (its gh is support/fake_gh.sh): a
+// `path:line` in the answer links to that line of the PR the prompt names,
+// the Files changed anchor inside a hunk, the file at the PR's head outside.
+// The PR's data is fetched off the turn, from its start: the scripted
+// answer holds 3 s, so it comes after the fetch.
+test("a path:line in the answer links to the PR's line", { tag: "@turn" }, async ({ page, script }) => {
+  script("pr_line_links");
+  await send(page, "Review https://github.com/acme/app/pull/42");
+  await turnEnded(page, 1);
+  // sha256("lib/foo.rb")
+  const diff = "diff-47ce87534a4e96112fc42a7ab2170bca8347bb742ced63eedd4f8c260080005f";
+  const output = page.locator("#history .bubble.output").last();
+  await expect(output.locator(`a[href="https://github.com/acme/app/pull/42/files#${diff}R28"] code`)).toHaveText("lib/foo.rb:28");
+  await expect(output.locator('a[href="https://github.com/acme/app/blob/e2ehead/lib/foo.rb#L100"]')).toHaveText("lib/foo.rb:100");
+});
+
 // A check-in card asks the user as a question does: a tab behind shows one
 // "needs you" notification and a badge; resolving the card (here from
 // another client, the tab untouched) drops the badge while the turn runs.
