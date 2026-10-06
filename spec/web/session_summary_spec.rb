@@ -158,6 +158,15 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(parent_id: "parent-1234")
     end
 
+    it "tells a delegate child from a fork: both carry the parent, only the delegate tool's is a delegate" do
+      s = session
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(delegate: false)
+      s.parent_id = "parent-1234"
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(delegate: false)
+      s.delegate = true
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(delegate: true)
+    end
+
     it "applies the owner to the status and names its kind" do
       s = session(status: "running")
 

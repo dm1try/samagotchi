@@ -49,6 +49,10 @@ module Samagotchi
           muted_memory_names: Array(session.muted_memory_names),
           # The session that delegated this one (the `delegate` tool), else nil.
           parent_id: session.parent_id,
+          # Started by the delegate tool (Session#delegate?); a fork has a
+          # parent_id too but isn't one. The parent's children chip counts
+          # delegates only, as the TUI's segment and /children do.
+          delegate: session.delegate?,
           first_preview: first_preview_for(session),
           owner: owner&.kind,
           # The saved recap's first sentence, for the session card.
