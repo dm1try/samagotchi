@@ -1181,7 +1181,8 @@ gem.
 - `chi bundle diff <name> [plugin.rb]`: shows the installed base and the
   file on disk.
 - `chi bundle build --name <name>`: puts the installed plugin (and
-  `requires_chi`) into the built bundle.
+  `requires_chi`, its `scripts/` and `context_providers:`) into the built
+  bundle.
 - `chi bundle uninstall <name>`: removes the plugin with the bundle.
 
 ## Not yet

@@ -5,6 +5,7 @@ require "fileutils"
 require "tmpdir"
 require_relative "manifest"
 require_relative "placeholder"
+require_relative "../context_providers"
 require_relative "../memory_paths"
 require_relative "../model_overlay"
 
@@ -152,6 +153,10 @@ module Samagotchi
         requires_chi = prov_data && prov_data[:requires_chi]
         needs = prov_data && prov_data[:needs]
 
+        # ── Scripts and context providers: the installed bundle's ──
+        scripts_to_copy = installed_scripts(prov, prov_data)
+        context_providers = prov_data ? ContextProviders.parse_list(prov_data[:context_providers]) : []
+
         # Determine trust_level for the built bundle
         build_trust_level = @trust_level
         if (build_trust_level.nil? || build_trust_level.empty?) && prov_data && prov_data[:trust_level]
@@ -185,6 +190,11 @@ module Samagotchi
 
           FileUtils.cp(plugin_src, File.join(staging, File.basename(plugin_src))) if plugin_src
 
+          unless scripts_to_copy.empty?
+            FileUtils.mkdir_p(File.join(staging, "scripts"))
+            scripts_to_copy.each_value { |src| FileUtils.cp(src, File.join(staging, "scripts", File.basename(src))) }
+          end
+
           Manifest.write(
             dir: staging,
             name: resolved_name,
@@ -196,7 +206,9 @@ module Samagotchi
             trust_level: build_trust_level,
             plugin: plugin_src && { file: File.basename(plugin_src), sha256: Digest::SHA256.hexdigest(File.binread(plugin_src)) },
             requires_chi: requires_chi,
-            needs: needs
+            needs: needs,
+            scripts: scripts_to_copy.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
+            context_providers: context_providers
           )
 
           case format
@@ -254,6 +266,15 @@ module Samagotchi
       end
 
       private
+
+      # The installed bundle's scripts its record lists, file name => path
+      # in its scripts/ (a missing one is left out); {} without a record.
+      def installed_scripts(prov, prov_data)
+        return {} unless prov && prov_data && prov_data[:scripts].is_a?(Hash)
+
+        prov_data[:scripts].keys.map(&:to_s).sort.to_h { |file| [file, File.join(prov.scripts_dir, file)] }
+                           .select { |_, path| File.file?(path) }
+      end
 
       # Without an allowlist, a memory another installed bundle owns (its
       # record lists it) isn't the user's to share: left out, one line

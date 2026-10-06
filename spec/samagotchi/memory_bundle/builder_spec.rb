@@ -116,6 +116,29 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     ])
   end
 
+  it "keeps the installed bundle's scripts and context providers, so the built bundle installs the same" do
+    script = "puts 1\n"
+    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "prs")
+    FileUtils.mkdir_p(File.join(src, "scripts"))
+    File.write(File.join(src, "scripts", "pr.rb"), script)
+    provider = { "match" => '\Ahttps://example\.com/pull/(\d+)', "name" => 'pr-\1',
+                 "cmd" => "{ruby} {bundle_dir}/scripts/pr.rb {url}", "why" => "a PR", "every_seconds" => 120 }
+    manifest = YAML.load_file(File.join(src, "manifest.yml"))
+    manifest["scripts"] = { "pr.rb" => "sha256:#{Digest::SHA256.hexdigest(script)}" }
+    manifest["context_providers"] = [provider]
+    File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
+    Samagotchi::MemoryBundle::Installer.new(source: src, name: "prs", scope: "system", strict: true).run
+
+    out = File.join(tmpdir, "out-providers")
+    described_class.new(scope: "system", name: "prs", out: out).run
+
+    built = YAML.load_file(File.join(out, "manifest.yml"))
+    expect(built["scripts"]).to eq("pr.rb" => "sha256:#{Digest::SHA256.hexdigest(script)}")
+    expect(built["context_providers"]).to eq([provider])
+    expect(File.read(File.join(out, "scripts", "pr.rb"))).to eq(script)
+    expect(Samagotchi::MemoryBundle::Manifest.read(dir: out).context_providers.map(&:to_h)).to eq([provider])
+  end
+
   it "names a project bundle after the repository, also from a linked worktree" do
     repo = File.join(File.realpath(tmpdir), "My Repo")
     FileUtils.mkdir_p(repo)

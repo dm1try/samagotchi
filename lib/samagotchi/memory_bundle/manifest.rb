@@ -124,7 +124,7 @@ module Samagotchi
 
       # Writes a fresh manifest.yml from computed checksums at `dir`.
       def self.write(dir:, name:, version:, files:, scope: nil, description: "", hooks: nil, trust_level: nil,
-                     plugin: nil, requires_chi: nil, needs: nil)
+                     plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [])
         FileUtils.mkdir_p(dir)
         manifest = {
           "name" => name,
@@ -149,6 +149,8 @@ module Samagotchi
         manifest["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
         needs = parse_needs(needs)
         manifest["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } unless needs.empty?
+        manifest["scripts"] = scripts.transform_keys(&:to_s) unless scripts.empty?
+        manifest["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
         File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
       end
 
