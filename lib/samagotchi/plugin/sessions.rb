@@ -5,6 +5,7 @@ require_relative "../session"
 require_relative "../bridge_client"
 require_relative "../bridge/turn_accumulator"
 require_relative "../tools/delegate"
+require_relative "../children_status"
 
 module Samagotchi
   # Loaded on first use: session_manager requires terminal_ui, which
@@ -16,7 +17,11 @@ module Samagotchi
     # plugin. A fork is an ordinary chi session in its own worker, shown in
     # every list as a child of this one (↳ parent).
     class Sessions
-      # A fork, send or read that couldn't be done; the message says why.
+      # How long #stop waits for the child's worker to let go, as the web's
+      # stop does.
+      STOP_WAIT = 2
+
+      # A fork, send, read or stop that couldn't be done; the message says why.
       class Error < StandardError; end
 
       # @param host [Host] session_id, cwd, model_name and state_dir
@@ -96,9 +101,48 @@ module Samagotchi
           running: running, messages: without_system_head(messages) }
       end
 
+      # This session's children, newest first (ChildrenStatus.of): delegates
+      # and forks (delegate: false), archived ones only with +all+. It reads
+      # every session's file, so call it on demand, not in a loop.
+      # @return [Array<Hash>] frozen ChildrenStatus::Child fields (symbol
+      #   keys); [] with no session yet
+      def children(all: false)
+        parent_id = @host.session_id.call or return []
+
+        ChildrenStatus.of(parent_id, state_dir: state_dir, include_archived: all).map { |child| child.to_h.freeze }
+      end
+
+      # Stop one of this session's own children as `chi sessions stop` does
+      # (by session id; no pid is read here), waiting up to STOP_WAIT s for
+      # its worker to let go.
+      # @return [String] the child's id
+      # @raise [Error] not a child of this session, no such session, or a
+      #   REPL owns it
+      def stop(id)
+        state_dir = self.state_dir
+        sid = resolve(id, state_dir)
+        parent_id = @host.session_id.call
+        unless parent_id && child_of?(sid, parent_id, state_dir)
+          raise Error, "session #{sid[0, 8]} is not a child of this session"
+        end
+
+        SessionManager.stop_session(sid, state_dir: state_dir, wait: STOP_WAIT)
+        sid
+      rescue SessionManager::OwnedByTUI
+        raise Error, "session #{sid[0, 8]} is open in a chi REPL; stop it there"
+      end
+
       private
 
       def state_dir = @host.state_dir&.call || Session.default_state_dir
+
+      # A session file that won't load (corrupt) is an Error, not a crash
+      # of the command that called stop.
+      def child_of?(sid, parent_id, state_dir)
+        Session.load(sid, state_dir: state_dir).parent_id == parent_id
+      rescue ArgumentError => e
+        raise Error, e.message
+      end
 
       def resolve(id, state_dir)
         sid = Session.resolve_id(id.to_s.strip, state_dir: state_dir)

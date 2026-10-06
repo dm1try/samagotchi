@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - `delegate cwd:` starts a child in another folder of the session's repository: a worktree the model made with
   `git worktree add`, or a subfolder. Another repository is refused.
+- Plugins: `ctx.sessions.children` lists the session's children (state, branch, last reply and whether the parent
+  was given it), and `ctx.sessions.stop(id)` stops one of its own children.
 
 ### Changed
 

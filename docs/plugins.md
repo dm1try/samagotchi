@@ -496,7 +496,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason; true when it stopped one now. In a `:before_tool_call` block it also denies that call |
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
-| `ctx.sessions` | fork, send to and read other sessions: see [Other sessions](#other-sessions-ctxsessions) |
+| `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 | `ctx.context` | attach outside text to this session and list it: see [Attached context](#attached-context-ctxcontext) |
 
 The Engine itself is never handed to a plugin.
@@ -608,7 +608,9 @@ llama.cpp serves on a native host too.
 id = ctx.sessions.fork(messages: ctx.messages + [{ role: "user", content: q }, { role: "model", content: a }],
                        title: "btw: #{q}")
 ctx.sessions.send(id, "go on from here")
-ctx.sessions.read(id)  # => {id:, title:, status:, parent_id:, running:, messages:}
+ctx.sessions.read(id)      # => {id:, title:, status:, parent_id:, running:, messages:}
+ctx.sessions.children      # => [{id:, short_id:, state:, branch:, last_reply:, reported:, ...}]
+ctx.sessions.stop(id)      # one of this session's own children
 ```
 
 - `fork(messages:, title: nil, prompt: nil)` starts a child session in its
@@ -629,6 +631,23 @@ ctx.sessions.read(id)  # => {id:, title:, status:, parent_id:, running:, message
 - `read(id)` gives a session now: from its worker when one runs (with a
   running turn so far, `running: true`), else as saved. `messages` has no
   system prompt.
+- `children(all: false)` lists this session's children, newest first, as
+  frozen Hashes: `{id:, short_id:, title:, state:, waiting:, live:,
+  delegate:, cwd:, branch:, last_reply:, last_reply_at:, reported:,
+  updated_at:, archived:}`.
+  - `state` is `waiting` (a question or approval is open; `waiting` says
+    which), `running`, `failed` (the last turn failed or the worker
+    crashed), `stopped`, `done` (the last turn ended with a reply) or `idle`.
+  - `delegate` is true for a `delegate` child, false for a fork. Archived
+    children are listed only with `all: true`.
+  - `branch` is the branch checked out in the child's folder (read from its
+    `HEAD`, a short sha when detached; nil outside git). `last_reply` is the
+    first line of its newest reply, and `reported` says whether this session
+    was already given that reply (a delegate report or a wait).
+  - It reads every session's file: call it on demand, not in a loop.
+- `stop(id)` stops one of this session's own children, as
+  `chi sessions stop` does, and waits up to 2 s for its worker to let go. It
+  returns the child's id. Any other session raises.
 - Each raises `Samagotchi::Plugin::Sessions::Error` with the reason.
 
 ## Attached context: `ctx.context`

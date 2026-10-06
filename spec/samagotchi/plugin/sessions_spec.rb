@@ -113,4 +113,72 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       )
     end
   end
+
+  describe "#children" do
+    def child_of(parent_id, delegate: false, prompt: "work")
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir,
+                                      parent_id: parent_id, delegate: delegate).tap do |s|
+        s.last_prompt = prompt
+        s.save(state_dir: tmpdir)
+        sleep(0.01)
+      end
+    end
+
+    it "lists this session's children, delegates and forks, as frozen hashes; archived ones only with all:" do
+      delegate = child_of(parent.id, delegate: true, prompt: "count the specs")
+      fork = child_of(parent.id, prompt: "btw")
+      archived = child_of(parent.id, delegate: true)
+      Samagotchi::ArchiveStore.archive(archived.id, state_dir: tmpdir)
+      child_of(nil, prompt: "a stranger")
+
+      rows = sessions.children
+      expect(rows.map { |r| r.values_at(:id, :delegate, :title, :state) })
+        .to eq([[fork.id, false, "btw", "idle"], [delegate.id, true, "count the specs", "idle"]])
+      expect(rows).to all(be_frozen)
+      expect(rows.first.keys).to include(:short_id, :branch, :last_reply, :reported, :cwd, :waiting)
+      expect(sessions.children(all: true).map { |r| r[:id] }).to include(archived.id)
+    end
+
+    context "without a session yet" do
+      let(:session_id) { nil }
+
+      it "is empty" do
+        expect(sessions.children).to eq([])
+      end
+    end
+  end
+
+  describe "#stop" do
+    let(:child) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir,
+                                      parent_id: parent.id, delegate: true).tap { |s| s.save(state_dir: tmpdir) }
+    end
+
+    it "stops one of this session's own children by id, waiting a little for its worker" do
+      allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
+
+      expect(sessions.stop(child.id[0, 8])).to eq(child.id)
+      expect(Samagotchi::SessionManager).to have_received(:stop_session).with(child.id, state_dir: tmpdir, wait: 2)
+    end
+
+    it "refuses a session that isn't its child, an unknown one, a child whose file is corrupt, and one a REPL owns" do
+      stranger = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
+      stranger.save(state_dir: tmpdir)
+      allow(Samagotchi::SessionManager).to receive(:stop_session).and_call_original
+
+      expect { sessions.stop(stranger.id) }.to raise_error(described_class::Error, "session #{stranger.id[0, 8]} is not a child of this session")
+      expect { sessions.stop(parent.id) }.to raise_error(described_class::Error, /is not a child of this session/)
+      expect { sessions.stop("nope") }.to raise_error(described_class::Error, /nope/)
+      expect(Samagotchi::SessionManager).not_to have_received(:stop_session)
+
+      corrupt = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir, parent_id: parent.id)
+      corrupt.save(state_dir: tmpdir)
+      File.write(File.join(tmpdir, "#{corrupt.id}.json"), "{not json")
+      expect { sessions.stop(corrupt.id) }.to raise_error(described_class::Error, /Session file corrupted \(#{corrupt.id}\)/)
+      expect(Samagotchi::SessionManager).not_to have_received(:stop_session)
+
+      allow(Samagotchi::SessionManager).to receive(:stop_session).and_raise(Samagotchi::SessionManager::OwnedByTUI, child.id)
+      expect { sessions.stop(child.id) }.to raise_error(described_class::Error, "session #{child.id[0, 8]} is open in a chi REPL; stop it there")
+    end
+  end
 end
