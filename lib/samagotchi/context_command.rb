@@ -27,7 +27,7 @@ module Samagotchi
               --push: text comes from chi context push. --every: how often CMD runs
               (seconds, at least 30; default context.every_seconds). --why: why it's attached;
               --hint: one line, often its URL. NAME: a-z, 0-9 and -, up to 40.
-        push NAME [-m TEXT] [TARGET]        new text for NAME (stdin without -m; text or JSON)
+        push NAME [-m TEXT] [TARGET]        new text for a --push source (stdin without -m; text or JSON)
         ls [TARGET] [--format json]         the sources, their age and state
         show NAME [--json] [TARGET]         the text (--json: the source and its snapshot)
         refresh NAME [TARGET]               run NAME's command now, here (a live worker absorbs the result)
@@ -169,8 +169,16 @@ module Samagotchi
       fetched = ContextSources.parse_output(text)
       each_target(options, args) do |target|
         attached = find(target, name) or next false
-        before = attached.snapshot.revision
-        written = attached.location.record_text(name, fetched)
+        # A command source's text is its command's (R2): a push between
+        # two fetches would read as a change and then vanish.
+        unless attached.source.push?
+          error_line("#{command_name}: #{name} runs a command, which writes its text: push goes to a --push source")
+          next false
+        end
+
+        before, written = attached.location.locked(name) do
+          [attached.location.snapshot(name).revision, attached.location.record_text(name, fetched)]
+        end
         @stdout.puts("#{target.label}  #{name}: #{written.revision == before ? "unchanged" : "new text"} (#{written.revision[0, 12]})")
         true
       end

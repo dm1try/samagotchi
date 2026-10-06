@@ -211,6 +211,17 @@ module Samagotchi
         write_snapshot(name, written)
       end
 
+      # Run the block holding <name>.lock (blocking), the lock a fetch
+      # holds while it runs and records: a push's read-modify-write of the
+      # snapshot (its serial) doesn't interleave with another writer.
+      def locked(name)
+        FileUtils.mkdir_p(dir)
+        File.open(lock_path(name), File::RDWR | File::CREAT, 0o644) do |lock|
+          lock.flock(File::LOCK_EX)
+          yield
+        end
+      end
+
       # A fetch that failed: the last good text stays.
       # @return [Snapshot] the one written
       def record_error(name, message, now: Time.now)

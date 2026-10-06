@@ -168,6 +168,33 @@ RSpec.describe Samagotchi::ContextCommand do
       expect(project.snapshot("notes").text).to eq("shared")
     end
 
+    # R2 (part 1 review): a push is a read-modify-write of the snapshot
+    # (its serial), so it takes the source's lock, as a fetch does; a
+    # command source's text is its command's.
+    it "refuses a command source: its command writes its text" do
+      a = make
+      run("add", "pr-1", "--cmd", "echo hi", a.id)
+
+      expect(run("push", "pr-1", "-m", "x", a.id)).to eq(1)
+      expect(err.string).to include("pr-1 runs a command, which writes its text: push goes to a --push source")
+      expect(own(a).snapshot("pr-1").text).to be_nil
+    end
+
+    it "waits for the source's lock" do
+      a = make
+      run("add", "notes", "--push", a.id)
+      pushed = nil
+      File.open(own(a).lock_path("notes"), File::RDWR | File::CREAT) do |lock|
+        lock.flock(File::LOCK_EX)
+        thread = Thread.new { pushed = run("push", "notes", "-m", "hello", a.id) }
+        sleep(0.3)
+        expect(own(a).snapshot("notes").text).to be_nil
+        lock.flock(File::LOCK_UN)
+        thread.join(5)
+      end
+      expect([pushed, own(a).snapshot("notes").text]).to eq([0, "hello"])
+    end
+
     it "refuses an unknown source and empty text" do
       a = make
       expect(run("push", "nope", "-m", "x", a.id)).to eq(1)
