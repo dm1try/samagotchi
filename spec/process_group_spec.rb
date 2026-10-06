@@ -53,6 +53,30 @@ RSpec.describe Samagotchi::ProcessGroup do
     end
   end
 
+  describe "a pgid that isn't a group chi may signal" do
+    [nil, 0, 1, -5, "123", 12.0].each do |pgid|
+      it "is refused for #{pgid.inspect}, nothing signalled" do
+        expect(Process).not_to receive(:kill)
+
+        expect { described_class.signal(pgid, "TERM") }.to raise_error(ArgumentError)
+        expect { described_class.alive?(pgid) }.to raise_error(ArgumentError)
+        expect { described_class.stop(pgid, grace: 0, poll: 0) }.to raise_error(ArgumentError)
+        expect(described_class.leader?(pgid)).to be(false)
+      end
+    end
+
+    it "is no leader when the pid runs in another group" do
+      pid = Process.spawn("sleep", "31.93") # this spec's own child, in rspec's group
+      expect(described_class.leader?(pid)).to be(false)
+      expect(described_class.leader?(Process.pid)).to be(Process.getpgrp == Process.pid)
+    ensure
+      if pid
+        Process.kill("KILL", pid)
+        Process.wait(pid)
+      end
+    end
+  end
+
   describe ".signal" do
     it "says so when there is no such group" do
       pid = spawn_group("exit 0")

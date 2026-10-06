@@ -28,6 +28,7 @@ module Samagotchi
     #   signal; any other is raised
     # @return [Boolean] whether a signal was sent
     def signal(pgid, sig, leader: false, quiet: QUIET)
+      check!(pgid)
       Process.kill(sig, -pgid)
       true
     rescue *quiet
@@ -41,8 +42,28 @@ module Samagotchi
       end
     end
 
+    # A pid chi may signal or ask about: an Integer above 1. kill(0) and
+    # kill(-1) reach chi's own group and every process of the user, so a
+    # pid that isn't one (a broken or edited record) never gets that far.
+    def signalable?(pid) = pid.is_a?(Integer) && pid > 1
+
+    # @raise [ArgumentError] unless #signalable?
+    def check!(pid)
+      raise ArgumentError, "not a process group chi may signal: #{pid.inspect}" unless signalable?(pid)
+    end
+
+    # Whether +pid+ runs and leads its own group, as #spawn's process does
+    # (not, then, a reused pid in some other group).
+    def leader?(pid)
+      signalable?(pid) && Process.getpgid(pid) == pid
+    rescue Errno::ESRCH, Errno::EPERM
+      false
+    end
+
     # Whether +pid+ is still running (or a zombie not reaped yet).
+    # @raise [ArgumentError] unless #signalable?
     def alive?(pid)
+      check!(pid)
       Process.kill(0, pid)
       true
     rescue Errno::ESRCH
@@ -57,7 +78,9 @@ module Samagotchi
     # @param wait [#call] (seconds) between two checks (default: a sleep)
     # @param signal_options [Hash] for #signal (leader:, quiet:)
     # @return [Boolean] true when it stopped within the grace (no KILL sent)
+    # @raise [ArgumentError] unless #signalable?
     def stop(pgid, grace:, poll:, stopped: -> { !alive?(pgid) }, wait: ->(seconds) { sleep(seconds) }, **signal_options)
+      check!(pgid)
       signal(pgid, "TERM", **signal_options)
       deadline = monotonic + grace
       until (done = stopped.call) || monotonic >= deadline

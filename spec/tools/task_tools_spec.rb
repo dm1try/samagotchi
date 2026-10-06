@@ -307,6 +307,61 @@ RSpec.describe "task tools" do
       expect(described_class.get_record(record["id"]).first).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
     end
 
+    describe "a record whose pid isn't a process group chi started" do
+      # Every Process.kill is recorded; one aimed at pid 0 or 1 (chi's own
+      # group, every process of the user) never reaches the kernel.
+      let(:kills) { [] }
+
+      before do
+        stub_const("#{described_class}::STOP_GRACE_SEC", 0.2)
+        allow(Process).to receive(:kill).and_wrap_original do |original, sig, pid|
+          kills << [sig, pid]
+          [0, 1, -1].include?(pid) ? 1 : original.call(sig, pid)
+        end
+      end
+
+      def running_record(pid)
+        record = { "id" => described_class.generate_task_id, "command" => "sleep 30", "status" => "running",
+                   "created_at" => "2026-10-06T00:00:00Z", "exit_code_path" => File.join(Dir.pwd, "no-exit-code") }
+        record["pid"] = pid unless pid == :missing
+        described_class.write_record(record)
+        record
+      end
+
+      def signals = kills.reject { |sig, _| sig.zero? }
+
+      [:missing, 0, 1, "abc"].each do |pid|
+        it "signals nothing for a pid #{pid.inspect}, and ends the task as failed, saying why" do
+          record = running_record(pid)
+
+          stopped, error = described_class.stop_task(record["id"], by: "model")
+
+          expect(error).to be_nil
+          expect(stopped).to include("status" => "failed", "stop_reason" => described_class::NOT_CHIS_PROCESS)
+          expect(kills.map(&:last)).not_to include(0, 1, -1)
+          expect(signals).to be_empty
+        end
+      end
+
+      it "signals nothing for a live pid that doesn't lead its own group (reused by another process)" do
+        other = Process.spawn("sleep", "31.78") # this spec's own child, in rspec's group
+        record = running_record(other)
+
+        expect(described_class.get_record(record["id"]).first).to include("status" => "failed",
+                                                                          "stop_reason" => described_class::NOT_CHIS_PROCESS)
+        stopped, = described_class.stop_task(record["id"], by: "model")
+
+        expect(stopped).to include("status" => "failed")
+        expect(signals).to be_empty
+        expect(Process.wait2(other, Process::WNOHANG)).to be_nil
+      ensure
+        if other
+          Process.kill("KILL", other)
+          Process.wait(other)
+        end
+      end
+    end
+
     it "keeps a stop that already finished on disk when a stale copy is refreshed" do
       record, = described_class.create_task("sleep 30")
       stale = described_class.load_record(record["id"])

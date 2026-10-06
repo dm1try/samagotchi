@@ -25,6 +25,9 @@ module Samagotchi
       MARKER_ENV_KEYS = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL].freeze
       # task_wait and task_get add it to a task the user stopped (the web's
       # stop-task button), so the model doesn't rerun the job.
+      # A record whose pid isn't a process group chi started (missing, 0, 1,
+      # not a number, or a pid another process reuses): nothing is signalled.
+      NOT_CHIS_PROCESS = "the task's process is gone or isn't the one chi started"
       USER_STOP_NOTE = "note: the user stopped this task; don't restart it unless they ask."
 
       module_function
@@ -185,9 +188,12 @@ module Samagotchi
         refreshed = refresh_record(record)
         return [refreshed, nil] unless refreshed["status"] == "running"
 
+        pid = refreshed["pid"]
+        # Checked again just before the signal: never a group chi didn't start.
+        return [mark_not_chis(refreshed), nil] unless ProcessGroup.leader?(pid)
+
         refreshed["stop_requested_by"] = by.to_s
         write_record(refreshed)
-        pid = refreshed["pid"].to_i
 
         # A group that isn't ours (EPERM) is an error, not a stop.
         ProcessGroup.stop(pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, quiet: [Errno::ESRCH])
@@ -203,10 +209,18 @@ module Samagotchi
       def refresh_record(record)
         return record unless record["status"] == "running"
 
-        pid = record["pid"].to_i
-        return mark_finished_without_exit_code(record) unless ProcessGroup.alive?(pid)
+        pid = record["pid"]
+        return record if ProcessGroup.leader?(pid)
+        # Gone: its exit code says how it ended.
+        return mark_finished_without_exit_code(record) if ProcessGroup.signalable?(pid) && !ProcessGroup.alive?(pid)
 
-        record
+        mark_not_chis(record)
+      end
+
+      # A running record whose pid isn't a group chi started (NOT_CHIS_PROCESS)
+      # ends as failed, unless its exit code or a stop on disk says more.
+      def mark_not_chis(record)
+        mark_finished_without_exit_code(record, missing_reason: NOT_CHIS_PROCESS)
       end
 
       # A session id (a uuid) is never a task's: task ids are a timestamp
@@ -324,7 +338,7 @@ module Samagotchi
         filtered.join(" ")
       end
 
-      def mark_finished_without_exit_code(record)
+      def mark_finished_without_exit_code(record, missing_reason: "process_ended_without_exit_code")
         record = current_record(record)
         return record unless record["status"] == "running"
 
@@ -336,7 +350,7 @@ module Samagotchi
         elsif exit_code.nil?
           record["status"] = "failed"
           record["exit_code"] = nil
-          record["stop_reason"] ||= "process_ended_without_exit_code"
+          record["stop_reason"] ||= missing_reason
         elsif exit_code.zero?
           record["status"] = "completed"
           record["exit_code"] = 0
