@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # A GitHub PR as attached context (chi context; docs/context.md): run by
-# chi as `ruby pr_context.rb <url>`, it prints the JSON contract
+# chi as `{ruby} pr_context.rb <url>`, it prints the JSON contract
 # {text, summary, wake}. +text+ is the PR (title, state, description,
 # reviews, comments oldest first, checks); +summary+ says what changed
 # since the last text chi has (SAMAGOTCHI_CONTEXT_PREVIOUS) in counts,
@@ -11,8 +11,8 @@
 # changes, checks turning red, or the PR closed or merged; comments alone
 # never do (D9).
 #
-# Plain Ruby (json, open3) and `gh`: nothing from chi, so it runs under any
-# Ruby on the PATH.
+# Plain Ruby (json, open3) and `gh`, nothing from chi; the provider runs it
+# with chi's own Ruby ({ruby}), not whichever `ruby` is on the PATH.
 
 require "json"
 require "open3"

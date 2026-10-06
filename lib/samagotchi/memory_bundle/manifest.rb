@@ -32,7 +32,7 @@ module Samagotchi
     #   context_providers:     # optional — URL → attached context source
     #     - match: '\Ahttps://…/pull/(\d+)'   # (ContextProviders)
     #       name: 'pr-\1'
-    #       cmd: 'ruby {bundle_dir}/scripts/pr_context.rb {url}'
+    #       cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
     #       why: GitHub PR      #   optional
     #       every_seconds: 300  #   optional
     #   includes: [a, b]       # optional — a profile (meta bundle): the

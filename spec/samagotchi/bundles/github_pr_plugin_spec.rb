@@ -63,7 +63,7 @@ RSpec.describe "The github-pr bundle" do
     resolved = Samagotchi::ContextProviders.resolve("https://github.com/acme/app/pull/42/files")
 
     expect(resolved).to have_attributes(bundle: "github-pr", name: "pr-42", hint: "https://github.com/acme/app/pull/42",
-                                        cmd: "ruby {bundle_dir}/scripts/pr_context.rb https://github.com/acme/app/pull/42",
+                                        cmd: "{ruby} {bundle_dir}/scripts/pr_context.rb https://github.com/acme/app/pull/42",
                                         every_seconds: 300)
   end
 

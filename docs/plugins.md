@@ -672,7 +672,7 @@ scripts:
 context_providers:
   - match: '\Ahttps://github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)'
     name: 'pr-\3'               # \1… are match's groups; the result must be a source name
-    cmd: 'ruby {bundle_dir}/scripts/pr_context.rb {url}'
+    cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
     why: GitHub PR               # optional
     every_seconds: 300           # optional, at least 30
 ```
@@ -686,7 +686,8 @@ context_providers:
   the source. `{url}` is the part `match` matched, shell-quoted, filled in
   when the source is attached; `{bundle_dir}` stays in the stored command
   and becomes the installed bundle's folder each time it runs, so an
-  upgrade moves nothing.
+  upgrade moves nothing. `{ruby}` becomes the Ruby chi runs on (a `ruby` on
+  the PATH may be another one, such as macOS's 2.6).
 - The command follows [the contract](context.md#the-command-contract).
 
 ## The btw bundle

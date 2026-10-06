@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "json"
 require "digest"
+require "rbconfig"
 require "samagotchi/context_providers"
 require "samagotchi/context_sources"
 require "samagotchi/context_fetch"
@@ -83,6 +84,14 @@ RSpec.describe Samagotchi::ContextProviders do
     it "puts the installed bundle's folder in for {bundle_dir}" do
       dir = install
       expect(described_class.command_for(source)).to eq("ruby #{Shellwords.escape(dir)}/scripts/pr.rb x")
+    end
+
+    # Review item 2: `ruby` on PATH may be another Ruby (macOS 2.6, a
+    # launchd PATH); {ruby} is the one chi runs on.
+    it "puts chi's own Ruby in for {ruby}" do
+      dir = install
+      expect(described_class.command_for(source(cmd: "{ruby} {bundle_dir}/scripts/pr.rb x")))
+        .to eq("#{Shellwords.escape(RbConfig.ruby)} #{Shellwords.escape(dir)}/scripts/pr.rb x")
     end
 
     it "leaves a source with no provider as it is" do

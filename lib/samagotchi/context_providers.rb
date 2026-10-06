@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "rbconfig"
 require "shellwords"
 
 module Samagotchi
@@ -16,15 +17,17 @@ module Samagotchi
   #   context_providers:
   #     - match: '\Ahttps://github\.com/([^/]+)/([^/]+)/pull/(\d+)'
   #       name: 'pr-\3'
-  #       cmd: 'ruby {bundle_dir}/scripts/pr_context.rb {url}'
+  #       cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
   #       why: 'GitHub PR'
   #       every_seconds: 300
   #
   # The installer records them in the bundle's provenance; .resolve reads
   # them from there. +name+ takes the match's groups (\1…); +cmd+ takes
   # {url}, the matched URL (shell-quoted), when the source is attached, and
-  # keeps {bundle_dir}, the installed bundle's folder, for ContextFetch to
-  # fill in when it runs: a bundle upgrade moves nothing.
+  # keeps {bundle_dir}, the installed bundle's folder, and {ruby}, the Ruby
+  # chi runs on, for ContextFetch to fill in when it runs: a bundle upgrade
+  # moves nothing, and a `ruby` on the PATH may be another one (macOS's 2.6,
+  # a launchd PATH).
   module ContextProviders
     # A provider as the manifest declares it.
     Provider = Data.define(:match, :name, :cmd, :why, :every_seconds) do
@@ -40,6 +43,7 @@ module Samagotchi
     class Invalid < ArgumentError; end
 
     BUNDLE_DIR = "{bundle_dir}"
+    RUBY = "{ruby}"
     URL = "{url}"
     MIN_EVERY_SECONDS = 30
 
@@ -138,7 +142,7 @@ module Samagotchi
 
         raise Invalid, "bundle #{source.provider}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
       end
-      source.cmd.gsub(BUNDLE_DIR) { Shellwords.escape(provenance.bundle_dir) }
+      source.cmd.gsub(BUNDLE_DIR) { Shellwords.escape(provenance.bundle_dir) }.gsub(RUBY) { Shellwords.escape(RbConfig.ruby) }
     end
 
     def every(value)
