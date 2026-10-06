@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-06
+
 ### Added
 
 - `chi broadcast -m TEXT` (or stdin) shares a note with every session it may concern, without picking them: your
@@ -26,23 +28,28 @@ and commands may change between minor versions. How releases are made:
   answer's display (`event[:present]`) shows, so a UI that renders the display leaves it out. The web with markdown
   on does; the REPL, the attached TUI, `chi -p` and the web with markdown off still show it. See
   [docs/hooks.md](docs/hooks.md#what-a-hook-can-do-the-runtime).
+- Web, all sessions: each card has an archive button (unarchive on an archived one), and Select picks many cards
+  (click, Shift-click a range, "Select all shown") for Archive N / Unarchive M. A session with a running turn is
+  skipped with the reason on its card; one toast at the end has Undo.
 
 ### Changed
 
 - source-links 0.4.0 (needs chi 0.35.0; run `chi update`): with markdown on, the web no longer shows the
   `sources:` line under an answer that links every ref it names; it still shows when a ref is only in code or
   markdown is off, and the terminals print it as before.
-
 - `chi note --source broadcast` is refused: that source is `chi broadcast`'s.
 - Web: a parent's delegates fold into its card, on the strip and in all sessions, instead of being cards of their
   own. A `▸ 3 delegates · 1 live · 1 waiting` chip opens their list (in the card in all sessions, a popover on the
   strip); it opens by itself while one of them waits on you, and the card then wears the warning colour. A family
   takes one strip slot, a search finds a parent by its delegates, and select mode picks cards. A fork and a delegate
   whose parent isn't listed stay cards of their own.
+- guardrails 0.7.0: the `chi-broadcast` rule asks before an agent runs `chi broadcast`.
 
 ### Fixed
 
 - Web: a tool row shows how long the call took while you watch the turn, as it does after a reload.
+
+Update with `chi update` (guardrails 0.7.0, source-links 0.4.0).
 
 ## [0.34.0] - 2026-10-06
 
@@ -1744,7 +1751,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/dm1try/samagotchi/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/dm1try/samagotchi/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/dm1try/samagotchi/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/dm1try/samagotchi/compare/v0.31.0...v0.32.0
