@@ -8,6 +8,33 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-06
+
+### Changed
+
+- Input from a client chi doesn't know (a script calling the web API with its own id, say) is no longer taken
+  for the user's: the model reads it as automatic input, not your message, and it never cuts in on a thinking
+  model. The TUI and the web label a prompt by its sender: "chi send", "chi answer", "plugin", or "automatic";
+  "user" is left for your own lines.
+
+### Fixed
+
+- `task_stop` no longer signals a process group chi didn't start: a missing or reused pid in a task record could
+  stop chi or other processes.
+- A delegate child that crashes still wakes its idle parent.
+- `chi send <id> --wait` to a stopped session with attached context prints the answer instead of "no answer".
+- `chi bundle build` keeps a bundle's `scripts:` and `context_providers:`, so a rebuilt bundle still attaches its URLs.
+- A context source's wake is no longer lost when a later update that doesn't ask to wake comes in before the
+  session reads it.
+- A failed wake turn leaves a plain note in the conversation; a reload no longer draws an empty turn for it.
+- Web: the info bar no longer swallows a click on "copy chi --attach" or Restart while a turn runs, and its
+  tooltips stay up.
+- Web: an image the server refuses shows why; a 409 that isn't "open in a chi REPL" no longer switches the page to
+  the REPL notice.
+- Web: an answer equal to an earlier turn's ("Done." twice) is shown.
+
+Update with `chi update`.
+
 ## [0.32.0] - 2026-10-06
 
 ### Added
@@ -1636,7 +1663,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/dm1try/samagotchi/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/dm1try/samagotchi/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/dm1try/samagotchi/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/dm1try/samagotchi/compare/v0.29.0...v0.30.0
