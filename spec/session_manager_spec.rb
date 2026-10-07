@@ -735,6 +735,24 @@ RSpec.describe Samagotchi::SessionManager do
                                      "SAMAGOTCHI_GUARDRAILS_X" => nil)
     end
 
+    # A chi send run by session A's execute starts session B: A's markers
+    # are A's. B's execute and tasks set B's own; anything else B runs (a
+    # user's !cmd, an MCP server, a context source's command) gets none,
+    # so `!chi context add` there doesn't attach to A.
+    it "unsets the session markers execute exports (SAMAGOTCHI_PARENT_SESSION, SAMAGOTCHI_SESSION_MODEL) for the worker" do
+      spawned_env = nil
+      allow(Process).to receive(:spawn) do |*args, **_opts|
+        spawned_env = args.first if args.first.is_a?(Hash)
+        12_345
+      end
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_PARENT_SESSION" => "aaaaaaaa-0000-0000-0000-000000000000",
+                                       "SAMAGOTCHI_SESSION_MODEL" => "main:outer"))
+
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(spawned_env).to include("SAMAGOTCHI_PARENT_SESSION" => nil, "SAMAGOTCHI_SESSION_MODEL" => nil)
+    end
+
     it "reaps the worker when it exits, so a long-lived spawner (chi web) keeps no zombies" do
       allow(Process).to receive(:spawn).and_return(12_345)
       allow(Process).to receive(:detach)
