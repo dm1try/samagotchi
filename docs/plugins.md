@@ -162,8 +162,8 @@ in the chat path's `tools:`, after chi's own tools.
   it raises, the default is shown. Both are saved with the call's result, so
   a web page reloaded later shows the same row: the web server doesn't run
   plugins.
-- `targets`: `->(args) { { paths: [...], command: "…", cwd: "…" } }`, each
-  key optional, says what a call acts on, for [guardrails](#guardrails).
+- `targets`: `->(args) { { paths: [...], command: "…", cwd: "…", acts_as: "…", args: {…}, label: "…" } }`,
+  each key optional, says what a call acts on, for [guardrails](#guardrails).
 
 The block returns the result text. If it starts with `Error:`, it counts as
 a failure. If it raises, the model gets `Error: <message>`. To return images
@@ -234,6 +234,27 @@ is what `targets:` says:
   paths (chi's config, …) match them.
 - `command:`: a shell command the call runs; `command:` rules match it.
 - `cwd:`: where it runs, for the repo root and relative paths.
+- `acts_as:`: the tool a call stands for, when the tool runs other tools
+  (the mcp bundle's `mcp_call`). Rules keyed by that tool's name match the
+  call too, as well as rules on the tool's own name. It can't be one of
+  chi's own tools or another bundle's tool: that is dropped (and logged).
+- `args:`: the arguments it acts with (a Hash), when they aren't the call's
+  own (a dispatcher's inner arguments). A call with no `command:` or
+  `paths:` is asked about with them, and "allow this call" is keyed by them.
+- `label:`: what the approval question names the call by (`github: x`), in
+  place of the tool's `label` (or, with `acts_as:`, that tool's). Display
+  only: rules and approvals don't read it. One line of at most 80
+  characters, else it is ignored (and logged).
+
+```ruby
+targets: ->(args) { { acts_as: "mcp_#{args["server"]}_#{args["tool"]}", args: args["args"],
+                      label: "#{args["server"]}: #{args["tool"]}" } }
+```
+
+An approval of an `acts_as:` call keys on the tool's own name as well
+(`mcp_call>mcp_github_x:…`), so it never stands in for an approval of the
+tool it acts as, nor that one for it. Hooks see the call's own name, and so
+does loop-guard's `ignore_tools`.
 
 A tool without `targets:` is matched by its name only. A `targets:` that
 raises counts as nothing (it is logged). See [guardrails.md](guardrails.md).

@@ -292,6 +292,21 @@ A plugin tool whose `targets:` name no command or path (an MCP tool) is asked
 about with its arguments (`mcp_x_sum: a=20 b=22`), and an approval of "this
 call" is keyed by them.
 
+A plugin tool that runs other tools for the model (a dispatcher such as
+`mcp_call`) can say, in its `targets:`, which tool a call acts as (`acts_as:`)
+and with which arguments (`args:`). A rule's `tool:` then matches the call's
+own name **or** the tool it acts as: `tool: mcp_github_*` fires for an
+`mcp_call` that acts as `mcp_github_merge_pull_request`, and `tool: mcp_call`
+fires whatever it acts as. The question names the tool it acts as (by the
+`label:` its `targets:` gives, if any: display only) and shows its arguments, and an approval of "this call" is keyed by the real name, the
+alias and those arguments (`/guardrails` lists it as
+`mcp_call>mcp_github_merge_pull_request:number=7 …`), so it never covers a
+direct call of that tool, nor a direct call's approval it. A tool can't act as
+one of chi's own tools or another bundle's tool: that `acts_as:` is dropped
+(and logged as `plugin_acts_as_dropped`), and the call is matched by its own
+name only. Hooks and loop-guard's `ignore_tools` still see the call's own
+name.
+
 ```yaml
     - id: mcp-ask
       tool: "mcp_*"          # every MCP tool (the mcp bundle's mcp_<server>_<tool>)
