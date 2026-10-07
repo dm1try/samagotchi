@@ -63,7 +63,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(connect(shared: true)).to be(client)
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: [], muted_memories: [])
+        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: [], muted_memories: [], llm_context: nil)
       expect(Samagotchi::BridgeClient).to have_received(:wait_for)
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir), timeout: 0.2)
     end
@@ -76,7 +76,17 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(prompt: nil, model_name: "fast", state_dir: state_dir,
-              memories: [], muted_memories: [])
+              memories: [], muted_memories: [], llm_context: nil)
+    end
+
+    it "starts a new session with its own --llm-context values" do
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+
+      connect(shared: true, llm_context: { strategy: "none", budget_tokens: "off" })
+
+      expect(Samagotchi::SessionManager).to have_received(:spawn_session)
+        .with(hash_including(llm_context: Samagotchi::LLMContextOverride.new(strategy: [], budget_tokens: 0)))
     end
 
     it "starts a new session with its --memory and --mute lists" do
@@ -85,7 +95,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect { connect(shared: true, memories: ["cli_usage"], muted_memories: ["gh-helper"]) }.not_to output.to_stderr
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: ["cli_usage"], muted_memories: ["gh-helper"])
+        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: ["cli_usage"], muted_memories: ["gh-helper"],
+              llm_context: nil)
     end
 
     it "ignores --memory/--mute for an existing session, saying so, and goes on" do
@@ -140,7 +151,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
     allow(described_class).to receive(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: []).and_return(client)
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {})
+      .and_return(client)
     allow(described_class).to receive(:open_surface).and_return(surface)
     allow(described_class).to receive(:close_surface)
     allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
@@ -206,7 +218,28 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     # Only a new session with no -p gets the default input.
     expect(default_inputs).to eq([false, false, true])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [])
+      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [], llm_context: {})
+  end
+
+  it "sets a resumed or attached session's --llm-context through its worker, after the --model; a new one starts with it" do
+    client = instance_double(Samagotchi::BridgeClient)
+    attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
+    allow(described_class).to receive_messages(connect: client, open_surface: nil, close_surface: nil)
+    commands = []
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_wrap_original do |_original, **kwargs|
+      commands << kwargs[:first_command]
+      attached
+    end
+    words = { strategy: "stale forget", budget_tokens: "64k" }
+
+    described_class.run(shared: true, resume: "s1", model: "qwen_moe", llm_context: words)
+    described_class.run(attach: "s2", llm_context: { apply: "turn_end" })
+    described_class.run(shared: true, llm_context: words)
+
+    expect(commands).to eq([["/model qwen_moe", "/llm-context strategy stale,forget budget 64k"],
+                            "/llm-context apply turn_end", nil])
+    expect(described_class).to have_received(:connect)
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words)
   end
 end
 

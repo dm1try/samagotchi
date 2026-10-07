@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     expect(run("--new", "-m", "review this", stdin: StringIO.new("diff --git a b\n"))).to eq(0), err.string
 
     expect(spawned).to eq([{ prompt: "> diff --git a b\n\nreview this", working_directory: nil, model_name: nil,
-                             state_dir: tmpdir }])
+                             llm_context: nil, state_dir: tmpdir }])
     expect(out.string).to match(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}  started\n\z/)
     expect(err.string).to be_empty
   end
@@ -45,6 +45,17 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(run("--new", "--dir=#{dir}/.", "--model", "M", "-m", "hi")).to eq(0), err.string
       expect(spawned.last).to include(working_directory: File.expand_path(dir), model_name: "M")
     end
+  end
+
+  it "starts the session with its own --llm-context values, and refuses one that isn't a value" do
+    expect(run("--new", "--llm-context", "stale", "--llm-context-budget=off", "-m", "hi")).to eq(0), err.string
+    expect(spawned.last).to include(llm_context: Samagotchi::LLMContextOverride.new(strategy: [:stale], budget_tokens: 0))
+
+    expect(run("--new", "--llm-context-apply", "later", "-m", "hi")).to eq(2)
+    expect(err.string).to include("unknown llm_context apply later")
+    expect(run("--llm-context", "stale", "-m", "hi", "3fa2")).to eq(2)
+    expect(err.string).to include("--llm-context needs --new")
+    expect(spawned.size).to eq(1)
   end
 
   it "takes no ids: one new session per call" do
@@ -212,7 +223,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
     expect(run("--new", "--wait", "--image", png, "-m", "what is it?")).to eq(0), err.string
     expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-      .with(prompt: nil, title: "what is it?", working_directory: nil, model_name: nil, state_dir: tmpdir)
+      .with(prompt: nil, title: "what is it?", working_directory: nil, model_name: nil, llm_context: nil, state_dir: tmpdir)
     expect(delivered).to eq([[@started.id, "what is it?", ["tiny.png"]]])
     expect(out.string).to eq("a red square\n")
     expect(err.string).to eq("#{@started.id}  started with 1 image\n")

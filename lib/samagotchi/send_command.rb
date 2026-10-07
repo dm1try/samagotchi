@@ -33,7 +33,7 @@ module Samagotchi
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...
-             chi send --new [--dir DIR] [--model M] [-m TEXT] [--image PATH]...
+             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --wait [--timeout S] [--format json] ID
         Sends a message to each session, as if typed in it: a turn starts,
@@ -53,6 +53,9 @@ module Samagotchi
         --dir DIR   (--new) its folder, the project it belongs to; default
                     the current one
         --model M   (--new) its model; default the configured one
+        --llm-context LAYERS, --llm-context-apply RULE, --llm-context-budget N
+                    (--new) its own LLM context strategy (none, stale,forget),
+                    apply rule and budget (64k, off), as chi takes them
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
                     answer from you: the question, its options and the
@@ -81,6 +84,9 @@ module Samagotchi
       f.switch "--new"
       f.value "--dir"
       f.value "--model"
+      f.value "--llm-context", key: :llm_strategy
+      f.value "--llm-context-apply", key: :llm_apply
+      f.value "--llm-context-budget", key: :llm_budget
       f.value "--image", key: :images, repeat: true
       f.switch "--wait"
       f.value "--timeout"
@@ -200,13 +206,26 @@ module Samagotchi
       return new_options(options) if options[:new]
 
       %i[dir model].each { |key| return usage_error("--#{key} needs --new") if options[key] }
+      LLM_CONTEXT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") if options[key] }
       return usage_error("give session ids") if options[:ids].empty?
 
       options
     end
 
+    # The --llm-context* option keys, and their fields.
+    LLM_CONTEXT_FLAGS = { llm_strategy: "--llm-context", llm_apply: "--llm-context-apply",
+                          llm_budget: "--llm-context-budget" }.freeze
+    LLM_CONTEXT_FIELDS = { llm_strategy: :strategy, llm_apply: :apply, llm_budget: :budget_tokens }.freeze
+
     def new_options(options)
       return usage_error("--new takes no session ids: it starts one session") unless options[:ids].empty?
+
+      words = LLM_CONTEXT_FIELDS.filter_map { |key, field| [field, options[key]] if options[key] }.to_h
+      begin
+        options[:llm_context] = LLMContextOverride.update(nil, words) unless words.empty?
+      rescue ArgumentError => e
+        return usage_error(e.message)
+      end
 
       if options[:dir]
         options[:dir] = File.expand_path(options[:dir])
@@ -246,7 +265,8 @@ module Samagotchi
       begin
         start = through_worker ? { prompt: nil, title: prompt } : { prompt: prompt }
         session = SessionManager.spawn_session(**start, working_directory: options[:dir],
-                                                        model_name: options[:model], state_dir: @state_dir)
+                                                        model_name: options[:model], llm_context: options[:llm_context],
+                                                        state_dir: @state_dir)
       rescue StandardError => e
         error_line("chi send: could not start a session: #{e.message}")
         return 1

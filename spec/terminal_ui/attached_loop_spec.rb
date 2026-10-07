@@ -1411,6 +1411,25 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
     expect(client).to have_received(:post_turn).with(prompt: "hi", client_id: "tui:1")
   end
 
+  it "runs the first commands in order (--model, then --llm-context), then sends the first prompt" do
+    replies = [Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'),
+               Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c2"}')]
+    allow(client).to receive(:post_command).and_return(*replies)
+    allow(client).to receive(:post_turn).and_return(ack)
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hi",
+                                   first_command: ["/model fast", "/llm-context strategy stale"])
+
+    attached.handle_event(joined)
+    attached.handle_event(ran("ok", "runtime model set to fast"))
+    expect(client).to have_received(:post_command).with(line: "/llm-context strategy stale", client_id: "tui:1")
+    expect(client).not_to have_received(:post_turn)
+    result = attached.handle_event(ran("error", "unknown llm_context strategy x").merge("command_id" => "c2"))
+
+    expect(result).to eq(:failed)
+    expect(screen.lines.last).to eq("could not set the --llm-context: unknown llm_context strategy x")
+    expect(client).not_to have_received(:post_turn)
+  end
+
   it "stops the launch when the switch doesn't go through, saying why" do
     allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
     allow(client).to receive(:post_turn)

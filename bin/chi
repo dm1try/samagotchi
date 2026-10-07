@@ -82,7 +82,7 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --memory --mute --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --memory --mute --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -120,6 +120,10 @@ parser = OptionParser.new do |opts|
                               "sessions already running keep theirs) [env SAMAGOTCHI_THINKING_LEVEL]") { |l| cli_overrides["thinking.level"] = l }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; a comma list too)") { |m| (options[:memories] ||= []) << m }
   opts.on("--mute NAME", "Hide a memory from this session: not in the prompt, refused by memory_read (repeatable; a comma list too)") { |m| (options[:muted] ||= []) << m }
+  opts.on("--llm-context LAYERS", "This session's own LLM context strategy: none, or layers such as stale,forget (saved in the session, " \
+                                 "before the model's; /llm-context changes it)") { |v| (options[:llm_context] ||= {})[:strategy] = v }
+  opts.on("--llm-context-apply RULE", "This session's own apply rule for it: payoff|next_request|turn_end") { |v| (options[:llm_context] ||= {})[:apply] = v }
+  opts.on("--llm-context-budget TOKENS", "This session's own context budget: tokens (64000, 64k) or off") { |v| (options[:llm_context] ||= {})[:budget_tokens] = v }
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results (runs a plain REPL, not attached)") { options[:verbose] = true }
@@ -286,6 +290,17 @@ if options[:memories] || options[:muted]
   end
 end
 
+# --llm-context*: checked here, before anything starts.
+if options[:llm_context]
+  require "samagotchi/llm_context_override"
+  begin
+    Samagotchi::LLMContextOverride.update(nil, options[:llm_context])
+  rescue ArgumentError => e
+    warn "Error: #{e.message}"
+    exit 1
+  end
+end
+
 chi_update_hint.call
 require "samagotchi/launch_mode"
 launch, launch_note = if scratch
@@ -317,7 +332,8 @@ if launch == :attached
                                                        no_interrupt: !!options[:no_interrupt],
                                                        default_input: !options[:no_default_input],
                                                        memories: options[:memories] || [],
-                                                       muted_memories: options[:muted] || [])
+                                                       muted_memories: options[:muted] || [],
+                                                       llm_context: options[:llm_context] || {})
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1
@@ -334,6 +350,7 @@ begin
     no_default_input: options[:no_default_input],
     memories: options[:memories] || [],
     muted_memories: options[:muted] || [],
+    llm_context: options[:llm_context] || {},
     non_interactive: options[:non_interactive],
     model_name: options[:model],
     scratch: scratch

@@ -82,8 +82,9 @@ module Samagotchi
       #   PlainSurface when the terminal can't show a live region)
       # @param client_id [String] this UI's id in the events ("tui:<pid>")
       # @param first_prompt [String, nil] sent once joined (`chi -p`)
-      # @param first_command [String, nil] run before the first prompt
-      #   (`--model` on a resumed session: "/model X"); if it doesn't go
+      # @param first_command [String, Array<String>, nil] run before the
+      #   first prompt, in order (`--model` on a resumed session: "/model X";
+      #   --llm-context: "/llm-context strategy …"); if one doesn't go
       #   through, the launch stops
       # @param no_interrupt [Boolean] post every turn with no_interrupt
       # @param default_input [Boolean] type SAMAGOTCHI_DEFAULT_INPUT into
@@ -127,7 +128,7 @@ module Samagotchi
         @answered_ids = Set.new
         @reader = nil
         @first_prompt = first_prompt
-        @first_command = first_command
+        @first_commands = Array(first_command)
         @first_command_id = nil
         @no_interrupt = no_interrupt
         @no_default_input = !default_input
@@ -980,18 +981,19 @@ module Samagotchi
           @shown_enqueued << entry[:enqueued_id]
           @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
         end
-        return send_first_command if @first_command
+        return send_first_command unless @first_commands.empty?
 
         send_first_prompt
         nil
       end
 
-      # --model on a resumed session: switch its worker before the first
-      # prompt goes; its :command_ran decides (#first_command_ran).
+      # --model (or --llm-context) on a resumed session: run it in its
+      # worker before the first prompt goes; its :command_ran decides
+      # (#first_command_ran), and sends the next one.
       # @return [Symbol, nil] :failed when the worker didn't take it
       def send_first_command
-        line = @first_command
-        @first_command = nil
+        line = @first_commands.shift
+        @first_command_line = line
         reply = @client.post_command(line: line, client_id: @client_id)
         if reply.status == 202
           @first_command_id = reply.json&.fetch("command_id", nil)
@@ -1003,23 +1005,29 @@ module Samagotchi
           elsif too_late?(reply) then LATE
           else "the worker answered #{reply.status}"
           end
-        @screen.commit("could not switch to the --model: #{why}")
+        @screen.commit("#{first_command_failed}: #{why}")
         :failed
       rescue SystemCallError, IOError => e
-        @screen.commit("could not switch to the --model: #{worker_down(e)}")
+        @screen.commit("#{first_command_failed}: #{worker_down(e)}")
         :failed
       end
 
-      # @return [Symbol, nil] :failed unless the switch went through
+      # @return [Symbol, nil] :failed unless the command went through
       def first_command_ran(event)
         @first_command_id = nil
         if event[:status] == "ok"
+          return send_first_command unless @first_commands.empty?
+
           send_first_prompt
           return nil
         end
 
-        @screen.commit("could not switch to the --model: #{event[:output]}")
+        @screen.commit("#{first_command_failed}: #{event[:output]}")
         :failed
+      end
+
+      def first_command_failed
+        @first_command_line.to_s.start_with?("/model") ? "could not switch to the --model" : "could not set the --llm-context"
       end
 
       # After the join, so it lands below what the session already had. Our
