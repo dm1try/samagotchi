@@ -184,7 +184,9 @@ module Samagotchi
         TOP_LOGPROBS = 5
         LOGPROB_OPTIONS = { logprobs: true, top_logprobs: TOP_LOGPROBS }.freeze
         # Hosts (base urls) that refused logprobs with a 400: asked without
-        # them from then on, in this process.
+        # them from then on, in this process. Shared by every thread's LLM:
+        # a parallel batch's first requests may each meet the 400 once, the
+        # requests after them don't.
         @no_logprobs = Set.new
         @no_logprobs_lock = Mutex.new
 
@@ -249,19 +251,32 @@ module Samagotchi
 
         def ask(messages)
           base_url = @target.base_url
-          options = self.class.logprobs?(base_url) ? LOGPROB_OPTIONS : {}
-          begin
-            @client.ask(messages, max_tokens: MAX_TOKENS, cancel_controller: @cancel, kind: "broadcast", options: options)
-          rescue IdleClient::SummarizeError => e
-            raise unless !options.empty? && e.cause.is_a?(Samagotchi::LLM::BadRequest)
+          return request(messages, {}) unless self.class.logprobs?(base_url)
 
-            # The host won't give logprobs (a server that refuses "n and
-            # logprobs"): ask again without, and leave them out from now on.
-            self.class.no_logprobs!(base_url)
-            Log.info(:broadcast, "logprobs_refused", model: @target.label, detail: e.cause.message.to_s[0, 200])
-            options = {}
-            retry
+          begin
+            request(messages, LOGPROB_OPTIONS)
+          rescue IdleClient::SummarizeError => e
+            raise unless e.cause.is_a?(Samagotchi::LLM::BadRequest)
+
+            # The host may not give logprobs (a server that refuses "n and
+            # logprobs"): ask again without. Leave them out from now on when
+            # the 400 said so or the retry answered; a 400 the retry gets
+            # too was about something else.
+            refused = e.cause.message.to_s.match?(/logprob/i)
+            no_logprobs!(e.cause) if refused
+            answer = request(messages, {})
+            no_logprobs!(e.cause) unless refused
+            answer
           end
+        end
+
+        def no_logprobs!(error)
+          self.class.no_logprobs!(@target.base_url)
+          Log.info(:broadcast, "logprobs_refused", model: @target.label, detail: error.message.to_s[0, 200])
+        end
+
+        def request(messages, options)
+          @client.ask(messages, max_tokens: MAX_TOKENS, cancel_controller: @cancel, kind: "broadcast", options: options)
         end
       end
     end

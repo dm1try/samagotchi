@@ -205,6 +205,31 @@ RSpec.describe Samagotchi::Broadcast::Triage do
       llm(client, base_url: "http://other.test/v1").judge("x", card("c"))
       expect(client.asked.last(2).map { |a| a[:options] }).to eq([{ logprobs: true, top_logprobs: 5 }, {}])
     end
+
+    # A SummarizeError caused by a 400 saying +message+.
+    def bad_request(message)
+      raise Samagotchi::LLM::BadRequest, message
+    rescue Samagotchi::LLM::BadRequest
+      raise Samagotchi::IdleClient::SummarizeError, "the model request failed"
+    end
+
+    it "keeps logprobs for a host whose 400 wasn't about them: the retry without them failed too" do
+      client = BroadcastTriageSpec::FakeClient.new { bad_request("prompt is too long") }
+
+      2.times { expect(llm(client).judge("x", card("c"))).to be_unchecked }
+      expect(client.asked.map { |a| a[:options] }).to eq([{ logprobs: true, top_logprobs: 5 }, {}] * 2)
+    end
+
+    it "leaves logprobs out for a host whose 400 names something else when the retry without them answers" do
+      client = BroadcastTriageSpec::FakeClient.new do |_, options|
+        bad_request("unsupported parameter") if options.key?(:logprobs)
+
+        Samagotchi::IdleClient::Summary.new(text: "yes", model: nil)
+      end
+
+      2.times { expect(llm(client).judge("x", card("c")).reason).to eq("model: yes") }
+      expect(client.asked.map { |a| a[:options] }).to eq([{ logprobs: true, top_logprobs: 5 }, {}, {}])
+    end
   end
 
   describe ".judge_all" do
