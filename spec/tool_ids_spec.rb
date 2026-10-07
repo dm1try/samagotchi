@@ -5,6 +5,7 @@ require "json"
 require "tmpdir"
 require "samagotchi/tool_ids"
 require "samagotchi/session"
+require "samagotchi/context_note"
 
 RSpec.describe Samagotchi::ToolIds do
   def native(content, ids: nil)
@@ -50,6 +51,32 @@ RSpec.describe Samagotchi::ToolIds do
 
     it "derives one id for an empty legacy entry" do
       expect(described_class.refs(native(""), 2).map(&:id)).to eq(%w[e2.1])
+    end
+  end
+
+  describe ".refs_at" do
+    let(:legacy) { native("[read] a\n\n---\n\n[read] b") }
+    let(:head) { { role: "system", content: "You are chi." } }
+
+    it "derives the same ids with or without the system head a request puts on the stored messages" do
+      stored = [{ role: "user", content: "go" }, { role: "model", content: "calls" }, legacy]
+      sent = Samagotchi::ContextNote.with_system_head(stored, head)
+
+      expect(described_class.refs_at(stored, 2).map(&:id)).to eq(%w[e3.1 e3.2])
+      expect(described_class.refs_at(sent, 3).map(&:id)).to eq(%w[e3.1 e3.2])
+      expect(described_class.refs_at([head] + stored, 3).map(&:id)).to eq(%w[e3.1 e3.2])
+    end
+
+    it "counts a note at the head as an entry, the head going before it" do
+      note = { role: "system", kind: "note", content: "[CONTEXT NOTE from x]\nhi\n[END NOTE]" }
+      stored = [note, legacy]
+
+      expect(described_class.refs_at(stored, 1).map(&:id))
+        .to eq(described_class.refs_at(Samagotchi::ContextNote.with_system_head(stored, head), 2).map(&:id))
+    end
+
+    it "gives the stored ids as they are" do
+      expect(described_class.refs_at([native("[read] a", ids: %w[t4])], 0).map(&:id)).to eq(%w[t4])
     end
   end
 

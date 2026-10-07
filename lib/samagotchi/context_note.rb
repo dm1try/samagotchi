@@ -64,9 +64,13 @@ module Samagotchi
     # (a note that arrived before the first turn, a turn note left by a
     # failed first turn) stays and the prompt goes before it.
     def with_system_head(messages, system_message)
-      first = messages.first
-      replace = first && fetch(first, :role).to_s == "system" && fetch(first, :kind).to_s.empty?
-      [system_message] + (replace ? messages.drop(1) : messages)
+      [system_message] + (system_head?(messages.first) ? messages.drop(1) : messages)
+    end
+
+    # A system prompt at a conversation's head: a system message of no kind
+    # (#with_system_head replaces it).
+    def system_head?(message)
+      message.is_a?(Hash) && fetch(message, :role).to_s == "system" && fetch(message, :kind).to_s.empty?
     end
 
     def clock(created_at)

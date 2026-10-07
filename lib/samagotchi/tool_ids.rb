@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "tool_response"
+require_relative "context_note"
 
 module Samagotchi
   # chi's own ids for tool outputs, one per run ("t41"), saved on the
@@ -24,6 +25,12 @@ module Samagotchi
   # An entry saved before the ids has none: #refs derives them on read
   # from its index and the run's position ("e12.1"), marked derived, so a
   # later strategy can refuse to change what it can't name for sure.
+  # #refs_at counts that index as if the conversation had its system head:
+  # each request puts a head on the stored messages
+  # (ContextNote.with_system_head replaces a saved one, and adds one to a
+  # head-less fork or a session before its first save), so an entry's
+  # derived id is the same in the stored session, every request and the
+  # warm-up, and an edit saved under it still names its run.
   module ToolIds
     PATTERN = /\At(\d+)\z/
     DERIVED_PREFIX = "e"
@@ -52,6 +59,13 @@ module Samagotchi
           (match = PATTERN.match(id.to_s)) ? [acc, match[1].to_i].max : acc
         end
       end
+    end
+
+    # The ids of +conversation+[+index+]'s runs: #refs, a derived id
+    # counted as if the conversation had its system head.
+    # @return [Array<Ref>]
+    def refs_at(conversation, index)
+      refs(conversation[index], ContextNote.system_head?(conversation.first) ? index : index + 1)
     end
 
     # The ids of +entry+'s runs (+index+ its place in the conversation):

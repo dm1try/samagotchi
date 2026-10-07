@@ -45,18 +45,18 @@ module Samagotchi
     def messages(conversation)
       return conversation if none?
 
-      conversation.each_with_index.map { |entry, index| edited(entry, index) }
+      conversation.each_with_index.map { |entry, index| edited(conversation, entry, index) }
     end
 
     private
 
-    def edited(entry, index)
+    def edited(conversation, entry, index)
       return entry unless entry[:role].to_s == "tool_response"
 
       edits = LLMContextEdit.on(entry).select { |_id, edit| edit.applied? && layers.include?(edit.kind) }
       return entry if edits.empty?
 
-      refs = ToolIds.refs(entry, index)
+      refs = ToolIds.refs_at(conversation, index)
       stubbed = refs.each_index.select { |run| edits.key?(refs[run].id) }
       return entry if stubbed.empty?
 

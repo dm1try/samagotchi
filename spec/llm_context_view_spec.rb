@@ -174,12 +174,15 @@ RSpec.describe Samagotchi::LLMContextView do
       expect(view.messages([uncounted]).first).to equal(uncounted)
     end
 
-    it "stubs a legacy entry's run by its derived id" do
+    it "stubs a legacy entry's run by its derived id, the same with or without the system head" do
       legacy = { role: "tool_response", content: "[read] a\n\n---\n\n[read] b",
                  edits: { "e3.2" => edit("stale", "superseded") } }
-      sent = described_class.new(strategy: [:stale]).messages([{}, {}, {}, legacy]).last
+      stored = [{ role: "user", content: "go" }, { role: "model", content: "calls" }, legacy]
+      view = described_class.new(strategy: [:stale])
 
-      expect(sent[:content]).to eq("[read] a\n\n---\n\n[read] superseded")
+      [stored, Samagotchi::ContextNote.with_system_head(stored, { role: "system", content: "base" })].each do |sent|
+        expect(view.messages(sent).last[:content]).to eq("[read] a\n\n---\n\n[read] superseded")
+      end
     end
 
     it "keeps a chat call and its result paired: the stub goes as the tool message's content" do

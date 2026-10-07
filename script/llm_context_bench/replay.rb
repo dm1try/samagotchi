@@ -10,7 +10,7 @@ module LLMContextBench
   Call = Data.define(:request, :name, :args, :target)
 
   # One tool run's output, as chi stores it: the entry it sits in, its run
-  # there and its id (Samagotchi::ToolIds.refs: the stored tool_ids, or
+  # there and its id (Samagotchi::ToolIds.refs_at: the stored tool_ids, or
   # "e<index>.<run>" derived for an entry saved before them), the call that
   # made it, its text and size, and the identifiers it was the first to
   # bring into the conversation (the spike's "new identifiers").
@@ -200,7 +200,7 @@ module LLMContextBench
     # An entry's runs, each with its id, as the LLMContextView splits them;
     # one run (the first id) when they don't line up.
     def runs(entry, index)
-      refs = Samagotchi::ToolIds.refs(entry, index)
+      refs = Samagotchi::ToolIds.refs_at(messages, index)
       content = entry[:content].to_s
       texts = refs.size == 1 ? [content] : Samagotchi::ToolResponse.split(content, -1).map(&:text)
       return [[refs.first, content]] unless texts.size == refs.size
