@@ -808,7 +808,8 @@ class Plugin
   # The McpTool +name+ names: <server>/<tool>, or mcp_<server>_<tool>
   # looked up by chi_name (never parsed: server names may hold _, and long
   # names are cut). A miss while a server is starting waits for it (its
-  # tools may be the one); then a miss is the error text: a failed
+  # tools may be the one; for a <server>/ name, that server's start only);
+  # then a miss is the error text: a failed
   # server's error, else the closest tools.
   # @return [McpTool, String]
   def lookup(name, waited: false)
@@ -828,7 +829,10 @@ class Plugin
              "call one as <server>/<tool>"
     end
 
-    starting = @servers.select { |server| server.state == :starting }
+    # A name with a configured server's <server>/ waits for that server
+    # only; any other name (mcp_<server>_<tool>) for every one starting.
+    named = @servers.select { |server| name.start_with?("#{server.name}/") }
+    starting = (named.empty? ? @servers : named).select { |server| server.state == :starting }
     unless waited || starting.empty?
       starting.each { |server| wait_started(server) }
       return lookup(name, waited: true)

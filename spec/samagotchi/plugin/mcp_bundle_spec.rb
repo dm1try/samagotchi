@@ -192,6 +192,24 @@ RSpec.describe "The mcp bundle" do
         expect(names).not_to include("starting")
       end
 
+      context "beside one that started" do
+        let(:servers) { { "fake" => fake, "quick" => { "command" => [RbConfig.ruby, MCP_FAKE] } } }
+
+        it "a miss named <server>/ waits only for that server, a miss of a starting one's tool for it" do
+          settings["startup_timeout"] = 10
+          fake["env"]["FAKE_MCP_DELAY"] = "3"
+          @engine = Samagotchi::Engine.new(client: client)
+          @engine.start_init_tasks!
+          expect(wait_until(timeout: 5) { find("", "quick").include?("quick: echo") }).to be(true)
+
+          started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          expect(mcp("nope", server: "quick")).to start_with("Error: no MCP tool quick/nope.")
+          expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+          expect(find("", "fake")).to include("fake (starting, try again)")
+          expect(mcp("echo", { "text" => "waited" })).to eq("echo: waited")
+        end
+      end
+
       context "with a deny rule on its tools" do
         before do
           rule = { "id" => "fake-deny", "tool" => "mcp_fake_*", "verdict" => "deny", "reason" => "not fake" }
