@@ -101,6 +101,40 @@ names of a comma list are read). Its file and index line are untouched.
 These startup index reads are harness-injected context assembly and are not
 rendered as `tool>` activity lines.
 
+### The index's size
+
+Both indexes go into every prompt in full (a model note's line and a muted
+memory's line are left out), so their size is paid on every request. Nothing caps
+or trims them; chi measures them (tokens estimated as characters /
+`context.chars_per_token`) and shows the size:
+
+- `chi self` has a `memory index` row:
+  `system ~2.0k tokens (54 lines), project ~1.4k tokens (35 lines)`, with
+  `, over 2500` inside the parentheses for a scope over
+  `memory.index_warn_tokens`.
+- `/stats` has `memory index:     ~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)`,
+  and the web's ctx tooltip (info bar and session card) the same line. It is
+  what this session's prompt holds, measured when the prompt was built (after
+  the session's mutes): a memory written during the session changes neither
+  the running prompt nor this figure until the prompt is built again (a
+  resume, a woken worker, `/model`).
+
+`memory.index_warn_tokens` (default `2500`, per scope; `0` turns it off) is
+the size a write may take an index to before the model is told. When a
+`memory_write` (with content, or a description-only one) or a `write`/`edit` on
+a memory file refreshes an index line and takes its scope's index from at or
+under the limit to over it, the tool result ends with one note:
+
+> Note: the project memory index is now ~2510 tokens (over memory.index_warn_tokens 2500) and is sent with every prompt. When you next have a moment, tighten long index descriptions (memory_write with name, scope and description only). Don't remove or merge memories unless the user asks.
+
+The note comes once per crossing: a write while the index is already over gets
+none (the tightening it asks for doesn't start a loop), nor does a remove, a
+model overlay or the verbatim `index` write. Sessions sharing a project's folder
+measure on their own, so writes in parallel sessions that race over the limit
+may each get it. Bundle installs and uninstalls and hand edits
+change index lines without a note; `chi self`'s row shows where an index
+stands.
+
 ## Skills
 
 A **skill** is a memory named `skill_<name>` that holds the steps of a

@@ -428,7 +428,7 @@ request (with the cached tokens, the cache writes, the re-prefilled tokens and t
 reports them),
 the decode speed, generation latency, cancellations, retries (the network's),
 thinking cuts (generations a plugin such as loop-guard cut) and output cap hits
-(generations that ended at the provider's cap), context used and window, the prompt profile and the model the server says it ran, and the
+(generations that ended at the provider's cap), context used and window, the memory indexes the session's prompt holds ([Memory](memory.md#the-indexs-size)), the prompt profile and the model the server says it ran, and the
 cost when the provider reports one (OpenRouter's `usage.cost`; no prices are
 guessed). The speed line is the last generation's and the session's average
 (weighted by tokens): llama.cpp reports it exactly (`87 tok/s out, 1.9k tok/s
