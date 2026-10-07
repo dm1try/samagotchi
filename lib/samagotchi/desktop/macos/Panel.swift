@@ -72,6 +72,8 @@ final class PanelModel: ObservableObject {
   }
   var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespacesAndNewlines) }
   var hasContext: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+  /// A note's text (stdin of `chi note`): the message line, then the context.
+  var noteText: String { [trimmedPrompt, hasContext ? text : ""].filter { !$0.isEmpty }.joined(separator: "\n\n") }
   var sendEnabled: Bool {
     canSend && (newSelected || !selectedIds.isEmpty || !selectedKitty.isEmpty) && (!trimmedPrompt.isEmpty || hasContext)
   }
@@ -980,8 +982,7 @@ final class PanelController: NSObject, NSWindowDelegate {
       args = ["note"]
       let source = model.source.trimmingCharacters(in: .whitespacesAndNewlines)
       if !source.isEmpty { args += ["--source", source] }
-      let parts = [prompt, model.hasContext ? model.text : ""].filter { !$0.isEmpty }
-      stdin = Data(parts.joined(separator: "\n\n").utf8)
+      stdin = Data(model.noteText.utf8)
     }
     if !new { args += ids }
     // Reading, converting and a new worker's start take longer than text.

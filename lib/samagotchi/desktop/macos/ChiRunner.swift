@@ -102,9 +102,11 @@ final class ChiRunner {
   }
 
   /// Runs `chi <args>` through ProcessRunner (no pipe deadlock near the
-  /// 16 KiB note cap). Calls back on the main queue.
+  /// 16 KiB note cap). Calls back on +queue+ (the main queue by default; a
+  /// headless seam waits on another one); a launch file that can't be read
+  /// calls back at once.
   /// @param timeout this call's limit instead of the runner's
-  func run(_ args: [String], stdin: Data? = nil, timeout: TimeInterval? = nil,
+  func run(_ args: [String], stdin: Data? = nil, timeout: TimeInterval? = nil, queue: DispatchQueue = .main,
            completion: @escaping (Result<ChiResult, ChiError>) -> Void) {
     let config: LaunchConfig
     do { config = try loadLaunch() } catch let error as ChiError {
@@ -115,7 +117,7 @@ final class ChiRunner {
 
     ProcessRunner.run(executable: config.argv[0], args: Array(config.argv.dropFirst()) + args,
                       env: ProcessInfo.processInfo.environment.merging(config.env ?? [:]) { _, baked in baked },
-                      stdin: stdin, timeout: timeout ?? self.timeout, completion: completion)
+                      stdin: stdin, timeout: timeout ?? self.timeout, queue: queue, completion: completion)
   }
 
   /// The live sessions, oldest started first, then up to +recentCount+
