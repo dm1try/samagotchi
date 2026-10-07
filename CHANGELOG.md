@@ -8,6 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Model notes: a memory named `model_notes_<name>` whose first line is `models: <globs>|small` goes into the system
+  prompt of every session on a matching model, in its own section after the identity memory (all matching notes,
+  system scope then project). The habits of one model (or a family, or every small model) no longer ride on an
+  identity overlay keyed to one provider's id. `--mute model_notes_<name>` drops one for a session. See
+  [docs/memory.md](docs/memory.md) ("Model notes").
+
+### Changed
+
+- A guardrails rule's `models:` also takes a `|`-separated string (`"small|deepseek-*"`), as
+  `guardrails.small_models` does.
+
 ### Fixed
 
 - A turn that failed partway (out of credits, a server error, any provider error but a context overflow) after tool
