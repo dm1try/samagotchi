@@ -171,4 +171,21 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
 
     expect(engine.session_state_snapshot[:context_status]).to eq(est_pct: 50.0, bucket: "40plus")
   end
+
+  it "logs the turn's strategy and its source when it runs a layer or the session set it, and puts it in the snapshot" do
+    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+    logged = []
+    allow(Samagotchi::Log).to receive(:info).and_call_original
+    allow(Samagotchi::Log).to receive(:info).with(:turn, "llm_context", any_args) { |*_args, **fields| logged << fields }
+
+    engine.run_turn(session, "hi")
+    session.llm_context = Samagotchi::LLMContextOverride.new(strategy: [:stale], budget_tokens: 64_000)
+    engine.run_turn(session, "again")
+
+    expect(logged).to eq([{ strategy: "stale", strategy_source: "session", apply: "payoff", apply_source: "config",
+                            budget_tokens: 64_000, budget_source: "session" }])
+    expect(engine.session_state_snapshot[:llm_context])
+      .to include(strategy: "stale", strategy_where: "the session", budget_tokens: 64_000,
+                  own: { "strategy" => ["stale"], "budget_tokens" => 64_000 })
+  end
 end

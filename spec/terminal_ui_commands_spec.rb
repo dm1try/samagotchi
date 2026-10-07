@@ -112,6 +112,16 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(row.call).to start_with("status> model=ornith-x (served; asked ")
     end
 
+    it "shows the LLM context strategy, apply rule and budget, each with where it came from, in /stats" do
+      summary = { "strategy" => "stale,forget", "strategy_where" => "the session", "apply" => "turn_end",
+                  "apply_where" => "models: ds", "budget_tokens" => nil, "budget_where" => "llm_context.budget_tokens" }
+
+      expect(agent.send(:format_session_metrics, { llm_context: summary }))
+        .to include("llm context:      stale,forget (the session); apply turn_end (models: ds); budget off " \
+                    "(llm_context.budget_tokens)")
+      expect(agent.send(:format_session_metrics, {})).not_to include("llm context")
+    end
+
     it "shows the prompt profile and where it came from in /stats" do
       metrics = agent.engine.metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")

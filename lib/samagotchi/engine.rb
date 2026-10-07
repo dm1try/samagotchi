@@ -921,7 +921,7 @@ module Samagotchi
       snapshot = @metrics.snapshot
       target = @host_registry.resolve(@effective_model_name)
       served, served_for = served_model_for(snapshot, target: target)
-      snapshot = snapshot.merge(served_model: served, served_model_for: served_for)
+      snapshot = snapshot.merge(served_model: served, served_model_for: served_for, llm_context: llm_context_summary)
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(target)
         if window
@@ -958,6 +958,13 @@ module Samagotchi
       LLMContextStrategy.explain(target, names: model_lookup_names(target), **llm_context_session_args)
     rescue StandardError
       nil
+    end
+
+    # #llm_context_explained's summary (Explained#summary), nil when it
+    # can't be resolved: /stats, the snapshot, the web's info bar.
+    # @return [Hash, nil]
+    def llm_context_summary
+      llm_context_explained&.summary(llm_context_override)
     end
 
     # The session's own llm_context values, nil when it has none.
@@ -1046,6 +1053,7 @@ module Samagotchi
         served_model: served_pair[0],
         served_model_for: served_pair[1],
         context_status: @last_context_status&.dup || saved_context_status(metrics[:context]),
+        llm_context: llm_context_summary,
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
         recap_inactivity_seconds: @recap&.inactivity&.to_i
@@ -1870,8 +1878,10 @@ module Samagotchi
       # The turn's settings, set once here. The chat loop dispatches tools
       # through the kernel without its #run: tag those dumps with this
       # turn's model, not the last native one.
+      explained = llm_context_explained
       @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: turn_window_setting,
-                                                 llm_context: turn_llm_context)
+                                                 llm_context: explained&.resolved)
+      log_llm_context(explained)
 
       turn.limit = @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for
       backend.complete(
@@ -1885,6 +1895,18 @@ module Samagotchi
       )
     end
     private :generate
+
+    # The turn's LLM context strategy and where it came from, in the turn
+    # log: when it runs a layer, or the session set it (none too).
+    def log_llm_context(explained)
+      return unless explained
+      return if explained.resolved.active_layers.empty? && explained.strategy.source != :session
+
+      summary = explained.summary
+      Log.info(:turn, "llm_context", **summary.slice(:strategy, :strategy_source, :apply, :apply_source, :budget_tokens,
+                                                     :budget_source).compact)
+    end
+    private :log_llm_context
 
     def publish_used_memories(session, on_event)
       # Persist deduped used memories onto the session for Web + reload.

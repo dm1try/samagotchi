@@ -126,7 +126,19 @@ module Samagotchi
 
     # What a turn's strategy, apply rule and budget are, each with its
     # Origin (/llm-context, /stats, the web's info bar).
-    Explained = Data.define(:resolved, :strategy, :apply, :budget_tokens)
+    Explained = Data.define(:resolved, :strategy, :apply, :budget_tokens) do
+      # The plain form /stats, the snapshot and the web read: each value
+      # with its source and place, and +own+, the session's own values
+      # (LLMContextOverride#to_file; nil without any).
+      # @return [Hash] symbol keys
+      def summary(own = nil)
+        layers = resolved.active_layers
+        { strategy: layers.empty? ? NONE.to_s : layers.join(","), strategy_source: strategy.source.to_s,
+          strategy_where: strategy.where, apply: resolved.apply.to_s, apply_source: apply.source.to_s,
+          apply_where: apply.where, budget_tokens: resolved.budget_tokens, budget_source: budget_tokens.source.to_s,
+          budget_where: budget_tokens.where, own: own&.to_file }
+      end
+    end
 
     # The strategy for +target+'s turn.
     # @param target [HostRegistry::ModelTarget, nil]

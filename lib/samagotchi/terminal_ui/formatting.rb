@@ -463,12 +463,26 @@ module Samagotchi
         end
         lines << "context window:   #{context[:window_tokens]} tokens (#{context[:window_source]})" if context[:window_tokens]
         lines << "prompt profile:   #{snapshot[:profile]} (#{snapshot[:profile_source]})" if snapshot[:profile]
+        llm_context = llm_context_stats_text(snapshot[:llm_context])
+        lines << "llm context:      #{llm_context}" if llm_context
         if snapshot[:served_model]
           asked = snapshot[:served_model_for]
           note = ServedModel.differs?(asked, snapshot[:served_model]) ? " (asked for #{asked})" : ""
           lines << "served model:     #{snapshot[:served_model]}#{note}"
         end
         lines.join("\n")
+      end
+
+      # "stale,forget (the session); apply turn_end (models: x); budget
+      # 64000 (the session)" for /stats (Explained#summary; symbol or
+      # string keys, the attached TUI's come as JSON); nil without one.
+      def llm_context_stats_text(summary)
+        return nil unless summary.is_a?(Hash)
+
+        get = ->(key) { summary[key] || summary[key.to_s] }
+        budget = get.call(:budget_tokens) ? "#{get.call(:budget_tokens)} tokens" : "off"
+        "#{get.call(:strategy)} (#{get.call(:strategy_where)}); apply #{get.call(:apply)} (#{get.call(:apply_where)}); " \
+          "budget #{budget} (#{get.call(:budget_where)})"
       end
 
       # ", cached 4864 (93%), cache writes 312, re-prefilled 2100, reasoning
