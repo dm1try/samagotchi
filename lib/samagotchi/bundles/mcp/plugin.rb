@@ -33,7 +33,8 @@
 # notice; the rest of chi works. One that exits mid-session starts again on
 # its next call, at most MAX_RESTARTS times a session. /mcp lists the
 # servers and their tools, with an estimate of the tokens their
-# definitions take in every request.
+# definitions take (only a search's answer carries them) and of what the
+# two tools take in every request.
 require "digest"
 require "json"
 require "open3"
@@ -632,26 +633,41 @@ class Plugin
   # flatter schema, so it is an upper bound there.
   # @raise [ArgumentError] a bad schema
   def definition_tokens(name, description, schema)
-    spec = Samagotchi::Plugin::Api.tool_spec(name, description, schema: schema) { nil }
+    spec_tokens(Samagotchi::Plugin::Api.tool_spec(name, description, schema: schema) { nil })
+  end
+
+  # A checked tool declaration's (Api.tool_spec) definition, in estimated
+  # tokens.
+  def spec_tokens(spec)
     function = Samagotchi::ToolDeclarations.chat_schemas([spec[:schema]]).first.slice(:name, :description, :parameters)
     Samagotchi::TokenUsage.estimate(JSON.generate({ type: "function", function: function }))
   end
 
-  # find_mcp_tools and mcp_call, the model's only MCP tools.
+  FIND_PARAMS = {
+    query: { type: "string", required: true,
+             description: "keywords for what the tool does (\"screenshot page\"); empty lists every tool's name" },
+    server: { type: "string", description: "search only this server" }
+  }.freeze
+  CALL_DESCRIPTION = "Call an MCP server's tool that find_mcp_tools found."
+  CALL_PARAMS = {
+    tool: { type: "string", required: true, description: "the tool as <server>/<tool>" },
+    args: { type: "object", description: "the arguments, per the inputSchema find_mcp_tools gave" }
+  }.freeze
+
+  # find_mcp_tools and mcp_call, the model's only MCP tools; their
+  # definitions' estimated tokens are /mcp's.
   def declare_tools(chi)
-    chi.tool("find_mcp_tools", find_description,
-             params: { query: { type: "string", required: true,
-                                description: "keywords for what the tool does (\"screenshot page\"); empty lists every tool's name" },
-                       server: { type: "string", description: "search only this server" } },
-             preview: ->(args) { [args["query"].to_s.strip, args["server"] && "in #{args["server"]}"].compact.join(" ") }) do |args, _ctx|
+    description = find_description
+    chi.tool("find_mcp_tools", description, params: FIND_PARAMS,
+                                            preview: ->(args) { [args["query"].to_s.strip, args["server"] && "in #{args["server"]}"].compact.join(" ") }) do |args, _ctx|
       find(args["query"].to_s, args["server"])
     end
-    chi.tool("mcp_call", "Call an MCP server's tool that find_mcp_tools found.",
-             params: { tool: { type: "string", required: true, description: "the tool as <server>/<tool>" },
-                       args: { type: "object", description: "the arguments, per the inputSchema find_mcp_tools gave" } },
-             label: "mcp", preview: ->(args) { call_preview(args) }, targets: ->(args) { call_targets(args) }) do |args, ctx|
+    chi.tool("mcp_call", CALL_DESCRIPTION, params: CALL_PARAMS, label: "mcp", preview: ->(args) { call_preview(args) },
+                                           targets: ->(args) { call_targets(args) }) do |args, ctx|
       mcp_call(args["tool"].to_s, args["args"], ctx)
     end
+    @fixed_tokens = spec_tokens(Samagotchi::Plugin::Api.tool_spec("find_mcp_tools", description, params: FIND_PARAMS) { nil }) +
+                    spec_tokens(Samagotchi::Plugin::Api.tool_spec("mcp_call", CALL_DESCRIPTION, params: CALL_PARAMS) { nil })
   end
 
   # find_mcp_tools' description: how to use it, and one line per server
@@ -1107,23 +1123,25 @@ class Plugin
     servers = @servers.map do |server|
       head = "**#{server.name}**: #{state_text(server)}"
       # Sorted: a server lists its tools in its own (often grouped) order.
-      tools = offered(server).map(&:chi_name).sort
-      tools.empty? ? head : "#{head}\n#{tools.map { |t| "- `#{t}`" }.join("\n")}"
+      tools = server.tools.sort_by(&:name).map { |t| ["- `#{t.server}/#{t.name}`", mark(t)].compact.join(" ") }
+      tools.empty? ? head : "#{head}\n#{tools.join("\n")}"
     end
     total = @servers.sum { |server| OFFERED.include?(server.state) ? server.tokens : 0 }
-    [*servers, "Total: ~#{thousands(total)} tokens of tool definitions in every request " \
+    [*servers, "Every request carries find_mcp_tools and mcp_call: ~#{thousands(@fixed_tokens.to_i)} tokens. " \
+               "The tools above, ~#{thousands(total)} tokens, reach the model only in a search's answer " \
                "(estimated: their JSON as the chat API gets it, ÷ #{format("%g", Samagotchi::TokenUsage::CHARS_PER_TOKEN)})."]
       .join("\n\n")
   end
 
   def state_text(server)
+    count = offered(server).size
+    tools = "#{count} tool#{"s" unless count == 1}"
     case server.state
-    when :cached then "cached (not started), #{server.tools.size} tool#{"s" unless server.tools.size == 1}, #{tokens_text(server)}"
-    when :running
-      count = offered(server).size
-      "running (pid #{server.client.pid}), #{count} tool#{"s" unless count == 1}, #{tokens_text(server)}"
+    when :cached then "cached (not started), #{tools}, #{tokens_text(server)}"
+    when :running then "running (pid #{server.client.pid}), #{tools}, #{tokens_text(server)}"
     when :starting then "starting"
-    else "#{server.state == :failed ? "failed" : "stopped"}: #{server.error}"
+    when :failed then server.tools.empty? ? "failed: #{server.error}" : "failed (#{tools}): #{server.error}"
+    else "stopped: #{server.error}"
     end
   rescue Samagotchi::Plugin::Service::Stopped
     "stopped"

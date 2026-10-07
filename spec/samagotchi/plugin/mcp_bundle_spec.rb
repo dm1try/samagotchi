@@ -102,6 +102,16 @@ RSpec.describe "The mcp bundle" do
       expect(mcp("bad")).to eq("Error: fake/bad can't be called: schema must be {type: \"object\", properties: {…}}")
     end
 
+    it "/mcp lists them all, the bad schema marked, and counts the ones mcp_call can call" do
+      commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                                 default_model: "Gemma-4B-it", registry: engine.command_registry)
+      cards = []
+      engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+      engine.running_anytime { commands.run("/mcp") }
+      expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 6 tools, ~")
+      expect(cards.last[:body]).to include("\n- `fake/bad` (bad schema)\n- `fake/echo`\n")
+    end
+
     it "describes the servers, never their tools" do
       description = tools["find_mcp_tools"].schema[:description]
       expect(description).to end_with("\nServers:\n- fake") # a first run: known by name only
@@ -450,19 +460,19 @@ RSpec.describe "The mcp bundle" do
     expect(cards.last).to include(title: "MCP servers", id: "mcp-servers", source: "mcp")
     tokens = chat_tokens(%w[echo add fail mixed slow crash Weird-Name.v2 changed path blob])
     expect(tokens).to be > 100
-    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 10 tools, ~#{tokens} tokens\n- `mcp_fake_")
-    listed = cards.last[:body].scan(/^- `(\w+)`$/).flatten
+    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 10 tools, ~#{tokens} tokens\n- `fake/")
+    listed = cards.last[:body].scan(%r{^- `(fake/\S+)`$}).flatten
     expect(listed.size).to eq(10)
     expect(listed).to eq(listed.sort) # not the server's tools/list order (echo first)
-    expect(listed.first).not_to eq("mcp_fake_echo")
-    expect(cards.last[:body]).to end_with("\n\nTotal: ~#{tokens} tokens of tool definitions in every request " \
-                                          "(estimated: their JSON as the chat API gets it, ÷ 4).")
+    expect(listed).to include("fake/Weird-Name.v2") # the name mcp_call takes
+    expect(fixed_tokens).to be_between(50, 1000)
+    expect(cards.last[:body]).to end_with("\n\n#{mcp_total(tokens)}")
   end
 
   context "with two servers, one that doesn't start" do
     let(:servers) { { "fake" => fake.merge("tools" => %w[echo add]), "gone" => { "command" => ["/nonexistent/mcp-server"] } } }
 
-    it "/mcp totals only the tools the model has, and the load log records each server's estimate" do
+    it "/mcp totals only the tools mcp_call reaches, and the load log records each server's estimate" do
       log = []
       allow(Samagotchi::Log).to receive(:info).and_call_original
       allow(Samagotchi::Log).to receive(:info).with(:plugins, "mcp_tools_estimated", any_args) { |*, **fields| log << fields }
@@ -473,9 +483,8 @@ RSpec.describe "The mcp bundle" do
       engine.running_anytime { commands.run("/mcp") }
       tokens = chat_tokens(%w[add echo])
       expect(cards.last[:body]).to include("**fake**: running (pid #{server_pid}), 2 tools, ~#{tokens} tokens\n",
-                                           "**gone**: failed: ")
-      expect(cards.last[:body]).to end_with("Total: ~#{tokens} tokens of tool definitions in every request " \
-                                            "(estimated: their JSON as the chat API gets it, ÷ 4).")
+                                           "**gone**: failed: can't start")
+      expect(cards.last[:body]).to end_with(mcp_total(tokens))
       expect(log).to eq([{ bundle: "mcp", server: "fake", tools: 2, tokens: tokens }])
     end
   end

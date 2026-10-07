@@ -119,8 +119,22 @@ RSpec.shared_context "the mcp bundle in an Engine" do
       name = "mcp_#{server}_#{tool["name"]}".downcase.gsub(/[^a-z0-9_]+/, "_").squeeze("_")
       Samagotchi::Plugin::Api.tool_spec(name, tool["description"], schema: tool["inputSchema"]) { nil }[:schema]
     end
+    definition_tokens(schemas)
+  end
+
+  # What find_mcp_tools and mcp_call take in every request, estimated as
+  # #chat_tokens.
+  def fixed_tokens = definition_tokens(%w[find_mcp_tools mcp_call].map { |name| tools[name].schema })
+
+  def definition_tokens(schemas)
     chat = Samagotchi::LLM::ChatLoop.new(kernel: Struct.new(:tools).new(Struct.new(:schemas).new(schemas)))
     chat.tool_definitions.sum { |definition| Samagotchi::TokenUsage.estimate(JSON.generate(definition)) }
+  end
+
+  # /mcp's last line.
+  def mcp_total(tokens)
+    "Every request carries find_mcp_tools and mcp_call: ~#{fixed_tokens} tokens. The tools above, ~#{tokens} tokens, " \
+      "reach the model only in a search's answer (estimated: their JSON as the chat API gets it, ÷ 4)."
   end
 
   def server_pid

@@ -59,9 +59,8 @@ RSpec.describe "The mcp bundle" do
       expect(indexed).to eq(%w[echo add slow])
       expect(spawned).to eq(1)
       tokens = chat_tokens(%w[echo add slow])
-      expect(mcp_card).to eq("**fake**: cached (not started), 3 tools, ~#{tokens} tokens\n- `mcp_fake_add`\n- `mcp_fake_echo`\n" \
-                             "- `mcp_fake_slow`\n\nTotal: ~#{tokens} tokens of tool definitions in every request " \
-                             "(estimated: their JSON as the chat API gets it, ÷ 4).")
+      expect(mcp_card).to eq("**fake**: cached (not started), 3 tools, ~#{tokens} tokens\n- `fake/add`\n- `fake/echo`\n" \
+                             "- `fake/slow`\n\n#{mcp_total(tokens)}")
       expect(spawned).to eq(1)
       expect(mcp("echo", { "text" => "lazy" })).to eq("echo: lazy")
       expect(spawned).to eq(2)
@@ -80,6 +79,14 @@ RSpec.describe "The mcp bundle" do
       expect(indexed).to eq(%w[echo fail])
       expect(engine.apply_staged_tools!).to be(false)
       expect(mcp("fail")).to start_with("Error: it broke\n\n")
+    end
+
+    it "/mcp counts a cached server's tools as a running one's: without a bad schema" do
+      bad = { "name" => "bad", "description" => "x", "inputSchema" => { "type" => "string" } }
+      File.write(cache_file, JSON.generate(cache.merge("tools" => cache["tools"] + [bad])))
+      next_engine
+      expect(mcp_card).to start_with("**fake**: cached (not started), 3 tools, ~#{chat_tokens(%w[echo add slow])} tokens\n" \
+                                     "- `fake/add`\n- `fake/bad` (bad schema)\n")
     end
 
     context "with the server's description" do
@@ -171,7 +178,7 @@ RSpec.describe "The mcp bundle" do
         expect(Time.iso8601(cache["saved_at"])).to be > Time.now - 60
         expect(indexed).to eq(%w[echo])
         expect(mcp_card).to start_with("**fake**: cached (not started), 1 tool, ~#{chat_tokens(%w[echo])} tokens\n" \
-                                       "- `mcp_fake_echo`\n\nTotal: ")
+                                       "- `fake/echo`\n\nEvery request ")
       end
 
       it "leaves the refresh to the worker that holds the lock" do
@@ -201,6 +208,7 @@ RSpec.describe "The mcp bundle" do
           )
           expect(engine.apply_staged_tools!).to be(false)
           expect(find("echo")).to include("fake/echo (failed: ")
+          expect(mcp_card).to start_with("**fake**: failed (3 tools): ").and(include("\n- `fake/add`\n"))
           expect(cache["tools"].size).to eq(3)
         end
       end
