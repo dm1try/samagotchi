@@ -122,6 +122,68 @@ RSpec.describe "The guardrails bundle's rules" do
     expect(verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", description: "DONE" })).to be_allow
   end
 
+  describe "memories that reach the system prompt (identity, model notes, their overlays)" do
+    let(:sys) { Samagotchi::Tools::MemoryRead.memories_dir("system") }
+    let(:project) { Samagotchi::Tools::MemoryRead.memories_dir("project") }
+
+    def prompt_verdict(call)
+      v = Samagotchi::Guardrails::Verdict.new(call: call)
+      v.context = context
+      v.targets = Samagotchi::Guardrails::Targets.for(call, context, model_key: "qwen3-6", model_name: "qwen3.6")
+      rules.check(v)
+    end
+
+    def expect_ask(call, rule = "prompt-memory-write")
+      v = prompt_verdict(call)
+      expect([v.decision, v.rule, v.scopes]).to eq([:ask, rule, %w[once]]), call.inspect
+      v
+    end
+
+    it "asks before memory_write, write or edit of one, once at a time, whatever the case or the route" do
+      FileUtils.mkdir_p(sys)
+      File.symlink(sys, File.join(repo, "mem"))
+      [{ name: "memory_write", path: "model_notes_deepseek", scope: "system", content: "models: *\nx" },
+       { name: "memory_write", path: "model_notes_x", scope: "project", content: "models: *\nx" },
+       { name: "memory_write", path: "MODEL_NOTES_x", scope: "system", content: "models: *\nx" },
+       { name: "memory_write", path: "identity", scope: "system", content: "x" },
+       { name: "memory_write", path: "Identity", scope: "system", content: "x" },
+       { name: "memory_write", path: "identity", scope: "system", content: "x", current_model_only: "True" },
+       { name: "write", path: File.join(project, "model_notes_x.md"), content: "models: *\nx" },
+       { name: "write", path: File.join(sys, "identity.md"), content: "x" },
+       { name: "write", path: File.join(sys, "identity.qwen3-6.md"), content: "x" },
+       { name: "write", path: File.join(sys, "model_notes_x.qwen3-6.md"), content: "x" },
+       { name: "write", path: File.join(sys, "MODEL_NOTES_x.md"), content: "x" },
+       { name: "write", path: sys.sub("samagotchi/memories", "Samagotchi/Memories") + "/model_notes_x.md", content: "x" },
+       { name: "write", path: File.join(repo, "mem", "model_notes_x.md"), content: "x" },
+       { name: "write", path: "mem/model_notes_x.md", content: "x" },
+       { name: "edit", path: File.join(sys, "projects", "..", "model_notes_x.md"), old_text: "a", new_text: "b" },
+       { name: "edit", path: File.join(sys, "model_notes_deepseek.md"), old_text: "a", new_text: "b" }].each do |call|
+        expect_ask(call)
+      end
+    end
+
+    it "lets other memories and look-alike files elsewhere run" do
+      expect(prompt_verdict({ name: "memory_write", path: "testing_guide", scope: "project", content: "x" })).to be_allow
+      expect(prompt_verdict({ name: "write", path: File.join(sys, "testing_guide.md"), content: "x" })).to be_allow
+      expect(prompt_verdict({ name: "write", path: File.join(repo, "model_notes_x.md"), content: "x" })).to be_allow
+      expect(prompt_verdict({ name: "write", path: File.join(repo, "identity.md"), content: "x" })).to be_allow
+      expect(prompt_verdict({ name: "write", path: File.join(sys, ".bundles", "x", "identity.md"), content: "x" })).to be_allow
+    end
+
+    it "asks before a model overlay of any other memory" do
+      expect_ask({ name: "memory_write", path: "testing_guide", scope: "project", content: "x", current_model_only: true },
+                 "model-overlay-write")
+    end
+
+    it "leaves allowing them to the user: a parent's answer is refused" do
+      %w[prompt-memory-write model-overlay-write].each do |rule|
+        expect(Samagotchi::Guardrails::Verdict.protected_rule?(rule)).to be(true), rule
+        pending = { kind: "approval", approval: { rule: rule, paths: [File.join(repo, "x.md")] } }
+        expect(Samagotchi::Guardrails::ParentApprovals.protected?(pending)).to be(true), rule
+      end
+    end
+  end
+
   it "asks for chi broadcast once at a time, and a parent may not allow it" do
     v = shell("chi broadcast -m 'payments API is down'")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-broadcast", %w[once]])

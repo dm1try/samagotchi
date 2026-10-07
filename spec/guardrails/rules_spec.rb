@@ -123,6 +123,24 @@ RSpec.describe Samagotchi::Guardrails::Rules do
         .to be_allow
     end
 
+    it "matches memory: overlay on a memory_write of a model overlay, not a plain write or a removal" do
+      set = rules({ id: "overlay", tool: "memory_write", memory: "overlay", verdict: "ask" })
+      expect(verdict_for({ name: "memory_write", path: "identity", scope: "system", content: "x", current_model_only: true }, set))
+        .to be_ask
+      expect(verdict_for({ name: "memory_write", path: "h", scope: "project", content: "x", current_model_only: "true" }, set)).to be_ask
+      expect(verdict_for({ name: "memory_write", path: "h", scope: "project", content: "x" }, set)).to be_allow
+      expect(verdict_for({ name: "memory_write", path: "h", scope: "project", remove: true }, set)).to be_allow
+      expect(verdict_for({ name: "write", path: "h.key.md", content: "x" }, set)).to be_allow
+    end
+
+    it "matches memory: prompt on a write of identity or a model note in a memories folder" do
+      set = rules({ id: "prompt", tool: %w[memory_write write], memory: "prompt", verdict: "ask" })
+      expect(verdict_for({ name: "memory_write", path: "identity", scope: "system", content: "x" }, set)).to be_ask
+      expect(verdict_for({ name: "memory_write", path: "model_notes_a", scope: "project", content: "models: *\nx" }, set)).to be_ask
+      expect(verdict_for({ name: "memory_write", path: "notes", scope: "project", content: "x" }, set)).to be_allow
+      expect(verdict_for({ name: "write", path: "identity.md", content: "x" }, set)).to be_allow
+    end
+
     it "matches outside_repo" do
       set = rules({ id: "out", tool: %w[write edit], path: "outside_repo", verdict: "ask" })
       expect(verdict_for({ name: "write", path: "../x", content: "" }, set)).to be_ask
@@ -290,7 +308,7 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(error_for({ "id" => "x", "verdict" => "ask", "rm" => "wide" })).to eq("rule x: rm must be outside_tmp")
       expect(error_for({ "id" => "x", "verdict" => "ask", "git" => "anywhere" })).to eq("rule x: git must be outside_repo")
       expect(error_for({ "id" => "x", "verdict" => "ask", "git" => "outside_repo" })).to be_nil
-      expect(error_for({ "id" => "x", "verdict" => "ask", "memory" => "write" })).to eq("rule x: memory must be remove")
+      expect(error_for({ "id" => "x", "verdict" => "ask", "memory" => "write" })).to eq("rule x: memory must be remove, overlay or prompt")
       expect(error_for({ "id" => "x", "verdict" => "ask", "comand" => "rm" })).to eq("rule x: unknown key(s) comand")
       expect(error_for({ "id" => "x", "verdict" => "ask", "command" => "(" })).to start_with("rule x: command is not a valid regex")
       expect(error_for({ "verdict" => "ask", "tool" => "a" })).to eq("rule 1: id is required")

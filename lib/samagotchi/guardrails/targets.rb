@@ -10,6 +10,8 @@ require_relative "shell_git_dirs"
 require_relative "read_only_shell"
 require_relative "shell_paths"
 require_relative "rm_targets"
+require_relative "protected_paths"
+require_relative "../memory_paths"
 
 module Samagotchi
   module Guardrails
@@ -65,6 +67,11 @@ module Samagotchi
       attr_reader :memory_remove
       alias memory_remove? memory_remove
 
+      # @return [Boolean] a memory_write call that writes a model overlay
+      #   (current_model_only: true), for a rule's memory: overlay
+      attr_reader :memory_overlay
+      alias memory_overlay? memory_overlay
+
       # @param call [Hash] the parsed tool call
       # @param context [Context]
       # @param model_key [String, nil] for a memory_write model overlay, and
@@ -104,8 +111,10 @@ module Samagotchi
           label = given[:label]
         end
         memory_remove = tool == "memory_write" && call[:remove].to_s.strip.downcase == "true"
+        memory_overlay = tool == "memory_write" && !memory_remove && call[:current_model_only].to_s.strip.downcase == "true"
         new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd),
             repo: context.repo(cwd), args: args, acts_as: acts_as, label: label, memory_remove: memory_remove,
+            memory_overlay: memory_overlay,
             model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base,
             chi_dirs: -> { chi_dirs(context, base) })
       end
@@ -209,10 +218,12 @@ module Samagotchi
 
       # @param chi_dirs [#call, nil] → the dirs touches_chi? looks for
       def initialize(tool:, command:, paths:, cwd:, repo_root:, repo: nil, args: nil, acts_as: nil, label: nil,
-                     model_name: nil, model_key: nil, session_root: nil, chi_dirs: nil, memory_remove: false)
+                     model_name: nil, model_key: nil, session_root: nil, chi_dirs: nil, memory_remove: false,
+                     memory_overlay: false)
         @acts_as = acts_as
         @label = label
         @memory_remove = memory_remove
+        @memory_overlay = memory_overlay
         @repo = repo
         @chi_dirs = chi_dirs
         @session_root = session_root || repo_root || cwd
@@ -265,6 +276,34 @@ module Samagotchi
         return @read_only if defined?(@read_only)
 
         @read_only = !@command.nil? && ReadOnlyShell.read_only?(@command)
+      end
+
+      # A memory file that reaches the system prompt: the identity memory and
+      # the model notes (`model_notes_*`), with their overlays.
+      PROMPT_MEMORY = /\A(?:identity(?:\..+)?|model_notes_.+)\.md\z/
+
+      # Whether a path is a prompt-reaching memory file (.prompt_memory_path?),
+      # for a rule's memory: prompt.
+      def prompt_memory?
+        return @prompt_memory if defined?(@prompt_memory)
+
+        @prompt_memory = @paths.any? { |path| self.class.prompt_memory_path?(path) }
+      end
+
+      # Whether +path+, resolved (symlinks, .., the case the disk has),
+      # lies right in a memories dir (the system scope or a project's) and
+      # its name, in any case, is a PROMPT_MEMORY one: on a case-insensitive
+      # disk MODEL_NOTES_x.md in Samagotchi/Memories is the same file chi
+      # loads.
+      def self.prompt_memory_path?(path)
+        real = ProtectedPaths.real(path)
+        return false unless File.basename(real).downcase.match?(PROMPT_MEMORY)
+
+        dir = File.dirname(real)
+        dir.casecmp?(ProtectedPaths.real(MemoryPaths.system_dir)) ||
+          File.dirname(dir).casecmp?(ProtectedPaths.real(MemoryPaths.projects_dir))
+      rescue StandardError
+        false
       end
 
       # Whether the command names a path in chi's own dirs (ShellPaths:

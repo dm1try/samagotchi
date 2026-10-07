@@ -71,6 +71,29 @@ rules:
     scopes: [once]
     reason: removes a memory (it goes to the bundle trash, which chi bundle trash lists)
 
+  # The identity memory and the model notes (model_notes_<name>,
+  # docs/memory.md), with their overlays, go into the system prompt of every
+  # later session (a note on the models it names), and a model overlay
+  # (memory_write current_model_only: true) is appended to its memory for
+  # this model: a model, maybe steered by text it read, would be writing its
+  # own system prompt. Every such write asks, once at a time, and only the
+  # user may allow it. memory: prompt is memory_write, write or edit of such a
+  # file right in a memories folder, resolved (symlinks, .., and any case of
+  # the name, as a case-insensitive disk reads it); a shell command naming
+  # chi's config dir asks under shell-touches-chi.
+  - id: prompt-memory-write
+    tool: [memory_write, write, edit]
+    memory: prompt
+    verdict: ask
+    scopes: [once]
+    reason: writes a memory that goes into the system prompt of later sessions (identity, a model note, or an overlay of one)
+  - id: model-overlay-write
+    tool: memory_write
+    memory: overlay
+    verdict: ask
+    scopes: [once]
+    reason: writes a model overlay, guidance added to that memory for this model in later sessions
+
   # ── running code from the network ──────────────────────────────────────
   - id: pipe-to-shell
     tool: shell

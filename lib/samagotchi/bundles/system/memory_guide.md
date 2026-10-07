@@ -47,6 +47,19 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 **Placeholders:**
 - Content may contain placeholder hints written as double-curly braces around a name (e.g., test_command, language). Detected by `Placeholder` (`Placeholder::PLACEHOLDER_RE`) — install warns but does not fail. Fill them when you write. The placeholder syntax is two opening braces, a name, two closing braces.
 
+## Model notes
+
+A model note is a memory named `model_notes_<name>` whose first line says which models it is for: `models: ` then `|`-separated globs on the model id or the model key (the `Model:` line names both), or `small`. It goes into the system prompt of every later session on a matching model, after the identity, so it holds habits of a model (or a family), not of a task.
+
+```markdown
+models: deepseek-*|*deepseek-v4*
+- Explore briefly, then act.
+```
+
+- Write one only when the user asks for guidance for a model; it changes that model's prompt for every later session. The guardrails ask the user first, as they do for a model overlay.
+- No dot in the name (`model_notes_qwen3-6`, not `model_notes_qwen3.6`), and the `models:` line first: `memory_write` refuses either.
+- It takes effect at the next session start, resume or `/model`, not in the running session.
+
 ## Skills
 
 A skill is a memory named `skill_<name>` (`skill_release`, `skill_deploy_staging`) that holds the steps of a repeatable task done with the user. Next time, follow it; when a step turned out different, fix it in the same turn.

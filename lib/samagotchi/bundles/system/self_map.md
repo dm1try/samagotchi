@@ -77,6 +77,8 @@
 - Installed gem files and bundled memories (`identity`, `memory_guide`,
   `config_modification_protocol`, `self_map`, `delegated`) are managed: don't edit them
   (local edits conflict on upgrade).
-  Put notes in my own memories. A model-only note is an overlay on an existing
-  entry (`current_model_only: true`), and it needs that base entry to exist.
+  Put notes in my own memories. Guidance for some models only is a model note
+  (`model_notes_<name>`, first line `models: <glob>`; memory_guide); a model-only
+  addition to one memory is an overlay on it (`current_model_only: true`), and it
+  needs that base entry to exist.
 - Config edits: follow `config_modification_protocol`.

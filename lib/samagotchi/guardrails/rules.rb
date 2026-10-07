@@ -32,7 +32,12 @@ module Samagotchi
     #   modes:   "strict", "auto" or a list of them: the rule only votes
     #            in those guardrails.mode values (missing = every mode;
     #            a rule from config.yml without it votes in every mode)
-    #   memory:  "remove": a memory_write call with remove: true
+    #   memory:  "remove": a memory_write call with remove: true;
+    #            "overlay": one that writes a model overlay
+    #            (current_model_only: true); "prompt": a memory_write,
+    #            write or edit of a memory file that reaches the system
+    #            prompt (identity, model notes, their overlays;
+    #            Targets#prompt_memory?)
     #   skip_read_only: true: a shell command that only reads
     #            (ReadOnlyShell) doesn't match
     # verdict ask|deny, reason, scopes (for an ask; default all).
@@ -61,10 +66,18 @@ module Samagotchi
           return false if git && !targets.git_outside_repo?
           return false if touches && !targets.touches_chi?
           return false if rm && !targets.rm_outside_tmp?
-          return false if memory && !targets.memory_remove?
+          return false if memory && !memory_matches?(targets)
           return false if skip_read_only && targets.read_only?
 
           true
+        end
+
+        def memory_matches?(targets)
+          case memory
+          when "overlay" then targets.memory_overlay?
+          when "prompt" then targets.prompt_memory?
+          else targets.memory_remove?
+          end
         end
 
         # Whether the rule votes in guardrails.mode +mode+.
@@ -185,10 +198,11 @@ module Samagotchi
         value
       end
 
-      # Only "remove" for now.
+      MEMORY_KINDS = %w[remove overlay prompt].freeze
+
       def self.memory_of(value, label)
         return nil if value.nil?
-        raise ParseError, "#{label}: memory must be remove" unless value == "remove"
+        raise ParseError, "#{label}: memory must be remove, overlay or prompt" unless MEMORY_KINDS.include?(value)
 
         value
       end

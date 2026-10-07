@@ -54,6 +54,42 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
     end
   end
 
+  it "says a memory_write writes a model overlay with current_model_only, never with remove" do
+    overlay = Samagotchi::Guardrails::Targets.for({ name: "memory_write", path: "identity", scope: "system", content: "x",
+                                                    current_model_only: true }, context, model_key: "qwen3-6")
+    expect(overlay).to be_memory_overlay
+    expect(overlay.paths.first).to end_with("/identity.qwen3-6.md")
+    expect(targets(name: "memory_write", path: "h", scope: "project", content: "x")).not_to be_memory_overlay
+    expect(targets(name: "memory_write", path: "h", scope: "project", remove: true, current_model_only: true)).not_to be_memory_overlay
+    expect(targets(name: "write", path: "h.md", current_model_only: true)).not_to be_memory_overlay
+  end
+
+  describe ".prompt_memory_path?" do
+    let(:sys) { Samagotchi::MemoryPaths.system_dir }
+    let(:projects) { Samagotchi::MemoryPaths.projects_dir }
+
+    it "is identity or a model note, with their overlays, right in the system or a project's memories folder" do
+      [File.join(sys, "identity.md"), File.join(sys, "identity.qwen3-6.md"), File.join(sys, "model_notes_x.md"),
+       File.join(projects, "repo_abc", "model_notes_x.key.md"), File.join(sys, "IDENTITY.md"),
+       File.join(sys, "Model_Notes_x.md")].each do |path|
+        expect(Samagotchi::Guardrails::Targets.prompt_memory_path?(path)).to be(true), path
+      end
+      [File.join(sys, "notes.md"), File.join(sys, "identity_extra.md"), File.join(sys, ".bundles", "g", "identity.md"),
+       File.join(projects, "identity.md"), File.join(@repo, "model_notes_x.md"), File.join(sys, "model_notes_.txt")].each do |path|
+        expect(Samagotchi::Guardrails::Targets.prompt_memory_path?(path)).to be(false), path
+      end
+    end
+
+    it "follows a symlink and .. to the real folder" do
+      FileUtils.mkdir_p(sys)
+      File.symlink(sys, File.join(@repo, "mem"))
+      expect(Samagotchi::Guardrails::Targets.prompt_memory_path?(File.join(@repo, "mem", "model_notes_x.md"))).to be(true)
+      expect(Samagotchi::Guardrails::Targets.prompt_memory_path?(File.join(projects, "..", "identity.md"))).to be(true)
+      expect(targets(name: "write", path: "mem/identity.md")).to be_prompt_memory
+      expect(targets(name: "write", path: "mem/other.md")).not_to be_prompt_memory
+    end
+  end
+
   describe "tmp dirs" do
     it "lets a write into a tmp dir through when the session lives elsewhere" do
       other_tmp = File.join(@base, "tmp").tap { |d| FileUtils.mkdir_p(d) }

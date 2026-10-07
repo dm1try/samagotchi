@@ -32,7 +32,7 @@ RSpec.describe "Engine#system_prompt names the model" do
     expect(prompt).to include("Model: this session runs on oai:Qwen3.8-27B-Splash (host oai, oai.test:8000; " \
                               "model key qwen3-8-27b-splash).\n")
     expect(prompt).to include("Asked which model you are, answer with this line, not from training")
-    expect(prompt).to include("memory_write current_model_only: true")
+    expect(prompt).to include("Guidance for this model only goes in a model note: a memory named model_notes_<name>")
   end
 
   it "sits before the working directory and the session id" do

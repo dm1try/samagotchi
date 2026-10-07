@@ -497,7 +497,8 @@ module Samagotchi
       "Model: this session runs on #{model.ref}#{where}.\n" \
         "Asked which model you are, answer with this line, not from training: a fine-tuned model often knows only " \
         "its base model's name, but this session runs what is named here; it changes only with /model. " \
-        "Guidance for this model only goes in memory overlays: memory_write current_model_only: true."
+        "Guidance for this model only goes in a model note: a memory named model_notes_<name> whose first line is " \
+        "`models: <glob on this model's id or key>`."
     rescue StandardError
       nil
     end
