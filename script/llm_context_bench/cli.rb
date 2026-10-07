@@ -4,6 +4,7 @@ require "json"
 require "optparse"
 require_relative "report"
 require_relative "live_pick"
+require_relative "forget_offer"
 
 module LLMContextBench
   # script/llm_context_bench.rb: replays stored sessions offline and
@@ -17,7 +18,7 @@ module LLMContextBench
 
     Options = Struct.new(:dir, :strategies, :picks, :cases_file, :min_turn_tool, :top, :sessions, :profile, :per_case,
                          :json, :live, :tool_name, :policy, :out_dir, :samples, :dry_run, :layout, :force,
-                         :ends, keyword_init: true)
+                         :ends, :forget_model, :budget, :max_cost, keyword_init: true)
 
     # @param chat_adapter [#call] model ref => [adapter, bare model], for
     #   --live (LivePick.chat_adapter; a spec points it at a fake server)
@@ -41,9 +42,18 @@ module LLMContextBench
       end
       return live(options) if options.live
 
+      if options.forget_model && options.out_dir.nil?
+        @err.puts "llm_context_bench: --forget-model needs --out DIR (its answers are saved there)"
+        return 2
+      end
+
       report = build(options)
       @out.puts(options.json ? JSON.pretty_generate(report.to_h) : report.text(per_case: options.per_case))
       0
+    rescue LivePick::PaymentStop => e
+      @err.puts "llm_context_bench: stopped: #{e.message}; the answers so far are saved in #{options.out_dir}, " \
+                "a rerun asks only for the rest"
+      1
     end
 
     private
@@ -51,7 +61,8 @@ module LLMContextBench
     def parse
       options = Options.new(strategies: DEFAULT_STRATEGIES.dup, picks: [], min_turn_tool: Cases::MIN_TURN_TOOL,
                             profile: true, per_case: false, json: false, tool_name: LivePick::TOOL_NAMES.first,
-                            policy: "subtask", samples: 1, dry_run: false, layout: LivePick::LAYOUTS.first, force: true)
+                            policy: "subtask", samples: 1, dry_run: false, layout: LivePick::LAYOUTS.first, force: true,
+                            budget: Strategies::ForgetOutputs::DEFAULT_BUDGET)
       parser = OptionParser.new do |o|
         o.banner = "usage: script/llm_context_bench.rb [SESSIONS_DIR] [options]\n  " \
                    "SESSIONS_DIR: a folder of <session id>.json files (default $#{ENV_DIR}, else chi's own)"
@@ -75,6 +86,14 @@ module LLMContextBench
         o.on("--[no-]profile", "the none profile (default on)") { |on| options.profile = on }
         o.on("--per-case", "a row per case too") { options.per_case = true }
         o.on("--json", "JSON instead of text") { options.json = true }
+        o.separator "forget_outputs (P4: chi's forget offer at each case, answered by a model):"
+        o.on("--forget-model MODEL", "ask MODEL (a chi model ref on an api: openai host) at each case; answers " \
+                                     "are saved in --out and read back") { |ref| options.forget_model = ref }
+        o.on("--budget N", Integer, "llm_context.budget_tokens for the offer (default " \
+                                    "#{Strategies::ForgetOutputs::DEFAULT_BUDGET})") { |n| options.budget = n }
+        o.on("--max-cost USD", Float, "with --forget-model: stop once the costs the server reports reach USD") do |usd|
+          options.max_cost = usd
+        end
         o.separator "live picks (calls a model through chi's chat client; for the D7 A/B):"
         o.on("--live MODEL", "ask MODEL (a chi model ref on an api: openai host) to pick, per case") { |ref| options.live = ref }
         o.on("--tool-name NAME", LivePick::TOOL_NAMES, "the forget tool's name (default #{LivePick::TOOL_NAMES.first})") do |name|
@@ -139,7 +158,7 @@ module LLMContextBench
       results = []
       skipped = {}
       options.strategies.each do |name|
-        strategy = Strategies.build(name)
+        strategy = name == Strategies::ForgetOutputs::NAME ? forget_outputs(options) : Strategies.build(name)
         results.concat(score(strategy, cases))
       rescue NotBuilt => e
         skipped[name] = e.message
@@ -147,6 +166,20 @@ module LLMContextBench
       picks.each { |source| results.concat(score(source, cases)) }
       Report.new(results: results, profile: (Profile.new(replays) if options.profile), skipped: skipped,
                  sessions: replays.size, source: options.dir, case_ends: cases.to_h { |kase| [kase.name, kase.ends] })
+    end
+
+    # forget_outputs with its answers: saved ones in --out, the rest asked of
+    # --forget-model (none: the saved ones only; neither: skipped).
+    def forget_outputs(options)
+      picker = if options.forget_model
+                 adapter, model = @chat_adapter.call(options.forget_model)
+                 Strategies::ForgetAnswers.new(dir: File.expand_path(options.out_dir.to_s), label: model, log: @err,
+                                               ask: Strategies::ForgetAnswers.chat_asker(adapter, model),
+                                               max_cost: options.max_cost)
+               elsif options.out_dir
+                 Strategies::ForgetAnswers.new(dir: File.expand_path(options.out_dir), label: "saved", log: @err)
+               end
+      Strategies::ForgetOutputs.new(picker: picker, budget: options.budget)
     end
 
     # The cases to run (Cases.select), saying so when --ends answer drops

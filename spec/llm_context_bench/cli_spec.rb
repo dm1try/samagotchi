@@ -27,7 +27,7 @@ RSpec.describe LLMContextBench::CLI do
     expect(text).to include("llm_context bench: 2 sessions, 2 cases from #{dir}", "Profile (none, every session)",
                             "reads: 3 over 2 files")
     expect(text.lines.grep(/\A  forget_all /).map { |line| line.split[1] }).to eq(%w[acme/coder-1 local-qwen])
-    expect(text).to include("forget_outputs: skipped, forget_outputs is not built yet (P4")
+    expect(text).to include("forget_outputs: skipped, forget_outputs needs a model to ask")
   end
 
   it "reads the sessions folder from the environment and answers JSON" do

@@ -5,17 +5,22 @@ require_relative "cases"
 
 module LLMContextBench
   # One edit a strategy makes: the output (its ToolIds id), the edit's kind
-  # (an LLMContextEdit kind), the note its stub carries, and the request it
-  # first reaches the prompt at (an edit is applied there and stays).
-  PlannedEdit = Data.define(:output_id, :kind, :note, :applies_at)
+  # (an LLMContextEdit kind), the note its stub carries, the request it
+  # first reaches the prompt at (an edit is applied there and stays), and
+  # the lines a forget keeps (LLMContextEdit#keep).
+  PlannedEdit = Data.define(:output_id, :kind, :note, :applies_at, :keep) do
+    def initialize(keep: [], **fields) = super
+  end
 
   # What a strategy does at a case: its edits, scored at the case's request
   # (+case+.at). +model+ and +policy+ are the report's row: the session's
   # model for a strategy chi runs alone, the picking model for one a model
-  # chose. +how+ says how a pick was got (unforced, forced, none);
-  # +invalid_ids+ counts the ids it named that aren't outputs in context.
-  Plan = Data.define(:strategy, :kase, :model, :policy, :edits, :how, :invalid_ids) do
-    def initialize(how: nil, invalid_ids: 0, policy: "-", **fields) = super
+  # chose. +how+ says how a pick was got (unforced, forced, none; for
+  # forget_outputs called, no_call, error); +invalid_ids+ counts the ids it
+  # named that aren't outputs in context (forget_outputs: that chi
+  # refused); +note_chars+ the length of the notes it wrote.
+  Plan = Data.define(:strategy, :kase, :model, :policy, :edits, :how, :invalid_ids, :note_chars) do
+    def initialize(how: nil, invalid_ids: 0, policy: "-", note_chars: 0, **fields) = super
   end
 
   # A strategy isn't built yet: its phase of the plan builds it.
@@ -126,18 +131,6 @@ module LLMContextBench
       end
     end
 
-    # A strategy whose phase hasn't built it yet.
-    class Unbuilt
-      attr_reader :name, :phase
-
-      def initialize(name, phase)
-        @name = name
-        @phase = phase
-      end
-
-      def plans(_kase) = raise(NotBuilt, "#{name} is not built yet (#{phase} of the llm_context plan)")
-    end
-
     # Model picks of what to forget, recorded as responses: the spike's
     # out/<model>/<case>.pick*.json, or what LivePick saves. Each file
     # "<case>.<variant>.json" is one pick; its variant (without a "_s<N>"
@@ -243,18 +236,19 @@ module LLMContextBench
 
     BUILT = { "none" => None, "forget_all" => ForgetAll, "stale" => Stale }.freeze
     APPLIED = Samagotchi::LLMContextStrategy::APPLIES.to_h { |rule| ["stale_edits_#{rule}", rule] }.freeze
-    UNBUILT = { "forget_outputs" => "P4" }.freeze
+    # Built with what it needs by the CLI (ForgetOutputs: a model to ask).
+    ASKING = %w[forget_outputs].freeze
 
     module_function
 
-    def names = BUILT.keys + APPLIED.keys + UNBUILT.keys
+    def names = BUILT.keys + APPLIED.keys + ASKING
 
-    # The strategy named +name+ (Picks are made apart, from their files).
+    # The strategy named +name+ (Picks are made apart, from their files;
+    # forget_outputs by the CLI, with its model).
     # @raise [ArgumentError] for an unknown one
     def build(name)
       return BUILT.fetch(name).new if BUILT.key?(name)
       return StaleApply.new(APPLIED.fetch(name)) if APPLIED.key?(name)
-      return Unbuilt.new(name, UNBUILT.fetch(name)) if UNBUILT.key?(name)
 
       raise ArgumentError, "unknown strategy #{name} (#{names.join(", ")}, or --picks)"
     end

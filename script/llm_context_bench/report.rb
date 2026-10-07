@@ -9,7 +9,7 @@ module LLMContextBench
     STRATEGY_ORDER = %w[none forget_all stale stale_edits_next_request stale_edits_turn_end stale_edits_payoff
                         forget_outputs picks].freeze
     SUMMED = %i[outputs tool_tokens prompt_tokens forgotten invalid_ids freed wrong_strict wrong_loose need_strict
-                need_loose one_step_outputs re_prefilled cache_breaks].freeze
+                need_loose one_step_outputs re_prefilled cache_breaks note_chars].freeze
 
     # One row: a strategy × model × policy, its results summed.
     Row = Data.define(:strategy, :model, :policy, :cases, :how, :sums)
@@ -102,7 +102,9 @@ module LLMContextBench
         s = row.sums
         notes = []
         notes << row.how.map { |how, n| "#{n} #{how}" }.join(", ") unless row.how.empty?
-        notes << "#{s[:invalid_ids]} invalid ids" if s[:invalid_ids].positive?
+        notes << "#{s[:invalid_ids]} #{row.strategy == "forget_outputs" ? "refused" : "invalid"} ids" if s[:invalid_ids].positive?
+        called = row.how.fetch("called", 0)
+        notes << "call rate #{pct(called, row.cases)}, notes #{(s[:note_chars] / called).round} chars" if called.positive?
         [row.strategy, row.model, row.policy, row.cases.to_s, "#{s[:forgotten]}/#{s[:outputs]}",
          "#{k(s[:freed])}/#{k(s[:tool_tokens])} #{pct(s[:freed], s[:tool_tokens])}",
          "#{s[:wrong_strict]} #{pct(s[:wrong_strict], s[:forgotten])} (#{pct(s[:need_strict], s[:outputs])})",

@@ -198,8 +198,8 @@ RSpec.describe LLMContextBench::Scorer do
   end
 
   describe "the slots" do
-    it "names forget_outputs as not built yet, with its phase" do
-      expect { LLMContextBench::Strategies.build("forget_outputs").plans(kase) }.to raise_error(LLMContextBench::NotBuilt, /P4/)
+    it "knows forget_outputs (the CLI builds it, with its model) and refuses an unknown one" do
+      expect(LLMContextBench::Strategies.names).to include("forget_outputs")
       expect { LLMContextBench::Strategies.build("summarize") }.to raise_error(ArgumentError, /unknown strategy/)
     end
   end

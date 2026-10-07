@@ -29,9 +29,10 @@ module LLMContextBench
   #   otherwise count an early break again in every later case;
   # - cache_breaks: the requests of that window an edit first reaches (one
   #   break each, a batch's edits together).
+  # - note_chars: the length of the notes the plan's model wrote.
   Result = Data.define(:strategy, :model, :policy, :case_name, :how, :outputs, :tool_tokens, :prompt_tokens,
                        :forgotten, :invalid_ids, :freed, :wrong_strict, :wrong_loose, :need_strict, :need_loose,
-                       :one_step_outputs, :re_prefilled, :cache_breaks)
+                       :one_step_outputs, :re_prefilled, :cache_breaks, :note_chars)
 
   # Scores a Plan on its case's replay, the edits rendered through chi's own
   # LLMContextView (as LLMContextEdit records saved on copies of the
@@ -60,7 +61,8 @@ module LLMContextBench
                  need_strict: outputs.count { |output| horizon.reread?(output) },
                  need_loose: outputs.count { |output| horizon.loose?(output) },
                  one_step_outputs: one_step(replay, edits, by_id),
-                 re_prefilled: re_prefilled(replay, window, by_id), cache_breaks: window.map(&:applies_at).uniq.size)
+                 re_prefilled: re_prefilled(replay, window, by_id), cache_breaks: window.map(&:applies_at).uniq.size,
+                 note_chars: plan.note_chars)
     end
 
     # Request +request+'s prompt as chi's view sends it with +edits+ applied
@@ -87,7 +89,7 @@ module LLMContextBench
     def record(edit)
       stamp = "request #{edit.applies_at}"
       Samagotchi::LLMContextEdit.new(id: edit.output_id, kind: edit.kind, note: edit.note, by: BY, staged_at: stamp,
-                                     applied_at: stamp)
+                                     applied_at: stamp, keep: edit.keep)
     end
 
     def prompt_tokens(replay, request, edits)
