@@ -82,6 +82,22 @@ RSpec.describe Samagotchi::LLMContextView do
       expect(inputs.first).to equal(seen.first)
     end
 
+    it "formats the warm-up under the strategy it is given (the next turn's), not the last turn's" do
+      kernel.run(conversation.first(2))
+      stale = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :model_setting)
+      edits = { "t1" => { "kind" => "stale", "note" => "lib/x.rb: superseded by a later edit", "by" => "chi",
+                          "staged_at" => "now", "applied_at" => "now" } }
+      messages = conversation + [{ role: "model", content: "Read it." }]
+      messages[3] = messages[3].merge(edits: edits)
+
+      under_none, = kernel.warmup_prompt(messages)
+      under_stale, = kernel.warmup_prompt(messages, llm_context: stale)
+
+      expect(under_none).to include("[read] lib/x.rb\n1: x")
+      expect(under_stale).to include("[read] lib/x.rb: superseded by a later edit")
+      expect(under_stale).not_to include("1: x")
+    end
+
     it "runs under the turn's strategy (TurnSettings#llm_context), none without one" do
       expect(kernel.llm_context_view).to be_none
       resolved = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config)

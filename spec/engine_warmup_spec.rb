@@ -57,6 +57,33 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
     expect(sent.first[:prompt]).to end_with("<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nAnswer<|im_end|>\n")
   end
 
+  it "warms the prompt under the next turn's strategy, resolved again after the turn (a /model switch)" do
+    during = Samagotchi::LLMContextStrategy::Resolved.new(layers: [], strategy: :none, source: :config)
+    after = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :model_setting)
+    allow(Samagotchi::LLMContextStrategy).to receive(:resolve).and_return(during, after)
+    allow(kernel).to receive(:warmup_prompt).and_call_original
+
+    engine.run_turn(session, "hi")
+    sent_warmups
+
+    expect(kernel).to have_received(:warmup_prompt).with(anything, llm_context: after)
+  end
+
+  it "warms under the last turn's strategy when the next one can't be resolved" do
+    during = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config)
+    calls = 0
+    allow(Samagotchi::LLMContextStrategy).to receive(:resolve) do
+      calls += 1
+      calls == 1 ? during : raise(ArgumentError, "bad config")
+    end
+    allow(kernel).to receive(:warmup_prompt).and_call_original
+
+    engine.run_turn(session, "hi")
+    sent_warmups
+
+    expect(kernel).to have_received(:warmup_prompt).with(anything, llm_context: during)
+  end
+
   it "is off with cache.warmup off" do
     with_env("SAMAGOTCHI_CACHE_WARMUP" => "off") { engine.run_turn(session, "hi") }
 

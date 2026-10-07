@@ -1754,7 +1754,9 @@ module Samagotchi
       return if reminders_due? || @turn_state.carried_steers? || @next_turn_waiting&.call
 
       messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: system_prompt(target) })
-      prompt, images = @kernel.warmup_prompt(messages)
+      # Under the next turn's strategy (a /model switch may have changed it);
+      # the last turn's when it can't be resolved.
+      prompt, images = @kernel.warmup_prompt(messages, llm_context: turn_llm_context || @kernel.turn_settings&.llm_context)
       return unless prompt
 
       @prompt_warmup.start(client: client, prompt: prompt, model: @kernel.turn_settings.model_name,

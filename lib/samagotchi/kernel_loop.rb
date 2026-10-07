@@ -715,12 +715,15 @@ module Samagotchi
     # turn-end warm-up (PromptWarmup): +messages+ as the next turn sends
     # them before its prompt (the history under the system head), formatted
     # as #run formats them (through the LLMContextView too), with a
-    # stand-in user message cut off at its opener. Returns [prompt,
-    # images], or nil when the cut isn't found.
-    def warmup_prompt(messages)
+    # stand-in user message cut off at its opener. +llm_context+: the next
+    # turn's strategy (LLMContextStrategy::Resolved; the Engine resolves it
+    # for the model the next turn runs on, after a /model switch too),
+    # else the last turn's. Returns [prompt, images], or nil when the cut
+    # isn't found.
+    def warmup_prompt(messages, llm_context: @turn_settings&.llm_context)
       conversation = prepare_conversation(messages) << { role: "user", content: WARMUP_CUT }
-      prompt, images = Prompt.format_with_images(llm_context_view.messages(conversation), profile: @profile,
-                                                                                         vision: @turn_settings.vision)
+      prompt, images = Prompt.format_with_images(llm_context_view(llm_context).messages(conversation),
+                                                 profile: @profile, vision: @turn_settings.vision)
       head = prompt[0, prompt.index(WARMUP_CUT) || 0]
       cut = head.rindex(user_opener)
       cut&.positive? ? [head[0, cut], images] : nil
@@ -730,11 +733,12 @@ module Samagotchi
     private_constant :WARMUP_CUT
 
     # What both loops send of the conversation (LLMContextView), under the
-    # turn's strategy (TurnSettings#llm_context, none without one): the
-    # prompt, the warm-up and the chat messages all format through it, so
-    # the warm-up warms the prompt the next turn sends.
-    def llm_context_view
-      LLMContextView.new(strategy: @turn_settings&.llm_context&.strategy || LLMContextView::NONE)
+    # turn's strategy (TurnSettings#llm_context, none without one), or the
+    # one given (the warm-up's, the next turn's): the prompt, the warm-up
+    # and the chat messages all format through it, so the warm-up warms
+    # the prompt the next turn sends.
+    def llm_context_view(llm_context = @turn_settings&.llm_context)
+      LLMContextView.new(strategy: llm_context&.strategy || LLMContextView::NONE)
     end
 
     # Public wrapper so other loops (e.g. the chat loop) can strip
