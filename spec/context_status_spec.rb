@@ -107,4 +107,57 @@ RSpec.describe Samagotchi::ContextStatus do
         .to eq(est_pct: 80.0, bucket: "80plus")
     end
   end
+
+  describe "under the forget layer: tiered offers of forget_outputs" do
+    let(:forget) { Samagotchi::LLMContextStrategy::Resolved.new(layers: %i[stale forget], strategy: %i[stale forget], source: :config) }
+
+    def line(tracker) = tracker.take_guidance&.dig(:content)
+
+    it "mid-turn: the readout alone on a rise below the top, the compact offer on a rise into the top" do
+      tracker = described_class.new(llm_context: forget)
+      tracker.observe(400, iteration_index: 1, window: window)
+      expect(line(tracker)).to be_nil
+
+      tracker.observe(1_700, iteration_index: 2, window: window)
+      expect(line(tracker)).to eq("[CONTEXT: ~425/1k tokens in use (bucket=40plus).]")
+      tracker.observe(2_500, iteration_index: 3, window: window)
+      expect(line(tracker)).to eq("[CONTEXT: ~625/1k tokens in use (bucket=60plus).]")
+      tracker.observe(3_300, iteration_index: 4, window: window)
+      expect(line(tracker)).to eq("[CONTEXT: ~825/1k tokens in use (bucket=80plus). Compact settled outputs now with " \
+                                  "forget_outputs: keep what you'll still edit against; don't wipe.]")
+    end
+
+    it "at a turn's start: offers to tidy once, again only after a readout alone, and never \"forget now\"" do
+      first = described_class.new(llm_context: forget)
+      first.observe(2_500, iteration_index: 0, window: window)
+      offer = first.take_guidance
+      expect(offer[:content]).to eq("[CONTEXT: ~625/1k tokens in use (bucket=60plus). Finish the unit of work in flight, " \
+                                    "then tidy once with forget_outputs: settled outputs, with a note that carries what " \
+                                    "they established.]")
+
+      offered = described_class.new(conversation: [offer], llm_context: forget)
+      offered.observe(2_600, iteration_index: 0, window: window)
+      expect(line(offered)).to be_nil
+
+      readout = { role: "system", kind: "context", content: "[CONTEXT: ~625/1k tokens in use (bucket=60plus).]" }
+      after_readout = described_class.new(conversation: [readout], llm_context: forget)
+      after_readout.observe(2_600, iteration_index: 0, window: window)
+      expect(line(after_readout)).to include("tidy once with forget_outputs")
+      expect([offer[:content], line(first)].compact.join).not_to match(/forget (now|everything)/i)
+    end
+
+    it "over the budget: the compact offer at every turn's start" do
+      budgeted = Samagotchi::LLMContextStrategy::Resolved.new(layers: %i[stale forget], strategy: %i[stale forget],
+                                                              source: :config, budget_tokens: 500)
+      offer = described_class.new(llm_context: budgeted).tap { |t| t.observe(2_400, iteration_index: 0, window: window) }
+                             .take_guidance
+      expect(offer[:content]).to start_with("[CONTEXT: ~600/500 tokens in use, over the budget (bucket=80plus). Compact")
+
+      again = described_class.new(conversation: [offer], llm_context: budgeted)
+      again.observe(2_400, iteration_index: 0, window: window)
+      expect(line(again)).to include("over the budget")
+      again.observe(2_500, iteration_index: 1, window: window)
+      expect(line(again)).to be_nil
+    end
+  end
 end

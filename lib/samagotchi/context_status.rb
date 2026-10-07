@@ -23,6 +23,22 @@ module Samagotchi
   # The turn's LLM context strategy (LLMContextStrategy::Resolved) may set
   # a soft budget (llm_context.budget_tokens): the buckets then count
   # against it instead of the window (the smaller of the two).
+  #
+  # Under the forget layer the model's lines offer forget_outputs in
+  # tiers, never "forget now" (the spike: told to free context, models
+  # forget nearly everything), each with a "~N/M tokens" readout:
+  # - the first bucket with guidance, below the top two: the readout alone
+  #   (CLM: how-to at low pressure triggers wholesale deletion);
+  # - the one under the top: finish the unit of work in flight, then tidy
+  #   once;
+  # - the top, or over the budget: compact settled outputs now, keep what
+  #   will still be edited against, don't wipe.
+  # When: at a turn's first request (the turn before it answered, its
+  # outputs are settled), on a rise as ever, and again when the last line
+  # was the readout alone (a mid-turn rise) or the context is over the
+  # budget (every turn then). Mid-turn only the top tier offers; a lower
+  # rise gets the readout alone (the layout check: pushed mid-task, models
+  # forget at the base rate).
   class ContextStatus
     STATUS_PREFIX = "CONTEXT_STATUS"
     # The model's own line about its context (a tail system message, kind
@@ -66,15 +82,26 @@ module Samagotchi
     # The bucket of the last status line +conversation+ holds: the model's
     # own line, or a legacy session's injected telemetry.
     def self.last_bucket(conversation)
+      content = last_line(conversation)
+      match = content&.match(/\bbucket=([a-z0-9_]+)/)
+      match && match[1]
+    end
+
+    # The text of the last status line +conversation+ holds, nil for none.
+    def self.last_line(conversation)
       message = conversation.reverse.find do |entry|
         content = entry[:content].to_s
         entry[:role] == "system" && content.start_with?(STATUS_PREFIX, LINE_PREFIX)
       end
-      return nil unless message
-
-      match = message[:content].match(/\bbucket=([a-z0-9_]+)/)
-      match && match[1]
+      message && message[:content].to_s
     end
+
+    # What a forget-layer line names when it offers the tool.
+    OFFER_TOOL = "forget_outputs"
+    # The forget layer's tiers' words (#forget_line).
+    TIDY = "Finish the unit of work in flight, then tidy once with #{OFFER_TOOL}: settled outputs, with a note " \
+           "that carries what they established."
+    COMPACT = "Compact settled outputs now with #{OFFER_TOOL}: keep what you'll still edit against; don't wipe."
 
     # @param conversation [Array<Hash>] the turn's conversation so far (its
     #   last status line's bucket is where rises count from)
@@ -82,6 +109,8 @@ module Samagotchi
     #   strategy (its budget)
     def initialize(conversation: [], llm_context: nil)
       @budget = llm_context&.budget_tokens
+      @forget = llm_context&.forget? || false
+      @offered = self.class.last_line(conversation).to_s.include?(OFFER_TOOL)
       @enabled = self.class.enabled?
       chars_per_token = Config.get("context.chars_per_token").to_f
       @chars_per_token = chars_per_token.positive? ? chars_per_token : DEFAULT_CHARS_PER_TOKEN
@@ -128,9 +157,14 @@ module Samagotchi
       emit = emit?(bucket: bucket, iteration_index: iteration_index)
       previous_bucket = @last_bucket
       @last_bucket = bucket
+      line = if @forget
+               forget_line(usage, bucket, previous_bucket, iteration_index)
+             elsif guidance_due?(previous_bucket, bucket)
+               guidance_message(usage: usage, bucket: bucket)
+             end
+      @guidance = line if line
       return nil unless emit
 
-      @guidance = guidance_message(usage: usage, bucket: bucket) if guidance_due?(previous_bucket, bucket)
       { status: status_message(usage: usage, bucket: bucket), usage: usage, bucket: bucket, source: usage[:source] }
     end
 
@@ -260,6 +294,42 @@ module Samagotchi
       cadence_due = @cadence.positive? && ((iteration_index + 1) % @cadence).zero?
       bucket_changed || cadence_due
     end
+
+    # The forget layer's line for this request, or nil (the tiers and when
+    # they come: the class comment).
+    def forget_line(usage, bucket, previous, iteration_index)
+      over = over_budget?(usage)
+      tier = over ? :compact : tier_for(bucket)
+      return nil unless tier
+
+      rise = guidance_due?(previous, bucket)
+      if iteration_index.zero?
+        return nil unless rise || over || (tier != :info && !@offered)
+      else
+        return nil unless rise
+
+        tier = :info unless tier == :compact
+      end
+      @offered = tier != :info
+      readout = "~#{k(usage[:estimated_used_tokens])}/#{k(usage[:window_tokens])} tokens in use"
+      readout += ", over the budget" if over
+      words = { info: nil, tidy: TIDY, compact: COMPACT }.fetch(tier)
+      { role: "system", kind: LINE_KIND, content: "#{LINE_PREFIX}#{readout} (bucket=#{bucket}).#{" #{words}" if words}]" }
+    end
+
+    # :info, :tidy or :compact for a bucket with guidance (the top one
+    # compacts, the one under it tidies, lower ones inform); nil below.
+    def tier_for(bucket)
+      rank = bucket_rank(bucket)
+      return nil if rank < GUIDANCE_FROM_RANK
+      return :compact if rank == @thresholds.size
+
+      rank == @thresholds.size - 1 ? :tidy : :info
+    end
+
+    def over_budget?(usage) = !@budget.nil? && usage[:estimated_used_tokens] >= @budget
+
+    def k(tokens) = tokens >= 1000 ? "#{(tokens / 1000.0).round}k" : tokens.to_s
 
     def guidance_message(usage:, bucket:)
       how = usage[:source].to_s == "server" ? "as the server reports" : "estimated"
