@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-08
+
 ### Added
 
 - Experimental: the `forget` layer of `llm_context.strategy` (`[stale, forget]`, per model or host as ever). That
@@ -23,6 +25,15 @@ and commands may change between minor versions. How releases are made:
   at a turn's start, mid-turn only in the top tier.
 - The replay bench's `forget_outputs` strategy asks a model at chi's forget offer and scores its picks, call rate and
   notes (`--forget-model`, `--out`, `--budget`, `--max-cost`).
+
+### Changed
+
+- Web: session cards no longer show the "mem N" chip, leaving room for the delegate chip; the card's tooltip and the
+  open session's info bar still list the memories used.
+
+### Fixed
+
+- Web: a session card's hover tooltip (id, update time, status, memories) was empty since 0.35.0.
 
 Update with `chi update`: it updates loop-guard (0.3.6: ignores `forget_outputs`).
 
@@ -1892,7 +1903,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.39.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.40.0...HEAD
+[0.40.0]: https://github.com/dm1try/samagotchi/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/dm1try/samagotchi/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/dm1try/samagotchi/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/dm1try/samagotchi/compare/v0.36.0...v0.37.0
