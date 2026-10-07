@@ -14,6 +14,18 @@ and commands may change between minor versions. How releases are made:
   with) and `label:` (what the approval question names it by): a guardrail rule's `tool:` then matches the call's own
   name or the tool it acts as, the approval question names that tool with those arguments, and "allow this call" is keyed by both names and those arguments. It can't
   be one of chi's own tools or another bundle's (dropped and logged). See [docs/plugins.md](docs/plugins.md#guardrails).
+- `chi broadcast` asks a small triage model about the sessions no tag matched, instead of skipping them: it reads the
+  note and each session's scope card and answers yes or no ("model: yes (p 0.91)" when the host gives logprobs,
+  graded by `broadcast.threshold`). The model is `broadcast.triage_model` (with `triage_host_ref` or
+  `triage_base_url`), else the recap's, else `default.model`; a ~9B instruct model or larger works well. Up to
+  `broadcast.triage_parallel` (4) requests run at once, all within `broadcast.triage_deadline` (20 s): a session not
+  judged by then, or whose request failed, gets the note anyway, and the summary line counts it ("1 unchecked: triage
+  deadline"). A first line naming one project ("shopfront/checkout") keeps the note to that project's sessions.
+  `--dry-run` runs triage too. See [docs/broadcast.md](docs/broadcast.md#triage).
+- `chi broadcast` prints the broadcast's id and logs each recipient's verdict (`~/.local/state/samagotchi/broadcast/log.jsonl`,
+  rotated at 2 MiB). `chi broadcast log [--last N] [--format json]` shows the last broadcasts and who got them, and
+  `chi broadcast deliver BROADCAST_ID ID...` gives one to sessions it skipped, after all. See
+  [docs/broadcast.md](docs/broadcast.md#the-triage-log).
 
 ## [0.36.0] - 2026-10-07
 
