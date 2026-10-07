@@ -102,16 +102,18 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
     end
   end
 
-  it "resolves the effective model's strategy each turn: none by default, a configured layer warned and none in P0" do
+  it "resolves the effective model's strategy each turn: none by default, stale once configured, forget warned" do
     models = {}
     allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
 
     engine.run_turn(session, "hi")
     models["ornith"] = { profile: nil, llm_context_strategy: [:stale] }
-    expect { engine.run_turn(session, "again") }.to output(/models: ornith: llm_context strategy stale is not built yet/)
-      .to_stderr
+    engine.run_turn(session, "again")
+    models["ornith"] = { profile: nil, llm_context_strategy: %i[stale forget] }
+    expect { engine.run_turn(session, "and again") }
+      .to output(/models: ornith: llm_context strategy forget is not built yet/).to_stderr
 
-    expect(views.map(&:strategy)).to eq(%i[none none])
-    expect(kernel.turn_settings.llm_context.to_h).to eq(layers: [:stale], strategy: :none, source: :model_setting)
+    expect(views.map(&:strategy)).to eq([:none, [:stale], :none])
+    expect(kernel.turn_settings.llm_context.to_h).to eq(layers: %i[stale forget], strategy: :none, source: :model_setting)
   end
 end

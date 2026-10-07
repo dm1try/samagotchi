@@ -4,6 +4,11 @@ require "spec_helper"
 require "samagotchi/llm_context_stale"
 require "samagotchi/llm_context_view"
 require "samagotchi/context_note"
+require "samagotchi/kernel_loop"
+require "samagotchi/llm/chat_loop"
+require "tmpdir"
+require_relative "support/fake_chat_adapter"
+require_relative "support/test_kernel"
 
 RSpec.describe Samagotchi::LLMContextStale do
   let(:now) { "2026-10-07T18:00:00.000Z" }
@@ -178,6 +183,92 @@ RSpec.describe Samagotchi::LLMContextStale do
 
       expect(stubbed(stored)).to eq("e3.1" => [2, "lib/cart.rb: superseded by a later read"])
       expect(stubbed(sent)).to eq("e3.1" => [3, "lib/cart.rb: superseded by a later read"])
+    end
+  end
+
+  describe "a turn under stale, edits applied at the next request" do
+    let(:stale) { Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config) }
+    let(:dir) { Dir.mktmpdir("chi-stale") }
+    let(:file) { File.join(dir, "cart.rb").tap { |path| File.write(path, "#{body}\n") } }
+
+    after { FileUtils.remove_entry(dir) }
+
+    def under(kernel, llm_context)
+      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)
+      kernel
+    end
+
+    describe "the native loop" do
+      def prompts(llm_context)
+        responses = [qwen_call("read", "path" => file), qwen_call("read", "path" => file), "Done."]
+        sent = []
+        client = test_client
+        allow(client).to receive(:complete) do |prompt, on_chunk: nil, **|
+          sent << prompt
+          text = responses.shift
+          on_chunk&.call(content: text, payload: { "content" => text })
+          text
+        end
+        kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), llm_context)
+        [kernel.run([head, { role: "user", content: "read it twice" }]), sent]
+      end
+
+      it "stubs the first read in the request after the second, and keeps the original in the conversation" do
+        result, sent = prompts(stale)
+
+        expect(sent.size).to eq(3)
+        expect(sent[1].scan("1: line 1 of the cart").size).to eq(1)
+        expect(sent[2]).to include("[read] #{file}: superseded by a later read")
+        expect(sent[2].scan("1: line 1 of the cart").size).to eq(1)
+        first = result.conversation.find { |entry| entry[:role] == "tool_response" }
+        expect(first[:content]).to include("1: line 1 of the cart")
+        expect(Samagotchi::LLMContextEdit.on(first).values.map(&:kind)).to eq([:stale])
+      end
+
+      it "warms the next turn's prompt with the stubs it will send, on its own copy of the entries" do
+        result, = prompts(nil)
+        kernel = under(test_kernel(profile: Samagotchi::ModelProfile.qwen36), nil)
+
+        warm, = kernel.warmup_prompt(result.conversation, llm_context: stale)
+
+        expect(warm).to include("[read] #{file}: superseded by a later read")
+        expect(result.conversation).to all(satisfy { |entry| !entry.key?(:edits) })
+      end
+
+      it "sends every request unchanged under none" do
+        result, sent = prompts(nil)
+
+        expect(sent[2].scan("1: line 1 of the cart").size).to eq(2)
+        expect(sent[2]).not_to include("superseded")
+        expect(result.conversation).to all(satisfy { |entry| !entry.key?(:edits) })
+      end
+    end
+
+    describe "the chat loop" do
+      def requests(llm_context)
+        adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "read", { "path" => file }]),
+                                      FakeChatAdapter.tools(["c2", "read", { "path" => file }]),
+                                      FakeChatAdapter.text("Done."))
+        kernel = under(test_kernel, llm_context)
+        Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
+                                 .complete(messages: [head, { role: "user", content: "read it twice" }], model_name: "m",
+                                           max_iterations: 5)
+        adapter.requests
+      end
+
+      it "sends the superseded read's tool message as the stub, still paired with its call" do
+        last = requests(stale).last[:messages]
+        first = last.find { |message| message[:role] == "tool" && message[:tool_call_id] == "c1" }
+
+        expect(first[:content]).to eq("[read] #{file}: superseded by a later read")
+        expect(last.find { |message| message[:tool_call_id] == "c2" }[:content]).to include("1: line 1 of the cart")
+      end
+
+      it "sends the read whole under none" do
+        last = requests(nil).last[:messages]
+
+        expect(last.find { |message| message[:tool_call_id] == "c1" }[:content]).to include("1: line 1 of the cart")
+      end
     end
   end
 

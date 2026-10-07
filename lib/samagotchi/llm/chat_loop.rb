@@ -86,6 +86,9 @@ module Samagotchi
       # The kernel's tools.
       def tools = @kernel.tools
 
+      # The strategy's own edits before a request (KernelLoop#apply_llm_context!).
+      def apply_llm_context!(conversation) = @kernel.apply_llm_context!(conversation)
+
       # engine-format conversation -> OpenAI wire messages. Model turns are
       # thought-stripped and carry their tool_calls; tool responses go as tool
       # messages with their tool_call_id; user content goes as parts (a String
@@ -429,6 +432,8 @@ module Samagotchi
         # One streamed request. Returns [response, nil], or [reason, partial
         # text] when it was cancelled.
         def generate(iteration)
+          # The strategy's new edits first (stale): this request sends them.
+          @loop.apply_llm_context!(@conversation)
           window = @window = @loop.context_window(@model_name)
           observe_context(iteration, window)
           retry_generation = @empty_retry.take_sampling!

@@ -10,15 +10,15 @@ module Samagotchi
   # Resolution, first set wins: the session's own (a later per-session
   # override; nothing sets it yet), models.<key> (by the model's lookup
   # names, as window_tokens), hosts.<name>, then llm_context.strategy.
-  # An unknown layer warns and is none; so is a layer not built yet (in
-  # P0 every layer: only none is active).
+  # An unknown layer warns and is none; so is a strategy with a layer not
+  # built yet (forget, P4): only none and stale are active.
   module LLMContextStrategy
     SETTING = "llm_context.strategy"
     KEY = "llm_context_strategy"
     NONE = :none
     LAYERS = %i[stale forget].freeze
     # The layers a turn can run under so far.
-    BUILT = [].freeze
+    BUILT = %i[stale].freeze
 
     # A turn's strategy: the layers as configured, the strategy the view
     # gets (NONE, or the layers), and where it was set (:session,

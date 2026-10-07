@@ -26,6 +26,7 @@ require_relative "tool_runner"
 require_relative "tool_response"
 require_relative "tool_ids"
 require_relative "llm_context_view"
+require_relative "llm_context_stale"
 require_relative "answer_display"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
@@ -307,6 +308,7 @@ module Samagotchi
     # (the prompt cache keeps its prefix), and the prompt is formatted again
     # with it.
     def prepare_request(turn)
+      apply_llm_context!(turn.conversation)
       prompt, images = format_prompt(turn)
       image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(turn.conversation)
       window = ContextWindow.resolve(client: @client, model: turn.model_name, setting: @turn_settings.window_setting)
@@ -721,7 +723,9 @@ module Samagotchi
     # else the last turn's. Returns [prompt, images], or nil when the cut
     # isn't found.
     def warmup_prompt(messages, llm_context: @turn_settings&.llm_context)
-      conversation = prepare_conversation(messages) << { role: "user", content: WARMUP_CUT }
+      conversation = prepare_conversation(messages)
+      apply_llm_context!(conversation, llm_context, warmup: true)
+      conversation << { role: "user", content: WARMUP_CUT }
       prompt, images = Prompt.format_with_images(llm_context_view(llm_context).messages(conversation),
                                                  profile: @profile, vision: @turn_settings.vision)
       head = prompt[0, prompt.index(WARMUP_CUT) || 0]
@@ -739,6 +743,23 @@ module Samagotchi
     # the prompt the next turn sends.
     def llm_context_view(llm_context = @turn_settings&.llm_context)
       LLMContextView.new(strategy: llm_context&.strategy || LLMContextView::NONE)
+    end
+
+    # Before each request of both loops (and the warm-up, on its own copy):
+    # the strategy's layers that edit on their own save their new edits on
+    # +conversation+'s entries, applied at once (apply next_request), so
+    # the request about to be sent is the first with the stubs. stale
+    # (LLMContextStale) is the one so far; none changes nothing.
+    # @return [Array<LLMContextEdit>] the edits saved
+    def apply_llm_context!(conversation, llm_context = @turn_settings&.llm_context, warmup: false)
+      return [] unless llm_context_view(llm_context).layers.include?(:stale)
+
+      edits = LLMContextStale.apply!(conversation)
+      unless edits.empty? || warmup
+        Log.info(:model, "llm_context_stale", stubbed: edits.size, ids: edits.map(&:id).join(","),
+                                              model: @turn_settings&.model_name)
+      end
+      edits
     end
 
     # Public wrapper so other loops (e.g. the chat loop) can strip
