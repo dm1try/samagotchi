@@ -7,6 +7,8 @@ require_relative "note_delivery"
 require_relative "broadcast/recipients"
 require_relative "broadcast/scope_card"
 require_relative "broadcast/tags"
+require_relative "broadcast/triage"
+require_relative "broadcast/triage_model"
 require_relative "cli/command"
 require_relative "cli/flags"
 
@@ -14,8 +16,9 @@ module Samagotchi
   # `chi broadcast`: share a note with every session it may concern,
   # without picking them. Each recipient (Broadcast::Recipients) that shares
   # a tag with the note (Broadcast::Tags) gets it as a context note from
-  # "broadcast"; --all gives it to every recipient. The rest are listed as
-  # skipped, with why. For the user only: refused inside a chi session.
+  # "broadcast", and a triage model judges the rest (Broadcast::Triage);
+  # --all gives it to every recipient. The rest are listed as skipped, with
+  # why. For the user only: refused inside a chi session.
   class BroadcastCommand
     include CLI::Command
 
@@ -39,9 +42,14 @@ module Samagotchi
         the last broadcast.active_hours (8). One gets the note when it shares
         a tag with it: a ticket id (PAY-123) in its branch or your prompts
         there, a pull request (PR #42, its URL) attached to it, a link in
-        your prompts there or its attached context. The rest are skipped.
+        your prompts there or its attached context. A triage model
+        (broadcast.triage_model, else the recap's, else default.model) reads
+        the note and each other session's scope card and says whether it
+        concerns it; one it can't judge in broadcast.triage_deadline (20 s)
+        gets it unchecked. A first line naming one project keeps the note to
+        that project's sessions.
         -m TEXT    the note; without it, stdin is read
-        --all      every recipient, tag or not
+        --all      every recipient, no tags or triage
         --dry-run  show each recipient's scope card, tags and verdict; deliver nothing
         For you, not for an agent: refused inside a chi session.
         One session or a few by id: chi note. See docs/broadcast.md.
@@ -53,17 +61,21 @@ module Samagotchi
       f.value "-m", "--message", key: :text
     end
 
-    # One recipient's verdict. +match+: the tag that delivers it (nil with
-    # --all or none); +skip+: why it is skipped, else nil.
-    Verdict = Data.define(:recipient, :match, :skip) do
-      def deliver? = skip.nil?
+    # One recipient and its Broadcast::Triage::Verdict.
+    Decision = Data.define(:recipient, :verdict) do
+      def deliver? = verdict.relevant
     end
 
     # @param argv [Array<String>] the arguments after "broadcast"
     # @param active_hours [Numeric, nil] broadcast.active_hours (config)
     # @param ticket_pattern [String, nil] broadcast.ticket_pattern (config)
+    # @param triage [#call, nil] (CancellationController) → a triage
+    #   backend (#judge(note, card) → Verdict); nil: Triage::LLM on
+    #   Broadcast::TriageModel's model
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, env: ENV, now: Time.now,
-                   active_hours: Config.get("broadcast.active_hours"), ticket_pattern: Config.get("broadcast.ticket_pattern"))
+                   active_hours: Config.get("broadcast.active_hours"), ticket_pattern: Config.get("broadcast.ticket_pattern"),
+                   triage: nil, triage_parallel: Config.get("broadcast.triage_parallel"),
+                   triage_deadline: Config.get("broadcast.triage_deadline"), threshold: Config.get("broadcast.threshold"))
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
@@ -73,6 +85,10 @@ module Samagotchi
       @now = now
       @active_hours = active_hours || 8
       @ticket = Broadcast::Tags.ticket_regexp(ticket_pattern, warn: ->(line) { @stderr.puts("chi broadcast: #{line}") })
+      @triage = triage
+      @triage_parallel = (triage_parallel || Broadcast::Triage::DEFAULT_PARALLEL).to_i
+      @triage_deadline = (triage_deadline || Broadcast::Triage::DEFAULT_DEADLINE).to_f
+      @threshold = (threshold || Broadcast::Triage::DEFAULT_THRESHOLD).to_f
     end
 
     # @return [Integer] exit status: 0 done (skipped sessions included),
@@ -124,71 +140,117 @@ module Samagotchi
 
       note_tags = Broadcast::Tags.of_text(text, from: "note", ticket: @ticket)
       cards = recipients.to_h { |r| [r.id, Broadcast::ScopeCards.build(r, state_dir: @state_dir, ticket: @ticket)] }
-      verdicts = recipients.map { |r| verdict(r, cards.fetch(r.id), note_tags, all: all) }
-      verdicts = verdicts.select(&:deliver?) + verdicts.reject(&:deliver?)
-
       @stdout.puts("broadcast#{" (dry run: nothing is delivered)" if dry_run}  #{headline(text)}")
       @stdout.puts("note tags: #{note_tags.empty? ? "none" : note_tags.map(&:label).join(" · ")}") if dry_run
-      return dry_run(verdicts, cards) if dry_run
+      @stdout.flush
+      decisions = decide(text, recipients, cards, note_tags, all: all)
+      decisions = decisions.select(&:deliver?) + decisions.reject(&:deliver?)
+      @stdout.puts("triage model: #{@triage_choice.target&.label || "none"} (#{@triage_choice.setting})") if dry_run && @triage_choice
+      return dry_run(decisions, cards) if dry_run
 
-      deliver_all(verdicts, text)
+      deliver_all(decisions, text)
     end
 
-    def verdict(recipient, card, note_tags, all:)
-      return Verdict.new(recipient: recipient, match: nil, skip: "open in a chi REPL") if recipient.repl?
-
-      match = Broadcast::Tags.match(note_tags, card.tags)
-      skip = "no tag match (not checked: no triage yet)" unless all || match
-      Verdict.new(recipient: recipient, match: match, skip: skip)
-    end
-
-    def dry_run(verdicts, cards)
-      verdicts.each do |v|
-        @stdout.puts(line(v.recipient, v.deliver? ? "would get it" : "skipped", reason(v), width: 12))
-        @stdout.puts(cards.fetch(v.recipient.id).to_s.gsub(/^/, "          "))
+    # Every recipient's verdict: a chi REPL takes no notes, --all takes the
+    # rest, else Broadcast::Triage (tags, the scope line, the model).
+    # @return [Array<Decision>] in +recipients+' order
+    def decide(text, recipients, cards, note_tags, all:)
+      fixed = recipients.to_h do |r|
+        verdict = if r.repl?
+                    Broadcast::Triage::Verdict.new(relevant: false, p: nil, reason: "open in a chi REPL", by: "repl")
+                  elsif all
+                    Broadcast::Triage::Verdict.new(relevant: true, p: nil, reason: "--all", by: "all")
+                  end
+        [r.id, verdict]
       end
-      delivered = verdicts.count(&:deliver?)
-      @stdout.puts("would deliver #{delivered} · skipped #{verdicts.size - delivered}")
+      judged = recipients.reject { |r| fixed[r.id] }.map { |r| cards.fetch(r.id) }
+      triaged = Broadcast::Triage.verdicts(text, judged, note_tags: note_tags, new_backend: method(:triage_backend),
+                                                         parallel: @triage_parallel, deadline: @triage_deadline)
+      recipients.map { |r| Decision.new(recipient: r, verdict: fixed[r.id] || triaged.fetch(r.id)) }
+    end
+
+    # One triage backend for a thread (Triage.judge_all): the injected
+    # one, or Triage::LLM on the triage model, resolved once; with no
+    # model to ask, one that delivers unchecked and says why.
+    def triage_backend(cancel)
+      return @triage.call(cancel) if @triage
+
+      choice = triage_choice
+      return UncheckedBackend.new("no triage model: #{choice.problem}") unless choice.target
+
+      Broadcast::Triage::LLM.new(target: choice.target, timeout: @triage_deadline, threshold: @threshold,
+                                 cancel_controller: cancel)
+    end
+
+    def triage_choice
+      (@triage_lock ||= Mutex.new).synchronize do
+        @triage_choice ||= Broadcast::TriageModel.resolve.tap do |choice|
+          error_line("chi broadcast: no triage model: #{choice.problem}; delivering unchecked") unless choice.target
+        end
+      end
+    end
+
+    # A triage backend with no model: every card it gets is delivered
+    # unchecked, +why+ in the reason.
+    UncheckedBackend = Data.define(:why) do
+      def judge(_note, _card) = Broadcast::Triage.unchecked(why)
+    end
+
+    def dry_run(decisions, cards)
+      decisions.each do |d|
+        @stdout.puts(line(d.recipient, d.deliver? ? "would get it" : "skipped", d.verdict.reason, width: 12))
+        @stdout.puts(cards.fetch(d.recipient.id).to_s.gsub(/^/, "          "))
+      end
+      delivered = decisions.count(&:deliver?)
+      @stdout.puts("would deliver #{delivered} · skipped #{decisions.size - delivered}#{unchecked_summary(decisions)}")
       0
     end
 
-    def deliver_all(verdicts, text)
+    def deliver_all(decisions, text)
       ok = true
-      lines = verdicts.map do |v|
-        next [v.recipient, false, "skipped", v.skip] unless v.deliver?
+      lines = decisions.map do |d|
+        next [d.recipient, false, "skipped", d.verdict.reason] unless d.deliver?
 
-        result = NoteDelivery.deliver(v.recipient.id, text: body(text, v.match), source: SOURCE, state_dir: @state_dir)
-        next [v.recipient, false, "skipped", "open in a chi REPL"] unless result.delivered?
+        result = NoteDelivery.deliver(d.recipient.id, text: body(text, d.verdict), source: SOURCE, state_dir: @state_dir)
+        next [d.recipient, false, "skipped", "open in a chi REPL"] unless result.delivered?
 
-        [v.recipient, true, "delivered", "#{reason(v)}#{"; waits for its next start" if result.status == :waits}"]
+        [d.recipient, true, "delivered", "#{d.verdict.reason}#{"; waits for its next start" if result.status == :waits}"]
       rescue SessionInbox::NoteRejected, SystemCallError => e
         ok = false
-        [v.recipient, false, "failed", e.message]
+        [d.recipient, false, "failed", e.message]
       end
       lines.sort_by.with_index { |(_, delivered), i| [delivered ? 0 : 1, i] }.each do |recipient, _, word, why|
         @stdout.puts(line(recipient, word, why))
       end
       delivered = lines.count { |_, d| d }
-      @stdout.puts("delivered #{delivered} · skipped #{lines.size - delivered}")
+      @stdout.puts("delivered #{delivered} · skipped #{lines.size - delivered}#{unchecked_summary(decisions)}")
       ok ? 0 : 1
+    end
+
+    # " · 2 unchecked: triage deadline" when some were delivered without a
+    # verdict (the desktop helper shows only this line), else "".
+    def unchecked_summary(decisions)
+      unchecked = decisions.map(&:verdict).select(&:unchecked?)
+      return "" if unchecked.empty?
+
+      whys = unchecked.map { |v| v.reason.delete_prefix("unchecked: ").sub(/\s*[("].*\z/m, "") }.uniq
+      " · #{unchecked.size} unchecked: #{whys.join(", ")}"
     end
 
     # What a recipient gets: the user's text first (the terminal's "note
     # from broadcast: …" line shows its start), then a line saying when it
     # was shared (a session with no worker may read it days later; the
-    # note's header has the time only) and why it reached this session. No
-    # instruction: the system prompt says what a broadcast note asks.
-    def body(text, match)
+    # note's header has the time only) and, for a tag match, why it reached
+    # this session. No instruction: the system prompt says what a broadcast
+    # note asks.
+    def body(text, verdict)
       shared = "Shared by your user on #{@now.localtime.strftime("%Y-%m-%d %H:%M")}"
-      return "#{text}\n(#{shared} with every active session.)" unless match
+      return "#{text}\n(#{shared} with every active session.)" if verdict.by == "all"
+      return "#{text}\n(#{shared} with the sessions it may concern.)" unless verdict.match
 
-      because = match.because
+      because = verdict.match.because
       because = "#{because[0, BECAUSE_CHARS - 1]}…" if because.length > BECAUSE_CHARS
       "#{text}\n(#{shared} with the sessions it may concern; it reached you because #{because}.)"
-    end
-
-    def reason(verdict)
-      verdict.skip || verdict.match&.reason || "--all"
     end
 
     def line(recipient, word, why, width: 9) = "#{recipient.short_id}  #{word.ljust(width)}  #{why}"

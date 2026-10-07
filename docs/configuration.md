@@ -885,6 +885,12 @@ described in their own sections.
 | `recap.sentences` | `2-4` | yes | Recap length, `N` or `N-M` (1–10). |
 | `broadcast.active_hours` | `8` | | `chi broadcast` reaches a session a worker or a chi REPL runs, or whose last turn ended within this many hours. See [Broadcast](broadcast.md). |
 | `broadcast.ticket_pattern` | `\b[A-Z][A-Z0-9]+-\d+\b` | | A Ruby regex for ticket ids; one in the note and in a session's branch (any case) or prompts delivers the broadcast there. See [Broadcast](broadcast.md). |
+| `broadcast.triage_model` | recap's | | The model that judges a recipient no tag matched (a model ref, as `recap.model`); unset: the recap's model, else `default.model`. A ~9B dense instruct model or larger; 4B-class ones say yes to nearly everything. See [Broadcast](broadcast.md#triage). |
+| `broadcast.triage_host_ref` | none | | A `hosts:` name for the triage model. |
+| `broadcast.triage_base_url` | none | | An OpenAI API base for the triage model instead (`http://h:8081/v1`). |
+| `broadcast.triage_parallel` | `4` | | Triage requests at a time. |
+| `broadcast.triage_deadline` | `20` | | Seconds triage may take in all; a recipient not judged by then gets the note unchecked. |
+| `broadcast.threshold` | `0.5` | | The P(yes) a recipient needs, when the triage host gives logprobs; a plain yes or no is 1 or 0. |
 | `session.shared` | `true` | | Plain `chi` runs its session in a worker and attaches; `--no-shared` per run. |
 | `session.idle_exit_minutes` | `30` | yes | An unused worker exits after this; `0` = never. |
 | `session.keep_empty` | `false` | | Keep sessions nothing happened in. |

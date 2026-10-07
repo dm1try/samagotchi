@@ -89,6 +89,15 @@ module Samagotchi
       # delivers it there without triage.
       Entry.new(key: "broadcast.active_hours",   yaml_path: %w[broadcast active_hours],   type: :float,   default: 8.0,             expose: %i[env config]),
       Entry.new(key: "broadcast.ticket_pattern", yaml_path: %w[broadcast ticket_pattern], type: :string,  default: '\b[A-Z][A-Z0-9]+-\d+\b', expose: %i[env config]),
+      # The triage model that judges a recipient no tag matched (Broadcast::TriageModel): unset, recap.*'s, then
+      # default.model. At most triage_parallel requests at a time, all within triage_deadline seconds (the rest are
+      # delivered unchecked); a logprob P(yes) under threshold skips the session.
+      Entry.new(key: "broadcast.triage_model",   yaml_path: %w[broadcast triage_model],   type: :string,  default: nil,             expose: %i[env config]),
+      Entry.new(key: "broadcast.triage_host_ref", yaml_path: %w[broadcast triage_host_ref], type: :string, default: nil,            expose: %i[env config]),
+      Entry.new(key: "broadcast.triage_base_url", yaml_path: %w[broadcast triage_base_url], type: :string, default: nil,            expose: %i[env config]),
+      Entry.new(key: "broadcast.triage_parallel", yaml_path: %w[broadcast triage_parallel], type: :integer, default: 4,             expose: %i[env config]),
+      Entry.new(key: "broadcast.triage_deadline", yaml_path: %w[broadcast triage_deadline], type: :float,  default: 20.0,           expose: %i[env config]),
+      Entry.new(key: "broadcast.threshold",      yaml_path: %w[broadcast threshold],      type: :float,   default: 0.5,             expose: %i[env config]),
 
       Entry.new(key: "session.retention_days",        yaml_path: %w[session retention_days],        type: :integer, default: 14,   expose: %i[env config cli]),
       Entry.new(key: "session.max_count",             yaml_path: %w[session max_count],             type: :integer, default: 500,  expose: %i[env config cli]),

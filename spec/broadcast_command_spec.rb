@@ -17,6 +17,12 @@ RSpec.describe Samagotchi::BroadcastCommand do
   let(:now) { Time.now }
   let(:stamp) { now.localtime.strftime("%Y-%m-%d %H:%M") }
   let(:note) { "payments API returns 500 since 14:00 (PAY-123)\nsee https://notion.so/team/checkout-v2" }
+  # The triage model's answers: yes for a card whose recent prompt names
+  # one of +yes+, no otherwise; a card naming one of +slow+ waits past the
+  # deadline.
+  let(:triage_yes) { [] }
+  let(:triage_slow) { [] }
+  let(:judged) { [] }
 
   after do
     locks.each(&:release)
@@ -47,9 +53,27 @@ RSpec.describe Samagotchi::BroadcastCommand do
     File.write(file, JSON.generate(data))
   end
 
-  def run(*argv, env: {}, stdin: StringIO.new(""))
+  def triage(cancel)
+    yes = triage_yes
+    slow = triage_slow
+    seen = judged
+    Class.new do
+      define_method(:judge) do |_note, card|
+        seen << card.id
+        if slow.any? { |word| card.recent.to_s.include?(word) }
+          sleep 0.01 until cancel.cancelled?
+        end
+        relevant = yes.any? { |word| card.recent.to_s.include?(word) }
+        Samagotchi::Broadcast::Triage::Verdict.new(relevant: relevant, p: relevant ? 1.0 : 0.0,
+                                                   reason: "model: #{relevant ? "yes" : "no"}", by: "model")
+      end
+    end.new
+  end
+
+  def run(*argv, env: {}, stdin: StringIO.new(""), deadline: 5)
     described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: state_dir, env: env, now: now,
-                              active_hours: 8, ticket_pattern: nil).run
+                              active_hours: 8, ticket_pattern: nil, triage: method(:triage), triage_parallel: 2,
+                              triage_deadline: deadline, threshold: 0.5).run
   end
 
   def notes_of(session)
@@ -67,7 +91,7 @@ RSpec.describe Samagotchi::BroadcastCommand do
     let!(:delegate) { make("child", branch: "feat/pay-123-retry", owner: "worker", parent_id: pay.id, delegate: true) }
     let!(:scratch) { make("scratch", branch: "feat/pay-123-retry", scratch: true) }
 
-    it "delivers to the sessions that share a tag with the note, lists the rest as skipped, delivered first" do
+    it "delivers to the sessions that share a tag with the note, asks triage about the rest, delivered first" do
       code = run("-m", note)
 
       expect(code).to eq(0), err.string
@@ -75,10 +99,11 @@ RSpec.describe Samagotchi::BroadcastCommand do
         ["broadcast  \"payments API returns 500 since 14:00 (PAY-123) …\"",
          "#{short(pay)}  delivered  ticket PAY-123 matches (branch)",
          "#{short(prd)}  delivered  link notion.so/team/checkout-v2 matches (messages); waits for its next start",
-         "#{short(other)}  skipped    no tag match (not checked: no triage yet)",
+         "#{short(other)}  skipped    model: no",
          "#{short(repl)}  skipped    open in a chi REPL",
          "delivered 2 · skipped 2"]
       )
+      expect(judged).to eq([other.id])
       expect(notes_of(pay)).to contain_exactly(include("source" => "broadcast"))
       expect(notes_of(pay).first["text"]).to eq(
         "#{note}\n(Shared by your user on #{stamp} with the sessions it may concern; " \
@@ -119,10 +144,62 @@ RSpec.describe Samagotchi::BroadcastCommand do
       )
       expect(lines).to include("          project: pay (branch feat/pay-123-retry)",
                                "          tags:    ticket PAY-123",
-                               "#{short(other)}  skipped       no tag match (not checked: no triage yet)",
+                               "#{short(other)}  skipped       model: no",
                                "          recent:  write the composer docs")
       expect(lines.last).to eq("would deliver 2 · skipped 2")
       expect([pay, prd, other, repl].map { |s| notes_of(s) }).to all(eq([]))
+    end
+  end
+
+  context "with sessions triage judges" do
+    let!(:docs) { make("docs", owner: "worker", prompts: ["write the composer docs"]) }
+    let!(:retry_client) { make("client", owner: "worker", prompts: ["make the payments client retry on 5xx"]) }
+    let!(:slow) { make("slow", owner: "worker", prompts: ["tune the slow checkout query"]) }
+    let(:triage_yes) { ["payments"] }
+
+    it "delivers what the model says concerns it, with no reason line of its own, and skips the rest" do
+      code = run("-m", "payments API returns 500 since 14:00")
+
+      expect(code).to eq(0), err.string
+      expect(out.string.lines.map(&:chomp).drop(1)).to eq(
+        ["#{short(retry_client)}  delivered  model: yes",
+         "#{short(slow)}  skipped    model: no",
+         "#{short(docs)}  skipped    model: no",
+         "delivered 1 · skipped 2"]
+      )
+      expect(notes_of(retry_client).map { |n| n["text"] }).to eq(
+        ["payments API returns 500 since 14:00\n(Shared by your user on #{stamp} with the sessions it may concern.)"]
+      )
+      expect(judged).to contain_exactly(docs.id, retry_client.id, slow.id)
+    end
+
+    context "when triage is slow" do
+      let(:triage_slow) { ["slow"] }
+
+      it "delivers unchecked what the deadline leaves unjudged, and the summary says so" do
+        code = run("-m", "payments API returns 500 since 14:00", deadline: 0.3)
+
+        expect(code).to eq(0), err.string
+        expect(out.string.lines.map(&:chomp).drop(1)).to eq(
+          ["#{short(slow)}  delivered  unchecked: triage deadline",
+           "#{short(retry_client)}  delivered  model: yes",
+           "#{short(docs)}  skipped    model: no",
+           "delivered 2 · skipped 1 · 1 unchecked: triage deadline"]
+        )
+        expect(notes_of(slow).size).to eq(1)
+      end
+    end
+
+    it "keeps a note whose first line names a project to that project's sessions" do
+      elsewhere = make("elsewhere", owner: "worker", prompts: ["payments work elsewhere"])
+
+      code = run("--dry-run", "-m", "client\n> payments API returns 500")
+
+      expect(code).to eq(0), err.string
+      expect(out.string).to include("#{short(retry_client)}  would get it  model: yes")
+      expect(out.string).to include("#{short(docs)}  skipped       scope line names client",
+                                    "#{short(elsewhere)}  skipped       scope line names client")
+      expect(judged).to eq([retry_client.id])
     end
   end
 

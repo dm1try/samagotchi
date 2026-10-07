@@ -47,9 +47,44 @@ so `acme/shop#42` doesn't match `acme/other#42`; `PR #42` with no repo matches
 pull request 42 of any repo. Words the default ticket pattern would take that
 are no ticket (`UTF-8`, `SHA-256`, `ISO-8601`, `GPT-4`, …) are left out.
 
-A session that shares no tag is skipped for now, listed as "no tag match (not
-checked: no triage yet)": a small triage model that reads the note and each
-session's scope card is the next step. Until then, `--all` reaches them all.
+A session that shares no tag goes to triage.
+
+## Triage
+
+A small model reads the note and each other recipient's scope card (below)
+and answers yes or no: would the agent working there want to know? A yes
+delivers the note, a no skips the session ("model: no"). `--all` skips tags
+and triage and reaches every recipient.
+
+- **The model:** `broadcast.triage_model` (with `broadcast.triage_host_ref` or
+  `broadcast.triage_base_url`, as the `recap.*` settings take them); with none
+  of them set, the [recap's](sessions.md) model, else `default.model`. A ~9B
+  dense instruct model or larger works well (qwen3.5-9b missed no session in
+  our tests and sent about one extra note per broadcast of 20 sessions);
+  4B-class models say yes to nearly everything. A local model keeps the
+  cards (your prompts, recaps) on your machine; a remote triage host is your
+  explicit choice. Thinking is off, and each answer is a word.
+- **A score, when the host gives one:** with logprobs (OpenAI, OpenRouter
+  for some models), the verdict is P(yes) of the answer's first token, shown as
+  "model: yes (p 0.83)", and a session needs `broadcast.threshold` (0.5). A
+  higher threshold drops real "this blocks you" notes first. A host that
+  refuses logprobs (llama.cpp's, some gateways) is asked again without them:
+  the plain answer counts as 1 or 0.
+- **A scope line:** when the note's first line names exactly one of the
+  recipients' projects as a word (`shopfront/checkout`, `infra / ci`), the
+  other projects' sessions, and sessions outside any project, are skipped:
+  "scope line names shopfront". Anything fuzzier ("for payments folks") is the
+  model's job; it sees the line too. A one-line note counts as its own first
+  line: with a project named after a common word (`web`, `docs`), "the web
+  composer docs moved" names it and keeps the note there.
+- **Fail open:** at most `broadcast.triage_parallel` (4) requests run at a
+  time, all within `broadcast.triage_deadline` (20 s; a local server's first
+  request after a pause can take 10 s). A session not judged by then, one
+  whose request failed, or one the model answered with neither yes nor no
+  gets the note anyway, "unchecked: triage deadline", and the summary line
+  counts them: a missed session is worse than an extra note. Without a
+  triage model to ask (settings that don't resolve) every such session gets
+  it unchecked, and chi says why.
 
 ## What it prints
 
@@ -59,9 +94,11 @@ One line per recipient, the ones that got it first, then a summary:
 broadcast  "payments API returns 500 since 14:00 (PAY-123)"
 3f2a1c9e  delivered  ticket PAY-123 matches (branch)
 91ab02c4  delivered  link notion.so/team/checkout-v2 matches (messages); waits for its next start
-c0ffee12  skipped    no tag match (not checked: no triage yet)
+5e1f0a77  delivered  model: yes (p 0.91)
+77aa0b3c  delivered  unchecked: triage deadline
+c0ffee12  skipped    model: no
 d00dad00  skipped    open in a chi REPL
-delivered 2 · skipped 2
+delivered 4 · skipped 2 · 1 unchecked: triage deadline
 ```
 
 A session a worker runs adds the note within a few seconds (after a running
@@ -69,8 +106,9 @@ turn); one with no worker gets it at its next start ("waits for its next
 start"). Nothing starts a turn anywhere.
 
 `--dry-run` prints the note's tags, each recipient's verdict ("would get it" or
-"skipped") and its scope card: what chi knows about it from local state, and
-what a triage model will read.
+"skipped"; triage runs) and its scope card: what chi knows about it from local
+state, and what the triage model reads. A line before them names the triage model
+and the setting it came from.
 
 ```
 3f2a1c9e  would get it  ticket PAY-123 matches (branch)
@@ -96,7 +134,8 @@ payments API returns 500 since 14:00 (PAY-123)
 [END NOTE]
 ```
 
-With `--all` the line says "with every active session". The date is there
+With `--all` the line says "with every active session"; one that triage
+delivered says "with the sessions it may concern." and no reason. The date is there
 because a session with no worker may read it days later. The system prompt
 tells the model what a note from `broadcast` is: if it affects its current
 work, it says so briefly in its next answer, otherwise it ignores it, and it
@@ -121,9 +160,17 @@ any shell command that runs it, once at a time, and only you may allow it
 |---|---|---|
 | `broadcast.active_hours` | `8` | A session with no worker or REPL counts when its last turn ended within this many hours. |
 | `broadcast.ticket_pattern` | `\b[A-Z][A-Z0-9]+-\d+\b` | A Ruby regex for ticket ids; an invalid one warns and the default is used. |
+| `broadcast.triage_model` | recap's, else `default.model` | The triage model, a model ref (`box:qwen3.5-9b`). |
+| `broadcast.triage_host_ref` | none | A `hosts:` name for it. |
+| `broadcast.triage_base_url` | none | An OpenAI API base for it instead. |
+| `broadcast.triage_parallel` | `4` | Triage requests at a time. |
+| `broadcast.triage_deadline` | `20` | Seconds triage may take in all; the rest get the note unchecked. |
+| `broadcast.threshold` | `0.5` | The P(yes) a session needs when the host gives logprobs. |
 
 ```yaml
 broadcast:
   active_hours: 12
   ticket_pattern: '\b(?:PAY|OPS)-\d+\b'
+  triage_model: box:qwen3.5-9b
+  triage_deadline: 30
 ```
