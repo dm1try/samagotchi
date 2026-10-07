@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-07
+
 ### Added
 
 - `memory_write` with `name`, `scope` and `description` but no `content` changes only that memory's index line and
@@ -34,6 +36,8 @@ and commands may change between minor versions. How releases are made:
 
 - `memory_write` with a blank `description` keeps the stored one instead of wiping it; a multi-line description is
   written on one line (it left orphan lines in `index.md`), and one longer than 200 characters is refused.
+
+Update with `chi update` (coordinator 0.2.0 and guardrails 0.8.0, which need chi 0.36.0; github-pr 0.2.0, mcp 0.5.0).
 
 ## [0.35.0] - 2026-10-06
 
@@ -1778,7 +1782,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/dm1try/samagotchi/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/dm1try/samagotchi/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/dm1try/samagotchi/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/dm1try/samagotchi/compare/v0.32.0...v0.33.0
