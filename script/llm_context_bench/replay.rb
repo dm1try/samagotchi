@@ -202,7 +202,7 @@ module LLMContextBench
     def runs(entry, index)
       refs = Samagotchi::ToolIds.refs_at(messages, index)
       content = entry[:content].to_s
-      texts = refs.size == 1 ? [content] : Samagotchi::ToolResponse.split(content, -1).map(&:text)
+      texts = Samagotchi::ToolResponse.runs(content, refs.size).map(&:text)
       return [[refs.first, content]] unless texts.size == refs.size
 
       refs.zip(texts)

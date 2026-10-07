@@ -24,6 +24,9 @@ module Samagotchi
   # and the run's images go with its text (images and image_counts kept
   # consistent). An entry the view can't split for sure (its runs don't
   # match its ids, or its images can't be told apart by run) is sent whole.
+  # The view only counts the runs: whatever saves an edit on a run checks
+  # the entry's runs against its batch's call names first
+  # (ToolResponse.runs_named), and the entry's content never changes.
   class LLMContextView
     NONE = :none
     LAYERS = LLMContextEdit::KINDS
@@ -60,7 +63,7 @@ module Samagotchi
       stubbed = refs.each_index.select { |run| edits.key?(refs[run].id) }
       return entry if stubbed.empty?
 
-      texts = refs.size == 1 ? [run_text(entry[:content].to_s)] : ToolResponse.split(entry[:content], -1)
+      texts = ToolResponse.runs(entry[:content], refs.size)
       return entry unless texts.size == refs.size
 
       images = kept_images(entry, refs.size, stubbed)
@@ -68,14 +71,6 @@ module Samagotchi
 
       stubbed.each { |run| texts[run] = stub(texts[run], edits[refs[run].id]) }
       with_images(entry.merge(content: texts.map(&:text).join(ToolResponse::SEPARATOR)), images)
-    end
-
-    # A whole output as one run: its lead when it opens with one.
-    def run_text(content)
-      run = ToolResponse.split(content, -1).first
-      return ToolResponse::RunText.new(name: nil, lead: "", body: content) unless run&.name
-
-      ToolResponse::RunText.new(name: run.name, lead: run.lead, body: content.delete_prefix(run.lead))
     end
 
     def stub(text, edit)

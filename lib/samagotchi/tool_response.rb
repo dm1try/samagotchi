@@ -79,6 +79,34 @@ module Samagotchi
       entry
     end
 
+    # An entry's +content+ as +count+ runs, the way the LLMContextView
+    # sends them: one run is the whole content (its lead when it opens
+    # with one), more are #split's. The count may not match (#runs_named
+    # checks the parts).
+    # @return [Array<RunText>]
+    def runs(content, count)
+      return split(content, -1) unless count == 1
+
+      run = split(content, -1).first
+      return [RunText.new(name: nil, lead: "", body: content.to_s)] unless run&.name
+
+      [RunText.new(name: run.name, lead: run.lead, body: content.to_s.delete_prefix(run.lead))]
+    end
+
+    # +content+'s runs (#runs) when they are a batch's whose calls are
+    # +names+, in order: as many parts as calls, each opening with its
+    # call's "[name]" lead; nil when not. The part count alone can be
+    # fooled: a "ran as:" line before a lead (ToolRunner, a corrected call)
+    # merges that run into the one before it, and an output holding
+    # SEPARATOR + "[x] " adds a part, and the two cancel out. So whatever
+    # changes a run of an entry (a strategy's edit, LLMContextView) checks
+    # the names first.
+    # @return [Array<RunText>, nil]
+    def runs_named(content, names)
+      parts = runs(content, names.size)
+      parts.map(&:name) == names.map(&:to_s) ? parts : nil
+    end
+
     # A joined entry's +content+ split into its runs (RunText), by the
     # SEPARATOR heuristic: a part that opens with a "[name]" lead starts a
     # run, any other part is the previous run's own text (the first one a

@@ -109,4 +109,32 @@ RSpec.describe Samagotchi::ToolResponse do
       expect(runs.map(&:text).join(described_class::SEPARATOR)).to eq(content)
     end
   end
+
+  describe ".runs" do
+    it "takes one run as the whole content, a separator inside it included" do
+      runs = described_class.runs("[read] a\n\n---\n\n[x] b", 1)
+
+      expect(runs.map(&:name)).to eq(%w[read])
+      expect(runs.first.body).to eq("a\n\n---\n\n[x] b")
+      expect(described_class.runs("plain", 1).map(&:text)).to eq(["plain"])
+    end
+  end
+
+  describe ".runs_named" do
+    it "gives the runs when each part opens with its call's lead" do
+      runs = described_class.runs_named("[read] a\n\n---\n\n[edit] b", %w[read edit])
+
+      expect(runs.map(&:body)).to eq(%w[a b])
+      expect(described_class.runs_named("[read] a\n\n---\n\n[x] b", %w[read])&.map(&:name)).to eq(%w[read])
+    end
+
+    it "refuses a split whose count matches but whose names don't: a ran-as line and a separator in an output" do
+      content = "[read] a\n\n---\n\nran as: read path=b\n[read]\nb\n\n---\n\n[x] inside b"
+
+      expect(described_class.split(content).size).to eq(2)
+      expect(described_class.runs_named(content, %w[read read])).to be_nil
+      expect(described_class.runs_named("[read] a", %w[edit])).to be_nil
+      expect(described_class.runs_named("[read] a", %w[read read])).to be_nil
+    end
+  end
 end
