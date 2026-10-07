@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A turn that failed partway (out of credits, a server error, any provider error but a context overflow) after tool
+  calls lost them: the saved session held only the failure note, and the prompt went back for a retry that would
+  run the task again over files it had already changed. Such a turn now keeps its steps, as a cancel does: the model
+  reads that it failed after N tool steps and that its work stays, the prompt is not handed back, and `!rollback`
+  still erases the turn (`partial progress kept` in the terminal and on the web; `chi send --wait` and a delegating
+  parent read `the turn failed after N tool steps: <why>; its work so far stays`). A turn that failed before it got
+  anywhere, or on a context overflow (kept, the conversation would stay too long for the window), is rolled back and
+  its prompt restored, as before. Since 0.2.0.
+
 ## [0.40.0] - 2026-10-08
 
 ### Added
