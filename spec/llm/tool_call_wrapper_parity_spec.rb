@@ -31,11 +31,13 @@ RSpec.describe "Tool call wrapper parity" do
 
   # ── Native (raw-prompt KernelLoop) ────────────────────────────────────────
 
-  def run_native(max_tool_output_chars: nil)
+  def run_native(max_tool_output_chars: nil, prompts: [])
     client = double("client", context_window: nil)
-    allow(client).to receive(:complete).and_return(
-      %(<|tool_call>call:read{path: "#{file}"}<tool_call|>), "done"
-    )
+    replies = [%(<|tool_call>call:read{path: "#{file}"}<tool_call|>), "done"]
+    allow(client).to receive(:complete) do |prompt, *|
+      prompts << prompt
+      replies.shift
+    end
     kernel = Samagotchi::KernelLoop.new(client: client, hooks: hooks, profile: "gemma4")
     result = kernel.run([{ role: "user", content: "read it" }], on_stream_event: on_event,
                         max_tool_output_chars: max_tool_output_chars)
@@ -117,12 +119,14 @@ RSpec.describe "Tool call wrapper parity" do
   end
 
   describe "output over the cap" do
-    it "native: only the event is capped; the model gets the full output" do
-      _result, seen = run_native(max_tool_output_chars: 10)
-      expect(seen).to include("hello from the file")
-      expect(completed[:output]).to eq(seen[0, 10])
+    it "native: the model gets the capped output, as the event and the hook do" do
+      prompts = []
+      _result, seen = run_native(max_tool_output_chars: 10, prompts: prompts)
+      expect(completed[:output].length).to eq(10)
       expect(completed[:output_truncated]).to be(true)
-      expect(fired.last).to eq([:after_tool_call, seen[0, 10]])
+      expect(seen).to eq(completed[:output])
+      expect(prompts.last).not_to include("hello from the file")
+      expect(fired.last).to eq([:after_tool_call, completed[:output]])
     end
 
     it "both loops take the cap from config when no override is given" do
@@ -135,7 +139,7 @@ RSpec.describe "Tool call wrapper parity" do
       expect([native_cap, completed[:output].length]).to eq([12, 12])
     end
 
-    it "chat: the model gets the capped output (a per-loop choice, kept)" do
+    it "chat: the model gets the capped output too" do
       _result, seen = run_chat(max_tool_output_chars: 10)
       expect(completed[:output].length).to eq(10)
       expect(completed[:output_truncated]).to be(true)

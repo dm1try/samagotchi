@@ -176,8 +176,9 @@ module Samagotchi
     # @param on_stream_event [Proc, nil]         optional callback for generation events
     # @param cancel_controller [CancellationController, nil] optional cancellation source
     # @param model_name [String, nil]            optional per-run model override
-    # @param max_tool_output_chars [Integer, nil] per-output char cap for the
-    #   :tool_call_completed event's `output:` (nil → max_tool_output_chars)
+    # @param max_tool_output_chars [Integer, nil] per-output char cap on what
+    #   the model gets back and the :tool_call_completed event's `output:`
+    #   (nil → max_tool_output_chars)
     # @param pending_input [#call, nil]  optional drain proc returning
     #   Array<String> of user steering messages queued while the turn runs.
     #   Drained at iteration boundaries (llama.cpp's /completion cannot accept
@@ -223,7 +224,8 @@ module Samagotchi
       @model_key_fallback = fallback
     end
 
-    # Resolve the per-output character cap for the emitted tool call events.
+    # Resolve the per-output character cap for the tool outputs the model
+    # gets back and the emitted tool call events.
     #
     # Precedence: an explicit override wins, then max_tool_output_chars
     # (Config). A non-positive value falls back to
@@ -539,7 +541,7 @@ module Samagotchi
       runs = ToolResponse.run_batch(tool_runner, calls, iteration: turn.iteration, emit: turn.emit,
                                                         on_stream_event: turn.on_stream_event, cap: turn.cap)
       turn.tool_activity.concat(ToolResponse.activities(runs))
-      # One entry for the batch: the full outputs joined (ToolResponse.joined).
+      # One entry for the batch: the capped outputs joined (ToolResponse.joined).
       turn.conversation << ToolResponse.joined(runs)
       turn.pending_tool_calls = true
       :next

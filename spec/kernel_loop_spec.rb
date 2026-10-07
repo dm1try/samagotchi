@@ -1238,7 +1238,7 @@ Need to inspect the filesystem first.
         end
       end
 
-      it "caps only the event, not the conversation tool_response content" do
+      it "caps the conversation tool_response content as it caps the event" do
         Dir.mktmpdir do |dir|
           path = File.join(dir, "big.txt")
           long = "y" * 5000
@@ -1251,7 +1251,7 @@ Need to inspect the filesystem first.
 
           expect(result.output).to eq("done")
           tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
-          expect(tool_response[:content]).to include(long)
+          expect(tool_response[:content]).to eq("[read]\n#{"y" * 993}")
         end
       end
     end

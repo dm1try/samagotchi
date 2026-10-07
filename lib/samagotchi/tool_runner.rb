@@ -13,9 +13,8 @@ module Samagotchi
   # The single per-call path both loops use: the tool_call_started and
   # tool_call_completed events, the guardrail gate (before_tool_call hooks
   # and their veto), dispatch through KernelLoop, the after_tool_call hook
-  # and the output cap. Each loop picks what the model gets back: native
-  # feeds the full `output:`, the chat loop feeds `capped_output:` (the cap
-  # on the event applies to both).
+  # and the output cap. Both loops feed the model `capped_output:`, the
+  # text the event and the hook get too.
   class ToolRunner
     # More images in one result are left out, each with a line (a tool
     # that returns many screenshots can't flood the context).

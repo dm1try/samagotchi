@@ -58,17 +58,17 @@ RSpec.describe Samagotchi::ToolResponse do
   end
 
   describe ".joined" do
-    it "is one entry: the full outputs joined, every image in call order, per-call fields in call order" do
+    it "is one entry: the capped outputs joined, every image in call order, per-call fields in call order" do
       expect(described_class.joined(batch(%w[shots write broken]))).to eq(
         role: "tool_response",
-        content: "[shots]\none shot\n\n---\n\n[write]\nwrote\n\n---\n\n[broken] Error: RuntimeError: x",
+        content: "[shots]\none\n\n---\n\n[write]\nwrote\n\n---\n\n[broken] Error",
         images: [shot], image_counts: [1, 0, 0],
         tool_params: ["all", nil, nil], tool_labels: ["chrome: shots", nil, nil], tool_diffs: [nil, { path: "x" }, nil]
       )
     end
 
     it "leaves out what no call has" do
-      expect(described_class.joined(batch(%w[broken]))).to eq(role: "tool_response", content: "[broken] Error: RuntimeError: x")
+      expect(described_class.joined(batch(%w[broken]))).to eq(role: "tool_response", content: "[broken] Error")
     end
   end
 

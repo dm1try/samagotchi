@@ -192,7 +192,7 @@ One iteration with tool calls:
           → returns {output:, capped_output:, truncated:, activity:, images:, shown_params:,
                      shown_label:, diff:}
       → :tool_dispatch_completed {iteration, call_count}
-    → native: ToolResponse.joined(runs), one entry with the full outputs
+    → native: ToolResponse.joined(runs), one entry with the capped outputs
       chat:   ToolResponse.single(run, tool_call_id:) per call, with the capped output
 ```
 
@@ -207,7 +207,8 @@ One iteration with tool calls:
 - For edit and write: diffs the file before and after, and refreshes a memory's index line
   (`MemoryBundle::IndexSync`).
 - Attaches returned images, at most `MAX_IMAGES_PER_RESULT` (4) per result.
-- Scrubs bytes that aren't UTF-8, and caps the event's output at `max_tool_output_chars`.
+- Scrubs bytes that aren't UTF-8, and caps the output at `max_tool_output_chars`: the model (both loops), the
+  event and the after_tool_call hook get the capped text.
 - Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, activity,
   images, diff, waited_ms, view}, then fires `:after_tool_call` {iteration, tool, output, status}.
 

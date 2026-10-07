@@ -4,9 +4,9 @@ module Samagotchi
   # A tool batch and the conversation entries its results become, for both
   # loops. The calls run through ToolRunner between the dispatch events;
   # what the model gets back is per format: the native loop answers a batch
-  # with ONE tool_response (#joined: the full outputs), the chat loop each
-  # call with its own, paired by tool_call_id (#single: the capped output,
-  # D-P2-6).
+  # with ONE tool_response (#joined), the chat loop each call with its own,
+  # paired by tool_call_id (#single). Both feed the capped outputs
+  # (max_tool_output_chars).
   module ToolResponse
     SEPARATOR = "\n\n---\n\n"
     # Saved with a result for the web's reload (a plugin tool's params line
@@ -37,12 +37,12 @@ module Samagotchi
       runs.filter_map { |run| run[:activity] }
     end
 
-    # The native loop's entry for a batch: the outputs joined, every image
+    # The native loop's entry for a batch: the capped outputs joined, every image
     # in call order with how many each call returned (the web's reload puts
     # each on its own tool row), and the saved-only fields one per call.
     def joined(runs)
       images = runs.flat_map { |run| Array(run[:images]) }
-      entry = { role: "tool_response", content: runs.map { |run| run[:output] }.join(SEPARATOR) }
+      entry = { role: "tool_response", content: runs.map { |run| run[:capped_output] }.join(SEPARATOR) }
       unless images.empty?
         entry[:images] = images
         entry[:image_counts] = runs.map { |run| Array(run[:images]).size }

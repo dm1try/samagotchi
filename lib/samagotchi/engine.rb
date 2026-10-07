@@ -1531,8 +1531,9 @@ module Samagotchi
     # @param on_event [Proc, nil] receives event hashes
     # @param max_iterations [Integer, nil] max kernel iterations (nil: IterationLimit.for)
     # @param cancel_controller [CancellationController, nil]
-    # @param max_tool_output_chars [Integer, nil] per-output char cap for the
-    #   :tool_call_completed event's `output:` (nil → max_tool_output_chars)
+    # @param max_tool_output_chars [Integer, nil] per-output char cap on what
+    #   the model gets back and the :tool_call_completed event's `output:`
+    #   (nil → max_tool_output_chars)
     # @return [LLM::ModelResult]
     # @param pending_input [#call, nil] optional drain proc returning
     #   Array<String> of steering messages queued while the turn runs; drained
