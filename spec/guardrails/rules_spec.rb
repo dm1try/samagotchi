@@ -250,6 +250,15 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(verdict_on("Llama-3.3-70B", set)).to be_allow
     end
 
+    it "reads a |-separated string as a list (ModelMatch's grammar)" do
+      set = rules(checkout.merge(models: "gemma-* | Qwen3-8B"))
+      expect(verdict_on("Qwen3-8B", set)).to be_ask
+      expect(verdict_on("gemma-4-E4B-it", set)).to be_ask
+      expect(verdict_on("Llama-3.3-70B", set)).to be_allow
+      expect(verdict_on("Qwen3-8B", rules(checkout.merge(models: ["gemma-*|Qwen3-8B"])))).to be_ask
+      expect { rules(checkout.merge(models: " | ")) }.to raise_error(described_class::ParseError, /models must be/)
+    end
+
     it "matches small by guardrails.small_models, read on each check" do
       set = rules(checkout.merge(models: "small"))
       expect(verdict_on("Qwen3-8B", set)).to be_ask

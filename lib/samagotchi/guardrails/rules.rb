@@ -3,6 +3,7 @@
 require_relative "verdict"
 require_relative "targets"
 require_relative "model_size"
+require_relative "../model_match"
 
 module Samagotchi
   module Guardrails
@@ -20,8 +21,9 @@ module Samagotchi
     #            subcommand outside the session's repo (ShellGitDirs)
     #   models:  "small" (Guardrails::ModelSize, guardrails.small_models),
     #            or a glob on the bare model name or the model key, or a
-    #            list of them: the rule only votes for a model that matches
-    #            (no model matches none; missing = every model)
+    #            list of them ("|"-separated or a YAML list; ModelMatch):
+    #            the rule only votes for a model that matches (no model
+    #            matches none; missing = every model)
     #   touches: "chi_dirs": a command names a path in chi's config, hooks,
     #            approvals or bundles dir or a .git/hooks dir (resolved;
     #            a word that can't be resolved falls back to text)
@@ -76,15 +78,8 @@ module Samagotchi
         # for every model). +small+ says whether the model is a small one.
         def for_model?(name, key, small = -> { ModelSize.small?(name, key) })
           return true unless models
-          return false if name.nil? || name.empty?
 
-          models.any? do |entry|
-            if entry == "small"
-              small.call
-            else
-              [name, key].compact.any? { |candidate| File.fnmatch(entry, candidate, ModelSize::GLOB_FLAGS) }
-            end
-          end
+          ModelMatch.match?(models, name: name, key: key, small: small)
         end
 
         def path_matches?(targets)
@@ -217,15 +212,16 @@ module Samagotchi
         value
       end
 
+      # ModelMatch's grammar: a string ("|"-separated) or a list of names.
       def self.models_of(value, label)
         return nil if value.nil?
 
         names = Array(value)
-        unless !names.empty? && names.all? { |n| n.is_a?(String) && !n.strip.empty? }
+        unless !names.empty? && names.all? { |n| n.is_a?(String) && !n.strip.empty? } && !ModelMatch.parse(value).empty?
           raise ParseError, "#{label}: models must be small, a glob or a list of them"
         end
 
-        names.map(&:strip)
+        ModelMatch.parse(value)
       end
 
       def self.scopes_of(value, label)

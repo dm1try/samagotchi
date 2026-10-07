@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../config"
+require_relative "../model_match"
 
 module Samagotchi
   module Guardrails
@@ -15,7 +16,6 @@ module Samagotchi
       SETTING = "guardrails.small_models"
       # The largest auto-small size, in billions of parameters.
       MAX_SMALL = 32
-      GLOB_FLAGS = File::FNM_CASEFOLD | File::FNM_EXTGLOB
 
       # A size starts at the name's start or after a separator, and ends at
       # a separator or the name's end (so 4bit and v4.1 aren't sizes).
@@ -53,12 +53,11 @@ module Samagotchi
       def small?(name, key, setting = self.setting)
         return false if name.nil? || name.to_s.strip.empty?
 
-        entries = (setting.nil? ? "auto" : setting.to_s).split("|").map(&:strip).reject(&:empty?)
-        entries.any? do |entry|
+        ModelMatch.parse(setting.nil? ? "auto" : setting.to_s).any? do |entry|
           if entry.casecmp?("auto")
             (size = billions(name)) ? size <= MAX_SMALL : false
           else
-            [name, key].compact.any? { |candidate| File.fnmatch(entry, candidate.to_s, GLOB_FLAGS) }
+            ModelMatch.glob?(entry, name: name, key: key)
           end
         end
       end
