@@ -48,6 +48,16 @@ RSpec.describe Samagotchi::LLMContextApply do
     expect(applied_ids(conversation)).to be_empty
   end
 
+  it "stages a past a layer switched on mid-session (/llm-context) finds as one batch, applied when the rule lets it" do
+    conversation = session(tail: read(5, "lib/tax.rb", big))
+
+    held = run(conversation, rule: :turn_end)
+    expect([held.applied, held.staged]).to eq([[], 2])
+    expect(applied_ids(conversation)).to be_empty
+
+    expect(run(conversation, rule: :turn_end, moment: :turn_end).applied.map(&:id)).to eq(%w[t1 t3])
+  end
+
   it "stubs only a read a later read superseded unless edit-driven stubs are on (llm_context.stale_edits)" do
     conversation = session
 
