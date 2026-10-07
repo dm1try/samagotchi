@@ -49,6 +49,19 @@ RSpec.describe Samagotchi::Broadcast::TriageLog do
     expect(log.records.map(&:id)).to eq(%w[b-22222222 b-33333333])
   end
 
+  it "rotates once when broadcasts append at the same time: the size check and the rename are under the lock" do
+    stub_const("#{described_class}::MAX_BYTES", 2000)
+    add("b-00000000", text: "x" * 2000)
+    # Widens the window between the size check and the rename.
+    allow(File).to(receive(:size).and_wrap_original { |original, *args| original.call(*args).tap { sleep 0.05 } })
+
+    threads = %w[b-11111111 b-22222222 b-33333333 b-44444444].map { |id| Thread.new { add(id) } }
+    threads.each(&:join)
+
+    expect(File.readlines("#{path}.1").map { |line| JSON.parse(line)["id"] }).to eq(["b-00000000"])
+    expect(File.readlines(path).map { |line| JSON.parse(line)["id"] }).to match_array(%w[b-11111111 b-22222222 b-33333333 b-44444444])
+  end
+
   it "finds a broadcast by its id, without b-, or the start of one, and says when that is ambiguous" do
     add("b-1234abcd")
     add("b-1299ffff")

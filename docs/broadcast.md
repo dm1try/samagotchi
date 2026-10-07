@@ -157,7 +157,8 @@ Each broadcast (not a `--dry-run`) leaves one line in
 id, time, your text, the note's tags and each recipient's verdict (result,
 reason, P(yes), who decided, the session's tags). Scope cards are not kept:
 they quote your prompts. Past 2 MiB the file becomes `log.jsonl.1`, one old
-file kept. Sessions don't read it: a broadcast stays fire-and-forget.
+file kept (`log.jsonl.lock` keeps two broadcasts at once from both rotating
+it). Sessions don't read it: a broadcast stays fire-and-forget.
 
 ```sh
 chi broadcast log                  # the last 5 broadcasts

@@ -119,12 +119,17 @@ module Samagotchi
 
       def rotated_path = "#{@path}.1"
 
+      # Appends a line under log.jsonl.lock, held from the size check to
+      # the write, so two broadcasts at once rotate the file once (the
+      # file itself can't be the lock: a rename moves it).
       def append(data)
         FileUtils.mkdir_p(File.dirname(@path))
-        File.rename(@path, rotated_path) if File.file?(@path) && File.size(@path) > MAX_BYTES
-        File.open(@path, File::WRONLY | File::APPEND | File::CREAT, 0o600) do |file|
-          file.flock(File::LOCK_EX)
-          file.write("#{JSON.generate(data)}\n")
+        File.open("#{@path}.lock", File::WRONLY | File::CREAT, 0o600) do |lock|
+          lock.flock(File::LOCK_EX)
+          File.rename(@path, rotated_path) if File.file?(@path) && File.size(@path) > MAX_BYTES
+          File.open(@path, File::WRONLY | File::APPEND | File::CREAT, 0o600) do |file|
+            file.write("#{JSON.generate(data)}\n")
+          end
         end
       end
 
