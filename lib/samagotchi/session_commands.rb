@@ -9,10 +9,11 @@ require_relative "tools/builtins"
 require_relative "tools/context_read"
 require_relative "tools/peers"
 require_relative "commands/registry"
+require_relative "llm_context_command"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
-  # /models, /guardrails, /context, !rollback, !cmd and the answer to a continue offer. They act on
+  # /models, /llm-context, /guardrails, /context, !rollback, !cmd and the answer to a continue offer. They act on
   # the Engine and its TurnFlow; the host prints the result's output and
   # runs a continue turn when asked to (#run never runs a turn).
   #
@@ -26,6 +27,7 @@ module Samagotchi
     GUARDRAILS_COMMAND = "/guardrails"
     CONTEXT_COMMAND = "/context"
     HELP_COMMAND = "/help"
+    LLM_CONTEXT_COMMAND = LLMContextCommand::NAME
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
     MODELS_PER_HOST = 20
@@ -73,6 +75,9 @@ module Samagotchi
       end
       registry.register(MODEL_COMMAND, "show or switch the model",
                         match: ->(text) { text.match?(%r{\A/model(?:\s+.*)?\z}) }) { |text| model(text) }
+      # Not anytime: it saves the session; it takes effect at the next turn's start.
+      registry.register(LLM_CONTEXT_COMMAND, "show or set this session's LLM context strategy, apply rule and budget",
+                        id: :llm_context, match: ->(text) { text.match?(%r{\A/llm-context(?:\s+.*)?\z}) }) { |text| llm_context(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
@@ -326,6 +331,21 @@ module Samagotchi
       session = @engine.session
       return unless session
 
+      @engine.store_model!(session)
+      @save.call(session)
+    end
+
+    # /llm-context (LLMContextCommand); :llm_context in changed when it set
+    # the session's values.
+    def llm_context(text)
+      output, changed = LLMContextCommand.new(engine: @engine, save: ->(session) { save_llm_context(session) })
+                                         .run(text.delete_prefix(LLM_CONTEXT_COMMAND))
+      reply(output, changed: changed ? [:llm_context] : [])
+    rescue ArgumentError => e
+      reply(e.message, status: :error)
+    end
+
+    def save_llm_context(session)
       @engine.store_model!(session)
       @save.call(session)
     end

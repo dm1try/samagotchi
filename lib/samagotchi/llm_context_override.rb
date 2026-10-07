@@ -49,6 +49,23 @@ module Samagotchi
     # A field's word for "unset: follow the model" (/llm-context strategy default).
     DEFAULT_WORD = "default"
     OFF_WORDS = %w[off 0].freeze
+    # The start flags (chi, chi send --new), by field.
+    FLAGS = { strategy: "--llm-context", apply: "--llm-context-apply", budget_tokens: "--llm-context-budget" }.freeze
+    # The session command, and its words by field.
+    COMMAND = "/llm-context"
+    COMMAND_WORDS = { strategy: "strategy", apply: "apply", budget_tokens: "budget" }.freeze
+
+    # The /llm-context line that sets +words+ (field => value as typed,
+    # checked by .update first): what a flag on an existing session runs.
+    # @return [String]
+    def self.command_line(words)
+      parts = words.map do |field, word|
+        word = word.to_s.strip
+        word = parse_strategy(word).then { |layers| layers.empty? ? "none" : layers.join(",") } if field == :strategy && !word.casecmp?(DEFAULT_WORD)
+        "#{COMMAND_WORDS.fetch(field)} #{word}"
+      end
+      [COMMAND, *parts].join(" ")
+    end
 
     # A session file's "llm_context" (or an override already): nil when
     # absent or empty. A field that doesn't read (an unknown layer, an
