@@ -848,8 +848,9 @@ bundles:
     `(failed: …)`, a first-run server still starting `(starting, try
     again)`. Its description names each server on one line, never its
     tools: the server's `description:`, else the first sentence of its
-    `instructions`, else its first 6 tool names, and how many tools it has
-    (a first run's server is just its name until the next session).
+    `instructions`, and how many tools it has (`- chrome (26 tools)` with
+    neither: tool names there get called blind, without a search; a first
+    run's server is just its name until the next session).
   - `mcp_call(tool, args)` calls one: `tool` is `<server>/<tool>`, and
     `mcp_<server>_<tool>` works too (looked up, not parsed). Two tools whose
     `mcp_<server>_<tool>` comes out the same (servers `git-hub` and

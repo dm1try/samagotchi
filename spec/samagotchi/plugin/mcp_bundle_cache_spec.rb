@@ -97,12 +97,13 @@ RSpec.describe "The mcp bundle" do
       end
     end
 
-    it "names a cached server by its instructions' first sentence, else its first tool names" do
+    # Never its tool names: a model that knows them calls them blind, unsearched.
+    it "names a cached server by its instructions' first sentence, else only by its tool count" do
       next_engine
       expect(find_description).to end_with("\nServers:\n- fake: A fake server for chi's specs. (3 tools)")
       File.write(cache_file, JSON.generate(cache.except("info")))
       next_engine
-      expect(find_description).to end_with("\nServers:\n- fake: tools echo, add, slow (3 tools)")
+      expect(find_description).to end_with("\nServers:\n- fake (3 tools)")
     end
 
     it "saves the cache when only the instructions changed" do

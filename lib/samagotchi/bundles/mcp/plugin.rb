@@ -59,8 +59,6 @@ class Plugin
   # A query word in a tool's name (or its server's) counts this many times
   # one in its description.
   NAME_WEIGHT = 3
-  # Tool names that stand for a server's summary when it has none.
-  SAMPLE_NAMES = 6
   # A cached tool list older than this is refreshed in the background.
   CACHE_TTL = 24 * 60 * 60
   # Restarts of a server that exited, per session.
@@ -689,16 +687,14 @@ class Plugin
   end
 
   # The server's line: its description: from config, else the first
-  # sentence of its instructions, else its first tool names.
+  # sentence of its instructions, else nothing (its line has the tool
+  # count). Never its tool names: a model that knows them calls them
+  # blind, without a search (a smoke run's Splash did).
   def server_summary(server)
     given = server.config["description"].to_s.strip
     return given unless given.empty?
-    return server.info if server.info
 
-    names = server.tools.map(&:name)
-    return nil if names.empty?
-
-    "tools #{names.take(SAMPLE_NAMES).join(", ")}#{", …" if names.size > SAMPLE_NAMES}"
+    server.info
   end
 
   # ── Search ────────────────────────────────────────────────────────────
