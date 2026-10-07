@@ -9,6 +9,22 @@ require "securerandom"
 module BenchFixtures
   WORKDIR = "/home/dev/projects/shop"
 
+  # A chat client (LLM::OpenAIChat#chat) that answers each request with the
+  # next response and keeps the requests.
+  class FakeChat
+    attr_reader :requests
+
+    def initialize(*responses)
+      @responses = responses
+      @requests = []
+    end
+
+    def chat(**request)
+      @requests << request
+      @responses.shift
+    end
+  end
+
   module_function
 
   def call(id, name, args) = { "id" => id, "name" => name, "arguments" => args }

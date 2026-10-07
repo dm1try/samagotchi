@@ -3,18 +3,20 @@
 require "json"
 require "optparse"
 require_relative "report"
+require_relative "live_pick"
 
 module LLMContextBench
   # script/llm_context_bench.rb: replays stored sessions offline and
   # reports, per strategy × model × policy, what each would have changed
   # (docs/internals/llm-context-bench.md). Reads only the sessions
-  # directory it is given; never calls a model.
+  # directory it is given; calls a model only with --live (LivePick), which
+  # saves picks for a later offline run to score (--picks).
   class CLI
     ENV_DIR = "LLM_CONTEXT_BENCH_SESSIONS"
     DEFAULT_STRATEGIES = %w[none forget_all].freeze
 
     Options = Struct.new(:dir, :strategies, :picks, :cases_file, :min_turn_tool, :top, :sessions, :profile, :per_case,
-                         :json, keyword_init: true)
+                         :json, :live, :tool_name, :policy, :out_dir, :samples, :dry_run, keyword_init: true)
 
     def initialize(argv, env: ENV, out: $stdout, err: $stderr)
       @argv = argv.dup
@@ -32,6 +34,8 @@ module LLMContextBench
         @err.puts "llm_context_bench: no sessions directory #{options.dir}"
         return 2
       end
+      return live(options) if options.live
+
       report = build(options)
       @out.puts(options.json ? JSON.pretty_generate(report.to_h) : report.text(per_case: options.per_case))
       0
@@ -41,7 +45,8 @@ module LLMContextBench
 
     def parse
       options = Options.new(strategies: DEFAULT_STRATEGIES.dup, picks: [], min_turn_tool: Cases::MIN_TURN_TOOL,
-                            profile: true, per_case: false, json: false)
+                            profile: true, per_case: false, json: false, tool_name: LivePick::TOOL_NAMES.first,
+                            policy: "subtask", samples: 1, dry_run: false)
       parser = OptionParser.new do |o|
         o.banner = "usage: script/llm_context_bench.rb [SESSIONS_DIR] [options]\n  " \
                    "SESSIONS_DIR: a folder of <session id>.json files (default $#{ENV_DIR}, else chi's own)"
@@ -61,6 +66,17 @@ module LLMContextBench
         o.on("--[no-]profile", "the none profile (default on)") { |on| options.profile = on }
         o.on("--per-case", "a row per case too") { options.per_case = true }
         o.on("--json", "JSON instead of text") { options.json = true }
+        o.separator "live picks (calls a model through chi's chat client; for the D7 A/B):"
+        o.on("--live MODEL", "ask MODEL (a chi model ref on an api: openai host) to pick, per case") { |ref| options.live = ref }
+        o.on("--tool-name NAME", LivePick::TOOL_NAMES, "the forget tool's name (default #{LivePick::TOOL_NAMES.first})") do |name|
+          options.tool_name = name
+        end
+        o.on("--policy NAME", LivePick::POLICIES.keys, "the tail line: #{LivePick::POLICIES.keys.join(", ")} (default subtask)") do |name|
+          options.policy = name
+        end
+        o.on("--out DIR", "where the picks go (required with --live)") { |dir| options.out_dir = dir }
+        o.on("--samples N", Integer, "picks per case (default 1)") { |n| options.samples = n }
+        o.on("--dry-run", "with --live: count the requests and tokens, call nothing") { options.dry_run = true }
       end
       rest = parser.parse(@argv)
       options.dir = File.expand_path(rest.first || @env[ENV_DIR] || Samagotchi::Session.default_sessions_dir)
@@ -68,6 +84,30 @@ module LLMContextBench
     rescue OptionParser::ParseError => e
       @err.puts "llm_context_bench: #{e.message}\n#{parser}"
       nil
+    end
+
+    def live(options)
+      if options.out_dir.nil? && !options.dry_run
+        @err.puts "llm_context_bench: --live needs --out DIR"
+        return 2
+      end
+      adapter, model = options.dry_run ? [nil, options.live] : LivePick.chat_adapter(options.live)
+      picker = LivePick.new(adapter: adapter, model: model, tool_name: options.tool_name, policy: options.policy,
+                            out_dir: options.out_dir.to_s, samples: options.samples, log: @err)
+      cases = Cases.select(Replay.from_dir(options.dir, top: options.top, only: options.sessions),
+                           names: options.cases_file && Cases.read_names(options.cases_file),
+                           min_turn_tool: options.min_turn_tool)
+      if options.dry_run
+        estimate = picker.estimate(cases)
+        @out.puts "#{cases.size} case(s) × #{options.samples} sample(s): #{estimate[:requests]} requests (more if a pick " \
+                  "is forced), about #{(estimate[:prompt_tokens] / 1000).round}k prompt tokens by chars/4 " \
+                  "(~#{(estimate[:prompt_tokens] * 1.25 / 1000).round}k as servers count code), the largest " \
+                  "#{(estimate[:largest] / 1000).round}k"
+      else
+        written = picker.run(cases)
+        @out.puts "#{written.size} picks written to #{options.out_dir}; score them with --picks LABEL=#{options.out_dir}"
+      end
+      0
     end
 
     def build(options)
