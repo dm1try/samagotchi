@@ -558,7 +558,7 @@ test("all sessions: select mode archives a Shift-click range and one more pick i
 // sessions (no worker): a parent and two delegates, then again with one
 // waiting on the user.
 test("a parent's delegates fold into its card: one strip card with a popover, inline rows in all sessions, search and a waiting one open them, select mode leaves rows alone", async ({ page, chi }) => {
-  const fam = await seedFamily(chi, { tag: "Fold" });
+  const fam = await seedFamily(chi, { tag: "Fold", parentMemories: ["project:notes", "user:style"] });
   let waitingFam = null;
   try {
     // The strip: the family is one card; its chip opens the rows in a popover under it.
@@ -596,6 +596,8 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
     const rows = card.locator(".family-row");
     await expect(chip).toContainText("2 delegates");
     await expect(chip).toHaveAttribute("aria-expanded", "false");
+    // The card's tooltip: its id, update and status, then the memories it used.
+    await expect(card).toHaveAttribute("title", new RegExp(`^${fam.parent} · updated .+ · mem: project:notes, user:style$`));
     await expect(rows).toHaveCount(0);
     for (const id of fam.children) await expect(page.locator(`#allList .card[data-id="${id}"]`)).toHaveCount(0);
     await expect(page.locator("#count")).toHaveText(/^\d+ \(\+\d+ delegates\)$/);

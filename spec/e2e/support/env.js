@@ -261,9 +261,10 @@ export async function stopEnv(env) {
 // +waiting+: the second delegate has an open question, and a stand-in
 // worker (a ruby holding its owner lock as kind "worker", OwnerLock) makes
 // it live, which a question needs to count as open (Session#waiting_question).
+// +parentMemories+ become the parent's used_memory_names.
 // Returns their ids; remove() stops the stand-in and deletes the files (the
 // hub drops them), so later scenarios of this worker don't see them.
-export async function seedFamily(env, { waiting = false, tag = "Family" } = {}) {
+export async function seedFamily(env, { waiting = false, tag = "Family", parentMemories = [] } = {}) {
   const dir = path.join(env.dirs.state, "samagotchi", "sessions");
   fs.mkdirSync(dir, { recursive: true });
   const stamp = `${Date.now().toString(16)}${Math.floor(Math.random() * 0xfff).toString(16)}`;
@@ -278,7 +279,7 @@ export async function seedFamily(env, { waiting = false, tag = "Family" } = {}) 
     delegate: false, ...extra,
   });
   const files = [
-    session(ids.parent, `${tag} parent coordinates`),
+    session(ids.parent, `${tag} parent coordinates`, { used_memory_names: parentMemories }),
     session(ids.children[0], `${tag} child one fixes`, { parent_id: ids.parent, delegate: true }),
     session(ids.children[1], `${tag} child two documents`, {
       parent_id: ids.parent, delegate: true,
