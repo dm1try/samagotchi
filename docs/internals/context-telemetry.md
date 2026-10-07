@@ -31,6 +31,22 @@ Emission behavior:
   `context.status_thresholds` the top bucket reads critical, the one below it
   elevated, the next moderate, and the first bucket (and the rest below) healthy.
 
+Under an LLM context strategy (`ContextStatus.new(llm_context:)`, the turn's `LLMContextStrategy::Resolved`, given by
+both loops):
+
+- `llm_context.budget_tokens` (or a model's or host's `llm_context_budget_tokens`): the buckets count against the
+  budget instead of the window, the smaller of the two. The event's `window_tokens` and the status line's percentage
+  are of it too, and so is `payoff`'s top bucket.
+- The forget layer replaces the guidance with tiered offers of `forget_outputs`, each line a readout,
+  `[CONTEXT: ~52k/64k tokens in use (bucket=60plus). …]`: the readout alone in the guided buckets below the top two
+  (CLM: how-to at low pressure makes a model wipe everything); "Finish the unit of work in flight, then tidy once
+  with forget_outputs: …" in the one under the top; "Compact settled outputs now with forget_outputs: keep what
+  you'll still edit against; don't wipe." in the top bucket, or over the budget (`observe`'s absolute check). They
+  come at a turn's first request (`iteration_index` 0: the turn before answered, its outputs are settled) on a rise,
+  again when the conversation's last line was the readout alone, and every turn while over the budget; mid-turn a
+  rise offers only in the top tier, a lower one gets the readout alone (the layout check: pushed mid-task, models
+  forget at the base rate). See internals/llm-context-forget.md.
+
 Configuration:
 
 - `SAMAGOTCHI_CONTEXT_STATUS` (`true` by default): set to `false` or `0` to disable telemetry.

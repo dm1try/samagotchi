@@ -855,6 +855,51 @@ file is read.
 To skip loading AGENT.md, set `skip_agent_md: true` at the top level of
 `config.yml` (env `SAMAGOTCHI_SKIP_AGENT_MD=true`).
 
+## LLM context: the forget layer
+
+Experimental, off by default. With `forget` in a model's `llm_context.strategy` (next to `stale`), chi offers that
+model a tool, `forget_outputs`, to free context by forgetting its own tool outputs. Nothing changes for a model
+without it: no ids, no tool, the same prompt.
+
+```yaml
+llm_context:
+  budget_tokens: 64000        # optional: the [CONTEXT: …] lines count against 64k, not the window
+models:
+  deepseek-v4.1-flash:
+    llm_context_strategy: [stale, forget]
+    llm_context_apply: next_request
+```
+
+- **Ids.** Every tool output the model sees starts with its id after the tool's name, `[read]` then `[#t41] …`.
+  Outputs a session saved before chi gave them ids show none and can't be forgotten.
+- **Forgetting.** `forget_outputs(ids: ["t41", "t42"], note: "…")` replaces each output with a stub holding the note
+  (`[read] [#t41] (forgotten) …`); the call stays, and the session keeps the outputs. The note is required. Outputs
+  one call forgot that follow one another carry the note once: the rest say `(forgotten with t41: see its note)`.
+  `keep: ["t42:12-40"]` forgets t42 except those lines, which follow its stub: a read's lines are the file's line
+  numbers (a read from `start_line` 120 starts at 120), other outputs count from 1.
+- **Refused, per id, with the reason in the result:** an output from the last `llm_context.protect_steps` steps
+  before the forget's own (1: the output the model just got); a read of a file edited or written in them, unless the
+  forget keeps lines of it; a keep outside the output's lines, of a big file's head/tail preview, or holding all of
+  it; an output too small for a stub to free anything; one already stubbed or forgotten; an unknown id, or one whose
+  output chi can't pair with its call for sure (it shows no id). The system prompt, user messages, steers and context
+  notes have no ids.
+- **When stubs reach the prompt** follows `llm_context.apply`, as `stale`'s do: the result says
+  `applied, the next request sends the stubs (frees …)` or `staged until the turn ends`.
+- **Restore.** `forget_outputs(restore: ["t45"])` brings a forgotten output back with the next request, whatever
+  `llm_context.apply` says (the model wants the text now; the result says what the server reads again); a non-read
+  stub says `[restore: t45]`. A read whose stub was sent isn't restored (read the file again: it may have changed); one
+  still staged is.
+- **The description** carries the note contract (facts carried forward, quoted, marked VERIFIED or UNVERIFIED; what
+  was ruled out, with the reason and "do not retry"; the commands tried; a NEXT line), the cost of an edit (the
+  server reads everything after it again: forget in one batch, older outputs first) and `llm_context.policy`.
+- **Offers.** Under `forget` the `[CONTEXT: …]` line becomes a readout, `~52k/64k tokens in use`, and offers the tool
+  in tiers, never "forget now": the readout alone in the lower guided buckets; "finish the unit of work in flight,
+  then tidy once" in the bucket under the top; "compact settled outputs now: keep what you'll still edit against;
+  don't wipe" in the top bucket or over `llm_context.budget_tokens`. They come at a turn's first request (the turn
+  before it answered); mid-turn only the top tier offers. Over the budget the compact offer comes every turn.
+- `/stats` counts the re-prefilled tokens each applied batch costs; `script/llm_context_bench.rb --strategy
+  forget_outputs` replays the offer on stored sessions (docs/internals/llm-context-bench.md).
+
 ## All settings
 
 Every setting below takes the three forms described in
@@ -923,7 +968,7 @@ described in their own sections.
 | `models.<key>.llm_context_apply`, `hosts.<name>.llm_context_apply` | none | | A model's or host's `llm_context.apply`. |
 | `llm_context.stale_edits` | `false` | | Opt-in, experimental: `stale` also stubs a read that a later successful edit or write of the file superseded. |
 | `llm_context.protect_steps` | `3` | | `stale` never stubs a read of a file edited or written in the last N steps (tool batches; counted across the whole conversation, not only the turn). `0` turns the protection off. Under `forget`, `forget_outputs` refuses an output from the last N steps, and a read of a file edited or written in them unless the forget keeps some of its lines. |
-| `llm_context.budget_tokens` | none | | A soft context budget in tokens (e.g. `64000`); off when unset. When set, the context status buckets (`context.status_thresholds`) count against it instead of the window (the smaller of the two), so the `[CONTEXT: …]` lines, `payoff`'s top bucket and, under `forget`, the `forget_outputs` offers come under it. `models.<key>.llm_context_budget_tokens` and `hosts.<name>.llm_context_budget_tokens` come first. |
+| `llm_context.budget_tokens` | none | | A soft context budget in tokens (e.g. `64000`); off when unset or `0`. When set, the context status buckets (`context.status_thresholds`) count against it instead of the window (the smaller of the two), so the `[CONTEXT: …]` lines, `payoff`'s top bucket and, under `forget`, the `forget_outputs` offers come under it. `models.<key>.llm_context_budget_tokens` and `hosts.<name>.llm_context_budget_tokens` come first. |
 | `models.<key>.llm_context_budget_tokens`, `hosts.<name>.llm_context_budget_tokens` | none | | A model's or host's `llm_context.budget_tokens`. |
 | `llm_context.policy` | the subtask-boundaries line | | The sentence `forget_outputs`' description carries (the `forget` layer): "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note what it established; keep anything you'll still edit against." Blank: none. Read when a session starts. |
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |

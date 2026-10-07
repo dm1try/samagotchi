@@ -54,7 +54,9 @@ The proxies are the context-edit spike's (lexical and lenient: a basename mentio
 
 - `none`: nothing changes. The base.
 - `forget_all`: at the turn's end, forget every output in context with an empty note. The spike's base rate; about
-  what a model told "free context now" does.
+  what a model told "free context now" does. Its stubs, and the picks', go through the view as chi sends forgets: a
+  call's note on the first of its outputs in a row and a pointer to it on the rest, and `[#tN]` ids on every output
+  with a stored id (P4).
 - `stale`: chi's own stale layer (`Samagotchi::LLMContextStale`) as chi runs it: each read a later read covering its
   lines superseded is stubbed from the request after that read (chi applies it at the next request), so a case's
   numbers count every stub since the session began. An edit or write of the file supersedes nothing, nor does a read
@@ -67,13 +69,25 @@ The proxies are the context-edit spike's (lexical and lenient: a basename mentio
   modelled (the bench has no window), so `payoff` applies at a request only when the freed tokens are at least the
   tail. A turn-end batch's re-prefill is counted at the next turn's first request even where chi's warm-up would
   prefill it while the user reads.
-- `forget_outputs` (P4): a slot. It prints "not built yet" until its phase adds it to
-  `LLMContextBench::Strategies`; a strategy answers `#plans(kase)` with `Plan`s of `PlannedEdit`s (the output id, the
-  edit kind, the note, the request it first reaches), and the scorer and the report take it as is.
+- `forget_outputs` (P4): chi's forget layer as chi offers it, at each case: the next turn's first request, after a
+  turn the model answered. The request is what chi sends there under `[stale, forget]`, built by chi's own code: the
+  conversation up to and with the next user message (outputs of a legacy entry get ids as chi gives new ones),
+  stale's stubs, every output led by its `[#tN]` id (`LLMContextView`), the `[CONTEXT: …]` line chi's `ContextStatus`
+  adds at a turn's start under `--budget N` (default 64000; no line below its guided buckets, so a small case may get
+  none), and the chat messages and tools of chi's `ChatLoop`, `forget_outputs` with its real description. The model
+  (`--forget-model MODEL`, a chi model ref on an `api: openai` host) answers once; a `forget_outputs` call among its
+  calls runs through chi's `LLMContextForget` (refusals, `protect_steps`, `keep`), and the row scores stale's stubs
+  plus the forgets. Each answer is saved in `--out DIR` (`<case>.forget_offer.json`) and read back, so a rerun asks
+  only for the rest (an error isn't saved); `--out` alone scores saved answers; `--max-cost USD` stops the asking
+  once the costs the server reports reach it (exit 1, the answers so far kept). The row's notes give the call rate
+  (`called`, `no_call`, `error`, `unasked`), the ids chi refused and the notes' mean length. Ids in this row cost
+  tokens too: its freed column is net of them.
 - `--picks LABEL=DIR`: model picks recorded as responses, one file per pick, `<case>.<variant>.json` (the spike's
   `out/<model>/` files, or what `--live` saves). The variant is the row's policy, the label its model.
 
 ```sh
+ruby script/llm_context_bench.rb "$SESSIONS" --strategy none,stale,forget_outputs --forget-model splash:MODEL \
+  --out answers/splash --budget 48000 --cases cases.txt --per-case
 ruby script/llm_context_bench.rb "$SESSIONS" --strategy none,forget_all,stale --per-case
 ruby script/llm_context_bench.rb "$SESSIONS" --strategy none,stale,stale_edits_turn_end,stale_edits_payoff --ends any
 ruby script/llm_context_bench.rb "$SESSIONS" --picks deepseek=picks/deepseek --picks splash=picks/splash --json

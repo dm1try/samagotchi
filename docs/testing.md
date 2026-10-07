@@ -67,6 +67,7 @@ a model that follows tool instructions: a small model may fail some of them.
 ## The llm_context replay benchmark
 
 `ruby script/llm_context_bench.rb SESSIONS_DIR` replays stored sessions offline and scores the LLM context
-strategies (freed tokens, wrongly forgotten outputs, one-step re-reads, re-prefilled tokens). It is opt-in: the suite
+strategies (freed tokens, wrongly forgotten outputs, one-step re-reads, re-prefilled tokens; for `forget_outputs` a
+model's answers to chi's offer, with its call rate and notes). It is opt-in: the suite
 runs its code only on small synthetic sessions, never on yours. See
 [internals/llm-context-bench.md](internals/llm-context-bench.md).
