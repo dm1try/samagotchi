@@ -168,6 +168,33 @@ RSpec.describe Samagotchi::SessionMetrics do
     end
   end
 
+  describe "memory_index (the memory indexes the session's prompt holds)" do
+    let(:index) { { system: { tokens: 1997, lines: 54 }, project: { tokens: 1394, lines: 35 } } }
+
+    it "is nil until the Engine sets it, then in the snapshot; nil leaves the last one" do
+      expect(metrics.snapshot[:memory_index]).to be_nil
+      metrics.memory_index = index
+      metrics.memory_index = nil
+      expect(metrics.snapshot[:memory_index]).to eq(index)
+    end
+
+    it "is saved to analytics.json and comes back in a new collector until the prompt is built again" do
+      state_dir = Dir.mktmpdir
+      metrics.state_dir = state_dir
+      metrics.session_id = "index-sess"
+      metrics.memory_index = index
+      metrics.persist
+      expect(JSON.parse(File.read(File.join(state_dir, "index-sess", "analytics.json")))["memory_index"])
+        .to eq("system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 })
+
+      woken = described_class.new.tap { |m| m.state_dir = state_dir }
+      woken.session_id = "index-sess"
+      expect(woken.snapshot[:memory_index]).to eq(index)
+      woken.memory_index = { system: { tokens: 1, lines: 1 } }
+      expect(woken.snapshot[:memory_index]).to eq(system: { tokens: 1, lines: 1 })
+    end
+  end
+
   it "keeps the latest prompt profile :generation_started reported" do
     expect(metrics.snapshot).to include(profile: nil, profile_source: nil)
 
@@ -1053,7 +1080,16 @@ RSpec.describe Samagotchi::TokenUsage do
     it "has zeros for the counts an older file lacks, and is nil without a file" do
       expect(Samagotchi::SessionMetrics.saved_summary(dir)).to be_nil
       save("tokens" => { "prompt_sum" => 9, "completion_sum" => 1, "source" => "server" })
-      expect(Samagotchi::SessionMetrics.saved_summary(dir)).to have_attributes(ctx_pct: nil, cached_sum: 0, cost_sum: 0)
+      expect(Samagotchi::SessionMetrics.saved_summary(dir))
+        .to have_attributes(ctx_pct: nil, cached_sum: 0, cost_sum: 0, memory_index: nil)
+    end
+
+    it "reads the memory indexes the prompt held, apart from the token totals" do
+      index = { "system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 } }
+      save("tokens" => { "prompt_sum" => 9 }, "memory_index" => index)
+      summary = Samagotchi::SessionMetrics.saved_summary(dir)
+      expect(summary.memory_index).to eq(index)
+      expect(summary.tokens).not_to have_key(:memory_index)
     end
   end
 

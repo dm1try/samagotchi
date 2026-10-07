@@ -53,8 +53,14 @@ module Samagotchi
     # had none) and the session's tokens block as the snapshot has it.
     GenerationReport = Data.define(:speed, :tokens)
 
-    SavedSummary = Data.define(:ctx_pct, :prompt_sum, :completion_sum, :cached_sum, :reasoning_sum, :cost_sum) do
-      def tokens = to_h.except(:ctx_pct)
+    # memory_index: the memory indexes the session's prompt held
+    # ({ system: { tokens:, lines: }, project: … }, string keys as saved),
+    # nil when an older file has none.
+    SavedSummary = Data.define(:ctx_pct, :prompt_sum, :completion_sum, :cached_sum, :reasoning_sum, :cost_sum,
+                               :memory_index) do
+      def initialize(memory_index: nil, **) = super
+
+      def tokens = to_h.except(:ctx_pct, :memory_index)
     end
 
     # Per-turn transient state, reset on each turn_started.
@@ -150,7 +156,8 @@ module Samagotchi
       count = ->(key) { tokens[key].is_a?(Numeric) ? tokens[key] : 0 }
       SavedSummary.new(ctx_pct: saved_pct(data["context"]), prompt_sum: count.call("prompt_sum"),
                        completion_sum: count.call("completion_sum"), cached_sum: count.call("cached_sum"),
-                       reasoning_sum: count.call("reasoning_sum"), cost_sum: count.call("cost_sum"))
+                       reasoning_sum: count.call("reasoning_sum"), cost_sum: count.call("cost_sum"),
+                       memory_index: data["memory_index"].is_a?(Hash) ? data["memory_index"] : nil)
     rescue JSON::ParserError, SystemCallError, TypeError
       nil
     end
@@ -196,6 +203,7 @@ module Samagotchi
       @wall_clock = wall_clock || -> { Time.now }
       @session_id = nil
       @state_dir = nil
+      @memory_index = nil
       @started_at = nil
       @last_activity_at = nil
       @turn = nil
@@ -215,6 +223,14 @@ module Samagotchi
         @context_window_tokens = @context_window_source = nil
         @profile = @profile_source = nil
       end
+    end
+
+    # The memory indexes the session's prompt holds (SystemPrompt#memory_index:
+    # { system: { tokens:, lines: }, project: … }), set by the Engine when
+    # it builds the prompt it sends; the snapshot and analytics.json carry it.
+    # @param block [Hash, nil]
+    def memory_index=(block)
+      @mutex.synchronize { @memory_index = block if block }
     end
 
     # The sessions dir analytics.json is read from and saved to (nil: the
@@ -367,6 +383,7 @@ module Samagotchi
         cancellations: totals[:cancellations],
         tokens: tokens_block(totals, turn),
         context: context_block(@turn_records),
+        memory_index: @memory_index,
         profile: @profile,
         profile_source: @profile_source,
         served_model: @served_model,
@@ -875,6 +892,8 @@ module Samagotchi
         @served_model = prior["served_model"]
         @served_model_for = prior["served_model_for"]
       end
+      # The indexes the prompt last held, until this process builds its own.
+      @memory_index ||= symbolized(prior["memory_index"]) if prior["memory_index"].is_a?(Hash)
       # The window last seen, until this process's first generation reports.
       window = prior["context"].is_a?(Hash) ? prior["context"] : {}
       if window["window_tokens"] && @context_window_tokens.nil?
@@ -883,6 +902,10 @@ module Samagotchi
       end
     rescue JSON::ParserError, SystemCallError
       nil
+    end
+
+    def symbolized(hash)
+      hash.to_h { |key, value| [key.to_sym, value.is_a?(Hash) ? symbolized(value) : value] }
     end
 
     def loaded_records(records)

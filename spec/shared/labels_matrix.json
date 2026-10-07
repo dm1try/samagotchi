@@ -141,5 +141,14 @@
       { "cost": 0, "expected": "" },
       { "cost": null, "expected": "" }
     ]
+  },
+  "memory_index": {
+    "note": "The memory indexes a session's prompt holds (the snapshot's memory_index; Formatting#memory_index_text after \"memory index:\" in /stats; ctx.js memoryIndexText in the ctx tooltip): the total, then each scope; a count from 1000 in k with one decimal; a scope missing is left out; none: \"\".",
+    "cases": [
+      { "index": { "system": { "tokens": 1997, "lines": 54 }, "project": { "tokens": 1394, "lines": 35 } }, "expected": "~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)" },
+      { "index": { "system": { "tokens": 450, "lines": 9 }, "project": { "tokens": 6, "lines": 1 } }, "expected": "~456 tokens in this session's prompt (system 450, project 6)" },
+      { "index": { "system": { "tokens": 1200, "lines": 20 } }, "expected": "~1.2k tokens in this session's prompt (system 1.2k)" },
+      { "index": null, "expected": "" }
+    ]
   }
 }

@@ -408,6 +408,15 @@ test("mergeTiming without turn_count (an older server's whole timing) replaces, 
   assert.deepEqual(mergeTiming(page([T("t1", 1)]), undefined).timing, normalizeTiming());
 });
 
+test("normalizeTiming / mergeTiming keep the memory indexes; a reply without them keeps the page's", () => {
+  const memoryIndex = { system: { tokens: 10, lines: 1 } };
+  assert.deepEqual(normalizeTiming({ memory_index: memoryIndex }).memoryIndex, memoryIndex);
+  assert.equal(normalizeTiming({}).memoryIndex, null);
+  const newer = { system: { tokens: 20, lines: 2 } };
+  assert.deepEqual(mergeTiming(normalizeTiming({ memory_index: memoryIndex }), { memory_index: newer, turn_count: 0 }).timing.memoryIndex, newer);
+  assert.deepEqual(mergeTiming(normalizeTiming({ memory_index: memoryIndex }), { turn_count: 0 }).timing.memoryIndex, memoryIndex);
+});
+
 test("normalizeTiming / mergeTiming keep the session's tokens; a reply without them keeps the page's", () => {
   const tokens = { prompt_sum: 10, completion_sum: 2, last_decode_tps: 50, tps_source: "server" };
   assert.deepEqual(normalizeTiming({ tokens }).tokens, tokens);

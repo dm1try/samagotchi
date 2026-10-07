@@ -42,6 +42,20 @@ RSpec.describe Samagotchi::Engine, "muted memories" do
     expect(prompt).to include("# Memory Index")
   end
 
+  it "measures the indexes as the prompt holds them, mutes applied, into the snapshot's memory_index" do
+    engine = build_engine(profile: "gemma4", muted_memories: ["gh-helper"])
+    expect(engine.session_state_snapshot[:metrics][:memory_index]).to be_nil
+    engine.system_prompt
+    held = index.lines.reject { |line| line.include?("gh-helper") }.join
+    figures = { tokens: (held.length / 4.0).ceil, lines: 2 }
+    expect(engine.session_state_snapshot[:metrics][:memory_index]).to eq(system: figures, project: figures)
+
+    # A memory write doesn't rebuild the prompt, nor change the figure.
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("#{index}- **new** · 9 B\n")
+    engine.system_prompt
+    expect(engine.stats_snapshot[:memory_index]).to eq(system: figures, project: figures)
+  end
+
   it "leaves the index alone when nothing is muted" do
     expect(build_engine(profile: "gemma4").system_prompt).to include("**gh-helper**")
   end

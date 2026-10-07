@@ -1459,7 +1459,10 @@ module Samagotchi
       target ||= @host_registry.resolve(@effective_model_name)
       chat = target.entry.chat?
       level = chat ? nil : thinking_level(target)
-      @prompt_builder.build(chat: chat, thinking: level, layers: llm_context_layers(target))
+      prompt = @prompt_builder.build(chat: chat, thinking: level, layers: llm_context_layers(target))
+      # The memory indexes this prompt holds: /stats, the snapshot, analytics.json.
+      @metrics.memory_index = @prompt_builder.memory_index
+      prompt
     end
 
     # The LLM context layers +target+'s turns run under: the native prompt

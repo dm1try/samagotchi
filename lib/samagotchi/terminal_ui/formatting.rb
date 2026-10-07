@@ -5,6 +5,7 @@ require_relative "../served_model"
 require_relative "../image_store"
 require_relative "../turn_note"
 require_relative "../steer"
+require_relative "../memory_bundle/index_size"
 
 module Samagotchi
   class TerminalUI
@@ -314,6 +315,25 @@ module Samagotchi
         "#{"~" if source.to_s == "estimate"}#{number} tok/s"
       end
 
+      # "~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)":
+      # the memory indexes the session's prompt holds (the snapshot's
+      # memory_index, symbol or string keys); "" without one. As ctx.js
+      # memoryIndexText (spec/shared/labels_matrix.json).
+      def memory_index_text(block)
+        return "" unless block.is_a?(Hash)
+
+        scopes = %w[system project].filter_map do |scope|
+          figures = block[scope] || block[scope.to_sym]
+          tokens = figures.is_a?(Hash) ? (figures["tokens"] || figures[:tokens]) : nil
+          [scope, tokens.to_i] if tokens.is_a?(Numeric)
+        end
+        return "" if scopes.empty?
+
+        count = ->(tokens) { MemoryBundle::IndexSize.count_text(tokens) }
+        "~#{count.call(scopes.sum(&:last))} tokens in this session's prompt " \
+          "(#{scopes.map { |scope, tokens| "#{scope} #{count.call(tokens)}" }.join(", ")})"
+      end
+
       # "$0.42"; a cost under a cent keeps four decimals ("$0.0012"); "" for
       # none. As ctx.js costText.
       def cost_text(cost)
@@ -463,6 +483,8 @@ module Samagotchi
         end
         lines << "context window:   #{context[:window_tokens]} tokens (#{context[:window_source]})" if context[:window_tokens]
         lines << "prompt profile:   #{snapshot[:profile]} (#{snapshot[:profile_source]})" if snapshot[:profile]
+        memory_index = memory_index_text(snapshot[:memory_index])
+        lines << "memory index:     #{memory_index}" unless memory_index.empty?
         llm_context = llm_context_stats_text(snapshot[:llm_context])
         lines << "llm context:      #{llm_context}" if llm_context
         if snapshot[:served_model]

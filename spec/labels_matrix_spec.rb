@@ -109,4 +109,12 @@ RSpec.describe "Shared labels matrix (TUI side)" do
       expect(fmt.cost_text(entry["cost"])).to eq(expected(entry))
     end
   end
+
+  cases(matrix, "memory_index").each do |entry|
+    it "words the memory index #{entry["index"].inspect}" do
+      expect(fmt.memory_index_text(entry["index"])).to eq(expected(entry))
+      symbols = entry["index"]&.to_h { |scope, figures| [scope.to_sym, figures.transform_keys(&:to_sym)] }
+      expect(fmt.memory_index_text(symbols)).to eq(expected(entry))
+    end
+  end
 end

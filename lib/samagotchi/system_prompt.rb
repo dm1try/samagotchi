@@ -9,6 +9,7 @@ require_relative "tools/memory"
 require_relative "muted_memories"
 require_relative "model_notes"
 require_relative "bundle_needs"
+require_relative "memory_bundle/index_size"
 require_relative "thinking"
 
 module Samagotchi
@@ -76,16 +77,32 @@ module Samagotchi
     # @param layers [Array<Symbol>] the turn's LLM context layers: the
     #   native prompt declares the tools they add (Tools::Registry#entries)
     def build(chat: false, thinking: nil, layers: [])
+      key = [chat, thinking, layers]
       @built ||= {}
-      @built[[chat, thinking, layers]] ||= system_prompt_with_index(
-        assist_system_prompt(chat: chat, thinking: thinking, layers: layers), chat: chat, thinking: thinking, layers: layers
-      )
+      @index_sizes ||= {}
+      unless @built.key?(key)
+        @built[key] = system_prompt_with_index(
+          assist_system_prompt(chat: chat, thinking: thinking, layers: layers), chat: chat, thinking: thinking, layers: layers
+        )
+        @index_sizes[key] = @measured_index
+      end
+      @memory_index = @index_sizes[key]
+      @built[key]
     end
+
+    # The memory indexes the prompt #build returned last holds, per scope
+    # ({ system: { tokens:, lines: }, project: { … } }; MemoryBundle::IndexSize
+    # of the text after the session's mutes and the model notes' lines), nil
+    # before a build. Measured when the prompt is built: a memory write
+    # during the session changes neither the prompt nor this.
+    # @return [Hash, nil]
+    attr_reader :memory_index
 
     # Drops the built prompts: the next #build reads the profile, tools,
     # indexes and memories again (a model or profile switch, changed tools).
     def reset!
       @built = nil
+      @index_sizes = nil
       @stable_lengths = nil
     end
 
@@ -259,9 +276,11 @@ module Samagotchi
     # still follow them).
     def system_prompt_with_index(base, chat: false, thinking: nil, layers: [])
       thinking_token = chat ? "" : Thinking.native(thinking || turn_thinking, profile).system_token
+      indexes = { project: read_memory_index("project"), system: read_memory_index("system") }
+      @measured_index = measure_indexes(indexes)
       memory_sections = [
-        "Project memories:\n#{read_memory_index("project")}",
-        "System memories:\n#{read_memory_index("system")}"
+        "Project memories:\n#{indexes[:project]}",
+        "System memories:\n#{indexes[:system]}"
       ].join("\n\n")
       stable = [thinking_token + base, rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
                 project_specific_description, memory_sections]
@@ -327,6 +346,17 @@ module Samagotchi
       { model_key: model.key, fallback_model_key: model.fallback_key }
     rescue StandardError
       {}
+    end
+
+    # { system: { tokens:, lines: }, project: { … } } of the index texts
+    # the prompt holds; nil when they can't be measured.
+    def measure_indexes(indexes)
+      chars_per_token = MemoryBundle::IndexSize.chars_per_token
+      %i[system project].to_h do |scope|
+        [scope, MemoryBundle::IndexSize.of_text(scope, indexes[scope], chars_per_token: chars_per_token).figures]
+      end
+    rescue StandardError
+      nil
     end
 
     # The scope's index text without the muted memories' lines, nor the

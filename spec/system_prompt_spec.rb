@@ -82,3 +82,34 @@ RSpec.describe Samagotchi::SystemPrompt do
     end
   end
 end
+
+RSpec.describe Samagotchi::SystemPrompt, "#memory_index" do
+  subject(:prompt) do
+    described_class.new(profile: -> { Samagotchi::ModelProfile.for("gemma4") }, tools: -> { Samagotchi::Tools::Registry.new },
+                        session: -> {}, thinking: -> {})
+  end
+
+  let(:index_text) { +"- **a** · 9 B\n" }
+
+  before do
+    allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
+    text = index_text
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call) { |name, **| name.to_s.empty? ? text.dup : "Error: none" }
+  end
+
+  def figures(text) = { tokens: (text.length / 4.0).ceil, lines: text.lines.size }
+
+  it "follows the cache key of the prompt built last, back to an already-built one" do
+    expect(prompt.memory_index).to be_nil
+    first = index_text.dup
+    prompt.build(chat: true, layers: [])
+    index_text << "- **b** · 9 B\n"
+    prompt.build(chat: true, layers: [:forget])
+    expect(prompt.memory_index).to eq(system: figures(index_text), project: figures(index_text))
+    prompt.build(chat: true, layers: [])
+    expect(prompt.memory_index).to eq(system: figures(first), project: figures(first))
+    prompt.reset!
+    prompt.build(chat: true, layers: [])
+    expect(prompt.memory_index).to eq(system: figures(index_text), project: figures(index_text))
+  end
+end

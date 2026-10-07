@@ -7,7 +7,7 @@ import { cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
 import { clientLabel, emptyAnswerLine, emptyRetryLine, hookNoticeLabel, noticeLine, reminderText, retryStatusLine, steerCutLine } from "../../../lib/samagotchi/web/public/turn_events.js";
 import { servedModelDiffers, steerRowHtml, steerSender } from "../../../lib/samagotchi/web/public/format.js";
 import { flashOf } from "../../../lib/samagotchi/web/public/stage_model.js";
-import { costText, speedText } from "../../../lib/samagotchi/web/public/ctx.js";
+import { costText, memoryIndexText, speedText } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Shared contract: spec/shared/labels_matrix.json, the words the web and the
 // TUI put on the same event. spec/labels_matrix_spec.rb reads the same file;
@@ -100,5 +100,11 @@ test("speeds per the shared labels matrix", () => {
 test("costs per the shared labels matrix", () => {
   for (const entry of cases("costs")) {
     assert.equal(costText(entry.cost), expected(entry), `cost ${entry.cost}`);
+  }
+});
+
+test("memory index sizes per the shared labels matrix", () => {
+  for (const entry of cases("memory_index")) {
+    assert.equal(memoryIndexText(entry.index), expected(entry), `memory index ${JSON.stringify(entry.index)}`);
   }
 });

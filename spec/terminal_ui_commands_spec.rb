@@ -122,6 +122,14 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, {})).not_to include("llm context")
     end
 
+    it "shows the memory indexes the session's prompt holds in /stats, none from an older worker" do
+      index = { "system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 } }
+
+      expect(agent.send(:format_session_metrics, { memory_index: index }))
+        .to include("memory index:     ~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)")
+      expect(agent.send(:format_session_metrics, {})).not_to include("memory index")
+    end
+
     it "shows the prompt profile and where it came from in /stats" do
       metrics = agent.engine.metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")

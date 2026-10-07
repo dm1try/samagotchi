@@ -1325,7 +1325,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(timing["session_duration_ms"]).to eq(3000)
       expect(timing["turn_records"]).to include(hash_including("id" => "turn-1"))
       expect(timing["tool_records"]).to include(hash_including("id" => "tool-1"))
-      expect(timing).to include("context" => nil, "tokens" => nil)
+      expect(timing).to include("context" => nil, "tokens" => nil, "memory_index" => nil)
     end
 
     # The ctx meter's value on load: a stopped session's saved context.
@@ -1335,12 +1335,14 @@ RSpec.describe Samagotchi::Web::App do
       context = { "used_tokens" => 350, "window_tokens" => 4096, "window_source" => "server", "source" => "server",
                   "at" => "2026-09-21T10:00:03.000Z" }
       tokens = { "prompt_sum" => 900, "completion_sum" => 80, "source" => "server" }
-      File.write(File.join(state_dir, "s1", "analytics.json"), JSON.generate(context: context, tokens: tokens))
+      memory_index = { "system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 } }
+      File.write(File.join(state_dir, "s1", "analytics.json"),
+                 JSON.generate(context: context, tokens: tokens, memory_index: memory_index))
       app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir)
 
       timing = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first).fetch("timing")
 
-      expect(timing).to include("context" => context, "tokens" => tokens)
+      expect(timing).to include("context" => context, "tokens" => tokens, "memory_index" => memory_index)
     end
 
     # A live worker's metrics carry only its recent records (the newest

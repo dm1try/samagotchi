@@ -1531,7 +1531,9 @@ module Samagotchi
           # The context last seen and the token sums, for the ctx meter
           # before the next turn streams (live over saved).
           context: source["context"],
-          tokens: source["tokens"]
+          tokens: source["tokens"],
+          # The memory indexes the session's prompt holds (the ctx tooltip).
+          memory_index: source["memory_index"]
         }
       end
 

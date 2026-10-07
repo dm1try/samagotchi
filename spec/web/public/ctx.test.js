@@ -90,6 +90,16 @@ test("tokensTipText: a local session has no cached or cost line; no tokens leave
   assert.equal(tokensTipText({ prompt_sum: 0, completion_sum: 0 }, "ctx"), "ctx");
 });
 
+test("tokensTipText: the memory indexes the session's prompt holds, last; none without the block", () => {
+  const memoryIndex = { system: { tokens: 1997, lines: 54 }, project: { tokens: 1394, lines: 35 } };
+  const line = "memory index: ~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)";
+  assert.equal(tokensTipText({ prompt_sum: 300, completion_sum: 56 }, "ctx", memoryIndex),
+    `ctx\ntokens: in 300 · out 56\nthis session only, all requests\n${line}`);
+  assert.equal(tokensTipText(null, undefined, memoryIndex), `Context used after the last turn\n${line}`);
+  assert.equal(tokensTipText(null, "ctx", null), "ctx");
+  assert.equal(tokensTipText(null, "ctx", {}), "ctx");
+});
+
 test("lastSpeedText: the newest generation's speed from the tokens block", () => {
   assert.equal(lastSpeedText({ last_decode_tps: 31.6, tps_source: "server" }), "32 tok/s");
   assert.equal(lastSpeedText({ last_decode_tps: 80, tps_source: "estimate" }), "~80 tok/s");
