@@ -146,8 +146,8 @@ module LLMContextBench
     # A pick names outputs by the ids the model was shown: "t<N>" for the
     # Nth tool_response entry (the spike's numbering) or, when the file says
     # bench.id_scheme "run", for the Nth run (LivePick's, one per output).
-    # Each call's ids are forgotten with its note on the first and a pointer
-    # to it on the rest, the stub layout the spike used.
+    # Each call's ids are forgotten with its note; chi's view sends it on
+    # the first of them in a row and a pointer to that one on the rest.
     class Picks
       TOOL_NAMES = %w[context_edit forget_outputs forget_llm_context].freeze
       RANGE = /\A\W*t(\d+)\s*[-–]\s*#?t?(\d+)\W*\z/
@@ -211,15 +211,12 @@ module LLMContextBench
         edits = []
         invalid = 0
         calls.each do |call|
-          first = nil
           call[:ids].uniq.each do |shown|
             outputs = by_id[shown]
             next invalid += 1 unless outputs
 
-            first ||= shown
-            note = shown == first ? call[:note] : "see the note on ##{first}"
             outputs.each do |output|
-              edits << PlannedEdit.new(output_id: output.id, kind: :forget, note: note, applies_at: kase.at)
+              edits << PlannedEdit.new(output_id: output.id, kind: :forget, note: call[:note], applies_at: kase.at)
             end
           end
         end

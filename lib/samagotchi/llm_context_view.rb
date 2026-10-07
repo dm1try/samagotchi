@@ -28,6 +28,16 @@ module Samagotchi
   # The view only counts the runs: whatever saves an edit on a run checks
   # the entry's runs against its batch's call names first
   # (ToolResponse.runs_named), and the entry's content never changes.
+  #
+  # With the forget layer on, every output with a stored id is sent with
+  # it after its lead, "[read]\n[#t41] …" (plan D2: only then), so the
+  # model can name it to forget_outputs; a legacy entry's derived ids are
+  # never shown (they can't be forgotten). A forget's stub carries its
+  # note once: the outputs one forget_outputs call forgot that follow one
+  # another (no other output between them) point to the first one's
+  # instead, and a forget's kept lines (LLMContextEdit#keep) follow its
+  # stub. A forgotten output that isn't a read says how to restore it
+  # (re-reading the file is a read's restore).
   class LLMContextView
     NONE = :none
     LAYERS = LLMContextEdit::KINDS
@@ -66,34 +76,92 @@ module Samagotchi
     def messages(conversation)
       return conversation if none?
 
-      conversation.each_with_index.map { |entry, index| edited(conversation, entry, index) }
+      group = Group.new
+      conversation.each_with_index.map { |entry, index| edited(conversation, entry, index, group) }
     end
+
+    def forget? = layers.include?(:forget)
+
+    # The forget whose stub carries the note the next forgotten output of
+    # the same call points to: its first id and its note, author and stamp.
+    Group = Struct.new(:first, :key)
+    private_constant :Group
+
+    READ = "read"
 
     private
 
-    def edited(conversation, entry, index)
+    def edited(conversation, entry, index, group)
       return entry unless entry[:role].to_s == "tool_response"
 
       edits = LLMContextEdit.on(entry).select { |_id, edit| edit.applied? && layers.include?(edit.kind) }
-      return entry if edits.empty?
+      return entry if edits.empty? && !forget?
 
       refs = ToolIds.refs_at(conversation, index)
       stubbed = refs.each_index.select { |run| edits.key?(refs[run].id) }
-      return entry if stubbed.empty?
+      shown = forget? ? refs.each_index.reject { |run| refs[run].derived? } : []
+      return whole(entry, group) if stubbed.empty? && shown.empty?
 
       texts = ToolResponse.runs(entry[:content], refs.size)
-      return entry unless texts.size == refs.size
+      return whole(entry, group) unless texts.size == refs.size
 
-      images = kept_images(entry, refs.size, stubbed)
-      return entry if images.nil?
+      images = stubbed.empty? ? :kept : kept_images(entry, refs.size, stubbed)
+      return whole(entry, group) if images.nil?
 
-      stubbed.each { |run| texts[run] = stub(texts[run], edits[refs[run].id]) }
-      with_images(entry.merge(content: texts.map(&:text).join(ToolResponse::SEPARATOR)), images)
+      texts = texts.each_with_index.map do |text, run|
+        edit = edits[refs[run].id] if stubbed.include?(run)
+        text = edit ? stub(text, edit, refs[run], group) : whole(text, group)
+        shown.include?(run) ? with_id(text, refs[run].id) : text
+      end
+      sent = entry.merge(content: texts.map(&:text).join(ToolResponse::SEPARATOR))
+      images == :kept ? sent : with_images(sent, images)
     end
 
-    def stub(text, edit)
+    # +sent+ as it is: an output between two forgotten ones ends their run.
+    def whole(sent, group)
+      group.key = nil
+      sent
+    end
+
+    # The run's text with its id after its lead.
+    def with_id(text, id)
+      text.with(body: "[##{id}] #{text.body}")
+    end
+
+    def stub(text, edit, ref, group)
       lead = text.name ? "[#{text.name}] " : ""
-      ToolResponse::RunText.new(name: text.name, lead: lead, body: edit.stub)
+      ToolResponse::RunText.new(name: text.name, lead: lead, body: stub_body(text, edit, ref, group))
+    end
+
+    # A stale stub's note; a forget's note (or, after the first of its
+    # call's forgotten outputs in a row, a pointer to that one), its
+    # restore hint (not for a derived id: it names nothing the model can
+    # restore) and its kept lines.
+    def stub_body(text, edit, ref, group)
+      return whole(edit.stub, group) unless edit.kind == :forget
+
+      key = [edit.note, edit.by, edit.staged_at]
+      if group.key == key
+        head = "(forgotten with #{group.first}: see its note)"
+      else
+        group.first = ref.id
+        group.key = key
+        head = edit.stub
+      end
+      head += " [restore: #{ref.id}]" unless text.name == READ || ref.derived?
+      [head, *kept_lines(text.body, edit.keep)].join("\n")
+    end
+
+    # The kept ranges of +body+'s lines, each under a "lines A-B kept:"
+    # line (a range past the end is cut to it; one wholly past it goes).
+    def kept_lines(body, keep)
+      lines = body.lines
+      keep.filter_map do |first, last|
+        next if first > lines.size
+
+        last = [last, lines.size].min
+        "lines #{first}-#{last} kept:\n#{lines[(first - 1)..(last - 1)].join.chomp}"
+      end
     end
 
     # The entry's [images, image_counts] without the stubbed runs' ones;

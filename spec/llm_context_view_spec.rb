@@ -157,7 +157,7 @@ RSpec.describe Samagotchi::LLMContextView do
       expect(sent).not_to have_key(:images)
       expect(sent).not_to have_key(:image_counts)
       expect(Samagotchi::ToolResponse.split(sent[:content]).map(&:name)).to eq(%w[read shot execute])
-      expect(sent[:content]).to include("[shot] (forgotten) two screenshots of the login page")
+      expect(sent[:content]).to include("[shot] [#t2] (forgotten) two screenshots of the login page [restore: t2]")
     end
 
     it "keeps the Gemma prompt's response:NAME blocks, and an image line only for the runs not stubbed" do
@@ -201,6 +201,54 @@ RSpec.describe Samagotchi::LLMContextView do
       end
     end
 
+    describe "with the forget layer on" do
+      let(:forget) { described_class.new(strategy: %i[stale forget]) }
+
+      def result(id, text, edits = {})
+        { role: "tool_response", content: text, tool_call_id: "c#{id}", tool_ids: ["t#{id}"], edits: edits }
+      end
+
+      it "shows each stored id after its output's lead, never a legacy entry's derived one, and none under stale" do
+        legacy = { role: "tool_response", content: "[read] a\n\n---\n\n[read] b" }
+        conversation = [{ role: "user", content: "go" }, batch, legacy]
+
+        sent = forget.messages(conversation)
+
+        expect(sent[1][:content]).to eq("[read] [#t1] lib/x.rb\n1: x\n\n---\n\n[shot] [#t2] two images\n\n---\n\n" \
+                                         "[execute]\n[#t3] ok\n\n---\n\nstill ok")
+        expect(sent[1][:images]).to eq(batch[:images])
+        expect(sent[2]).to equal(legacy)
+        expect(described_class.new(strategy: [:stale]).messages(conversation)[1]).to equal(batch)
+      end
+
+      it "puts a forget's note on the first of its outputs in a row, a pointer on the rest, and a restore hint off reads" do
+        one = edit("forget", "facts: x is one line")
+        other = edit("forget", "another call's note").merge("staged_at" => "later")
+        conversation = [result(1, "[read] a", "t1" => one), result(2, "[execute]\nok", "t2" => one),
+                        result(3, "[execute]\nkept"), result(4, "[execute]\nagain", "t4" => one),
+                        result(5, "[execute]\nmore", "t5" => one), result(6, "[read] b", "t6" => other)]
+
+        sent = forget.messages(conversation).map { |entry| entry[:content] }
+
+        expect(sent).to eq(["[read] [#t1] (forgotten) facts: x is one line",
+                            "[execute] [#t2] (forgotten with t1: see its note) [restore: t2]",
+                            "[execute]\n[#t3] kept",
+                            "[execute] [#t4] (forgotten) facts: x is one line [restore: t4]",
+                            "[execute] [#t5] (forgotten with t4: see its note) [restore: t5]",
+                            "[read] [#t6] (forgotten) another call's note"])
+      end
+
+      it "sends a forget's kept lines under its stub, a range past the output's end cut to it" do
+        kept = edit("forget", "the spec's setup").merge("keep" => [[2, 3], [5, 99], [40, 50]])
+        text = "[read]\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\n"
+
+        sent = forget.messages([result(1, text, "t1" => kept)]).first[:content]
+
+        expect(sent).to eq("[read] [#t1] (forgotten) the spec's setup\nlines 2-3 kept:\nline 2\nline 3\n" \
+                           "lines 5-6 kept:\nline 5\nline 6")
+      end
+    end
+
     it "keeps a chat call and its result paired: the stub goes as the tool message's content" do
       kernel = test_kernel
       backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: FakeChatAdapter.new)
@@ -212,7 +260,7 @@ RSpec.describe Samagotchi::LLMContextView do
       wire = backend.wire_messages([{ role: "user", content: "go" }, call, result])
 
       expect(wire[1][:tool_calls].map { |c| c[:id] }).to eq(["c1"])
-      expect(wire[2]).to eq(role: "tool", content: "[read] (forgotten) x is one line", tool_call_id: "c1")
+      expect(wire[2]).to eq(role: "tool", content: "[read] [#t5] (forgotten) x is one line", tool_call_id: "c1")
       expect(wire.size).to eq(3)
     end
   end
@@ -242,6 +290,21 @@ RSpec.describe Samagotchi::LLMContextEdit do
     expect(described_class.store(entry, stale)).to equal(entry)
     expect(described_class.on(entry).keys).to eq(%w[t1 t2])
     expect(described_class.on(checkpoint).keys).to eq(%w[t1])
+  end
+
+  it "saves a forget's kept line ranges only when it has some, reads back only well-formed ones, and removes an edit" do
+    kept = described_class.from_h("t4", saved.merge("keep" => [[3, 9], [5, 2], [0, 1], "x", [1, 1]]))
+
+    expect(kept.keep).to eq([[3, 9], [1, 1]])
+    expect(kept.to_h).to eq(saved.merge("keep" => [[3, 9], [1, 1]]))
+    expect(described_class.from_h("t4", saved).to_h).not_to have_key("keep")
+
+    entry = { role: "tool_response", edits: { "t4" => saved, "t5" => saved } }
+    shared = entry[:edits]
+    described_class.remove(entry, "t4")
+    expect(entry[:edits].keys).to eq(%w[t5])
+    expect(shared.keys).to eq(%w[t4 t5])
+    expect(described_class.remove(entry, "t5")).not_to have_key(:edits)
   end
 
   it "skips an edit of no known kind" do

@@ -17,9 +17,16 @@ module Samagotchi
   # kind: :stale (chi saw a later read or edit supersede it) or :forget
   # (the model forgot it, its note keeping the finding); note: what the
   # stub says; by: who made it ("chi", the model); staged_at/applied_at:
-  # ISO 8601 times, applied_at nil while it waits to reach the prompt.
-  LLMContextEdit = Data.define(:id, :kind, :note, :by, :staged_at, :applied_at) do
+  # ISO 8601 times, applied_at nil while it waits to reach the prompt;
+  # keep: the output's lines a forget keeps ([[first, last], …], 1-based
+  # lines of the output after its "[name]" lead; saved only when there are
+  # some), sent under the stub.
+  LLMContextEdit = Data.define(:id, :kind, :note, :by, :staged_at, :applied_at, :keep) do
+    def initialize(keep: [], **fields) = super
+
     def applied? = !applied_at.nil?
+
+    def keep? = !keep.empty?
 
     # What the model reads instead of the output, after the output's
     # "[name]" lead.
@@ -29,7 +36,8 @@ module Samagotchi
 
     # The saved form, without the id (it is the key).
     def to_h
-      { "kind" => kind.to_s, "note" => note, "by" => by, "staged_at" => staged_at, "applied_at" => applied_at }
+      saved = { "kind" => kind.to_s, "note" => note, "by" => by, "staged_at" => staged_at, "applied_at" => applied_at }
+      keep? ? saved.merge("keep" => keep) : saved
     end
   end
 
@@ -46,7 +54,26 @@ module Samagotchi
       return nil unless KINDS.include?(kind)
 
       new(id: id.to_s, kind: kind, note: field.call(:note).to_s, by: field.call(:by), staged_at: field.call(:staged_at),
-          applied_at: field.call(:applied_at))
+          applied_at: field.call(:applied_at), keep: ranges(field.call(:keep)))
+    end
+
+    # Saved keep ranges as [[first, last], …]: pairs of positive Integers,
+    # first <= last; anything else is dropped.
+    def self.ranges(raw)
+      Array(raw).filter_map do |pair|
+        first, last = pair if pair.is_a?(Array) && pair.size == 2
+        [first, last] if first.is_a?(Integer) && last.is_a?(Integer) && first.positive? && first <= last
+      end
+    end
+
+    # +entry+ without the edit +id+ (a restore): a new edits Hash, as
+    # .store; no edits key when none is left.
+    def self.remove(entry, id)
+      return entry unless entry[:edits].is_a?(Hash) && entry[:edits].key?(id)
+
+      left = entry[:edits].except(id)
+      left.empty? ? entry.delete(:edits) : entry[:edits] = left
+      entry
     end
 
     # +entry+ with +edit+ saved on it: a new edits Hash, never the old one

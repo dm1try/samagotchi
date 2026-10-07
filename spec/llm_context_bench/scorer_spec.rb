@@ -44,9 +44,9 @@ RSpec.describe LLMContextBench::Scorer do
     let(:read_text) { chat.messages[3][:content] }
     let(:execute_text) { chat.messages[5][:content] }
 
-    it "frees what the view's stubs leave out" do
+    it "frees what the view's stubs leave out: the note once, a pointer to it on the next" do
       expected = (read_text.length - "[read] (forgotten) ".length + execute_text.length -
-                  "[execute] (forgotten) ".length) / 4.0
+                  "[execute] (forgotten with e3.1: see its note)".length) / 4.0
       expect(result.freed).to eq(expected)
     end
 
@@ -84,14 +84,14 @@ RSpec.describe LLMContextBench::Scorer do
       expect(plan.edits.map { |edit| [edit.output_id, edit.note] }).to eq([["e5.1", "the spec fails on rounding"]])
     end
 
-    it "reads run ids, ranges and the forced pick, notes a pointer on all but the first, and counts unknown ids" do
+    it "reads run ids, ranges and the forced pick, the call's note on each, and counts unknown ids" do
       write_pick("pick_soft_s2", "unforced" => { "choices" => [{ "message" => { "content" => "no" } }] },
                                  "forced" => response(["t1-t2", "#t9"], "cart rounds", name: "forget_outputs", key: "ids"),
                                  "bench" => { "id_scheme" => "run" })
       plan = picks.plans(kase).first
 
       expect(plan).to have_attributes(policy: "pick_soft", how: "forced", invalid_ids: 1)
-      expect(plan.edits.map(&:note)).to eq(["cart rounds", "see the note on #t1"])
+      expect(plan.edits.map(&:note)).to eq(["cart rounds", "cart rounds"])
       expect(picks.case_names).to eq([kase.name])
     end
 
@@ -105,7 +105,7 @@ RSpec.describe LLMContextBench::Scorer do
 
       expect(plan.edits.map(&:output_id)).to eq(%w[e3.1 e3.2])
       view = scorer.view(native, native_case.at, plan.edits)
-      expect(view[3][:content]).to eq("[execute] (forgotten) two specs\n\n---\n\n[read] (forgotten) two specs")
+      expect(view[3][:content]).to eq("[execute] (forgotten) two specs\n\n---\n\n[read] (forgotten with e3.1: see its note)")
       expect(scorer.score(plan).freed).to be > 0
     end
 
