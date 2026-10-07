@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `llm_context.strategy` (only `none` for now), and per model or host `llm_context_strategy`. See
+  [docs/configuration.md](docs/configuration.md).
+
 ## [0.38.0] - 2026-10-07
 
 ### Added
