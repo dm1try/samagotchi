@@ -114,6 +114,6 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
       .to output(/models: ornith: llm_context strategy forget is not built yet/).to_stderr
 
     expect(views.map(&:strategy)).to eq([:none, [:stale], :none])
-    expect(kernel.turn_settings.llm_context.to_h).to eq(layers: %i[stale forget], strategy: :none, source: :model_setting)
+    expect(kernel.turn_settings.llm_context.to_h).to include(layers: %i[stale forget], strategy: :none, source: :model_setting)
   end
 end

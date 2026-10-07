@@ -174,10 +174,11 @@ RSpec.describe "window_tokens on hosts: and models: entries" do
 end
 
 RSpec.describe "llm_context_strategy on hosts: entries" do
-  it "passes a host's layers to workers, none included" do
+  it "passes a host's layers and apply rule to workers, none included" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
-      File.write(path, { "hosts" => { "box" => { "host" => "box", "llm_context_strategy" => %w[stale forget] },
+      File.write(path, { "hosts" => { "box" => { "host" => "box", "llm_context_strategy" => %w[stale forget],
+                                                 "llm_context_apply" => "turn_end" },
                                       "off" => { "host" => "off", "llm_context_strategy" => "none" },
                                       "plain" => { "host" => "plain" } } }.to_yaml)
 
@@ -186,6 +187,7 @@ RSpec.describe "llm_context_strategy on hosts: entries" do
 
       expect(worker.transform_values { |v| v[:llm_context_strategy] }).to eq("box" => %i[stale forget], "off" => [],
                                                                              "plain" => nil)
+      expect(worker.transform_values { |v| v[:llm_context_apply] }).to eq("box" => :turn_end, "off" => nil, "plain" => nil)
     end
   end
 end

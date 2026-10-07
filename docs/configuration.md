@@ -917,6 +917,10 @@ described in their own sections.
 | `models.<key>.window_tokens`, `hosts.<name>.window_tokens` | none | | A model's or host's context window when the server and its model list report none. |
 | `llm_context.strategy` | `none` | | What the model is sent of the conversation: `none` (everything, unchanged), or a list of layers (`stale`, `forget`; `"\|"`-separated or a YAML list). `stale`: a file read that a later read covering its lines superseded (a read that came back whole: not the head/tail preview of a big file, nor cut at `max_tool_output_chars`) is sent as a stub (`[read] lib/x.rb lines 1-200: superseded by a later read`), from the next request on (an edit or write of the file doesn't make a read stale); the session keeps the output, and each request that stubs something new breaks the prompt cache from there. `forget` isn't built yet: a list with it warns and is `none`; an unknown name warns and is `none`. `models.<key>.llm_context_strategy` and `hosts.<name>.llm_context_strategy` come first. |
 | `models.<key>.llm_context_strategy`, `hosts.<name>.llm_context_strategy` | none | | A model's or host's `llm_context.strategy` (`none` or `stale` for now). |
+| `llm_context.apply` | `payoff` | | When a layer's edits reach the prompt (each batch breaks the prompt cache from its earliest edit): `payoff`, `next_request` or `turn_end`. An unknown value warns and is `payoff`. `models.<key>.llm_context_apply` and `hosts.<name>.llm_context_apply` come first. |
+| `models.<key>.llm_context_apply`, `hosts.<name>.llm_context_apply` | none | | A model's or host's `llm_context.apply`. |
+| `llm_context.stale_edits` | `false` | | Opt-in, experimental: `stale` also stubs a read that a later successful edit or write of the file superseded. |
+| `llm_context.protect_steps` | `3` | | `stale` never stubs a read of a file edited or written in the last N steps (tool batches). |
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |
 | `context.status_thresholds` | `20,40,60,80` | yes | Percentages that trigger a status. |
 | `context.status_cadence` | `0` | yes | Also every N rounds; `0` = thresholds only. |
