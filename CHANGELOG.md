@@ -36,6 +36,10 @@ and commands may change between minor versions. How releases are made:
   at once no longer both rotate the triage log (one failed, or the old lines were lost). A scope card's folder is right
   under a symlinked path (`/tmp` on macOS read `../../../tmp/…`), and the summary line shortens a reason that quotes a
   setting (`3 unchecked: no triage model: broadcast.triage_host_ref`).
+- `max_tool_output_chars` caps the tool outputs the model gets back on the native loop too (a host without
+  `api: openai`): it fed each output whole, so one long result could fill the context. On both loops a cut output now
+  ends with `[cut: N of M chars; read it in parts]`, so the model knows it didn't get it all (the chat loop cut it
+  silently); the tool row shows the same text.
 
 ## [0.37.0] - 2026-10-07
 
