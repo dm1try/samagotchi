@@ -279,6 +279,10 @@ module Samagotchi
 
       input_files = SessionInbox.find_new_input_files(@session_dir)
       return idle_pass if input_files.empty?
+      # A command queued since the look above, before these prompts were
+      # written (an answer's /continue yes, then a prompt), still runs
+      # first; the next pass takes the prompts.
+      return if run_queued_commands
 
       run_input_files(input_files)
     end

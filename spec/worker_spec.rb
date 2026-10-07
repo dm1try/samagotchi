@@ -1163,6 +1163,43 @@ RSpec.describe Samagotchi::Worker do
         end
       end
 
+      # The worker's pass found no command, then the answer's /continue yes
+      # and a prompt both came in before it listed the input files (a slow
+      # pass under parallel load): the command queued first still runs first.
+      it "runs an answer's /continue queued before a prompt first, though both came in after the pass looked for commands" do
+        start_worker(poll_interval: 5)
+        inbound = @worker.instance_variable_get(:@inbound)
+        armed = false
+        reached = Queue.new
+        gate = Queue.new
+        engine.subscribe(observer: ->(event) { armed = true if event[:type] == :question_requested })
+        # The pass absorbs notes after it ran the queued commands and before
+        # it lists the input files: hold it there once the question is out.
+        allow(inbound).to receive(:absorb_notes).and_wrap_original do |original, *args|
+          if armed
+            armed = false
+            reached << true
+            gate.pop
+          end
+          original.call(*args)
+        end
+        post_turn("long task")
+        expect(reached.pop(timeout: 5)).to be(true)
+
+        asked = events_seen.find { |e| e[:type] == :question_requested }
+        answer = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/answer"),
+                                JSON.generate(id: asked[:pending_question][:id], selected: ["Continue"], client_id: "web:2"),
+                                "Content-Type" => "application/json")
+        expect(answer.code).to eq("200")
+        post_turn("something else")
+        gate << :go
+
+        expect(wait_until { events_seen.count { |e| e[:type] == :turn_completed } == 3 }).to be(true)
+        started = seen.select { |e| e[:type] == :turn_started }
+        expect(started[1]).to include(continue: true)
+        expect(started[2]).to include(prompt: "something else")
+      end
+
       # The offer as a question on the desk (kind continue): what chi send
       # --wait, chi answer, the lists and the web's badge read.
       describe "the step-limit question" do
