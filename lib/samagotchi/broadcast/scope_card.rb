@@ -74,15 +74,28 @@ module Samagotchi
       end
       private_class_method :user_texts
 
+      # Both paths resolved first: a linked worktree's project root comes
+      # back resolved (/private/tmp/… on macOS) while the session's folder
+      # may go through a symlink (/tmp/…).
       def folder(cwd, project)
         return ContextNote.home_relative(cwd) if project.nil?
-        return nil if cwd.to_s == project.to_s
 
-        Pathname.new(cwd.to_s).relative_path_from(Pathname.new(project.to_s)).to_s
+        cwd = real(cwd)
+        project = real(project)
+        return nil if cwd == project
+
+        Pathname.new(cwd).relative_path_from(Pathname.new(project)).to_s
       rescue ArgumentError
         cwd
       end
       private_class_method :folder
+
+      def real(path)
+        File.realpath(path.to_s)
+      rescue SystemCallError
+        File.expand_path(path.to_s)
+      end
+      private_class_method :real
 
       def cut(text, limit)
         line = text.to_s.gsub(/\s+/, " ").strip

@@ -77,4 +77,16 @@ RSpec.describe Samagotchi::Broadcast::ScopeCards do
 
     expect(card.to_s).to eq("project: shop")
   end
+
+  # macOS: a session started under /tmp works in /tmp/…, while a linked
+  # worktree's project root comes back resolved, /private/tmp/….
+  it "names a worktree's folder relative to its project when the session's path goes through a symlink" do
+    via = File.join(tmpdir, "via")
+    File.symlink(tmpdir, via)
+    session = make(cwd: File.join(via, File.basename(worktree("main"))), messages: [], last_prompt: "")
+
+    card = described_class.build(recipient(session, desc: ""), state_dir: state_dir, ticket: ticket)
+
+    expect(card.folder).to eq("../shop-pay")
+  end
 end
