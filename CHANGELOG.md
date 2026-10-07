@@ -27,6 +27,13 @@ and commands may change between minor versions. How releases are made:
   costs (forget on or off re-reads the prompt once; stale turned on stages the reads already superseded as one
   batch; a layer turned off sends its stubs whole again). `/stats` and the turn log show the effective strategy and
   its source. See [docs/configuration.md](docs/configuration.md) ("LLM context: a session's own strategy").
+- The memory indexes' size, which every prompt carries in full: `chi self` has a `memory index` row (`system ~2.0k
+  tokens (54 lines), project ~1.4k tokens (35 lines)`), and `/stats` and the web's ctx tooltip show what the
+  session's prompt holds (`memory index: ~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)`). A
+  `memory_write`, `write` or `edit` that takes a scope's index over `memory.index_warn_tokens` (new; default 2500 per
+  scope, `0` off) gets one note asking the model to tighten long index descriptions when it has a moment, and not to
+  remove or merge memories unless the user asks; a write while already over gets none. See
+  [docs/memory.md](docs/memory.md) ("The index's size").
 
 ### Changed
 
