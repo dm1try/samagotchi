@@ -89,7 +89,7 @@ RSpec.describe Samagotchi::ToolResponse do
   end
 
   it "names the saved-only keys (never sent to the model)" do
-    expect(described_class::SAVED_KEYS).to eq(%i[tool_params tool_labels tool_diffs tool_ids])
+    expect(described_class::SAVED_KEYS).to eq(%i[tool_params tool_labels tool_diffs tool_ids edits])
   end
 
   describe ".split" do

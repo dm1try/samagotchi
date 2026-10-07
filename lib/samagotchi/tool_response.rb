@@ -11,8 +11,9 @@ module Samagotchi
     SEPARATOR = "\n\n---\n\n"
     # Saved with a result for the web's reload (a plugin tool's params line
     # and label, an edit/write's diff) and for the LLMContextView (each
-    # run's chi-owned id, ToolIds); the prompt never renders them.
-    SAVED_KEYS = %i[tool_params tool_labels tool_diffs tool_ids].freeze
+    # run's chi-owned id, ToolIds, and a strategy's edits by id,
+    # LLMContextEdit); the prompt never renders them.
+    SAVED_KEYS = %i[tool_params tool_labels tool_diffs tool_ids edits].freeze
     # A run's "[name]" lead: the name, then a newline, a space or the end.
     LEAD = /\A\[([^\]\s]+)\](?:\n| |\z)/
 
