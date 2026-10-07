@@ -86,6 +86,36 @@ RSpec.describe LLMContextBench::LivePick do
     end
   end
 
+  describe "layouts" do
+    it "sends the tail line as a user message under tail_user, the same text" do
+      user = picker(layout: "tail_user").messages(kase).last
+      expect(user).to eq(picker.messages(kase).last.merge(role: "user"))
+    end
+
+    it "words the line as a stopping point of its own under boundary, a system message" do
+      line = picker(layout: "boundary").messages(kase).last
+      expect(line).to include(role: "system", content: include("You've reached a stopping point", "forget_outputs whatever"))
+    end
+
+    it "names a layout's picks apart, the baseline as before" do
+      expect(picker.variant(1)).to eq("pick_forget_outputs_subtask_s1")
+      expect(picker(layout: "boundary").variant(2)).to eq("pick_forget_outputs_subtask_boundary_s2")
+      expect { picker(layout: "after_answer") }.to raise_error(ArgumentError, /layout/)
+    end
+
+    it "asks once under --no-force, and records the cost the server streamed" do
+      adapter = BenchFixtures::FakeChat.new(response, cost: 0.0042)
+      picker(adapter, force: false).run([kase])
+
+      record = JSON.parse(File.read(picker.path(kase, 1)))
+      expect(adapter.requests.size).to eq(1)
+      expect(adapter.requests.first[:options]).to include(usage: { include: true })
+      expect(record).to include("bench" => include("layout" => "tail_system"))
+      expect(record["unforced"]["usage"]).to include("cost" => 0.0042)
+      expect(record).not_to have_key("forced")
+    end
+  end
+
   it "estimates the requests and prompt tokens of a run" do
     estimate = picker(samples: 2).estimate([kase])
     expect(estimate).to include(requests: 2, prompt_tokens: 2 * JSON.generate(picker.messages(kase)).length / 4.0)

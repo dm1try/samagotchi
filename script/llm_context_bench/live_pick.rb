@@ -54,16 +54,33 @@ module LLMContextBench
       "subtask" => "[CONTEXT: about %<k>sk tokens of context are in use. context elevated — you may free context " \
                    "with %<tool>s.]"
     }.freeze
-    # The spike's sampling: what the models were picked at.
-    OPTIONS = { temperature: 0.6, max_tokens: 12_000 }.freeze
+    # Where and how the tail line goes. tail_system: a system message after
+    # the case's last entry (the spike's layout); tail_user: the same line as
+    # a user message; boundary: a system message worded as a stopping point
+    # of its own. (Cutting at the model's final answer instead isn't offered:
+    # 9 of the spike's 12 cases end mid-task, with a tool result or a
+    # turn note, so there is no such answer to cut at.)
+    LAYOUTS = %w[tail_system tail_user boundary].freeze
+    BOUNDARY = "[CONTEXT: about %<k>sk tokens in use. You've reached a stopping point. Before you continue, tidy up: " \
+               "%<tool>s whatever you won't need again, or skip it if nothing qualifies.]"
+    # The spike's sampling: what the models were picked at; usage.include
+    # asks OpenRouter for each request's cost (other servers ignore it).
+    OPTIONS = { temperature: 0.6, max_tokens: 12_000, usage: { include: true } }.freeze
 
-    attr_reader :tool_name, :policy, :out_dir, :samples
+    attr_reader :tool_name, :policy, :out_dir, :samples, :layout
 
     # @param adapter [#chat] chi's chat client (LLM::OpenAIChat); nil for a
     #   dry run
-    def initialize(adapter:, model:, tool_name:, policy:, out_dir:, samples: 1, log: $stderr)
+    # @param force [Boolean] ask again with the tool forced when the model
+    #   didn't call it
+    def initialize(adapter:, model:, tool_name:, policy:, out_dir:, samples: 1, log: $stderr, layout: LAYOUTS.first,
+                   force: true)
       raise ArgumentError, "tool name: #{TOOL_NAMES.join(" or ")}" unless TOOL_NAMES.include?(tool_name)
       raise ArgumentError, "policy: #{POLICIES.keys.join(", ")}" unless POLICIES.key?(policy)
+      raise ArgumentError, "layout: #{LAYOUTS.join(", ")}" unless LAYOUTS.include?(layout)
+
+      @layout = layout
+      @force = force
 
       @adapter = adapter
       @model = model
@@ -83,7 +100,11 @@ module LLMContextBench
       [registry.adapter_for(entry), bare]
     end
 
-    def variant(sample) = "pick_#{tool_name}_#{policy}_s#{sample}"
+    # The baseline layout keeps the name picks had before layouts.
+    def variant(sample)
+      named = layout == LAYOUTS.first ? policy : "#{policy}_#{layout}"
+      "pick_#{tool_name}_#{named}_s#{sample}"
+    end
 
     def path(kase, sample) = File.join(out_dir, "#{kase.name}.#{variant(sample)}.json")
 
@@ -112,13 +133,13 @@ module LLMContextBench
     # and how it was asked.
     def ask(kase)
       request = messages(kase)
-      unforced = shaped(@adapter.chat(messages: request, model: @model, tools: tools, options: OPTIONS))
+      unforced = chat(request, OPTIONS)
       record = { "unforced" => unforced }
-      if Strategies::Picks.forget_calls(unforced).empty?
-        forced = { tool_choice: { type: "function", function: { name: tool_name } } }
-        record["forced"] = shaped(@adapter.chat(messages: request, model: @model, tools: tools, options: OPTIONS.merge(forced)))
+      if @force && Strategies::Picks.forget_calls(unforced).empty?
+        record["forced"] = chat(request, OPTIONS.merge(tool_choice: { type: "function", function: { name: tool_name } }))
       end
-      record.merge("bench" => { "id_scheme" => "run", "tool" => tool_name, "policy" => policy, "model" => @model })
+      record.merge("bench" => { "id_scheme" => "run", "tool" => tool_name, "policy" => policy, "layout" => layout,
+                                "model" => @model })
     rescue Samagotchi::LLM::ProviderError => e
       { "unforced" => { "error" => e.message }, "bench" => { "id_scheme" => "run", "tool" => tool_name, "policy" => policy } }
     end
@@ -153,10 +174,23 @@ module LLMContextBench
       end
       wire = paired(wire)
       k = (JSON.generate(wire).length / 4000.0).round
-      wire << { role: "system", content: format(POLICIES.fetch(policy), tool: tool_name, k: k) }
+      text = format(layout == "boundary" ? BOUNDARY : POLICIES.fetch(policy), tool: tool_name, k: k)
+      wire << { role: layout == "tail_user" ? "user" : "system", content: text }
     end
 
     private
+
+    # One request, shaped, with the cost the server put in a streamed usage
+    # chunk (OpenRouter's usage.cost), when it did.
+    def chat(request, options)
+      cost = nil
+      on_delta = lambda do |payload:, **|
+        found = payload.is_a?(Hash) ? payload.dig("usage", "cost") : nil
+        cost = found unless found.nil?
+      end
+      response = @adapter.chat(messages: request, model: @model, tools: tools, options: options, on_delta: on_delta)
+      shaped(response).tap { |record| record["usage"]["cost"] = cost unless cost.nil? }
+    end
 
     def wire_entries(replay, entry, index, ids)
       case replay.role(index)

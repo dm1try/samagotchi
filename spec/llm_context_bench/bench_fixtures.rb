@@ -14,13 +14,16 @@ module BenchFixtures
   class FakeChat
     attr_reader :requests
 
-    def initialize(*responses)
+    # +cost+: sent as a streamed usage chunk's cost (OpenRouter's), if set.
+    def initialize(*responses, cost: nil)
       @responses = responses
       @requests = []
+      @cost = cost
     end
 
-    def chat(**request)
+    def chat(on_delta: nil, **request)
       @requests << request
+      on_delta&.call(content: "", reasoning: "", payload: { "usage" => { "cost" => @cost } }) if @cost
       @responses.shift
     end
   end

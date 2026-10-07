@@ -16,7 +16,8 @@ module LLMContextBench
     DEFAULT_STRATEGIES = %w[none forget_all].freeze
 
     Options = Struct.new(:dir, :strategies, :picks, :cases_file, :min_turn_tool, :top, :sessions, :profile, :per_case,
-                         :json, :live, :tool_name, :policy, :out_dir, :samples, :dry_run, keyword_init: true)
+                         :json, :live, :tool_name, :policy, :out_dir, :samples, :dry_run, :layout, :force,
+                         keyword_init: true)
 
     def initialize(argv, env: ENV, out: $stdout, err: $stderr)
       @argv = argv.dup
@@ -46,7 +47,7 @@ module LLMContextBench
     def parse
       options = Options.new(strategies: DEFAULT_STRATEGIES.dup, picks: [], min_turn_tool: Cases::MIN_TURN_TOOL,
                             profile: true, per_case: false, json: false, tool_name: LivePick::TOOL_NAMES.first,
-                            policy: "subtask", samples: 1, dry_run: false)
+                            policy: "subtask", samples: 1, dry_run: false, layout: LivePick::LAYOUTS.first, force: true)
       parser = OptionParser.new do |o|
         o.banner = "usage: script/llm_context_bench.rb [SESSIONS_DIR] [options]\n  " \
                    "SESSIONS_DIR: a folder of <session id>.json files (default $#{ENV_DIR}, else chi's own)"
@@ -74,6 +75,12 @@ module LLMContextBench
         o.on("--policy NAME", LivePick::POLICIES.keys, "the tail line: #{LivePick::POLICIES.keys.join(", ")} (default subtask)") do |name|
           options.policy = name
         end
+        o.on("--layout NAME", LivePick::LAYOUTS, "where the tail line goes: #{LivePick::LAYOUTS.join(", ")} (default tail_system)") do |name|
+          options.layout = name
+        end
+        o.on("--[no-]force", "ask again with the tool forced when the model didn't call it (default on)") do |on|
+          options.force = on
+        end
         o.on("--out DIR", "where the picks go (required with --live)") { |dir| options.out_dir = dir }
         o.on("--samples N", Integer, "picks per case (default 1)") { |n| options.samples = n }
         o.on("--dry-run", "with --live: count the requests and tokens, call nothing") { options.dry_run = true }
@@ -93,7 +100,8 @@ module LLMContextBench
       end
       adapter, model = options.dry_run ? [nil, options.live] : LivePick.chat_adapter(options.live)
       picker = LivePick.new(adapter: adapter, model: model, tool_name: options.tool_name, policy: options.policy,
-                            out_dir: options.out_dir.to_s, samples: options.samples, log: @err)
+                            out_dir: options.out_dir.to_s, samples: options.samples, log: @err, layout: options.layout,
+                            force: options.force)
       cases = Cases.select(Replay.from_dir(options.dir, top: options.top, only: options.sessions),
                            names: options.cases_file && Cases.read_names(options.cases_file),
                            min_turn_tool: options.min_turn_tool)
