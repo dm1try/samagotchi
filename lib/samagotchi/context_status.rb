@@ -95,6 +95,12 @@ module Samagotchi
 
     def enabled? = @enabled
 
+    # The status line's value is in the top configured bucket (the apply
+    # rule's payoff applies staged edits there at once).
+    def top_bucket?
+      !@display.nil? && bucket_rank(@display[:bucket]) == @thresholds.size
+    end
+
     # Before a request: estimate the usage of a prompt of +prompt_chars+
     # against +window+ (this request's ContextWindow::Resolved) and update
     # the status line's value. A rise into a bucket that asks the model for

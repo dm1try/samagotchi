@@ -57,4 +57,14 @@ RSpec.describe Samagotchi::ContextStatus do
 
     expect(tracker.display).to eq(est_pct: 20.0, bucket: "20plus")
   end
+
+  it "says whether the status line's value is in the top bucket" do
+    tracker = described_class.new
+    expect(tracker).not_to be_top_bucket
+
+    tracker.observe(3_000, iteration_index: 0, window: window)
+    expect(tracker).not_to be_top_bucket
+    tracker.observe(3_300, iteration_index: 1, window: window)
+    expect(tracker).to be_top_bucket
+  end
 end

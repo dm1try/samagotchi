@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/llm_context_stale"
+require "samagotchi/llm_context_apply"
 require "samagotchi/llm_context_view"
 require "samagotchi/context_note"
 require "samagotchi/kernel_loop"
@@ -35,9 +36,9 @@ RSpec.describe Samagotchi::LLMContextStale do
       tool_ids: ids }.compact
   end
 
-  def found(conversation) = described_class.edits(conversation, now: now, root: root)
+  def found(conversation) = described_class.found(conversation, root: root)
 
-  def stubbed(conversation) = found(conversation).to_h { |index, edit| [edit.id, [index, edit.note]] }
+  def stubbed(conversation) = found(conversation).to_h { |stale| [stale.run.ref.id, [stale.run.index, stale.note]] }
 
   describe "chat entries" do
     it "stubs a read a later read of the whole file supersedes, naming what superseded it" do
@@ -48,7 +49,7 @@ RSpec.describe Samagotchi::LLMContextStale do
                       chat_result("c2", "read", body, "t2")]
 
       expect(stubbed(conversation)).to eq("t1" => [3, "lib/cart.rb: superseded by a later read"])
-      expect(found(conversation).first.last).to have_attributes(kind: :stale, by: "chi", staged_at: now, applied_at: now)
+      expect(found(conversation).first).not_to be_change
     end
 
     it "keeps a read a later edit or write of the file changed (later read only, user 2026-10-07; edits are P3's)" do
@@ -203,7 +204,9 @@ RSpec.describe Samagotchi::LLMContextStale do
   end
 
   describe "a turn under stale, edits applied at the next request" do
-    let(:stale) { Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config) }
+    let(:stale) do
+      Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config, apply: :next_request)
+    end
     let(:dir) { Dir.mktmpdir("chi-stale") }
     let(:file) { File.join(dir, "cart.rb").tap { |path| File.write(path, "#{body}\n") } }
 
@@ -335,7 +338,12 @@ RSpec.describe Samagotchi::LLMContextStale do
     end
   end
 
-  describe ".apply!" do
+  describe "applied (LLMContextApply)" do
+    def apply!(conversation)
+      Samagotchi::LLMContextApply.run!(conversation, layers: [:stale], rule: :next_request, moment: :request, protect_steps: 3,
+                                                     root: root, now: now).applied
+    end
+
     it "saves the edits on the entries, which the view under stale sends as stubs, and adds none the second time" do
       conversation = [head, chat_model(chat_call("c1", "read", { "path" => "lib/cart.rb" })),
                       chat_result("c1", "read", body, "t1"),
@@ -343,8 +351,8 @@ RSpec.describe Samagotchi::LLMContextStale do
                       chat_result("c2", "read", body, "t2")]
       original = conversation[2]
 
-      expect(described_class.apply!(conversation, now: now, root: root).map(&:id)).to eq(%w[t1])
-      expect(described_class.apply!(conversation, now: now, root: root)).to be_empty
+      expect(apply!(conversation).map(&:id)).to eq(%w[t1])
+      expect(apply!(conversation)).to be_empty
 
       sent = Samagotchi::LLMContextView.new(strategy: [:stale]).messages(conversation)
       expect(sent[2][:content]).to eq("[read] lib/cart.rb: superseded by a later read")

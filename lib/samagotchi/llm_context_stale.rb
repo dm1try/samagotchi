@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require "time"
 require_relative "tool_response"
 require_relative "tool_ids"
 require_relative "llm_context_edit"
@@ -32,11 +31,10 @@ module Samagotchi
   # "[name]" leads (ToolResponse.runs_named; a corrected call's "ran as:"
   # line) is left alone.
   #
-  # An edit names its run by its ToolIds id (ToolIds.refs_at: stored, or
-  # derived for a legacy entry) and is saved on the entry
-  # (LLMContextEdit.store) applied at once: the request about to be sent is
-  # the first with the stub (apply next_request; payoff and turn_end come
-  # later). A run with any edit already keeps it.
+  # A stub names its run by its ToolIds id (ToolIds.refs_at: stored, or
+  # derived for a legacy entry); LLMContextApply saves it on the entry
+  # (LLMContextEdit.store) when its rule lets it through. A run with any
+  # edit already keeps it.
   module LLMContextStale
     BY = "chi"
     READ = "read"
@@ -70,26 +68,6 @@ module Samagotchi
     end
 
     module_function
-
-    # Saves the stale edits +conversation+ doesn't have yet on its entries.
-    # @return [Array<LLMContextEdit>] the edits saved
-    def apply!(conversation, now: Time.now.utc.iso8601(3), root: Dir.pwd)
-      edits(conversation, now: now, root: root).map do |index, edit|
-        LLMContextEdit.store(conversation[index], edit)
-        edit
-      end
-    end
-
-    # The stale edits not yet on +conversation+'s entries, each with the
-    # index of the entry it goes on. +root+: what a relative path is
-    # relative to (the tools read from the process's directory).
-    # @return [Array<Array(Integer, LLMContextEdit)>]
-    def edits(conversation, now:, root: Dir.pwd)
-      found(conversation, root: root).map do |stale|
-        [stale.run.index, LLMContextEdit.new(id: stale.run.ref.id, kind: :stale, note: stale.note, by: BY, staged_at: now,
-                                             applied_at: now)]
-      end
-    end
 
     # The reads to stub that have no edit yet: each read, the first later
     # run that superseded it (+by+; the replay benchmark applies the edit

@@ -86,8 +86,9 @@ module Samagotchi
       # The kernel's tools.
       def tools = @kernel.tools
 
-      # The strategy's own edits before a request (KernelLoop#apply_llm_context!).
-      def apply_llm_context!(conversation) = @kernel.apply_llm_context!(conversation)
+      # The strategy's own edits before a request and at turn end
+      # (KernelLoop#apply_llm_context!).
+      def apply_llm_context!(conversation, **) = @kernel.apply_llm_context!(conversation, **)
 
       # engine-format conversation -> OpenAI wire messages. Model turns are
       # thought-stripped and carry their tool_calls; tool responses go as tool
@@ -432,8 +433,9 @@ module Samagotchi
         # One streamed request. Returns [response, nil], or [reason, partial
         # text] when it was cancelled.
         def generate(iteration)
-          # The strategy's new edits first (stale): this request sends them.
-          @loop.apply_llm_context!(@conversation)
+          # The strategy's edits the apply rule lets through first (stale):
+          # this request sends them.
+          @loop.apply_llm_context!(@conversation, context: @context)
           window = @window = @loop.context_window(@model_name)
           observe_context(iteration, window)
           retry_generation = @empty_retry.take_sampling!
@@ -614,6 +616,9 @@ module Samagotchi
         end
 
         def result(text, exhausted:)
+          # The model answered: the staged edits reach the session now (a
+          # turn that ran out of steps is mid-task; they wait).
+          @loop.apply_llm_context!(@conversation, moment: :turn_end) unless exhausted
           ModelResult.new(text: text, conversation: @loop.plain(@conversation), exhausted: exhausted,
                           tool_activity: @tool_activity, empty_steps: @empty_steps, empty_retries: @empty_retry.attempts,
                           context_status: @context.display)

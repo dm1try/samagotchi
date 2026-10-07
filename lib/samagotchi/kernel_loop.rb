@@ -26,7 +26,7 @@ require_relative "tool_runner"
 require_relative "tool_response"
 require_relative "tool_ids"
 require_relative "llm_context_view"
-require_relative "llm_context_stale"
+require_relative "llm_context_apply"
 require_relative "answer_display"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
@@ -199,7 +199,10 @@ module Samagotchi
         turn.iteration = iteration_index + 1
         outcome = iterate(turn)
         return outcome if outcome.is_a?(LLM::ModelResult)
-        break if outcome == :answer
+        next unless outcome == :answer
+
+        turn.answered = true
+        break
       rescue Client::RequestCancelled => e
         emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: e.reason,
                    stopped_by: turn.cancel_controller&.stopped_by)
@@ -251,7 +254,7 @@ module Samagotchi
     Turn = Struct.new(:conversation, :context, :empty_retry, :tool_activity, :buffer, :streamed_thinking, :qwen_attempts,
                       :qwen_partial, :prefill, :pending_tool_calls, :model_name, :pending_input, :on_stream_event,
                       :cancel_controller, :cap, :emit, :iteration, :empty_steps, :ended_empty, :malformed_retried,
-                      :uncached_next, keyword_init: true)
+                      :uncached_next, :answered, keyword_init: true)
     # One request: the prompt and its images as sent, the images' token
     # estimate, and the window it was measured against.
     Request = Struct.new(:prompt, :images, :image_tokens, :window, :prefill, keyword_init: true)
@@ -308,7 +311,7 @@ module Samagotchi
     # (the prompt cache keeps its prefix), and the prompt is formatted again
     # with it.
     def prepare_request(turn)
-      apply_llm_context!(turn.conversation)
+      apply_llm_context!(turn.conversation, context: turn.context)
       prompt, images = format_prompt(turn)
       image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(turn.conversation)
       window = ContextWindow.resolve(client: @client, model: turn.model_name, setting: @turn_settings.window_setting)
@@ -558,6 +561,10 @@ module Samagotchi
     # then the answer shows only its text.
     def finish(turn)
       exhausted = turn.pending_tool_calls && tool_response_turn?(turn.conversation.last)
+      # The model answered: the staged edits reach the session now (a turn
+      # that ran out of steps, on tool results or on a retry's nudge, is
+      # mid-task; they wait).
+      apply_llm_context!(turn.conversation, moment: :turn_end) if turn.answered
       # An empty answer left the conversation: an earlier model message
       # isn't this turn's answer.
       output = turn.ended_empty ? "" : strip_thought_blocks(last_model_content(turn.conversation))
@@ -745,22 +752,37 @@ module Samagotchi
       LLMContextView.new(strategy: llm_context&.strategy || LLMContextView::NONE)
     end
 
-    # Before each request of both loops (and the warm-up, on its own copy):
-    # the strategy's layers that edit on their own save their new edits on
-    # +conversation+'s entries, applied at once (apply next_request), so
-    # the request about to be sent is the first with the stubs. stale
-    # (LLMContextStale) is the one so far; none changes nothing.
-    # @return [Array<LLMContextEdit>] the edits saved
-    def apply_llm_context!(conversation, llm_context = @turn_settings&.llm_context, warmup: false)
-      return [] unless llm_context_view(llm_context).layers.include?(:stale)
+    # Before each request of both loops (+moment+ :request; the warm-up
+    # too, on its own copy, as the next turn's first request) and at the
+    # end of a turn the model answered (:turn_end): the strategy's layers
+    # stage their edits on +conversation+ and the apply rule
+    # (LLMContextApply, llm_context.apply) saves the batch it lets through
+    # as applied, so the request about to be sent (or the next turn's
+    # first, and the warm-up) is the first with the stubs. +context+: the
+    # turn's ContextStatus (payoff applies in its top bucket). none changes
+    # nothing. Logged as llm_context_apply when a batch is applied.
+    # @return [LLMContextApply::Outcome]
+    def apply_llm_context!(conversation, llm_context = @turn_settings&.llm_context, moment: :request, context: nil,
+                           warmup: false)
+      view = llm_context_view(llm_context)
+      return LLMContextApply::Outcome.none if view.none?
 
-      edits = LLMContextStale.apply!(conversation)
-      unless edits.empty? || warmup
-        Log.info(:model, "llm_context_stale", stubbed: edits.size, ids: edits.map(&:id).join(","),
-                                              model: @turn_settings&.model_name)
-      end
-      edits
+      outcome = LLMContextApply.run!(conversation, layers: view.layers, rule: llm_context.apply, moment: moment,
+                                                   protect_steps: llm_context.protect_steps,
+                                                   top_bucket: context&.top_bucket? || false,
+                                                   changes: llm_context.stale_edits)
+      log_llm_context(outcome, llm_context, moment) if outcome.applied? && !warmup
+      outcome
     end
+
+    def log_llm_context(outcome, llm_context, moment)
+      Log.info(:model, "llm_context_apply", rule: llm_context.apply, at: moment, why: outcome.why,
+                                            applied: outcome.applied.size, ids: outcome.applied.map(&:id).join(","),
+                                            staged: outcome.staged, freed: (outcome.freed_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
+                                            tail: (outcome.tail_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
+                                            model: @turn_settings&.model_name)
+    end
+    private :log_llm_context
 
     # Public wrapper so other loops (e.g. the chat loop) can strip
     # per-profile thought blocks from finished model text without duplicating the

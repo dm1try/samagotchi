@@ -2,6 +2,11 @@
 
 require "spec_helper"
 require "samagotchi/llm_context_apply"
+require "samagotchi/kernel_loop"
+require "samagotchi/llm/chat_loop"
+require "tmpdir"
+require_relative "support/fake_chat_adapter"
+require_relative "support/test_kernel"
 
 RSpec.describe Samagotchi::LLMContextApply do
   let(:now) { "2026-10-07T18:00:00.000Z" }
@@ -181,5 +186,163 @@ RSpec.describe Samagotchi::LLMContextApply do
 
     expect(shared.keys).to eq(%w[t9])
     expect(conversation[3][:edits].keys).to eq(%w[t9 t1])
+  end
+
+  describe "in the loops" do
+    let(:dir) { Dir.mktmpdir("chi-apply") }
+    let(:file) { File.join(dir, "cart.rb").tap { |path| File.write(path, "#{big}\n") } }
+    let(:others) { (1..3).map { |n| File.join(dir, "o#{n}.rb").tap { |path| File.write(path, "x\n") } } }
+
+    after { FileUtils.remove_entry(dir) }
+
+    def strategy(rule, protect_steps: 3, stale_edits: true)
+      Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config, apply: rule,
+                                                   protect_steps: protect_steps, stale_edits: stale_edits)
+    end
+
+    def qwen_call(name, params)
+      body = params.map { |key, value| "<parameter=#{key}>\n#{value}\n</parameter>" }.join("\n")
+      "<tool_call>\n<function=#{name}>\n#{body}\n</function>\n</tool_call>"
+    end
+
+    def under(kernel, llm_context)
+      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)
+      kernel
+    end
+
+    # The native loop on +steps+ (the model's answers in order): the prompts sent, the result, the kernel.
+    def native(llm_context, steps)
+      sent = []
+      client = test_client
+      allow(client).to receive(:complete) do |prompt, on_chunk: nil, **|
+        sent << prompt
+        text = steps.shift
+        on_chunk&.call(content: text, payload: { "content" => text })
+        text
+      end
+      kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), llm_context)
+      [sent, kernel.run([head, { role: "user", content: "go" }], max_iterations: 10), kernel]
+    end
+
+    def read_twice = [qwen_call("read", "path" => file), qwen_call("read", "path" => file), "Done."]
+
+    def stub_line = "[read] #{file}: superseded by a later read"
+
+    it "next_request: the stub reaches the request after the second read" do
+      sent, = native(strategy(:next_request), read_twice)
+
+      expect(sent.map { |prompt| prompt.include?(stub_line) }).to eq([false, false, true])
+    end
+
+    it "turn_end: no request of the turn has it; the turn's result does, and the warm-up warms it" do
+      sent, result, kernel = native(strategy(:turn_end), read_twice)
+
+      expect(sent.none? { |prompt| prompt.include?(stub_line) }).to be(true)
+      first = result.conversation.find { |entry| entry[:role] == "tool_response" }
+      expect(Samagotchi::LLMContextEdit.on(first).values.map(&:applied?)).to eq([true])
+      expect(kernel.warmup_prompt(result.conversation, llm_context: strategy(:turn_end)).first).to include(stub_line)
+    end
+
+    it "payoff: holds a read-driven stub back (its tail is longer) until turn end" do
+      sent, result, = native(strategy(:payoff), read_twice)
+
+      expect(sent.none? { |prompt| prompt.include?(stub_line) }).to be(true)
+      expect(result.conversation.count { |entry| entry.key?(:edits) }).to eq(1)
+    end
+
+    it "payoff: applies an edit-driven stub mid-turn once protect_steps have passed and it frees more than the tail" do
+      steps = [qwen_call("read", "path" => file),
+               qwen_call("edit", "path" => file, "old_text" => "1: line 1 of the cart", "new_text" => "1: one"),
+               *others.map { |other| qwen_call("read", "path" => other) }, "Done."]
+      stub = "[read] #{file}: superseded by a later edit"
+
+      sent, = native(strategy(:payoff), steps)
+
+      expect(sent.map { |prompt| prompt.include?(stub) }).to eq([false, false, false, false, false, true])
+    end
+
+    it "stubs no read an edit superseded with stale_edits off (the default)" do
+      steps = [qwen_call("read", "path" => file),
+               qwen_call("edit", "path" => file, "old_text" => "1: line 1 of the cart", "new_text" => "1: one"), "Done."]
+
+      _, result, = native(strategy(:turn_end, protect_steps: 0, stale_edits: false), steps)
+
+      expect(result.conversation.count { |entry| entry.key?(:edits) }).to eq(0)
+    end
+
+    it "leaves a turn that ran out of steps on an empty-answer retry as it was (not answered)" do
+      _, result, = native(strategy(:turn_end), [qwen_call("read", "path" => file), qwen_call("read", "path" => file), "", ""])
+      expect(result.conversation.count { |entry| entry.key?(:edits) }).to eq(1)
+
+      sent = []
+      client = test_client
+      steps = [qwen_call("read", "path" => file), qwen_call("read", "path" => file), ""]
+      allow(client).to receive(:complete) do |prompt, on_chunk: nil, **|
+        sent << prompt
+        text = steps.shift || ""
+        on_chunk&.call(content: text, payload: { "content" => text })
+        text
+      end
+      kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), strategy(:turn_end))
+      cut_short = kernel.run([head, { role: "user", content: "go" }], max_iterations: 3)
+
+      expect(cut_short.conversation.count { |entry| entry.key?(:edits) }).to eq(0)
+    end
+
+    it "keeps the latest read of a file the last steps edited, at turn end too" do
+      steps = [qwen_call("read", "path" => file),
+               qwen_call("edit", "path" => file, "old_text" => "1: line 1 of the cart", "new_text" => "1: one"), "Done."]
+
+      _, kept, = native(strategy(:turn_end), steps.dup)
+      File.write(file, "#{big}\n")
+      _, stubbed, = native(strategy(:turn_end, protect_steps: 0), steps)
+
+      expect(kept.conversation.count { |entry| entry.key?(:edits) }).to eq(0)
+      expect(stubbed.conversation.count { |entry| entry.key?(:edits) }).to eq(1)
+    end
+
+    it "leaves a turn that ran out of steps mid-task as it was" do
+      _, result, = native(strategy(:turn_end), read_twice)
+      expect(result.conversation.count { |entry| entry.key?(:edits) }).to eq(1)
+
+      sent = []
+      client = test_client
+      allow(client).to receive(:complete) do |prompt, on_chunk: nil, **|
+        sent << prompt
+        text = qwen_call("read", "path" => file)
+        on_chunk&.call(content: text, payload: { "content" => text })
+        text
+      end
+      kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), strategy(:turn_end))
+      exhausted = kernel.run([head, { role: "user", content: "go" }], max_iterations: 3)
+
+      expect(exhausted).to be_exhausted
+      expect(exhausted.conversation.count { |entry| entry.key?(:edits) }).to eq(0)
+    end
+
+    describe "the chat loop" do
+      def chat(llm_context)
+        adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "read", { "path" => file }]),
+                                      FakeChatAdapter.tools(["c2", "read", { "path" => file }]),
+                                      FakeChatAdapter.text("Done."))
+        result = Samagotchi::LLM::ChatLoop.new(kernel: under(test_kernel, llm_context), adapter: adapter)
+                                          .complete(messages: [head, { role: "user", content: "go" }], model_name: "m",
+                                                    max_iterations: 5)
+        stubbed = adapter.requests.map do |request|
+          request[:messages].any? { |message| message[:tool_call_id] == "c1" && message[:content] == stub_line }
+        end
+        [stubbed, result]
+      end
+
+      it "sends the stub from the next request under next_request, and only from the next turn under turn_end" do
+        expect(chat(strategy(:next_request)).first).to eq([false, false, true])
+
+        stubbed, result = chat(strategy(:turn_end))
+        expect(stubbed).to eq([false, false, false])
+        wire = Samagotchi::LLM::ChatLoop.new(kernel: under(test_kernel, strategy(:turn_end)), adapter: FakeChatAdapter.new)
+                                        .wire_messages(result.conversation)
+        expect(wire.find { |message| message[:tool_call_id] == "c1" }[:content]).to eq(stub_line)
+      end
+    end
   end
 end
