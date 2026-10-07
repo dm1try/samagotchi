@@ -65,6 +65,22 @@ RSpec.describe Samagotchi::LLMContextStale do
         .to eq(["lib/cart.rb lines 5-30: superseded by a later edit", "lib/tax.rb: superseded by a later write"])
     end
 
+    it "names a later read as what superseded a read, even after an edit of it, so only a read nothing but a change superseded is a change" do
+      conversation = [head,
+                      chat_model(chat_call("c1", "read", { "path" => "lib/cart.rb" }), chat_call("c2", "read", { "path" => "lib/tax.rb" })),
+                      chat_result("c1", "read", body, "t1"), chat_result("c2", "read", body, "t2"),
+                      chat_model(chat_call("c3", "edit", { "path" => "lib/cart.rb", "old_text" => "a", "new_text" => "b" }),
+                                 chat_call("c4", "edit", { "path" => "lib/tax.rb", "old_text" => "a", "new_text" => "b" })),
+                      chat_result("c3", "edit", "Edited lib/cart.rb", "t3"), chat_result("c4", "edit", "Edited lib/tax.rb", "t4"),
+                      chat_model(chat_call("c5", "read", { "path" => "lib/cart.rb" })),
+                      chat_result("c5", "read", body, "t5")]
+
+      found = described_class.found(conversation, root: root, changes: true)
+
+      expect(found.map { |stale| [stale.run.ref.id, stale.by.ref.id, stale.change?] }).to eq([["t1", "t5", false], ["t2", "t4", true]])
+      expect(found.first.note).to eq("lib/cart.rb: superseded by a later read")
+    end
+
     it "keeps a read only part of a later read covers, or a later read or edit that failed" do
       conversation = [head,
                       chat_model(chat_call("c1", "read", { "path" => "lib/cart.rb", "start_line" => 1, "end_line" => 30 })),
@@ -269,6 +285,53 @@ RSpec.describe Samagotchi::LLMContextStale do
 
         expect(last.find { |message| message[:tool_call_id] == "c1" }[:content]).to include("1: line 1 of the cart")
       end
+    end
+  end
+
+  describe ".protected_ids" do
+    def read(id, path) = [chat_model(chat_call("c#{id}", "read", { "path" => path })), chat_result("c#{id}", "read", body, "t#{id}")]
+
+    def change(id, path, text = "Edited #{path}")
+      [chat_model(chat_call("c#{id}", "edit", { "path" => path, "old_text" => "a", "new_text" => "b" })),
+       chat_result("c#{id}", "edit", text, "t#{id}")]
+    end
+
+    it "names every read of each file an edit touched in the last steps, a failed edit too" do
+      conversation = [head, *read(1, "lib/cart.rb"), *read(2, "lib/cart.rb"), *read(3, "lib/tax.rb"), *read(4, "lib/old.rb"),
+                      *change(5, "lib/old.rb"), *change(6, "lib/cart.rb"), *change(7, "lib/tax.rb", "Error: old text not found"),
+                      chat_model(chat_call("c8", "read", { "path" => "lib/tax.rb" })),
+                      chat_result("c8", "read", "Error: file not found", "t8")]
+
+      expect(described_class.protected_ids(conversation, steps: 3, root: root)).to eq(Set["t1", "t2", "t3", "t8"])
+      expect(described_class.protected_ids(conversation, steps: 4, root: root)).to eq(Set["t1", "t2", "t3", "t4", "t8"])
+      expect(described_class.protected_ids(conversation, steps: 0, root: root)).to be_empty
+    end
+
+    it "keeps an earlier range read of the file as well as the latest one (the edit may be in either)" do
+      ranged = lambda do |id, first, last|
+        [chat_model(chat_call("c#{id}", "read", { "path" => "lib/a.rb", "start_line" => first, "end_line" => last })),
+         chat_result("c#{id}", "read", body, "t#{id}")]
+      end
+      conversation = [head, *ranged.call(1, 1, 100), *ranged.call(2, 300, 305), *change(3, "lib/a.rb")]
+
+      expect(described_class.protected_ids(conversation, steps: 3, root: root)).to eq(Set["t1", "t2"])
+    end
+
+    it "keeps the whole read when the later one came back as a preview or cut (it is the only complete copy)" do
+      cut = "#{body}\n[cut: 900 of 4000 chars; read it in parts]"
+      conversation = [head, *read(1, "lib/a.rb"),
+                      chat_model(chat_call("c2", "read", { "path" => "lib/a.rb" })), chat_result("c2", "read", cut, "t2"),
+                      *change(3, "lib/a.rb")]
+
+      expect(described_class.protected_ids(conversation, steps: 3, root: root)).to include("t1")
+    end
+
+    it "counts a step per model entry with calls, an answer between none" do
+      conversation = [head, *read(1, "lib/cart.rb"), *change(2, "lib/cart.rb"), { role: "model", content: "Done." },
+                      { role: "user", content: "next" }, *read(3, "lib/tax.rb"), *read(4, "lib/tax.rb")]
+
+      expect(described_class.protected_ids(conversation, steps: 3, root: root)).to eq(Set["t1"])
+      expect(described_class.protected_ids(conversation, steps: 2, root: root)).to be_empty
     end
   end
 
