@@ -19,6 +19,14 @@ and commands may change between minor versions. How releases are made:
   that reaches the system prompt: the identity memory, a model note or an overlay of either, by `memory_write`,
   `write` or `edit`, through a symlink or in any case of the name (`prompt-memory-write`), or a model overlay of any
   memory (`model-overlay-write`). A rule's `memory:` takes `overlay` and `prompt`. Run `chi update` to get it.
+- A session's own LLM context strategy, apply rule and budget, before the model's: `chi --llm-context stale,forget
+  --llm-context-apply turn_end --llm-context-budget 64k` at start (also `chi send --new`, and `--resume`),
+  `/llm-context` in the session (no arguments: each value and where it came from; `strategy`, `apply`, `budget`,
+  `default` to unset one, `reset`), and the web's `llm ctx` chip in the info bar. Saved with the session (kept by
+  `--resume` and forks, not by delegates); a change applies from the next turn's start, and its reply says what it
+  costs (forget on or off re-reads the prompt once; stale turned on stages the reads already superseded as one
+  batch; a layer turned off sends its stubs whole again). `/stats` and the turn log show the effective strategy and
+  its source. See [docs/configuration.md](docs/configuration.md) ("LLM context: a session's own strategy").
 
 ### Changed
 
