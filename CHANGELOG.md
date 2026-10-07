@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - `llm_context.strategy` (only `none` for now), and per model or host `llm_context_strategy`. See
   [docs/configuration.md](docs/configuration.md).
+- For development: `script/llm_context_bench.rb`, a replay benchmark for the LLM context strategies over a folder of
+  stored sessions (offline; `--live` asks a model, for picks). It isn't part of the gem. See
+  [docs/internals/llm-context-bench.md](docs/internals/llm-context-bench.md).
 
 ## [0.38.0] - 2026-10-07
 
