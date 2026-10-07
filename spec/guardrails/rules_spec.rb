@@ -102,6 +102,10 @@ RSpec.describe Samagotchi::Guardrails::Rules do
                                                                    msg: "mcp_call targets: acts_as execute dropped: it is a core tool"))
         expect(Samagotchi::Log).to have_received(:warn)
           .with(:plugins, "plugin_acts_as_dropped", hash_including(acts_as: "save_note", msg: /bundle notes's tool/))
+        # Logged once per tool and session (its registry), not at each call.
+        verdict_via("execute", set)
+        expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "plugin_acts_as_dropped",
+                                                             hash_including(acts_as: "execute")).once
         # A core tool this session doesn't have (a child's delegate) is still a core tool.
         registry.unregister("delegate")
         expect(Samagotchi::Guardrails::Targets.for({ name: "mcp_call", args: { "tool" => "delegate" } }, context,

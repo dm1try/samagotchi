@@ -149,10 +149,22 @@ module Samagotchi
                 end
         return name unless whose
 
-        Log.warn(:plugins, "plugin_acts_as_dropped", tool: entry.name, acts_as: name,
-                                                     msg: "#{entry.name} targets: acts_as #{name} dropped: it is #{whose}")
+        if first_drop?(registry, entry.name, name)
+          Log.warn(:plugins, "plugin_acts_as_dropped", tool: entry.name, acts_as: name,
+                                                       msg: "#{entry.name} targets: acts_as #{name} dropped: it is #{whose}")
+        end
         nil
       end
+
+      # The drops logged, per registry (a session's): each tool's acts_as
+      # once, not at every call (targets run several times a call).
+      DROPS_LOGGED = ObjectSpace::WeakKeyMap.new
+      DROPS_LOCK = Mutex.new
+
+      def self.first_drop?(registry, tool, acts_as)
+        DROPS_LOCK.synchronize { !(DROPS_LOGGED[registry] ||= Set.new).add?([tool, acts_as]).nil? }
+      end
+      private_class_method :first_drop?
 
       # The longest label: the question takes from targets:.
       LABEL_CHARS = 80
