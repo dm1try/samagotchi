@@ -63,3 +63,10 @@ a model that follows tool instructions: a small model may fail some of them.
 `spec/integration/omlx_spec.rb` tests oMLX's model-id resolution and runs only with
 `SAMAGOTCHI_INTEGRATION_TRANSPORT=omlx`, against an oMLX server (a short model selector in
 `SAMAGOTCHI_INTEGRATION_MODEL`).
+
+## The llm_context replay benchmark
+
+`ruby script/llm_context_bench.rb SESSIONS_DIR` replays stored sessions offline and scores the LLM context
+strategies (freed tokens, wrongly forgotten outputs, one-step re-reads, re-prefilled tokens). It is opt-in: the suite
+runs its code only on small synthetic sessions, never on yours. See
+[internals/llm-context-bench.md](internals/llm-context-bench.md).
