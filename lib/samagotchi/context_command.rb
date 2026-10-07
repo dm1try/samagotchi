@@ -452,22 +452,5 @@ module Samagotchi
       error_line("#{command_name}: #{message}")
       CLI::Exit::FAILED
     end
-
-    # Only a pipe or a file is read, as chi note does: a terminal or a
-    # socket would hang a script.
-    def read_stdin
-      return nil if @stdin.respond_to?(:tty?) && @stdin.tty?
-
-      if @stdin.respond_to?(:stat)
-        stat = @stdin.stat
-        return nil unless stat.pipe? || stat.file?
-      end
-
-      @stdin.read
-    end
-
-    def utf8(text)
-      text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
-    end
   end
 end

@@ -91,20 +91,6 @@ module Samagotchi
       options
     end
 
-    # Only a pipe or a file is read, as chi send does. A terminal means
-    # nobody piped a note in, and a socket a launcher or an agent's shell
-    # passes down may never close: waiting on either would hang a script.
-    def read_stdin
-      return nil if @stdin.respond_to?(:tty?) && @stdin.tty?
-
-      if @stdin.respond_to?(:stat)
-        stat = @stdin.stat
-        return nil unless stat.pipe? || stat.file?
-      end
-
-      @stdin.read
-    end
-
     # --all: every live session. @return [Integer] exit status
     def deliver_to_live(text, source)
       ids = SessionManager.session_summaries(live: true, include_tests: Session.test_session_env?,
@@ -140,13 +126,6 @@ module Samagotchi
       when :queued then "queued: its worker adds it within a few seconds"
       else "waits for the session's next start (#{result.queued} #{result.queued == 1 ? "note" : "notes"} queued)"
       end
-    end
-
-    # The note as UTF-8 whatever the locale says: with no LANG/LC_* (an app
-    # started from Finder, launchd) stdin reads as US-ASCII and ARGV as
-    # binary. Invalid bytes become U+FFFD rather than an error.
-    def utf8(text)
-      text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
     end
   end
 end

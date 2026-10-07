@@ -225,21 +225,6 @@ module Samagotchi
       "#{ContextQuote.block(context)}#{message}"
     end
 
-    # Only a pipe or a file is read. A terminal means nobody piped anything
-    # in, and a socket a launcher or an agent's shell passes down may never
-    # close: with -m, waiting on either would hang a script. (A pipe the
-    # caller never closes still hangs, as it would for cat.)
-    def read_stdin
-      return nil if @stdin.respond_to?(:tty?) && @stdin.tty?
-
-      if @stdin.respond_to?(:stat)
-        stat = @stdin.stat
-        return nil unless stat.pipe? || stat.file?
-      end
-
-      @stdin.read
-    end
-
     # A worker session like the web start page's: saved as running with the
     # message before its worker spawns, so lists and the web show it at
     # once. The full id, so a script can pass it on. The model's host is
@@ -476,13 +461,6 @@ module Samagotchi
       when 1 then " with 1 image"
       else " with #{@images.size} images"
       end
-    end
-
-    # The text as UTF-8 whatever the locale says: with no LANG/LC_* (an app
-    # started from Finder, launchd) stdin reads as US-ASCII and ARGV as
-    # binary. Invalid bytes become U+FFFD rather than an error.
-    def utf8(text)
-      text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
     end
   end
 end

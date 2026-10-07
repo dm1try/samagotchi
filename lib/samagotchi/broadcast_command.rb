@@ -206,23 +206,5 @@ module Samagotchi
       value = hours.to_f
       "#{value == value.round ? value.round : value} #{value == 1 ? "hour" : "hours"}"
     end
-
-    # Only a pipe or a file is read, as chi note does: a terminal or a
-    # socket a launcher passes down may never close.
-    def read_stdin
-      return nil if @stdin.respond_to?(:tty?) && @stdin.tty?
-
-      if @stdin.respond_to?(:stat)
-        stat = @stdin.stat
-        return nil unless stat.pipe? || stat.file?
-      end
-
-      @stdin.read
-    end
-
-    # The note as UTF-8 whatever the locale says (see NoteCommand#utf8).
-    def utf8(text)
-      text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
-    end
   end
 end
