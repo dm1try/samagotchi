@@ -25,7 +25,7 @@ Tool behavior:
 Each memory entry may have a companion file named `<name>.<model-key>.md` in the same scope directory. When the entry is read under a matching model, the overlay body is appended automatically, separated by the standard `---` separator with a `Model-specific guidance (<key>):` header.
 
 - **Key derivation**: The harness normalizes the model name sent to the server, without its host prefix (`box:qwen3.6-35b-a3b` keys as `qwen3.6-35b-a3b`; an alias keys as its target, and the alias's own key is read when the target has no overlay) (lowercase, replace non-alphanumeric with `-`, squeeze dashes) to derive the file key. For example, `qwen3.6-35b-a3b` → `qwen3-6-35b-a3b`.
-- **Saving overlays**: Pass `current_model_only: true` to `memory_write` (the harness resolves the model key automatically). This writes the content as `<name>.<model-key>.md` and skips index maintenance.
+- **Saving overlays**: Pass `current_model_only: true` to `memory_write` (the harness resolves the model key automatically). This writes the content as `<name>.<model-key>.md` and skips index maintenance. The guardrails bundle asks before a model writes one (`model-overlay-write`). Habits of a model in general go in a [model note](#model-notes), which can name a family or all small models.
 - **Which key is mine**: the system prompt's `Model:` line names the session's model key, and `chi self` (via `execute`) has a `model key` row; both follow `/model`.
 - **In the system prompt**: the identity memory and the preloaded memories (`--memory`, config `memories:`) get their overlays too, as `memory_read` gives them; after `/model` the rebuilt prompt carries the new model's.
 - **Dormancy**: Overlays are only active under the matching model key; other models see the base entry only.
@@ -67,9 +67,22 @@ Working habits for this model:
   `identity` no longer drops a model note.
 - **Names**: no dot after `model_notes_` (`memory_write` refuses one: next to a
   note of the stem's name it would read as a model overlay); a dotted file
-  made by hand is skipped with a warning.
-- **Skipped**: a note whose first line isn't a `models:` line with at least one
-  entry is skipped with a warning (once, in the debug log) naming the file.
+  made by hand is skipped with a warning. No memory name takes a comma
+  (`memory_read` reads a comma list of names).
+- **The `models:` line**: `memory_write` refuses a `model_notes_` memory whose
+  first line isn't one (`models:`, any case, with at least one entry). A file
+  made by hand without one is skipped with a warning (once, in the debug log)
+  naming the file, and keeps its index line in the prompt.
+- **Asked first**: with the guardrails bundle, a model's write of a memory that
+  reaches the system prompt (identity, a model note, or an overlay of either)
+  with `memory_write`, `write` or `edit`, through a symlink or in any case of
+  the name, asks the user, once at a time (`prompt-memory-write`); so does a
+  model overlay of any memory (`model-overlay-write`). Only the user may allow
+  either, not a parent session. The prompt's `Model:` line tells the model that
+  guidance for it goes in a model note.
+- **Exact prefix**: only files named `model_notes_…` as written load; a
+  `MODEL_NOTES_x.md` (which a case-insensitive disk's listing also returns)
+  doesn't.
 - **Size**: they cost every request. A note over 1,500 characters, or all of a
   model's notes over 3,000, still loads but warns once.
 - **Timing**: a note takes effect at the next prompt build: a session's start,

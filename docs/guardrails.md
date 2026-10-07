@@ -249,7 +249,12 @@ A rule gives at least one of `tool`, `command`, `path`, `git`, `touches`, `rm` a
 `memory: remove` matches a `memory_write` with `remove: true` (it moves a
 memory into the bundle trash). Nothing else asks about it: a memory's file is
 never outside the repo (below), so without such a rule any session, a delegate
-child included, removes a memory unasked.
+child included, removes a memory unasked. `memory: overlay` matches a
+`memory_write` of a model overlay (`current_model_only: true`). `memory:
+prompt` matches a `memory_write`, `write` or `edit` of a memory file that
+reaches the system prompt (`identity.md`, `model_notes_*.md` and their
+overlays) right in a memories folder (the system scope's or a project's),
+resolved: symlinks, `..` and the case the disk has; the name in any case.
 
 `rm: outside_tmp` (shell tools) matches a command whose `rm -r -f` reaches
 outside the tmp folders (`$TMPDIR`, `/tmp`, `/var/tmp`): every such `rm` in a
@@ -454,7 +459,12 @@ once at a time and only by the user: it is the user's command, which also
 refuses to run inside a session; see [Broadcast](broadcast.md)); removing a
 memory with `memory_write remove: true` (`memory-remove`, once at a time:
 a delegate child could otherwise remove its parent's handoff unasked; see
-[Memory](memory.md)); and answering chi's
+[Memory](memory.md)); writing the identity memory, a model note or an overlay
+of either with `memory_write`, `write` or `edit` (`prompt-memory-write`), or a
+model overlay of any memory (`model-overlay-write`), each once at a time and
+only by the user: these change a model's system prompt for later sessions (see
+[Model notes](memory.md#model-notes); a shell command reaches them only under
+`shell-touches-chi`'s text heuristic); and answering chi's
 questions around `chi answer`: `chi --attach` or `chi -p` with stdin from a
 pipe, a here-string or a file (`chi-answer-piped`), and `curl`/`wget` to a
 session's `/answer` route (`chi-answer-http`), both once or for the session.

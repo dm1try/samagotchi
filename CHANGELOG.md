@@ -13,13 +13,19 @@ and commands may change between minor versions. How releases are made:
 - Model notes: a memory named `model_notes_<name>` whose first line is `models: <globs>|small` goes into the system
   prompt of every session on a matching model, in its own section after the identity memory (all matching notes,
   system scope then project). The habits of one model (or a family, or every small model) no longer ride on an
-  identity overlay keyed to one provider's id. `--mute model_notes_<name>` drops one for a session. See
-  [docs/memory.md](docs/memory.md) ("Model notes").
+  identity overlay keyed to one provider's id. `--mute model_notes_<name>` drops one for a session; `memory_write`
+  refuses a note without the `models:` line. See [docs/memory.md](docs/memory.md) ("Model notes").
+- The guardrails bundle (0.9.0) asks, once at a time and only the user may allow it, before a model writes a memory
+  that reaches the system prompt: the identity memory, a model note or an overlay of either, by `memory_write`,
+  `write` or `edit`, through a symlink or in any case of the name (`prompt-memory-write`), or a model overlay of any
+  memory (`model-overlay-write`). A rule's `memory:` takes `overlay` and `prompt`. Run `chi update` to get it.
 
 ### Changed
 
 - A guardrails rule's `models:` also takes a `|`-separated string (`"small|deepseek-*"`), as
   `guardrails.small_models` does.
+- The system prompt's `Model:` line says guidance for this model goes in a model note (it said a memory overlay).
+- `memory_write` refuses a memory name with a comma (`memory_read` reads a comma list of names).
 
 ### Fixed
 
