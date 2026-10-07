@@ -24,6 +24,7 @@ require_relative "muted_memories"
 require_relative "tool_activity"
 require_relative "tool_runner"
 require_relative "tool_response"
+require_relative "llm_context_view"
 require_relative "answer_display"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
@@ -321,7 +322,8 @@ module Samagotchi
     end
 
     def format_prompt(turn)
-      Prompt.format_with_images(turn.conversation, profile: @profile, vision: @turn_settings.vision, prefill: turn.prefill)
+      Prompt.format_with_images(llm_context_view.messages(turn.conversation), profile: @profile,
+                                                                             vision: @turn_settings.vision, prefill: turn.prefill)
     end
 
     # One streamed request, under the generation's own controller: a
@@ -710,11 +712,13 @@ module Samagotchi
     # The next turn's prompt up to where its user message starts, for the
     # turn-end warm-up (PromptWarmup): +messages+ as the next turn sends
     # them before its prompt (the history under the system head), formatted
-    # as #run formats them, with a stand-in user message cut off at its
-    # opener. Returns [prompt, images], or nil when the cut isn't found.
+    # as #run formats them (through the LLMContextView too), with a
+    # stand-in user message cut off at its opener. Returns [prompt,
+    # images], or nil when the cut isn't found.
     def warmup_prompt(messages)
       conversation = prepare_conversation(messages) << { role: "user", content: WARMUP_CUT }
-      prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @turn_settings.vision)
+      prompt, images = Prompt.format_with_images(llm_context_view.messages(conversation), profile: @profile,
+                                                                                         vision: @turn_settings.vision)
       head = prompt[0, prompt.index(WARMUP_CUT) || 0]
       cut = head.rindex(user_opener)
       cut&.positive? ? [head[0, cut], images] : nil
@@ -722,6 +726,13 @@ module Samagotchi
 
     WARMUP_CUT = "chi-warmup-cut"
     private_constant :WARMUP_CUT
+
+    # What both loops send of the conversation (LLMContextView): the
+    # prompt, the warm-up and the chat messages all format through it, so
+    # the warm-up warms the prompt the next turn sends.
+    def llm_context_view
+      LLMContextView.new
+    end
 
     # Public wrapper so other loops (e.g. the chat loop) can strip
     # per-profile thought blocks from finished model text without duplicating the

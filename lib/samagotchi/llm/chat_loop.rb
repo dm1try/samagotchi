@@ -100,7 +100,11 @@ module Samagotchi
       # message takes text only, so a run of tool results' images follows it
       # as one user message "[images from tool results]". Images the request
       # leaves out (ImagePlan) become placeholder lines in the text.
+      #
+      # The conversation goes through the kernel's LLMContextView first,
+      # as the native prompt does.
       def wire_messages(conversation)
+        conversation = @kernel.llm_context_view.messages(conversation)
         paired = paired_call_ids(conversation)
         plan = ImagePlan.new(conversation, vision)
         tool_images = []
