@@ -20,7 +20,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
   end
 
   it "uses a remote host's url and key variable" do
-    expect(recap_for("fw")).to include(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY", model: "small")
+    expect(recap_for("fw")).to have_attributes(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY", model: "small")
   end
 
   it "says in the session state whether recap is on, and when it would run (for an attached /recap)" do
@@ -36,22 +36,22 @@ RSpec.describe "Engine recap on a configured host", :recap do
   it "uses an explicit recap host and model for every attempt" do
     engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                                     recap: { host_ref: "fw", model: "fw:small" })
-    expect(engine.recap.target).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
-                                      model: "small", label: "fw:small")
+    expect(engine.recap.target.to_h).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
+                                           model: "small", label: "fw:small")
   end
 
   describe "with no recap config" do
     it "recaps with the session's own model on its host" do
       engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")
       expect(engine.recap).not_to be_nil
-      expect(engine.recap.target).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
-                                        model: "big", label: "fw:big")
+      expect(engine.recap.target.to_h).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
+                                             model: "big", label: "fw:big")
     end
 
     it "follows a /model switch at the next attempt" do
       engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")
       engine.instance_variable_set(:@effective_model_name, "box:m")
-      expect(engine.recap.target).to include(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "m")
+      expect(engine.recap.target).to have_attributes(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "m")
     end
 
     it "honours a scalar `recap: false` in the config file (the worker passes no recap:)" do
@@ -114,20 +114,20 @@ RSpec.describe "Engine recap on a configured host", :recap do
       expect do
         engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big", recap: { model: "small" })
       end.not_to output.to_stderr
-      expect(engine.recap.target).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "small")
+      expect(engine.recap.target.to_h).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "small")
     end
 
     it "takes recap.model from the environment the same way" do
       old = ENV["SAMAGOTCHI_RECAP_MODEL"]
       ENV["SAMAGOTCHI_RECAP_MODEL"] = "small"
       engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")
-      expect(engine.recap.target).to include(base_url: "http://box.test:8081/v1", model: "small")
+      expect(engine.recap.target).to have_attributes(base_url: "http://box.test:8081/v1", model: "small")
     ensure
       old.nil? ? ENV.delete("SAMAGOTCHI_RECAP_MODEL") : ENV["SAMAGOTCHI_RECAP_MODEL"] = old
     end
   end
 
   it "uses a local host's /v1" do
-    expect(recap_for("box")).to include(base_url: "http://box.test:8081/v1", api_key_env: nil)
+    expect(recap_for("box")).to have_attributes(base_url: "http://box.test:8081/v1", api_key_env: nil)
   end
 end

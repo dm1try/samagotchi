@@ -6,6 +6,7 @@ require "monitor"
 require "time"
 
 require_relative "idle_client"
+require_relative "idle_target"
 require_relative "output_formatter"
 require_relative "steer"
 require_relative "recap_store"
@@ -279,7 +280,7 @@ module Samagotchi
     # attempt (the session's current model, so a /model switch counts).
     # @param base_url [String] the OpenAI API base the recap asks
     # @param api_key_env [String, nil] the variable holding its key
-    # @param target [#call, nil] -> {base_url:, api_key_env:, model:, label:}
+    # @param target [#call, nil] -> IdleTarget
     def initialize(engine:, model: nil, base_url: nil, api_key_env: nil, target: nil,
                    inactivity: DEFAULT_INACTIVITY_SECONDS,
                    min_user_turns: DEFAULT_MIN_USER_TURNS,
@@ -292,7 +293,7 @@ module Samagotchi
 
       @engine = engine
       @target = target || lambda {
-        { base_url: base_url, api_key_env: api_key_env, model: model, label: model }
+        IdleTarget.new(base_url: base_url, api_key_env: api_key_env, model: model, label: model)
       }
       @inactivity = inactivity
       @min_user_turns = min_user_turns
@@ -455,7 +456,7 @@ module Samagotchi
 
       asked = target
       @in_flight = { thread: spawn_summarize(client_for(asked), prompt), generation: gen, deadline: @clock.call + @timeout,
-                     covered: parsed.size, covered_digest: self.class.digest(parsed.last), model: asked[:label] }
+                     covered: parsed.size, covered_digest: self.class.digest(parsed.last), model: asked.label }
       :started
     rescue StandardError
       :failed
@@ -534,9 +535,9 @@ module Samagotchi
     def client_for(asked)
       return @client_override if @client_override
 
-      key = asked.values_at(:base_url, :api_key_env, :model)
+      key = [asked.base_url, asked.api_key_env, asked.model]
       unless @client && @client_key == key
-        @client = IdleClient.new(model: asked[:model], base_url: asked[:base_url], api_key_env: asked[:api_key_env], timeout: @timeout)
+        @client = IdleClient.for(asked, timeout: @timeout)
         @client_key = key
       end
       @client

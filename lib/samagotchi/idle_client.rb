@@ -48,6 +48,13 @@ module Samagotchi
                                   stream: false, retries: false, timeout: timeout, env: env, purpose: "recap")
     end
 
+    # A client for +target+ (an IdleTarget: a recap's, ctx.ask_model's, a
+    # broadcast's triage model).
+    # @return [IdleClient]
+    def self.for(target, **)
+      new(model: target.model, base_url: target.base_url, api_key_env: target.api_key_env, **)
+    end
+
     THINK_RE = /<\|think\|.*?\|think\|>/m
     LITERAL_THINK_RE = /\[\[SAMAGOTCHI_LITERAL_THINK_OPEN\]\].*?\[\[SAMAGOTCHI_LITERAL_THINK_CLOSE\]\]/m
 

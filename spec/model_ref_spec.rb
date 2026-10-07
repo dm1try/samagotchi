@@ -200,7 +200,7 @@ RSpec.describe Samagotchi::ModelRef do
 
     it "#3 recap on openrouter with openai/gpt-4o sends openai/gpt-4o", :recap, step: :F2 do
       e = engine(model_name: "box:m", recap: { host_ref: "openrouter", model: "openai/gpt-4o" })
-      expect(e.recap.target).to include(base_url: "https://openrouter.test/api/v1", model: "openai/gpt-4o")
+      expect(e.recap.target).to have_attributes(base_url: "https://openrouter.test/api/v1", model: "openai/gpt-4o")
     end
 
     it "#4 qwen3:8b goes to the qwen3 host as 8b" do
@@ -234,7 +234,7 @@ RSpec.describe Samagotchi::ModelRef do
 
     it "#7 recap.model: small sends the alias's target", :recap, step: :F4 do
       e = engine(model_name: "box:m", recap: { host_ref: "box", model: "small" })
-      expect(e.recap.target).to include(base_url: "http://box.test:8081/v1", model: "gemma-small")
+      expect(e.recap.target).to have_attributes(base_url: "http://box.test:8081/v1", model: "gemma-small")
     end
 
     it "#7 recap with host_ref: openrouter and model: box:x warns and turns recap off", :recap, step: :F4 do
@@ -246,12 +246,12 @@ RSpec.describe Samagotchi::ModelRef do
 
     it "#7 recap.model: box:x without host_ref recaps on box", :recap, step: :F4 do
       e = engine(model_name: "box:m", recap: { model: "box:x" })
-      expect(e.recap.target).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "x", label: "box:x")
+      expect(e.recap.target.to_h).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "x", label: "box:x")
     end
 
     it "#7 recap.model: tiny (an alias for box:gemma-small) recaps on box", :recap, step: :F4 do
       e = engine(model_name: "box:m", recap: { model: "tiny" })
-      expect(e.recap.target).to include(base_url: "http://box.test:8081/v1", model: "gemma-small")
+      expect(e.recap.target).to have_attributes(base_url: "http://box.test:8081/v1", model: "gemma-small")
     end
 
     describe "F1: the resolved ref is stored, the typed name kept for models:" do

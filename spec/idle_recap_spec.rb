@@ -316,14 +316,14 @@ RSpec.describe Samagotchi::IdleRecap do
       seq = [1]
       engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
       allow(engine).to receive(:activity_seq) { seq[0] }
-      targets = [{ base_url: "http://a/v1", api_key_env: nil, model: "m1", label: "a:m1" }]
+      targets = [Samagotchi::IdleTarget.new(base_url: "http://a/v1", api_key_env: nil, model: "m1", label: "a:m1")]
       clients = []
       allow(Samagotchi::IdleClient).to receive(:new) { |**kw| clients << kw; double(summarize: nil) }
       idle = described_class.new(engine: engine, target: -> { targets.last }, inactivity: 0.0, clock: -> { base_time })
       drive(idle)
       seq[0] = 2
       drive(idle)
-      targets << { base_url: "http://b/v1", api_key_env: "K", model: "m2", label: "b:m2" }
+      targets << Samagotchi::IdleTarget.new(base_url: "http://b/v1", api_key_env: "K", model: "m2", label: "b:m2")
       seq[0] = 3
       drive(idle)
       expect(clients.map { |kw| kw[:model] }).to eq(%w[m1 m2])

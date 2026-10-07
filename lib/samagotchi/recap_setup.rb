@@ -3,6 +3,7 @@
 require_relative "config"
 require_relative "log"
 require_relative "idle_recap"
+require_relative "idle_target"
 require_relative "recap_store"
 
 module Samagotchi
@@ -41,60 +42,21 @@ module Samagotchi
       base_url = string_config(kwarg_config, :base_url) || registry_string("recap.base_url")
       host_ref = string_config(kwarg_config, :host_ref) || string_config(kwarg_config, :host) || registry_string("recap.host_ref")
       model = string_config(kwarg_config, :model) || registry_string("recap.model")
-      label = model
 
-      # The model as any model ref (ModelRef): its alias applied once, and
-      # its host (own or the alias's) picks the recap host when host_ref
-      # doesn't.
-      parsed = model && host_registry.model_ref(model)
-      target = nil
-      if base_url.nil? && host_ref.nil? && model.nil?
-        target = -> { session_target.call }
-      elsif base_url.nil? && host_ref.nil? && !parsed.host_name
-        # A model naming no host goes where a bare --model goes
-        # (HostRegistry#host_for_model: the default host unless another's
-        # list has it), resolved at each attempt.
-        target = lambda do
-          resolved = host_registry.resolve(model)
-          { base_url: resolved.openai_base_url, api_key_env: resolved.entry.api_key_env,
-            model: resolved.bare_model, label: label.to_s.strip }
-        end
-      else
-        host_ref ||= parsed.host_name if parsed && base_url.nil?
-        # If host_ref given, derive base_url (the host's OpenAI base) and its
-        # API key variable from the host_registry entry
-        api_key_env = nil
-        if host_ref && !host_ref.empty?
-          entry = host_registry.find_entry(host_ref)
-          if entry
-            base_url = entry.openai_base_url
-            api_key_env = entry.api_key_env
-            named = parsed&.host_conflict || parsed&.host_name
-            if named && named != entry.name
-              Log.warn(:recap, "model_host_mismatch",
-                       echo: "Warning: recap model '#{model}' names host '#{named}', not recap.host_ref '#{host_ref}'; recap disabled.",
-                       model: model, host_ref: host_ref)
-              return nil
-            end
-            model = parsed.id if parsed
-          else
-            Log.warn(:recap, "host_ref_unknown", echo: "Warning: recap host_ref '#{host_ref}' not found in hosts:; recap disabled.", host_ref: host_ref)
-            return nil
-          end
-        elsif parsed && !parsed.host_name
-          model = parsed.id
-        end
+      settings = { model: model, host_ref: host_ref, base_url: base_url, host_registry: host_registry }
+      target = if base_url.nil? && host_ref.nil? && model.nil?
+                 -> { session_target.call }
+               elsif !IdleTarget.host_named?(**settings)
+                 # A model naming no host goes where a bare --model goes
+                 # (HostRegistry#host_for_model: the default host unless
+                 # another's list has it), resolved at each attempt.
+                 -> { IdleTarget.resolve(**settings) }
+               else
+                 fixed = fixed_target(settings)
+                 return nil unless fixed
 
-        if base_url.to_s.strip.empty? || model.to_s.strip.empty?
-          Log.warn(:recap, "recap_unconfigured",
-                   echo: "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
-                         "Set recap: {host_ref:, model:} or SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:}), " \
-                         "or leave them all out to recap with the session's own model.")
-          return nil
-        end
-        fixed = { base_url: base_url.to_s.strip, api_key_env: api_key_env, model: model.to_s.strip, label: label.to_s.strip }
-        target = -> { fixed }
-      end
+                 -> { fixed }
+               end
 
       IdleRecap.new(
         engine: engine,
@@ -106,6 +68,30 @@ module Samagotchi
         store: RecapStore.new(session_id_lookup: -> { session_id.call }, state_dir_lookup: -> { state_dir.call })
       )
     end
+
+    # The recap's pinned host and model (IdleTarget.resolve), or nil after
+    # a warning when they can't be resolved (recap stays off).
+    # @return [IdleTarget, nil]
+    def self.fixed_target(settings)
+      IdleTarget.resolve(**settings)
+    rescue IdleTarget::Unresolved => e
+      case e.reason
+      when :host_ref_unknown
+        Log.warn(:recap, "host_ref_unknown", echo: "Warning: recap host_ref '#{e.host_ref}' not found in hosts:; recap disabled.",
+                                             host_ref: e.host_ref)
+      when :model_host_mismatch
+        Log.warn(:recap, "model_host_mismatch",
+                 echo: "Warning: recap model '#{e.model}' names host '#{e.named}', not recap.host_ref '#{e.host_ref}'; recap disabled.",
+                 model: e.model, host_ref: e.host_ref)
+      else
+        Log.warn(:recap, "recap_unconfigured",
+                 echo: "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
+                       "Set recap: {host_ref:, model:} or SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:}), " \
+                       "or leave them all out to recap with the session's own model.")
+      end
+      nil
+    end
+    private_class_method :fixed_target
 
     # recap.sentences as [min, max]; an invalid value warns and falls back to
     # the default range (the recap stays on).

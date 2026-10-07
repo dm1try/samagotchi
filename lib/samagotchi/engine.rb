@@ -2352,11 +2352,10 @@ module Samagotchi
     # @return [String] the answer
     def ask_side_model(request, timeout:, max_tokens:, cancel_controller:)
       target = session_model_recap_target
-      client = IdleClient.new(model: target[:model], base_url: target[:base_url], api_key_env: target[:api_key_env],
-                              timeout: timeout)
+      client = IdleClient.for(target, timeout: timeout)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       answer = client.ask(request, max_tokens: max_tokens, cancel_controller: cancel_controller)
-      Log.info(:plugins, "ask_model", model: target[:label], answer_model: answer.model, chars: answer.text.length,
+      Log.info(:plugins, "ask_model", model: target.label, answer_model: answer.model, chars: answer.text.length,
                                       ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
       answer.text
     end
@@ -2372,10 +2371,9 @@ module Samagotchi
     # The session's current model as a recap target: its host's OpenAI API
     # (native llama.cpp hosts serve /v1/chat/completions too), key variable
     # and bare model name, as a turn resolves them.
+    # @return [IdleTarget]
     def session_model_recap_target
-      target = @host_registry.resolve(@effective_model_name)
-      { base_url: target.openai_base_url, api_key_env: target.entry.api_key_env,
-        model: target.bare_model, label: @effective_model_name.to_s }
+      IdleTarget.of_model(@host_registry, @effective_model_name)
     end
 
     # Build the idle reminders job. Always created (reminders are opt-in
