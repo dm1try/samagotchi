@@ -24,6 +24,7 @@ require_relative "muted_memories"
 require_relative "tool_activity"
 require_relative "tool_runner"
 require_relative "tool_response"
+require_relative "tool_ids"
 require_relative "llm_context_view"
 require_relative "answer_display"
 require_relative "llm/model_result"
@@ -543,8 +544,9 @@ module Samagotchi
       runs = ToolResponse.run_batch(tool_runner, calls, iteration: turn.iteration, emit: turn.emit,
                                                         on_stream_event: turn.on_stream_event, cap: turn.cap)
       turn.tool_activity.concat(ToolResponse.activities(runs))
-      # One entry for the batch: the capped outputs joined (ToolResponse.joined).
-      turn.conversation << ToolResponse.joined(runs)
+      # One entry for the batch: the capped outputs joined (ToolResponse.joined),
+      # an id per run (ToolIds).
+      turn.conversation << ToolResponse.joined(runs, ids: ToolIds.next_ids(turn.conversation, runs.size))
       turn.pending_tool_calls = true
       :next
     end

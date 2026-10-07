@@ -981,6 +981,25 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  it "gives each result its own id (tool_ids), going on from the last turn's, and never sends them" do
+    backend.adapter = adapter = FakeChatAdapter.new(
+      tools(["c1", "execute", { "command" => "echo a" }], ["c2", "execute", { "command" => "echo b" }]), text("done"),
+      tools(["c1", "execute", { "command" => "echo c" }]), text("done again")
+    )
+
+    first = run
+    second = run(first.conversation + [{ role: "user", content: "again" }])
+
+    ids = second.conversation.select { |m| m[:role] == "tool_response" }.map { |m| m[:tool_ids] }
+    expect(ids).to eq([%w[t1], %w[t2], %w[t3]])
+    adapter.requests.each do |request|
+      request[:messages].each do |m|
+        expect(m.keys).not_to include(:tool_ids)
+        expect(m[:content].to_s).not_to match(/\bt[1-3]\b/)
+      end
+    end
+  end
+
   describe "a plugin tool's params line (tool_params)" do
     let(:registry) do
       Samagotchi::Tools::Builtins.registry.tap do |r|

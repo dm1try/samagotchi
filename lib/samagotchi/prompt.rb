@@ -112,18 +112,11 @@ module Samagotchi
 
     # A native tool_response entry (ToolResponse.joined: "[name]" outputs
     # joined by its SEPARATOR) as Gemma's template writes the results: one
-    # response:NAME{value:<|"|>…<|"|>} block per call. A part that doesn't
-    # open with a "[name]" is the previous output's own text.
+    # response:NAME{value:<|"|>…<|"|>} block per call (ToolResponse.split:
+    # a part that doesn't open with a "[name]" is the previous output's own
+    # text).
     def self.tool_response_blocks(content, profile)
-      runs = content.split(ToolResponse::SEPARATOR).each_with_object([]) do |part, acc|
-        if (match = part.match(/\A\[([^\]\s]+)\](?:\n| |\z)/))
-          acc << [match[1], match.post_match]
-        elsif acc.empty?
-          acc << ["unknown", part]
-        else
-          acc.last[1] = "#{acc.last[1]}#{ToolResponse::SEPARATOR}#{part}"
-        end
-      end
+      runs = ToolResponse.split(content).map { |run| [run.name || "unknown", run.body] }
       runs = [["unknown", ""]] if runs.empty?
       q = profile.string_delim
       runs.map do |name, body|

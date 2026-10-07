@@ -206,6 +206,22 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(tool_response).not_to have_key(:tool_diffs)
     end
 
+    it "gives each call of a batch its own id (tool_ids), going on from the last turn's, and never prompts them" do
+      prompts = []
+      calls = %(<|tool_call>call:execute{command: "echo a"}<tool_call|><|tool_call>call:execute{command: "echo b"}<tool_call|>)
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length.odd? ? calls : "done"
+      end
+
+      first = kernel.run([{ role: "user", content: "check" }])
+      second = kernel.run(first.conversation + [{ role: "user", content: "again" }])
+
+      ids = second.conversation.select { |m| m[:role] == "tool_response" }.map { |m| m[:tool_ids] }
+      expect(ids).to eq([%w[t1 t2], %w[t3 t4]])
+      prompts.each { |prompt| expect(prompt).not_to match(/\bt[1-4]\b/) }
+    end
+
     it "adds no tool_params for built-in calls" do
       allow(client).to receive(:complete).and_return(%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done")
       tool_response = kernel.run([{ role: "user", content: "check" }]).conversation.find { |m| m[:role] == "tool_response" }

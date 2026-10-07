@@ -16,6 +16,7 @@ require_relative "../context_window"
 require_relative "../context_note"
 require_relative "../tool_runner"
 require_relative "../tool_response"
+require_relative "../tool_ids"
 require_relative "../tool_declarations"
 require_relative "../vision_context"
 require_relative "../log"
@@ -569,12 +570,14 @@ module Samagotchi
         end
 
         # Each call's result goes on the conversation as it finishes, paired
-        # with its call (ToolResponse.single: the capped output).
+        # with its call (ToolResponse.single: the capped output), with the
+        # next id (ToolIds).
         def dispatch(tool_calls, iteration, cap)
           calls = tool_calls.map { |tool_call| NativeToolNormalizer.normalize(tool_call) }
           runs = ToolResponse.run_batch(@loop.tool_runner, calls, iteration: iteration, emit: method(:emit),
                                                                   on_stream_event: @on_stream_event, cap: cap) do |run, index|
-            @conversation << ToolResponse.single(run, tool_call_id: tool_calls[index].id)
+            @conversation << ToolResponse.single(run, tool_call_id: tool_calls[index].id,
+                                                      ids: ToolIds.next_ids(@conversation, 1))
           end
           @tool_activity.concat(ToolResponse.activities(runs))
         end

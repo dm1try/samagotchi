@@ -571,6 +571,31 @@ file2.rb")
       end.to output("Resumed session: #{resumed.id}\n").to_stderr
     end
 
+    # The tool outputs' ids (ToolIds) live on the saved entries: a resumed
+    # session's next tool call goes on from them, and both are on disk.
+    it "keeps the tool outputs' ids across --resume, the next one going on from them" do
+      Dir.mktmpdir("tool-ids") do |dir|
+        file = File.join(dir, "notes.txt")
+        File.write(file, "one\n")
+        call = %(<|tool_call>call:read{path:<|"|>#{file}<|"|>}<tool_call|>)
+        answers = [call, "read it", call, "read it again"]
+        prompts = []
+        allow(client).to receive(:complete) { |prompt| prompts << prompt; answers.shift }
+
+        first = described_class.new(prompt: "read the notes", client: client, non_interactive: true)
+        expect { expect { first.run }.to output("read it\n").to_stdout }.to output(/\ASession: (\S+)\n/).to_stderr
+        id = first.engine.session.id
+        # The process's lock on the session goes as bin/chi exits.
+        first.instance_variable_get(:@owner_lock)&.release
+        resumed = described_class.new(prompt: "again", client: client, non_interactive: true, session_id: id)
+        expect { expect { resumed.run }.to output("read it again\n").to_stdout }.to output(/Resumed session: #{id}/).to_stderr
+
+        saved = Samagotchi::Session.load(id).messages.select { |m| m[:role] == "tool_response" }
+        expect(saved.map { |m| m[:tool_ids] }).to eq([%w[t1], %w[t2]])
+        prompts.each { |prompt| expect(prompt).not_to match(/\bt[12]\b/) }
+      end
+    end
+
     # The retry line goes to stderr, as the REPL prints it in the turn.
     it "prints an empty answer's retry line on stderr with --non-interactive, the answer alone on stdout" do
       answers = ["", "done"]

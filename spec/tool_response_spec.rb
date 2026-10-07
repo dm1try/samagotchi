@@ -59,16 +59,18 @@ RSpec.describe Samagotchi::ToolResponse do
 
   describe ".joined" do
     it "is one entry: the capped outputs joined, every image in call order, per-call fields in call order" do
-      expect(described_class.joined(batch(%w[shots write broken]))).to eq(
+      expect(described_class.joined(batch(%w[shots write broken]), ids: %w[t4 t5 t6])).to eq(
         role: "tool_response",
         content: "[shots]\none\n\n---\n\n[write]\nwrote\n\n---\n\n[broken] Error",
         images: [shot], image_counts: [1, 0, 0],
-        tool_params: ["all", nil, nil], tool_labels: ["chrome: shots", nil, nil], tool_diffs: [nil, { path: "x" }, nil]
+        tool_params: ["all", nil, nil], tool_labels: ["chrome: shots", nil, nil], tool_diffs: [nil, { path: "x" }, nil],
+        tool_ids: %w[t4 t5 t6]
       )
     end
 
     it "leaves out what no call has" do
-      expect(described_class.joined(batch(%w[broken]))).to eq(role: "tool_response", content: "[broken] Error")
+      expect(described_class.joined(batch(%w[broken]), ids: %w[t1])).to eq(role: "tool_response", content: "[broken] Error",
+                                                                           tool_ids: %w[t1])
     end
   end
 
@@ -76,17 +78,35 @@ RSpec.describe Samagotchi::ToolResponse do
     it "is one call's entry with its id: the capped output and its own fields" do
       shots, write = batch(%w[shots write])
 
-      expect(described_class.single(shots, tool_call_id: "c1")).to eq(
+      expect(described_class.single(shots, tool_call_id: "c1", ids: %w[t1])).to eq(
         role: "tool_response", content: "[shots]\none", tool_call_id: "c1", images: [shot],
-        tool_params: "all", tool_labels: "chrome: shots"
+        tool_params: "all", tool_labels: "chrome: shots", tool_ids: %w[t1]
       )
-      expect(described_class.single(write, tool_call_id: "c2")).to eq(
-        role: "tool_response", content: "[write]\nwrote", tool_call_id: "c2", tool_diffs: { path: "x" }
+      expect(described_class.single(write, tool_call_id: "c2", ids: %w[t2])).to eq(
+        role: "tool_response", content: "[write]\nwrote", tool_call_id: "c2", tool_diffs: { path: "x" }, tool_ids: %w[t2]
       )
     end
   end
 
   it "names the saved-only keys (never sent to the model)" do
-    expect(described_class::SAVED_KEYS).to eq(%i[tool_params tool_labels tool_diffs])
+    expect(described_class::SAVED_KEYS).to eq(%i[tool_params tool_labels tool_diffs tool_ids])
+  end
+
+  describe ".split" do
+    it "splits a joined entry into its runs: a part without a lead goes on the run before it" do
+      runs = described_class.split("[read] a\n\n---\n\n[execute]\nb\n\n---\n\nmore\n\n---\n\n[write]")
+
+      expect(runs.map(&:name)).to eq(%w[read execute write])
+      expect(runs.map(&:lead)).to eq(["[read] ", "[execute]\n", "[write]"])
+      expect(runs.map(&:body)).to eq(["a", "b\n\n---\n\nmore", ""])
+    end
+
+    it "gives a first part without a lead no name, and joins back to the content with limit -1" do
+      content = "plain\n\n---\n\n[read] a\n\n---\n\n"
+      runs = described_class.split(content, -1)
+
+      expect(runs.map(&:name)).to eq([nil, "read"])
+      expect(runs.map(&:text).join(described_class::SEPARATOR)).to eq(content)
+    end
   end
 end
