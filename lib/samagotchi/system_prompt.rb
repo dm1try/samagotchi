@@ -68,10 +68,13 @@ module Samagotchi
     # server's KV cache for it, stay stable.
     # @param chat [Boolean] for the chat loop
     # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
-    def build(chat: false, thinking: nil)
+    # @param layers [Array<Symbol>] the turn's LLM context layers: the
+    #   native prompt declares the tools they add (Tools::Registry#entries)
+    def build(chat: false, thinking: nil, layers: [])
       @built ||= {}
-      @built[[chat, thinking]] ||= system_prompt_with_index(assist_system_prompt(chat: chat, thinking: thinking),
-                                                            chat: chat, thinking: thinking)
+      @built[[chat, thinking, layers]] ||= system_prompt_with_index(
+        assist_system_prompt(chat: chat, thinking: thinking, layers: layers), chat: chat, thinking: thinking, layers: layers
+      )
     end
 
     # Drops the built prompts: the next #build reads the profile, tools,
@@ -90,8 +93,9 @@ module Samagotchi
 
     # The base prompt (specs, plugins' declarations), with Gemma's tool
     # declarations at its end as #build has them.
-    def base(chat: false, thinking: nil)
-      with_tail_declarations(assist_system_prompt(chat: chat, thinking: thinking), chat: chat)
+    def base(chat: false, thinking: nil, layers: [])
+      with_tail_declarations(assist_system_prompt(chat: chat, thinking: thinking, layers: layers), chat: chat,
+                                                                                                  layers: layers)
     end
 
     # Names activated via preloaded --memory entries during prompt
@@ -113,13 +117,14 @@ module Samagotchi
 
     # ── Tool declarations ──────────────────────────────────────────────────────
 
-    def tool_declarations
+    def tool_declarations(layers)
+      schemas = ToolDeclarations.native_schemas(@tools_lookup.call, layers: layers)
       case profile.name
       when "qwen36"
-        ToolDeclarations.qwen_declarations(ToolDeclarations.native_schemas(@tools_lookup.call))
+        ToolDeclarations.qwen_declarations(schemas)
       else
         # Gemma 4 format
-        ToolDeclarations.gemma_declarations(ToolDeclarations.native_schemas(@tools_lookup.call))
+        ToolDeclarations.gemma_declarations(schemas)
       end
     end
 
@@ -148,7 +153,7 @@ module Samagotchi
     # @param chat [Boolean] for the chat loop: no tool declarations, call
     #   syntax or turn preamble (its tools go as schemas with each request)
     # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
-    def assist_system_prompt(chat: false, thinking: nil)
+    def assist_system_prompt(chat: false, thinking: nil, layers: [])
       return chat_system_prompt if chat
 
       hint = tool_call_hint
@@ -158,7 +163,7 @@ module Samagotchi
       tools = if gemma_tail_declarations?
                 "Your tools are declared at the end of this system prompt."
               else
-                "You have access to the following tools:\n\n#{tool_declarations}\n"
+                "You have access to the following tools:\n\n#{tool_declarations(layers)}\n"
               end
 
       <<~SYS
@@ -247,7 +252,7 @@ module Samagotchi
     # indexes (a memory write changes them) after both; the model, the
     # location and the session close the prompt (Gemma's tool declarations
     # still follow them).
-    def system_prompt_with_index(base, chat: false, thinking: nil)
+    def system_prompt_with_index(base, chat: false, thinking: nil, layers: [])
       thinking_token = chat ? "" : Thinking.native(thinking || turn_thinking, profile).system_token
       memory_sections = [
         "Project memories:\n#{read_memory_index("project")}",
@@ -257,15 +262,15 @@ module Samagotchi
                 project_specific_description, memory_sections]
       stable_text = stable.compact.join("\n")
       volatile = [current_model, project_location, current_session].compact
-      return with_tail_declarations(stable_text, chat: chat) if volatile.empty?
+      return with_tail_declarations(stable_text, chat: chat, layers: layers) if volatile.empty?
 
       prompt = "#{stable_text}\n#{volatile.join("\n")}"
       (@stable_lengths ||= {})[prompt] = stable_text.length + 1 if chat
-      with_tail_declarations(prompt, chat: chat)
+      with_tail_declarations(prompt, chat: chat, layers: layers)
     end
 
-    def with_tail_declarations(prompt, chat:)
-      chat || !gemma_tail_declarations? ? prompt : prompt.rstrip + tool_declarations
+    def with_tail_declarations(prompt, chat:, layers:)
+      chat || !gemma_tail_declarations? ? prompt : prompt.rstrip + tool_declarations(layers)
     end
 
     def gemma_tail_declarations? = profile.name == "gemma4"

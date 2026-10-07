@@ -75,10 +75,11 @@ module Samagotchi
       end
 
       # Tool definitions for the request: the schemas the native prompts are
-      # rendered from (the kernel's registry), with the chat-only enums and
-      # closed parameters.
+      # rendered from (the kernel's registry, the tools the turn's LLM
+      # context layers offer), with the chat-only enums and closed
+      # parameters.
       def tool_definitions
-        ToolDeclarations.chat_schemas(tools.schemas).map do |schema|
+        ToolDeclarations.chat_schemas(tools.schemas(layers: @kernel.llm_context_layers)).map do |schema|
           { type: "function", function: schema.slice(:name, :description, :parameters) }
         end
       end

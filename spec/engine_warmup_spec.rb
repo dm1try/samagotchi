@@ -74,7 +74,8 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
     calls = 0
     allow(Samagotchi::LLMContextStrategy).to receive(:resolve) do
       calls += 1
-      calls == 1 ? during : raise(ArgumentError, "bad config")
+      # The turn's system prompt (its tool layers) and its strategy resolve; the warm-up's don't.
+      calls <= 2 ? during : raise(ArgumentError, "bad config")
     end
     allow(kernel).to receive(:warmup_prompt).and_call_original
 

@@ -114,7 +114,7 @@ RSpec.describe "Engine#system_prompt names the model" do
   end
 
   it "is left out without a model lookup" do
-    prompt = Samagotchi::SystemPrompt.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { [] },
+    prompt = Samagotchi::SystemPrompt.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },
                                           session: -> {}, thinking: -> {})
     expect(prompt.build).not_to include("Model: this session runs on")
   end

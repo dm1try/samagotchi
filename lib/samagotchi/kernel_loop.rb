@@ -758,6 +758,10 @@ module Samagotchi
       LLMContextView.new(strategy: llm_context&.strategy || LLMContextView::NONE)
     end
 
+    # The turn's LLM context layers ([] under none): the tools they add
+    # (Tools::Registry#entries) are the turn's to offer and dispatch.
+    def llm_context_layers = @turn_settings&.llm_context&.active_layers || []
+
     # Before each request of both loops (+moment+ :request; the warm-up
     # too, on its own copy, as the next turn's first request) and at the
     # end of a turn the model answered (:turn_end): the strategy's layers
@@ -907,9 +911,9 @@ module Samagotchi
     private
 
     def dispatch(call)
-      entry = @tools[call[:name]]
+      entry = @tools.offered(call[:name], layers: llm_context_layers)
       unless entry
-        available = @tools.names.join(", ")
+        available = @tools.names(layers: llm_context_layers).join(", ")
         result = "Error: unknown tool '#{call[:name]}'. Available: #{available}"
         return {
           output: result,

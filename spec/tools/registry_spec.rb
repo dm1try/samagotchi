@@ -60,6 +60,43 @@ RSpec.describe Samagotchi::Tools::Registry do
     end
   end
 
+  describe "a tool gated by an LLM context layer" do
+    def gated_registry
+      extended_registry.tap do |registry|
+        registry.register("tidy", schema: schema.merge(name: "tidy"), handler: ->(*) { "tidied" }, layer: :forget)
+      end
+    end
+
+    it "is offered only to a turn under its layer, after the other built-ins, before the bundles' tools" do
+      registry = gated_registry
+      builtins = Samagotchi::Tools::Builtins.default.names
+      expect(registry.names).to eq(builtins + %w[echo])
+      expect(registry.schemas).not_to include(include(name: "tidy"))
+      expect(registry.names(layers: [:stale])).to eq(builtins + %w[echo])
+      expect(registry.names(layers: %i[stale forget])).to eq(builtins + %w[tidy echo])
+      expect(Samagotchi::ToolDeclarations.native_schemas(registry, layers: [:forget]).map { |s| s[:name] }).to include("tidy")
+      expect(registry.offered("tidy")).to be_nil
+      expect(registry.offered("tidy", layers: [:forget]).name).to eq("tidy")
+      expect(registry.offered("echo").name).to eq("echo")
+    end
+
+    it "is an unknown tool to the kernel and missing from the chat tools unless the turn runs under its layer" do
+      kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
+      kernel.tools = gated_registry
+      chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel)
+      names = -> { chat.tool_definitions.map { |tool| tool[:function][:name] } }
+
+      expect(kernel.dispatch_tool_call(name: "tidy", content: "")[:output]).to start_with("Error: unknown tool 'tidy'")
+      expect(names.call).not_to include("tidy")
+
+      resolved = Samagotchi::LLMContextStrategy::Resolved.new(layers: %i[stale forget], strategy: %i[stale forget],
+                                                              source: :config)
+      kernel.turn_settings = kernel.turn_settings.with(llm_context: resolved)
+      expect(kernel.dispatch_tool_call(name: "tidy", content: "")[:output]).to eq("[tidy]\ntidied")
+      expect(names.call).to include("tidy")
+    end
+  end
+
   it "unregisters a tool, and registers the name again after that" do
     registry = extended_registry
     expect(registry.unregister("echo").name).to eq("echo")

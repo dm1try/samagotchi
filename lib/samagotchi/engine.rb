@@ -1410,8 +1410,18 @@ module Samagotchi
       target ||= @host_registry.resolve(@effective_model_name)
       chat = target.entry.chat?
       level = chat ? nil : thinking_level(target)
-      @prompt_builder.build(chat: chat, thinking: level)
+      @prompt_builder.build(chat: chat, thinking: level, layers: llm_context_layers(target))
     end
+
+    # The LLM context layers +target+'s turns run under: the native prompt
+    # declares the tools they add (forget_outputs under forget), so a
+    # model switch may change the tool list. [] under none.
+    def llm_context_layers(target)
+      LLMContextStrategy.resolve(target, names: model_lookup_names(target)).active_layers
+    rescue StandardError
+      []
+    end
+    private :llm_context_layers
 
     # The base prompt (specs, plugins' declarations).
     def assist_system_prompt(chat: false, thinking: nil)

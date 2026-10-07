@@ -45,6 +45,10 @@ module Samagotchi
     # (stale_edits; off: later reads only).
     Resolved = Data.define(:layers, :strategy, :source, :apply, :protect_steps, :stale_edits) do
       def initialize(apply: DEFAULT_APPLY, protect_steps: DEFAULT_PROTECT_STEPS, stale_edits: false, **fields) = super
+
+      # The layers the turn runs under: none of them under none (an
+      # unbuilt or unknown layer's strategy too).
+      def active_layers = strategy == NONE ? [] : Array(strategy)
     end
 
     module_function

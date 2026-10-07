@@ -21,8 +21,14 @@ module Samagotchi
       # @!attribute preview [#call, nil] call → the activity line's params
       # @!attribute targets [#call, nil] call → what guardrail rules match
       # @!attribute source [String] "core", or the bundle that added it
-      Entry = Struct.new(:name, :schema, :handler, :label, :preview, :targets, :source, keyword_init: true) do
+      # @!attribute layer [Symbol, nil] the LLM context layer the tool
+      #   belongs to (LLMContextStrategy): offered only in a turn running
+      #   under it (forget_outputs, :forget); nil: always
+      Entry = Struct.new(:name, :schema, :handler, :label, :preview, :targets, :source, :layer, keyword_init: true) do
         def core? = source == "core"
+
+        # Offered in a turn under +layers+ (the turn's LLM context layers).
+        def offered?(layers) = layer.nil? || Array(layers).include?(layer)
       end
 
       def initialize
@@ -30,33 +36,44 @@ module Samagotchi
       end
 
       # @return [Entry]
-      def register(name, schema:, handler:, label: nil, preview: nil, targets: nil, source: "core")
+      def register(name, schema:, handler:, label: nil, preview: nil, targets: nil, source: "core", layer: nil)
         raise ArgumentError, "tool #{name} is already registered" if @entries.key?(name)
 
         @entries[name] = Entry.new(name: name, schema: schema, handler: handler, label: label, preview: preview,
-                                   targets: targets, source: source)
+                                   targets: targets, source: source, layer: layer)
       end
 
       # Remove a tool (a plugin's tool set changed after load).
       # @return [Entry, nil] the removed entry
       def unregister(name) = @entries.delete(name.to_s)
 
-      # @return [Entry, nil]
+      # @return [Entry, nil] whatever the turn offers
       def [](name) = @entries[name.to_s]
 
       def key?(name) = @entries.key?(name.to_s)
 
+      # The entry +name+ names when a turn under +layers+ offers it (the
+      # one a call dispatches to).
+      # @return [Entry, nil]
+      def offered(name, layers: [])
+        entry = self[name]
+        entry if entry&.offered?(layers)
+      end
+
+      # The tools a turn offers is per turn: +layers+, the turn's LLM
+      # context layers (LLMContextStrategy), adds the tools gated by them.
+      # Without layers (none, the default) the list is what it always was.
       # @return [Array<String>] in declaration order
-      def names = entries.map(&:name)
+      def names(layers: []) = entries(layers: layers).map(&:name)
 
       # @return [Array<Entry>] in declaration order
-      def entries
-        core, added = @entries.values.partition(&:core?)
+      def entries(layers: [])
+        core, added = @entries.values.select { |entry| entry.offered?(layers) }.partition(&:core?)
         core + added.sort_by { |entry| [entry.source.to_s, entry.name] }
       end
 
       # @return [Array<Hash>] the schemas, in declaration order
-      def schemas = entries.map(&:schema)
+      def schemas(layers: []) = entries(layers: layers).map(&:schema)
 
       def freeze
         @entries.freeze
