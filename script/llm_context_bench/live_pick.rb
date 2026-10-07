@@ -21,7 +21,10 @@ module LLMContextBench
   # of its text), every tool result led by its id "[#tN]", one per run,
   # chi's built-in chat tools plus the forget tool, and the policy's tail
   # line. A model that answers without the forget tool is asked once more
-  # with the tool forced (the spike did the same); the record says which.
+  # with the tool forced (the spike did the same); the record says which,
+  # and why (forced_because): "no_call", or "length" when the unforced
+  # reply was cut off at max_tokens (finish_reason "length") before it
+  # could call anything.
   #
   # A request that fails is saved as an error record and the run goes on,
   # except a payment error (PaymentStop): a 402, or an error that mentions
@@ -83,7 +86,7 @@ module LLMContextBench
     # asks OpenRouter for each request's cost (other servers ignore it).
     OPTIONS = { temperature: 0.6, max_tokens: 12_000, usage: { include: true } }.freeze
 
-    attr_reader :tool_name, :policy, :out_dir, :samples, :layout
+    attr_reader :tool_name, :policy, :out_dir, :samples, :layout, :totals
 
     # @param adapter [#chat] chi's chat client (LLM::OpenAIChat); nil for a
     #   dry run
@@ -105,6 +108,7 @@ module LLMContextBench
       @out_dir = out_dir
       @samples = samples
       @log = log
+      @totals = Hash.new(0)
     end
 
     # The adapter and bare model chi would use for +model_ref+ (a chat host
@@ -129,6 +133,7 @@ module LLMContextBench
     # @raise [PaymentStop] on a payment error; nothing is saved for its case
     def run(cases)
       FileUtils.mkdir_p(out_dir)
+      @totals = Hash.new(0)
       written = []
       cases.product((1..samples).to_a).each do |kase, sample|
         target = path(kase, sample)
@@ -140,6 +145,7 @@ module LLMContextBench
           raise PaymentStop.new(e.message, written: written)
         end
         File.write(target, JSON.generate(record))
+        count(record)
         @log.puts "picked #{kase.name} #{variant(sample)}"
         written << target
       end
@@ -150,6 +156,13 @@ module LLMContextBench
     # key out of credit, a provider's "insufficient balance").
     def self.payment_error?(error)
       error.status == 402 || error.is_a?(Samagotchi::LLM::OutOfCredits) || PAYMENT_RE.match?(error.message.to_s)
+    end
+
+    # The last run's counts, for its last line: "(1 forced, 1 of them after
+    # a reply cut at max_tokens; 0 errors)".
+    def summary
+      "#{totals[:forced]} forced, #{totals[:forced_length]} of them after a reply cut at max_tokens; " \
+        "#{totals[:errors]} errors"
     end
 
     # What a run would send: requests (one per case and sample, more when a
@@ -167,6 +180,7 @@ module LLMContextBench
       record = { "unforced" => unforced }
       if @force && Strategies::Picks.forget_calls(unforced).empty?
         record["forced"] = chat(request, OPTIONS.merge(tool_choice: { type: "function", function: { name: tool_name } }))
+        record["forced_because"] = unforced.dig("choices", 0, "finish_reason") == "length" ? "length" : "no_call"
       end
       record.merge("bench" => { "id_scheme" => "run", "tool" => tool_name, "policy" => policy, "layout" => layout,
                                 "model" => @model })
@@ -211,6 +225,15 @@ module LLMContextBench
     end
 
     private
+
+    def count(record)
+      totals[:picks] += 1
+      totals[:errors] += 1 if record["unforced"].key?("error")
+      return unless record["forced"]
+
+      totals[:forced] += 1
+      totals[:forced_length] += 1 if record["forced_because"] == "length"
+    end
 
     # One request, shaped, with the cost the server put in a streamed usage
     # chunk (OpenRouter's usage.cost), when it did.

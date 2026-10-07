@@ -88,6 +88,23 @@ RSpec.describe "llm_context_bench --live over HTTP" do
     expect(picks.size).to eq(2)
     record = JSON.parse(File.read(File.join(out_dir, "aaaaaaaa_t0.pick_forget_outputs_subtask_s1.json")))
     expect(record["unforced"]["error"]).to include("unknown parameter")
-    expect(out.string).to start_with("2 picks written to #{out_dir}")
+    expect(out.string).to start_with("2 picks written to #{out_dir} (0 forced, 0 of them after a reply cut at max_tokens; 1 errors)")
+  end
+
+  it "flags a forced retry after a reply cut off at max_tokens, and counts those in the last line" do
+    server.enqueue(path, sse: answer(text: "Let me read the cart again and", finish: "length"))
+    server.enqueue(path, sse: answer(ids: ["t1"]))
+    server.enqueue(path, sse: answer(text: "Done."))
+    server.enqueue(path, sse: answer(ids: ["t2"]))
+
+    expect(run).to eq(0)
+    cut, plain = %w[aaaaaaaa bbbbbbbb].map do |prefix|
+      JSON.parse(File.read(File.join(out_dir, "#{prefix}_t0.pick_forget_outputs_subtask_s1.json")))
+    end
+    expect(cut).to include("forced_because" => "length")
+    expect(cut["unforced"]["choices"][0]["finish_reason"]).to eq("length")
+    expect(plain).to include("forced_because" => "no_call")
+    expect(server.requests[1].json["tool_choice"]).to eq("type" => "function", "function" => { "name" => "forget_outputs" })
+    expect(out.string).to include("2 picks written to #{out_dir} (2 forced, 1 of them after a reply cut at max_tokens; 0 errors)")
   end
 end

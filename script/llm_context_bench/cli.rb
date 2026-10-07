@@ -121,7 +121,7 @@ module LLMContextBench
 
     def pick(picker, cases, out_dir)
       written = picker.run(cases)
-      @out.puts "#{written.size} picks written to #{out_dir}; score them with --picks LABEL=#{out_dir}"
+      @out.puts "#{written.size} picks written to #{out_dir} (#{picker.summary}); score them with --picks LABEL=#{out_dir}"
       0
     rescue LivePick::PaymentStop => e
       @err.puts "llm_context_bench: stopped, a payment error: #{e.message}"
