@@ -247,10 +247,17 @@ class Plugin
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
+  # One tool chi offers from a server (the tools: filter applied): +name+
+  # is the server's, +chi_name+ the model's (mcp_<server>_<tool>), +schema+
+  # its inputSchema (an empty object when it has none). +error+ is why
+  # declaring it failed (a name clash, a bad schema), nil when the model
+  # has it.
+  McpTool = Data.define(:server, :name, :chi_name, :description, :schema, :error)
+
   # One configured server: its service, state and tools. +listed+ is its
   # tools/list as the server answers it (what the cache keeps), +tools+
-  # the ones chi offers (the tools: filter applied, each with chi_name),
-  # +tokens+ their definitions' estimated size (#definition_tokens).
+  # the ones chi offers (McpTool each; #declare swaps in a whole new
+  # list), +tokens+ their definitions' estimated size (#definition_tokens).
   # +client+ is the running process's (a restart replaces it; the
   # service's stop closes the current one), +restarts+ how many it had.
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
@@ -516,30 +523,35 @@ class Plugin
   # tokens go to the log when they changed.
   def declare(target, server, ctx)
     wanted = server.config["tools"] && Array(server.config["tools"]).map(&:to_s)
-    tools = server.listed.map(&:dup)
-    tools = tools.select { |tool| wanted.any? { |w| File.fnmatch(w, tool["name"], File::FNM_EXTGLOB) } } if wanted
-    server.tools = tools
+    listed = server.listed
+    listed = listed.select { |tool| wanted.any? { |w| File.fnmatch(w, tool["name"], File::FNM_EXTGLOB) } } if wanted
     tokens = 0
-    tools.each do |tool|
-      name = tool_name(server.name, tool["name"])
-      schema = tool["inputSchema"] || { "type" => "object", "properties" => {} }
-      target.tool(name, description(tool), schema: schema,
-                                           label: "#{server.name}: #{tool["name"]}", preview: ->(args) { preview(args) }) do |args, call_ctx|
-        call(server, tool["name"], args, call_ctx)
+    tools = listed.map do |listed_tool|
+      tool = McpTool.new(server: server.name, name: listed_tool["name"],
+                         chi_name: tool_name(server.name, listed_tool["name"]), description: description(listed_tool),
+                         schema: listed_tool["inputSchema"] || { "type" => "object", "properties" => {} }, error: nil)
+      target.tool(tool.chi_name, tool.description, schema: tool.schema,
+                                                   label: "#{server.name}: #{tool.name}", preview: ->(args) { preview(args) }) do |args, call_ctx|
+        call(server, tool, args, call_ctx)
       end
-      tool["chi_name"] = name
-      tokens += definition_tokens(name, description(tool), schema)
+      tokens += definition_tokens(tool.chi_name, tool.description, tool.schema)
+      tool
     rescue ArgumentError => e
-      text = "MCP tool #{server.name}/#{tool["name"]} left out: #{e.message}"
+      text = "MCP tool #{server.name}/#{tool.name} left out: #{e.message}"
       ctx.notify(text, level: :warn) unless @left_out.include?(text)
       @left_out << text
+      tool.with(error: e.message)
     end
+    # Whole, in one swap: a reader on another thread never sees half a list.
+    server.tools = tools.freeze
     return if tokens == server.tokens
 
     server.tokens = tokens
-    ctx.log.info("mcp_tools_estimated", server: server.name, tools: tools.count { |tool| tool["chi_name"] },
-                                        tokens: tokens)
+    ctx.log.info("mcp_tools_estimated", server: server.name, tools: offered(server).size, tokens: tokens)
   end
+
+  # The server's tools the model has (declared without an error).
+  def offered(server) = server.tools.reject(&:error)
 
   # A tool's definition as the chat path sends it (LLM::ChatLoop#tool_definitions:
   # the chat schema, wrapped as a function), in estimated tokens
@@ -579,8 +591,8 @@ class Plugin
     line.length > PREVIEW_CHARS ? "#{line[0, PREVIEW_CHARS - 1]}…" : line
   end
 
-  # A tools/call, as the model's tool result. A cached server starts
-  # here, on its first call.
+  # A tools/call of +tool+ (McpTool), as the model's tool result. A cached
+  # server starts here, on its first call.
   def call(server, tool, args, ctx)
     return "Error: MCP server #{server.name} didn't start: #{server.error}" if server.state == :failed
 
@@ -593,9 +605,9 @@ class Plugin
              end
     return client if client.is_a?(String)
 
-    result = client.request("tools/call", { name: tool, arguments: args }, timeout: server.timeout,
-                                                                           cancelled: -> { ctx.cancelled? })
-    text, images = content(result, server, tool)
+    result = client.request("tools/call", { name: tool.name, arguments: args }, timeout: server.timeout,
+                                                                                cancelled: -> { ctx.cancelled? })
+    text, images = content(result, server, tool.name)
     return "Error: #{text.empty? ? "the tool failed" : text}" if result["isError"]
 
     images.empty? ? text : Samagotchi::Plugin::ToolResult.new(text, images: images)
@@ -778,7 +790,7 @@ class Plugin
     servers = @servers.map do |server|
       head = "**#{server.name}**: #{state_text(server)}"
       # Sorted: a server lists its tools in its own (often grouped) order.
-      tools = server.tools.map { |tool| tool["chi_name"] }.compact.sort
+      tools = offered(server).map(&:chi_name).sort
       tools.empty? ? head : "#{head}\n#{tools.map { |t| "- `#{t}`" }.join("\n")}"
     end
     total = @servers.sum { |server| OFFERED.include?(server.state) ? server.tokens : 0 }
@@ -791,7 +803,7 @@ class Plugin
     case server.state
     when :cached then "cached (not started), #{server.tools.size} tool#{"s" unless server.tools.size == 1}, #{tokens_text(server)}"
     when :running
-      count = server.tools.count { |tool| tool["chi_name"] }
+      count = offered(server).size
       "running (pid #{server.client.pid}), #{count} tool#{"s" unless count == 1}, #{tokens_text(server)}"
     when :starting then "starting"
     else "#{server.state == :failed ? "failed" : "stopped"}: #{server.error}"

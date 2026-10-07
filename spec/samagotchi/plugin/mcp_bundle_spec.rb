@@ -236,6 +236,15 @@ RSpec.describe "The mcp bundle" do
       notices = load_events.select { |e| e[:type] == :hook_notice }.map { |e| e[:text] }
       expect(notices).to eq(["MCP tool fake-/echo left out: tool mcp_fake_echo is registered twice"])
     end
+
+    it "/mcp doesn't count or list the left-out tool" do
+      commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                                 default_model: "Gemma-4B-it", registry: engine.command_registry)
+      cards = []
+      engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+      engine.running_anytime { commands.run("/mcp") }
+      expect(cards.last[:body]).to match(/^\*\*fake-\*\*: running \(pid \d+\), 0 tools, ~0 tokens\n\n/)
+    end
   end
 
   it "/mcp shows the servers, their state and tools as a card" do
