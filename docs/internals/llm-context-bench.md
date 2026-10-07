@@ -30,6 +30,14 @@ scored at the next turn's first request. Cases are named `<first 8 of the sessio
 `--cases FILE` (one name per line), else from the picks given, else every turn with at least `--min-turn-tool`
 (3000) tokens of its own tool output.
 
+Each case says how its turn ends: `answer` (the model's final prose, no calls), `tool_result` (it stopped mid-task on
+a tool's output), `turn_note` (chi's note on a turn that ended without an answer), `tool_call` (calls never
+answered) or `empty`. The report's second line tallies them, `--per-case` has an `ends` column, and the JSON has
+`case_ends` (name => ending) and `ends` on each case. `--ends answer|any` picks which turns make cases: by default the
+turn-size rule keeps only `answer` ends, the point where a forget-at-turn-end offer would come (the layout check
+found a model behaves differently mid-task), and named cases (`--cases`, picks) are kept as named. `--ends answer`
+drops named cases that end otherwise and says how many; `--ends any` takes every turn.
+
 | Column | Meaning |
 |---|---|
 | forgot/outputs | outputs the strategy edits / outputs in context at the case |
@@ -64,12 +72,32 @@ outputs to forget, through chi's own chat client (the model must be on an `api: 
 answer under `--out DIR` for `--picks` to score. A saved pick is never asked for again. The request is the
 session's conversation up to the turn's end (thinking dropped, every tool result led by its id `[#tN]`), chi's
 built-in chat tools plus the forget tool, and the policy's tail line; a model that doesn't call the tool is asked
-once more with it forced.
+once more with it forced (`--no-force` asks once).
+
+A pick record holds the answer (`unforced`), the forced one when it took that (`forced`) and why it was forced
+(`forced_because`: `no_call`, or `length` when the unforced reply was cut off at `max_tokens`, finish reason
+`length`, before it could call anything), how it was asked (`bench`), and `cost`: what the server reported for the
+pick's requests, summed (OpenRouter's `usage.cost`, asked for with `usage.include`; absent when the server sends
+none). The run's last line counts the picks written, the forced ones, those forced after a cut, the errors, and sums
+the cost.
+
+A request that fails is saved as an error record and the run goes on to the next case, except a payment error: a
+402, or an error that mentions credits or balance, stops the run at once (exit 1), saves nothing for that case, and
+says how many picks it wrote before it. A rerun with the same `--out` asks only for the rest.
 
 - `--tool-name forget_outputs|forget_llm_context`: the name under test; the description stays the same.
 - `--policy subtask|soft|now`: `subtask` offers the tool and puts the plan's policy line in its description;
   `soft` and `now` are the spike's selective and "free context now" lines.
-- `--samples N`, and `--dry-run` to count the requests and prompt tokens without calling anything.
+- `--layout tail_system|tail_user|boundary`: where the tail line goes. `tail_system` (the default) is a system
+  message after the case's last entry; `tail_user` the same line as a user message; `boundary` a system message
+  worded as a stopping point. A layout other than the default names its picks `<policy>_<layout>`.
+- `--samples N`, and `--dry-run` to count the requests and prompt tokens (and the cases' endings) without calling
+  anything.
+
+Case selection matters here: at a turn that ends with the model's answer the forget offer reads as a real turn end,
+while mid-task (a `tool_result` or `turn_note` end) a model mostly carries on with the task, or, worded as a
+stopping point, forgets at the base rate. A forget-at-turn-end test should run on `answer` cases, the default for
+the turn-size rule; give `--ends answer` with a `--cases` file to hold one to that too.
 
 ```sh
 ruby script/llm_context_bench.rb "$SESSIONS" --cases cases.txt --live openrouter:deepseek/deepseek-v4.1-flash \
