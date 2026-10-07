@@ -22,6 +22,8 @@ RSpec.describe Samagotchi::BroadcastCommand do
   # deadline.
   let(:triage_yes) { [] }
   let(:triage_slow) { [] }
+  # Every card delivered unchecked, this in the reason, when set.
+  let(:triage_unchecked) { nil }
   let(:judged) { [] }
   let(:log) { Samagotchi::Broadcast::TriageLog.new(File.join(tmpdir, "state", "broadcast", "log.jsonl")) }
 
@@ -57,10 +59,13 @@ RSpec.describe Samagotchi::BroadcastCommand do
   def triage(cancel)
     yes = triage_yes
     slow = triage_slow
+    why = triage_unchecked
     seen = judged
     Class.new do
       define_method(:judge) do |_note, card|
         seen << card.id
+        next Samagotchi::Broadcast::Triage.unchecked(why) if why
+
         if slow.any? { |word| card.recent.to_s.include?(word) }
           sleep 0.01 until cancel.cancelled?
         end
@@ -191,6 +196,17 @@ RSpec.describe Samagotchi::BroadcastCommand do
            "delivered 2 · skipped 1 · 1 unchecked: triage deadline"]
         )
         expect(notes_of(slow).size).to eq(1)
+      end
+    end
+
+    context "when the triage model isn't set up" do
+      let(:triage_unchecked) { "no triage model: broadcast.triage_host_ref 'lan' is not in hosts:" }
+
+      it "shortens a single-quoted reason on the summary line too" do
+        code = run("-m", "payments API returns 500 since 14:00")
+
+        expect(code).to eq(0), err.string
+        expect(output.last).to eq("delivered 3 · skipped 0 · 3 unchecked: no triage model: broadcast.triage_host_ref")
       end
     end
 

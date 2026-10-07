@@ -388,12 +388,14 @@ module Samagotchi
     def line_for(id, word, why) = "#{id[0, 8]}  #{word.ljust(9)}  #{why}"
 
     # " · 2 unchecked: triage deadline" when some were delivered without a
-    # verdict (the desktop helper shows only this line), else "".
+    # verdict (the desktop helper shows only this line), else "". Each
+    # reason ends before its details: a parenthesis, a quote, or a single
+    # quote after a space ("host_ref 'lan' is …", not "isn't").
     def unchecked_summary(decisions)
       unchecked = decisions.map(&:verdict).select(&:unchecked?)
       return "" if unchecked.empty?
 
-      whys = unchecked.map { |v| v.reason.delete_prefix("unchecked: ").sub(/\s*[("].*\z/m, "") }.uniq
+      whys = unchecked.map { |v| v.reason.delete_prefix("unchecked: ").sub(/(?:\s*[("]|\s+').*\z/m, "") }.uniq
       " · #{unchecked.size} unchecked: #{whys.join(", ")}"
     end
 
