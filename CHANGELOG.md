@@ -11,8 +11,16 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - `llm_context.strategy` (default `none`), and per model or host `llm_context_strategy`. `stale` sends a file read
-  that a later read of the same lines superseded as a one-line stub, from the next request on; the session keeps
-  the output. See [docs/configuration.md](docs/configuration.md).
+  that a later read of the same lines superseded as a one-line stub; the session keeps the output. With
+  `llm_context.stale_edits: true` (opt-in, experimental) a read a later edit or write of the file superseded is
+  stubbed too; on the replay bench these cost about 5x the tokens they free in re-prefill, and 26% were needed again
+  (against a 6% base rate). No read of a file edited in the last `llm_context.protect_steps` (3) steps is stubbed.
+  `llm_context.apply` (and per model or host `llm_context_apply`) says when stubs reach the prompt: `payoff` (the
+  default) sends them at a request when they free at least the tail the server reads again, else at the end of a
+  turn the model answered, which in practice is usually where they go; `next_request` and `turn_end` are the
+  others. See [docs/configuration.md](docs/configuration.md).
+- `/stats` shows the re-prefilled tokens for every session (what the server prefilled again of the previous
+  request's prompt, 128 tokens or more), and the log's `generation_completed` line has them as `reprefill=`.
 - For development: `script/llm_context_bench.rb`, a replay benchmark for the LLM context strategies over a folder of
   stored sessions (offline; `--live` asks a model, for picks). It isn't part of the gem. See
   [docs/internals/llm-context-bench.md](docs/internals/llm-context-bench.md).
