@@ -114,8 +114,11 @@ module Samagotchi
         raise ArgumentError, "invalid scope '#{scope}', expected one of: #{VALID_SCOPES.join(", ")}"
       end
 
-      def self.scoped_index(scope)
-        dir = memories_dir(scope)
+      # +scope+'s index.md, or a listing of its files when it has none: what
+      # a session's prompt carries for the scope (before its filters).
+      # @param env [Hash] the XDG env the memories dir resolves from
+      def self.scoped_index(scope, env: ENV)
+        dir = memories_dir(scope, env: env)
         index_path = File.join(dir, "#{MEMORY_INDEX}.md")
         return File.read(index_path, encoding: "UTF-8") if File.exist?(index_path)
 

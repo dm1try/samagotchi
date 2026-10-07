@@ -70,11 +70,12 @@ module Samagotchi
     # +text+ (+scope+'s memory index) without the lines naming a model note
     # that loads for some model (its file in +scope+ has a `models:` line);
     # the same object when it names none. A `model_notes_*` memory that
-    # isn't one keeps its line, so it doesn't vanish.
-    def filter_index(text, scope)
+    # isn't one keeps its line, so it doesn't vanish. +env+: the XDG env
+    # the scope's dir resolves from.
+    def filter_index(text, scope, env: ENV)
       return text if text.nil? || !text.include?(PREFIX)
 
-      dir = MemoryPaths.scope_dir(scope)
+      dir = MemoryPaths.scope_dir(scope, env: env)
       names = files_in(dir).map { |path| File.basename(path) }
       text.each_line.reject do |line|
         name = MutedMemories.index_line_name(line).to_s
