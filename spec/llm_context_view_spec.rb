@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/llm_context_view"
+require "samagotchi/llm_context_strategy"
 require "samagotchi/kernel_loop"
 require "samagotchi/model_profile"
 require "samagotchi/llm/chat_loop"
@@ -79,6 +80,14 @@ RSpec.describe Samagotchi::LLMContextView do
       expect(seen.length).to eq(1)
       expect(inputs).to eq(seen)
       expect(inputs.first).to equal(seen.first)
+    end
+
+    it "runs under the turn's strategy (TurnSettings#llm_context), none without one" do
+      expect(kernel.llm_context_view).to be_none
+      resolved = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config)
+      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: resolved)
+
+      expect(kernel.llm_context_view.layers).to eq([:stale])
     end
   end
 

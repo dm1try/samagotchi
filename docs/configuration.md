@@ -915,6 +915,8 @@ described in their own sections.
 | `context.status` | `true` | yes | Context-usage telemetry for the model. See [context telemetry](internals/context-telemetry.md). |
 | `context.window_tokens` | server's, else 256000 | yes | Context window when the server doesn't report one. `models.<key>.window_tokens` and `hosts.<name>.window_tokens` come first; see "The context window". |
 | `models.<key>.window_tokens`, `hosts.<name>.window_tokens` | none | | A model's or host's context window when the server and its model list report none. |
+| `llm_context.strategy` | `none` | | What the model is sent of the conversation: `none`, or a list of layers (`stale`, `forget`; `"\|"`-separated or a YAML list). Only `none` for now: any layer warns "not built yet" and is `none`, an unknown name warns and is `none`. `models.<key>.llm_context_strategy` and `hosts.<name>.llm_context_strategy` come first. |
+| `models.<key>.llm_context_strategy`, `hosts.<name>.llm_context_strategy` | none | | A model's or host's `llm_context.strategy` (only `none` for now). |
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |
 | `context.status_thresholds` | `20,40,60,80` | yes | Percentages that trigger a status. |
 | `context.status_cadence` | `0` | yes | Also every N rounds; `0` = thresholds only. |

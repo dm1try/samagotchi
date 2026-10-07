@@ -73,3 +73,45 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
     expect(thinking_set).to eq(%i[off high default])
   end
 end
+
+RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
+  around do |example|
+    with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Ornith") do
+      Dir.mktmpdir("chi-state") do |dir|
+        @state_dir = dir
+        example.run
+      end
+    end
+  end
+
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
+  let(:engine) do
+    described_class.new(client: client, kernel: kernel, profile: "qwen36").tap { |e| e.session_state_dir = @state_dir }
+  end
+  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Ornith", working_directory: Dir.pwd) }
+  let(:views) { [] }
+
+  before do
+    Samagotchi::ConfigFile.reset_warnings!
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+    allow(kernel).to receive(:run) do |messages, **|
+      views << kernel.llm_context_view
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+    end
+  end
+
+  it "resolves the effective model's strategy each turn: none by default, a configured layer warned and none in P0" do
+    models = {}
+    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
+
+    engine.run_turn(session, "hi")
+    models["ornith"] = { profile: nil, llm_context_strategy: [:stale] }
+    expect { engine.run_turn(session, "again") }.to output(/models: ornith: llm_context strategy stale is not built yet/)
+      .to_stderr
+
+    expect(views.map(&:strategy)).to eq(%i[none none])
+    expect(kernel.turn_settings.llm_context.to_h).to eq(layers: [:stale], strategy: :none, source: :model_setting)
+  end
+end

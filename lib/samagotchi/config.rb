@@ -9,6 +9,7 @@ require_relative "config_text_edit"
 require_relative "log"
 require_relative "model_ref"
 require_relative "paths"
+require_relative "llm_context_strategy"
 
 module Samagotchi
   # Parses the thinking: levels of host and model entries (it needs Config).
@@ -154,6 +155,11 @@ module Samagotchi
       # 10 minutes, within session.max_wakes); false: it waits as a note for the next turn.
       Entry.new(key: "context.wake",             yaml_path: %w[context wake],             type: :bool,   default: true,             expose: %i[env config cli]),
 
+      # What the model is sent of the conversation (LLMContextStrategy, LLMContextView): none, or a list of layers
+      # (stale, forget; "|"-separated or a YAML list). Only none is built: any layer warns and is none.
+      # models.<key>.llm_context_strategy and hosts.<name>.llm_context_strategy come first.
+      Entry.new(key: "llm_context.strategy",     yaml_path: %w[llm_context strategy],     type: :string, default: "none",           expose: %i[env config]),
+
       Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
       # How much models think: off|low|medium|high|default, parsed by Thinking
       # (a :string, since YAML reads an unquoted off as false). The CLI flag
@@ -241,8 +247,8 @@ module Samagotchi
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
       "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking enabled
-                    remote window_tokens].freeze,
-      "models" => %w[profile vision sampling thinking window_tokens].freeze
+                    remote window_tokens llm_context_strategy].freeze,
+      "models" => %w[profile vision sampling thinking window_tokens llm_context_strategy].freeze
     }.freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
@@ -826,6 +832,8 @@ module Samagotchi
                                             "hosts entry '#{name}'")
           sampling = ConfigFile.sampling_map(raw_cfg.key?("sampling") ? raw_cfg["sampling"] : raw_cfg[:sampling], "hosts entry '#{name}'")
           thinking = Thinking.level(raw_cfg.key?("thinking") ? raw_cfg["thinking"] : raw_cfg[:thinking], "hosts entry '#{name}'")
+          llm_context = LLMContextStrategy.parse(raw_cfg.key?(LLMContextStrategy::KEY) ? raw_cfg[LLMContextStrategy::KEY] : raw_cfg[:llm_context_strategy],
+                                                 "hosts entry '#{name}'")
           unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
             warn_once "Warning: hosts entry '#{name}': first_token_timeout must be seconds (0 = off); using the default"
             first_token_timeout = nil
@@ -890,7 +898,7 @@ module Samagotchi
                                   url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env,
                                   profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout,
                                   vision: vision, sampling: sampling, thinking: thinking, remote: remote,
-                                  window_tokens: window }
+                                  window_tokens: window, llm_context_strategy: llm_context }
         end
       end
 
@@ -1037,7 +1045,8 @@ module Samagotchi
         location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env],
                        "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout],
                        "vision" => v[:vision], "sampling" => v[:sampling], "thinking" => v[:thinking]&.to_s,
-                       "remote" => v[:remote], "window_tokens" => v[:window_tokens]).compact
+                       "remote" => v[:remote], "window_tokens" => v[:window_tokens],
+                       "llm_context_strategy" => v[:llm_context_strategy]&.map(&:to_s)).compact
       end
       # Disabled hosts travel as just that, so a worker refuses "box:x"
       # the way its parent does instead of sending it to the default host.
@@ -1129,6 +1138,9 @@ module Samagotchi
         result[key][:thinking] = thinking if thinking
         window = window_tokens(v.key?("window_tokens") ? v["window_tokens"] : v[:window_tokens], "models: #{key}")
         result[key][:window_tokens] = window if window
+        layers = LLMContextStrategy.parse(v.key?(LLMContextStrategy::KEY) ? v[LLMContextStrategy::KEY] : v[:llm_context_strategy],
+                                          "models: #{key}")
+        result[key][:llm_context_strategy] = layers if layers
       end
     rescue StandardError
       {}

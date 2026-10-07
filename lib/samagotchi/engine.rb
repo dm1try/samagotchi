@@ -1727,7 +1727,7 @@ module Samagotchi
       @turn_thinking = [thinking_level(thinking_target), thinking_target]
       announce_thinking_level(*@turn_thinking)
       LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: @turn_thinking.first, model_name: nil,
-                            window_setting: nil)
+                            window_setting: nil, llm_context: nil)
     end
     private :turn_settings
 
@@ -1816,7 +1816,8 @@ module Samagotchi
       # The turn's settings, set once here. The chat loop dispatches tools
       # through the kernel without its #run: tag those dumps with this
       # turn's model, not the last native one.
-      @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: turn_window_setting)
+      @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: turn_window_setting,
+                                                 llm_context: turn_llm_context)
 
       turn.limit = @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for
       backend.complete(
@@ -2508,6 +2509,16 @@ module Samagotchi
     def turn_window_setting
       target = @host_registry.resolve(@effective_model_name)
       ContextWindow.setting(target, names: model_lookup_names(target))
+    rescue StandardError
+      nil
+    end
+
+    # The effective model's LLM context strategy (models:/hosts:
+    # llm_context_strategy, else llm_context.strategy), read per turn as
+    # the window is.
+    def turn_llm_context
+      target = @host_registry.resolve(@effective_model_name)
+      LLMContextStrategy.resolve(target, names: model_lookup_names(target))
     rescue StandardError
       nil
     end

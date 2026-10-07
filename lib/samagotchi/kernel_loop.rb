@@ -729,11 +729,12 @@ module Samagotchi
     WARMUP_CUT = "chi-warmup-cut"
     private_constant :WARMUP_CUT
 
-    # What both loops send of the conversation (LLMContextView): the
+    # What both loops send of the conversation (LLMContextView), under the
+    # turn's strategy (TurnSettings#llm_context, none without one): the
     # prompt, the warm-up and the chat messages all format through it, so
     # the warm-up warms the prompt the next turn sends.
     def llm_context_view
-      LLMContextView.new
+      LLMContextView.new(strategy: @turn_settings&.llm_context&.strategy || LLMContextView::NONE)
     end
 
     # Public wrapper so other loops (e.g. the chat loop) can strip
