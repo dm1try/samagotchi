@@ -46,7 +46,8 @@ module Samagotchi
       DEFAULT_PARALLEL = 4
       DEFAULT_DEADLINE = 20.0
       DEFAULT_THRESHOLD = 0.5
-      # How long threads still asking get to stop once the deadline passed.
+      # How long the threads still asking get to stop once the deadline
+      # passed, all of them together (then they are killed).
       JOIN_GRACE = 1.0
 
       module_function
@@ -158,7 +159,8 @@ module Samagotchi
           cancel.cancel!(:deadline)
           queue.clear
         end
-        threads.each { |thread| thread.join(JOIN_GRACE) || thread.kill }
+        grace_ends = clock.call + JOIN_GRACE
+        threads.each { |thread| thread.join([grace_ends - clock.call, 0].max) || thread.kill }
         cards.to_h { |card| [card.id, results[card.id] || unchecked("triage deadline")] }
       end
 

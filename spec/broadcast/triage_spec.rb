@@ -244,6 +244,20 @@ RSpec.describe Samagotchi::Broadcast::Triage do
       expect(peak[0]).to eq(2)
     end
 
+    it "gives the threads still asking one shared grace past the deadline, not one each" do
+      stub_const("#{described_class}::JOIN_GRACE", 0.3)
+      stuck = Object.new
+      # Ignores the cancel.
+      def stuck.judge(_note, _card) = sleep(10)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      verdicts = described_class.judge_all("x", %w[a b c d].map { |id| card(id) }, new_backend: ->(_) { stuck },
+                                                                                   parallel: 4, deadline: 0.1)
+
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.8
+      expect(verdicts.values.map(&:reason).uniq).to eq(["unchecked: triage deadline"])
+    end
+
     it "delivers unchecked at once the cards of a thread whose backend couldn't be made, with the error" do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       verdicts = described_class.judge_all("x", [card("a"), card("b"), card("c")], new_backend: ->(_) { raise KeyError, "no key" },
