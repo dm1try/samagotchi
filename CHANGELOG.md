@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi broadcast`'s triage ends at most a second after `broadcast.triage_deadline` (requests that ignore the cancel
+  could hold it up to ~4 s past it), turns logprobs off for a host only when its 400 was about them, and two broadcasts
+  at once no longer both rotate the triage log (one failed, or the old lines were lost). A scope card's folder is right
+  under a symlinked path (`/tmp` on macOS read `../../../tmp/…`), and the summary line shortens a reason that quotes a
+  setting (`3 unchecked: no triage model: broadcast.triage_host_ref`).
+
 ## [0.37.0] - 2026-10-07
 
 ### Added
