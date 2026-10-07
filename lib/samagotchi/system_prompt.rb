@@ -7,6 +7,7 @@ require_relative "memory_paths"
 require_relative "tool_declarations"
 require_relative "tools/memory"
 require_relative "muted_memories"
+require_relative "model_notes"
 require_relative "bundle_needs"
 require_relative "thinking"
 
@@ -14,7 +15,7 @@ module Samagotchi
   # The system prompt an Engine gives its model: the base prompt (tool
   # declarations and call syntax for the raw-prompt loop, none for the chat
   # loop, the shared guidance) and around it the thinking token, rg
-  # guidance, the identity memory, the preloaded memories, AGENT.md, the
+  # guidance, the identity memory, the model notes, the preloaded memories, AGENT.md, the
   # memory indexes and, last, the model, where the session runs and the
   # session (#system_prompt_with_index has the order and why).
   #
@@ -45,11 +46,15 @@ module Samagotchi
     # @param session  [#call] → Session, nil
     # @param thinking [#call] → Symbol, the effective model's level (Thinking)
     # @param model    [#call] → ModelIdentity, nil (the section is left out)
+    # @param model_notes [#call] → Array<ModelNotes::Note>, the effective
+    #   model's (none: the section is left out)
     # @param memories [Array<String>] the --memory list
     # @param muted_memory_names [Array<String>] normalized (MutedMemories)
-    def initialize(profile:, tools:, session:, thinking:, model: -> {}, memories: [], muted_memory_names: [])
+    def initialize(profile:, tools:, session:, thinking:, model: -> {}, model_notes: -> { [] }, memories: [],
+                   muted_memory_names: [])
       @profile_lookup = profile
       @model_lookup = model
+      @model_notes_lookup = model_notes
       @tools_lookup = tools
       @session_lookup = session
       @thinking_lookup = thinking
@@ -258,7 +263,7 @@ module Samagotchi
         "Project memories:\n#{read_memory_index("project")}",
         "System memories:\n#{read_memory_index("system")}"
       ].join("\n\n")
-      stable = [thinking_token + base, rg_guidance, system_identity_section, explicit_memory_section,
+      stable = [thinking_token + base, rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
                 project_specific_description, memory_sections]
       stable_text = stable.compact.join("\n")
       volatile = [current_model, project_location, current_session].compact
@@ -295,6 +300,22 @@ module Samagotchi
       nil
     end
 
+    # The model notes for the session's model (ModelNotes), right after
+    # identity: a heading per scope, each note under its name, the models:
+    # line left out. nil without any, so the prompt stays as it was.
+    def model_notes_section
+      notes = Array(@model_notes_lookup.call)
+      return nil if notes.empty?
+
+      ref = @model_lookup.call&.ref
+      notes.group_by(&:scope).map do |scope, list|
+        heading = ref.to_s.empty? ? "Model notes (scope=#{scope}):" : "Model notes (for #{ref}, scope=#{scope}):"
+        [heading, *list.map { |note| "## #{note.name}\n#{note.body}" }].join("\n\n")
+      end.join("\n\n")
+    rescue StandardError
+      nil
+    end
+
     # ── Memory helpers ─────────────────────────────────────────────────────────
 
     # The session model's overlay keys, so the prompt's own memory bodies
@@ -308,9 +329,12 @@ module Samagotchi
       {}
     end
 
-    # The scope's index text without the muted memories' lines.
+    # The scope's index text without the muted memories' lines, nor the
+    # model notes' (their bodies are in their own section, or not for this
+    # model).
     def read_memory_index(scope)
-      BundleNeeds.annotate_index(MutedMemories.filter_index(Tools::MemoryRead.call("", scope: scope), @muted_memory_names), scope)
+      index = MutedMemories.filter_index(Tools::MemoryRead.call("", scope: scope), @muted_memory_names)
+      BundleNeeds.annotate_index(ModelNotes.filter_index(index, scope), scope)
     end
 
     # Merge the config.yml `memories:` baseline with the explicit `--memory`

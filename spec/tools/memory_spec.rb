@@ -199,6 +199,35 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     end
   end
 
+  describe "model note names" do
+    it "refuses a dotted model_notes_ name (it would read as a model overlay) and writes nothing" do
+      result = described_class.call("models: *\nx", path: "model_notes_qwen3.6", scope: "system")
+      expect(result).to eq("Error: invalid model note name 'model_notes_qwen3.6': no dot after model_notes_ (a dotted " \
+                           "name reads as a model overlay); use 'model_notes_qwen3-6'")
+      expect(Dir.children(system_memories_dir)).to eq([])
+    end
+
+    it "suggests the name without .md for model_notes_x.md" do
+      expect(described_class.call("models: *\nx", path: "model_notes_x.md", scope: "system")).to end_with("use 'model_notes_x'")
+    end
+
+    it "refuses a model note whose first line isn't a models: line (it would never load) and writes nothing" do
+      result = described_class.call("my plain notes about model notes", path: "model_notes_todo", scope: "system",
+                                                                          description: "todo list")
+      expect(result).to start_with("Error: model note 'model_notes_todo' needs a first line saying which models it is for")
+      expect(result).to include("the first line is `my plain notes about model notes`")
+      expect(described_class.call("models: | \nx", path: "model_notes_todo", scope: "system")).to start_with("Error: model note")
+      expect(Dir.children(system_memories_dir)).to eq([])
+    end
+
+    it "writes an undotted one, and its model overlay" do
+      expect(described_class.call("models: *\nx", path: "model_notes_qwen", scope: "system")).to start_with("Memory 'model_notes_qwen' saved")
+      expect(described_class.call("y", path: "model_notes_qwen", scope: "system", current_model_only: true, model_key: "qwen3-6"))
+        .to start_with("Model overlay 'model_notes_qwen' for qwen3-6 saved")
+      expect(Dir.children(system_memories_dir)).to include("model_notes_qwen.md", "model_notes_qwen.qwen3-6.md")
+    end
+  end
+
   describe ".call" do
     it "writes a memory entry to the requested scope and reports success" do
       result = described_class.call("# My Memory\nSome content.", path: "my_memory", scope: "project")

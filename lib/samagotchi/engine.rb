@@ -53,6 +53,7 @@ require_relative "steer_cut"
 require_relative "engine_peers"
 require_relative "bundle_needs"
 require_relative "model_overlay"
+require_relative "model_notes"
 require_relative "served_model"
 require_relative "image_store"
 require_relative "vision_context"
@@ -256,7 +257,8 @@ module Samagotchi
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
       @prompt_builder = SystemPrompt.new(profile: -> { self.profile }, tools: -> { @tools }, session: -> { @session },
-                                         thinking: -> { turn_thinking }, model: -> { model_identity }, memories: memories,
+                                         thinking: -> { turn_thinking }, model: -> { model_identity },
+                                         model_notes: -> { model_notes }, memories: memories,
                                          muted_memory_names: @muted_memory_names)
       @session = nil
       @session_observer = SessionObserver.new
@@ -466,6 +468,14 @@ module Samagotchi
       host = entry && "host #{entry.name}, #{entry.url || "#{entry.host}:#{entry.port}"}"
       SystemPrompt::ModelIdentity.new(ref: effective_model_ref, host: host, key: @model_key,
                                       served: prompt_served_model(target), fallback_key: @fallback_model_key)
+    end
+
+    # The model notes for the effective model (ModelNotes): matched on its
+    # bare id and key, the session's mutes left out.
+    # @return [Array<ModelNotes::Note>]
+    def model_notes
+      ModelNotes.for(name: guardrail_model_name, key: @model_key, fallback_key: @fallback_model_key,
+                     muted: @muted_memory_names)
     end
 
     # +name+'s resolved ref (ModelRef#ref).

@@ -167,6 +167,28 @@ RSpec.describe "Full system prompt snapshots" do
     end
   end
 
+  context "with model notes in the system scope" do
+    before do
+      dir = File.join(@tmp, "system-memories")
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "model_notes_qwen.md"), "models: qwen*\nQwen habits.\n")
+      File.write(File.join(dir, "model_notes_gemma.md"), "models: gemma-*|small\nGemma habits.\n")
+      allow(Samagotchi::MemoryPaths).to receive(:system_dir).and_return(dir)
+    end
+
+    it "gives a model no note matches the very prompt it had without notes" do
+      with_rg(true)
+      expect_snapshot("qwen36_chat_delegated.txt", normalized(engine("oai:m", "qwen36").tap do |e|
+        e.session = (@s = session(parent_id: "parent-1234"))
+      end.system_prompt, @s))
+    end
+
+    it "puts the matching note after identity (gemma4, native host)" do
+      with_rg(true)
+      expect_snapshot("gemma4_model_notes.txt", normalized(engine("box:gemma-small", "gemma4").system_prompt))
+    end
+  end
+
   it "a scratch session (no delegate tools)" do
     with_rg(true)
     e = engine("box:gemma-small", "gemma4", scratch: true)

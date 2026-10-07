@@ -5,11 +5,14 @@ require "digest"
 require "date"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
+require_relative "../model_match"
 
 module Samagotchi
   module Tools
     MEMORY_INDEX = "index"
     VALID_SCOPES = %w[project system].freeze
+    # Model notes (ModelNotes): `model_notes_<name>`, no dot in the name.
+    MODEL_NOTES_PREFIX = "model_notes_"
 
     # Reads a memory entry from scoped memory directories.
     # When scope is omitted, reads from project first and falls back to system.
@@ -170,6 +173,10 @@ module Samagotchi
 
           return remove(entry_name, scope)
         end
+        return dotted_model_note_error(entry_name) if dotted_model_note?(entry_name)
+        if (error = model_note_body_error(entry_name, body, current_model_only))
+          return error
+        end
 
         description = normalize_description(description)
         if description && description.length > DESCRIPTION_LIMIT
@@ -227,6 +234,34 @@ module Samagotchi
         message
       rescue StandardError => e
         "Error: #{e.message}"
+      end
+
+      # A model note's name with a dot would read as a model overlay
+      # (`<name>.<key>.md`) next to a note of the stem's name.
+      def self.dotted_model_note?(name) = name.start_with?(MODEL_NOTES_PREFIX) && name.include?(".")
+
+      def self.dotted_model_note_error(name)
+        "Error: invalid model note name '#{name}': no dot after #{MODEL_NOTES_PREFIX} (a dotted name reads as a " \
+          "model overlay); use '#{undotted(name)}'"
+      end
+
+      # +name+ with its dots made dashes, a trailing ".md" dropped first
+      # (`model_notes_x.md` → `model_notes_x`).
+      def self.undotted(name) = name.delete_suffix(".md").tr(".", "-")
+
+      # A model note's content must start with its models: line, or the note
+      # would never load (and its index line would hide it from no one). Its
+      # model overlay (current_model_only) has none.
+      def self.model_note_body_error(name, body, current_model_only)
+        return nil unless name.start_with?(MODEL_NOTES_PREFIX) && !body.empty? && !current_model_only
+        return nil if ModelMatch.models_line(body)
+
+        first = body.each_line.first.to_s.strip
+        first = "#{first[0, 60]}…" if first.length > 60
+        "Error: model note '#{name}' needs a first line saying which models it is for, `models: <glob>|small|…` " \
+          "(e.g. `models: deepseek-*|small`: globs on the model id or key, small per guardrails.small_models), " \
+          "then the note; the first line is #{first.empty? ? "empty" : "`#{first}`"}. A memory that isn't a model " \
+          "note needs a name without the #{MODEL_NOTES_PREFIX} prefix."
       end
 
       # A description as the index line takes it: whitespace (newlines too)

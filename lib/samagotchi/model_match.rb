@@ -11,6 +11,9 @@ module Samagotchi
   module ModelMatch
     GLOB_FLAGS = File::FNM_CASEFOLD | File::FNM_EXTGLOB
     SMALL = "small"
+    # A model note's first line (ModelNotes): `models: …`, any case, after
+    # an optional UTF-8 BOM.
+    MODELS_LINE = /\A\uFEFF?\s*models:(.*)\z/i
 
     module_function
 
@@ -20,6 +23,16 @@ module Samagotchi
     # @return [Array<String>]
     def parse(value)
       Array(value).flat_map { |entry| entry.to_s.split("|") }.map(&:strip).reject(&:empty?)
+    end
+
+    # The entries of +text+'s first line when it is a `models:` line with
+    # at least one; nil otherwise.
+    # @return [Array<String>, nil]
+    def models_line(text)
+      first = text.to_s.each_line.first.to_s.chomp
+      match = first.match(MODELS_LINE)
+      entries = match && parse(match[1])
+      entries unless entries.nil? || entries.empty?
     end
 
     # @param entries [Array<String>] parsed entries (#parse)
