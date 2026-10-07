@@ -1759,8 +1759,9 @@ module Samagotchi
       prompt, images = @kernel.warmup_prompt(messages, llm_context: turn_llm_context || @kernel.turn_settings&.llm_context)
       return unless prompt
 
-      @prompt_warmup.start(client: client, prompt: prompt, model: @kernel.turn_settings.model_name,
-                           slot: @kernel.last_slot, images: images)
+      started = @prompt_warmup.start(client: client, prompt: prompt, model: @kernel.turn_settings.model_name,
+                                     slot: @kernel.last_slot, images: images)
+      @kernel.warmed_up! if started
     rescue StandardError => e
       Log.warn(:model, "warmup_skipped", error: e.class.name, msg: e.message.to_s[0, 200])
     end

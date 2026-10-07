@@ -55,6 +55,11 @@ RSpec.describe Samagotchi::TerminalUI do
         expect(output).to include("tokens in/out:    30000/10 (all requests, server-reported), cached 14728 (49%), cache writes 14728")
       end
 
+      it "shows the re-prefilled tokens when a request had any" do
+        output = stats(prompt_sum: 30_000, completion_sum: 10, source: "server", cached_sum: 15_000, reprefill_sum: 2_100)
+        expect(output).to include("tokens in/out:    30000/10 (all requests, server-reported), cached 15000 (50%), re-prefilled 2100")
+      end
+
       it "marks an estimated speed with ~ and shows the cost" do
         output = stats(prompt_sum: 900, completion_sum: 60, source: "server", last_decode_tps: 64.4, tps_source: "estimate",
                        avg_decode_tps: 70.0, cost_sum: 0.4213)

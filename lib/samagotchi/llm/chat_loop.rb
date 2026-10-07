@@ -86,6 +86,9 @@ module Samagotchi
       # The kernel's tools.
       def tools = @kernel.tools
 
+      # KernelLoop#reprefilled_tokens, the kernel's request history.
+      def reprefilled_tokens(model, **) = @kernel.reprefilled_tokens(model, **)
+
       # The kernel's LLMContextView, the turn's strategy.
       def llm_context_view = @kernel.llm_context_view
 
@@ -467,13 +470,21 @@ module Samagotchi
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
                thinking_chars: response.reasoning.to_s.length, served_model: response.model,
                served_provider: response.provider, requested_model: @model_name, finish_reason: response.finish_reason,
-               **(response.usage&.cache_fields || {}))
+               **(response.usage&.cache_fields || {}), **reprefill_field(response.usage))
           dump_response(response, iteration)
           @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text,
                                                messages: AnswerDisplay.strip_all(@conversation).map(&:dup).freeze })
           [response, nil]
         rescue RequestCancelled => e
           [e.reason, streamed, thought]
+        end
+
+        # The request's re-prefilled tokens (KernelLoop#reprefilled_tokens).
+        def reprefill_field(usage)
+          return {} unless usage&.source == :server
+
+          tokens = @loop.reprefilled_tokens(@model_name, prompt: usage.prompt_tokens, cached: usage.cached_tokens)
+          tokens ? { reprefill_tokens: tokens } : {}
         end
 
         # The request runs under the generation's own controller (the turn

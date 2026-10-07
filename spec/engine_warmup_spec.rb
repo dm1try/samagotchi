@@ -84,6 +84,17 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
     expect(kernel).to have_received(:warmup_prompt).with(anything, llm_context: during)
   end
 
+  it "tells the kernel a warm-up ran (the re-prefill baseline restarts), and not when none started" do
+    allow(kernel).to receive(:warmed_up!).and_call_original
+
+    with_env("SAMAGOTCHI_CACHE_WARMUP" => "off") { engine.run_turn(session, "hi") }
+    expect(kernel).not_to have_received(:warmed_up!)
+
+    engine.run_turn(session, "again")
+    sent_warmups
+    expect(kernel).to have_received(:warmed_up!).once
+  end
+
   it "is off with cache.warmup off" do
     with_env("SAMAGOTCHI_CACHE_WARMUP" => "off") { engine.run_turn(session, "hi") }
 

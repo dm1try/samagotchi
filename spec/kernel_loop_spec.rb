@@ -944,6 +944,29 @@ Need to inspect the filesystem first.
       expect(completed).to include(prompt_tokens: 11_892, cached_tokens: 11_370, cache_write_tokens: nil)
     end
 
+    it "puts what the server prefilled again of the last request's prompt on :generation_completed, from the second request" do
+      events = []
+      counts = [[1_000, 900], [1_500, 600], [1_600, 1_500], [1_700, 1_590], [1_800, 0]]
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        prompt, cached = counts.shift
+        kwargs[:on_chunk]&.call(content: "Hi", payload: { "content" => "Hi", "stop" => true, "tokens_evaluated" => prompt,
+                                                          "tokens_predicted" => 1, "timings" => { "cache_n" => cached } })
+        "Hi"
+      end
+
+      5.times { kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(event) { events << event }) }
+
+      # Under 128 tokens (a cache block's rounding) is none: never a 0.
+      completed = events.select { |event| event[:type] == :generation_completed }
+      expect(completed.map { |event| event[:reprefill_tokens] }).to eq([nil, 400, nil, nil, nil])
+      model = completed.last[:requested_model]
+      kernel.warmup_prompt([{ role: "user", content: "hi" }])
+      expect(kernel.reprefilled_tokens(model, prompt: 1_900, cached: 100)).to eq(1_700)
+      kernel.warmed_up!
+      expect(kernel.reprefilled_tokens(model, prompt: 1_800, cached: 100)).to be_nil
+      expect(kernel.reprefilled_tokens("other", prompt: 1_800, cached: 100)).to be_nil
+    end
+
     it "counts the generation's thinking in :generation_completed (Gemma: its thought blocks)" do
       events = []
       allow(client).to receive(:complete) do |_prompt, **kwargs|

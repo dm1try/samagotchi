@@ -177,6 +177,18 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       .to include(prompt_tokens: 15_000, cached_tokens: 14_728, cache_write_tokens: 40)
   end
 
+  it "puts what the server prefilled again of the last request's prompt on :generation_completed" do
+    usage = ->(prompt, cached) { Samagotchi::LLM::Usage.new(prompt_tokens: prompt, completion_tokens: 3, source: :server, cached_tokens: cached) }
+    adapter = FakeChatAdapter.new(FakeChatAdapter.text("hi", usage: usage.call(10_000, 0)),
+                                  FakeChatAdapter.text("hi", usage: usage.call(12_000, 7_000)))
+    loop = described_class.new(kernel: test_kernel, adapter: adapter)
+
+    2.times { loop.complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event }) }
+
+    expect(events.select { |event| event[:type] == :generation_completed }.map { |event| event[:reprefill_tokens] })
+      .to eq([nil, 3_000])
+  end
+
   it "names the provider the adapter reports in :generation_completed, nil when it says none" do
     served = FakeChatAdapter.text("hi").with(model: "vendor/served-1", provider: "Fireworks")
     described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))

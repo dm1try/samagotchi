@@ -392,6 +392,26 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(metrics.snapshot[:tokens]).to include(cache_write_sum: 14_728)
     end
 
+    it "sums the generations' re-prefilled tokens into the turn record and the session's tokens" do
+      start_turn
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(router_chunk("a", 5))
+      metrics.call(type: :generation_completed, iteration: 1, reprefill_tokens: 2_100)
+      metrics.call(type: :generation_started, iteration: 2)
+      metrics.call(router_chunk("a", 5))
+      metrics.call(type: :generation_completed, iteration: 2, reprefill_tokens: 100)
+      metrics.call(type: :turn_completed)
+
+      expect(metrics.snapshot[:turn_records].last).to include(reprefill_tokens_sum: 2_100)
+      start_turn("t2")
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(router_chunk("a", 5))
+      metrics.call(type: :generation_completed, iteration: 1, reprefill_tokens: 900)
+      expect(metrics.snapshot[:tokens]).to include(reprefill_sum: 3_000)
+      metrics.call(type: :turn_completed)
+      expect(metrics.snapshot[:tokens]).to include(reprefill_sum: 3_000)
+    end
+
     it "estimates the decode speed from the first streamed chunk, not from the request, with cost and reasoning" do
       start_turn
       metrics.call(type: :generation_started, iteration: 1)

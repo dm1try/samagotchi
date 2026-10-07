@@ -6,6 +6,7 @@ require "time"
 require "fileutils"
 require "securerandom"
 require_relative "atomic_file"
+require_relative "token_usage"
 require_relative "session"
 
 module Samagotchi
@@ -104,6 +105,9 @@ module Samagotchi
       # decode one came from (server / estimate).
       :cached_sum,
       :cache_write_sum,
+      # What the server prefilled again of the previous request's prompt
+      # (KernelLoop#reprefilled_tokens; an LLM context edit's cache break).
+      :reprefill_sum,
       :reasoning_sum,
       :cost_sum,
       :decode_ms_sum,
@@ -273,6 +277,7 @@ module Samagotchi
       when :generation_completed, :generation_cancelled
         record_served_model(event)
         count_cut(event)
+        count_reprefill(event)
         record_generation_completed
       when :generation_retrying
         # The retry streams from the start: its counts replace the ones so far.
@@ -397,6 +402,7 @@ module Samagotchi
         completion_sum: add.call(:completion_sum),
         cached_sum: add.call(:cached_sum),
         cache_write_sum: add.call(:cache_write_sum),
+        reprefill_sum: add.call(:reprefill_sum),
         reasoning_sum: add.call(:reasoning_sum),
         cost_sum: add.call(:cost_sum),
         decode_ms_sum: decode_ms.round,
@@ -456,6 +462,7 @@ module Samagotchi
           token_sources: [],
           cached_sum: 0,
           cache_write_sum: 0,
+          reprefill_sum: 0,
           reasoning_sum: 0,
           cost_sum: nil,
           decode_ms_sum: 0,
@@ -525,6 +532,14 @@ module Samagotchi
         @turn.cuts += 1 if event[:stopped_by] && event[:stopped_by].to_s != "steer"
         @turn.capped += 1 if event[:finish_reason].to_s == "length"
       end
+    end
+
+    # A generation's re-prefilled tokens (its :generation_completed's), into the turn.
+    def count_reprefill(event)
+      tokens = event[:reprefill_tokens]
+      return unless tokens.is_a?(Integer) && tokens >= TokenUsage::REPREFILL_MIN_TOKENS
+
+      @mutex.synchronize { @turn.reprefill_sum += tokens if @turn }
     end
 
     def record_generation_completed
@@ -654,6 +669,7 @@ module Samagotchi
         tps_source: turn.tps_source
       }
       fields[:cache_write_tokens_sum] = turn.cache_write_sum if turn.cache_write_sum.positive?
+      fields[:reprefill_tokens_sum] = turn.reprefill_sum if turn.reprefill_sum.positive?
       fields.merge!(cost: turn.cost_sum, cost_source: "reported") if turn.cost_sum
       fields
     end
@@ -891,7 +907,7 @@ module Samagotchi
     def reset_totals
       @totals = { cancellations: 0, prompt_sum: 0, completion_sum: 0, token_sources: [], iterations: 0,
                   gen_ms: 0, retries: 0, cuts: 0, capped: 0, by_tool: {}, tool_errors: 0, cached_sum: 0, cache_write_sum: 0,
-                  reasoning_sum: 0,
+                  reprefill_sum: 0, reasoning_sum: 0,
                   cost_sum: 0, decode_ms_sum: 0, decode_tokens_sum: 0, last_decode_tps: nil,
                   last_prefill_tps: nil, tps_source: nil }
     end
@@ -908,6 +924,7 @@ module Samagotchi
       totals[:capped] += number(record[:capped])
       totals[:cached_sum] += number(record[:cached_tokens_sum])
       totals[:cache_write_sum] += number(record[:cache_write_tokens_sum])
+      totals[:reprefill_sum] += number(record[:reprefill_tokens_sum])
       totals[:reasoning_sum] += number(record[:reasoning_tokens])
       totals[:cost_sum] += number(record[:cost])
       totals[:decode_ms_sum] += number(record[:decode_ms])

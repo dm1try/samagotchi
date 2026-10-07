@@ -428,6 +428,11 @@ module Samagotchi
 
     def cache_fields(cache) = cache ? TokenUsage.cache_fields(**cache) : {}
 
+    def reprefill_field(model, cache)
+      tokens = cache && reprefilled_tokens(model, prompt: cache[:prompt], cached: cache[:cached])
+      tokens ? { reprefill_tokens: tokens } : {}
+    end
+
     # The cut stream's visible text goes with it: the buffer as it was
     # before (the next generation gets a fresh splitter).
     def cut_generation(turn, generation, buffer_mark)
@@ -445,7 +450,8 @@ module Samagotchi
       emit(turn, type: :generation_completed, iteration: turn.iteration, content_length: response.length,
                  thinking_chars: thinking_chars(response, generation.streamed_thinking),
                  served_model: generation.served_model, requested_model: turn.model_name,
-                 finish_reason: generation.finish_reason, **cache_fields(generation.cache))
+                 finish_reason: generation.finish_reason, **cache_fields(generation.cache),
+                 **reprefill_field(turn.model_name, generation.cache))
       dump_log("response", generation.response, iteration: turn.iteration)
       # The after_generation hook (after the model returns, before the tool
       # parse), with a read-only copy of the conversation as sent.
@@ -788,6 +794,32 @@ module Samagotchi
                                             model: @turn_settings&.model_name)
     end
     private :log_llm_context
+
+    # A request's re-prefilled tokens, for both loops: of the prompt the
+    # last request on +model+ sent (this kernel's, any turn), what the
+    # server didn't reuse from its cache this time (that prompt less
+    # +cached+), so an LLM context edit's cache break shows, and so does
+    # anything else that rewrote the prompt's middle or lost the cache. nil
+    # under TokenUsage::REPREFILL_MIN_TOKENS (a cache block's rounding), for
+    # a server that reports no cached count (or 0: a cold cache isn't told
+    # from no cache), the first request, a model switch, and the first
+    # request after a warm-up (#warmed_up!).
+    # @return [Integer, nil]
+    def reprefilled_tokens(model, prompt:, cached:)
+      previous = @reprefill_baseline
+      @reprefill_baseline = { model: model, prompt: prompt.to_i } if prompt.to_i.positive?
+      return nil unless previous && previous[:model] == model && cached.to_i.positive?
+
+      tokens = previous[:prompt] - cached.to_i
+      tokens >= TokenUsage::REPREFILL_MIN_TOKENS ? tokens : nil
+    end
+
+    # The Engine started a turn-end warm-up: it prefills the next prompt
+    # off the clock, so the next request's cache counts are against it, not
+    # the last request (#reprefilled_tokens starts over).
+    def warmed_up!
+      @reprefill_baseline = nil
+    end
 
     # Public wrapper so other loops (e.g. the chat loop) can strip
     # per-profile thought blocks from finished model text without duplicating the

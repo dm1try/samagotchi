@@ -82,11 +82,15 @@ RSpec.describe Samagotchi::LogSubscriber do
            cache_write_tokens: nil },
          { type: :generation_started, iteration: 2 },
          { type: :generation_completed, iteration: 2, content_length: 4, prompt_tokens: 14_800, cached_tokens: 0,
-           cache_write_tokens: 14_728 })
+           cache_write_tokens: 14_728 },
+         { type: :generation_started, iteration: 3 },
+         { type: :generation_completed, iteration: 3, content_length: 4, prompt_tokens: 15_000, cached_tokens: 9_000,
+           reprefill_tokens: 5_800 })
 
-    expect(records.map { |r| r.fields.slice("prompt", "cached", "cache_write") }).to eq([
+    expect(records.map { |r| r.fields.slice("prompt", "cached", "cache_write", "reprefill") }).to eq([
       { "prompt" => "11892", "cached" => "11370" },
-      { "prompt" => "14800", "cached" => "0", "cache_write" => "14728" }
+      { "prompt" => "14800", "cached" => "0", "cache_write" => "14728" },
+      { "prompt" => "15000", "cached" => "9000", "reprefill" => "5800" }
     ])
   end
 

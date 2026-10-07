@@ -23,6 +23,9 @@ module Samagotchi
   class TokenUsage < Data.define(:prompt_tokens, :completion_tokens, :cached_tokens, :cache_write_tokens,
                                  :reasoning_tokens, :cost, :predicted_per_second, :prompt_per_second, :predicted_ms, :source)
     CHARS_PER_TOKEN = 4.0
+    # Re-prefilled tokens under this are none (KernelLoop#reprefilled_tokens,
+    # SessionMetrics): servers count the cache in blocks (OpenAI's 128).
+    REPREFILL_MIN_TOKENS = 128
 
     class << self
       # @param payload [Hash, nil] the raw streamed chunk payload
