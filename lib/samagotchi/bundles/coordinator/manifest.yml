@@ -11,6 +11,5 @@ files:
 plugin:
   file: plugin.rb
   sha256: sha256:2b11a24f22398f4d00132c2342f7c02eacfc6cec0e517e8241a17241affc8ca7
-requires_chi: ">= 0.34.0"
-# requires_chi: raise to the release that has memory_write's description-only form and remove: (">= 0.36.0";
-# docs/releasing.md); not before it, or the plugin won't load on a dev chi still at 0.35.0
+# the handoff memory needs memory_write's description-only form and remove: (0.36.0)
+requires_chi: ">= 0.36.0"
