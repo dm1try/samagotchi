@@ -9,6 +9,13 @@ struct LaunchConfig: Decodable {
   let env: [String: String]?
   /// Agents in kitty windows (Kitty.swift); nil = none.
   let kitty: KittySettings?
+  /// Seconds `chi broadcast` may take (Broadcast.swift); nil = the default.
+  let broadcastTimeout: Double?
+
+  enum CodingKeys: String, CodingKey {
+    case version, argv, env, kitty
+    case broadcastTimeout = "broadcast_timeout"
+  }
 }
 
 enum ChiError: Error, CustomStringConvertible {

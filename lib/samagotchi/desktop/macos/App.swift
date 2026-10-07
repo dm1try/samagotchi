@@ -4,7 +4,8 @@
 // running after the first launch. `ChiHelper --login on|off|status` (run
 // directly by chi desktop) manages the login item and exits;
 // `ChiHelper --kitty list|send` is the kitty targets' seam (Kitty.swift),
-// `ChiHelper --model-pick` the model chooser's (Models.swift).
+// `ChiHelper --model-pick` the model chooser's (Models.swift),
+// `ChiHelper --broadcast` the Everyone row's (Broadcast.swift).
 import AppKit
 import ServiceManagement
 
@@ -106,6 +107,9 @@ struct ChiHelperMain {
     }
     if args.count >= 2, args[1] == "--model-pick" {
       exit(modelPickCommand(Array(args.dropFirst(2))))
+    }
+    if args.count >= 2, args[1] == "--broadcast" {
+      exit(broadcastCommand(Array(args.dropFirst(2))))
     }
     let app = NSApplication.shared
     let delegate = AppDelegate()

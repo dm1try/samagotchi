@@ -185,6 +185,90 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
     end
   end
 
+  describe "ChiHelper --broadcast, the Everyone row's chi broadcast, against a fake chi" do
+    let(:tmp) { Dir.mktmpdir("bc") }
+    let(:launch) { File.join(tmp, "launch.json") }
+    let(:fake) { File.join(tmp, "chi") }
+
+    before do
+      # Records its argv and stdin, then answers as FAKE_CHI_MODE says.
+      File.write(fake, <<~SH)
+        printf '%s\\n' "$@" > "$FAKE_CHI_DIR/argv"
+        cat > "$FAKE_CHI_DIR/stdin"
+        case "$FAKE_CHI_MODE" in
+          slow) exec sleep 5 ;;
+          refused) echo "chi broadcast: no sessions to send to: none runs now" >&2; exit 1 ;;
+          failed)
+            echo 'broadcast b-1234abcd  "disk"'
+            echo "3f2a1c9e  failed     No space left on device"
+            echo "delivered 0 · skipped 1"
+            exit 1 ;;
+          *)
+            echo "chi broadcast: a warning" >&2
+            echo 'broadcast b-7f3a1c9e  "payments API returns 500"'
+            echo "3f2a1c9e  delivered  ticket PAY-123 matches (branch)"
+            echo "c0ffee12  skipped    model: no"
+            echo "delivered 1 · skipped 1 · 1 unchecked: triage deadline" ;;
+        esac
+      SH
+      write_launch
+    end
+
+    after { FileUtils.remove_entry(tmp) }
+
+    def write_launch(extra = {})
+      File.write(launch, JSON.generate({ "version" => "x", "argv" => ["/bin/sh", fake], "env" => {} }.merge(extra)))
+    end
+
+    def broadcast(note, mode: "ok")
+      out, err, status = Open3.capture3({ "FAKE_CHI_DIR" => tmp, "FAKE_CHI_MODE" => mode },
+                                        executable, "--broadcast", "--launch", launch, stdin_data: note)
+      expect(err).to eq("")
+      [JSON.parse(out), status.exitstatus]
+    end
+
+    it "runs chi broadcast with the note on stdin and shows the id and the summary line, pointing to the log" do
+      result, status = broadcast("shopfront/checkout\n\n> payments API returns 500\n")
+
+      expect(status).to eq(0)
+      expect(File.read(File.join(tmp, "argv"))).to eq("broadcast\n")
+      expect(File.read(File.join(tmp, "stdin"))).to eq("shopfront/checkout\n\n> payments API returns 500\n")
+      expect(result).to eq("ok" => true, "timeout" => 30,
+                           "message" => "b-7f3a1c9e: delivered 1 · skipped 1 · 1 unchecked: triage deadline\n" \
+                                        "details: chi broadcast log")
+    end
+
+    it "gives it the launch file's broadcast_timeout, and says so when it took longer and was stopped" do
+      write_launch("broadcast_timeout" => 1)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result, status = broadcast("note", mode: "slow")
+
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 4
+      expect(status).to eq(1)
+      expect(result).to eq("ok" => false, "timeout" => 1,
+                           "message" => "chi broadcast took over 1 s and was stopped; " \
+                                        "the note may be partly delivered (chi broadcast log)")
+    end
+
+    it "shows why it was refused, and a failed delivery's lines under the summary" do
+      result, status = broadcast("note", mode: "refused")
+      expect(status).to eq(1)
+      expect(result).to include("ok" => false, "message" => "chi broadcast: no sessions to send to: none runs now")
+
+      result, = broadcast("note", mode: "failed")
+      expect(result).to include("ok" => false,
+                                "message" => "b-1234abcd: delivered 0 · skipped 1\n3f2a1c9e  failed     No space left on device")
+    end
+
+    it "says so when the launch file is missing" do
+      File.delete(launch)
+      result, status = broadcast("note")
+
+      expect(status).to eq(1)
+      expect(result["message"]).to start_with("No launch file at #{launch}")
+    end
+  end
+
   describe "ChiHelper --model-pick, the model chooser's rules" do
     let(:payload) do
       {

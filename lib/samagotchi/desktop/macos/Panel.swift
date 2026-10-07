@@ -1,11 +1,12 @@
 // The Spotlight-like panel: a message line on top, the images (a screenshot,
 // Finder files, drops) as thumbnails, the text (selection or clipboard)
-// below as quoted context, then a "New session" row and the targets: live
-// sessions, agents in kitty windows (Kitty.swift), recent sessions. ⏎
-// sends a message (`chi send`, or `chi send --new` on the new row, with
-// `--image` per image; pasted with Enter into a kitty window), ⌘⏎ a note
-// (`chi note`, text only), ⌥⏎ a paste without Enter (kitty windows only),
-// ⇧⏎ a newline. ⌘M (or a click on the new row's model) opens the model
+// below as quoted context, then a "New session" row, an "Everyone it
+// concerns" row and the targets: live sessions, agents in kitty windows
+// (Kitty.swift), recent sessions. ⏎ sends a message (`chi send`, or `chi
+// send --new` on the new row, with `--image` per image; pasted with Enter
+// into a kitty window), ⌘⏎ a note (`chi note`, text only; `chi broadcast`
+// on the Everyone row, Broadcast.swift), ⌥⏎ a paste without Enter (kitty
+// windows only), ⇧⏎ a newline. ⌘M (or a click on the new row's model) opens the model
 // chooser for a new session in place of the targets (Models.swift).
 import AppKit
 import SwiftUI
@@ -41,6 +42,9 @@ final class PanelModel: ObservableObject {
   var touched = false
   /// The "New session" row; never together with sessions (`--new` takes no ids).
   @Published var newSelected = false
+  /// The "Everyone it concerns" row: ⌘⏎ broadcasts (`chi broadcast`);
+  /// never together with the new row or picked targets.
+  @Published var everyoneSelected = false
   /// The model a new session starts on (`chi self --model`), for the new
   /// row's hint; nil while unknown.
   @Published var newModel: String?
@@ -75,7 +79,8 @@ final class PanelModel: ObservableObject {
   /// A note's text (stdin of `chi note`): the message line, then the context.
   var noteText: String { [trimmedPrompt, hasContext ? text : ""].filter { !$0.isEmpty }.joined(separator: "\n\n") }
   var sendEnabled: Bool {
-    canSend && (newSelected || !selectedIds.isEmpty || !selectedKitty.isEmpty) && (!trimmedPrompt.isEmpty || hasContext)
+    canSend && (newSelected || everyoneSelected || !selectedIds.isEmpty || !selectedKitty.isEmpty)
+      && (!trimmedPrompt.isEmpty || hasContext)
   }
   var live: [LiveSession] { sessions.filter { !$0.recent } }
 
@@ -136,6 +141,7 @@ final class PanelModel: ObservableObject {
   func openPicker() {
     touched = true
     newSelected = true
+    everyoneSelected = false
     selected = []
     modelQuery = ""
     pickerIndex = chooserRows.firstIndex(where: isCurrent) ?? 0
@@ -157,6 +163,7 @@ final class PanelModel: ObservableObject {
   func choose(_ row: ModelRow) {
     pickTouched = true
     newSelected = true
+    everyoneSelected = false
     selected = []
     if row.kind == .standard {
       pickedModel = nil
@@ -194,13 +201,20 @@ final class PanelModel: ObservableObject {
 
   func toggle(_ id: String) {
     touched = true
-    if selected.contains(id) { selected.remove(id) } else { selected.insert(id); newSelected = false }
+    if selected.contains(id) { selected.remove(id) } else { selected.insert(id); newSelected = false; everyoneSelected = false }
   }
 
   func toggleNew() {
     touched = true
     newSelected.toggle()
-    if newSelected { selected = [] }
+    if newSelected { selected = []; everyoneSelected = false }
+  }
+
+  /// The preselected session is dropped: a broadcast picks its own.
+  func toggleEveryone() {
+    touched = true
+    everyoneSelected.toggle()
+    if everyoneSelected { selected = []; newSelected = false }
   }
 
   /// Where a new session starts: the helper runs in $HOME, which is in no
@@ -230,6 +244,7 @@ final class PanelModel: ObservableObject {
   /// Who the message goes to, for the placeholder: chi, or the one agent
   /// when only kitty windows running it are chosen.
   var addressee: String {
+    if everyoneSelected { return "everyone it concerns" }
     let agents = Set(selectedKitty.map(\.agent))
     return agents.count == 1 && selectedIds.isEmpty && !newSelected ? agents.first! : "chi"
   }
@@ -259,8 +274,7 @@ struct PanelView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      // The message is required with images, as in the web.
-      TextField(model.images.isEmpty ? "Ask \(model.addressee)…" : "Say something about the image…", text: $model.prompt, axis: .vertical)
+      TextField(placeholder, text: $model.prompt, axis: .vertical)
         .textFieldStyle(.plain)
         .font(.system(size: 17))
         .lineLimit(1...4)
@@ -296,6 +310,12 @@ struct PanelView: View {
     .onAppear { promptFocused = true }
   }
 
+  /// The message is required with images, as in the web.
+  var placeholder: String {
+    if model.everyoneSelected { return "Tell everyone it concerns… (⌘⏎)" }
+    return model.images.isEmpty ? "Ask \(model.addressee)…" : "Say something about the image…"
+  }
+
   @ViewBuilder var imageStrip: some View {
     if !model.images.isEmpty {
       ScrollView(.horizontal, showsIndicators: false) {
@@ -328,6 +348,7 @@ struct PanelView: View {
           }.padding(10)
         default:
           newRow
+          everyoneRow
           let live = model.live.count, kitty = model.kittyWindows.count
           ForEach(Array(model.targets.prefix(9).enumerated()), id: \.element.id) { index, target in
             if index == live && kitty > 0 { groupHeader("kitty", first: index == 0) }
@@ -416,6 +437,32 @@ struct PanelView: View {
     }
     .padding(.horizontal, 8).padding(.vertical, 6)
     .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+  }
+
+  /// `chi broadcast` instead of picked sessions (⌘B): ⌘⏎ shares the note
+  /// with the sessions chi finds it concerns.
+  var everyoneRow: some View {
+    let on = model.everyoneSelected
+    return Button(action: { model.toggleEveryone() }) {
+      HStack(spacing: 10) {
+        Image(systemName: "antenna.radiowaves.left.and.right")
+          .font(.system(size: 14))
+          .foregroundColor(on ? .accentColor : .secondary)
+          .frame(width: 18)
+        VStack(alignment: .leading, spacing: 1) {
+          Text("Everyone it concerns").font(.system(size: 13, weight: .medium)).lineLimit(1)
+          Text("a note for the sessions chi finds it concerns: ⌘⏎").font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+        }
+        Spacer()
+        Text("⌘B").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+      }
+      .padding(.horizontal, 8).padding(.vertical, 6)
+      .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help("chi broadcast: sessions sharing a tag with the note get it, a triage model judges the rest; "
+          + "a first line naming a project keeps it there. Details: chi broadcast log")
   }
 
   /// The new session's model: grey for the default, accent for a pick; a
@@ -530,15 +577,18 @@ struct PanelView: View {
 
   var footer: some View {
     HStack(spacing: 10) {
-      HStack(spacing: 4) {
-        Image(systemName: "arrow.down.doc").font(.system(size: 11)).foregroundColor(.secondary)
-        TextField("source", text: $model.source)
-          .textFieldStyle(.plain)
-          .font(.system(size: 12))
-          .frame(width: 90)
+      // A broadcast's source is "broadcast": no field, more room for its summary.
+      if !model.everyoneSelected {
+        HStack(spacing: 4) {
+          Image(systemName: "arrow.down.doc").font(.system(size: 11)).foregroundColor(.secondary)
+          TextField("source", text: $model.source)
+            .textFieldStyle(.plain)
+            .font(.system(size: 12))
+            .frame(width: 90)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Capsule().fill(Color.primary.opacity(0.07)))
       }
-      .padding(.horizontal, 8).padding(.vertical, 4)
-      .background(Capsule().fill(Color.primary.opacity(0.07)))
 
       HStack(spacing: 0) {
         if !model.origin.isEmpty {
@@ -566,17 +616,26 @@ struct PanelView: View {
         Button("Paste ⌥⏎") { send(.paste) }
           .disabled(!model.sendEnabled)
           .help("paste it into the agent's input without Enter: add more, then press Enter there")
+      } else if model.everyoneSelected {
+        Button("Broadcast ⌘⏎") { send(.note) }
+          .disabled(!model.sendEnabled)
+          .help("share it as a note with every session it concerns (chi broadcast); starts no turn")
       } else {
         Button("Note ⌘⏎") { send(.note) }
           .disabled(!model.sendEnabled || !model.selectedKitty.isEmpty || model.newSelected)
           .help(model.newSelected ? "a note needs a session: pick one, or ⏎ starts a new one with the message"
                                   : "add it as background the model sees on its next turn; starts no turn")
       }
-      Button(action: { send(.message) }) {
-        if model.phase == .sending { ProgressView().controlSize(.small) } else { Text("Send ⏎") }
+      // A broadcast is a note: no Send.
+      if model.everyoneSelected {
+        if model.phase == .sending { ProgressView().controlSize(.small) }
+      } else {
+        Button(action: { send(.message) }) {
+          if model.phase == .sending { ProgressView().controlSize(.small) } else { Text("Send ⏎") }
+        }
+        .disabled(!model.sendEnabled)
+        .help("send it as your message: a turn runs")
       }
-      .disabled(!model.sendEnabled)
-      .help("send it as your message: a turn runs")
     }
     .padding(.horizontal, 14).padding(.vertical, 10)
   }
@@ -746,7 +805,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     return true
   }
 
-  /// ⌘1…⌘9 toggle a target, ⌘0 the new row; ⌘M opens or closes the model
+  /// ⌘1…⌘9 toggle a target, ⌘0 the new row, ⌘B the Everyone row; ⌘M opens or closes the model
   /// chooser, where ⌘1…⌘9 pick a row.
   private func handleKey(_ event: NSEvent) -> Bool {
     let command = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
@@ -761,6 +820,11 @@ final class PanelController: NSObject, NSWindowDelegate {
       model.choose(rows[n - 1])
       return true
     }
+    // By key code, as ⌘M.
+    if command, event.keyCode == 11 {
+      model.toggleEveryone()
+      return true
+    }
     let targets = model.targets
     guard command, let chars = event.charactersIgnoringModifiers, let n = Int(chars),
           n <= min(targets.count, 9) else { return false }
@@ -772,6 +836,7 @@ final class PanelController: NSObject, NSWindowDelegate {
   /// @param returnTo the app to give focus back to on close
   func show(text: String, images: [PanelImage] = [], origin: String, source: String, returnTo app: NSRunningApplication?) {
     returnTo = app
+    opens += 1
     // A show on an open panel resets it without a close.
     dropImages()
     model.prompt = ""
@@ -782,6 +847,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     model.source = source
     model.message = ""
     model.newSelected = false
+    model.everyoneSelected = false
     model.selected = []
     model.touched = false
     model.pickerOpen = false
@@ -877,6 +943,7 @@ final class PanelController: NSObject, NSWindowDelegate {
   /// finished. Images the helper wrote are copied for kitty first (chi's
   /// send deletes them) and deleted only after every job.
   func send(_ kind: SendKind) {
+    if model.everyoneSelected { broadcast(kind); return }
     let ids = model.selectedIds
     let windows = model.selectedKitty
     let new = model.newSelected
@@ -952,6 +1019,35 @@ final class PanelController: NSObject, NSWindowDelegate {
       } else {
         self.model.phase = .failed
       }
+    }
+  }
+
+  /// Counts the panel's opens: a broadcast that ends after a reopen leaves
+  /// the new open alone.
+  private var opens = 0
+
+  /// The Everyone row: `chi broadcast` with the note (the source field is
+  /// not used: a broadcast's source is "broadcast"). It stays open with
+  /// the summary line (Esc closes): no auto-close.
+  private func broadcast(_ kind: SendKind) {
+    if kind != .note {
+      NSSound.beep()
+      model.message = "A broadcast is a note: ⌘⏎"
+      return
+    }
+    if !model.images.isEmpty {
+      NSSound.beep()
+      model.message = "A broadcast is text only: remove the images"
+      return
+    }
+    guard model.sendEnabled else { NSSound.beep(); return }
+    model.phase = .sending
+    model.message = "broadcasting…"
+    let open = opens
+    runner.broadcast(model.noteText) { [weak self] outcome, _ in
+      guard let self, self.opens == open else { return }
+      self.model.phase = outcome.ok ? .sent : .failed
+      self.model.message = outcome.message
     }
   }
 
