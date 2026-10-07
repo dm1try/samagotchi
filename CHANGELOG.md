@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A plugin tool's `targets:` may return `acts_as:` (the tool a call stands for), `args:` (the arguments it acts
+  with) and `label:` (what the approval question names it by): a guardrail rule's `tool:` then matches the call's own
+  name or the tool it acts as, the approval question names that tool with those arguments, and "allow this call" is keyed by both names and those arguments. It can't
+  be one of chi's own tools or another bundle's (dropped and logged). See [docs/plugins.md](docs/plugins.md#guardrails).
+
 ## [0.36.0] - 2026-10-07
 
 ### Added
