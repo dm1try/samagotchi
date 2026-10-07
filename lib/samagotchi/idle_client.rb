@@ -24,10 +24,14 @@ module Samagotchi
     # Raised when summarization fails (server down, timeout, malformed body…).
     class SummarizeError < StandardError; end
 
-    # What #summarize returns: the recap text and the model that answered
-    # (the server's name for it; nil when the reply names none). #to_s is
-    # the text.
-    Summary = Data.define(:text, :model) do
+    # What #summarize and #ask return: the text and the model that
+    # answered (the server's name for it; nil when the reply names none).
+    # +top_logprobs+: the first token's alternatives (LLM::TokenLogprob)
+    # when #ask asked for logprobs and the server sent them, else [].
+    # #to_s is the text.
+    Summary = Data.define(:text, :model, :top_logprobs) do
+      def initialize(top_logprobs: [].freeze, **) = super
+
       def to_s = text
     end
 
@@ -40,12 +44,14 @@ module Samagotchi
     # @param timeout [Numeric] HTTP request timeout. Kept to the recap's own
     #   wait budget (not the chat's global request_timeout) so an abandoned
     #   summarize thread can't outlive the recap attempt by minutes.
-    def initialize(model:, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV)
+    # @param purpose [String] what the requests are for, in the HTTP log
+    #   lines and error messages ("recap", "broadcast")
+    def initialize(model:, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV, purpose: "recap")
       @model = model
       # A recap is best-effort: one short attempt, no retries. The idle job
       # tries again after the next activity, never on its own.
-      @chat = LLM::OpenAIChat.new(base_url: base_url.to_s, host_name: "recap", api_key_env: api_key_env,
-                                  stream: false, retries: false, timeout: timeout, env: env, purpose: "recap")
+      @chat = LLM::OpenAIChat.new(base_url: base_url.to_s, host_name: purpose, api_key_env: api_key_env,
+                                  stream: false, retries: false, timeout: timeout, env: env, purpose: purpose)
     end
 
     # A client for +target+ (an IdleTarget: a recap's, ctx.ask_model's, a
@@ -84,25 +90,31 @@ module Samagotchi
       messages = prompt.is_a?(Array) ? prompt : [{ role: "user", content: prompt.to_s.strip }]
       return nil if messages.all? { |m| m[:content].to_s.strip.empty? }
 
-      content, served = generate(messages)
-      cleaned = content.to_s.strip
-      cleaned.empty? ? nil : Summary.new(text: cleaned, model: served)
+      response = generate(messages)
+      cleaned = response.text.to_s.strip
+      cleaned.empty? ? nil : Summary.new(text: cleaned, model: response.model)
     rescue SummarizeError
       raise
     rescue StandardError => e
       raise SummarizeError, "recap summarization failed: #{e.class}: #{e.message}"
     end
 
-    # One side answer (a plugin's ctx.ask_model): +messages+ as they are, no
-    # tools, thinking off. An answer cut off by +max_tokens+ is kept as it
-    # is, marked with "…". Cancelling +cancel_controller+ aborts the request.
+    # One side answer (a plugin's ctx.ask_model, a broadcast's triage):
+    # +messages+ as they are, no tools, thinking off. An answer cut off by
+    # +max_tokens+ is kept as it is, marked with "…". Cancelling
+    # +cancel_controller+ aborts the request.
+    # @param kind [String] what it is for, in the usage log line
+    # @param options [Hash] more request body fields (logprobs: true,
+    #   top_logprobs: 5)
     # @return [Summary] the answer ("" when the model said nothing)
-    # @raise [SummarizeError] any failure but a cancel
+    # @raise [SummarizeError] any failure but a cancel; its #cause is an
+    #   LLM::BadRequest when the host refused the request (+options+ it
+    #   doesn't take, say)
     # @raise [LLM::RequestCancelled] +cancel_controller+ was cancelled
-    def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil)
-      content, served = generate(messages, max_tokens: max_tokens, cancel_controller: cancel_controller, whole_sentences: false,
-                                           kind: "ask")
-      Summary.new(text: content.to_s.strip, model: served)
+    def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, kind: "ask", options: {})
+      response = generate(messages, max_tokens: max_tokens, cancel_controller: cancel_controller, whole_sentences: false,
+                                    kind: kind, options: options)
+      Summary.new(text: response.text.to_s.strip, model: response.model, top_logprobs: response.top_logprobs)
     rescue SummarizeError, LLM::RequestCancelled
       raise
     rescue StandardError => e
@@ -111,15 +123,16 @@ module Samagotchi
 
     private
 
-    # One plain /chat/completions request. Returns the cleaned assistant text
-    # ("" when there is nothing after stripping) and the served model's name
-    # (nil when the reply names none). Raises SummarizeError when
+    # One plain /chat/completions request. Returns a Summary of the cleaned
+    # assistant text ("" when there is nothing after stripping), the served
+    # model's name (nil when the reply names none) and the first token's
+    # logprobs. Raises SummarizeError when
     # the reply has neither content nor reasoning_content. Cut off by
     # +max_tokens+, the text keeps its finished sentences (+whole_sentences+)
     # or all of it, with "…".
-    def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true, kind: "recap")
+    def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true, kind: "recap", options: {})
       response = begin
-        request(messages, max_tokens, cancel_controller)
+        request(messages, max_tokens, cancel_controller, options)
       rescue LLM::BadRequest => e
         raise unless e.reasoning_refused? && !@thinking_refused
 
@@ -127,7 +140,7 @@ module Samagotchi
         # fields, and leave them out from now on.
         @thinking_refused = true
         Log.info(:recap, "thinking_refused", model: @model, detail: e.detail)
-        request(messages, max_tokens, cancel_controller)
+        request(messages, max_tokens, cancel_controller, options)
       end
       log_usage(response, kind)
       content = response.text
@@ -137,7 +150,7 @@ module Samagotchi
       cut_off = response.finish_reason == "length"
       # Reasoning cut off by max_tokens is the model's thinking, not a recap
       # (a server that ignores the thinking switch thinks until the limit).
-      return ["", response.model] if content.empty? && cut_off
+      return Summary.new(text: "", model: response.model, top_logprobs: response.top_logprobs) if content.empty? && cut_off
 
       # Prefer content, fall back to a finished reasoning_content (e.g.
       # Qwen3.6), and strip thinking tokens some models (Qwen, Gemma) leave
@@ -145,7 +158,7 @@ module Samagotchi
       text = self.class.strip_thinking(content.empty? ? reasoning : content)
       # Cut off by max_tokens: keep the sentences that finished ("" if none).
       text = whole_sentences ? self.class.full_sentences(text) : "#{text}…" if cut_off && !text.empty?
-      [text, response.model]
+      Summary.new(text: text, model: response.model, top_logprobs: response.top_logprobs)
     rescue LLM::ProtocolError => e
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
     end
@@ -160,9 +173,9 @@ module Samagotchi
                                         cached: fields[:cached_tokens], cache_write: fields[:cache_write_tokens])
     end
 
-    def request(messages, max_tokens, cancel_controller)
+    def request(messages, max_tokens, cancel_controller, options = {})
       @chat.chat(messages: messages, model: @model, tools: [], cancel_controller: cancel_controller,
-                 options: { max_tokens: max_tokens, **thinking_fields })
+                 options: { max_tokens: max_tokens, **thinking_fields, **options })
     end
 
     # A recap or side answer is short and tool-less: thinking off, whatever

@@ -275,5 +275,54 @@ RSpec.describe Samagotchi::IdleClient do
       server.stop
       expect { dead.ask([{ role: "user", content: "q" }]) }.to raise_error(described_class::SummarizeError)
     end
+
+    it "sends more body fields, and returns the first token's logprobs when the server sends them" do
+      server.enqueue("/v1/chat/completions", json: {
+        choices: [{ message: { content: "yes" }, finish_reason: "stop",
+                    logprobs: { content: [{ token: "yes", logprob: -0.1,
+                                            top_logprobs: [{ token: "yes", logprob: -0.1 },
+                                                           { token: "no", logprob: -2.4 },
+                                                           { token: "Yes", logprob: "bad" }] }] } }]
+      })
+      answer = client.ask([{ role: "user", content: "q" }], max_tokens: 4, options: { logprobs: true, top_logprobs: 5 })
+
+      expect(request_body).to include("logprobs" => true, "top_logprobs" => 5, "max_tokens" => 4)
+      expect(answer.top_logprobs.map(&:to_h)).to eq([{ token: "yes", logprob: -0.1 }, { token: "no", logprob: -2.4 }])
+      reply(content: "no")
+      expect(client.ask([{ role: "user", content: "q" }]).top_logprobs).to eq([])
+    end
+
+    it "parses an answer whose logprobs have another shape, with no logprobs" do
+      [[], nil, { content: "yes" }, { content: [nil] }, { content: [{ top_logprobs: "x" }] }].each do |logprobs|
+        server.enqueue("/v1/chat/completions", json: { choices: [{ message: { content: "yes" }, finish_reason: "stop",
+                                                                   logprobs: logprobs }] })
+        answer = client.ask([{ role: "user", content: "q" }], options: { logprobs: true })
+        expect([answer.text, answer.top_logprobs]).to eq(["yes", []]), logprobs.inspect
+      end
+    end
+
+    it "keeps a 400 as the SummarizeError's cause, so the caller can ask again without its options" do
+      server.enqueue("/v1/chat/completions", status: 400, json: { error: { message: "logprobs are not supported" } })
+
+      expect { client.ask([{ role: "user", content: "q" }], options: { logprobs: true }) }
+        .to raise_error(described_class::SummarizeError) { |e| expect(e.cause).to be_a(Samagotchi::LLM::BadRequest) }
+    end
+
+    it "names its purpose in errors, and its kind in the usage line" do
+      dir = Dir.mktmpdir("samagotchi-idle-log")
+      path = File.join(dir, "chi.log")
+      Samagotchi::Log.configure(path: path)
+      triage = described_class.new(model: "m", base_url: server.base_url, purpose: "broadcast")
+      server.enqueue("/v1/chat/completions", json: { usage: { prompt_tokens: 90, prompt_tokens_details: { cached_tokens: 10 } },
+                                                     choices: [{ message: { content: "no" }, finish_reason: "stop" }] })
+      triage.ask([{ role: "user", content: "q" }], kind: "broadcast")
+
+      records = File.open(path) { |io| Samagotchi::LogLine.each_record(io).to_a }
+      expect(records.find { |r| r.event == "request_usage" }.fields).to include("kind" => "broadcast")
+      server.enqueue("/v1/chat/completions", json: { choices: [] })
+      expect { triage.ask([{ role: "user", content: "q" }]) }.to raise_error(described_class::SummarizeError, /broadcast: no message/)
+    ensure
+      FileUtils.remove_entry(dir)
+    end
   end
 end

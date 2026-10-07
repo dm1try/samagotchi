@@ -40,8 +40,34 @@ module Samagotchi
     # OpenRouter's routing name); nil when the server says nothing.
     # +cut+ is set on the empty response the chat loop makes for a
     # generation a plugin cut (stop_generation): {by:, reason:}.
-    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model, :provider, :cut) do
-      def initialize(model: nil, provider: nil, cut: nil, **fields) = super
+    # +top_logprobs+: the first answer token's likeliest alternatives
+    # (TokenLogprob) when the request asked for logprobs and the server
+    # sent them (a non-streamed answer only); [] otherwise.
+    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model, :provider, :cut,
+                               :top_logprobs) do
+      def initialize(model: nil, provider: nil, cut: nil, top_logprobs: [].freeze, **fields) = super
+    end
+
+    # One alternative for an answer token: its text and log probability.
+    TokenLogprob = Data.define(:token, :logprob) do
+      # The first token's alternatives in a chat completion body's
+      # choices[0].logprobs (OpenAI's shape); [] when there are none or the
+      # body has another shape (it runs on every non-streamed answer: it
+      # never raises).
+      def self.first_of(body)
+        top = [%w[choices], [0], %w[logprobs], %w[content], [0], %w[top_logprobs]].reduce(body) do |node, (key)|
+          break nil unless key.is_a?(Integer) ? node.is_a?(Array) : node.is_a?(Hash)
+
+          node[key]
+        end
+        return [].freeze unless top.is_a?(Array)
+
+        top.filter_map do |entry|
+          next unless entry.is_a?(Hash) && entry["token"].is_a?(String) && entry["logprob"].is_a?(Numeric)
+
+          new(token: entry["token"], logprob: entry["logprob"].to_f)
+        end.freeze
+      end
     end
 
     # The OpenAI Chat Completions API (llama.cpp's /v1, and any compatible
@@ -334,7 +360,7 @@ module Samagotchi
                          reasoning: (message["reasoning_content"] || message["reasoning"]).to_s,
                          tool_calls: calls, usage: Usage.from_payload(body) || Usage.none,
                          finish_reason: body.dig("choices", 0, "finish_reason"), model: served_model(body),
-                         provider: self.class.served_provider(body))
+                         provider: self.class.served_provider(body), top_logprobs: TokenLogprob.first_of(body))
       end
 
       def served_model(payload) = self.class.served_model(payload)
