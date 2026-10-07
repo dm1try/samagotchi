@@ -1,0 +1,184 @@
+# Synthetic scope cards (Broadcast::ScopeCard's fields) from the broadcast triage spike (P0, 2026-10-06).
+# Projects: shopfront (team e-commerce, tickets SHOP-), agentd (a chi-like repo, many sessions in one
+# project: the hard case), infra (tickets INFRA-), plus two sessions outside any repo.
+# tags: what P1's extractors would find (ticket from branch/prompts, pr from an attached pr-N, links from prompts).
+
+- id: A1
+  project: shopfront
+  branch: feat/SHOP-412-guest-checkout
+  title: Guest checkout flow
+  tags: {ticket: [SHOP-412], link: [notion.so/acme/checkout-v2]}
+  started: "Implement guest checkout per the PRD https://notion.so/acme/checkout-v2 — no account needed, email + address only, then the usual payment step."
+  recap: "Added a GuestCheckoutController and the address form; order creation works without a user; next is wiring the payment step and the confirmation page."
+  recent: "now make the confirmation page work for guests too"
+
+- id: A2
+  project: shopfront
+  branch: fix/SHOP-398-payment-retries
+  title: Payment client retries
+  tags: {ticket: [SHOP-398]}
+  started: "Our PSP client retries on any error, including 4xx. Make it retry only on timeouts and 5xx, with exponential backoff and an idempotency key."
+  recap: "Retry policy rewritten with backoff and jitter; idempotency keys added to charge and refund calls; specs green against the PSP sandbox."
+  recent: "run the sandbox integration specs again"
+
+- id: A3
+  project: shopfront
+  branch: docs/SHOP-405-webhook-docs
+  title: Payment webhooks docs
+  tags: {ticket: [SHOP-405]}
+  started: "Write developer docs for our payment webhooks: event types, signature verification, retries from the PSP."
+  recap: "Drafted docs/payments/webhooks.md with the event table and a signature-check example in Ruby; missing the retry schedule section."
+  recent: "add a section on how the PSP retries failed webhook deliveries"
+
+- id: A4
+  project: shopfront
+  branch: feat/SHOP-377-csv-import
+  title: Catalog CSV import
+  tags: {ticket: [SHOP-377]}
+  started: "Merchants want to bulk import products from CSV. Build an importer with validation and a dry-run report."
+  recap: "Importer parses and validates rows, writes products in batches of 500; dry-run report done; images by URL still to do."
+  recent: "handle image URLs that 404"
+
+- id: A5
+  project: shopfront
+  branch: feat/SHOP-420-search-synonyms
+  title: Search synonyms
+  tags: {ticket: [SHOP-420]}
+  started: "Add a synonyms list to product search (Elasticsearch): 'tee' = 't-shirt', 'sneakers' = 'trainers', editable by admins."
+  recap: "Synonym filter added to the index settings via the ES synonyms API; admin page lists and edits sets; reindex task written."
+  recent: "write the reindex migration for production"
+
+- id: A6
+  project: shopfront
+  branch: feat/SHOP-415-order-emails
+  title: Order confirmation emails
+  tags: {ticket: [SHOP-415]}
+  started: "Redesign the order confirmation email (notifications service): MJML template, line items, totals, shipping address."
+  recap: "New MJML template renders line items and totals; preview route added; footer still uses the old layout."
+  recent: "make the footer match the new design"
+
+- id: A7
+  project: shopfront
+  branch: fix/SHOP-430-checkout-a11y
+  title: Checkout accessibility fixes
+  tags: {ticket: [SHOP-430]}
+  started: "Fix the accessibility audit findings on the checkout form: labels, focus order, error messages announced to screen readers."
+  recap: "Labels and aria-describedby fixed on all checkout fields; focus order corrected; buttons still use the old Button component with no focus ring."
+  recent: "fix the focus ring on the pay button"
+
+- id: A8
+  project: shopfront
+  branch: main
+  title: Flaky e2e tests in CI
+  tags: {}
+  started: "Our Playwright e2e suite fails randomly in GitHub Actions, ~1 in 5 runs. Find out why."
+  recap: "Two flaky specs found: checkout waits on a fixed timeout, and the payment step hits the real PSP sandbox, which is slow at times; proposed mocking the PSP in e2e."
+  recent: "which runner images do we use for the e2e job?"
+
+- id: B1
+  project: agentd
+  branch: feat/web-chips
+  title: Web session chips
+  tags: {}
+  started: "Add chips to the web session bar for attached sources: name, age, a dot when unread."
+  recap: "Chip component done in vanilla JS with CSS tokens; click opens a popover with the text; dark mode colors still off."
+  recent: "fix the chip colors in dark mode"
+
+- id: B2
+  project: agentd
+  branch: feat/wake-budget
+  title: Worker wake budget
+  tags: {}
+  started: "The worker may start turns by itself (wakes). Add a budget: at most N wakes in a row without a user message, pause after a failed turn."
+  recap: "Budget counter in Worker, reset on user input; pause on failure; specs for the counter; the config key still to add."
+  recent: "add session.max_wakes to config with docs"
+
+- id: B3
+  project: agentd
+  branch: fix/shell-heredoc
+  title: ShellLex heredoc guardrail gap
+  tags: {pr: ["#212"]}
+  started: "Guardrails' shell lexer misses commands inside heredocs (<<- and quoted delimiters), so a heredoc can hide rm -rf from the gate."
+  recap: "ShellLex now tokenizes heredoc bodies when the delimiter is unquoted; PR #212 open; review asked for <<- tab stripping tests."
+  recent: "add the <<- tests the review asked for"
+
+- id: B4
+  project: agentd
+  branch: main
+  title: Release 0.9.0
+  tags: {}
+  started: "Prepare the 0.9.0 release: changelog, version bump, build the gem, push to rubygems, tag."
+  recap: "Changelog written, version bumped, gem built and smoke-tested; push to rubygems and the tag are left."
+  recent: "push the gem"
+
+- id: B5
+  project: agentd
+  branch: docs/config
+  title: Configuration docs
+  tags: {}
+  started: "Rewrite docs/configuration.md: every setting with its default, env var and an example."
+  recap: "Settings table regenerated from the config registry; examples for hosts and recap added; models section still old."
+  recent: "update the models section"
+
+- id: B6
+  project: agentd
+  branch: ci/ruby-3.4
+  title: CI matrix Ruby 3.4
+  tags: {}
+  started: "Add Ruby 3.4 to the GitHub Actions matrix and fix whatever breaks."
+  recap: "3.4 added to ubuntu and macos jobs; two warnings about frozen string literals fixed; the macos job uses macos-13."
+  recent: "why is the macos 3.4 job slower?"
+
+- id: B7
+  project: agentd
+  branch: feat/recap-model
+  title: Recap via a small model
+  tags: {}
+  started: "Let the idle recap run on a separate small model (recap.model, recap.host_ref) instead of the session's."
+  recap: "Recap config resolves its own host; tested against the local llama.cpp server at 192.168.1.29; timeouts handled."
+  recent: "test it against the local server with a 4B model"
+
+- id: C1
+  project: infra
+  branch: chore/INFRA-88-k8s-1.34
+  title: Kubernetes 1.34 upgrade
+  tags: {ticket: [INFRA-88]}
+  started: "Plan and script the cluster upgrade to Kubernetes 1.34: deprecated APIs, node pools one at a time."
+  recap: "Deprecated API scan done (2 manifests fixed); upgrade runbook drafted; node pool order decided."
+  recent: "write the rollback section of the runbook"
+
+- id: C2
+  project: infra
+  branch: feat/INFRA-91-arm-runners
+  title: Self-hosted ARM CI runners
+  tags: {ticket: [INFRA-91]}
+  started: "Set up self-hosted ARM GitHub Actions runners on our cluster with autoscaling."
+  recap: "Runner controller deployed; scale-to-zero works; labels arm64 and self-hosted; one team trying it."
+  recent: "how do teams opt in to the arm runners?"
+
+- id: C3
+  project: infra
+  branch: docs/INFRA-95-pg17
+  title: Postgres 17 migration plan
+  tags: {ticket: [INFRA-95]}
+  started: "Write the migration plan from Postgres 15 to 17 for the main database: logical replication, cutover window."
+  recap: "Plan drafted with logical replication and a 15-minute cutover; extension compatibility checked; date not set."
+  recent: "propose a cutover date"
+
+- id: D1
+  project: (none)
+  branch: (none)
+  title: Blog post on local LLMs
+  tags: {}
+  started: "Help me write a blog post about running coding agents on local LLMs: setup, speed, what works."
+  recap: "Outline and intro done; sections on llama.cpp setup and token speeds drafted; conclusion missing."
+  recent: "make the conclusion shorter"
+
+- id: D2
+  project: (none)
+  branch: (none)
+  title: Rust ownership exercises
+  tags: {}
+  started: "I'm learning Rust. Give me exercises on ownership and borrowing and check my answers."
+  recap: "Did 6 exercises (moves, borrows, lifetimes in structs); the user struggles with lifetime elision."
+  recent: "one more exercise on lifetimes please"

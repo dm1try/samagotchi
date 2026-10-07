@@ -1,0 +1,123 @@
+# Broadcast notes with the expected recipients, from the broadcast triage spike (P0, 2026-10-06): labels
+# drafted by Claude, reviewed and approved by the user. broadcast_triage_spec replays recorded model answers
+# (answers.json) over every (note, card) pair.
+# must: must get it (a miss is the worst error); maybe: either answer is fine (not scored);
+# every card not listed: no (getting it is noise).
+
+- id: N1
+  text: "PSP sandbox is down since 14:00, every payment API call returns 503. Status: https://status.psp.example"
+  must: [A2]
+  maybe: [A8, A1]
+
+- id: N2
+  text: "SHOP-412: product decided guest checkout must still ask for a phone number."
+  must: [A1]
+  maybe: [A7]
+
+- id: N3
+  text: "PRD updated https://notion.so/acme/checkout-v2 — section 4, shipping options, reworked: no more free shipping threshold."
+  must: [A1]
+  maybe: [A7]
+
+- id: N4
+  text: "Elasticsearch goes to 9.x on Thursday; the synonyms API has breaking changes, see the upgrade notes."
+  must: [A5]
+  maybe: []
+
+- id: N5
+  text: "GitHub Actions drops the macos-13 runner image next Monday; jobs using it will fail."
+  must: [B6]
+  maybe: [A8, C2]
+
+- id: N6
+  text: "No rubygems pushes until the org's 2FA migration is done on Friday."
+  must: [B4]
+  maybe: []
+
+- id: N7
+  text: "Ruby 3.4.2 has a regression in Data.define with keyword arguments; pin 3.4.1 for now."
+  must: [B6]
+  maybe: [B1, B2, B3, B4, B5, B7]
+
+- id: N8
+  text: "Team lunch at 13:00 today in the big room."
+  must: []
+  maybe: []
+
+- id: N9
+  text: "The Postgres 17 upgrade moved to the next sprint."
+  must: [C3]
+  maybe: []
+
+- id: N10
+  text: "Design system: Button v3 is out (focus ring fixed); the old Button is deprecated in two weeks."
+  must: [A7]
+  maybe: [A1, B1]
+
+- id: N11
+  text: "The model server at 192.168.1.29 is down tonight from 22:00 for maintenance."
+  must: [B7]
+  maybe: [D1]
+
+- id: N12
+  text: "Customer reports duplicate charges after a payment retry, see SHOP-433."
+  must: [A2]
+  maybe: [A3]
+
+- id: N13
+  text: "Legal: order confirmation emails must show the company registration number in the footer."
+  must: [A6]
+  maybe: []
+
+- id: N14
+  text: "Rust 1.92 is released."
+  must: []
+  maybe: [D2]
+
+- id: N15
+  text: "Cluster upgrade to Kubernetes 1.34 is Wednesday 22:00; deploys are frozen 21:00–23:00."
+  must: [C1]
+  maybe: [C2, C3]
+
+- id: N16
+  text: "Heads-up: PR #212 changes how ShellLex tokenizes <<- heredocs; rebase if you touch shell parsing."
+  must: [B3]
+  maybe: []
+
+# Loose "scope line + quoted info" style, as the user writes to an LLM (2026-10-06). The scope hint is
+# informal: a project, project/component, or a nickname; sometimes missing or slightly off.
+
+- id: N17
+  text: |
+    shopfront/checkout
+    > design review: the pay button must stay visible on small screens, no sticky footer tricks
+  must: [A1, A7]
+  maybe: [A2]
+
+- id: N18
+  text: |
+    agentd web
+    > CSS tokens renamed: --bg-1 is now --surface, --fg-2 is --muted. old names removed next week
+  must: [B1]
+  maybe: []
+
+- id: N19
+  text: |
+    for payments folks
+    > PSP will start rejecting charges without an idempotency key from Nov 1
+  must: [A2]
+  maybe: [A3, A8]
+
+- id: N20
+  text: |
+    infra / ci
+    > the arm64 runners are now default for new repos, x86 on request
+  must: [C2]
+  maybe: [B6, A8]
+
+- id: N21
+  text: |
+    shopfront
+    > fyi we're moving the standup to 10:30 from tomorrow
+  must: []
+  maybe: []

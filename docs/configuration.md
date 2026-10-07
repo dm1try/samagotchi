@@ -742,7 +742,8 @@ One record is one line, plus indented payload lines at debug level:
   control characters (terminal colours in tool output) are escaped.
 - Tags: `turn` (a session's event trail), `http` (model requests),
   `worker`, `bridge`, `web`, `attached`, `repl`, `idle`, `recap`, `hooks`,
-  `plugins`, `guardrails`, `config`, `memory`, `model` (debug dumps), `context` (attached context fetches).
+  `plugins`, `guardrails`, `config`, `memory`, `model` (debug dumps), `context` (attached context fetches),
+  `broadcast` (chi broadcast's triage).
 - The format is parsed by `Samagotchi::LogLine` (`parse`, `each_record`);
   keep tools that read it on that parser.
 
