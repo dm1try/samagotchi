@@ -97,7 +97,7 @@ parser = OptionParser.new do |opts|
            chi web [--port PORT] [--open] [--scope=all]   the web UI
            chi sessions <list|stop|archive|unarchive|delete|prune|clean>
            chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
-           chi broadcast [-m TEXT] [--all] [--dry-run]   a note for every session it may concern
+           chi broadcast [-m TEXT] [--all] [--dry-run] | log | deliver   a note for every session it may concern
            chi context <add|push|ls|show|refresh|rm|mute|unmute>   live external text attached to sessions
            chi send [-m TEXT] ID...|--new   a message into sessions, as if typed there
            chi answer ID --question QID --option N   answer a question a session waits on

@@ -120,7 +120,7 @@ chi web --open                            # web UI: this project's sessions (--s
 chi web --web-host lan                    # the web UI on your phone too: scan the QR code it prints
 chi sessions list                         # this project's saved sessions (--scope=all: every one)
 pbpaste | chi note --source slack <id>    # background context for a session (no turn)
-chi broadcast -m "payments API is down"   # the same for every session it concerns (a shared ticket, PR or link)
+chi broadcast -m "payments API is down"   # the same for every session it concerns (a shared tag, or a triage model says so)
 chi context add <PR URL> <id>             # attached context: chi keeps it fresh, the agent hears when it changes
 pbpaste | chi send -m "same bug?" <id>    # a message to a session, the clipboard quoted above it
 chi send --new --wait -m "review feat/x"  # a new session you can watch in the web; prints the answer
@@ -203,7 +203,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Memory](docs/memory.md): scopes and model-specific overlays
 - [Sessions](docs/sessions.md): storage, retention, `chi sessions`
 - [Attached context](docs/context.md): `chi context`, sources, scopes, waking, the github-pr bundle, safety
-- [Broadcast](docs/broadcast.md): `chi broadcast`, who a note reaches, tags, what a session gets
+- [Broadcast](docs/broadcast.md): `chi broadcast`, who a note reaches, tags, triage, what a session gets, the triage log
 - [chi as a sub-agent](docs/sub-agent.md): `chi send --wait --format json`, `chi answer`, instructions for a parent agent
 - [Desktop helper](docs/desktop.md): `chi desktop`, the macOS "Send to chi" Service and hotkey
 - [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals

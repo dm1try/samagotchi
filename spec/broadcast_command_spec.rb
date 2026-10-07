@@ -23,6 +23,7 @@ RSpec.describe Samagotchi::BroadcastCommand do
   let(:triage_yes) { [] }
   let(:triage_slow) { [] }
   let(:judged) { [] }
+  let(:log) { Samagotchi::Broadcast::TriageLog.new(File.join(tmpdir, "state", "broadcast", "log.jsonl")) }
 
   after do
     locks.each(&:release)
@@ -73,8 +74,11 @@ RSpec.describe Samagotchi::BroadcastCommand do
   def run(*argv, env: {}, stdin: StringIO.new(""), deadline: 5)
     described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: state_dir, env: env, now: now,
                               active_hours: 8, ticket_pattern: nil, triage: method(:triage), triage_parallel: 2,
-                              triage_deadline: deadline, threshold: 0.5).run
+                              triage_deadline: deadline, threshold: 0.5, log: log).run
   end
+
+  # The output's lines, the broadcast's id as b-ID.
+  def output = out.string.lines.map { |l| l.chomp.sub(/\Abroadcast b-\h{8}  /, "broadcast b-ID  ") }
 
   def notes_of(session)
     dir = File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), Samagotchi::SessionInbox::NOTES_DIR)
@@ -95,8 +99,8 @@ RSpec.describe Samagotchi::BroadcastCommand do
       code = run("-m", note)
 
       expect(code).to eq(0), err.string
-      expect(out.string.lines.map(&:chomp)).to eq(
-        ["broadcast  \"payments API returns 500 since 14:00 (PAY-123) …\"",
+      expect(output).to eq(
+        ["broadcast b-ID  \"payments API returns 500 since 14:00 (PAY-123) …\"",
          "#{short(pay)}  delivered  ticket PAY-123 matches (branch)",
          "#{short(prd)}  delivered  link notion.so/team/checkout-v2 matches (messages); waits for its next start",
          "#{short(other)}  skipped    model: no",
@@ -119,8 +123,8 @@ RSpec.describe Samagotchi::BroadcastCommand do
       code = run("--all", stdin: StringIO.new("deploy freeze until 18:00\n"))
 
       expect(code).to eq(0), err.string
-      expect(out.string.lines.map(&:chomp)).to eq(
-        ["broadcast  \"deploy freeze until 18:00\"",
+      expect(output).to eq(
+        ["broadcast b-ID  \"deploy freeze until 18:00\"",
          "#{short(pay)}  delivered  --all",
          "#{short(prd)}  delivered  --all; waits for its next start",
          "#{short(other)}  delivered  --all",
@@ -161,7 +165,7 @@ RSpec.describe Samagotchi::BroadcastCommand do
       code = run("-m", "payments API returns 500 since 14:00")
 
       expect(code).to eq(0), err.string
-      expect(out.string.lines.map(&:chomp).drop(1)).to eq(
+      expect(output.drop(1)).to eq(
         ["#{short(retry_client)}  delivered  model: yes",
          "#{short(slow)}  skipped    model: no",
          "#{short(docs)}  skipped    model: no",
@@ -180,7 +184,7 @@ RSpec.describe Samagotchi::BroadcastCommand do
         code = run("-m", "payments API returns 500 since 14:00", deadline: 0.3)
 
         expect(code).to eq(0), err.string
-        expect(out.string.lines.map(&:chomp).drop(1)).to eq(
+        expect(output.drop(1)).to eq(
           ["#{short(slow)}  delivered  unchecked: triage deadline",
            "#{short(retry_client)}  delivered  model: yes",
            "#{short(docs)}  skipped    model: no",
@@ -200,6 +204,102 @@ RSpec.describe Samagotchi::BroadcastCommand do
       expect(out.string).to include("#{short(docs)}  skipped       scope line names client",
                                     "#{short(elsewhere)}  skipped       scope line names client")
       expect(judged).to eq([retry_client.id])
+    end
+  end
+
+  context "with the triage log" do
+    let!(:docs) { make("docs", owner: "worker", prompts: ["write the composer docs"]) }
+    let!(:pay) { make("pay", branch: "feat/pay-123-retry", prompts: ["fix PAY-123"]) }
+
+    def broadcast_id = out.string[/\Abroadcast (b-\h{8})/, 1]
+
+    it "logs each broadcast's verdicts under the id it prints, and shows them with chi broadcast log" do
+      run("-m", "PAY-123 is fixed upstream")
+      id = broadcast_id
+      run("--dry-run", "-m", "not logged")
+
+      record = log.records.last
+      expect(log.records.size).to eq(1)
+      expect(record).to have_attributes(id: id, text: "PAY-123 is fixed upstream", note_tags: ["ticket PAY-123"],
+                                        corrections: [])
+      expect(record.recipients.map(&:to_h)).to eq(
+        [{ session: pay.id, result: "delivered", p: nil, reason: "ticket PAY-123 matches (branch); waits for its next start",
+           by: "tags", tags: ["ticket PAY-123"] },
+         { session: docs.id, result: "skipped", p: 0.0, reason: "model: no", by: "model", tags: [] }]
+      )
+
+      out.truncate(0)
+      out.rewind
+      expect(run("log")).to eq(0)
+      expect(out.string.lines.map(&:chomp)).to eq(
+        ["#{id}  #{stamp}  \"PAY-123 is fixed upstream\"",
+         "  #{short(pay)}  delivered  ticket PAY-123 matches (branch); waits for its next start",
+         "  #{short(docs)}  skipped    model: no",
+         "  delivered 1 · skipped 1"]
+      )
+    end
+
+    it "delivers a logged broadcast to a session it skipped with chi broadcast deliver, and logs the correction" do
+      run("-m", "PAY-123 is fixed upstream")
+      id = broadcast_id
+      out.truncate(0)
+      out.rewind
+
+      expect(run("deliver", id.delete_prefix("b-")[0, 5], short(docs), short(pay))).to eq(0)
+      expect(out.string.lines.map(&:chomp)).to eq(
+        ["#{short(docs)}  delivered  by hand", "#{short(pay)}  skipped    it got #{id} already"]
+      )
+      expect(notes_of(docs).map { |n| n["text"] }).to eq(
+        ["PAY-123 is fixed upstream\n(Shared by your user on #{stamp} with the sessions it may concern; " \
+         "your user passed it on to this session.)"]
+      )
+      expect(notes_of(pay).size).to eq(1)
+      expect(log.records.last.corrections.map { |c| c.sessions.map(&:to_h) })
+        .to eq([[{ session: docs.id, result: "delivered" }, { session: pay.id, result: "had it" }]])
+
+      out.truncate(0)
+      out.rewind
+      run("log", "--format", "json")
+      json = JSON.parse(out.string)
+      expect(json.last).to include("id" => id, "corrections" => [include("sessions" => include("session" => docs.id,
+                                                                                               "result" => "delivered"))])
+    end
+
+    it "delivers once to a session named twice, by different prefixes" do
+      run("-m", "PAY-123 is fixed upstream")
+      id = broadcast_id
+      out.truncate(0)
+      out.rewind
+
+      expect(run("deliver", id, docs.id[0, 4], short(docs))).to eq(0)
+      expect(out.string.lines.map(&:chomp)).to eq(["#{short(docs)}  delivered  by hand"])
+      expect(notes_of(docs).size).to eq(1)
+      expect(log.records.last.corrections.first.sessions.map(&:session)).to eq([docs.id])
+    end
+
+    it "fails a session it can't read, and still delivers to the others" do
+      run("-m", "PAY-123 is fixed upstream")
+      id = broadcast_id
+      allow(Samagotchi::Session).to receive(:load).and_call_original
+      allow(Samagotchi::Session).to receive(:load).with(pay.id, state_dir: state_dir).and_raise(Errno::EACCES, "session.json")
+
+      expect(run("deliver", id, short(pay), short(docs))).to eq(1)
+      expect(err.string).to include("chi broadcast: session #{short(pay)} can't be read: Permission denied - session.json")
+      expect(notes_of(docs).size).to eq(1)
+    end
+
+    it "says so for an unknown broadcast or session, and refuses log and deliver inside a chi session" do
+      run("-m", "PAY-123 is fixed upstream")
+
+      expect(run("deliver", "b-00000000", short(docs))).to eq(1)
+      expect(err.string).to include("chi broadcast: no broadcast b-00000000 in the log (chi broadcast log)")
+      expect(run("deliver", broadcast_id, "ffffffff")).to eq(1)
+      expect(err.string).to include("chi broadcast: no session ffffffff")
+      expect(run("deliver", broadcast_id)).to eq(2)
+      expect(run("log", "--last", "0")).to eq(2)
+      expect(run("log", env: { "SAMAGOTCHI_PARENT_SESSION" => "chi" })).to eq(1)
+      expect(run("deliver", broadcast_id, short(docs), env: { "SAMAGOTCHI_PARENT_SESSION" => "chi" })).to eq(1)
+      expect(notes_of(docs)).to eq([])
     end
   end
 

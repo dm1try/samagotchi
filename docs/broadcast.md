@@ -12,6 +12,8 @@ chi broadcast -m "payments API returns 500 since 14:00 (PAY-123)"
 pbpaste | chi broadcast              # the note from stdin
 chi broadcast --dry-run -m "…"       # who would get it and why; nothing is delivered
 chi broadcast --all -m "deploy freeze until 18:00"   # every recipient, tag or not
+chi broadcast log                    # the last broadcasts and who got them
+chi broadcast deliver b-7f3a1c9e c0ffee12   # one it skipped, after all
 ```
 
 To tell one session or a few you picked, use `chi note ID...` instead.
@@ -91,7 +93,7 @@ and triage and reaches every recipient.
 One line per recipient, the ones that got it first, then a summary:
 
 ```
-broadcast  "payments API returns 500 since 14:00 (PAY-123)"
+broadcast b-7f3a1c9e  "payments API returns 500 since 14:00 (PAY-123)"
 3f2a1c9e  delivered  ticket PAY-123 matches (branch)
 91ab02c4  delivered  link notion.so/team/checkout-v2 matches (messages); waits for its next start
 5e1f0a77  delivered  model: yes (p 0.91)
@@ -101,7 +103,8 @@ d00dad00  skipped    open in a chi REPL
 delivered 4 · skipped 2 · 1 unchecked: triage deadline
 ```
 
-A session a worker runs adds the note within a few seconds (after a running
+The first line names the broadcast (`b-7f3a1c9e`): `chi broadcast log` and
+`chi broadcast deliver` take it. A session a worker runs adds the note within a few seconds (after a running
 turn); one with no worker gets it at its next start ("waits for its next
 start"). Nothing starts a turn anywhere.
 
@@ -121,7 +124,8 @@ and the setting it came from.
 ```
 
 Exit status: 0 when it ran (skipped sessions included), 1 when it was refused,
-no session is active or a delivery failed, 2 for a usage error.
+no session is active or a delivery failed, 2 for a usage error. `chi broadcast
+deliver` exits 0 when every session named has the note now, 1 otherwise.
 
 ## What a session gets
 
@@ -146,9 +150,37 @@ plain note can't pass for a broadcast.
 The note and its line together are capped at 16 KiB like any note; the text
 may take up to 15872 bytes.
 
+## The triage log
+
+Each broadcast (not a `--dry-run`) leaves one line in
+`$XDG_STATE_HOME/samagotchi/broadcast/log.jsonl` (`~/.local/state/…`): its
+id, time, your text, the note's tags and each recipient's verdict (result,
+reason, P(yes), who decided, the session's tags). Scope cards are not kept:
+they quote your prompts. Past 2 MiB the file becomes `log.jsonl.1`, one old
+file kept. Sessions don't read it: a broadcast stays fire-and-forget.
+
+```sh
+chi broadcast log                  # the last 5 broadcasts
+chi broadcast log --last 20 --format json
+```
+
+```
+b-7f3a1c9e  2026-10-06 14:20  "payments API returns 500 since 14:00 (PAY-123)"
+  3f2a1c9e  delivered  ticket PAY-123 matches (branch)
+  c0ffee12  skipped    model: no
+  delivered 1 · skipped 1
+  2026-10-06 14:31 delivered anyway: c0ffee12
+```
+
+When triage skipped a session that needed the note, `chi broadcast deliver
+BROADCAST_ID ID...` (an id or the start of one, for both) gives it the logged
+text, dated when it was shared and saying you passed it on. A session that
+got it already is left alone. The log keeps it as a correction: labels for
+tuning `broadcast.threshold`, or for a classifier later.
+
 ## For you, not for an agent
 
-`chi broadcast` refuses to run inside a chi session (where
+`chi broadcast` (`log` and `deliver` too) refuses to run inside a chi session (where
 `SAMAGOTCHI_PARENT_SESSION` is set): "chi broadcast is for your user, not an
 agent". With the guardrails bundle, the `chi-broadcast` rule also asks before
 any shell command that runs it, once at a time, and only you may allow it
