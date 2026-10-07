@@ -18,7 +18,8 @@ module Samagotchi
 
       # @param verdict [Verdict] an ask, with its targets and context
       # @param label [String, nil] a plugin tool's label ("chrome:
-      #   screenshot"): the question names the tool by it, as its row does;
+      #   screenshot"): the question names the tool by it, as its row does
+      #   (without one, by the tool the call acts as, else its name);
       #   approval[:tool] stays the raw name
       # @param preview [Hash, nil] EditPreview.for(verdict.call) for edit and
       #   write: the card shows its diff, the question text one change line
@@ -37,6 +38,8 @@ module Samagotchi
           kind: KIND,
           approval: {
             tool: targets&.tool || verdict.call[:name].to_s,
+            # The tool the call acts as (an MCP tool behind mcp_call).
+            acts_as: targets&.acts_as,
             label: label,
             command: targets&.command,
             paths: targets && !targets.paths.empty? ? targets.paths : nil,
@@ -126,7 +129,7 @@ module Samagotchi
       #   change: +3 −1                      (edit/write, from the preview)
       def question_text(verdict, label: nil, preview: nil)
         targets = verdict.targets
-        tool = label || targets&.tool || verdict.call[:name].to_s
+        tool = label || targets&.acts_as || targets&.tool || verdict.call[:name].to_s
         what = targets&.command || (targets && targets.paths.join(", "))
         what = Approval.args_text(targets&.args, limit: ARGS_CHARS) if what.to_s.empty?
         lines = ["#{tool}: #{what}"]

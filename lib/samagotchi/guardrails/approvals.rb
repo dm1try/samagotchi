@@ -90,7 +90,7 @@ module Samagotchi
         return nil unless STORED_SCOPES.include?(scope)
 
         entry = { "scope" => scope, "tool" => verdict.targets&.tool || verdict.call[:name].to_s,
-                  "rule" => verdict.rule, "source" => verdict.source, "created_at" => Time.now.utc.iso8601 }
+                  "acts_as" => verdict.targets&.acts_as, "rule" => verdict.rule, "source" => verdict.source, "created_at" => Time.now.utc.iso8601 }
         case scope
         when "session" then entry.merge!("session_id" => verdict.context&.session_id, "key" => key_for(verdict))
         when "repo"
@@ -110,14 +110,18 @@ module Samagotchi
 
       # tool + the normalized command, or the sorted paths; for a plugin
       # tool with neither (an MCP tool), its arguments, so "this call" is
-      # this call.
+      # this call. A call that acts as another tool keys as
+      # `mcp_call>mcp_github_x`: the real name stays in, so it never reuses
+      # that tool's own approvals (nor they its).
       def self.key_for(verdict)
         t = verdict.targets
         return "#{verdict.call[:name]}:" unless t
-        return "#{t.tool}:#{t.command.to_s.strip.gsub(/\s+/, " ")}" if t.command
-        return "#{t.tool}:#{Approval.args_text(t.args)}" if t.paths.empty?
 
-        "#{t.tool}:#{t.paths.sort.join("\n")}"
+        tool = t.acts_as ? "#{t.tool}>#{t.acts_as}" : t.tool
+        return "#{tool}:#{t.command.to_s.strip.gsub(/\s+/, " ")}" if t.command
+        return "#{tool}:#{Approval.args_text(t.args)}" if t.paths.empty?
+
+        "#{tool}:#{t.paths.sort.join("\n")}"
       end
 
       def self.place_for(verdict)

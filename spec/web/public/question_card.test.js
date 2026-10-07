@@ -42,6 +42,16 @@ test("a plugin tool's approval names it by its label, as its row does", () => {
   assert.equal(summaryText(pq, { answer: { selected: ["Allow once"] } }), "saving note: /r/secret.md → Allowed: Allow once");
 });
 
+test("a call that acts as another tool is named by its label, else by that tool", () => {
+  const pq = (extra) => ({
+    kind: "approval", header: "",
+    approval: { tool: "mcp_call", acts_as: "mcp_github_x", args: "owner=me", cwd: "/r", reason: "mcp", ...extra },
+  });
+  assert.equal(approvalView(pq({ label: "github: x" })).tool, "github: x");
+  assert.equal(approvalView(pq({})).tool, "mcp_github_x");
+  assert.equal(summaryText(pq({})), "Approve mcp_github_x?");
+});
+
 test("approvalView: a tool without a command or path shows its args, or nothing", () => {
   const pq = (approval) => ({ kind: "approval", approval: { tool: "mcp_x_echo", cwd: "/r", reason: "mcp", ...approval } });
   const withArgs = approvalView(pq({ args: "message=\"hi\" n=3" }));

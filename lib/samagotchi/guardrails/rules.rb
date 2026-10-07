@@ -9,7 +9,9 @@ module Samagotchi
     # Declarative rules from config.yml's `guardrails:` section (and, later,
     # installed bundles). All the fields a rule gives must match:
     #   tool:    a tool name, a list, or "shell" (execute + task_create);
-    #            a name may be a glob ("mcp_*", "mcp_{git,gh}_*")
+    #            a name may be a glob ("mcp_*", "mcp_{git,gh}_*"); it
+    #            matches the call's name or the tool a plugin tool's call
+    #            acts as (Targets#acts_as: an MCP tool behind mcp_call)
     #   command: a Ruby regex on a shell tool's command
     #   path:    "outside_repo", or a glob on the resolved paths (absolute
     #            or "**/…" globs match the absolute path; others the path
@@ -51,7 +53,7 @@ module Samagotchi
         def matches?(targets)
           return false unless targets
           return false unless for_model?(targets.model_name, targets.model_key, -> { targets.small_model? })
-          return false if tools && !tool_matches?(targets.tool)
+          return false if tools && !tool_matches?(targets.tool) && !(targets.acts_as && tool_matches?(targets.acts_as))
           return false if command && !(targets.command && command.match?(targets.command))
           return false if path && !path_matches?(targets)
           return false if git && !targets.git_outside_repo?

@@ -131,6 +131,36 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
     expect(described_class.key_for(web)).to eq("web_fetch:")
   end
 
+  it "keys a call that acts as another tool by its real name, the alias and the inner args, and stores acts_as" do
+    registry = Samagotchi::Tools::Registry.new
+    registry.register("mcp_call", schema: { name: "mcp_call" }, handler: ->(*) { "" }, source: "mcp",
+                                  targets: lambda { |call|
+                                    { acts_as: call[:args]["tool"], args: call[:args]["args"], label: call[:args]["label"] }
+                                  })
+    registry.register("mcp_github_x", schema: { name: "mcp_github_x" }, handler: ->(*) { "" }, source: "mcp")
+    ctx = Samagotchi::Guardrails::Context.new(cwd: repo, session_id: "s1")
+    verdict = lambda do |call|
+      v = Samagotchi::Guardrails::Verdict.new(call: call).ask!("mcp", rule: "mcp-ask", source: "config")
+      v.context = ctx
+      v.targets = Samagotchi::Guardrails::Targets.for(call, ctx, registry: registry)
+      v
+    end
+    via = ->(args) { verdict.call({ name: "mcp_call", args: { "tool" => "mcp_github_x", "args" => args } }) }
+    entry = store.add(via.call({ "b" => 2, "a" => 1 }), "session")
+    expect(entry).to include("tool" => "mcp_call", "acts_as" => "mcp_github_x", "key" => "mcp_call>mcp_github_x:a=1 b=2")
+    expect(store.match(via.call({ "a" => 1, "b" => 2 }))).not_to be_nil
+    expect(store.match(via.call({ "a" => 9 }))).to be_nil
+    # label: is display only: it doesn't change the key.
+    labelled = verdict.call({ name: "mcp_call", args: { "tool" => "mcp_github_x", "args" => { "a" => 1, "b" => 2 },
+                                                        "label" => "github: x" } })
+    expect(described_class.key_for(labelled)).to eq("mcp_call>mcp_github_x:a=1 b=2")
+    # The tool's own approval and the alias's don't stand in for each other.
+    expect(store.match(verdict.call({ name: "mcp_github_x", args: { "a" => 1, "b" => 2 } }))).to be_nil
+    store.add(verdict.call({ name: "mcp_github_x", args: { "a" => 5 } }), "session")
+    expect(store.entries.last).not_to have_key("acts_as")
+    expect(store.match(via.call({ "a" => 5 }))).to be_nil
+  end
+
   it "stores an entry once, and revokes by index" do
     2.times { store.add(ask, "repo") }
     store.add(ask, "session")

@@ -226,8 +226,13 @@ module Samagotchi
         return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it (non-interactive run).")
       end
 
-      # A plugin tool is asked about by its label, as its row shows it.
-      label = ToolActivity.plugin_label(verdict.call[:name].to_s, registry: @tools_lookup.call)
+      # A plugin tool is asked about by its targets:' label:, else its
+      # label, as its row shows it; a call that acts as another tool (an MCP
+      # tool behind mcp_call) by that tool's label, else (none registered)
+      # by its name (Approval.payload).
+      acts_as = verdict.targets&.acts_as
+      label = verdict.targets&.label ||
+              ToolActivity.plugin_label(acts_as || verdict.call[:name].to_s, registry: @tools_lookup.call)
       # verdict.call is the call that will run (a hook may have replaced it).
       payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call),
                                                       only: (SCRATCH_SCOPES if @scratch))

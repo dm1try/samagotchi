@@ -80,6 +80,52 @@ RSpec.describe "Engine guardrail wiring" do
       thread.join(2)
     end
 
+    it "asks about a call that acts as another tool by that tool's label" do
+      engine.interface = :worker
+      tools = engine.instance_variable_get(:@tools)
+      tools.register("mcp_call", schema: { name: "mcp_call" }, handler: ->(*) { "" }, label: "mcp: call", source: "mcp",
+                                 targets: ->(call) { { acts_as: call[:args]["tool"], args: call[:args]["args"] } })
+      tools.register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" }, label: "x: echo", source: "mcp")
+      v = Samagotchi::Guardrails::Verdict.new(call: { name: "mcp_call", args: { "tool" => "mcp_x_echo", "args" => { "m" => "hi" } } })
+      v.ask!("an MCP tool", rule: "mcp-ask", source: "config", scopes: %w[once])
+      v.context = guardrail_context(engine)
+      v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context, registry: tools)
+      thread = Thread.new { engine.request_approval(v) }
+      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+      pending = engine.pending_question
+      expect(pending[:approval]).to include(tool: "mcp_call", acts_as: "mcp_x_echo", label: "x: echo")
+      expect(pending[:question].lines.first).to eq("x: echo: m=hi\n")
+      engine.cancel_question("dismissed", id: pending[:id])
+      thread.join(2)
+    end
+
+    it "asks by the label: a plugin tool's targets: gives, over the registered one; one that isn't a short line is ignored" do
+      engine.interface = :worker
+      tools = engine.instance_variable_get(:@tools)
+      tools.register("mcp_call", schema: { name: "mcp_call" }, handler: ->(*) { "" }, label: "mcp: call", source: "mcp",
+                                 targets: ->(call) { { acts_as: "mcp_x_echo", args: {}, label: call[:args]["label"] } })
+      tools.register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" }, label: "x: echo", source: "mcp")
+      allow(Samagotchi::Log).to receive(:warn)
+      asked = lambda do |label|
+        v = Samagotchi::Guardrails::Verdict.new(call: { name: "mcp_call", args: { "label" => label } })
+        v.ask!("an MCP tool", rule: "mcp-ask", source: "config", scopes: %w[once])
+        v.context = guardrail_context(engine)
+        v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context, registry: tools)
+        thread = Thread.new { engine.request_approval(v) }
+        wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
+        pending = engine.pending_question
+        engine.cancel_question("dismissed", id: pending[:id])
+        thread.join(2)
+        [pending[:approval][:label], v.targets.label]
+      end
+      expect(asked.call("  github: x ")).to eq(["github: x", "github: x"])
+      [nil, "", "  ", 5, "a\nb", "x" * 81].each do |label|
+        expect(asked.call(label)).to eq(["x: echo", nil])
+      end
+      expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "plugin_label_ignored", hash_including(tool: "mcp_call"))
+                                                     .exactly(3).times
+    end
+
     it "denies when the worker's question is dismissed" do
       engine.interface = :worker
       result = nil

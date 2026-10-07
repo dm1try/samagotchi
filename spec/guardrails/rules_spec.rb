@@ -5,6 +5,7 @@ require "samagotchi/guardrails"
 require "samagotchi/hooks"
 require "samagotchi/engine"
 require "samagotchi/model_overlay"
+require "samagotchi/tools/builtins"
 
 RSpec.describe Samagotchi::Guardrails::Rules do
   let(:repo) { File.realpath(Dir.mktmpdir("guard-rules")).tap { |d| system("git", "-C", d, "init", "-q") } }
@@ -53,6 +54,59 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       braces = rules({ id: "two", tool: "mcp_{git,gh}_*", verdict: "deny" })
       expect(verdict_for({ name: "mcp_gh_create_issue", args: {} }, braces)).to be_deny
       expect(verdict_for({ name: "mcp_fs_read", args: {} }, braces)).to be_allow
+    end
+
+    describe "a plugin call that acts as another tool (targets: acts_as:)" do
+      # mcp_call acts as whatever its tool argument names; a foreign
+      # bundle's save_note and a core tool are what it may not pass for.
+      let(:registry) do
+        Samagotchi::Tools::Builtins.registry.tap do |r|
+          r.register("mcp_call", schema: {}, handler: ->(*) { "" }, source: "mcp",
+                                 targets: ->(call) { { acts_as: call[:args]["tool"], args: call[:args]["args"] } })
+          r.register("save_note", schema: {}, handler: ->(*) { "" }, source: "notes")
+        end
+      end
+
+      def verdict_via(tool, set, args: { "owner" => "me" })
+        call = { name: "mcp_call", args: { "tool" => tool, "args" => args } }
+        v = Samagotchi::Guardrails::Verdict.new(call: call)
+        v.context = context
+        v.targets = Samagotchi::Guardrails::Targets.for(call, context, registry: registry)
+        set.check(v)
+      end
+
+      it "matches a rule on the tool it acts as, by name or glob" do
+        exact = rules({ id: "no-merge", tool: "mcp_github_merge_pull_request", verdict: "deny" })
+        expect(verdict_via("mcp_github_merge_pull_request", exact)).to be_deny
+        expect(verdict_via("mcp_github_list_issues", exact)).to be_allow
+        glob = rules({ id: "gh-ask", tool: "mcp_github_*", verdict: "ask" })
+        expect(verdict_via("mcp_github_list_issues", glob)).to be_ask
+        expect(verdict_via("mcp_chrome_screenshot", glob)).to be_allow
+      end
+
+      it "matches a rule on the call's own name, whatever it acts as" do
+        set = rules({ id: "calls", tool: "mcp_call", verdict: "ask" })
+        expect(verdict_via("mcp_github_list_issues", set)).to be_ask
+        expect(verdict_via("", set)).to be_ask
+        expect(verdict_via("mcp_x", rules({ id: "all", tool: "mcp_*", verdict: "ask" }))).to be_ask
+      end
+
+      it "drops (and logs) an acts_as naming a core tool or another bundle's tool" do
+        allow(Samagotchi::Log).to receive(:warn)
+        set = rules({ id: "x", tool: %w[execute save_note web_fetch], verdict: "deny" })
+        %w[execute save_note web_fetch].each do |name|
+          expect(verdict_via(name, set)).to be_allow
+        end
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:plugins, "plugin_acts_as_dropped", hash_including(tool: "mcp_call", acts_as: "execute",
+                                                                   msg: "mcp_call targets: acts_as execute dropped: it is a core tool"))
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:plugins, "plugin_acts_as_dropped", hash_including(acts_as: "save_note", msg: /bundle notes's tool/))
+        # A core tool this session doesn't have (a child's delegate) is still a core tool.
+        registry.unregister("delegate")
+        expect(Samagotchi::Guardrails::Targets.for({ name: "mcp_call", args: { "tool" => "delegate" } }, context,
+                                                   registry: registry).acts_as).to be_nil
+      end
     end
 
     it "matches memory: remove on a memory_write that removes, not on one that writes" do

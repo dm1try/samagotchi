@@ -85,6 +85,21 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(described_class.payload(ask)[:approval]).not_to have_key(:args)
     end
 
+    it "asks about a call that acts as another tool by its label, else its name, with the inner args" do
+      registry = Samagotchi::Tools::Registry.new
+      registry.register("mcp_call", schema: { name: "mcp_call" }, handler: ->(*) { "" }, source: "mcp",
+                                    targets: ->(call) { { acts_as: call[:args]["tool"], args: call[:args]["args"] } })
+      c = { name: "mcp_call", args: { "tool" => "mcp_github_x", "args" => { "owner" => "me" } } }
+      v = Samagotchi::Guardrails::Verdict.new(call: c)
+      v.ask!("an MCP tool", rule: "mcp-ask", source: "config")
+      v.context = context
+      v.targets = Samagotchi::Guardrails::Targets.for(c, context, registry: registry)
+      payload = described_class.payload(v, label: "github: x")
+      expect(payload[:question].lines.first).to eq("github: x: owner=me\n")
+      expect(payload[:approval]).to include(tool: "mcp_call", acts_as: "mcp_github_x", label: "github: x", args: "owner=me")
+      expect(described_class.payload(v)[:question].lines.first).to eq("mcp_github_x: owner=me\n")
+    end
+
     it "names a plugin tool by its label when given one; approval[:tool] stays the raw name" do
       c = { name: "mcp_x_echo", args: { "message" => "hi" } }
       v = Samagotchi::Guardrails::Verdict.new(call: c)
