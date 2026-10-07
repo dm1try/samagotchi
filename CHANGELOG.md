@@ -10,8 +10,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
-- `llm_context.strategy` (only `none` for now), and per model or host `llm_context_strategy`. See
-  [docs/configuration.md](docs/configuration.md).
+- `llm_context.strategy` (default `none`), and per model or host `llm_context_strategy`. `stale` sends a file read
+  that a later read of the same lines superseded as a one-line stub, from the next request on; the session keeps
+  the output. See [docs/configuration.md](docs/configuration.md).
 - For development: `script/llm_context_bench.rb`, a replay benchmark for the LLM context strategies over a folder of
   stored sessions (offline; `--live` asks a model, for picks). It isn't part of the gem. See
   [docs/internals/llm-context-bench.md](docs/internals/llm-context-bench.md).
