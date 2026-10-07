@@ -36,6 +36,48 @@ Each memory entry may have a companion file named `<name>.<model-key>.md` in the
   - The overlay is read in the scope its base is found in: a project memory with the same name shadows a system-scope bundle's base and overlay.
 
 
+## Model notes
+
+A **model note** is a memory named `model_notes_<name>` whose first line says
+which models it is for. It goes into the system prompt of every session on a
+matching model, so it is where a model's own habits go ("explore briefly, then
+act"), independent of the identity memory:
+
+```markdown
+models: deepseek-*|*deepseek-v4*
+Working habits for this model:
+- Explore briefly, then act.
+```
+
+- **`models:`**: `|`-separated entries, each `small` (a small model per
+  `guardrails.small_models`, see [Guardrails](guardrails.md)) or a glob
+  (case-insensitive, `*`, `?`, `{a,b}`) on the model id sent to the server
+  (no host prefix) or on its model key. Any entry matching loads the note. The
+  grammar is the guardrails rules' `models:`.
+- **Stacked**: every matching note loads, the system scope's first, then the
+  project's, by name within a scope. Notes add habits; none overrides another.
+- **In the prompt**: their own section right after the identity memory,
+  `Model notes (for <model>, scope=…):`, each note under its name, the
+  `models:` line left out. A note's index line is left out of the prompt's
+  memory indexes (its body is already there, or it isn't for this model); the
+  tools still see it.
+- **Overlays**: a note is read like any memory, so its own
+  `model_notes_<name>.<key>.md` overlay is appended.
+- **Muting**: `chi --mute model_notes_<name>` drops one for a session. Muting
+  `identity` no longer drops a model note.
+- **Names**: no dot after `model_notes_` (`memory_write` refuses one: next to a
+  note of the stem's name it would read as a model overlay); a dotted file
+  made by hand is skipped with a warning.
+- **Skipped**: a note whose first line isn't a `models:` line with at least one
+  entry is skipped with a warning (once, in the debug log) naming the file.
+- **Size**: they cost every request. A note over 1,500 characters, or all of a
+  model's notes over 3,000, still loads but warns once.
+- **Timing**: a note takes effect at the next prompt build: a session's start,
+  a resume, a web worker waking, `/model`. A note written mid-session doesn't
+  change the running prompt.
+- Without a model note the system prompt is what it was.
+
+
 At startup, the agent reads both scope indexes with blank-name memory reads
 and injects them into the system prompt as `Project memories` and
 `System memories`. A memory muted for the session (`chi --mute NAME`) has its

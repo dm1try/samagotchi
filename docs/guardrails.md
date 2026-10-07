@@ -359,7 +359,9 @@ match no rule. `disable:` only removes rules; hooks and the core checks still vo
 
 `models:` makes a rule vote only for some models: `small`, or a glob on the
 model's name (`Qwen3.6-*`, matched on the bare name without the host prefix and
-on the model key `qwen3-6-27b`, case-insensitively), or a list of them. Without
+on the model key `qwen3-6-27b`, case-insensitively), or a list of them (a YAML list or
+`|`-separated, `"small|deepseek-*"`; model notes take the same grammar, see
+[Memory](memory.md#model-notes)). Without
 `models:` a rule is for every model. With no model name set, a `models:` rule
 doesn't vote.
 

@@ -29,7 +29,8 @@ right-hand column happens.
 │   [native thinking token] base prompt                                    │
 │   rg guidance                                                            │  /thinking level,
 │   system identity (+ model overlay)                                      │  /model, editing a
-│   explicit (preloaded) memories                                          │  memory / AGENT.md
+│   model notes (model_notes_* matching the model)                         │  memory / AGENT.md
+│   explicit (preloaded) memories                                          │
 │   AGENT.md                                                               │  (picked up by a new
 │   project + system memory indexes                                        │  process or a rebuild)
 │                         ◄── remote Claude: cache_control breakpoint #1   │
