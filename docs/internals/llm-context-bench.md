@@ -46,6 +46,7 @@ drops named cases that end otherwise and says how many; `--ends any` takes every
 | wrong loose (base) | the same, counting a mention of the output's path or of an identifier it brought in |
 | 1-step | edited outputs the step the edit reaches re-reads (a read of the file, not an edit) or re-runs. Offline that step is the session's own, made without the stub, so it is a floor, not the stub's effect |
 | re-prefilled | what the server prefills again because an edit broke its prompt cache: from the earliest changed entry to the end of what the previous request left cached. A case counts the breaks of its own window only (after the previous turn's case point), so a strategy that edits as the session goes isn't counted twice |
+| breaks | the requests of the case's window that an edit first reaches: one prompt-cache break each, a batch's edits together |
 
 The proxies are the context-edit spike's (lexical and lenient: a basename mention counts).
 
@@ -59,6 +60,13 @@ The proxies are the context-edit spike's (lexical and lenient: a basename mentio
   numbers count every stub since the session began. An edit or write of the file supersedes nothing, nor does a read
   that came back as a preview or cut. A relative
   path is taken against the session's working directory.
+- `stale_edits_next_request`, `stale_edits_turn_end`, `stale_edits_payoff`: the stale layer with edit-driven stubs
+  under an `llm_context.apply` rule, as chi runs it (`Samagotchi::LLMContextApply`, `llm_context.protect_steps`'
+  default), over each session from its start: at each request, and at the end of each turn that ends with the
+  model's answer (those stubs reach the next turn's first request, the case point). The top context bucket isn't
+  modelled (the bench has no window), so `payoff` applies at a request only when the freed tokens are at least the
+  tail. A turn-end batch's re-prefill is counted at the next turn's first request even where chi's warm-up would
+  prefill it while the user reads.
 - `forget_outputs` (P4): a slot. It prints "not built yet" until its phase adds it to
   `LLMContextBench::Strategies`; a strategy answers `#plans(kase)` with `Plan`s of `PlannedEdit`s (the output id, the
   edit kind, the note, the request it first reaches), and the scorer and the report take it as is.
@@ -67,6 +75,7 @@ The proxies are the context-edit spike's (lexical and lenient: a basename mentio
 
 ```sh
 ruby script/llm_context_bench.rb "$SESSIONS" --strategy none,forget_all,stale --per-case
+ruby script/llm_context_bench.rb "$SESSIONS" --strategy none,stale,stale_edits_turn_end,stale_edits_payoff --ends any
 ruby script/llm_context_bench.rb "$SESSIONS" --picks deepseek=picks/deepseek --picks splash=picks/splash --json
 ```
 

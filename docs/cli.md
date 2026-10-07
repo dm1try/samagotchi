@@ -421,7 +421,8 @@ file and index line stay as they are; only this session doesn't see it.
 `/help` lists the commands this session takes, the installed bundles' too, each
 with a line on what it does. `/stats` shows the session's numbers: turns, tool
 calls (by tool, with errors), iterations, tokens in/out summed over every
-request (with the cached tokens, the cache writes and the reasoning tokens when the server reports them),
+request (with the cached tokens, the cache writes, the re-prefilled tokens and the reasoning tokens when the server
+reports them),
 the decode speed, generation latency, cancellations, retries (the network's),
 thinking cuts (generations a plugin such as loop-guard cut) and output cap hits
 (generations that ended at the provider's cap), context used and window, the prompt profile and the model the server says it ran, and the
