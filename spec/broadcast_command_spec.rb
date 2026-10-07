@@ -287,7 +287,10 @@ RSpec.describe Samagotchi::BroadcastCommand do
       out.truncate(0)
       out.rewind
 
-      expect(run("deliver", id, docs.id[0, 4], short(docs))).to eq(0)
+      # The shortest prefix past 4 characters that pay's id doesn't share:
+      # a fixed length would now and then name both and be refused as ambiguous.
+      prefix = (4..7).map { |n| docs.id[0, n] }.find { |p| !pay.id.start_with?(p) }
+      expect(run("deliver", id, prefix, short(docs))).to eq(0)
       expect(out.string.lines.map(&:chomp)).to eq(["#{short(docs)}  delivered  by hand"])
       expect(notes_of(docs).size).to eq(1)
       expect(log.records.last.corrections.first.sessions.map(&:session)).to eq([docs.id])
