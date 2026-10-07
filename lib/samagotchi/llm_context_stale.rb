@@ -128,9 +128,17 @@ module Samagotchi
       "#{run.shown}#{lines}: superseded by a later #{by.name}"
     end
 
-    # The read, edit and write runs of +conversation+, in order.
-    # @return [Array<FileRun>]
-    def file_runs(conversation, root)
+    # One run of a tool_response entry paired with its call for sure
+    # (#results: by tool_call_id, or the batch's "[name]" leads in order):
+    # the entry's index, its ToolIds ref, the call, its text and its step.
+    PairedRun = Data.define(:index, :ref, :call, :text, :step)
+
+    # Every run of +conversation+ that pairs with its call, in order. A
+    # result whose runs don't open with their calls' leads (a "ran as:"
+    # line, an output holding the SEPARATOR and a lead) has none: what
+    # names a run (forget_outputs, the view's ids) leaves it alone.
+    # @return [Array<PairedRun>]
+    def paired_runs(conversation)
       batch = []
       step = 0
       conversation.each_with_index.with_object([]) do |(entry, index), runs|
@@ -139,10 +147,18 @@ module Samagotchi
           batch = calls(entry)
           step += 1 unless batch.empty?
         when "tool_response"
-          runs.concat(results(conversation, index, batch).filter_map do |ref, call, text|
-            file_run(index, ref, call, text, root, step)
-          end)
+          results(conversation, index, batch).each do |ref, call, text|
+            runs << PairedRun.new(index: index, ref: ref, call: call, text: text, step: step)
+          end
         end
+      end
+    end
+
+    # The read, edit and write runs of +conversation+, in order.
+    # @return [Array<FileRun>]
+    def file_runs(conversation, root)
+      paired_runs(conversation).filter_map do |run|
+        file_run(run.index, run.ref, run.call, run.text, root, run.step)
       end
     end
 
@@ -250,6 +266,6 @@ module Samagotchi
       end
     end
 
-    private_class_method :file_runs, :calls, :results, :file_run, :partial?, :lines, :line, :field, :arguments, :native_parser
+    private_class_method :file_runs, :results, :file_run, :lines, :line, :field, :arguments, :native_parser
   end
 end

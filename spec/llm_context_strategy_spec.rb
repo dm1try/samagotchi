@@ -73,15 +73,16 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       expect(described_class.resolve(target, names: %w[m], models: models, session: []).source).to eq(:session)
     end
 
-    it "runs stale, and warns that a layer isn't built yet and runs the turn under none (forget, P4)" do
+    it "runs stale, and stale with forget, and names the layers a turn runs under" do
       models = { "m" => { llm_context_strategy: [:stale] }, "d" => { llm_context_strategy: %i[stale forget] } }
       resolved = nil
 
       expect { resolved = described_class.resolve(target, names: %w[m], models: models) }.not_to output.to_stderr
       expect(resolved.to_h).to include(layers: [:stale], strategy: [:stale], source: :model_setting)
-      expect { resolved = described_class.resolve(target, names: %w[d], models: models) }
-        .to output(/models: d: llm_context strategy forget is not built yet; using none/).to_stderr
-      expect(resolved.to_h).to include(layers: %i[stale forget], strategy: :none, source: :model_setting)
+      expect { resolved = described_class.resolve(target, names: %w[d], models: models) }.not_to output.to_stderr
+      expect(resolved.to_h).to include(layers: %i[stale forget], strategy: %i[stale forget], source: :model_setting)
+      expect(resolved.active_layers).to eq(%i[stale forget])
+      expect(described_class.resolve(target, names: %w[x], models: models).active_layers).to eq([])
     end
 
     it "takes the apply rule from the session, the model, the host, then llm_context.apply, apart from the layers" do

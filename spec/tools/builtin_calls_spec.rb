@@ -5,7 +5,8 @@ require "samagotchi/tools/builtins"
 
 RSpec.describe Samagotchi::Tools::BuiltinCalls do
   it "has a row for every built-in tool, and only those" do
-    expect(described_class.rows.keys).to match_array(Samagotchi::Tools::Builtins::CLASSES.map { |klass| klass::NAME })
+    classes = Samagotchi::Tools::Builtins::CLASSES + Samagotchi::Tools::Builtins::LAYER_CLASSES
+    expect(described_class.rows.keys).to match_array(classes.map { |klass| klass::NAME })
   end
 
   it "names only real schema properties in its overrides" do

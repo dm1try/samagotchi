@@ -277,7 +277,7 @@ class ThinkingWatch
 end
 
 class Plugin
-  DEFAULT_IGNORE = %w[task_wait task_get delegate_result list_sessions list_reminders context_read].freeze
+  DEFAULT_IGNORE = %w[task_wait task_get delegate_result list_sessions list_reminders context_read forget_outputs].freeze
   # Built-in tools carry flat fields; plugin and unknown tools carry args:.
   # An edit's text is its old_text/new_text.
   KEY_FIELDS = %i[content path start_line end_line cwd env scope old_text new_text].freeze

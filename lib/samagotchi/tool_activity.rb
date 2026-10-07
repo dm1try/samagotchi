@@ -22,6 +22,7 @@ require_relative "tools/send_note"
 require_relative "tools/context_read"
 require_relative "tools/delegate"
 require_relative "tools/delegate_result"
+require_relative "tools/forget_outputs"
 
 module Samagotchi
   # The one-line summary of a tool call that the UIs show ("reading file",
@@ -172,6 +173,7 @@ module Samagotchi
       when Tools::ContextRead::NAME then "reading attached context"
       when Tools::Delegate::NAME then "delegating"
       when Tools::DelegateResult::NAME then "waiting for a delegate"
+      when Tools::ForgetOutputs::NAME then forget_outputs_action(call)
       else registry_entry(registry, tool_name)&.label || "calling tool"
       end
     end
@@ -190,6 +192,14 @@ module Samagotchi
       return "updating memory description" if call[:content].to_s.empty? && !call[:description].to_s.strip.empty?
 
       "saving memory"
+    end
+
+    # forget_outputs' label: a call with only restore brings outputs back.
+    def forget_outputs_action(call)
+      return "forgetting outputs" unless call.is_a?(Hash)
+
+      request = Tools::ForgetOutputs.parse(call)
+      request.ids.empty? && request.restore? ? "restoring outputs" : "forgetting outputs"
     end
 
     def tool_activity_status(result, tool_name = nil)
@@ -285,6 +295,14 @@ module Samagotchi
         parts.join(" ")
       when Tools::DelegateResult::NAME
         call[:session].to_s.strip.empty? ? nil : "session=#{preview_tool_param(call[:session])}"
+      when Tools::ForgetOutputs::NAME
+        request = Tools::ForgetOutputs.parse(call)
+        parts = []
+        parts << "ids=#{preview_tool_param(request.ids.join(","))}" unless request.ids.empty?
+        parts << "keep=#{preview_tool_param(request.keep.keys.join(","))}" unless request.keep.empty?
+        parts << "restore=#{preview_tool_param(request.restore.join(","))}" if request.restore?
+        parts << "note=#{preview_tool_param(request.note)}" unless request.note.empty?
+        parts.empty? ? nil : parts.join(" ")
       when Tools::AskUserQuestion::NAME
         parts = ["question=#{preview_tool_param(call[:question] || call[:content])}"]
         opts = call[:options]

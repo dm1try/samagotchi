@@ -22,6 +22,7 @@ require_relative "context_read"
 require_relative "delegate"
 require_relative "delegate_result"
 require_relative "ask_user_question"
+require_relative "forget_outputs"
 require_relative "../guardrails/parent_approvals"
 require_relative "../model_profile"
 
@@ -56,6 +57,8 @@ module Samagotchi
         DelegateResult,
         AskUserQuestion
       ].freeze
+      # The built-ins an LLM context layer adds (offered only under it).
+      LAYER_CLASSES = [ForgetOutputs].freeze
 
       # The handlers that pass more than the call's content.
       HANDLERS = {
@@ -104,7 +107,8 @@ module Samagotchi
         DelegateResult::NAME => lambda do |call, kctx|
           DelegateResult.call(call[:content], session: call[:session], timeout: call[:timeout], peers: kctx.peers)
         end,
-        AskUserQuestion::NAME => ->(call, kctx) { kctx.ask_user_question(call) }
+        AskUserQuestion::NAME => ->(call, kctx) { kctx.ask_user_question(call) },
+        ForgetOutputs::NAME => ->(call, kctx) { kctx.forget_outputs(call) }
       }.freeze
 
       module_function
@@ -152,16 +156,22 @@ module Samagotchi
 
       # @param command_description [Boolean] false: execute declares no
       #   description parameter (execute.description off)
+      # @param policy [String, nil] llm_context.policy, the sentence
+      #   forget_outputs' description carries
       # @return [Registry] a new registry with the built-ins, in
-      #   TOOL_SCHEMAS order (an Engine's own, which bundles add to)
-      def registry(command_description: true)
+      #   TOOL_SCHEMAS order (an Engine's own, which bundles add to), then
+      #   forget_outputs, offered only under the forget layer
+      def registry(command_description: true, policy: ToolDeclarations::FORGET_OUTPUTS_POLICY)
         by_name = CLASSES.to_h { |klass| [klass::NAME, klass] }
-        ToolDeclarations::TOOL_SCHEMAS.each_with_object(Registry.new) do |schema, registry|
+        registry = ToolDeclarations::TOOL_SCHEMAS.each_with_object(Registry.new) do |schema, built|
           schema = ToolDeclarations.without_command_description(schema) unless command_description
           klass = by_name.fetch(schema[:name])
           handler = HANDLERS.fetch(klass::NAME) { ->(call, _kctx) { klass.call(call[:content]) } }
-          registry.register(klass::NAME, schema: schema, handler: handler)
+          built.register(klass::NAME, schema: schema, handler: handler)
         end
+        registry.register(ForgetOutputs::NAME, schema: ToolDeclarations.forget_outputs_schema(policy: policy),
+                                               handler: HANDLERS.fetch(ForgetOutputs::NAME), layer: :forget)
+        registry
       end
 
       # @return [Registry] the built-ins alone, frozen: a KernelLoop or a

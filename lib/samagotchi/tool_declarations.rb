@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "tools/args"
+require_relative "llm_context_strategy"
 
 module Samagotchi
   # Tool-declaration constants, protocol constants, and guidance text.
@@ -437,6 +438,62 @@ module Samagotchi
       }
     ].freeze
 
+    # forget_outputs, the forget layer's tool (LLMContextForget): offered
+    # only in a turn whose LLM context strategy has forget
+    # (Tools::Registry's layer gate), so it is not in TOOL_SCHEMAS, which
+    # every turn declares. Its description carries llm_context.policy
+    # (#forget_outputs_schema); this one the default's.
+    FORGET_OUTPUTS_POLICY = LLMContextStrategy::DEFAULT_POLICY
+    FORGET_OUTPUTS_DESCRIPTION = "Forget tool outputs you no longer need, to free context. Every tool output starts " \
+                                 "with an id like [#t42]: list ids to forget, and each output is replaced in place by " \
+                                 "a stub with your note (the call stays). %<policy>s\n" \
+                                 "The note is required and is all that stays of them, so write it for your future " \
+                                 "self: the facts you carry forward, quoted (file:line; values marked VERIFIED or " \
+                                 "UNVERIFIED); what you ruled out, with the reason and \"do not retry\"; the exact " \
+                                 "commands you tried; a last line NEXT: what you do next. Never \"not needed\".\n" \
+                                 "Good candidates: settled exploration, dead ends, long logs and test runs whose " \
+                                 "result the note keeps, listings, reads of files you're done with. Keep what you'll " \
+                                 "still edit against (edit needs the exact text): leave it, or forget it but keep " \
+                                 "its lines with keep. Outputs from your last few steps can't be forgotten yet.\n" \
+                                 "Cost: a forget makes the server read again everything after the earliest output " \
+                                 "it touches, so forget in one batch at a natural break, prefer older outputs, and " \
+                                 "skip small ones. The result says whether the stubs go out at once or at the " \
+                                 "turn's end. restore brings a forgotten output back (for a read, read the file " \
+                                 "again)."
+
+    module_function
+
+    # The forget_outputs schema, its description with +policy+ (the
+    # llm_context.policy sentence; blank: none).
+    def forget_outputs_schema(policy: FORGET_OUTPUTS_POLICY)
+      policy = policy.to_s.strip
+      description = format(FORGET_OUTPUTS_DESCRIPTION, policy: policy.empty? ? "" : "Policy: #{policy}")
+      {
+        name: "forget_outputs",
+        description: description.gsub(/ +\n/, "\n"),
+        parameters: {
+          type: "object",
+          properties: {
+            ids: { type: "array", items: { type: "string" },
+                   description: "Output ids to forget, e.g. [\"t41\", \"t42\"]" },
+            note: { type: "string",
+                    description: "Required with ids: the facts carried forward (quoted; VERIFIED or UNVERIFIED), what " \
+                                 "is ruled out and why (do not retry), the commands tried, and NEXT: …" },
+            keep: { type: "array", items: { type: "string" },
+                    description: "Lines to keep from an output you are forgetting: \"t42:12-40\" forgets t42 except " \
+                                 "those lines (a read's are the file's line numbers; other outputs count from 1)" },
+            restore: { type: "array", items: { type: "string" },
+                       description: "Ids of forgotten outputs to bring back instead" }
+          }
+        }
+      }
+    end
+
+    FORGET_OUTPUTS_SCHEMA = forget_outputs_schema.freeze
+    # Every built-in's schema: the ones each turn declares, then the ones a
+    # layer adds (BuiltinCalls maps their calls).
+    BUILTIN_SCHEMAS = (TOOL_SCHEMAS + [FORGET_OUTPUTS_SCHEMA]).freeze
+
     # Where Gemma's declaration text says something the schema doesn't:
     # extra description text.
     GEMMA_PARAM_OVERRIDES = {
@@ -455,8 +512,6 @@ module Samagotchi
     }.freeze
 
     GEMMA_QUOTE = '<|"|>'
-
-    module_function
 
     # +schema+ without execute's description property: what a session
     # with execute.description off declares (the parameter isn't offered

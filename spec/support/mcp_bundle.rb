@@ -127,7 +127,9 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   def fixed_tokens = definition_tokens(%w[find_mcp_tools mcp_call].map { |name| tools[name].schema })
 
   def definition_tokens(schemas)
-    chat = Samagotchi::LLM::ChatLoop.new(kernel: Struct.new(:tools).new(Struct.new(:schemas).new(schemas)))
+    tools = Samagotchi::Tools::Registry.new
+    schemas.each { |schema| tools.register(schema[:name], schema: schema, handler: ->(*) {}, source: "mcp") }
+    chat = Samagotchi::LLM::ChatLoop.new(kernel: Struct.new(:tools, :llm_context_layers).new(tools, []))
     chat.tool_definitions.sum { |definition| Samagotchi::TokenUsage.estimate(JSON.generate(definition)) }
   end
 

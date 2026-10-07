@@ -18,11 +18,13 @@ module Samagotchi
   # (the model forgot it, its note keeping the finding); note: what the
   # stub says; by: who made it ("chi", the model); staged_at/applied_at:
   # ISO 8601 times, applied_at nil while it waits to reach the prompt;
-  # keep: the output's lines a forget keeps ([[first, last], …], 1-based
-  # lines of the output after its "[name]" lead; saved only when there are
-  # some), sent under the stub.
-  LLMContextEdit = Data.define(:id, :kind, :note, :by, :staged_at, :applied_at, :keep) do
-    def initialize(keep: [], **fields) = super
+  # keep: the output's lines a forget keeps ([[first, last], …], as the
+  # model named them; saved only when there are some), sent under the
+  # stub; keep_offset: what those numbers are past the output's own lines
+  # (a ranged read's start_line - 1: a read's keep names file lines; saved
+  # only when not 0).
+  LLMContextEdit = Data.define(:id, :kind, :note, :by, :staged_at, :applied_at, :keep, :keep_offset) do
+    def initialize(keep: [], keep_offset: 0, **fields) = super
 
     def applied? = !applied_at.nil?
 
@@ -37,7 +39,8 @@ module Samagotchi
     # The saved form, without the id (it is the key).
     def to_h
       saved = { "kind" => kind.to_s, "note" => note, "by" => by, "staged_at" => staged_at, "applied_at" => applied_at }
-      keep? ? saved.merge("keep" => keep) : saved
+      saved = saved.merge("keep" => keep) if keep?
+      keep_offset.zero? ? saved : saved.merge("keep_offset" => keep_offset)
     end
   end
 
@@ -54,7 +57,8 @@ module Samagotchi
       return nil unless KINDS.include?(kind)
 
       new(id: id.to_s, kind: kind, note: field.call(:note).to_s, by: field.call(:by), staged_at: field.call(:staged_at),
-          applied_at: field.call(:applied_at), keep: ranges(field.call(:keep)))
+          applied_at: field.call(:applied_at), keep: ranges(field.call(:keep)),
+          keep_offset: field.call(:keep_offset).is_a?(Integer) ? [field.call(:keep_offset), 0].max : 0)
     end
 
     # Saved keep ranges as [[first, last], …]: pairs of positive Integers,

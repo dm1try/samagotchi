@@ -156,7 +156,7 @@ module Samagotchi
       Entry.new(key: "context.wake",             yaml_path: %w[context wake],             type: :bool,   default: true,             expose: %i[env config cli]),
 
       # What the model is sent of the conversation (LLMContextStrategy, LLMContextView): none, or a list of layers
-      # (stale, forget; "|"-separated or a YAML list). none and stale are built: a list with forget warns and is none.
+      # (stale, forget; "|"-separated or a YAML list); forget (the model's forget_outputs) is experimental.
       # models.<key>.llm_context_strategy and hosts.<name>.llm_context_strategy come first.
       Entry.new(key: "llm_context.strategy",     yaml_path: %w[llm_context strategy],     type: :string, default: "none",           expose: %i[env config]),
       # When a layer's edits reach the prompt (LLMContextApply): payoff, next_request or turn_end;
@@ -166,6 +166,8 @@ module Samagotchi
       Entry.new(key: "llm_context.stale_edits",  yaml_path: %w[llm_context stale_edits],  type: :bool,   default: false,            expose: %i[env config]),
       # The steps (tool batches) back whose edited files' reads stale never stubs.
       Entry.new(key: "llm_context.protect_steps", yaml_path: %w[llm_context protect_steps], type: :integer, default: 3,             expose: %i[env config]),
+      # The policy sentence forget_outputs' description carries (the forget layer); blank: none.
+      Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: LLMContextStrategy::DEFAULT_POLICY, expose: %i[env config]),
 
       Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
       # How much models think: off|low|medium|high|default, parsed by Thinking

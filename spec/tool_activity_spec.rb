@@ -29,6 +29,16 @@ RSpec.describe Samagotchi::ToolActivity do
     end
   end
 
+  it "labels forget_outputs as forgetting or restoring outputs, with its ids and note" do
+    forget = Samagotchi::Tools::BuiltinCalls.build("forget_outputs", { "ids" => %w[t1 t2], "note" => "done" })
+    restore = Samagotchi::Tools::BuiltinCalls.build("forget_outputs", { "restore" => ["t2"] })
+
+    expect(described_class.tool_activity_event("forget_outputs", forget, "forgot t1, t2", registry: registry))
+      .to include(action: "forgetting outputs", params: 'ids="t1,t2" note="done"', status: "ok")
+    expect(described_class.tool_activity_event("forget_outputs", restore, "restored t2", registry: registry))
+      .to include(action: "restoring outputs", params: 'restore="t2"')
+  end
+
   it "carries an execute's description for the TUI's line, the params as they were" do
     call = { name: "execute", content: "ls | head -3", description: "List files." }
     expect(described_class.tool_activity_event("execute", call, "a", registry: registry))

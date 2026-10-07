@@ -79,13 +79,16 @@ module Samagotchi
       # context layers offer), with the chat-only enums and closed
       # parameters.
       def tool_definitions
-        ToolDeclarations.chat_schemas(tools.schemas(layers: @kernel.llm_context_layers)).map do |schema|
+        ToolDeclarations.chat_schemas(tools.schemas(layers: llm_context_layers)).map do |schema|
           { type: "function", function: schema.slice(:name, :description, :parameters) }
         end
       end
 
       # The kernel's tools.
       def tools = @kernel.tools
+
+      # The turn's LLM context layers (KernelLoop#llm_context_layers).
+      def llm_context_layers = @kernel.llm_context_layers
 
       # KernelLoop#reprefilled_tokens, the kernel's request history.
       def reprefilled_tokens(model, **) = @kernel.reprefilled_tokens(model, **)
@@ -96,6 +99,11 @@ module Samagotchi
       # The strategy's own edits before a request and at turn end
       # (KernelLoop#apply_llm_context!).
       def apply_llm_context!(conversation, **) = @kernel.apply_llm_context!(conversation, **)
+
+      # The running turn, for forget_outputs (KernelLoop#llm_context_turn).
+      def llm_context_turn=(turn)
+        @kernel.llm_context_turn = turn
+      end
 
       # engine-format conversation -> OpenAI wire messages. Model turns are
       # thought-stripped and carry their tool_calls; tool responses go as tool
@@ -346,6 +354,7 @@ module Samagotchi
           # steps from them (ModelResult#empty_steps).
           @empty_steps = []
           @context = ContextStatus.new(conversation: conversation)
+          loop.llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: @context)
         end
 
         def call(max_iterations:, cap:)

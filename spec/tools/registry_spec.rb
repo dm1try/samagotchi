@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       expect(registry.names).to eq(builtins + %w[echo])
       expect(registry.schemas).not_to include(include(name: "tidy"))
       expect(registry.names(layers: [:stale])).to eq(builtins + %w[echo])
-      expect(registry.names(layers: %i[stale forget])).to eq(builtins + %w[tidy echo])
+      expect(registry.names(layers: %i[stale forget])).to eq(builtins + %w[forget_outputs tidy echo])
       expect(Samagotchi::ToolDeclarations.native_schemas(registry, layers: [:forget]).map { |s| s[:name] }).to include("tidy")
       expect(registry.offered("tidy")).to be_nil
       expect(registry.offered("tidy", layers: [:forget]).name).to eq("tidy")

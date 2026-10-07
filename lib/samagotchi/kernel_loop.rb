@@ -27,6 +27,7 @@ require_relative "tool_response"
 require_relative "tool_ids"
 require_relative "llm_context_view"
 require_relative "llm_context_apply"
+require_relative "llm_context_forget"
 require_relative "answer_display"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
@@ -97,6 +98,10 @@ module Samagotchi
       rescue StandardError => e
         "Error: ask_user_question handler failed: #{e.message}"
       end
+
+      # forget_outputs: the forget layer's call on the running turn's
+      # conversation (KernelLoop#forget_outputs).
+      def forget_outputs(call) = @kernel.forget_outputs(call)
     end
 
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
@@ -165,6 +170,9 @@ module Samagotchi
     # The Engine's PromptWarmup: a request asks it for a slot pin
     # (#take_pin) while the turn-end warm-up still runs; nil: never pinned.
     attr_accessor :warmup
+    # The turn a forget_outputs call works on (LLMContextForget::Turn: its
+    # conversation and ContextStatus); both loops set it as a turn starts.
+    attr_accessor :llm_context_turn
     # @return [Integer, nil] the llama.cpp slot (`id_slot`) the last
     #   request of the last run streamed from; nil when the server named
     #   none (other transports) or no request was made
@@ -270,8 +278,10 @@ module Samagotchi
 
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:)
       conversation = prepare_conversation(messages)
+      context = ContextStatus.new(conversation: conversation)
+      @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context)
       Turn.new(
-        conversation: conversation, context: ContextStatus.new(conversation: conversation),
+        conversation: conversation, context: context,
         empty_retry: EmptyAnswerRetry.new, empty_steps: [], tool_activity: [], buffer: +"", streamed_thinking: +"",
         qwen_attempts: 0, qwen_partial: nil,
         # Qwen with thinking off: an empty thought after the cue, so the model
@@ -761,6 +771,22 @@ module Samagotchi
     # The turn's LLM context layers ([] under none): the tools they add
     # (Tools::Registry#entries) are the turn's to offer and dispatch.
     def llm_context_layers = @turn_settings&.llm_context&.active_layers || []
+
+    # The model's forget_outputs call (LLMContextForget) on the running
+    # turn, under its strategy; the apply rule runs on the turn's
+    # conversation at once, as at a request, so the result says whether the
+    # stubs go with the next request or wait for the turn's end.
+    # @return [String] the tool result
+    def forget_outputs(call)
+      llm_context = @turn_settings&.llm_context
+      turn = @llm_context_turn
+      unless turn && llm_context&.active_layers&.include?(:forget)
+        return "Error: forget_outputs is off (the llm_context strategy has no forget layer)"
+      end
+
+      LLMContextForget.call(turn, call, llm_context: llm_context,
+                                        apply: -> { apply_llm_context!(turn.conversation, llm_context, context: turn.context) })
+    end
 
     # Before each request of both loops (+moment+ :request; the warm-up
     # too, on its own copy, as the next turn's first request) and at the

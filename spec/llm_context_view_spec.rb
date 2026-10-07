@@ -133,6 +133,12 @@ RSpec.describe Samagotchi::LLMContextView do
         tool_ids: %w[t1 t2 t3] }
     end
 
+    # The native calls the batch answers (its runs pair with them).
+    let(:batch_calls) do
+      call = ->(name) { "<tool_call>\n<function=#{name}>\n<parameter=path>\nx\n</parameter>\n</function>\n</tool_call>" }
+      { role: "model", content: %w[read shot execute].map(&call).join("\n") }
+    end
+
     def edit(kind, note, applied: true)
       { "kind" => kind, "note" => note, "by" => "chi", "staged_at" => now, "applied_at" => applied ? now : nil }
     end
@@ -152,7 +158,7 @@ RSpec.describe Samagotchi::LLMContextView do
     it "drops a stubbed run's images, and the images keys once none are left" do
       entry = batch.merge(edits: { "t2" => edit("forget", "two screenshots of the login page"),
                                    "t1" => edit("forget", "x is one line") })
-      sent = described_class.new(strategy: %i[stale forget]).messages([entry]).first
+      sent = described_class.new(strategy: %i[stale forget]).messages([batch_calls, entry]).last
 
       expect(sent).not_to have_key(:images)
       expect(sent).not_to have_key(:image_counts)
@@ -204,31 +210,43 @@ RSpec.describe Samagotchi::LLMContextView do
     describe "with the forget layer on" do
       let(:forget) { described_class.new(strategy: %i[stale forget]) }
 
+      # A chat call and its result, id t<id>.
       def result(id, text, edits = {})
-        { role: "tool_response", content: text, tool_call_id: "c#{id}", tool_ids: ["t#{id}"], edits: edits }
+        name = text[/\A\[(\w+)\]/, 1]
+        [{ role: "model", content: "", tool_calls: [{ id: "c#{id}", name: name, arguments: {} }] },
+         { role: "tool_response", content: text, tool_call_id: "c#{id}", tool_ids: ["t#{id}"], edits: edits }]
       end
+
+      def outputs(sent) = sent.select { |entry| entry[:role] == "tool_response" }.map { |entry| entry[:content] }
 
       it "shows each stored id after its output's lead, never a legacy entry's derived one, and none under stale" do
         legacy = { role: "tool_response", content: "[read] a\n\n---\n\n[read] b" }
-        conversation = [{ role: "user", content: "go" }, batch, legacy]
+        conversation = [{ role: "user", content: "go" }, batch_calls, batch, legacy]
 
         sent = forget.messages(conversation)
 
-        expect(sent[1][:content]).to eq("[read] [#t1] lib/x.rb\n1: x\n\n---\n\n[shot] [#t2] two images\n\n---\n\n" \
+        expect(sent[2][:content]).to eq("[read] [#t1] lib/x.rb\n1: x\n\n---\n\n[shot] [#t2] two images\n\n---\n\n" \
                                          "[execute]\n[#t3] ok\n\n---\n\nstill ok")
-        expect(sent[1][:images]).to eq(batch[:images])
-        expect(sent[2]).to equal(legacy)
-        expect(described_class.new(strategy: [:stale]).messages(conversation)[1]).to equal(batch)
+        expect(sent[2][:images]).to eq(batch[:images])
+        expect(sent[3]).to equal(legacy)
+        expect(described_class.new(strategy: [:stale]).messages(conversation)[2]).to equal(batch)
+      end
+
+      it "shows no id where a run doesn't pair with its call for sure (forget_outputs can't name it either)" do
+        shifted = batch.merge(content: "ran as: read x\n#{batch[:content]}")
+        conversation = [batch_calls, shifted, { role: "tool_response", content: "[read] no call", tool_ids: ["t9"] }]
+
+        expect(outputs(forget.messages(conversation))).to eq([shifted[:content], "[read] no call"])
       end
 
       it "puts a forget's note on the first of its outputs in a row, a pointer on the rest, and a restore hint off reads" do
         one = edit("forget", "facts: x is one line")
         other = edit("forget", "another call's note").merge("staged_at" => "later")
-        conversation = [result(1, "[read] a", "t1" => one), result(2, "[execute]\nok", "t2" => one),
-                        result(3, "[execute]\nkept"), result(4, "[execute]\nagain", "t4" => one),
-                        result(5, "[execute]\nmore", "t5" => one), result(6, "[read] b", "t6" => other)]
+        conversation = [*result(1, "[read] a", "t1" => one), *result(2, "[execute]\nok", "t2" => one),
+                        *result(3, "[execute]\nkept"), *result(4, "[execute]\nagain", "t4" => one),
+                        *result(5, "[execute]\nmore", "t5" => one), *result(6, "[read] b", "t6" => other)]
 
-        sent = forget.messages(conversation).map { |entry| entry[:content] }
+        sent = outputs(forget.messages(conversation))
 
         expect(sent).to eq(["[read] [#t1] (forgotten) facts: x is one line",
                             "[execute] [#t2] (forgotten with t1: see its note) [restore: t2]",
@@ -242,10 +260,19 @@ RSpec.describe Samagotchi::LLMContextView do
         kept = edit("forget", "the spec's setup").merge("keep" => [[2, 3], [5, 99], [40, 50]])
         text = "[read]\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\n"
 
-        sent = forget.messages([result(1, text, "t1" => kept)]).first[:content]
+        sent = outputs(forget.messages(result(1, text, "t1" => kept))).first
 
         expect(sent).to eq("[read] [#t1] (forgotten) the spec's setup\nlines 2-3 kept:\nline 2\nline 3\n" \
                            "lines 5-6 kept:\nline 5\nline 6")
+      end
+
+      it "names a ranged read's kept lines by the file's numbers (keep_offset)" do
+        kept = edit("forget", "b.rb's head").merge("keep" => [[121, 122]], "keep_offset" => 119)
+        text = "[read]\nline 120\nline 121\nline 122\nline 123\n"
+
+        sent = outputs(forget.messages(result(1, text, "t1" => kept))).first
+
+        expect(sent).to eq("[read] [#t1] (forgotten) b.rb's head\nlines 121-122 kept:\nline 121\nline 122")
       end
     end
 

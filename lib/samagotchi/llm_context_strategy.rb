@@ -10,8 +10,8 @@ module Samagotchi
   # Resolution, first set wins: the session's own (a later per-session
   # override; nothing sets it yet), models.<key> (by the model's lookup
   # names, as window_tokens), hosts.<name>, then llm_context.strategy.
-  # An unknown layer warns and is none; so is a strategy with a layer not
-  # built yet (forget, P4): only none and stale are active.
+  # An unknown layer warns and is none (every layer is built: stale, and
+  # forget, experimental, with its tool forget_outputs).
   #
   # When a layer's edits reach the prompt (LLMContextApply) is set by
   # llm_context.apply, and per model or host by the flat key
@@ -27,7 +27,12 @@ module Samagotchi
     NONE = :none
     LAYERS = %i[stale forget].freeze
     # The layers a turn can run under so far.
-    BUILT = %i[stale].freeze
+    BUILT = %i[stale forget].freeze
+    # The sentence forget_outputs' description carries (global only):
+    # the plan's D7 line, adapted from CLM's steering example.
+    POLICY_SETTING = "llm_context.policy"
+    DEFAULT_POLICY = "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note what it " \
+                     "established; keep anything you'll still edit against."
 
     APPLY_SETTING = "llm_context.apply"
     APPLY_KEY = "llm_context_apply"

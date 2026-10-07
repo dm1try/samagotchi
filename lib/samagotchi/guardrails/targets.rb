@@ -23,7 +23,7 @@ module Samagotchi
       PATH_TOOLS = %w[write edit read memory_write].freeze
 
       # chi's own tools, by name, whether this session has them or not.
-      CORE_TOOLS = ToolDeclarations::TOOL_SCHEMAS.map { |schema| schema[:name] }.freeze
+      CORE_TOOLS = ToolDeclarations::BUILTIN_SCHEMAS.map { |schema| schema[:name] }.freeze
 
       attr_reader :tool, :command, :paths, :cwd, :repo_root
 

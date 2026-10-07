@@ -32,8 +32,9 @@ module Samagotchi
   #   top ContextStatus bucket; otherwise it waits for turn end.
   # At turn end every staged edit is applied, under each rule.
   #
-  # Never applied, at any point: the latest read of a file the last
-  # +protect_steps+ steps edited (LLMContextStale.protected_ids).
+  # Never applied, at any point: a stale stub of a read of a file the
+  # last +protect_steps+ steps edited (LLMContextStale.protected_ids); a
+  # forget was checked against them when the model made it.
   module LLMContextApply
     RULES = %i[payoff next_request turn_end].freeze
     MOMENTS = %i[request turn_end].freeze
@@ -94,7 +95,11 @@ module Samagotchi
           staged << Staged.new(index: stale.run.index, edit: edit, change: stale.change?)
         end
       end
-      staged.concat(saved_staged(conversation, layers)).reject { |item| kept.include?(item.edit.id) }
+      # A forget passed its own check when the model made it
+      # (LLMContextForget: a read the model edits against goes only with
+      # lines kept); the rule holds back only stale's.
+      staged.concat(saved_staged(conversation, layers))
+            .reject { |item| item.edit.kind == :stale && kept.include?(item.edit.id) }
     end
 
     # [the batch to apply, why, its [freed, tail] when payoff measured it]
@@ -137,8 +142,15 @@ module Samagotchi
 
     def sent_chars(entries) = LLMContextView.chars(entries)
 
-    # Edits saved unapplied on the entries, of +layers+ (none yet: forget
-    # saves its edits so, P4).
+    # What applying +edits+ ([entry index, LLMContextEdit] pairs) would
+    # free under +layers+, and the tail after them, in chars (#measure).
+    # @return [Array(Integer, Integer)]
+    def weigh(conversation, layers:, edits:)
+      measure(conversation, Array(layers), edits.map { |index, edit| Staged.new(index: index, edit: edit, change: false) })
+    end
+
+    # Edits saved unapplied on the entries, of +layers+ (forget saves its
+    # edits so, LLMContextForget).
     def saved_staged(conversation, layers)
       conversation.each_with_index.flat_map do |entry, index|
         next [] unless entry[:role].to_s == "tool_response"

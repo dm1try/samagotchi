@@ -52,7 +52,8 @@ module Samagotchi
         "context_read" => { content: "name", fallback: :prefix_or_raw },
         "delegate" => { content: "task", fallback: :prefix_or_raw },
         "ask_user_question" => { content: "question", also: %w[question], verbatim: %w[options], options: true,
-                                 fallback: :raw }
+                                 fallback: :raw },
+        "forget_outputs" => { content: "note", also: %w[note], verbatim: %w[ids keep restore] }
       }.freeze
 
       # One built-in's mapping, resolved from its schema and OVERRIDES.
@@ -73,7 +74,7 @@ module Samagotchi
 
       # @return [Hash{String => Row}]
       def rows
-        @rows ||= ToolDeclarations::TOOL_SCHEMAS.to_h { |schema| [schema[:name], row_for(schema)] }.freeze
+        @rows ||= ToolDeclarations::BUILTIN_SCHEMAS.to_h { |schema| [schema[:name], row_for(schema)] }.freeze
       end
 
       def row_for(schema)

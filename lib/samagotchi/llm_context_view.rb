@@ -4,6 +4,7 @@ require "json"
 require_relative "tool_response"
 require_relative "tool_ids"
 require_relative "llm_context_edit"
+require_relative "llm_context_stale"
 
 module Samagotchi
   # What the model is sent of the stored conversation: the one step
@@ -32,7 +33,10 @@ module Samagotchi
   # With the forget layer on, every output with a stored id is sent with
   # it after its lead, "[read]\n[#t41] …" (plan D2: only then), so the
   # model can name it to forget_outputs; a legacy entry's derived ids are
-  # never shown (they can't be forgotten). A forget's stub carries its
+  # never shown (they can't be forgotten), nor is the id of a run that
+  # doesn't pair with its call for sure (LLMContextStale.paired_runs: a
+  # "ran as:" line, an output holding a run separator), which
+  # forget_outputs can't name either. A forget's stub carries its
   # note once: the outputs one forget_outputs call forgot that follow one
   # another (no other output between them) point to the first one's
   # instead, and a forget's kept lines (LLMContextEdit#keep) follow its
@@ -77,6 +81,7 @@ module Samagotchi
       return conversation if none?
 
       group = Group.new
+      group.paired = forget? ? LLMContextStale.paired_runs(conversation).to_set { |run| run.ref.id } : Set.new
       conversation.each_with_index.map { |entry, index| edited(conversation, entry, index, group) }
     end
 
@@ -84,7 +89,8 @@ module Samagotchi
 
     # The forget whose stub carries the note the next forgotten output of
     # the same call points to: its first id and its note, author and stamp.
-    Group = Struct.new(:first, :key)
+    # +paired+: the ids of the runs that pair with their calls.
+    Group = Struct.new(:first, :key, :paired)
     private_constant :Group
 
     READ = "read"
@@ -99,7 +105,7 @@ module Samagotchi
 
       refs = ToolIds.refs_at(conversation, index)
       stubbed = refs.each_index.select { |run| edits.key?(refs[run].id) }
-      shown = forget? ? refs.each_index.reject { |run| refs[run].derived? } : []
+      shown = forget? ? refs.each_index.select { |run| group.paired.include?(refs[run].id) && !refs[run].derived? } : []
       return whole(entry, group) if stubbed.empty? && shown.empty?
 
       texts = ToolResponse.runs(entry[:content], refs.size)
@@ -149,18 +155,21 @@ module Samagotchi
         head = edit.stub
       end
       head += " [restore: #{ref.id}]" unless text.name == READ || ref.derived?
-      [head, *kept_lines(text.body, edit.keep)].join("\n")
+      [head, *kept_lines(text.body, edit.keep, edit.keep_offset)].join("\n")
     end
 
     # The kept ranges of +body+'s lines, each under a "lines A-B kept:"
-    # line (a range past the end is cut to it; one wholly past it goes).
-    def kept_lines(body, keep)
+    # line, A and B as the model named them (+offset+ past the body's own:
+    # a ranged read's file lines); a range is cut to the body, one wholly
+    # outside it goes.
+    def kept_lines(body, keep, offset)
       lines = body.lines
       keep.filter_map do |first, last|
-        next if first > lines.size
+        from = [first - offset, 1].max
+        to = [last - offset, lines.size].min
+        next if from > to
 
-        last = [last, lines.size].min
-        "lines #{first}-#{last} kept:\n#{lines[(first - 1)..(last - 1)].join.chomp}"
+        "lines #{from + offset}-#{to + offset} kept:\n#{lines[(from - 1)..(to - 1)].join.chomp}"
       end
     end
 

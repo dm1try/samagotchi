@@ -440,6 +440,7 @@ stripped of surrounding whitespace, except file text, an edit's
 | `delegate` | `task` | — | `model`, `session`, `cwd`, `wait`, `timeout` |
 | `delegate_result` | — | — | `session`, `timeout` |
 | `ask_user_question` | `question` | — | `question`, `options`, `header`, `multi_select`, `allow_freeform` |
+| `forget_outputs` | `note` | — | `ids`, `note`, `keep`, `restore` |
 
 A `write`'s `content:` is the file text; an `edit` carries `old_text:` and
 `new_text:` (its `content:` is `""`). A plugin or MCP tool's call has its
