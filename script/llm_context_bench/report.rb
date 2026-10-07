@@ -6,9 +6,10 @@ module LLMContextBench
   # The benchmark's text and JSON output: the profile (none), then one row
   # per strategy × model × policy summed over its cases.
   class Report
-    STRATEGY_ORDER = %w[none forget_all stale forget_outputs picks].freeze
+    STRATEGY_ORDER = %w[none forget_all stale stale_edits_next_request stale_edits_turn_end stale_edits_payoff
+                        forget_outputs picks].freeze
     SUMMED = %i[outputs tool_tokens prompt_tokens forgotten invalid_ids freed wrong_strict wrong_loose need_strict
-                need_loose one_step_outputs re_prefilled].freeze
+                need_loose one_step_outputs re_prefilled cache_breaks].freeze
 
     # One row: a strategy × model × policy, its results summed.
     Row = Data.define(:strategy, :model, :policy, :cases, :how, :sums)
@@ -94,7 +95,7 @@ module LLMContextBench
     end
 
     HEADER = ["strategy", "model", "policy", "cases", "forgot/outputs", "freed/tool", "wrong strict (base)",
-              "wrong loose (base)", "1-step", "re-prefilled", "notes"].freeze
+              "wrong loose (base)", "1-step", "re-prefilled", "breaks", "notes"].freeze
 
     def row_lines
       table = rows.map do |row|
@@ -106,16 +107,16 @@ module LLMContextBench
          "#{k(s[:freed])}/#{k(s[:tool_tokens])} #{pct(s[:freed], s[:tool_tokens])}",
          "#{s[:wrong_strict]} #{pct(s[:wrong_strict], s[:forgotten])} (#{pct(s[:need_strict], s[:outputs])})",
          "#{s[:wrong_loose]} #{pct(s[:wrong_loose], s[:forgotten])} (#{pct(s[:need_loose], s[:outputs])})",
-         s[:one_step_outputs].to_s, k(s[:re_prefilled]), notes.join("; ")]
+         s[:one_step_outputs].to_s, k(s[:re_prefilled]), s[:cache_breaks].to_s, notes.join("; ")]
       end
       ["Strategies (each case scored at its next turn's first request)"] + columns([HEADER] + table) + [""]
     end
 
     def case_lines
-      header = %w[strategy model policy case ends forgot/outputs freed wrong-strict wrong-loose 1-step re-prefilled]
+      header = %w[strategy model policy case ends forgot/outputs freed wrong-strict wrong-loose 1-step re-prefilled breaks]
       table = results.map do |r|
         [r.strategy, r.model, r.policy, r.case_name, @case_ends.fetch(r.case_name, "-"), "#{r.forgotten}/#{r.outputs}", k(r.freed), r.wrong_strict.to_s,
-         r.wrong_loose.to_s, r.one_step_outputs.to_s, k(r.re_prefilled)]
+         r.wrong_loose.to_s, r.one_step_outputs.to_s, k(r.re_prefilled), r.cache_breaks.to_s]
       end
       ["Cases"] + columns([header] + table) + [""]
     end

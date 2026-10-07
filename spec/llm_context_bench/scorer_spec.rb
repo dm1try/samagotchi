@@ -153,6 +153,24 @@ RSpec.describe LLMContextBench::Scorer do
       expect(result).to have_attributes(wrong_strict: 1, one_step_outputs: 0)
     end
 
+    it "runs the apply rule as chi does: next_request at once, turn_end and payoff at turn end, protect_steps kept" do
+      applied = lambda { |strategy|
+        strategy.plans(stale_case).first.edits.map { |edit| [edit.output_id, edit.applies_at, edit.note] }
+      }
+      read_stub = ["e3.1", 3, "lib/cart.rb: superseded by a later read"]
+
+      expect(applied.call(LLMContextBench::Strategies.build("stale_edits_next_request"))).to eq([read_stub])
+      # Both reads are of a file the turn's last steps edited: kept at turn end, unless protect_steps is 0
+      # (next_request stubbed the first before the edit came).
+      expect(applied.call(LLMContextBench::Strategies.build("stale_edits_turn_end"))).to eq([])
+      expect(applied.call(LLMContextBench::Strategies.build("stale_edits_payoff"))).to eq([])
+      expect(applied.call(LLMContextBench::Strategies::StaleApply.new(:turn_end, protect_steps: 0)))
+        .to eq([["e3.1", 5, "lib/cart.rb: superseded by a later read"], ["e7.1", 5, "#{BenchFixtures::WORKDIR}/lib/cart.rb: superseded by a later edit"]])
+      unprotected = LLMContextBench::Strategies::StaleApply.new(:turn_end, protect_steps: 0)
+      result = scorer.score(unprotected.plans(stale_case).first)
+      expect(result).to have_attributes(strategy: "stale_edits_turn_end", forgotten: 2, cache_breaks: 1)
+    end
+
     it "counts each cache break in one case only: the case of the turn it falls in" do
       body = (1..30).map { |n| "#{n}: line #{n} of the tax table" }.join("\n")
       read = lambda { |id, path|
@@ -175,6 +193,7 @@ RSpec.describe LLMContextBench::Scorer do
       expect([first.forgotten, second.forgotten]).to eq([1, 2])
       expect(first.re_prefilled).to eq(broke.call(2, 3...5))
       expect(second.re_prefilled).to eq(broke.call(5, 9...11))
+      expect([first.cache_breaks, second.cache_breaks]).to eq([1, 1])
     end
   end
 

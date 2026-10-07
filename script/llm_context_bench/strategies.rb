@@ -23,8 +23,8 @@ module LLMContextBench
 
   # The strategies the benchmark knows, by name. Each answers #plans(kase)
   # with the Plans it scores at that case. Pluggable: a later phase adds its
-  # strategy here (stale, P2; forget_outputs in P4), and the scorer and
-  # the report take it as they are.
+  # strategy here (stale, P2; stale_edits_<rule>, P3; forget_outputs in
+  # P4), and the scorer and the report take it as they are.
   module Strategies
     # none: nothing changes, the prompt stays byte-identical. The base.
     class None
@@ -65,6 +65,64 @@ module LLMContextBench
                           applies_at: replay.request_after(stale.by.index))
         end
         [Plan.new(strategy: name, kase: kase, model: replay.model_name, edits: edits)]
+      end
+    end
+
+    # stale with edits (P3): chi's stale layer with edit-driven stubs
+    # (llm_context.stale_edits: true, opt-in) under an apply rule (Samagotchi::LLMContextApply), run as chi runs it, over
+    # the session from its start: at each request (moment :request) and at
+    # the end of each turn that ends with the model's answer (:turn_end,
+    # sent from the next turn's first request), with llm_context.protect_steps'
+    # default. The top ContextStatus bucket isn't modelled (no window), so
+    # payoff applies only when the freed tokens are at least the tail.
+    # Named stale_edits_<rule>: next_request, turn_end, payoff.
+    class StaleApply
+      attr_reader :rule
+
+      def initialize(rule, protect_steps: Samagotchi::LLMContextStrategy::DEFAULT_PROTECT_STEPS)
+        @rule = rule
+        @protect_steps = protect_steps
+        @runs = {}
+      end
+
+      def name = "stale_edits_#{rule}"
+
+      def plans(kase)
+        replay = kase.replay
+        edits = (@runs[replay] ||= run(replay)).select { |edit| edit.applies_at <= kase.at }
+        [Plan.new(strategy: name, kase: kase, model: replay.model_name, edits: edits)]
+      end
+
+      private
+
+      # Every edit the rule applies over the session, at the request it
+      # first reaches.
+      def run(replay)
+        work = replay.messages.map(&:dup)
+        root = replay.working_directory || Dir.pwd
+        ends = answered_turn_ends(replay)
+        last = -1
+        replay.requests.each_with_index.flat_map do |prompt_end, request|
+          edits = ends.select { |turn_end| turn_end > last && turn_end <= prompt_end }.flat_map do |turn_end|
+            apply(work[0...turn_end], :turn_end, root)
+          end
+          last = prompt_end
+          (edits + apply(work[0...prompt_end], :request, root)).map do |edit|
+            PlannedEdit.new(output_id: edit.id, kind: edit.kind, note: edit.note, applies_at: request)
+          end
+        end
+      end
+
+      def apply(conversation, moment, root)
+        Samagotchi::LLMContextApply.run!(conversation, layers: [:stale], rule: rule, moment: moment, changes: true,
+                                                       protect_steps: @protect_steps, root: root, now: "bench").applied
+      end
+
+      # Where each turn the model answered ends (its range's end).
+      def answered_turn_ends(replay)
+        replay.turns.each_index.filter_map do |turn|
+          replay.turns[turn].end if Case.new(replay: replay, turn: turn).answer_ended?
+        end
       end
     end
 
@@ -187,16 +245,18 @@ module LLMContextBench
     end
 
     BUILT = { "none" => None, "forget_all" => ForgetAll, "stale" => Stale }.freeze
+    APPLIED = Samagotchi::LLMContextStrategy::APPLIES.to_h { |rule| ["stale_edits_#{rule}", rule] }.freeze
     UNBUILT = { "forget_outputs" => "P4" }.freeze
 
     module_function
 
-    def names = BUILT.keys + UNBUILT.keys
+    def names = BUILT.keys + APPLIED.keys + UNBUILT.keys
 
     # The strategy named +name+ (Picks are made apart, from their files).
     # @raise [ArgumentError] for an unknown one
     def build(name)
       return BUILT.fetch(name).new if BUILT.key?(name)
+      return StaleApply.new(APPLIED.fetch(name)) if APPLIED.key?(name)
       return Unbuilt.new(name, UNBUILT.fetch(name)) if UNBUILT.key?(name)
 
       raise ArgumentError, "unknown strategy #{name} (#{names.join(", ")}, or --picks)"

@@ -26,10 +26,12 @@ module LLMContextBench
   #   (and its answer) left cached. Only the requests of the case's own
   #   window count, after the case before it (the previous turn's) through
   #   the case's: a strategy that edits as the session goes (stale) would
-  #   otherwise count an early break again in every later case.
+  #   otherwise count an early break again in every later case;
+  # - cache_breaks: the requests of that window an edit first reaches (one
+  #   break each, a batch's edits together).
   Result = Data.define(:strategy, :model, :policy, :case_name, :how, :outputs, :tool_tokens, :prompt_tokens,
                        :forgotten, :invalid_ids, :freed, :wrong_strict, :wrong_loose, :need_strict, :need_loose,
-                       :one_step_outputs, :re_prefilled)
+                       :one_step_outputs, :re_prefilled, :cache_breaks)
 
   # Scores a Plan on its case's replay, the edits rendered through chi's own
   # LLMContextView (as LLMContextEdit records saved on copies of the
@@ -48,6 +50,7 @@ module LLMContextBench
       horizon = Later.new(replay, replay.prompt_end(kase.at)...replay.turns[kase.turn + 1].end)
       edited = edits.map { |edit| by_id[edit.output_id] }
       wrong_strict, wrong_loose = needs(replay, kase, edits, by_id)
+      window = edits.select { |edit| edit.applies_at > since(kase) }
 
       Result.new(strategy: plan.strategy, model: plan.model, policy: plan.policy, case_name: kase.name, how: plan.how,
                  outputs: outputs.size, tool_tokens: outputs.sum(&:tokens), prompt_tokens: prompt_tokens(replay, kase.at, []),
@@ -57,7 +60,7 @@ module LLMContextBench
                  need_strict: outputs.count { |output| horizon.reread?(output) },
                  need_loose: outputs.count { |output| horizon.loose?(output) },
                  one_step_outputs: one_step(replay, edits, by_id),
-                 re_prefilled: re_prefilled(replay, edits.select { |edit| edit.applies_at > since(kase) }, by_id))
+                 re_prefilled: re_prefilled(replay, window, by_id), cache_breaks: window.map(&:applies_at).uniq.size)
     end
 
     # Request +request+'s prompt as chi's view sends it with +edits+ applied
