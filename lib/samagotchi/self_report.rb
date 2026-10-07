@@ -20,6 +20,7 @@ require_relative "hooks/loader"
 require_relative "memory_bundle/provenance"
 require_relative "memory_bundle/manifest"
 require_relative "memory_bundle/system_bundle"
+require_relative "memory_bundle/index_size"
 require_relative "desktop"
 require_relative "live_versions"
 require_relative "web/lan"
@@ -53,6 +54,7 @@ module Samagotchi
         ["hooks dir", hooks_dir(env)],
         ["memories", Tools::MemoryRead.memories_dir("system", env: env)],
         ["project memories", Tools::MemoryRead.memories_dir("project", env: env)],
+        ["memory index", memory_index_summary(env)],
         ["sessions", Session.default_state_dir(env: env)],
         ["log", log_path(env)],
         ["model", model ? model_label(model, default, env) : "(not configured)"],
@@ -98,6 +100,19 @@ module Samagotchi
     # doesn't guess ~/.local/state.
     def log_path(env)
       LogPath.resolve(env: env) || "(disabled: log.disable)"
+    end
+
+    # "system ~2.0k tokens (54 lines), project ~1.4k tokens (35 lines)":
+    # the two indexes every prompt carries (before a session's mutes), a
+    # scope over memory.index_warn_tokens marked so. Two file reads. The
+    # indexes come from +env+'s memories dirs; the limit and
+    # context.chars_per_token from Config, which reads the process's ENV
+    # and config.yml as the rest of chi self's settings (web.port) do.
+    def memory_index_summary(env)
+      limit = MemoryBundle::IndexSize.warn_limit
+      %w[system project].map { |scope| MemoryBundle::IndexSize.of_scope(scope, env: env).summary(limit) }.join(", ")
+    rescue StandardError => e
+      "(unreadable: #{e.message})"
     end
 
     def with_presence(path)

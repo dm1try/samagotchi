@@ -1002,6 +1002,7 @@ described in their own sections.
 | `models.<key>.llm_context_budget_tokens`, `hosts.<name>.llm_context_budget_tokens` | none | | A model's or host's `llm_context.budget_tokens`. |
 | `llm_context.policy` | the subtask-boundaries line | | The sentence `forget_outputs`' description carries (the `forget` layer): "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note what it established; keep anything you'll still edit against." Blank: none. Read when a session starts. |
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |
+| `memory.index_warn_tokens` | `2500` | yes | The tokens one scope's memory index (project or system; sent with every prompt) may hold before a `memory_write`, `write` or `edit` that takes it over gets a note asking the model to tighten long index descriptions; `0`: no note. Estimated as characters / `context.chars_per_token`. `memory:` is its own section, not the `memories:` preload list. See [Memory](memory.md). |
 | `context.status_thresholds` | `20,40,60,80` | yes | Percentages that trigger a status. |
 | `context.status_cadence` | `0` | yes | Also every N rounds; `0` = thresholds only. |
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |

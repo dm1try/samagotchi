@@ -146,6 +146,9 @@ module Samagotchi
       Entry.new(key: "context.status",           yaml_path: %w[context status],           type: :bool,   default: true,             expose: %i[env config cli]),
       Entry.new(key: "context.window_tokens",    yaml_path: %w[context window_tokens],    type: :integer, default: nil,             expose: %i[env config cli]),
       Entry.new(key: "context.chars_per_token",  yaml_path: %w[context chars_per_token],  type: :float,   default: 4.0,             expose: %i[env config cli]),
+      # The tokens one scope's memory index (sent with every prompt) may hold before a write that crosses it gets a note
+      # (MemoryBundle::IndexSize); 0: no note. `memory:` is its own section, not the `memories:` preload list.
+      Entry.new(key: "memory.index_warn_tokens", yaml_path: %w[memory index_warn_tokens], type: :integer, default: 2500,            expose: %i[env config cli]),
       Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds], type: :string, default: "20,40,60,80",    expose: %i[env config cli]),
       Entry.new(key: "context.status_cadence",   yaml_path: %w[context status_cadence],   type: :integer, default: 0,               expose: %i[env config cli]),
       # Attached context (ContextSources): how often a source's command runs when it names no --every (seconds; less

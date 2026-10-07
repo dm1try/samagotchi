@@ -66,6 +66,20 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("project memories")).to eq(File.join(memories, "projects", Samagotchi::MemoryPaths.project_key))
   end
 
+  it "sizes both memory indexes as the prompt carries them, marking one over memory.index_warn_tokens" do
+    memories = File.join(config_home, "samagotchi", "memories")
+    project = File.join(memories, "projects", Samagotchi::MemoryPaths.project_key)
+    FileUtils.mkdir_p(project)
+    system_index = "- **a** · 9 B · 2026-10-08 · #{"x" * 4000}\n- **b** · 9 B\n"
+    File.write(File.join(memories, "index.md"), system_index)
+    File.write(File.join(project, "index.md"), "- **p** · 3 B · tip\n")
+    expect((system_index.length / 4.0).ceil).to eq(1011)
+    expect(field("memory index")).to eq("system ~1.0k tokens (2 lines), project ~5 tokens (1 line)")
+    with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1000") do
+      expect(field("memory index")).to eq("system ~1.0k tokens (2 lines, over 1000), project ~5 tokens (1 line)")
+    end
+  end
+
   describe "chi web" do
     it "says it isn't running" do
       expect(field("chi web")).to eq("not running on port 4567")
