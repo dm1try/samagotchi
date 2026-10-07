@@ -1163,8 +1163,9 @@ Need to inspect the filesystem first.
           )
 
           completed = events.find { |event| event[:type] == :tool_call_completed }
-          expect(completed[:output].length).to eq(1000)
-          expect(completed[:output].to_s.start_with?("[read]\n")).to be(true)
+          expect(completed[:output].length).to be <= 1000
+          expect(completed[:output]).to start_with("[read]\nxxx")
+          expect(completed[:output]).to match(/\n\[cut: \d+ of \d+ chars; read it in parts\]\z/)
           expect(completed[:output_truncated]).to be(true)
         end
       end
@@ -1183,7 +1184,7 @@ Need to inspect the filesystem first.
           kernel.run([{ role: "user", content: "read" }], on_stream_event: ->(event) { events << event })
 
           completed = events.find { |event| event[:type] == :tool_call_completed }
-          expect(completed[:output].length).to eq(42)
+          expect(completed[:output]).to match(/\A\[read\]\n.{35}\n\[cut: 42 of \d+ chars; read it in parts\]\z/)
           expect(completed[:output_truncated]).to be(true)
         ensure
           original.nil? ? ENV.delete("SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS") : ENV["SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS"] = original
@@ -1251,7 +1252,8 @@ Need to inspect the filesystem first.
 
           expect(result.output).to eq("done")
           tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
-          expect(tool_response[:content]).to eq("[read]\n#{"y" * 993}")
+          expect(tool_response[:content].length).to be <= 1000
+          expect(tool_response[:content]).to match(/\A\[read\]\ny+\n\[cut: \d+ of \d+ chars; read it in parts\]\z/)
         end
       end
     end

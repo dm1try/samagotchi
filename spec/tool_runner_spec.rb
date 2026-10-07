@@ -133,6 +133,49 @@ RSpec.describe Samagotchi::ToolRunner do
     expect(dispatched).to eq([call])
   end
 
+  describe "the output cap" do
+    let(:full) { "[execute]\n#{"x" * 300}" }
+    let(:outputs) { [] }
+
+    before do
+      allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "execute", status: "ok" } } }
+      hooks.register(:after_tool_call) { |event| outputs << event[:output] }
+    end
+
+    def capped_run(cap)
+      runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e },
+                       max_tool_output_chars: cap)
+    end
+
+    it "cuts the output and says so in a last line, the whole within the cap" do
+      result = capped_run(100)
+      kept = result[:capped_output].index("\n[cut: ")
+      expect(result[:capped_output]).to eq("#{full[0, kept]}\n[cut: #{kept} of 310 chars; read it in parts]")
+      expect(result[:capped_output].length).to be <= 100
+      expect(result[:truncated]).to be(true)
+      expect(result[:output]).to eq(full)
+    end
+
+    it "gives the event and the after_tool_call hook the text the model gets" do
+      result = capped_run(100)
+      completed = events.find { |e| e[:type] == :tool_call_completed }
+      expect(completed[:output]).to eq(result[:capped_output])
+      expect(completed[:output_truncated]).to be(true)
+      expect(outputs).to eq([result[:capped_output]])
+    end
+
+    it "cuts at the cap and adds the line after it when the cap is smaller than the line" do
+      result = capped_run(10)
+      expect(result[:capped_output]).to eq("#{full[0, 10]}\n[cut: 10 of 310 chars; read it in parts]")
+    end
+
+    it "leaves an output within the cap as it is, with no line" do
+      result = capped_run(310)
+      expect(result[:capped_output]).to eq(full)
+      expect(result[:truncated]).to be(false)
+    end
+  end
+
   describe "sticky verdict" do
     it "keeps a veto a later hook tries to undo" do
       hooks.register(:before_tool_call) { |e| e[:blocked] = true; e[:block_reason] = "nope" }

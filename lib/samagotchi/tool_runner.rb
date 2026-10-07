@@ -13,8 +13,9 @@ module Samagotchi
   # The single per-call path both loops use: the tool_call_started and
   # tool_call_completed events, the guardrail gate (before_tool_call hooks
   # and their veto), dispatch through KernelLoop, the after_tool_call hook
-  # and the output cap. Both loops feed the model `capped_output:`, the
-  # text the event and the hook get too.
+  # and the output cap. Both loops feed the model `capped_output:` (cut to
+  # the cap with a "[cut: N of M chars …]" line), the text the event and
+  # the hook get too.
   class ToolRunner
     # More images in one result are left out, each with a line (a tool
     # that returns many screenshots can't flood the context).
@@ -82,12 +83,8 @@ module Samagotchi
       if (changed = changed_call_line(original, call))
         output = "#{changed}\n#{output}"
       end
-      capped = output
-      truncated = false
-      if max_tool_output_chars && output.length > max_tool_output_chars
-        truncated = true
-        capped = output[0, max_tool_output_chars]
-      end
+      truncated = !max_tool_output_chars.nil? && output.length > max_tool_output_chars
+      capped = truncated ? cut(output, max_tool_output_chars) : output
 
       # The call's outcome as its activity line has it (worked out from the
       # full output: ok, error, blocked, stopped); a dispatcher that raised
@@ -116,6 +113,19 @@ module Samagotchi
     end
 
     private
+
+    # +output+ cut to +cap+ chars, the cut line included: the model knows
+    # what it didn't get. A cap smaller than the line keeps +cap+ chars and
+    # the line goes past it.
+    def cut(output, cap)
+      keep = cap - cut_line(cap, output.length).length
+      keep = cap unless keep.positive?
+      "#{output[0, keep]}#{cut_line(keep, output.length)}"
+    end
+
+    def cut_line(kept, total)
+      "\n[cut: #{kept} of #{total} chars; read it in parts]"
+    end
 
     # edit/write only: the file just before the call runs. The row diffs it
     # with the file after, whatever the result says, so an edit that fails

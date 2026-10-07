@@ -207,8 +207,9 @@ One iteration with tool calls:
 - For edit and write: diffs the file before and after, and refreshes a memory's index line
   (`MemoryBundle::IndexSync`).
 - Attaches returned images, at most `MAX_IMAGES_PER_RESULT` (4) per result.
-- Scrubs bytes that aren't UTF-8, and caps the output at `max_tool_output_chars`: the model (both loops), the
-  event and the after_tool_call hook get the capped text.
+- Scrubs bytes that aren't UTF-8, and caps the output at `max_tool_output_chars`: a longer one is cut and ends
+  with `[cut: N of M chars; read it in parts]` (N kept of M, the whole within the cap unless the cap is shorter
+  than that line). The model (both loops), the event and the after_tool_call hook get that text.
 - Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, activity,
   images, diff, waited_ms, view}, then fires `:after_tool_call` {iteration, tool, output, status}.
 

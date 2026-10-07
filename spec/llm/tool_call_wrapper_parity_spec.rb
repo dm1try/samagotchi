@@ -122,7 +122,7 @@ RSpec.describe "Tool call wrapper parity" do
     it "native: the model gets the capped output, as the event and the hook do" do
       prompts = []
       _result, seen = run_native(max_tool_output_chars: 10, prompts: prompts)
-      expect(completed[:output].length).to eq(10)
+      expect(completed[:output]).to match(/\A\[read\]\nhel\n\[cut: 10 of \d+ chars; read it in parts\]\z/)
       expect(completed[:output_truncated]).to be(true)
       expect(seen).to eq(completed[:output])
       expect(prompts.last).not_to include("hello from the file")
@@ -133,15 +133,15 @@ RSpec.describe "Tool call wrapper parity" do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("max_tool_output_chars").and_return(12)
       run_native
-      native_cap = completed[:output].length
+      native_cut = completed[:output][/\[cut: \d+/]
       events.clear
       run_chat
-      expect([native_cap, completed[:output].length]).to eq([12, 12])
+      expect([native_cut, completed[:output][/\[cut: \d+/]]).to eq(["[cut: 12", "[cut: 12"])
     end
 
     it "chat: the model gets the capped output too" do
       _result, seen = run_chat(max_tool_output_chars: 10)
-      expect(completed[:output].length).to eq(10)
+      expect(completed[:output]).to match(/\A\[read\]\nhel\n\[cut: 10 of \d+ chars; read it in parts\]\z/)
       expect(completed[:output_truncated]).to be(true)
       expect(seen).to eq(completed[:output])
       expect(fired.last).to eq([:after_tool_call, completed[:output]])

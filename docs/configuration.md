@@ -924,7 +924,7 @@ described in their own sections.
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
 | `hosts.<name>.remote` | by address | | `true`/`false`: treat the host as a remote provider or a local server. See "Remote or local". |
-| `max_tool_output_chars` | `10000` | yes | Tool output kept in the conversation; a top-level key (see below). |
+| `max_tool_output_chars` | `10000` | yes | Characters of each tool output kept in the conversation (both loops); a longer one is cut and ends with `[cut: N of M chars; read it in parts]`. A top-level key (see below). |
 | `cache.warmup` | `auto` | | `auto`: after a turn, send the next turn's prompt (up to the next message) to a local llama.cpp host on the native loop, so the next turn prefills only its message; never a remote or `api: openai` host. `off`: never. See [prompt caching](internals/prompt-caching.md#the-turn-end-warm-up). |
 | `cache.ttl` | `5m` | | How long Anthropic keeps the prompt-cache breakpoints of a Claude model on a remote host: `5m` (Anthropic's default) or `1h`. A 1h cache write costs 2× the input price (5m: 1.25×), a read the same 0.1×. See "Remote or local". |
 | `cache.key` | `off` | | `session`: send the session id as `prompt_cache_key` to OpenAI's API and OpenRouter, which route and cache by it; no other host gets it. `off`: none. |
