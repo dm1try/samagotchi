@@ -22,7 +22,23 @@ module LLMContextBench
   # chi's built-in chat tools plus the forget tool, and the policy's tail
   # line. A model that answers without the forget tool is asked once more
   # with the tool forced (the spike did the same); the record says which.
+  #
+  # A request that fails is saved as an error record and the run goes on,
+  # except a payment error (PaymentStop): a 402, or an error that mentions
+  # credits or balance, stops the run at once, since every later request
+  # would fail the same way.
   class LivePick
+    # Raised by #run on a payment error; +written+ is what it saved before.
+    class PaymentStop < StandardError
+      attr_reader :written
+
+      def initialize(message, written:)
+        @written = written
+        super(message)
+      end
+    end
+
+    PAYMENT_RE = /credit|balance/i
     TOOL_NAMES = %w[forget_outputs forget_llm_context].freeze
     # The plan's default policy line (D7, adapted from CLM's steering example).
     POLICY_LINE = "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note what it " \
@@ -110,16 +126,30 @@ module LLMContextBench
 
     # Asks for every case and sample not saved yet.
     # @return [Array<String>] the files written
+    # @raise [PaymentStop] on a payment error; nothing is saved for its case
     def run(cases)
       FileUtils.mkdir_p(out_dir)
-      cases.product((1..samples).to_a).filter_map do |kase, sample|
+      written = []
+      cases.product((1..samples).to_a).each do |kase, sample|
         target = path(kase, sample)
         next if File.exist?(target)
 
-        File.write(target, JSON.generate(ask(kase)))
+        record = begin
+          ask(kase)
+        rescue PaymentStop => e
+          raise PaymentStop.new(e.message, written: written)
+        end
+        File.write(target, JSON.generate(record))
         @log.puts "picked #{kase.name} #{variant(sample)}"
-        target
+        written << target
       end
+      written
+    end
+
+    # A 402, or an error that mentions credits or balance (an OpenRouter
+    # key out of credit, a provider's "insufficient balance").
+    def self.payment_error?(error)
+      error.status == 402 || error.is_a?(Samagotchi::LLM::OutOfCredits) || PAYMENT_RE.match?(error.message.to_s)
     end
 
     # What a run would send: requests (one per case and sample, more when a
@@ -141,6 +171,8 @@ module LLMContextBench
       record.merge("bench" => { "id_scheme" => "run", "tool" => tool_name, "policy" => policy, "layout" => layout,
                                 "model" => @model })
     rescue Samagotchi::LLM::ProviderError => e
+      raise PaymentStop.new(e.summary, written: []) if self.class.payment_error?(e)
+
       { "unforced" => { "error" => e.message }, "bench" => { "id_scheme" => "run", "tool" => tool_name, "policy" => policy } }
     end
 

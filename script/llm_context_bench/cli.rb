@@ -19,14 +19,18 @@ module LLMContextBench
                          :json, :live, :tool_name, :policy, :out_dir, :samples, :dry_run, :layout, :force,
                          keyword_init: true)
 
-    def initialize(argv, env: ENV, out: $stdout, err: $stderr)
+    # @param chat_adapter [#call] model ref => [adapter, bare model], for
+    #   --live (LivePick.chat_adapter; a spec points it at a fake server)
+    def initialize(argv, env: ENV, out: $stdout, err: $stderr, chat_adapter: LivePick.method(:chat_adapter))
+      @chat_adapter = chat_adapter
       @argv = argv.dup
       @env = env
       @out = out
       @err = err
     end
 
-    # @return [Integer] the exit status
+    # @return [Integer] the exit status: 0, 2 for a usage error, 1 when a
+    #   --live run stopped on a payment error
     def run
       options = parse
       return 2 unless options
@@ -98,24 +102,31 @@ module LLMContextBench
         @err.puts "llm_context_bench: --live needs --out DIR"
         return 2
       end
-      adapter, model = options.dry_run ? [nil, options.live] : LivePick.chat_adapter(options.live)
+      adapter, model = options.dry_run ? [nil, options.live] : @chat_adapter.call(options.live)
       picker = LivePick.new(adapter: adapter, model: model, tool_name: options.tool_name, policy: options.policy,
                             out_dir: options.out_dir.to_s, samples: options.samples, log: @err, layout: options.layout,
                             force: options.force)
       cases = Cases.select(Replay.from_dir(options.dir, top: options.top, only: options.sessions),
                            names: options.cases_file && Cases.read_names(options.cases_file),
                            min_turn_tool: options.min_turn_tool)
-      if options.dry_run
-        estimate = picker.estimate(cases)
-        @out.puts "#{cases.size} case(s) × #{options.samples} sample(s): #{estimate[:requests]} requests (more if a pick " \
-                  "is forced), about #{(estimate[:prompt_tokens] / 1000).round}k prompt tokens by chars/4 " \
-                  "(~#{(estimate[:prompt_tokens] * 1.25 / 1000).round}k as servers count code), the largest " \
-                  "#{(estimate[:largest] / 1000).round}k"
-      else
-        written = picker.run(cases)
-        @out.puts "#{written.size} picks written to #{options.out_dir}; score them with --picks LABEL=#{options.out_dir}"
-      end
+      return pick(picker, cases, options.out_dir) unless options.dry_run
+
+      estimate = picker.estimate(cases)
+      @out.puts "#{cases.size} case(s) × #{options.samples} sample(s): #{estimate[:requests]} requests (more if a pick " \
+                "is forced), about #{(estimate[:prompt_tokens] / 1000).round}k prompt tokens by chars/4 " \
+                "(~#{(estimate[:prompt_tokens] * 1.25 / 1000).round}k as servers count code), the largest " \
+                "#{(estimate[:largest] / 1000).round}k"
       0
+    end
+
+    def pick(picker, cases, out_dir)
+      written = picker.run(cases)
+      @out.puts "#{written.size} picks written to #{out_dir}; score them with --picks LABEL=#{out_dir}"
+      0
+    rescue LivePick::PaymentStop => e
+      @err.puts "llm_context_bench: stopped, a payment error: #{e.message}"
+      @err.puts "  #{e.written.size} picks written to #{out_dir} before it; a rerun asks only for the rest"
+      1
     end
 
     def build(options)
