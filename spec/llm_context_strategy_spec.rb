@@ -16,9 +16,9 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     end
   end
 
-  def target(layers = nil, apply: nil)
+  def target(layers = nil, apply: nil, budget: nil)
     entry = Samagotchi::HostRegistry::HostEntry.new(name: "box", host: "box", port: 8080, llm_context_strategy: layers,
-                                                    llm_context_apply: apply)
+                                                    llm_context_apply: apply, llm_context_budget_tokens: budget)
     Samagotchi::HostRegistry::ModelTarget.new(model: "box:m", entry: entry, bare_model: "m", client: nil)
   end
 
@@ -54,7 +54,8 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       config("none")
 
       expect(described_class.resolve(target, names: %w[m], models: {}).to_h)
-        .to eq(layers: [], strategy: :none, source: :config, apply: :payoff, protect_steps: 3, stale_edits: false)
+        .to eq(layers: [], strategy: :none, source: :config, apply: :payoff, protect_steps: 3, stale_edits: false,
+               budget_tokens: nil)
     end
 
     it "takes the model's setting, then the host's, then llm_context.strategy (a model's none wins too)" do
@@ -118,6 +119,44 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       expect(described_class.parse_apply(:next_request, "x")).to eq(:next_request)
       expect { expect(described_class.parse_apply("later", "models: m")).to eq(:payoff) }
         .to output(/models: m: unknown llm_context apply later .*using payoff/).to_stderr
+    end
+  end
+
+  describe "the budget" do
+    it "is off by default, and comes from the session, the model, the host, then llm_context.budget_tokens" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      models = { "m" => { llm_context_budget_tokens: 48_000 } }
+
+      expect(described_class.resolve(target, names: %w[x], models: models).budget_tokens).to be_nil
+      expect(described_class.resolve(target(budget: 96_000), names: %w[m], models: models).budget_tokens).to eq(48_000)
+      expect(described_class.resolve(target(budget: 96_000), names: %w[x], models: models).budget_tokens).to eq(96_000)
+      allow(Samagotchi::Config).to receive(:get).with(described_class::BUDGET_SETTING).and_return(64_000)
+      expect(described_class.resolve(target, names: %w[x], models: models).budget_tokens).to eq(64_000)
+      expect(described_class.resolve(target, names: %w[m], models: models, session_budget: 1000).budget_tokens).to eq(1000)
+    end
+
+    it "reads a positive number of tokens; anything else warns and is unset" do
+      expect(described_class.parse_budget(nil, "x")).to be_nil
+      expect(described_class.parse_budget("64000", "x")).to eq(64_000)
+      expect { expect(described_class.parse_budget(0, "x")).to be_nil }.not_to output.to_stderr
+      expect { expect(described_class.parse_budget("-5", "models: m")).to be_nil }
+        .to output(/models: m: llm_context budget_tokens must be a positive number of tokens; ignored/).to_stderr
+    end
+
+    it "is read on models: and hosts: entries, and llm_context.budget_tokens is a known setting" do
+      data = { "llm_context" => { "budget_tokens" => 64_000 },
+               "models" => { "deepseek" => { "llm_context_budget_tokens" => 48_000 } },
+               "hosts" => { "box" => { "host" => "h", "llm_context_budget_tokens" => 32_000 } } }
+      with_config(data) do |path|
+        models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
+        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+
+        expect(models["deepseek"][:llm_context_budget_tokens]).to eq(48_000)
+        expect(Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).entries["box"].llm_context_budget_tokens).to eq(32_000)
+      end
+      expect(Samagotchi::Config.validate_yaml_sections(data)).to eq([])
+      expect(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {})).to eq(64_000)
+      expect(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: {}, env: {})).to be_nil
     end
   end
 

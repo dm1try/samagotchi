@@ -90,6 +90,10 @@ module Samagotchi
       # The turn's LLM context layers (KernelLoop#llm_context_layers).
       def llm_context_layers = @kernel.llm_context_layers
 
+      # The turn's LLM context strategy (LLMContextStrategy::Resolved), nil
+      # when none was resolved.
+      def llm_context = @kernel.turn_settings&.llm_context
+
       # KernelLoop#reprefilled_tokens, the kernel's request history.
       def reprefilled_tokens(model, **) = @kernel.reprefilled_tokens(model, **)
 
@@ -353,7 +357,7 @@ module Samagotchi
           # The empty generations, never saved: the UIs draw the turn's
           # steps from them (ModelResult#empty_steps).
           @empty_steps = []
-          @context = ContextStatus.new(conversation: conversation)
+          @context = ContextStatus.new(conversation: conversation, llm_context: loop.llm_context)
           loop.llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: @context)
         end
 

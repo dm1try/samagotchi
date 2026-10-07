@@ -19,6 +19,10 @@ module Samagotchi
   #
   # The context.* settings are read once, when the tracker is built (one per
   # run, so a changed setting counts from the next turn).
+  #
+  # The turn's LLM context strategy (LLMContextStrategy::Resolved) may set
+  # a soft budget (llm_context.budget_tokens): the buckets then count
+  # against it instead of the window (the smaller of the two).
   class ContextStatus
     STATUS_PREFIX = "CONTEXT_STATUS"
     # The model's own line about its context (a tail system message, kind
@@ -74,7 +78,10 @@ module Samagotchi
 
     # @param conversation [Array<Hash>] the turn's conversation so far (its
     #   last status line's bucket is where rises count from)
-    def initialize(conversation: [])
+    # @param llm_context [LLMContextStrategy::Resolved, nil] the turn's
+    #   strategy (its budget)
+    def initialize(conversation: [], llm_context: nil)
+      @budget = llm_context&.budget_tokens
       @enabled = self.class.enabled?
       chars_per_token = Config.get("context.chars_per_token").to_f
       @chars_per_token = chars_per_token.positive? ? chars_per_token : DEFAULT_CHARS_PER_TOKEN
@@ -171,7 +178,7 @@ module Samagotchi
       return nil unless @enabled
       return nil unless ContextWindow.positive_integer?(used_tokens) && ContextWindow.positive_integer?(window_tokens)
 
-      pct = (used_tokens.to_f / window_tokens) * 100.0
+      pct = (used_tokens.to_f / counted_against(window_tokens)) * 100.0
       { est_pct: pct, bucket: bucket_for(pct) }
     end
 
@@ -187,11 +194,11 @@ module Samagotchi
       window_source = :server if server_usage && server_usage[:context_window_tokens]
 
       if server_usage && server_usage[:prompt_tokens]
-        window_tokens = server_usage[:context_window_tokens] || window.tokens
+        window_tokens = counted_against(server_usage[:context_window_tokens] || window.tokens)
         used_tokens = [server_usage[:prompt_tokens] + appended_tokens(prompt_chars, image_tokens, counted), 0].max
         source = "server"
       else
-        window_tokens = window.tokens
+        window_tokens = counted_against(window.tokens)
         used_tokens = (prompt_chars / @chars_per_token).ceil + image_tokens
         source = "estimate"
       end
@@ -207,6 +214,12 @@ module Samagotchi
     end
 
     private
+
+    # What the buckets count against: the window, or the budget when one is
+    # set and smaller.
+    def counted_against(window_tokens)
+      @budget ? [@budget, window_tokens].min : window_tokens
+    end
 
     # The estimate for what the prompt added since the +counted+ one;
     # after an edit (#edited!) what it lost too, as a negative.

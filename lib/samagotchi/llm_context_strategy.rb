@@ -21,6 +21,13 @@ module Samagotchi
   # set the strategy and its host the apply rule. An unknown value warns
   # and is payoff. llm_context.protect_steps (3) and llm_context.stale_edits
   # (false: edit-driven stale stubs are opt-in, experimental) are global only.
+  #
+  # A soft context budget, llm_context.budget_tokens, and per model or host
+  # the flat key llm_context_budget_tokens (a positive number of tokens),
+  # resolved as the apply rule is, each on its own: off (nil) by default.
+  # When set, ContextStatus counts its bands against it instead of the
+  # window (the smaller of the two), so the forget layer's offers come
+  # under it.
   module LLMContextStrategy
     SETTING = "llm_context.strategy"
     KEY = "llm_context_strategy"
@@ -41,15 +48,21 @@ module Samagotchi
     PROTECT_SETTING = "llm_context.protect_steps"
     DEFAULT_PROTECT_STEPS = 3
     STALE_EDITS_SETTING = "llm_context.stale_edits"
+    BUDGET_SETTING = "llm_context.budget_tokens"
+    BUDGET_KEY = "llm_context_budget_tokens"
 
     # A turn's strategy: the layers as configured, the strategy the view
     # gets (NONE, or the layers), and where it was set (:session,
     # :model_setting, :host_setting, :config); the apply rule
     # (LLMContextApply), the steps whose edited files' reads are kept
-    # (protect_steps), and whether an edit or write makes a read stale
-    # (stale_edits; off: later reads only).
-    Resolved = Data.define(:layers, :strategy, :source, :apply, :protect_steps, :stale_edits) do
-      def initialize(apply: DEFAULT_APPLY, protect_steps: DEFAULT_PROTECT_STEPS, stale_edits: false, **fields) = super
+    # (protect_steps), whether an edit or write makes a read stale
+    # (stale_edits; off: later reads only), and the context budget in
+    # tokens (budget_tokens; nil: off).
+    Resolved = Data.define(:layers, :strategy, :source, :apply, :protect_steps, :stale_edits, :budget_tokens) do
+      def initialize(apply: DEFAULT_APPLY, protect_steps: DEFAULT_PROTECT_STEPS, stale_edits: false, budget_tokens: nil,
+                     **fields) = super
+
+      def forget? = active_layers.include?(:forget)
 
       # The layers the turn runs under: none of them under none (an
       # unbuilt or unknown layer's strategy too).
@@ -90,18 +103,40 @@ module Samagotchi
       DEFAULT_APPLY
     end
 
+    # +raw+ as written, a context budget in tokens; nil for unset or 0
+    # (off). Anything but a number of tokens warns, naming +where+, and is
+    # unset.
+    # @return [Integer, nil]
+    def parse_budget(raw, where)
+      return nil if raw.nil? || raw.to_s.strip.empty?
+
+      tokens = Integer(raw.to_s.strip, exception: false)
+      return nil if tokens&.zero?
+      return tokens if tokens&.positive?
+
+      warn_once "Warning: #{where}: llm_context budget_tokens must be a positive number of tokens; ignored"
+      nil
+    end
+
     # The strategy for +target+'s turn.
     # @param target [HostRegistry::ModelTarget, nil]
     # @param names [Array<String>] HostRegistry#lookup_names
     # @param models [Hash, nil] ConfigFile.model_settings (specs)
     # @param session [Array<Symbol>, nil] the session's own layers (none yet)
     # @param session_apply [Symbol, nil] the session's own apply rule (none yet)
+    # @param session_budget [Integer, nil] the session's own budget (none yet)
     # @return [Resolved]
-    def resolve(target, names:, models: nil, session: nil, session_apply: nil)
+    def resolve(target, names:, models: nil, session: nil, session_apply: nil, session_budget: nil)
       models ||= ConfigFile.model_settings
       layers, source, where = layers_for(target, names, models, session)
       resolved(layers, source, where).with(apply: apply_for(target, names, models, session_apply),
-                                           protect_steps: protect_steps, stale_edits: Config.get(STALE_EDITS_SETTING) == true)
+                                           protect_steps: protect_steps, stale_edits: Config.get(STALE_EDITS_SETTING) == true,
+                                           budget_tokens: budget_for(target, names, models, session_budget))
+    end
+
+    def budget_for(target, names, models, session_budget)
+      session_budget || ConfigFile.model_setting(names, :llm_context_budget_tokens, models: models)&.last ||
+        target&.entry&.llm_context_budget_tokens || parse_budget(Config.get(BUDGET_SETTING), BUDGET_SETTING)
     end
 
     def layers_for(target, names, models, session)
@@ -137,6 +172,6 @@ module Samagotchi
 
     def warn_once(message) = ConfigFile.warn_once(message)
 
-    private_class_method :resolved, :warn_once, :layers_for, :apply_for
+    private_class_method :resolved, :warn_once, :layers_for, :apply_for, :budget_for
   end
 end

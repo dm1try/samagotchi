@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/context_status"
+require "samagotchi/llm_context_strategy"
 
 RSpec.describe Samagotchi::ContextStatus do
   let(:window) { Samagotchi::ContextWindow::Resolved.new(tokens: 1_000, source: :config) }
@@ -84,5 +85,26 @@ RSpec.describe Samagotchi::ContextStatus do
     tracker.generation_done({ total_tokens: 330 }, prompt_chars: 1_200, image_tokens: 0, window: window)
     tracker.observe(1_000, iteration_index: 3, window: window)
     expect(tracker.display).to eq(est_pct: 32.0, bucket: "20plus")
+  end
+
+  describe "under a budget (llm_context.budget_tokens)" do
+    def strategy(budget, layers = [:stale])
+      Samagotchi::LLMContextStrategy::Resolved.new(layers: layers, strategy: layers, source: :config, budget_tokens: budget)
+    end
+
+    it "counts the buckets against the budget, or the window when that is smaller" do
+      tracker = described_class.new(llm_context: strategy(500))
+
+      event = tracker.observe(1_600, iteration_index: 0, window: window)
+
+      expect(event[:usage]).to include(window_tokens: 500, estimated_used_tokens: 400, estimated_pct: 80.0)
+      expect(tracker).to be_top_bucket
+      expect(described_class.new(llm_context: strategy(5_000)).display_for(used_tokens: 400, window_tokens: 1_000))
+        .to eq(est_pct: 40.0, bucket: "40plus")
+      expect(described_class.new(llm_context: strategy(nil)).display_for(used_tokens: 400, window_tokens: 1_000))
+        .to eq(est_pct: 40.0, bucket: "40plus")
+      expect(described_class.new(llm_context: strategy(500)).display_for(used_tokens: 400, window_tokens: 1_000))
+        .to eq(est_pct: 80.0, bucket: "80plus")
+    end
   end
 end

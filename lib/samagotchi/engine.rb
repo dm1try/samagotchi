@@ -931,11 +931,13 @@ module Samagotchi
 
     # The status line's ctx from the saved context, for a worker that has run
     # no turn yet (it woke after an idle exit): nil when either count is
-    # unknown or context.status is off.
+    # unknown or context.status is off. Counted as the turns count it:
+    # against the effective model's llm_context budget when it has one.
     def saved_context_status(context)
       return nil unless context
 
-      ContextStatus.new.display_for(used_tokens: context[:used_tokens], window_tokens: context[:window_tokens])
+      ContextStatus.new(llm_context: turn_llm_context)
+                   .display_for(used_tokens: context[:used_tokens], window_tokens: context[:window_tokens])
     end
 
     # The effective model is on a chat host (api: openai), whose loop uses

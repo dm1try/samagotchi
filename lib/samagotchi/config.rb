@@ -166,6 +166,10 @@ module Samagotchi
       Entry.new(key: "llm_context.stale_edits",  yaml_path: %w[llm_context stale_edits],  type: :bool,   default: false,            expose: %i[env config]),
       # The steps (tool batches) back whose edited files' reads stale never stubs.
       Entry.new(key: "llm_context.protect_steps", yaml_path: %w[llm_context protect_steps], type: :integer, default: 3,             expose: %i[env config]),
+      # A soft context budget in tokens: the context status bands (and the forget layer's offers) count against it
+      # instead of the window; unset or 0: off. models.<key>.llm_context_budget_tokens and
+      # hosts.<name>.llm_context_budget_tokens come first.
+      Entry.new(key: "llm_context.budget_tokens", yaml_path: %w[llm_context budget_tokens], type: :integer, default: nil,          expose: %i[env config]),
       # The policy sentence forget_outputs' description carries (the forget layer); blank: none.
       Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: LLMContextStrategy::DEFAULT_POLICY, expose: %i[env config]),
 
@@ -256,8 +260,9 @@ module Samagotchi
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
       "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking enabled
-                    remote window_tokens llm_context_strategy llm_context_apply].freeze,
-      "models" => %w[profile vision sampling thinking window_tokens llm_context_strategy llm_context_apply].freeze
+                    remote window_tokens llm_context_strategy llm_context_apply llm_context_budget_tokens].freeze,
+      "models" => %w[profile vision sampling thinking window_tokens llm_context_strategy llm_context_apply
+                     llm_context_budget_tokens].freeze
     }.freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
@@ -845,6 +850,8 @@ module Samagotchi
                                                  "hosts entry '#{name}'")
           llm_context_apply = LLMContextStrategy.parse_apply(raw_cfg.key?(LLMContextStrategy::APPLY_KEY) ? raw_cfg[LLMContextStrategy::APPLY_KEY] : raw_cfg[:llm_context_apply],
                                                              "hosts entry '#{name}'")
+          llm_context_budget = LLMContextStrategy.parse_budget(raw_cfg.key?(LLMContextStrategy::BUDGET_KEY) ? raw_cfg[LLMContextStrategy::BUDGET_KEY] : raw_cfg[:llm_context_budget_tokens],
+                                                               "hosts entry '#{name}'")
           unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
             warn_once "Warning: hosts entry '#{name}': first_token_timeout must be seconds (0 = off); using the default"
             first_token_timeout = nil
@@ -910,7 +917,7 @@ module Samagotchi
                                   profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout,
                                   vision: vision, sampling: sampling, thinking: thinking, remote: remote,
                                   window_tokens: window, llm_context_strategy: llm_context,
-                                  llm_context_apply: llm_context_apply }
+                                  llm_context_apply: llm_context_apply, llm_context_budget_tokens: llm_context_budget }
         end
       end
 
@@ -1059,7 +1066,8 @@ module Samagotchi
                        "vision" => v[:vision], "sampling" => v[:sampling], "thinking" => v[:thinking]&.to_s,
                        "remote" => v[:remote], "window_tokens" => v[:window_tokens],
                        "llm_context_strategy" => v[:llm_context_strategy]&.map(&:to_s),
-                       "llm_context_apply" => v[:llm_context_apply]&.to_s).compact
+                       "llm_context_apply" => v[:llm_context_apply]&.to_s,
+                       "llm_context_budget_tokens" => v[:llm_context_budget_tokens]).compact
       end
       # Disabled hosts travel as just that, so a worker refuses "box:x"
       # the way its parent does instead of sending it to the default host.
@@ -1157,6 +1165,9 @@ module Samagotchi
         apply = LLMContextStrategy.parse_apply(v.key?(LLMContextStrategy::APPLY_KEY) ? v[LLMContextStrategy::APPLY_KEY] : v[:llm_context_apply],
                                                "models: #{key}")
         result[key][:llm_context_apply] = apply if apply
+        budget = LLMContextStrategy.parse_budget(v.key?(LLMContextStrategy::BUDGET_KEY) ? v[LLMContextStrategy::BUDGET_KEY] : v[:llm_context_budget_tokens],
+                                                 "models: #{key}")
+        result[key][:llm_context_budget_tokens] = budget if budget
       end
     rescue StandardError
       {}

@@ -102,6 +102,13 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
     end
   end
 
+  it "counts a saved context status against the effective model's llm_context budget, as its turns do" do
+    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({ "ornith" => { llm_context_budget_tokens: 1000 } })
+
+    expect(engine.send(:saved_context_status, { used_tokens: 500, window_tokens: 100_000 }))
+      .to eq(est_pct: 50.0, bucket: "40plus")
+  end
+
   it "resolves the effective model's strategy each turn: none by default, then stale, then stale with forget" do
     models = {}
     allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)

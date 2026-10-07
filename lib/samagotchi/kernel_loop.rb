@@ -278,7 +278,7 @@ module Samagotchi
 
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:)
       conversation = prepare_conversation(messages)
-      context = ContextStatus.new(conversation: conversation)
+      context = ContextStatus.new(conversation: conversation, llm_context: @turn_settings.llm_context)
       @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context)
       Turn.new(
         conversation: conversation, context: context,

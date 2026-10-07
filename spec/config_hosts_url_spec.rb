@@ -178,7 +178,7 @@ RSpec.describe "llm_context_strategy on hosts: entries" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
       File.write(path, { "hosts" => { "box" => { "host" => "box", "llm_context_strategy" => %w[stale forget],
-                                                 "llm_context_apply" => "turn_end" },
+                                                 "llm_context_apply" => "turn_end", "llm_context_budget_tokens" => 64_000 },
                                       "off" => { "host" => "off", "llm_context_strategy" => "none" },
                                       "plain" => { "host" => "plain" } } }.to_yaml)
 
@@ -188,6 +188,7 @@ RSpec.describe "llm_context_strategy on hosts: entries" do
       expect(worker.transform_values { |v| v[:llm_context_strategy] }).to eq("box" => %i[stale forget], "off" => [],
                                                                              "plain" => nil)
       expect(worker.transform_values { |v| v[:llm_context_apply] }).to eq("box" => :turn_end, "off" => nil, "plain" => nil)
+      expect(worker.transform_values { |v| v[:llm_context_budget_tokens] }).to eq("box" => 64_000, "off" => nil, "plain" => nil)
     end
   end
 end
