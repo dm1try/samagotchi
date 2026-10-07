@@ -44,8 +44,8 @@ drops named cases that end otherwise and says how many; `--ends any` takes every
 | freed/tool | what the prompt loses, stubs counted / the tool output tokens in context |
 | wrong strict (base) | edited outputs a later step needs: from the step the edit reaches through the end of the next turn, a call re-reads the file or re-runs the command. In brackets the base rate: the share of all outputs in context that are needed, what a random pick scores |
 | wrong loose (base) | the same, counting a mention of the output's path or of an identifier it brought in |
-| 1-step | edited outputs the step the edit reaches re-reads or re-runs. Offline that step is the session's own, made without the stub, so it is a floor, not the stub's effect |
-| re-prefilled | what the server prefills again because an edit broke its prompt cache: from the earliest changed entry to the end of what the previous request left cached |
+| 1-step | edited outputs the step the edit reaches re-reads (a read of the file, not an edit) or re-runs. Offline that step is the session's own, made without the stub, so it is a floor, not the stub's effect |
+| re-prefilled | what the server prefills again because an edit broke its prompt cache: from the earliest changed entry to the end of what the previous request left cached. A case counts the breaks of its own window only (after the previous turn's case point), so a strategy that edits as the session goes isn't counted twice |
 
 The proxies are the context-edit spike's (lexical and lenient: a basename mention counts).
 

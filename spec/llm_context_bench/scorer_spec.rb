@@ -148,9 +148,33 @@ RSpec.describe LLMContextBench::Scorer do
       expect(result).to have_attributes(strategy: "stale", model: "acme/coder-1", forgotten: 1)
       expect(result.freed).to be > 0
       expect(result.re_prefilled).to be > 0
-      # The scorer's proxy counts any later call on the file, the edit the
-      # first stub reaches included (the newer read it edits against stays).
-      expect(result).to have_attributes(wrong_strict: 1, one_step_outputs: 1)
+      # wrong counts any later call on the file (the edit); the step the
+      # stub reaches edits, it doesn't re-read, so no 1-step.
+      expect(result).to have_attributes(wrong_strict: 1, one_step_outputs: 0)
+    end
+
+    it "counts each cache break in one case only: the case of the turn it falls in" do
+      body = (1..30).map { |n| "#{n}: line #{n} of the tax table" }.join("\n")
+      read = lambda { |id, path|
+        [BenchFixtures.model("", calls: [BenchFixtures.call(id, "read", { "path" => path })]),
+         BenchFixtures.result(id, "[read]\n#{body}")]
+      }
+      session = [{ "role" => "system", "content" => "You are a coding agent." }, BenchFixtures.user("Look at cart."),
+                 *read.call("c1", "lib/cart.rb"), *read.call("c2", "lib/cart.rb"), BenchFixtures.model("Seen."),
+                 BenchFixtures.user("Look at tax."),
+                 *read.call("c3", "lib/tax.rb"), *read.call("c4", "lib/tax.rb"), BenchFixtures.model("Seen."),
+                 BenchFixtures.user("Thanks."), BenchFixtures.model("Bye.")]
+      replay = LLMContextBench::Replay.load(BenchFixtures.write_session(dir, messages: session))
+      stale = LLMContextBench::Strategies.build("stale")
+      plans = [0, 1].map { |turn| stale.plans(LLMContextBench::Case.new(replay: replay, turn: turn)).first }
+      first, second = plans.map { |plan| scorer.score(plan) }
+      broke = ->(request, range) { scorer.view(replay, request, plans[1].edits)[range].sum { |entry| replay.entry_tokens(entry) } }
+
+      # cart.rb's stub reaches request 2 (turn 0), tax.rb's request 5 (turn 1).
+      expect(plans[1].edits.map(&:applies_at)).to eq([2, 5])
+      expect([first.forgotten, second.forgotten]).to eq([1, 2])
+      expect(first.re_prefilled).to eq(broke.call(2, 3...5))
+      expect(second.re_prefilled).to eq(broke.call(5, 9...11))
     end
   end
 

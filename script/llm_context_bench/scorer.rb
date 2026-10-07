@@ -23,7 +23,10 @@ module LLMContextBench
   # - re_prefilled: what the server prefills again because an edit broke its
   #   prompt cache: at each request an edit first reaches, the prompt from
   #   the earliest entry it changes to the end of what the previous request
-  #   (and its answer) left cached.
+  #   (and its answer) left cached. Only the requests of the case's own
+  #   window count, after the case before it (the previous turn's) through
+  #   the case's: a strategy that edits as the session goes (stale) would
+  #   otherwise count an early break again in every later case.
   Result = Data.define(:strategy, :model, :policy, :case_name, :how, :outputs, :tool_tokens, :prompt_tokens,
                        :forgotten, :invalid_ids, :freed, :wrong_strict, :wrong_loose, :need_strict, :need_loose,
                        :one_step_outputs, :re_prefilled)
@@ -53,7 +56,8 @@ module LLMContextBench
                  wrong_strict: wrong_strict, wrong_loose: wrong_loose,
                  need_strict: outputs.count { |output| horizon.reread?(output) },
                  need_loose: outputs.count { |output| horizon.loose?(output) },
-                 one_step_outputs: one_step(replay, edits, by_id), re_prefilled: re_prefilled(replay, edits, by_id))
+                 one_step_outputs: one_step(replay, edits, by_id),
+                 re_prefilled: re_prefilled(replay, edits.select { |edit| edit.applies_at > since(kase) }, by_id))
     end
 
     # Request +request+'s prompt as chi's view sends it with +edits+ applied
@@ -102,16 +106,24 @@ module LLMContextBench
       [strict, loose]
     end
 
-    # The spike's one-step check (part_b.py retouch, strict): the step's
-    # call re-runs the output's command, or reads a file the output read.
+    # The one-step check: the step's call re-runs the output's command, or
+    # reads again a file the output read (a read, not an edit of it).
     def one_step(replay, edits, by_id)
       edits.count do |edit|
         output = by_id[edit.output_id]
         replay.calls[edit.applies_at].any? do |call|
           (output.target.command && output.target.command == call.target.command) ||
-            (output.read? && output.target.keys.intersect?(call.target.keys))
+            (output.read? && call.name == "read" && output.target.keys.intersect?(call.target.keys))
         end
       end
+    end
+
+    # The last request before +kase+'s window: the previous turn's case
+    # point (its turn's next-turn first request), -1 for the first turn.
+    def since(kase)
+      return -1 if kase.turn.zero?
+
+      Case.new(replay: kase.replay, turn: kase.turn - 1).at || -1
     end
 
     def re_prefilled(replay, edits, by_id)
