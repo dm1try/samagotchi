@@ -33,7 +33,7 @@ module LLMContextBench
   class Replay
     TURN_KINDS = [nil, "input"].freeze
 
-    attr_reader :session_id, :model, :messages, :requests, :turns, :calls, :outputs, :projects
+    attr_reader :session_id, :model, :messages, :requests, :turns, :calls, :outputs, :projects, :working_directory
 
     # @param path [String] a <session id>.json file
     def self.load(path)
@@ -66,6 +66,7 @@ module LLMContextBench
       @session_id = session_id.to_s
       @model = model.to_s
       @messages = messages
+      @working_directory = working_directory&.to_s
       @projects = working_directory && File.dirname(working_directory.to_s)
       @requests = messages.each_index.select { |index| role(index) == "model" }
       @request_at = @requests.each_with_index.to_h

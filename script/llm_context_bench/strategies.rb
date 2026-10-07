@@ -23,7 +23,7 @@ module LLMContextBench
 
   # The strategies the benchmark knows, by name. Each answers #plans(kase)
   # with the Plans it scores at that case. Pluggable: a later phase adds its
-  # strategy here (stale in P2, forget_outputs in P4), and the scorer and
+  # strategy here (stale, P2; forget_outputs in P4), and the scorer and
   # the report take it as they are.
   module Strategies
     # none: nothing changes, the prompt stays byte-identical. The base.
@@ -43,6 +43,28 @@ module LLMContextBench
       def plans(kase)
         edits = kase.outputs.map { |output| PlannedEdit.new(output_id: output.id, kind: :forget, note: "", applies_at: kase.at) }
         [Plan.new(strategy: name, kase: kase, model: kase.replay.model_name, edits: edits)]
+      end
+    end
+
+    # stale (P2): chi's own layer (Samagotchi::LLMContextStale) as chi runs
+    # it, apply next_request: before each request it stubs every read a
+    # later read covering its lines superseded (an edit or write of the
+    # file supersedes nothing), so an edit reaches the prompt at the first
+    # request after that read. A relative path is taken against the
+    # session's working directory (chi takes it against its process's,
+    # which is the session's).
+    class Stale
+      def name = "stale"
+
+      def plans(kase)
+        replay = kase.replay
+        conversation = replay.messages[0...replay.prompt_end(kase.at)]
+        found = Samagotchi::LLMContextStale.found(conversation, root: replay.working_directory || Dir.pwd)
+        edits = found.map do |stale|
+          PlannedEdit.new(output_id: stale.run.ref.id, kind: :stale, note: stale.note,
+                          applies_at: replay.request_after(stale.by.index))
+        end
+        [Plan.new(strategy: name, kase: kase, model: replay.model_name, edits: edits)]
       end
     end
 
@@ -164,8 +186,8 @@ module LLMContextBench
       end
     end
 
-    BUILT = { "none" => None, "forget_all" => ForgetAll }.freeze
-    UNBUILT = { "stale" => "P2", "forget_outputs" => "P4" }.freeze
+    BUILT = { "none" => None, "forget_all" => ForgetAll, "stale" => Stale }.freeze
+    UNBUILT = { "forget_outputs" => "P4" }.freeze
 
     module_function
 

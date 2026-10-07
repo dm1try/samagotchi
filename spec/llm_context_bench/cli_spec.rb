@@ -21,13 +21,13 @@ RSpec.describe LLMContextBench::CLI do
   def run(*argv, env: {}) = described_class.new(argv, env: env, out: out, err: err).run
 
   it "prints the profile and a row per strategy and model, and says what isn't built" do
-    expect(run(dir, "--min-turn-tool", "0", "--strategy", "none,forget_all,stale")).to eq(0)
+    expect(run(dir, "--min-turn-tool", "0", "--strategy", "none,forget_all,forget_outputs")).to eq(0)
 
     text = out.string
     expect(text).to include("llm_context bench: 2 sessions, 2 cases from #{dir}", "Profile (none, every session)",
                             "reads: 3 over 2 files")
     expect(text.lines.grep(/\A  forget_all /).map { |line| line.split[1] }).to eq(%w[acme/coder-1 local-qwen])
-    expect(text).to include("stale: skipped, stale is not built yet (P2")
+    expect(text).to include("forget_outputs: skipped, forget_outputs is not built yet (P4")
   end
 
   it "reads the sessions folder from the environment and answers JSON" do

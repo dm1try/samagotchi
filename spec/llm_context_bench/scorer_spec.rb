@@ -114,10 +114,48 @@ RSpec.describe LLMContextBench::Scorer do
     end
   end
 
+  describe "stale" do
+    # Turn 0 reads lib/cart.rb, runs the spec, reads the file again and
+    # edits it (an edit supersedes nothing); turn 1 asks for more. Scored
+    # at turn 1's first request.
+    let(:messages) do
+      body = (1..30).map { |n| "#{n}: line #{n} of CartTotals" }.join("\n")
+      [{ "role" => "system", "content" => "You are a coding agent." },
+       BenchFixtures.user("Fix the rounding."),
+       BenchFixtures.model("", calls: [BenchFixtures.call("c1", "read", { "path" => "lib/cart.rb" })]),
+       BenchFixtures.result("c1", "[read]\n#{body}"),
+       BenchFixtures.model("", calls: [BenchFixtures.call("c2", "execute", { "command" => "rspec" })]),
+       BenchFixtures.result("c2", "[execute]\n1 failure"),
+       BenchFixtures.model("", calls: [BenchFixtures.call("c3", "read", { "path" => "#{BenchFixtures::WORKDIR}/lib/cart.rb" })]),
+       BenchFixtures.result("c3", "[read]\n#{body}"),
+       BenchFixtures.model("", calls: [BenchFixtures.call("c4", "edit", { "path" => "lib/cart.rb", "old_text" => "1",
+                                                                          "new_text" => "2" })]),
+       BenchFixtures.result("c4", "[edit]\nEdited lib/cart.rb"),
+       BenchFixtures.model("Fixed."),
+       BenchFixtures.user("Now the taxes."),
+       BenchFixtures.model("On it.")]
+    end
+    let(:replay) { LLMContextBench::Replay.load(BenchFixtures.write_session(dir, messages: messages)) }
+    let(:stale_case) { LLMContextBench::Case.new(replay: replay, turn: 0) }
+
+    it "stubs each read at the request after the call that superseded it, as chi does, and scores it" do
+      plan = LLMContextBench::Strategies.build("stale").plans(stale_case).first
+
+      expect(plan.edits.map { |edit| [edit.output_id, edit.applies_at, edit.note] })
+        .to eq([["e3.1", 3, "lib/cart.rb: superseded by a later read"]])
+      expect(scorer.view(replay, stale_case.at, plan.edits)[3][:content]).to eq("[read] lib/cart.rb: superseded by a later read")
+      result = scorer.score(plan)
+      expect(result).to have_attributes(strategy: "stale", model: "acme/coder-1", forgotten: 1)
+      expect(result.freed).to be > 0
+      expect(result.re_prefilled).to be > 0
+      # The scorer's proxy counts any later call on the file, the edit the
+      # first stub reaches included (the newer read it edits against stays).
+      expect(result).to have_attributes(wrong_strict: 1, one_step_outputs: 1)
+    end
+  end
+
   describe "the slots" do
-    it "names stale and forget_outputs as not built yet, with their phase" do
-      expect { LLMContextBench::Strategies.build("stale").plans(kase) }
-        .to raise_error(LLMContextBench::NotBuilt, /stale is not built yet \(P2/)
+    it "names forget_outputs as not built yet, with its phase" do
       expect { LLMContextBench::Strategies.build("forget_outputs").plans(kase) }.to raise_error(LLMContextBench::NotBuilt, /P4/)
       expect { LLMContextBench::Strategies.build("summarize") }.to raise_error(ArgumentError, /unknown strategy/)
     end
