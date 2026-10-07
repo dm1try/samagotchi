@@ -179,7 +179,7 @@ only tells you (`context.wake`). See [Attached context](docs/context.md).
 `chi desktop install` builds a small native helper: select text in any app →
 Services → **Send to chi** (or ⌃⌥⌘N with the clipboard) → pick sessions in a
 Spotlight-like panel → ⏎ sends it quoted under your question as a message, ⌘⏎ as a
-context note. It needs the
+context note (on the "Everyone it concerns" row, a `chi broadcast`). It needs the
 Command Line Tools. See [Desktop helper](docs/desktop.md).
 
 ### Guardrails

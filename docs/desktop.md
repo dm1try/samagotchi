@@ -38,6 +38,22 @@ note needs a session. After the send the panel shows `started <id>…` for 3 s. 
 the model the new session starts on (`chi self --model`: `default.model` from config.yml, or its env override; an
 alias as the model it names).
 
+### Everyone it concerns
+
+The second row, **Everyone it concerns** (⌘B), shares a note with every session it may concern instead of the ones
+you pick: ⌘⏎ (the **Broadcast** button) runs [`chi broadcast`](broadcast.md) with the line, then the text, on stdin.
+chi picks the sessions (a shared ticket, PR or link, else a small triage model), so the preselected session doesn't
+count: the row is ticked alone, like the new row. Write it the way you'd tell a colleague: a first line such as
+`shopfront/checkout` keeps the note to that project's sessions, and the rest is the selection.
+
+- The panel shows "broadcasting…", then the broadcast's id and chi's summary line (`b-7f3a1c9e: delivered 4 ·
+  skipped 2 · 1 unchecked: triage deadline`), and **stays open**: Esc closes. Which sessions got it and why:
+  `chi broadcast log` in a terminal.
+- A broadcast is a text note: ⏎ and images beep. The source field and Send are hidden (its source is `broadcast`).
+- It may take `broadcast.triage_deadline` (20 s) and 10 s more before the helper stops it ("the note may be partly
+  delivered"). The helper reads that from its launch file: after changing the deadline, run `chi update` (or
+  `chi desktop upgrade`).
+
 ### Choosing the model
 
 Click the model on the new row, or press **⌘M**, to choose another one for the new session. The chooser takes the
@@ -179,7 +195,9 @@ exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.js
 - the absolute path of the Ruby running chi and of chi itself (the gem's wrapper, or a checkout's `bin/chi`);
 - `LANG=en_US.UTF-8`;
 - only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `GEM_HOME`, `GEM_PATH`,
-  `RUBYLIB`. No tokens and no `SAMAGOTCHI_*` settings go in.
+  `RUBYLIB`. No tokens and no `SAMAGOTCHI_*` settings go in;
+- the settings the panel needs from config.yml, as chi read them then: the `kitty:` section (when
+  `kitty.listen_on` is set) and `broadcast_timeout` (`broadcast.triage_deadline` + 10 s).
 
 The file freezes the install shell's values. If you install with a temporary `XDG_STATE_HOME`, the helper keeps
 using it. `status` prints the baked dirs.
@@ -194,10 +212,14 @@ The helper uses only these commands, so it could ship on its own later:
 - `chi send [-m LINE] [--image PATH]... ID...` and `chi send --new --dir DIR [--model NAME] [-m LINE] [--image PATH]...`
   with the text on stdin (or none), and `chi note [--source NAME] ID...` with the text on stdin → one line per session
   on stdout; exit 0 means all sent or queued, 1 means some were refused or failed.
+- `chi broadcast` with the text on stdin → its id first (`broadcast b-…`), a line per recipient, then the summary line
+  (`delivered N · skipped M…`); exit 0 when it ran, 1 when refused or a delivery failed.
 - `chi self --model` → the model a new session starts on (the panel's hint).
 - `chi models --format json` → the models the hosts offer (the new-session model picker).
 
-Each call is stopped after 10 s, a send with images after 30 s. A stopped `chi note` says the note may be partly delivered.
+Each call is stopped after 10 s, a send with images after 30 s, a broadcast after the launch file's
+`broadcast_timeout` (`broadcast.triage_deadline` + 10 s; 30 s when it has none). A stopped `chi note` or `chi
+broadcast` says the note may be partly delivered.
 
 ## Troubleshooting
 

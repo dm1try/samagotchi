@@ -16,7 +16,9 @@ chi broadcast log                    # the last broadcasts and who got them
 chi broadcast deliver b-7f3a1c9e c0ffee12   # one it skipped, after all
 ```
 
-To tell one session or a few you picked, use `chi note ID...` instead.
+To tell one session or a few you picked, use `chi note ID...` instead. From
+any app, the desktop helper's **Everyone it concerns** row broadcasts the
+selection: see [Desktop helper](desktop.md#everyone-it-concerns).
 
 ## Who it reaches
 

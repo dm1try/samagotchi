@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The desktop helper's panel has an **Everyone it concerns** row (⌘B): ⌘⏎ there runs `chi broadcast` with the note
+  (your line, then the selection; a first line like `shopfront/checkout` keeps it to that project), instead of a
+  note to the sessions you pick. The panel shows "broadcasting…", then the summary line, and stays open; `chi
+  broadcast log` has the details. It may take `broadcast.triage_deadline` + 10 s: after changing the deadline, run
+  `chi update`. Rebuilt by `chi update`. See [docs/desktop.md](docs/desktop.md#everyone-it-concerns).
+
 ### Fixed
 
 - `chi broadcast`'s triage ends at most a second after `broadcast.triage_deadline` (requests that ignore the cancel
