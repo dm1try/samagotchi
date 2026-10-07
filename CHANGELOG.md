@@ -8,6 +8,24 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Experimental: the `forget` layer of `llm_context.strategy` (`[stale, forget]`, per model or host as ever). That
+  model gets a tool, `forget_outputs`, to forget its own tool outputs: each output shows an id (`[#t41]`), and a
+  forget replaces the outputs named with a stub holding the model's note (required; the session keeps the outputs).
+  `keep` keeps lines of an output, `restore` brings a non-read one back; outputs of the last `protect_steps` steps,
+  and reads of files edited in them unless lines are kept, are refused. The stubs reach the prompt under
+  `llm_context.apply`. `llm_context.policy` is the sentence the tool's description carries. Off, the tool list and the
+  prompt are what they were. See [docs/configuration.md](docs/configuration.md) ("LLM context: the forget layer").
+- `llm_context.budget_tokens` (and per model or host `llm_context_budget_tokens`), off by default: a soft context
+  budget the `[CONTEXT: …]` lines count against instead of the window. Under `forget` those lines show
+  `~N/M tokens in use` and offer the tool in tiers (a readout, then "tidy once", then "compact settled outputs now"),
+  at a turn's start, mid-turn only in the top tier.
+- The replay bench's `forget_outputs` strategy asks a model at chi's forget offer and scores its picks, call rate and
+  notes (`--forget-model`, `--out`, `--budget`, `--max-cost`).
+
+Update with `chi update`: it updates loop-guard (0.3.6: ignores `forget_outputs`).
+
 ## [0.39.0] - 2026-10-07
 
 ### Added
