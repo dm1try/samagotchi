@@ -452,8 +452,10 @@ end
   start`; the card shows the bundle beside it), and its body the message;
   without `failed:` the title is `setup failed` and the body
   `<label>: <message>`.
-- **`provides_tools: true`**: the task brings tools (with
-  `chi.replace_tools`). A turn sent while it runs starts at once (the user's
+- **`provides_tools: true`**: the task provides what the plugin's tools
+  need: tools of its own (with `chi.replace_tools`), or what fixed tools
+  read (the mcp bundle's index of a first-run server's tools, which
+  `find_mcp_tools` searches). A turn sent while it runs starts at once (the user's
   message shows), then waits for it **before its first model request**, so
   the model sees the tools; the UIs keep showing the task meanwhile. The
   wait lasts at most `timeout` seconds from the task's start (default 60).
@@ -758,10 +760,12 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
 ## The mcp bundle
 
 `chi bundle install mcp` (or the `dev` profile) installs the bundle shipped with chi. It is written
-only against this API (`lib/samagotchi/bundles/mcp/plugin.rb`), and adds
-tools from [MCP](https://modelcontextprotocol.io) servers. It has no memory
-file, so it costs the prompt nothing but its tools. Stdio servers only, for
-now.
+only against this API (`lib/samagotchi/bundles/mcp/plugin.rb`), and gives
+the model the tools of [MCP](https://modelcontextprotocol.io) servers. It
+has no memory file, and the servers' tools aren't declared to the model one
+by one: it has two tools, `find_mcp_tools` and `mcp_call` (~250 tokens in
+every request plus a line per server, whatever the servers have; `/mcp`
+says how many). Stdio servers only, for now.
 
 ```yaml
 # config.yml
@@ -777,6 +781,7 @@ bundles:
         env: {NODE_OPTIONS: "--no-warnings"}   # added to chi's environment
         cwd: ~/scratch                         # default: where chi runs
         tools: [read_*, list_directory]        # optional: only these (globs)
+        description: files in ~/scratch        # optional: its line in find_mcp_tools
         timeout: 120                           # optional: this server's per-call timeout
       chrome:
         command: [npx, -y, "chrome-devtools-mcp@latest", --slim, --headless]
@@ -788,29 +793,33 @@ bundles:
   saved in the bundle's data dir (`$XDG_STATE_HOME/samagotchi/plugins/mcp/
   tools-<server>.json`), keyed by a digest of its `command`, `env` (names
   and values: only the digest is stored) and `cwd`. A session with a saved
-  list registers the tools at once and **doesn't start the server**: the
+  list can search its tools at once and **doesn't start the server**: the
   first call of one of its tools does (the call's row shows the wait). So a
   session that never uses MCP spawns nothing, and a new chat opens without
   waiting for `npx`. If the live list differs from the saved one, the saved
-  one is replaced, and so are the tools, from the next turn on.
+  one is replaced, and so is what a search finds. The model's tools never
+  change, so the prompt cache keeps. The saved file also keeps the first
+  sentence of the server's `instructions` (from `initialize`), for its line
+  in `find_mcp_tools`.
 - **The first run** (no saved list, or the config changed) starts the
   server in an [init task](#chiinitlabel-provides_tools-false-quiet-false-timeout-nil--ctx--):
   every UI shows `Starting MCP server x (first run, saving its tools)`, and
   a turn sent meanwhile waits for its tools. A server that doesn't start,
   answer or list its tools within `startup_timeout` (each step) is a warn
-  card, `…: failed`, and its tools are left out. The rest of chi works as
-  usual.
+  card, `…: failed`, and its calls fail until chi restarts. The rest of chi
+  works as usual.
 - **Freshness.** A saved list older than a day is still used, and a quiet
   background task lists the tools again with a server of its own (then
-  stops it), saves them, and replaces the tools if they changed. One worker
-  does it at a time.
+  stops it), saves them, and replaces the searched ones if they changed.
+  One worker does it at a time.
 - **A server that says its tools changed** (`notifications/tools/list_changed`)
-  is asked for its `tools/list` again; the saved list and the tools are
-  replaced from the next turn on.
+  is asked for its `tools/list` again; the saved list and the searched tools
+  are replaced.
 - **A cached server that doesn't start** (the command is gone, it crashes)
   fails that call with `Error: MCP server x didn't start: …` and one notice;
-  later calls answer the same at once, and its tools are left out from the
-  next turn. The saved list stays: the next session tries again.
+  later calls answer the same at once until chi restarts, and a search shows
+  its tools as `(failed: …)`. The saved list stays: the next session tries
+  again.
 - **`start: eager`** on a server starts it with every session (in an init
   task, after the Bridge is up), for a server whose start does something
   you want at once.
@@ -824,17 +833,45 @@ bundles:
     command: [chrome-devtools-mcp, --slim, --headless]   # after npm i -g chrome-devtools-mcp
   ```
 
-- **Tools.** Each tool is the model's as `mcp_<server>_<tool>`, lower case,
-  with anything but a-z, 0-9 and `_` made `_`, cut at 48 characters. A name
-  that clashes is left out, with a notice. The tool's `inputSchema` is its
-  schema (flattened on the native paths, see
-  [Schemas on the native paths](#schemas-on-the-native-paths)); its label is
-  `<server>: <tool>` and its preview the arguments, short.
+- **Tools: search, then call.** The servers' tools are kept in an index;
+  the model has two fixed tools:
+  - `find_mcp_tools(query, server?)` searches it by keywords over the
+    server's name, the tool's name and its description, and answers up to 5
+    tools, each with its name `<server>/<tool>`, its description and its
+    whole `inputSchema`. A word counts more the fewer tools have it (a word
+    most of a browser server's tools share, "page", counts little), and
+    three times as much in a name as in a description. An empty query (and
+    a search with no match) lists every server's tool names, without
+    schemas. A tool whose `inputSchema` (or a property's schema) isn't an
+    object shows
+    `(bad schema)` (and is said once, as a notice), a failed server's tools
+    `(failed: …)`, a first-run server still starting `(starting, try
+    again)`. Its description names each server on one line, never its
+    tools: the server's `description:`, else the first sentence of its
+    `instructions`, else its first 6 tool names, and how many tools it has
+    (a first run's server is just its name until the next session).
+  - `mcp_call(tool, args)` calls one: `tool` is `<server>/<tool>`, and
+    `mcp_<server>_<tool>` works too (looked up, not parsed). Two tools whose
+    `mcp_<server>_<tool>` comes out the same (servers `git-hub` and
+    `git_hub`, names alike up to the 48-character cut) are both refused,
+    since guardrail rules and approvals couldn't tell them apart: a search
+    and `/mcp` mark them `(name clash with …)`, and there is one notice.
+    `args` are typed by the tool's
+    `inputSchema` (numbers and booleans given as text, JSON text for an
+    object). A name it doesn't know answers the closest ones (`Error: no
+    MCP tool chrome/open_url. Closest: chrome/new_page, …`). Its row shows
+    `mcp chrome/take_screenshot fullPage=true`.
+  - A tool turn takes a few more steps than when every tool was declared
+    (the P1 spike: about 1.5 more on a 30-tool server), and each request is
+    smaller (about half there).
 - **Calls.** A call is `tools/call`. The text blocks of the answer are joined;
   audio or a resource without text is a short placeholder
-  (`[audio: audio/wav]`). `isError` makes it `Error: …`. A call that takes
-  longer than the timeout is an `Error:`, and a cancelled turn stops the
-  wait; both send `notifications/cancelled` to the server.
+  (`[audio: audio/wav]`). `isError` makes it `Error: …`; it, a JSON-RPC
+  error and `args` that aren't an object end with the tool's schema
+  (`chrome/click's inputSchema: {…}`), so a call made without a search can
+  be fixed on the next step. A call that takes longer than the timeout is
+  an `Error:`, and a cancelled turn stops the wait; both send
+  `notifications/cancelled` to the server.
 - **Images.** An `image` block goes to the model as a picture
   ([Returning images](#returning-images): at most 4 per call, a line
   instead when the model can't see images). Its place in the text is a line,
@@ -856,17 +893,20 @@ bundles:
 - **Stop.** The servers stop with chi ([Shutdown](#shutdown)): stdin is
   closed, then TERM and KILL go to the server's process group.
 - **`/mcp`** (anytime) shows a card with the servers, their state (cached
-  (not started), running with its pid, failed, stopped) and their tools.
+  (not started), running with its pid, failed with its count, stopped) and
+  their tools as `<server>/<tool>`, the name `mcp_call` takes.
   A cached or running server's line says roughly how many tokens its tool
-  definitions take (`~4,232 tokens`), and the last line totals the servers
-  whose tools the model has: what every request carries. It is an estimate:
+  definitions take (`~4,232 tokens`), which only a search's answer carries
+  now; the last line says what every request carries (`find_mcp_tools` and
+  `mcp_call`) and totals the servers'. It is an estimate:
   the definitions' JSON as the chat API gets it (`api: openai`), divided by
   4. The native prompts (Gemma, Qwen) render a flatter schema, so there they
   take less. The log records each server's estimate when it changes
   (`mcp_tools_estimated`).
 - The server's stderr goes to the debug log (`plugins` records, bundle=mcp).
 - **Guardrails.** A rule's `tool:` can be a glob, so one rule covers every
-  MCP tool:
+  MCP tool (a search is `find_mcp_tools`, outside `mcp_*`, so it isn't
+  asked about):
 
   ```yaml
   guardrails:
@@ -877,10 +917,22 @@ bundles:
         reason: an MCP server's tool
   ```
 
-  An MCP tool has no `targets:`, so the question shows its arguments,
-  under the tool's label as its row shows it (`everything: get_sum: a=20
-  b=22`; any plugin tool with a label is asked about by it), and "Allow this call for the
+  `mcp_call`'s `targets:` act as the tool it calls, by its
+  `mcp_<server>_<tool>` name ([acts_as:](#guardrails)), so `tool:
+  "mcp_github_*"` or `tool: mcp_github_merge_pull_request` match an
+  `mcp_call` to it, as they matched the tool when it was declared by that
+  name. A call made before the server's tools are known (a first run
+  still starting) is matched by the name the model gave, so the rule fires
+  before the call waits; if the tool it then finds isn't that one, the
+  call is refused. The question shows the inner arguments under `<server>: <tool>`
+  (`everything: get_sum: a=20 b=22`), and "Allow this call for the
   session" (or in this repo) allows that tool with those arguments only.
+  (Approvals stored before 0.6.0, under the old name, don't carry over.)
+  Two things see `mcp_call`, not the tool: hooks (a `before_tool_call`
+  event's `tool:` is `"mcp_call"`, the tool in its args), and loop-guard's
+  `ignore_tools` (`mcp_call` ignores every MCP call; calls to different
+  tools, or with different args, stay distinct, since the tool is in the
+  args).
 
 ## The loop-guard bundle
 

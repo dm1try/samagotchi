@@ -289,7 +289,7 @@ A tool name may be a glob, so one rule covers a plugin's tools (an MCP server's,
 say): `tool: "mcp_*"` or `tool: ["mcp_{git,gh}_*", web_fetch]` (`*`, `?`, `[…]` and
 `{a,b}`, matched with `File.fnmatch`). `/guardrails` lists the glob as given.
 A plugin tool whose `targets:` name no command or path (an MCP tool) is asked
-about with its arguments (`mcp_x_sum: a=20 b=22`), and an approval of "this
+about with its arguments (`x: sum: a=20 b=22`), and an approval of "this
 call" is keyed by them.
 
 A plugin tool that runs other tools for the model (a dispatcher such as
@@ -309,7 +309,7 @@ name.
 
 ```yaml
     - id: mcp-ask
-      tool: "mcp_*"          # every MCP tool (the mcp bundle's mcp_<server>_<tool>)
+      tool: "mcp_*"          # every MCP call (mcp_call, acting as mcp_<server>_<tool>); not a find_mcp_tools search
       verdict: ask
       reason: an MCP server's tool
 ```

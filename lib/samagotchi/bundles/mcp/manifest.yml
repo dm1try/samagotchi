@@ -1,11 +1,12 @@
 ---
 name: mcp
-version: 0.5.1
+version: 0.6.0
 scope: system
-description: "Tools from MCP servers (stdio): each server in config.yml bundles: mcp: servers: runs for the session, its tools are mcp_<server>_<tool>; /mcp lists them"
+description: "Tools from MCP servers (stdio): each server in config.yml bundles: mcp: servers: runs for the session; the model searches their tools with find_mcp_tools and calls one with mcp_call (<server>/<tool>); /mcp lists them"
 trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:d5c1274acaf8ed99795c0c4fda76c357ab4ba2d6b3c9c2290bf1ea3a1dce8012
-requires_chi: ">= 0.33.0"
+  sha256: sha256:561dfc3a765d6a72913a7bc416ac0120e14f5747fdfc8f692e3d4dfb241ff6a6
+# 0.37.0 (published 2026-10-07) is the release whose targets: take acts_as:, args: and label:.
+requires_chi: ">= 0.37.0"

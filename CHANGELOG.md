@@ -16,6 +16,19 @@ and commands may change between minor versions. How releases are made:
   broadcast log` has the details. It may take `broadcast.triage_deadline` + 10 s: after changing the deadline, run
   `chi update`. Rebuilt by `chi update`. See [docs/desktop.md](docs/desktop.md#everyone-it-concerns).
 
+### Changed
+
+- The mcp bundle (0.6.0) no longer declares every MCP tool to the model. It gets two fixed tools: `find_mcp_tools`
+  searches the servers' tools by keywords and answers the best 5 with their schemas, and `mcp_call` calls one as
+  `<server>/<tool>`. Requests get smaller (about half on a 30-tool server, in a spike on a local model), and the
+  model's tools no longer change when a server starts, refreshes or fails, so the prompt cache keeps; a tool turn
+  takes a few more steps (search, then call). A failed call answers the tool's schema, so a call can be fixed on the
+  next step. A server's new optional `description:` names it in the search tool, else the first sentence of its
+  instructions. Guardrail rules on `mcp_<server>_<tool>` names still match (`mcp_call` acts as that tool), and the
+  question names `<server>: <tool>`; approvals stored under the old names don't carry over. Hooks and loop-guard's
+  `ignore_tools` see `mcp_call`. `/mcp` lists the tools as `<server>/<tool>` and says what every request carries.
+  Needs chi 0.37.0. See [docs/plugins.md](docs/plugins.md#the-mcp-bundle).
+
 ### Fixed
 
 - `chi broadcast`'s triage ends at most a second after `broadcast.triage_deadline` (requests that ignore the cancel

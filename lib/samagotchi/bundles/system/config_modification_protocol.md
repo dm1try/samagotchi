@@ -99,7 +99,7 @@ bundles:
     after: 50                  # tool calls in one turn with no answer before the first check
     every: 50                  # then again every N more
     mode: ask                  # ask (a card) | nudge (nudge the model by itself) | notify; message:, ignore_tools: [...]
-  mcp:                         # tools become mcp_<server>_<tool>; /mcp lists them
+  mcp:                         # the model searches the tools (find_mcp_tools) and calls one (mcp_call, <server>/<tool>); /mcp lists them
     timeout: 60                # per call, seconds; startup_timeout: 10
     servers:
       files:                   # server name
@@ -107,11 +107,12 @@ bundles:
         env: {NODE_OPTIONS: "--no-warnings"}   # optional, added to chi's env
         cwd: ~/scratch                         # optional; default the session's cwd
         tools: [read_*, list_directory]        # optional filter (globs)
+        description: files in ~/scratch        # optional: the server's line in find_mcp_tools (default: its instructions' first sentence)
         attach_image_paths: true               # default: an answer that is only an image's path (temp dir/cwd) is attached as a picture
         start: lazy                            # default: tools from the saved tools/list, the server starts on the first call; eager: with every session
 ```
 
-A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cover every MCP tool; see `docs/guardrails.md`. The mcp bundle saves each server's tool list in `$XDG_STATE_HOME/samagotchi/plugins/mcp/tools-<server>.json` (keyed by a digest of command/env/cwd): a changed server config is picked up by the next session start, which shows "Starting MCP server x (config changed, …)".
+A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cover every MCP tool: an `mcp_call` acts as `mcp_<server>_<tool>`, so `tool: "mcp_github_*"` covers one server's (a `find_mcp_tools` search is never asked about); see `docs/guardrails.md`. A server's optional `description:` is its line in `find_mcp_tools`' description. The mcp bundle saves each server's tool list in `$XDG_STATE_HOME/samagotchi/plugins/mcp/tools-<server>.json` (keyed by a digest of command/env/cwd): a changed server config is picked up by the next session start, which shows "Starting MCP server x (config changed, …)".
 
 **Preservation rule**: `ConfigFile.write_default_model!` and `ConfigFile.write_model_alias!` (`/model --default`, `/model --alias`) change one key on its own line of the text (`ConfigTextEdit`: the user's comments and layout stay; a new key goes at the end of its section, a missing section at the end of the file), check that the result parses to the old data plus that key (else they dump the whole file from it), and write through `AtomicFile` (a unique temp file renamed over config.yml, through a symlink, keeping its mode). Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:` / `guardrails:` / `bundles:`.
 
