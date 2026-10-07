@@ -42,6 +42,11 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
     end
   end
 
+  def explained(resolved)
+    origin = Samagotchi::LLMContextStrategy::Origin.new(source: resolved.source, where: "x")
+    Samagotchi::LLMContextStrategy::Explained.new(resolved: resolved, strategy: origin, apply: origin, budget_tokens: origin)
+  end
+
   def sent_warmups
     engine.prompt_warmup.wait(2)
     Array.new(warmups.size) { warmups.pop }
@@ -60,7 +65,8 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
   it "warms the prompt under the next turn's strategy, resolved again after the turn (a /model switch)" do
     during = Samagotchi::LLMContextStrategy::Resolved.new(layers: [], strategy: :none, source: :config)
     after = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :model_setting)
-    allow(Samagotchi::LLMContextStrategy).to receive(:resolve).and_return(during, after)
+    allow(Samagotchi::LLMContextStrategy).to receive(:resolve).and_return(during)
+    allow(Samagotchi::LLMContextStrategy).to receive(:explain).and_return(explained(during), explained(after))
     allow(kernel).to receive(:warmup_prompt).and_call_original
 
     engine.run_turn(session, "hi")
@@ -72,10 +78,11 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
   it "warms under the last turn's strategy when the next one can't be resolved" do
     during = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config)
     calls = 0
-    allow(Samagotchi::LLMContextStrategy).to receive(:resolve) do
+    # The turn's system prompt (its tool layers) and its strategy resolve; the warm-up's don't.
+    allow(Samagotchi::LLMContextStrategy).to receive(:resolve).and_return(during)
+    allow(Samagotchi::LLMContextStrategy).to receive(:explain) do
       calls += 1
-      # The turn's system prompt (its tool layers) and its strategy resolve; the warm-up's don't.
-      calls <= 2 ? during : raise(ArgumentError, "bad config")
+      calls <= 1 ? explained(during) : raise(ArgumentError, "bad config")
     end
     allow(kernel).to receive(:warmup_prompt).and_call_original
 

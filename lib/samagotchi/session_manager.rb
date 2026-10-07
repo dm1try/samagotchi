@@ -129,11 +129,13 @@ module Samagotchi
     # @param images_from [String, nil] the session dir the seed's images are in
     # @param title [String, nil] what the lists show before the first turn
     #   (the prompt's preview by default, else the seed's first user message)
+    # @param llm_context [LLMContextOverride, nil] the session's own
+    #   llm_context values (chi --llm-context; a fork copies its parent's)
     # @return [Session] with #seed_images_dropped: refs whose file was gone,
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
-                           title: nil, delegate: false)
+                           title: nil, delegate: false, llm_context: nil)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -153,7 +155,8 @@ module Samagotchi
         muted_memory_names: muted_memories,
         parent_id: parent_id,
         messages: messages,
-        delegate: delegate
+        delegate: delegate,
+        llm_context: llm_context
       )
       session.model_warning = model_warning
       # With no prompt there is no first turn to run (an attaching UI sends

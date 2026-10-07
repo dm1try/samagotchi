@@ -950,6 +950,32 @@ module Samagotchi
                    .display_for(used_tokens: context[:used_tokens], window_tokens: context[:window_tokens])
     end
 
+    # #turn_llm_context with where each value came from
+    # (LLMContextStrategy.explain), nil when it can't be resolved.
+    # @return [LLMContextStrategy::Explained, nil]
+    def llm_context_explained
+      target = @host_registry.resolve(@effective_model_name)
+      LLMContextStrategy.explain(target, names: model_lookup_names(target), **llm_context_session_args)
+    rescue StandardError
+      nil
+    end
+
+    # The session's own llm_context values, nil when it has none.
+    # @return [LLMContextOverride, nil]
+    def llm_context_override = @session&.llm_context
+
+    # Set the session's own llm_context values (an empty override unsets
+    # them); the next turn's start resolves them, never a running one (its
+    # TurnSettings are fixed). The caller saves the session.
+    # @raise [ArgumentError] with no session yet
+    def llm_context_override=(override)
+      raise ArgumentError, "no session yet" unless @session
+
+      @session.llm_context = override
+      # The status a later client reads counts against the new budget.
+      @last_context_status = saved_context_status(@metrics.snapshot[:context]) || @last_context_status if @last_context_status
+    end
+
     # The effective model is on a chat host (api: openai), whose loop uses
     # no prompt profile.
     def chat_model? = @host_registry.resolve(@effective_model_name).entry.chat?
@@ -1432,7 +1458,7 @@ module Samagotchi
     # declares the tools they add (forget_outputs under forget), so a
     # model switch may change the tool list. [] under none.
     def llm_context_layers(target)
-      LLMContextStrategy.resolve(target, names: model_lookup_names(target)).active_layers
+      LLMContextStrategy.resolve(target, names: model_lookup_names(target), **llm_context_session_args).active_layers
     rescue StandardError
       []
     end
@@ -2367,7 +2393,8 @@ module Samagotchi
         model_name: -> { effective_model_ref },
         model_key: -> { @model_key },
         state_dir: -> { session_state_dir },
-        scratch: -> { @scratch }
+        scratch: -> { @scratch },
+        llm_context: -> { @session&.llm_context }
       )
     end
 
@@ -2551,15 +2578,16 @@ module Samagotchi
       nil
     end
 
-    # The effective model's LLM context strategy (models:/hosts:
-    # llm_context_strategy, else llm_context.strategy), read per turn as
+    # The LLM context strategy the next turn runs under: the session's own
+    # (Session#llm_context), else the effective model's (models:/hosts:
+    # llm_context_strategy), else llm_context.strategy; read per turn as
     # the window is.
     def turn_llm_context
-      target = @host_registry.resolve(@effective_model_name)
-      LLMContextStrategy.resolve(target, names: model_lookup_names(target))
-    rescue StandardError
-      nil
+      llm_context_explained&.resolved
     end
+
+    def llm_context_session_args = @session&.llm_context&.resolve_args || {}
+    private :llm_context_session_args
 
     # See #served_model. A report for another name (before a /model switch)
     # doesn't count. Without a target, no probe. A remote chat host has no

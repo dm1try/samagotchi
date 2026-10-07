@@ -6,6 +6,7 @@ require "securerandom"
 require "time"
 require_relative "atomic_file"
 require_relative "context_note"
+require_relative "llm_context_override"
 
 require_relative "paths"
 require_relative "project_scope"
@@ -70,6 +71,26 @@ module Samagotchi
     # delegate children's reports (ChildReports); context: one an attached
     # context source's change started (Worker).
     attr_accessor :last_turn
+    # The session's own llm_context values (LLMContextOverride: strategy,
+    # apply rule, budget), before the model's; nil when it has none.
+    # Saved, so a --resume and a respawned worker keep them; a plugin's
+    # fork copies them, a delegate child starts without.
+    attr_reader :llm_context
+
+    # @param value [LLMContextOverride, Hash, nil] an empty one is nil; a
+    #   file's Hash keeps the fields it can't read (LLMContextOverride.unread),
+    #   saved back as they were until the session sets its own
+    def llm_context=(value)
+      @llm_context_unread = LLMContextOverride.unread(value)
+      @llm_context = LLMContextOverride.from_file(value)
+    end
+
+    # The session file's "llm_context": the override's fields over the ones
+    # it couldn't read; nil when there are none.
+    def llm_context_file
+      saved = @llm_context_unread.merge(@llm_context&.to_file || {})
+      saved.empty? ? nil : saved
+    end
 
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise. Both strings
@@ -97,7 +118,7 @@ module Samagotchi
                    first_preview: "", test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
-                   last_turn: nil, model_typed: nil, delegate: false)
+                   last_turn: nil, model_typed: nil, delegate: false, llm_context: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -120,6 +141,7 @@ module Samagotchi
       @scratch = !!scratch
       @last_turn = last_turn
       @delegate = !!delegate
+      self.llm_context = llm_context
       @archived = false
     end
 
@@ -170,7 +192,7 @@ module Samagotchi
     #   seed); [] by default
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
-                         scratch: false, model_typed: nil, delegate: false)
+                         scratch: false, model_typed: nil, delegate: false, llm_context: nil)
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -194,7 +216,8 @@ module Samagotchi
         muted_memory_names: muted_memory_names,
         parent_id: parent_id,
         scratch: scratch,
-        delegate: delegate
+        delegate: delegate,
+        llm_context: llm_context
       )
     end
 
@@ -249,7 +272,8 @@ module Samagotchi
       "parent_id" => nil,
       "scratch" => false,
       "last_turn" => nil,
-      "delegate" => false
+      "delegate" => false,
+      "llm_context" => nil
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the
@@ -368,6 +392,7 @@ module Samagotchi
                 when "pending_question" then @pending_question && scrub_utf8(stringify_message_keys(@pending_question))
                 when "test_run" then !!@test_run
                 when "delegate" then @delegate
+                when "llm_context" then llm_context_file
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names"
                   Array(instance_variable_get(:"@#{key}"))
                 else instance_variable_get(:"@#{key}")

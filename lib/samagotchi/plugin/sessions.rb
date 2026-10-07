@@ -32,6 +32,7 @@ module Samagotchi
       # Start a child session from +messages+ (usually ctx.messages plus
       # more). With no prompt the child waits idle for the user; with one it
       # runs it as its first turn, and counts against session.max_children.
+      # It keeps this session's own llm_context values (Session#llm_context).
       # Each image a message names is copied into the child, or dropped with
       # a note in its message when its file is gone.
       # @param messages [Array<Hash>] the child's conversation to start with
@@ -52,7 +53,8 @@ module Samagotchi
         child = SessionManager.spawn_session(
           prompt: prompt, working_directory: @host.cwd.call || Dir.pwd, model_name: @host.model_name&.call,
           parent_id: parent_id, messages: Array(messages).map { |message| unfrozen(message) }, title: title,
-          images_from: Session.session_dir(parent_id, state_dir: state_dir), state_dir: state_dir
+          images_from: Session.session_dir(parent_id, state_dir: state_dir), state_dir: state_dir,
+          llm_context: @host.llm_context&.call
         )
         child.id
       end

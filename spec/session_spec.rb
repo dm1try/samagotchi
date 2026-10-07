@@ -183,6 +183,38 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(File.join(tmpdir, "#{plain.id}.json")))).to include("parent_id" => nil)
     end
 
+    it "round-trips its own llm_context values (none and off are kept, unset fields left out), and nil without any" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      session.llm_context = Samagotchi::LLMContextOverride.new(strategy: [], budget_tokens: 0)
+      session.save(state_dir: tmpdir)
+
+      expect(JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))["llm_context"])
+        .to eq("strategy" => [], "budget_tokens" => 0)
+      expect(described_class.load(session.id, state_dir: tmpdir).llm_context)
+        .to eq(Samagotchi::LLMContextOverride.new(strategy: [], budget_tokens: 0))
+
+      session.llm_context = Samagotchi::LLMContextOverride.new
+      session.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))).to include("llm_context" => nil)
+      expect(described_class.load(session.id, state_dir: tmpdir).llm_context).to be_nil
+    end
+
+    it "follows the model for an llm_context field it can't read, and saves it back as written until the session sets its own" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("llm_context" => { "strategy" => ["summarize"], "apply" => "turn_end" })))
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.llm_context).to eq(Samagotchi::LLMContextOverride.new(apply: :turn_end))
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["llm_context"]).to eq("strategy" => ["summarize"], "apply" => "turn_end")
+
+      loaded.llm_context = Samagotchi::LLMContextOverride.new(strategy: [:stale])
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["llm_context"]).to eq("strategy" => ["stale"])
+    end
+
     it "knows a delegate child from a fork: the delegate flag, or (older children) the delegated memory" do
       child = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
                                           parent_id: "p1", delegate: true)

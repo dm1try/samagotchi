@@ -40,6 +40,15 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir).map { |s| s[:id] }).to eq([id])
     end
 
+    it "copies this session's own llm_context values to the child" do
+      override = Samagotchi::LLMContextOverride.new(strategy: [:stale], apply: :turn_end)
+      host.llm_context = -> { override }
+
+      child = Samagotchi::Session.load(sessions.fork(messages: []), state_dir: tmpdir)
+
+      expect(child.llm_context).to eq(override)
+    end
+
     it "runs a prompt as the child's first turn, within session.max_children" do
       allow(Samagotchi::Tools::Delegate).to receive(:max_children).and_return(1)
       allow(Samagotchi::Tools::Delegate).to receive(:running_children).and_return([])
