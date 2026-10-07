@@ -222,13 +222,36 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
   end
 
   it "pauses the timeout during the relay, never starts it over" do
-    Thread.new do
-      sleep(0.7)
-      update(child, pending_question: approval)
+    # The child asks 0.4 s into the wait and the card is open 0.5 s; the
+    # child never replies. Each leg of the wait is a ReplyWait: the second
+    # one gets what the first left of the timeout, the card's time not taken
+    # off. The legs are timed around ReplyWait, not raced against a thread.
+    legs = []
+    clock = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+    allow(Samagotchi::ReplyWait).to receive(:call).and_wrap_original do |original, *args, **opts|
+      started = clock.call
+      if legs.empty?
+        sleep(0.4)
+        update(child, pending_question: approval)
+      end
+      original.call(*args, **opts).tap { legs << { timeout: opts[:timeout], took: clock.call - started } }
     end
-    user_answers("Allow once", 0)
-    client.on_answered = -> { finish_child(after: 0.6) }
+    relay.answer = lambda do |_f, _w|
+      sleep(0.5)
+      { id: "pq", selected: ["Allow once"], selected_indices: [0] }
+    end
+    client.on_answered = -> { update(child, pending_question: nil) }
+
     expect(wait(timeout: 1)).to include("status: running\napproval relayed to your user: execute: git push → allowed once\nno reply yet after 1 s")
+    expect(legs.size).to eq(2)
+    first, second = legs
+    left = 1 - first[:took]
+    # At most what the first leg left (never started over), and not short
+    # by the 0.5 s the card was open (paused): only the few ms around the
+    # ReplyWait calls are counted besides.
+    expect(second[:timeout]).to be <= [left, 0].max
+    expect(second[:timeout]).to be > left - 0.25 if left > 0
+    expect(first[:timeout]).to eq(1)
   end
 
   describe "other running children's approvals while the parent waits (D2)" do
