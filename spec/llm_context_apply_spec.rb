@@ -234,6 +234,18 @@ RSpec.describe Samagotchi::LLMContextApply do
       expect(sent.map { |prompt| prompt.include?(stub_line) }).to eq([false, false, true])
     end
 
+    it "rebases the turn's context estimate on the request that sends an applied batch" do
+      edited = 0
+      allow_any_instance_of(Samagotchi::ContextStatus).to receive(:edited!).and_wrap_original do |original|
+        edited += 1
+        original.call
+      end
+
+      native(strategy(:next_request), read_twice)
+
+      expect(edited).to eq(1)
+    end
+
     it "turn_end: no request of the turn has it; the turn's result does, and the warm-up warms it" do
       sent, result, kernel = native(strategy(:turn_end), read_twice)
 
@@ -332,6 +344,21 @@ RSpec.describe Samagotchi::LLMContextApply do
           request[:messages].any? { |message| message[:tool_call_id] == "c1" && message[:content] == stub_line }
         end
         [stubbed, result]
+      end
+
+      it "estimates the context from what the view sends: a stub counts, not the output it stands for" do
+        observed = []
+        allow_any_instance_of(Samagotchi::ContextStatus).to receive(:observe).and_wrap_original do |original, chars, **opts|
+          observed << chars
+          original.call(chars, **opts)
+        end
+
+        chat(strategy(:next_request))
+        stubbed = observed.dup
+        observed.clear
+        chat(nil)
+
+        expect(stubbed.last).to be < observed.last - big.length + 200
       end
 
       it "sends the stub from the next request under next_request, and only from the next turn under turn_end" do

@@ -86,6 +86,9 @@ module Samagotchi
       # The kernel's tools.
       def tools = @kernel.tools
 
+      # The kernel's LLMContextView, the turn's strategy.
+      def llm_context_view = @kernel.llm_context_view
+
       # The strategy's own edits before a request and at turn end
       # (KernelLoop#apply_llm_context!).
       def apply_llm_context!(conversation, **) = @kernel.apply_llm_context!(conversation, **)
@@ -109,7 +112,7 @@ module Samagotchi
       # The conversation goes through the kernel's LLMContextView first,
       # as the native prompt does.
       def wire_messages(conversation)
-        conversation = @kernel.llm_context_view.messages(conversation)
+        conversation = llm_context_view.messages(conversation)
         paired = paired_call_ids(conversation)
         plan = ImagePlan.new(conversation, vision)
         tool_images = []
@@ -537,18 +540,12 @@ module Samagotchi
           @request_chars = prompt_chars
         end
 
-        # The conversation's text as the request carries it: contents (a
-        # parts list's text parts) and the tool calls' names and arguments.
+        # The conversation's text as the request carries it, through the
+        # kernel's LLMContextView (a stub counts, not the output it stands
+        # for): contents (a parts list's text parts) and the tool calls'
+        # names and arguments.
         def prompt_chars
-          @conversation.sum do |entry|
-            content = entry[:content]
-            chars = if content.is_a?(Array)
-                      content.sum { |part| part.is_a?(Hash) ? (part[:text] || part["text"]).to_s.length : 0 }
-                    else
-                      content.to_s.length
-                    end
-            chars + Array(entry[:tool_calls]).sum { |call| call[:name].to_s.length + call[:arguments].to_json.length }
-          end
+          LLMContextView.chars(@loop.llm_context_view.messages(@conversation))
         end
 
         # The server's counts for this request (prompt + answer): the status

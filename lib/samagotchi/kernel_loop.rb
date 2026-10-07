@@ -759,7 +759,8 @@ module Samagotchi
     # (LLMContextApply, llm_context.apply) saves the batch it lets through
     # as applied, so the request about to be sent (or the next turn's
     # first, and the warm-up) is the first with the stubs. +context+: the
-    # turn's ContextStatus (payoff applies in its top bucket). none changes
+    # turn's ContextStatus (payoff applies in its top bucket; an applied
+    # batch rebases its estimate, ContextStatus#edited!). none changes
     # nothing. Logged as llm_context_apply when a batch is applied.
     # @return [LLMContextApply::Outcome]
     def apply_llm_context!(conversation, llm_context = @turn_settings&.llm_context, moment: :request, context: nil,
@@ -771,7 +772,11 @@ module Samagotchi
                                                    protect_steps: llm_context.protect_steps,
                                                    top_bucket: context&.top_bucket? || false,
                                                    changes: llm_context.stale_edits)
-      log_llm_context(outcome, llm_context, moment) if outcome.applied? && !warmup
+      if outcome.applied?
+        # The prompt just shrank: the context estimate counts from it.
+        context&.edited!
+        log_llm_context(outcome, llm_context, moment) unless warmup
+      end
       outcome
     end
 

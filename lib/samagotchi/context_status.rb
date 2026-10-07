@@ -85,6 +85,7 @@ module Samagotchi
       @last_bucket = self.class.last_bucket(conversation)
       @server_usage = nil
       @counted = nil
+      @edited = false
       @display = nil
       @guidance = nil
     end
@@ -126,6 +127,14 @@ module Samagotchi
       { status: status_message(usage: usage, bucket: bucket), usage: usage, bucket: bucket, source: usage[:source] }
     end
 
+    # An LLM context edit was applied (LLMContextApply): the prompt is
+    # shorter than the one the server's count was for. Until the next
+    # count the estimate takes what the prompt lost off that count too,
+    # instead of holding it (a shorter prompt counts as trimmed otherwise).
+    def edited!
+      @edited = true
+    end
+
     # @return [Hash, nil] the model's line from the last #observe (once)
     def take_guidance
       line = @guidance
@@ -151,6 +160,7 @@ module Samagotchi
       return unless usage
 
       @counted = { chars: prompt_chars, image_tokens: image_tokens }
+      @edited = false
       value = display_for(used_tokens: usage[:total_tokens], window_tokens: usage[:context_window_tokens] || window&.tokens)
       @display = value if value
     end
@@ -178,7 +188,7 @@ module Samagotchi
 
       if server_usage && server_usage[:prompt_tokens]
         window_tokens = server_usage[:context_window_tokens] || window.tokens
-        used_tokens = server_usage[:prompt_tokens] + appended_tokens(prompt_chars, image_tokens, counted)
+        used_tokens = [server_usage[:prompt_tokens] + appended_tokens(prompt_chars, image_tokens, counted), 0].max
         source = "server"
       else
         window_tokens = window.tokens
@@ -198,11 +208,13 @@ module Samagotchi
 
     private
 
-    # The estimate for what the prompt added since the +counted+ one.
+    # The estimate for what the prompt added since the +counted+ one;
+    # after an edit (#edited!) what it lost too, as a negative.
     def appended_tokens(prompt_chars, image_tokens, counted)
       return 0 unless counted
 
       chars = prompt_chars - counted[:chars]
+      return -(-chars / @chars_per_token).ceil if @edited && chars.negative?
       return 0 unless chars.positive?
 
       (chars / @chars_per_token).ceil + [image_tokens - counted[:image_tokens].to_i, 0].max

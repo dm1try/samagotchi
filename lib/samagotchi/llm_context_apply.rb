@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
 require "time"
 require_relative "llm_context_edit"
 require_relative "llm_context_stale"
@@ -136,23 +135,7 @@ module Samagotchi
       [sent_chars(view.messages(conversation)) - sent_chars(after), sent_chars(after[first..])]
     end
 
-    # What +entries+ send, in chars: their contents (a parts list's text
-    # parts) and their calls' names and arguments.
-    def sent_chars(entries)
-      entries.sum { |entry| entry_chars(entry) }
-    end
-
-    def entry_chars(entry)
-      content = entry[:content]
-      chars = if content.is_a?(Array)
-                content.sum { |part| part.is_a?(Hash) ? (part[:text] || part["text"]).to_s.length : 0 }
-              else
-                content.to_s.length
-              end
-      chars + Array(entry[:tool_calls]).sum do |call|
-        call.is_a?(Hash) ? call[:name].to_s.length + call[:arguments].to_json.length : 0
-      end
-    end
+    def sent_chars(entries) = LLMContextView.chars(entries)
 
     # Edits saved unapplied on the entries, of +layers+ (none yet: forget
     # saves its edits so, P4).

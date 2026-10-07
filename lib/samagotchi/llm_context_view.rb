@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "tool_response"
 require_relative "tool_ids"
 require_relative "llm_context_edit"
@@ -33,6 +34,23 @@ module Samagotchi
 
     # @return [Array<Symbol>] the layers; empty under none
     attr_reader :layers
+
+    # What +entries+ send, in chars: their contents (a parts list's text
+    # parts) and their calls' names and arguments. The chat loop's context
+    # estimate and the apply rule's payoff count so.
+    def self.chars(entries)
+      entries.sum do |entry|
+        content = entry[:content]
+        chars = if content.is_a?(Array)
+                  content.sum { |part| part.is_a?(Hash) ? (part[:text] || part["text"]).to_s.length : 0 }
+                else
+                  content.to_s.length
+                end
+        chars + Array(entry[:tool_calls]).sum do |call|
+          call.is_a?(Hash) ? call[:name].to_s.length + call[:arguments].to_json.length : 0
+        end
+      end
+    end
 
     # @param strategy [Symbol, Array<Symbol>] :none, or the layers
     def initialize(strategy: NONE)

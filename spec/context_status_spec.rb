@@ -67,4 +67,22 @@ RSpec.describe Samagotchi::ContextStatus do
     tracker.observe(3_300, iteration_index: 1, window: window)
     expect(tracker).to be_top_bucket
   end
+
+  it "takes what an applied edit removed off the server's count until the next one, instead of holding it" do
+    tracker = described_class.new
+    tracker.capture({ "usage" => { "prompt_tokens" => 600, "completion_tokens" => 10 } })
+    tracker.generation_done({ total_tokens: 610 }, prompt_chars: 2_400, image_tokens: 0, window: window)
+
+    tracker.observe(1_200, iteration_index: 1, window: window)
+    expect(tracker.display).to eq(est_pct: 60.0, bucket: "60plus")
+
+    tracker.edited!
+    tracker.observe(1_200, iteration_index: 2, window: window)
+    expect(tracker.display).to eq(est_pct: 30.0, bucket: "20plus")
+
+    tracker.capture({ "usage" => { "prompt_tokens" => 320, "completion_tokens" => 10 } })
+    tracker.generation_done({ total_tokens: 330 }, prompt_chars: 1_200, image_tokens: 0, window: window)
+    tracker.observe(1_000, iteration_index: 3, window: window)
+    expect(tracker.display).to eq(est_pct: 32.0, bucket: "20plus")
+  end
 end
