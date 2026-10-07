@@ -17,7 +17,7 @@ module LLMContextBench
 
     Options = Struct.new(:dir, :strategies, :picks, :cases_file, :min_turn_tool, :top, :sessions, :profile, :per_case,
                          :json, :live, :tool_name, :policy, :out_dir, :samples, :dry_run, :layout, :force,
-                         keyword_init: true)
+                         :ends, keyword_init: true)
 
     # @param chat_adapter [#call] model ref => [adapter, bare model], for
     #   --live (LivePick.chat_adapter; a spec points it at a fake server)
@@ -66,6 +66,10 @@ module LLMContextBench
         o.on("--min-turn-tool N", Integer, "a case's turn holds at least N tool tokens (default #{Cases::MIN_TURN_TOOL})") do |n|
           options.min_turn_tool = n
         end
+        o.on("--ends RULE", Cases::ENDS, "which turn ends make cases: answer (the model's final answer) or any " \
+                                         "(default answer for the turn-size rule, any for named cases)") do |rule|
+          options.ends = rule
+        end
         o.on("--top N", Integer, "only the N heaviest sessions") { |n| options.top = n }
         o.on("--session PREFIX", "only sessions whose id starts so (repeatable)") { |prefix| (options.sessions ||= []) << prefix }
         o.on("--[no-]profile", "the none profile (default on)") { |on| options.profile = on }
@@ -106,13 +110,12 @@ module LLMContextBench
       picker = LivePick.new(adapter: adapter, model: model, tool_name: options.tool_name, policy: options.policy,
                             out_dir: options.out_dir.to_s, samples: options.samples, log: @err, layout: options.layout,
                             force: options.force)
-      cases = Cases.select(Replay.from_dir(options.dir, top: options.top, only: options.sessions),
-                           names: options.cases_file && Cases.read_names(options.cases_file),
-                           min_turn_tool: options.min_turn_tool)
+      cases = select_cases(options, Replay.from_dir(options.dir, top: options.top, only: options.sessions),
+                           options.cases_file && Cases.read_names(options.cases_file))
       return pick(picker, cases, options.out_dir) unless options.dry_run
 
       estimate = picker.estimate(cases)
-      @out.puts "#{cases.size} case(s) × #{options.samples} sample(s): #{estimate[:requests]} requests (more if a pick " \
+      @out.puts "#{cases.size} case(s) (ending: #{Cases.ends_tally(cases.map(&:ends))}) × #{options.samples} sample(s): #{estimate[:requests]} requests (more if a pick " \
                 "is forced), about #{(estimate[:prompt_tokens] / 1000).round}k prompt tokens by chars/4 " \
                 "(~#{(estimate[:prompt_tokens] * 1.25 / 1000).round}k as servers count code), the largest " \
                 "#{(estimate[:largest] / 1000).round}k"
@@ -132,7 +135,7 @@ module LLMContextBench
     def build(options)
       replays = Replay.from_dir(options.dir, top: options.top, only: options.sessions)
       picks = options.picks.map { |label, dir| Strategies::Picks.new(label: label, dir: File.expand_path(dir)) }
-      cases = Cases.select(replays, names: case_names(options, picks), min_turn_tool: options.min_turn_tool)
+      cases = select_cases(options, replays, case_names(options, picks))
       results = []
       skipped = {}
       options.strategies.each do |name|
@@ -143,7 +146,18 @@ module LLMContextBench
       end
       picks.each { |source| results.concat(score(source, cases)) }
       Report.new(results: results, profile: (Profile.new(replays) if options.profile), skipped: skipped,
-                 sessions: replays.size, source: options.dir)
+                 sessions: replays.size, source: options.dir, case_ends: cases.to_h { |kase| [kase.name, kase.ends] })
+    end
+
+    # The cases to run (Cases.select), saying so when --ends answer drops
+    # named ones.
+    def select_cases(options, replays, names)
+      cases = Cases.select(replays, names: names, min_turn_tool: options.min_turn_tool, ends: options.ends)
+      if names && options.ends == "answer"
+        dropped = Cases.select(replays, names: names, ends: "any").size - cases.size
+        @err.puts "llm_context_bench: --ends answer skipped #{dropped} named case(s) that don't end with an answer" if dropped.positive?
+      end
+      cases
     end
 
     def score(strategy, cases)

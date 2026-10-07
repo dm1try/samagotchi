@@ -47,6 +47,41 @@ RSpec.describe LLMContextBench::CLI do
     expect(out.string.lines.grep(/_t0/).map { |line| line.split[3] }.uniq).to eq(%w[bbbbbbbb_t0])
   end
 
+  describe "how each case ends" do
+    # Turn 0 of this one ends on a tool result: the answer is cut out.
+    before do
+      BenchFixtures.write_session(dir, messages: BenchFixtures.chat_messages.reject.with_index { |_m, i| i == 6 },
+                                       id: "cccccccc-0000-4000-8000-000000000000")
+    end
+
+    it "keeps answer-ended turns by default, all under --ends any, and reports the endings" do
+      run(dir, "--min-turn-tool", "0", "--no-profile", "--per-case")
+      expect(out.string).to include("3 sessions, 2 cases", "cases end with: answer 2")
+
+      out.truncate(0)
+      out.rewind
+      run(dir, "--min-turn-tool", "0", "--no-profile", "--per-case", "--ends", "any")
+      expect(out.string).to include("3 sessions, 3 cases", "cases end with: answer 2, tool_result 1")
+      expect(out.string.lines.grep(/\A  forget_all .* cccccccc_t0 /).first.split[4]).to eq("tool_result")
+    end
+
+    it "says what each case ends with in the JSON" do
+      run(dir, "--json", "--no-profile", "--min-turn-tool", "0", "--ends", "any")
+      data = JSON.parse(out.string)
+      expect(data["case_ends"]).to eq("aaaaaaaa_t0" => "answer", "bbbbbbbb_t0" => "answer", "cccccccc_t0" => "tool_result")
+      expect(data["cases"].map { |c| [c["case_name"], c["ends"]] }.uniq).to include(%w[cccccccc_t0 tool_result])
+    end
+
+    it "keeps named cases as named, and says which --ends answer drops" do
+      File.write(File.join(dir, "cases.txt"), "aaaaaaaa_t0\ncccccccc_t0\n")
+      run(dir, "--cases", File.join(dir, "cases.txt"), "--no-profile")
+      expect(out.string).to include("2 cases", "answer 1, tool_result 1")
+
+      run(dir, "--cases", File.join(dir, "cases.txt"), "--no-profile", "--ends", "answer")
+      expect(err.string).to include("--ends answer skipped 1 named case(s) that don't end with an answer")
+    end
+  end
+
   it "refuses a folder that isn't there" do
     expect(run(File.join(dir, "missing"))).to eq(2)
     expect(err.string).to include("no sessions directory")

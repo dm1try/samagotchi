@@ -136,7 +136,7 @@ RSpec.describe LLMContextBench::LivePick do
 
     it "counts a run's requests and tokens on --dry-run, calling nothing" do
       expect(run(dir, "--live", "acme/coder-1", "--dry-run", "--min-turn-tool", "0", "--samples", "2")).to eq(0)
-      expect(out.string).to match(/\A1 case\(s\) × 2 sample\(s\): 2 requests/)
+      expect(out.string).to match(/\A1 case\(s\) \(ending: answer 1\) × 2 sample\(s\): 2 requests/)
     end
 
     it "needs --out" do

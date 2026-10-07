@@ -18,7 +18,10 @@ module LLMContextBench
     # @param results [Array<Result>]
     # @param profile [Profile, nil]
     # @param skipped [Hash{String => String}] strategy => why it didn't run
-    def initialize(results:, profile: nil, skipped: {}, sessions: 0, source: nil)
+    # @param case_ends [Hash{String => String}] case name => how its turn
+    #   ends (Case#ends)
+    def initialize(results:, profile: nil, skipped: {}, sessions: 0, source: nil, case_ends: {})
+      @case_ends = case_ends
       @results = results
       @profile = profile
       @skipped = skipped
@@ -37,12 +40,15 @@ module LLMContextBench
 
     def to_h
       { source: @source, sessions: @sessions, profile: profile&.to_h, skipped: skipped,
-        rows: rows.map { |row| row.to_h.merge(sums: row.sums) }, cases: results.map(&:to_h) }
+        case_ends: @case_ends, rows: rows.map { |row| row.to_h.merge(sums: row.sums) },
+        cases: results.map { |result| result.to_h.merge(ends: @case_ends[result.case_name]) } }
     end
 
     def text(per_case: false)
       lines = ["llm_context bench: #{@sessions} sessions, #{results.map(&:case_name).uniq.size} cases " \
-               "from #{@source} (tokens are chars/4)", ""]
+               "from #{@source} (tokens are chars/4)"]
+      lines << "  cases end with: #{Cases.ends_tally(@case_ends.values)}" unless @case_ends.empty?
+      lines << ""
       lines.concat(profile_lines) if profile
       lines.concat(row_lines)
       skipped.each { |name, why| lines << "  #{name}: skipped, #{why}" }
@@ -106,9 +112,9 @@ module LLMContextBench
     end
 
     def case_lines
-      header = %w[strategy model policy case forgot/outputs freed wrong-strict wrong-loose 1-step re-prefilled]
+      header = %w[strategy model policy case ends forgot/outputs freed wrong-strict wrong-loose 1-step re-prefilled]
       table = results.map do |r|
-        [r.strategy, r.model, r.policy, r.case_name, "#{r.forgotten}/#{r.outputs}", k(r.freed), r.wrong_strict.to_s,
+        [r.strategy, r.model, r.policy, r.case_name, @case_ends.fetch(r.case_name, "-"), "#{r.forgotten}/#{r.outputs}", k(r.freed), r.wrong_strict.to_s,
          r.wrong_loose.to_s, r.one_step_outputs.to_s, k(r.re_prefilled)]
       end
       ["Cases"] + columns([header] + table) + [""]
