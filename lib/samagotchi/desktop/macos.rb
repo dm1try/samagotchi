@@ -62,6 +62,12 @@ module Samagotchi
         { "listen_on" => listen_on, "binary" => get.call("kitty.binary").to_s, "agents" => agents }
       end
 
+      # The helper as chi desktop and chi update make it: the settings it
+      # bakes into the launch file read from the config.
+      def self.from_config(register: true)
+        new(register: register, kitty: kitty_settings)
+      end
+
       attr_reader :app_dir, :support_dir
 
       def initialize(app_dir: nil, support_dir: nil, env: ENV, runner: Runner.new,

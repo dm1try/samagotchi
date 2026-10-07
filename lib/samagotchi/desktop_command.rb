@@ -41,7 +41,7 @@ module Samagotchi
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
-      @platform = platform || ->(register:) { Desktop::MacOS.new(register: register, kitty: Desktop::MacOS.kitty_settings) }
+      @platform = platform || Desktop::MacOS.method(:from_config)
       @supported = supported
     end
 
