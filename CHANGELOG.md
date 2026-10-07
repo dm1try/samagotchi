@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-07
+
 ### Added
 
 - `llm_context.strategy` (default `none`), and per model or host `llm_context_strategy`. `stale` sends a file read
@@ -1872,7 +1874,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.38.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/dm1try/samagotchi/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/dm1try/samagotchi/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/dm1try/samagotchi/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/dm1try/samagotchi/compare/v0.35.0...v0.36.0
