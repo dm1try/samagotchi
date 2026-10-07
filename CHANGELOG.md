@@ -16,6 +16,19 @@ and commands may change between minor versions. How releases are made:
   stored sessions (offline; `--live` asks a model, for picks). It isn't part of the gem. See
   [docs/internals/llm-context-bench.md](docs/internals/llm-context-bench.md).
 
+### Fixed
+
+- Answering a step-limit question with Continue and then sending a prompt runs the continue turn first, even when
+  both arrive while the worker is between turns (the prompt could run first and drop the offer). A session started
+  from another session's `execute` (`chi send`) no longer inherits that session's `SAMAGOTCHI_PARENT_SESSION` and
+  `SAMAGOTCHI_SESSION_MODEL`, so your `!chi context add` there attaches to it, not to the other one. `context_read`
+  pages within `max_tool_output_chars` whatever its header holds, so a page is never cut a second time behind its
+  "Pass offset". The mcp bundle (0.6.1): `mcp_call` with a mistyped `<server>/<tool>` waits only for that server's
+  start, and `find_mcp_tools` names a server with no `description:` or instructions by its tool count, not its first
+  tool names (a model called those without searching).
+
+Update with `chi update` (mcp 0.6.1).
+
 ## [0.38.0] - 2026-10-07
 
 ### Added
