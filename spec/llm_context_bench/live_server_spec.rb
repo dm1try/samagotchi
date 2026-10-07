@@ -88,7 +88,7 @@ RSpec.describe "llm_context_bench --live over HTTP" do
     expect(picks.size).to eq(2)
     record = JSON.parse(File.read(File.join(out_dir, "aaaaaaaa_t0.pick_forget_outputs_subtask_s1.json")))
     expect(record["unforced"]["error"]).to include("unknown parameter")
-    expect(out.string).to start_with("2 picks written to #{out_dir} (0 forced, 0 of them after a reply cut at max_tokens; 1 errors)")
+    expect(out.string).to start_with("2 picks written to #{out_dir} (0 forced, 0 of them after a reply cut at max_tokens; 1 errors; no cost reported)")
   end
 
   it "flags a forced retry after a reply cut off at max_tokens, and counts those in the last line" do
@@ -105,6 +105,22 @@ RSpec.describe "llm_context_bench --live over HTTP" do
     expect(cut["unforced"]["choices"][0]["finish_reason"]).to eq("length")
     expect(plain).to include("forced_because" => "no_call")
     expect(server.requests[1].json["tool_choice"]).to eq("type" => "function", "function" => { "name" => "forget_outputs" })
-    expect(out.string).to include("2 picks written to #{out_dir} (2 forced, 1 of them after a reply cut at max_tokens; 0 errors)")
+    expect(out.string).to include("2 picks written to #{out_dir} (2 forced, 1 of them after a reply cut at max_tokens; 0 errors;")
+  end
+
+  it "stores the cost the server streamed in each pick record, both requests of a forced one, and sums it last" do
+    server.enqueue(path, sse: answer(text: "Done.", cost: 0.0012))
+    server.enqueue(path, sse: answer(ids: ["t1"], cost: 0.0008))
+    server.enqueue(path, sse: answer(ids: ["t2"], cost: 0.003))
+
+    expect(run).to eq(0)
+    forced, unforced = %w[aaaaaaaa bbbbbbbb].map do |prefix|
+      JSON.parse(File.read(File.join(out_dir, "#{prefix}_t0.pick_forget_outputs_subtask_s1.json")))
+    end
+    expect(forced["cost"]).to be_within(1e-9).of(0.002)
+    expect(forced["forced"]["usage"]).to include("cost" => 0.0008)
+    expect(unforced["cost"]).to eq(0.003)
+    expect(server.requests.first.json).to include("usage" => { "include" => true })
+    expect(out.string).to include("0 errors; cost $0.0050 (2 of 2 picks reported one)")
   end
 end

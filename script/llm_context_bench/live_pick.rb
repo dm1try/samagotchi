@@ -158,11 +158,17 @@ module LLMContextBench
       error.status == 402 || error.is_a?(Samagotchi::LLM::OutOfCredits) || PAYMENT_RE.match?(error.message.to_s)
     end
 
-    # The last run's counts, for its last line: "(1 forced, 1 of them after
-    # a reply cut at max_tokens; 0 errors)".
+    # The last run's counts, for its last line: "1 forced, 1 of them after a
+    # reply cut at max_tokens; 0 errors; cost $0.0123 (2 of 2 picks
+    # reported one)".
     def summary
+      cost = if totals[:costed].zero?
+               "no cost reported"
+             else
+               format("cost $%<cost>.4f (%<costed>d of %<picks>d picks reported one)", **totals.slice(:cost, :costed, :picks))
+             end
       "#{totals[:forced]} forced, #{totals[:forced_length]} of them after a reply cut at max_tokens; " \
-        "#{totals[:errors]} errors"
+        "#{totals[:errors]} errors; #{cost}"
     end
 
     # What a run would send: requests (one per case and sample, more when a
@@ -173,7 +179,8 @@ module LLMContextBench
     end
 
     # The record Picks reads: the answer, the forced one when it took that,
-    # and how it was asked.
+    # and how it was asked; +cost+ sums the cost the server reported for its
+    # requests (OpenRouter's usage.cost, in US dollars; absent when none did).
     def ask(kase)
       request = messages(kase)
       unforced = chat(request, OPTIONS)
@@ -182,6 +189,8 @@ module LLMContextBench
         record["forced"] = chat(request, OPTIONS.merge(tool_choice: { type: "function", function: { name: tool_name } }))
         record["forced_because"] = unforced.dig("choices", 0, "finish_reason") == "length" ? "length" : "no_call"
       end
+      costs = record.values_at("unforced", "forced").compact.filter_map { |answer| answer.dig("usage", "cost") }
+      record["cost"] = costs.sum unless costs.empty?
       record.merge("bench" => { "id_scheme" => "run", "tool" => tool_name, "policy" => policy, "layout" => layout,
                                 "model" => @model })
     rescue Samagotchi::LLM::ProviderError => e
@@ -229,6 +238,10 @@ module LLMContextBench
     def count(record)
       totals[:picks] += 1
       totals[:errors] += 1 if record["unforced"].key?("error")
+      if record["cost"]
+        totals[:cost] += record["cost"]
+        totals[:costed] += 1
+      end
       return unless record["forced"]
 
       totals[:forced] += 1
