@@ -447,6 +447,53 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     end
   end
 
+  describe "the broadcast timeout" do
+    before do
+      File.write(File.join(tmp, "ruby"), "")
+      FileUtils.mkdir_p(File.join(source_dir, "bin"))
+      File.write(File.join(source_dir, "bin", "chi"), "")
+    end
+
+    def helper(broadcast_timeout: nil)
+      described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
+                          ruby: File.join(tmp, "ruby"), version: "9.9.9", arch: "arm64", sources_dir: sources_dir,
+                          broadcast_timeout: broadcast_timeout)
+    end
+
+    it "is left out without one, written with one, and a changed one outdates the launch file (no rebuild)" do
+      helper.install
+      expect(JSON.parse(File.read(launch_file))).not_to have_key("broadcast_timeout")
+      expect(helper(broadcast_timeout: 30.0).launch_outdated?).to be(true)
+
+      runner.calls.clear
+      helper(broadcast_timeout: 30.0).refresh_launch_file
+      expect(runner.calls).to be_empty
+      expect(JSON.parse(File.read(launch_file))["broadcast_timeout"]).to eq(30.0)
+      expect(helper(broadcast_timeout: 30.0).launch_outdated?).to be(false)
+      expect(helper(broadcast_timeout: 40.0).launch_outdated?).to be(true)
+    end
+
+    describe ".broadcast_timeout" do
+      it "is broadcast.triage_deadline plus 10 s: triage, then the deliveries and chi's start" do
+        expect(described_class.broadcast_timeout(->(_key) { 45 })).to eq(55.0)
+        expect(described_class.broadcast_timeout(->(key) { Samagotchi::Config.find_by_key(key).default })).to eq(30.0)
+      end
+
+      it "reaches the helper from chi desktop and chi update (their default platforms)" do
+        require "samagotchi/desktop_command"
+        require "samagotchi/update_command"
+        original = ENV["SAMAGOTCHI_BROADCAST_TRIAGE_DEADLINE"]
+        ENV["SAMAGOTCHI_BROADCAST_TRIAGE_DEADLINE"] = "50"
+        [Samagotchi::DesktopCommand.new([]), Samagotchi::UpdateCommand.new([], web: ["127.0.0.1", 1])].each do |command|
+          made = command.instance_variable_get(:@platform).call(register: false)
+          expect(made.launch_config["broadcast_timeout"]).to eq(60.0)
+        end
+      ensure
+        ENV["SAMAGOTCHI_BROADCAST_TRIAGE_DEADLINE"] = original
+      end
+    end
+  end
+
   describe "#status" do
     it "reports not installed" do
       expect(macos.status).to include(installed: false, chi_version: "9.9.9")

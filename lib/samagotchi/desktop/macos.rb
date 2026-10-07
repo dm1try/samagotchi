@@ -41,6 +41,10 @@ module Samagotchi
       ENV_ALLOWLIST = %w[XDG_CONFIG_HOME XDG_STATE_HOME GEM_HOME GEM_PATH RUBYLIB].freeze
       # Without it Ruby reads stdin as US-ASCII and non-ASCII notes break.
       LANG = "en_US.UTF-8"
+      # chi broadcast's default triage deadline, and the helper's seconds on
+      # top of it (MacOS.broadcast_timeout).
+      BROADCAST_TRIAGE_DEADLINE = 20
+      BROADCAST_MARGIN = 10
 
       # Runs a command without a shell; [output, success].
       class Runner
@@ -65,14 +69,22 @@ module Samagotchi
       # The helper as chi desktop and chi update make it: the settings it
       # bakes into the launch file read from the config.
       def self.from_config(register: true)
-        new(register: register, kitty: kitty_settings)
+        new(register: register, kitty: kitty_settings, broadcast_timeout: broadcast_timeout)
+      end
+
+      # Seconds the helper gives `chi broadcast` before it stops it: the
+      # triage deadline, then the deliveries and chi's own start. Baked into
+      # the launch file: a changed deadline reaches the helper with chi update.
+      def self.broadcast_timeout(get = Config.method(:get))
+        (get.call("broadcast.triage_deadline") || BROADCAST_TRIAGE_DEADLINE).to_f + BROADCAST_MARGIN
       end
 
       attr_reader :app_dir, :support_dir
 
       def initialize(app_dir: nil, support_dir: nil, env: ENV, runner: Runner.new,
                      source_dir: SelfReport::SOURCE_DIR, ruby: RbConfig.ruby, version: VERSION,
-                     arch: nil, sources_dir: SOURCES_DIR, register: true, chi_path: nil, kitty: nil)
+                     arch: nil, sources_dir: SOURCES_DIR, register: true, chi_path: nil, kitty: nil,
+                     broadcast_timeout: nil)
         home = env["HOME"] || Dir.home
         @app_dir = app_dir || File.join(home, "Applications")
         @support_dir = support_dir || File.join(home, "Library", "Application Support", APP_NAME)
@@ -86,6 +98,7 @@ module Samagotchi
         @sources_dir = sources_dir
         @register = register
         @kitty = kitty
+        @broadcast_timeout = broadcast_timeout
       end
 
       def app_path = File.join(@app_dir, "#{APP_NAME}.app")
@@ -99,12 +112,13 @@ module Samagotchi
       # shell's PATH), and the allowlisted env. chi is an installed gem's
       # RubyGems wrapper (it activates the gem and outlives upgrades and
       # `gem cleanup`), else this checkout's bin/chi. The kitty section only
-      # when kitty.listen_on is set.
+      # when kitty.listen_on is set; the broadcast timeout when given.
       def launch_config
         env = { "LANG" => LANG }
         ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
         config = { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
         config["kitty"] = @kitty if @kitty
+        config["broadcast_timeout"] = @broadcast_timeout if @broadcast_timeout
         config
       end
 
@@ -128,13 +142,15 @@ module Samagotchi
       end
 
       # The launch file names another chi version or path than this one, or
-      # other kitty settings: refresh_launch_file fixes that without a rebuild.
+      # other kitty settings or broadcast timeout: refresh_launch_file fixes
+      # that without a rebuild.
       def launch_outdated?
         launch = read_launch
-        launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"] || launch["kitty"] != @kitty
+        launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"] || launch["kitty"] != @kitty ||
+          launch["broadcast_timeout"] != @broadcast_timeout
       end
 
-      # Rewrite the launch file for this chi and the kitty settings, keeping
+      # Rewrite the launch file for this chi and its settings, keeping
       # the env it was installed with. The app reads it at each send: no restart.
       def refresh_launch_file
         config = launch_config
