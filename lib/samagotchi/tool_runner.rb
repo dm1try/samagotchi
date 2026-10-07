@@ -8,6 +8,7 @@ require_relative "log"
 require_relative "edit_preview"
 require_relative "tools/tool_path"
 require_relative "memory_bundle/index_sync"
+require_relative "memory_bundle/index_size"
 
 module Samagotchi
   # The single per-call path both loops use: the tool_call_started and
@@ -71,9 +72,12 @@ module Samagotchi
         waited_ms = ((@clock.call - asked_at) * 1000).round
       end
       before = verdict.deny? ? NOT_AN_EDIT : file_before(call)
+      index_before = before.equal?(NOT_AN_EDIT) ? nil : memory_index_size(call)
       result = verdict.deny? ? denied(call, verdict) : dispatch(call)
       diff = file_change(call, before)
-      refresh_memory_index(call) if diff
+      if diff && refresh_memory_index(call)
+        result = with_index_note(result, index_before, call)
+      end
       result = approved(result, verdict) if verdict.allow? && verdict.decided_by
       result, images = attach_images(call, result) if result[:images]
 
@@ -152,6 +156,27 @@ module Samagotchi
     # as memory_write does (MemoryBundle::IndexSync; a no-op elsewhere).
     def refresh_memory_index(call)
       MemoryBundle::IndexSync.refresh(Tools::ToolPath.normalize(call[:path]))
+    end
+
+    # The index size of the memory scope an edit/write's path is in
+    # (MemoryBundle::IndexSize), nil for any other path, or when
+    # memory.index_warn_tokens is off: other writes cost nothing.
+    def memory_index_size(call)
+      scope = MemoryBundle::IndexSync.memory_scope(Tools::ToolPath.normalize(call[:path]))
+      return nil unless scope && MemoryBundle::IndexSize.warn_limit.positive?
+
+      MemoryBundle::IndexSize.measure(scope)
+    rescue StandardError
+      nil
+    end
+
+    # +result+ with the note memory_write gives when the refreshed index
+    # line took the scope's index over memory.index_warn_tokens.
+    def with_index_note(result, before, call)
+      return result unless before
+
+      note = MemoryBundle::IndexSize.crossing_note(before, memory_index_size(call))
+      note ? result.merge(output: "#{result[:output]}\n\n#{note}") : result
     end
 
     # A tool's output can hold bytes that aren't UTF-8 (`printf '\xff'`, a

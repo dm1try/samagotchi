@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/tools/memory"
+require "samagotchi/memory_bundle/index_size"
 require "tmpdir"
 require "fileutils"
 require "date"
@@ -759,6 +760,65 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
           )
           expect(result).to include("invalid model key")
         end
+      end
+    end
+  end
+
+  describe "the note when a write takes the index over memory.index_warn_tokens" do
+    let(:note_start) { "Note: the project memory index is now ~" }
+
+    def tokens = Samagotchi::MemoryBundle::IndexSize.of_scope("project").tokens
+
+    # A seeded index and a limit a few tokens above its size: the next
+    # write that adds a line crosses it.
+    def with_limit_above_index(margin = 5, &)
+      described_class.call("seed\n", path: "seed", scope: "project", description: "seed memory")
+      with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => (tokens + margin).to_s, &)
+    end
+
+    def write(name, description = "what #{name} is for, said at some length")
+      described_class.call("body of #{name}\n", path: name, scope: "project", description: description)
+    end
+
+    it "comes once, on the write that crosses; the next write while over gets none" do
+      with_limit_above_index do
+        crossing = write("first")
+        expect(crossing).to include("Index line refreshed automatically.\n\n#{note_start}#{tokens} tokens " \
+                                    "(over memory.index_warn_tokens #{ENV.fetch("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS")})")
+        expect(crossing).to end_with("Don't remove or merge memories unless the user asks.")
+        expect(write("second")).not_to include("Note:")
+        expect(described_class.call("", path: "first", scope: "project", description: "x")).not_to include("Note:")
+      end
+    end
+
+    it "comes on a description-only write that crosses, not on one that shrinks the line" do
+      write("first", "short")
+      with_limit_above_index do
+        crossing = described_class.call("", path: "first", scope: "project", description: "a much longer description " * 3)
+        expect(crossing).to start_with("Memory 'first' description updated in project scope (file unchanged).\n\n#{note_start}")
+      end
+      with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => (tokens - 2).to_s) do
+        expect(described_class.call("", path: "first", scope: "project", description: "short")).not_to include("Note:")
+      end
+    end
+
+    it "never comes under the limit or with limit 0" do
+      with_limit_above_index(500) { expect(write("first")).not_to include("Note:") }
+      with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "0") do
+        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        expect(write("second", "x" * 200)).not_to include("Note:")
+      end
+    end
+
+    it "isn't looked for on a remove, an overlay or the verbatim index write (which crosses here)" do
+      with_limit_above_index do
+        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        overlay = described_class.call("overlay\n" * 50, path: "seed", scope: "project", current_model_only: true,
+                                                         model_key: "qwen")
+        expect(overlay).to start_with("Model overlay 'seed' for qwen saved")
+        expect(described_class.call("", path: "seed", scope: "project", remove: true)).to start_with("Memory 'seed' removed")
+        index = "#{File.read(File.join(project_memories_dir, "index.md"))}#{"- **x** · a hand line\n" * 20}"
+        expect(described_class.call(index, path: "index", scope: "project")).not_to include("Note:")
       end
     end
   end

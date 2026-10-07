@@ -224,6 +224,9 @@ module Samagotchi
         end
 
         file_path = File.join(dir, "#{entry_name}.md")
+        # The index's size before the write, for the note on crossing
+        # memory.index_warn_tokens (not for the verbatim index write).
+        before = index_size(resolved_scope) unless entry_name == MEMORY_INDEX
         if entry_name == MEMORY_INDEX
           Samagotchi::MemoryBundle::IndexUpdater.locked_write(dir) { body }
         else
@@ -236,6 +239,7 @@ module Samagotchi
         # trigger upsert logic.
         if !(entry_name == MEMORY_INDEX) && manage_index(resolved_scope, entry_name, bytes, description)
           message += " Index line refreshed automatically."
+          message += index_crossing_note(before, resolved_scope)
         end
 
         message
@@ -293,8 +297,29 @@ module Samagotchi
         file_path = File.join(MemoryRead.memories_dir(resolved_scope), "#{entry_name}.md")
         return "Error: no memory '#{entry_name}' in #{resolved_scope} scope; pass content to create it" unless File.file?(file_path)
 
+        # Measured around the call, whatever manage_index returns.
+        before = index_size(resolved_scope)
         manage_index(resolved_scope, entry_name, File.size(file_path), description)
-        "Memory '#{entry_name}' description updated in #{resolved_scope} scope (file unchanged)."
+        "Memory '#{entry_name}' description updated in #{resolved_scope} scope (file unchanged)." \
+          "#{index_crossing_note(before, resolved_scope)}"
+      end
+
+      # +scope+'s index size (MemoryBundle::IndexSize), or nil when
+      # memory.index_warn_tokens is off or the index can't be read.
+      def self.index_size(scope)
+        require_relative "../memory_bundle/index_size"
+        size = Samagotchi::MemoryBundle::IndexSize
+        size.measure(scope) if size.warn_limit.positive?
+      end
+
+      # "\n\nNote: the <scope> memory index is now ~N tokens …" when the
+      # write took +scope+'s index from at or under memory.index_warn_tokens
+      # to over it (+before+: its size before the write), else "".
+      def self.index_crossing_note(before, scope)
+        return "" unless before
+
+        note = Samagotchi::MemoryBundle::IndexSize.crossing_note(before, index_size(scope))
+        note ? "\n\n#{note}" : ""
       end
 
       # remove: true. Moves <name>.md and its model overlays into one

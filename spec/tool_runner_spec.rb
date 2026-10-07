@@ -471,6 +471,61 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path("new.md"))
     end
 
+    describe "the note when the refreshed index line takes the index over memory.index_warn_tokens" do
+      around { |ex| with_config_home(File.join(@dir, "config")) { ex.run } }
+
+      let(:memories) { Samagotchi::MemoryPaths.system_dir.tap { |dir| FileUtils.mkdir_p(dir) } }
+      let(:note) { "Note: the system memory index is now ~" }
+
+      def tokens = Samagotchi::MemoryBundle::IndexSize.of_scope("system").tokens
+
+      def write_memory(name) = run({ name: "write", path: File.join(memories, "#{name}.md"), content: "#{name}\n" })
+
+      it "comes once, after the write that crosses, on the output the model gets" do
+        write_memory("seed")
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => tokens.to_s) do
+          result = write_memory("first")
+          expect(result[:output]).to include("\n\n#{note}#{tokens} tokens")
+          expect(result[:capped_output]).to eq(result[:output])
+          expect(events.last[:output]).to include(note)
+          expect(write_memory("second")[:output]).not_to include("Note:")
+          edit = run({ name: "edit", path: File.join(memories, "first.md"), old_text: "first", new_text: "1st" })
+          expect(edit[:output]).not_to include("Note:")
+        end
+      end
+
+      it "comes for a memory path spelled in another case on a case-insensitive disk" do
+        upper = File.join(File.dirname(memories), File.basename(memories).upcase)
+        skip "case-sensitive disk" unless File.directory?(upper)
+
+        write_memory("seed")
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => tokens.to_s) do
+          result = run({ name: "write", path: File.join(upper, "first.md"), content: "first\n" })
+          expect(result[:output]).to include(note)
+        end
+      end
+
+      it "isn't looked for on a symlinked memory" do
+        write_memory("seed")
+        outside = path("outside.md").tap { |file| File.write(file, "x\n") }
+        File.symlink(outside, File.join(memories, "linked.md"))
+        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
+          linked = run({ name: "write", path: File.join(memories, "linked.md"), content: "#{"y" * 400}\n" })
+          expect(linked[:output]).not_to include("Note:")
+        end
+      end
+
+      it "isn't looked for on a write outside the memories, or with limit 0" do
+        write_memory("seed")
+        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
+          expect(run({ name: "write", path: path("new.md"), content: "x\n" })[:output]).not_to include("Note:")
+        end
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "0") { expect(write_memory("first")[:output]).not_to include("Note:") }
+      end
+    end
+
     it "is absent for a denied edit and for other tools" do
       File.write(path, "a\n")
       hooks.register(:before_tool_call) { |e| e[:blocked] = true if e[:call][:name] == "edit" }
