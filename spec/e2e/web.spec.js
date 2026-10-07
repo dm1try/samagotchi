@@ -687,6 +687,51 @@ test("the info bar: copy chi --attach copies the full id, delete removes the ses
   await expect(page.locator("#actionBtn")).toHaveText("Start");
 });
 
+test("the info bar's llm ctx chip sets the session's own strategy through its worker, and a reload keeps it", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  const chip = page.locator("#infoBar .llmctx-chip");
+  await expect(chip).toHaveText("llm ctx none");
+  await expect(chip).not.toHaveClass(/\bown\b/);
+
+  await chip.click();
+  const pop = page.locator("#llmContextPopover");
+  await expect(pop).toBeVisible();
+  await expect(pop.locator(".llmctx-now")).toContainText("Now: none (llm_context.strategy)");
+  await pop.locator('select[name="strategy"]').selectOption("stale,forget");
+  await pop.locator('select[name="apply"]').selectOption("turn_end");
+  await pop.locator('input[name="budget"]').fill("64k");
+  await pop.locator(".llmctx-set").click();
+  await expect(pop).toBeHidden();
+
+  // The reply shows as a command bubble, and the chip follows the command_ran.
+  await expect(page.locator("#history .bubble.command").last()).toContainText("forget_outputs joins the tool list");
+  await expect(chip).toHaveText("llm ctx stale,forget · session");
+  await expect(chip).toHaveClass(/\bown\b/);
+  await page.reload();
+  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx stale,forget · session");
+
+  await page.locator("#infoBar .llmctx-chip").click();
+  await expect(pop.locator('select[name="strategy"]')).toHaveValue("stale,forget");
+  await expect(pop.locator('input[name="budget"]')).toHaveValue("64000");
+  await pop.locator('[data-act="reset"]').click();
+  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx none");
+
+  // A strategy the list has no option for (forget alone, typed): the form shows it, and a Set that changes
+  // only the apply rule leaves it.
+  await page.locator("#prompt").fill("/llm-context strategy forget");
+  await page.locator("#actionBtn").click();
+  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx forget · session");
+  await page.locator("#infoBar .llmctx-chip").click();
+  await expect(pop.locator('select[name="strategy"]')).toHaveValue("forget");
+  await pop.locator('select[name="apply"]').selectOption("turn_end");
+  await pop.locator(".llmctx-set").click();
+  await expect(page.locator("#history .bubble.command").last()).toContainText("/llm-context apply turn_end");
+  await expect(page.locator("#history .bubble.command").last()).toContainText("this session's own: strategy forget; apply turn_end");
+  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx forget · session");
+});
+
 // Notifications: the tab says whether it is in front through a stubbed
 // visibilityState/hasFocus (window.__setFront), and a stub Notification
 // records what would be shown (window.__notes). The page starts behind.

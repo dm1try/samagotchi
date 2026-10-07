@@ -474,6 +474,20 @@ module Samagotchi
         nil
       end
 
+      # A session's LLM context strategy, apply rule and budget, each with
+      # where it came from (LLMContextStrategy::Explained#summary), as its
+      # worker would resolve them; nil when they can't be.
+      def llm_context_for(session)
+        registry = host_registry
+        name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
+        target = registry.resolve(name)
+        names = registry.lookup_names(session.model_typed || name, resolved: name, target: target)
+        own = session.llm_context
+        LLMContextStrategy.explain(target, names: names, **(own&.resolve_args || {})).summary(own)
+      rescue StandardError
+        nil
+      end
+
       # Built again when config.yml's hosts: changed (compared as read: the
       # YAML read is mtime-cached), so the model picker lists a host added
       # while chi web runs. An injected registry (specs) stays.
@@ -613,6 +627,9 @@ module Samagotchi
         if snapshot
           session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"])
         end
+        # The LLM context strategy the next turn runs under (the info bar's
+        # chip): the worker's, else worked out here from the session file.
+        session_json = session_json.merge(llm_context: (snapshot && snapshot["llm_context"]) || llm_context_for(session))
         raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"])
         json_response(200, {

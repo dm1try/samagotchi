@@ -816,6 +816,26 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload.dig("session", "served_model_for")).to eq("Qwen3-14B")
     end
 
+    it "names the LLM context strategy the next turn runs under: the live worker's, else read from the session file" do
+      state_dir = Dir.mktmpdir
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "Qwen3-14B", working_directory: "/tmp")
+      session.llm_context = Samagotchi::LLMContextOverride.new(strategy: %i[stale forget], apply: :turn_end)
+      session.save(state_dir: state_dir)
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, session_class: Samagotchi::Session)
+
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload.dig("session", "llm_context")).to include(
+        "strategy" => "stale,forget", "strategy_source" => "session", "apply" => "turn_end", "apply_where" => "the session",
+        "own" => { "strategy" => %w[stale forget], "apply" => "turn_end" }
+      )
+
+      live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
+               "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "llm_context" => { "strategy" => "none" } } }
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload.dig("session", "llm_context")).to eq("strategy" => "none")
+    end
+
     it "uses the bridge event_seq when a live bridge reports it" do
       app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
       allow(app).to receive(:bridge_event_seq).and_return(12)

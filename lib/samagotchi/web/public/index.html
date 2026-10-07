@@ -684,6 +684,18 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
+/* The LLM context chip (llm_context_chip.js): a model-like chip that opens the strategy popover; accent when the session set its own. */
+#infoBar .meta .llmctx-chip{padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
+#infoBar .meta .llmctx-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .meta .llmctx-chip.own{color:var(--accent);border-color:var(--accent-border)}
+.llmctx-form{display:flex;flex-direction:column;gap:8px;margin:0}
+.llmctx-form .ctx-pop-head strong{font-family:inherit}
+.llmctx-field{display:flex;align-items:center;gap:8px}
+.llmctx-field>span{flex:0 0 58px;font-size:12px;color:var(--text-muted)}
+.llmctx-field select,.llmctx-field input{flex:1;min-width:0;box-sizing:border-box;padding:5px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:13px/1.4 inherit}
+.llmctx-field select:focus,.llmctx-field input:focus{outline:none;border-color:var(--accent-border)}
+.llmctx-form .llmctx-set{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
+.llmctx-form .llmctx-set:disabled{opacity:.6;cursor:default}
 /* Attached context (context_chips.js): a row of its own under the meta; not the composer's #chips/.chip. */
 #contextChips{order:5;flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
 #contextChips[hidden]{display:none}

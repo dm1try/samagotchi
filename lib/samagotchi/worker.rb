@@ -635,6 +635,8 @@ module Samagotchi
                 model_name: @engine.effective_model_name }
       event[:anytime] = true if anytime
       event[:card] = true if command[:card]
+      # /llm-context or /model: what the next turn runs under now (the web's chip).
+      event[:llm_context] = @engine.llm_context_summary if changed.intersect?(%i[llm_context model])
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)
     end

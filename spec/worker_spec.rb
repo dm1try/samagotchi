@@ -938,6 +938,25 @@ RSpec.describe Samagotchi::Worker do
         expect(queued[:event_seq]).to be < done[:event_seq]
       end
 
+      it "runs /llm-context: the session keeps its own values, and the command_ran carries what the next turn runs under" do
+        start_worker(poll_interval: 5)
+
+        done = ran(JSON.parse(post_command("/llm-context strategy stale budget 64k").body)["command_id"])
+
+        expect(done).to include(status: "ok", changed: ["llm_context"])
+        expect(done[:llm_context]).to include(strategy: "stale", strategy_source: "session", budget_tokens: 64_000,
+                                              own: { "strategy" => ["stale"], "budget_tokens" => 64_000 })
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).llm_context)
+          .to eq(Samagotchi::LLMContextOverride.new(strategy: [:stale], budget_tokens: 64_000))
+        shown = ran(JSON.parse(post_command("/llm-context").body)["command_id"])
+        expect(shown).not_to have_key(:llm_context)
+        # A /model switch may change it (the model's own llm_context_strategy): the chip follows.
+        switched = ran(JSON.parse(post_command("/model clear").body)["command_id"])
+        expect(switched).to include(changed: ["model"])
+        expect(switched[:llm_context]).to include(strategy: "stale", strategy_source: "session")
+        expect(shown[:output]).to start_with("llm context: stale (the session)")
+      end
+
       it "runs a plugin command, and the cards it shows follow its command_ran (as its output)" do
         engine.command_registry.register("/hi", "greet", source: "b") do |_args|
           engine.show_card(source: "b", title: "Hi card")
