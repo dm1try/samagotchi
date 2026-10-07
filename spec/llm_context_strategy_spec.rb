@@ -111,6 +111,33 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     end
   end
 
+  describe ".explain" do
+    before { allow(Samagotchi::Config).to receive(:get).and_call_original }
+
+    it "names where the strategy, the apply rule and the budget each came from" do
+      models = { "m" => { llm_context_strategy: [:stale], llm_context_budget_tokens: 48_000 } }
+
+      explained = described_class.explain(target(apply: :turn_end), names: %w[m], models: models)
+
+      expect(explained.resolved).to eq(described_class.resolve(target(apply: :turn_end), names: %w[m], models: models))
+      expect(explained.strategy.to_h).to eq(source: :model_setting, where: "models: m")
+      expect(explained.apply.to_h).to eq(source: :host_setting, where: "hosts entry 'box'")
+      expect(explained.budget_tokens.to_h).to eq(source: :model_setting, where: "models: m")
+      expect(described_class.explain(target, names: %w[x], models: {}).apply.to_h)
+        .to eq(source: :config, where: "llm_context.apply")
+    end
+
+    it "takes the session's own values first: none and a budget of 0 (off) too" do
+      models = { "m" => { llm_context_strategy: [:stale], llm_context_apply: :turn_end, llm_context_budget_tokens: 48_000 } }
+
+      explained = described_class.explain(target, names: %w[m], models: models, session: [], session_apply: :next_request,
+                                                  session_budget: 0)
+
+      expect(explained.resolved.to_h).to include(strategy: :none, source: :session, apply: :next_request, budget_tokens: nil)
+      expect([explained.strategy, explained.apply, explained.budget_tokens].map(&:source)).to all(eq(:session))
+    end
+  end
+
   describe ".parse_apply" do
     it "reads the three rules, any case; blank is unset; an unknown one warns once and is payoff" do
       expect(described_class.parse_apply(nil, "x")).to be_nil

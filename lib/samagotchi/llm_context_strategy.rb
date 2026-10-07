@@ -7,8 +7,8 @@ module Samagotchi
   # llm_context_strategy (models.<key>, hosts.<name>), each a layer name,
   # "|"-separated names or a YAML list.
   #
-  # Resolution, first set wins: the session's own (a later per-session
-  # override; nothing sets it yet), models.<key> (by the model's lookup
+  # Resolution, first set wins: the session's own (Session#llm_context,
+  # set by chi --llm-context, /llm-context and the web), models.<key> (by the model's lookup
   # names, as window_tokens), hosts.<name>, then llm_context.strategy.
   # An unknown layer warns and is none (every layer is built: stale, and
   # forget, experimental, with its tool forget_outputs).
@@ -118,29 +118,59 @@ module Samagotchi
       nil
     end
 
+    # Where one value came from: :session, :model_setting, :host_setting
+    # or :config, and the place as a warning names it ("the session",
+    # "models: deepseek", "hosts entry 'box'", "llm_context.apply").
+    Origin = Data.define(:source, :where)
+    SESSION_ORIGIN = Origin.new(source: :session, where: "the session")
+
+    # What a turn's strategy, apply rule and budget are, each with its
+    # Origin (/llm-context, /stats, the web's info bar).
+    Explained = Data.define(:resolved, :strategy, :apply, :budget_tokens)
+
     # The strategy for +target+'s turn.
     # @param target [HostRegistry::ModelTarget, nil]
     # @param names [Array<String>] HostRegistry#lookup_names
     # @param models [Hash, nil] ConfigFile.model_settings (specs)
-    # @param session [Array<Symbol>, nil] the session's own layers (none yet)
-    # @param session_apply [Symbol, nil] the session's own apply rule (none yet)
-    # @param session_budget [Integer, nil] the session's own budget (none yet)
+    # @param session [Array<Symbol>, nil] the session's own layers ([]: none)
+    # @param session_apply [Symbol, nil] the session's own apply rule
+    # @param session_budget [Integer, nil] the session's own budget (0: off)
     # @return [Resolved]
     def resolve(target, names:, models: nil, session: nil, session_apply: nil, session_budget: nil)
-      models ||= ConfigFile.model_settings
-      layers, source, where = layers_for(target, names, models, session)
-      resolved(layers, source, where).with(apply: apply_for(target, names, models, session_apply),
-                                           protect_steps: protect_steps, stale_edits: Config.get(STALE_EDITS_SETTING) == true,
-                                           budget_tokens: budget_for(target, names, models, session_budget))
+      explain(target, names: names, models: models, session: session, session_apply: session_apply,
+                      session_budget: session_budget).resolved
     end
 
+    # #resolve, with where each value came from.
+    # @return [Explained]
+    def explain(target, names:, models: nil, session: nil, session_apply: nil, session_budget: nil)
+      models ||= ConfigFile.model_settings
+      layers, source, where = layers_for(target, names, models, session)
+      apply, apply_origin = apply_for(target, names, models, session_apply)
+      budget, budget_origin = budget_for(target, names, models, session_budget)
+      resolved = resolved(layers, source, where).with(apply: apply, protect_steps: protect_steps,
+                                                      stale_edits: Config.get(STALE_EDITS_SETTING) == true,
+                                                      budget_tokens: budget)
+      Explained.new(resolved: resolved, strategy: Origin.new(source: source, where: where), apply: apply_origin,
+                    budget_tokens: budget_origin)
+    end
+
+    # [the budget, its Origin]: the session's own first (0 there is off,
+    # whatever the model says).
     def budget_for(target, names, models, session_budget)
-      session_budget || ConfigFile.model_setting(names, :llm_context_budget_tokens, models: models)&.last ||
-        target&.entry&.llm_context_budget_tokens || parse_budget(Config.get(BUDGET_SETTING), BUDGET_SETTING)
+      return [session_budget.positive? ? session_budget : nil, SESSION_ORIGIN] unless session_budget.nil?
+
+      key, budget = ConfigFile.model_setting(names, :llm_context_budget_tokens, models: models)
+      return [budget, Origin.new(source: :model_setting, where: "models: #{key}")] if budget
+
+      budget = target&.entry&.llm_context_budget_tokens
+      return [budget, Origin.new(source: :host_setting, where: "hosts entry '#{target.entry.name}'")] if budget
+
+      [parse_budget(Config.get(BUDGET_SETTING), BUDGET_SETTING), Origin.new(source: :config, where: BUDGET_SETTING)]
     end
 
     def layers_for(target, names, models, session)
-      return [session, :session, "the session"] if session
+      return [session, :session, SESSION_ORIGIN.where] if session
 
       key, layers = ConfigFile.model_setting(names, :llm_context_strategy, models: models)
       return [layers, :model_setting, "models: #{key}"] if layers
@@ -151,9 +181,17 @@ module Samagotchi
       [parse(Config.get(SETTING), SETTING) || [], :config, SETTING]
     end
 
+    # [the apply rule, its Origin].
     def apply_for(target, names, models, session_apply)
-      session_apply || ConfigFile.model_setting(names, :llm_context_apply, models: models)&.last ||
-        target&.entry&.llm_context_apply || parse_apply(Config.get(APPLY_SETTING), APPLY_SETTING) || DEFAULT_APPLY
+      return [session_apply, SESSION_ORIGIN] if session_apply
+
+      key, apply = ConfigFile.model_setting(names, :llm_context_apply, models: models)
+      return [apply, Origin.new(source: :model_setting, where: "models: #{key}")] if apply
+
+      apply = target&.entry&.llm_context_apply
+      return [apply, Origin.new(source: :host_setting, where: "hosts entry '#{target.entry.name}'")] if apply
+
+      [parse_apply(Config.get(APPLY_SETTING), APPLY_SETTING) || DEFAULT_APPLY, Origin.new(source: :config, where: APPLY_SETTING)]
     end
 
     # llm_context.protect_steps: 0 or more (a negative one is the default).
