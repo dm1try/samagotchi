@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-07
+
 ### Added
 
 - The desktop helper's panel has an **Everyone it concerns** row (⌘B): ⌘⏎ there runs `chi broadcast` with the note
@@ -40,6 +42,8 @@ and commands may change between minor versions. How releases are made:
   `api: openai`): it fed each output whole, so one long result could fill the context. On both loops a cut output now
   ends with `[cut: N of M chars; read it in parts]`, so the model knows it didn't get it all (the chat loop cut it
   silently); the tool row shows the same text.
+
+Update with `chi update` (mcp 0.6.0; it also rebuilds the desktop helper for the new row).
 
 ## [0.37.0] - 2026-10-07
 
@@ -1838,7 +1842,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/dm1try/samagotchi/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/dm1try/samagotchi/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/dm1try/samagotchi/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/dm1try/samagotchi/compare/v0.34.0...v0.35.0
