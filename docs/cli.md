@@ -861,7 +861,11 @@ Behavior notes:
 - Cancellation returns control to the prompt immediately; what you typed there stays.
 - The turn ends with one line, `■ turn canceled (Ctrl-C) · 3.1s` (`■`, a stop someone chose, in amber), and for a prompt turn a dim
   `partial progress kept; !rollback restores the pre-turn state` under it (a canceled continue is back where it
-  started). A failed turn ends with `✕ turn failed: <summary> · 2.0s` and a dim `prompt restored for retry`. The
+  started). A failed turn ends with `✕ turn failed: <summary> · 2.0s` and a dim `prompt restored for retry` when it
+  failed before it got anywhere, or on a context overflow (the conversation goes back to before it); one that got to
+  tool steps keeps them, as a cancel does, with the dim `partial progress kept; !rollback restores the pre-turn state`
+  (the model reads a note saying how many steps ran and why it stopped; `chi send --wait` and a delegating parent
+  read `the turn failed after N tool steps: <why>; its work so far stays`). The
   REPL and attached mode say the same; the web says `■ canceled (Ctrl-C)` (`stopped` for its Stop button,
   `by a hook` for a hook's). A turn a bundle's plugin stopped names it: `■ turn stopped by loop-guard` (the web:
   `■ stopped by loop-guard`).

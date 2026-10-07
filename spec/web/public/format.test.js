@@ -101,6 +101,13 @@ test("failedTurnText shows the error's one-line summary, else its message and cl
   assert.equal(failedTurnText({}), "✕ turn failed: error");
 });
 
+test("failedTurnText says a failed turn's work stayed (kept_steps)", async () => {
+  const { failedTurnText } = await import("../../../lib/samagotchi/web/public/format.js");
+  const kept = "; partial progress kept (!rollback restores the pre-turn state)";
+  assert.equal(failedTurnText({ summary: "out of credits on host or", kept_steps: 3 }), `✕ turn failed: out of credits on host or${kept}`);
+  assert.equal(failedTurnText({ summary: "server error", kept_steps: 0 }), `✕ turn failed: server error${kept}`);
+});
+
 test("modelLabel shows the served model with a marker when the server serves another one", () => {
   assert.deepEqual(
     modelLabel("unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M", "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M", "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M"),

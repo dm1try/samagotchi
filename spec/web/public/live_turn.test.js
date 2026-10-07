@@ -38,7 +38,7 @@ test("releaseDisplay finishes the answer_display wait once", () => {
   assert.equal(liveTurn.displayPending, null);
 });
 
-test("forget: the timing line and its turn id, the merge flags and the display wait go; running and the turn count stay", () => {
+test("forget: the timing line and its turn id, the merge flags, a failed line and the display wait go; running and the turn count stay", () => {
   const { liveTurn, page } = setup();
   let finished = false;
   liveTurn.running = true;
@@ -47,7 +47,9 @@ test("forget: the timing line and its turn id, the merge flags and the display w
   liveTurn.unmatchedMerge = "report";
   liveTurn.wakeStart = true;
   liveTurn.displayPending = { finish: () => { finished = true; } };
+  liveTurn.failedText = "✕ turn failed: boom";
   liveTurn.forget();
+  assert.equal(liveTurn.failedText, null);
   assert.equal(liveTurn.timing.el, null);
   assert.equal(liveTurn.timing.turnId, null);
   assert.equal(page.timers.size, 0);
