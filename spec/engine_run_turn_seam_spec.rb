@@ -384,8 +384,62 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
       expect(session.messages.first(4)).to eq(partial)
       expect(session.messages.last).to eq({ role: "system", kind: "turn_note",
-                                            content: "[SYSTEM: the previous turn failed before any answer: boom. The user's last message was not answered.]" })
+                                            content: "[SYSTEM: the previous turn failed after 1 tool step: boom. Its work so far " \
+                                                     "(tool calls, file changes) stays; the user's last message is not answered yet.]" })
+      expect(error.kept_steps).to eq(1)
       expect(session).to have_received(:save)
+    end
+
+    it "counts only the steps this turn added, and none when it failed at its first request" do
+      session.messages = [{ role: "user", content: "old" }, { role: "model", content: "calling" },
+                          { role: "tool_response", content: "old result" }, { role: "model", content: "done" }]
+      first_request = nil
+      allow(kernel).to receive(:run) do |messages, **|
+        first_request = Samagotchi::LLM::FailedTurn.attach(RuntimeError.new("boom"), messages.map(&:dup))
+        raise first_request
+      end
+      allow(session).to receive(:save)
+
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+
+      expect(first_request.kept_steps).to be_nil
+      expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn failed before any answer: boom.")
+    end
+
+    it "counts no step for a model message alone (a recovery nudge's, an unfinished call's)" do
+      error = nil
+      allow(kernel).to receive(:run) do |messages, **|
+        tail = [{ role: "model", content: "<tool_call>{\"name\": \"read\"" }, { role: "user", content: "finish the call" }]
+        error = Samagotchi::LLM::FailedTurn.attach(RuntimeError.new("boom"), messages.map(&:dup) + tail)
+        raise error
+      end
+      allow(session).to receive(:save)
+
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+
+      expect(error.kept_steps).to be_nil
+      expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn failed before any answer: boom.")
+    end
+
+    it "doesn't mark a context overflow's steps kept (the UIs roll it back), though its note counts them" do
+      error = nil
+      events = []
+      allow(kernel).to receive(:run) do |messages, **|
+        overflow = Samagotchi::LLM::BadRequest.new("main: HTTP 400: exceeds the context", host: "main", status: 400,
+                                                                                            context_overflow: true)
+        tail = [{ role: "model", content: "calling" }, { role: "tool_response", content: "[execute]\nok" }]
+        error = Samagotchi::LLM::FailedTurn.attach(overflow, messages.map(&:dup) + tail)
+        raise error
+      end
+      allow(session).to receive(:save)
+
+      expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(Samagotchi::LLM::BadRequest)
+
+      expect(error.kept_steps).to be_nil
+      expect(Samagotchi::LLM::FailedTurn.kept_steps(error)).to be_nil
+      expect(events.last).to include(type: :turn_failed, error_kind: :bad_request)
+      expect(events.last).not_to have_key(:kept_steps)
+      expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn failed after 1 tool step: the conversation is too long")
     end
 
     it "keeps at least the prompt when the loop hands nothing back" do

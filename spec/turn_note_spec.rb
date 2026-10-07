@@ -71,6 +71,24 @@ RSpec.describe Samagotchi::TurnNote do
                                        "chi keeps the report and brings it again with the user's next message.]")
   end
 
+  it "says a failed turn's work stays, with the tool steps it got to" do
+    note = described_class.failed("out of credits\non host or", steps: 3)
+    expect(note[:content]).to eq("[SYSTEM: the previous turn failed after 3 tool steps: out of credits on host or. " \
+                                 "Its work so far (tool calls, file changes) stays; the user's last message is not answered yet.]")
+    expect(described_class.failed("HTTP 500", steps: 1)[:content]).to include("failed after 1 tool step: HTTP 500.")
+    expect(described_class.failed("HTTP 500", steps: 2, continued: true)[:content]).to end_with("stays; the continued turn stopped there.]")
+    expect(described_class.failed("HTTP 500", steps: 2, continued: true, wake: "a delegate's report")[:content])
+      .to end_with("stays; the wake turn for a delegate's report stopped there; chi starts no other wake turn until the user writes.]")
+  end
+
+  it "says a restored prompt went back to the user, whatever steps were counted" do
+    expect(described_class.failed("HTTP 500", restored: true, steps: 2)[:content]).to start_with("[SYSTEM: the previous turn failed before any answer")
+  end
+
+  it "keeps a kept failure's note out of restored_failure (no prompt went back)" do
+    expect(described_class.restored_failure([described_class.failed("HTTP 500", steps: 2)])).to be_nil
+  end
+
   it "says a restored prompt went back to the user" do
     expect(described_class.failed("HTTP 500", restored: true)[:content]).to end_with("The message went back to the user, who may send it again.]")
   end

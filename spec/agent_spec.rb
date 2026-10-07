@@ -686,6 +686,23 @@ file2.rb")
       expect(saved.messages).to include(include(role: "user", content: "hi"))
     end
 
+    it "says in the note that a failed -p --non-interactive turn's tool steps stay" do
+      calls = 0
+      allow(client).to receive(:complete) do
+        calls += 1
+        next %(<|tool_call>call:execute{command: "true"}<tool_call|>) if calls == 1
+
+        raise Samagotchi::LLM::ServerError.new("boom", host: "h")
+      end
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
+
+      expect { expect { agent.run }.not_to output.to_stdout }.to output(/Error: /).to_stderr
+
+      saved = Samagotchi::Session.load(agent.engine.session.id).messages
+      expect(saved.map { |m| m[:role] }.last(4)).to eq(%w[user model tool_response system])
+      expect(saved.last[:content]).to include("failed after 1 tool step").and include("Its work so far (tool calls, file changes) stays")
+    end
+
     # Scenario 7: --non-interactive with no -p is a harmless no-op exit.
     it "exits without building a session or entering the REPL for --non-interactive with no prompt" do
       expect(client).not_to receive(:complete)

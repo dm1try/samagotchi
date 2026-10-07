@@ -1948,20 +1948,30 @@ module Samagotchi
 
     # A failure keeps the loop's partial conversation (else the turn's
     # messages so far) with a failed note; nil when the turn never reached
-    # the model. The model reads why on its next turn (a UI that rolls the
-    # turn back leaves its own note, TurnFlow#prompt_turn_failed).
+    # the model. The model reads why on its next turn. A turn that got to
+    # tool results (LLM::FailedTurn.progress) says so in the note; on the
+    # error (kept_steps) too unless it failed in a way that rolls back
+    # (FailedTurn.keeps_work?: a context overflow). The UIs keep a marked
+    # turn (TurnFlow#prompt_turn_failed), and roll back the others, with a
+    # note of their own; -p --non-interactive keeps what this keeps.
     def failed_messages(turn, error)
       kept = error.respond_to?(:partial_conversation) && error.partial_conversation.is_a?(Array) ? error.partial_conversation : turn.messages
       return nil unless kept
 
+      steps = LLM::FailedTurn.progress(turn.session.messages, kept)
+      error.kept_steps = steps if steps && error.is_a?(LLM::FailedTurn) && LLM::FailedTurn.keeps_work?(error)
       summary = error.respond_to?(:summary) ? error.summary : error.message
-      TurnNote.replace_trailing(kept, TurnNote.failed(summary, continued: turn.continue))
+      TurnNote.replace_trailing(kept, TurnNote.failed(summary, continued: turn.continue, steps: steps))
     end
     private :failed_messages
 
+    # Called after #failed_messages, which marks the error's kept steps.
     def failed_event(error, seconds)
       failed = { type: :turn_failed, error_class: error.class.name, message: error.message,
                  duration_ms: (seconds * 1000).round }
+      # Its work stays: the UIs say so, as after a cancel.
+      steps = LLM::FailedTurn.kept_steps(error)
+      failed[:kept_steps] = steps if steps
       # A provider error says what kind it is, for one line per kind in the UIs.
       if error.is_a?(LLM::ProviderError)
         failed.merge!(error_kind: error.kind, retryable: error.retryable?, host: error.host, summary: error.summary)

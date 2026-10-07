@@ -268,8 +268,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(raised).to equal(error)
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected
                               replace! turn_failed save persist])
-    expect(tail).to eq(["model:calling", "tool_response:ok", "system:[SYSTEM: the previous turn failed before any"])
-    expect(failed).to include(error_class: "Samagotchi::LLM::RateLimited", error_kind: :rate_limited, host: "fw")
+    expect(tail).to eq(["model:calling", "tool_response:ok", "system:[SYSTEM: the previous turn failed after 1 to"])
+    expect(failed).to include(error_class: "Samagotchi::LLM::RateLimited", error_kind: :rate_limited, host: "fw", kept_steps: 1)
+    expect(error.kept_steps).to eq(1)
     expect(at_end).to eq(status: "idle", outcome: "failed")
     expect_released
   end

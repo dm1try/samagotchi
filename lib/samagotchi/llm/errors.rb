@@ -429,7 +429,12 @@ module Samagotchi
     # streamed reply is not kept), so the caller can keep it, as a cancel's
     # salvage does.
     module FailedTurn
-      attr_accessor :partial_conversation
+      # +kept_steps+: set by the Engine when the turn's work stays
+      # (Engine#failed_messages): the tool results it got to; nil when it
+      # got to none, or failed in a way that rolls it back (#keeps_work?).
+      attr_accessor :partial_conversation, :kept_steps
+
+      TOOL_ROLES = %w[tool_response tool].freeze
 
       # The innermost loop's conversation wins.
       # @return [Exception] +error+
@@ -438,6 +443,33 @@ module Samagotchi
         error.partial_conversation ||= conversation
         error
       end
+
+      # What a failed turn got to: +after+ (the conversation it leaves)
+      # against +before+ (the session's before it). A turn that added tool
+      # results did work worth keeping: its tool calls ran (files may have
+      # changed), and dropping them would leave the model blind to that. A
+      # model message alone isn't (a recovery nudge's, an unfinished
+      # call's). Counted by role, so notes that came meanwhile, the system
+      # head and reminders don't count.
+      # @return [Integer, nil] the tool results it added, or nil for none
+      def self.progress(before, after)
+        steps = count(after, TOOL_ROLES) - count(before, TOOL_ROLES)
+        steps.positive? ? steps : nil
+      end
+
+      # Whether a turn +error+ ended may keep its work. Not a context
+      # overflow: kept, the conversation would stay over the window, every
+      # later prompt failing the same way; it is rolled back, its prompt
+      # handed back, as before.
+      def self.keeps_work?(error) = !(error.respond_to?(:context_overflow?) && error.context_overflow?)
+
+      # The steps the session kept of the turn +error+ ended, or nil.
+      def self.kept_steps(error) = error.is_a?(self) && keeps_work?(error) ? error.kept_steps : nil
+
+      def self.count(messages, roles)
+        Array(messages).count { |m| roles.include?((m[:role] || m["role"]).to_s) }
+      end
+      private_class_method :count
     end
   end
 end

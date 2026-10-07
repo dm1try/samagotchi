@@ -41,7 +41,12 @@ module Samagotchi
     #   wrote nothing, and wakes pause until they do
     # @param kept [String, nil] what becomes of the wake's news, after
     #   that (a delegate report's rings stay for the user's next turn)
-    def failed(summary, restored: false, continued: false, wake: nil, kept: nil)
+    # @param steps [Integer, nil] the turn's work stays in the conversation
+    #   (LLM::FailedTurn.progress): the tool results it got to. Not with
+    #   +restored+, which took the turn out.
+    def failed(summary, restored: false, continued: false, wake: nil, kept: nil, steps: nil)
+      return failed_after(summary, steps, continued: continued, wake: wake) if steps && !restored
+
       tail = if restored then RESTORED
              elsif wake
                "The wake turn for #{one_line(wake)} was not answered; chi starts no other wake turn until the user writes." +
@@ -50,6 +55,20 @@ module Samagotchi
              else "The user's last message was not answered."
              end
       message("#{FAILED}#{one_line(summary)}. #{tail}")
+    end
+
+    # A turn that failed partway, its work kept: "the previous turn failed
+    # after 3 tool steps: <why>. Its work so far (tool calls, file changes)
+    # stays; …".
+    def failed_after(summary, steps, continued: false, wake: nil)
+      at = "after #{steps} tool step#{"s" if steps != 1}"
+      tail = if wake
+               "the wake turn for #{one_line(wake)} stopped there; chi starts no other wake turn until the user writes."
+             elsif continued then "the continued turn stopped there."
+             else
+               "the user's last message is not answered yet."
+             end
+      message("the previous turn failed #{at}: #{one_line(summary)}. Its work so far (tool calls, file changes) stays; #{tail}")
     end
 
     # @param reason [Symbol, String, nil] the cancel reason (:ctrl_c, :user…)
