@@ -54,14 +54,19 @@ The proxies are the context-edit spike's (lexical and lenient: a basename mentio
 - `none`: nothing changes. The base.
 - `forget_all`: at the turn's end, forget every output in context with an empty note. The spike's base rate; about
   what a model told "free context now" does.
-- `stale` (P2) and `forget_outputs` (P4): slots. They print "not built yet" until their phase adds them to
+- `stale`: chi's own stale layer (`Samagotchi::LLMContextStale`) as chi runs it: each read a later read covering its
+  lines superseded is stubbed from the request after that read (chi applies it at the next request), so a case's
+  numbers count every stub since the session began. An edit or write of the file supersedes nothing, nor does a read
+  that came back as a preview or cut. A relative
+  path is taken against the session's working directory.
+- `forget_outputs` (P4): a slot. It prints "not built yet" until its phase adds it to
   `LLMContextBench::Strategies`; a strategy answers `#plans(kase)` with `Plan`s of `PlannedEdit`s (the output id, the
   edit kind, the note, the request it first reaches), and the scorer and the report take it as is.
 - `--picks LABEL=DIR`: model picks recorded as responses, one file per pick, `<case>.<variant>.json` (the spike's
   `out/<model>/` files, or what `--live` saves). The variant is the row's policy, the label its model.
 
 ```sh
-ruby script/llm_context_bench.rb "$SESSIONS" --strategy none,forget_all --per-case
+ruby script/llm_context_bench.rb "$SESSIONS" --strategy none,forget_all,stale --per-case
 ruby script/llm_context_bench.rb "$SESSIONS" --picks deepseek=picks/deepseek --picks splash=picks/splash --json
 ```
 
