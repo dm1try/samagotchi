@@ -15,6 +15,12 @@ RSpec.describe "task tools" do
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
         example.run
+      ensure
+        # A task still running writes its exit_code into dir as it ends:
+        # stop it before mktmpdir removes dir (ENOTEMPTY otherwise).
+        Samagotchi::Tools::TaskRuntime.list_records.each do |record|
+          Samagotchi::Tools::TaskRuntime.stop_task(record["id"], by: "model")
+        end
       end
     end
   end

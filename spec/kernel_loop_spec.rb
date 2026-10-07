@@ -1357,6 +1357,10 @@ Need to inspect the filesystem first.
           expect(result.output).to eq("done")
           expect(event[:action]).to eq("starting background task")
           expect(event[:params]).to include("command=")
+        ensure
+          # The task writes its exit_code into dir: let it end before
+          # mktmpdir removes dir (ENOTEMPTY otherwise).
+          wait_until(timeout: 10) { Samagotchi::Tools::TaskRuntime.list_records.none? { |record| record["status"] == "running" } }
         end
       end
     end
