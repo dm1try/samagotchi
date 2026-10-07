@@ -15,8 +15,17 @@ module Samagotchi
     class ContextRead
       NAME = "context_read"
       DEFAULT_MAX_CHARS = 10_000
-      # Room for the header and the paging line inside the cap.
-      HEADER_ROOM = 1_000
+      # The smallest cap it pages to (a smaller one is taken as this).
+      MIN_CHARS = 2_000
+      # What the kernel puts before the output ("[context_read]\n"), and
+      # ToolRunner counts in the same cap: a page that fits never gets the
+      # runner's cut on top of its own paging.
+      PREFIX_ROOM = "[#{NAME}]\n".length
+      # Between the header and the page.
+      SEPARATOR = "\n---\n"
+      # A page's text at least, whatever the header takes (a header over
+      # the cap is the runner's to cut).
+      MIN_PAGE_CHARS = 200
 
       def self.name = NAME
 
@@ -44,7 +53,7 @@ module Samagotchi
         # (specs, a bare kernel) has only its folder.
         root = peers.respond_to?(:project_root) ? peers.project_root : ProjectScope.root_for(peers.cwd)
         @attached = ContextSources.attached(peers.session_id, project_root: root, state_dir: @state_dir)
-        @max_chars = [max_chars.to_i, HEADER_ROOM * 2].max
+        @max_chars = [max_chars.to_i, MIN_CHARS].max
         @now = now
       end
 
@@ -97,7 +106,7 @@ module Samagotchi
 
         page = lines[(first - 1)..] || []
         page = page.first(positive(limit)) if positive(limit)
-        page = fit(page)
+        page = fit(page, room: room(header, lines.size))
         last = first + page.size - 1
         @own.update_subscription(attached.name) { |sub| sub.with(read: snapshot.revision) }
 
@@ -105,7 +114,7 @@ module Samagotchi
           more = last < lines.size ? " Pass offset: #{last + 1} for more." : ""
           header << "Lines #{first}-#{last} of #{lines.size}.#{more}"
         end
-        "#{header.join("\n")}\n---\n#{page.join}"
+        "#{header.join("\n")}#{SEPARATOR}#{page.join}"
       end
 
       def header_lines(attached, snapshot)
@@ -119,16 +128,24 @@ module Samagotchi
         header
       end
 
-      # The lines that fit in the cap (at least one, cut when that one is
-      # longer than the cap).
-      def fit(lines)
-        budget = @max_chars - HEADER_ROOM
+      # What the output takes besides the page: the kernel's prefix, the
+      # header, its paging line at its longest (every number +count+) and
+      # the separator.
+      def room(header, count)
+        paging = "\nLines #{count}-#{count} of #{count}. Pass offset: #{count} for more."
+        PREFIX_ROOM + header.join("\n").length + paging.length + SEPARATOR.length
+      end
+
+      # The lines that fit in the cap beside +room+ (at least one, cut,
+      # its "…\n" included, when that one is longer).
+      def fit(lines, room:)
+        budget = [@max_chars - room, MIN_PAGE_CHARS].max
         taken = []
         used = 0
         lines.each do |line|
           break if used + line.length > budget && taken.any?
 
-          taken << (line.length > budget ? "#{line[0, budget]}…\n" : line)
+          taken << (line.length > budget ? "#{line[0, budget - 2]}…\n" : line)
           used += line.length
         end
         taken

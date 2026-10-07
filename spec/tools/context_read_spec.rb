@@ -68,14 +68,30 @@ RSpec.describe Samagotchi::Tools::ContextRead do
     push(own, "log", (1..100).map { |i| "#{"x" * 40} #{i}\n" }.join)
 
     first = described_class.call("log", peers: peers, now: now, max_chars: 3_000)
-    expect(first).to include("Lines 1-45 of 100. Pass offset: 46 for more.")
-    expect(first.length).to be <= 3_000
+    expect(first).to include("Lines 1-65 of 100. Pass offset: 66 for more.")
+    expect("[context_read]\n#{first}".length).to be <= 3_000
 
     page = call("log", offset: "95", limit: 3)
     expect(page).to include("Lines 95-97 of 100. Pass offset: 98 for more.")
     expect(page).to end_with("x 95\n#{"x" * 40} 96\n#{"x" * 40} 97\n")
     expect(call("log", offset: 99)).to include("Lines 99-100 of 100.\n")
     expect(call("log", offset: 101)).to include("The text has 100 lines; offset 101 is past its end.")
+  end
+
+  # ToolRunner caps the kernel's output ("[context_read]\n" and this) at
+  # the same max_tool_output_chars: a page that fits it never gets the
+  # runner's cut too (lines lost behind "Pass offset", two markers).
+  it "fits a page with a long header, and a line longer than the cap, within the cap with the kernel's prefix" do
+    add(own, "log", why: "w" * 900, hint: "h" * 100)
+    push(own, "log", (1..100).map { |i| "#{"x" * 40} #{i}\n" }.join, summary: "s" * 200)
+    add(own, "wide")
+    push(own, "wide", "y" * 5_000)
+
+    [call("log", max_chars: 3_000), call("log", offset: 40, max_chars: 3_000), call("wide", max_chars: 3_000)].each do |text|
+      expect("[context_read]\n#{text}".length).to be <= 3_000
+    end
+    expect(call("log", max_chars: 3_000)).to match(/Lines 1-\d+ of 100\. Pass offset: \d+ for more\./)
+    expect(call("wide", max_chars: 3_000)).to end_with("y…\n")
   end
 
   it "says a source has no text yet, with its last error" do
