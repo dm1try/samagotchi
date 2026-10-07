@@ -184,6 +184,9 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--profile NAME` | Prompt profile (`qwen36` or `gemma4`) for every model in this run, over config and the server's template (same as `--model-profile`, env `SAMAGOTCHI_MODEL_PROFILE`). See "Prompt profile" in configuration.md. |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable; a comma list too). Merged under the config.yml `memories:` baseline. Works attached: the list is stored on the session, so its worker builds the same prompt on every respawn. |
 | `--mute NAME` | Hide a memory from this session (repeatable; a comma list too): its index line is not in the prompt, `memory_read` refuses it, the identity auto-load skips it, and it is dropped from the preloads (config baseline or `--memory`). A name matches in both scopes (`gh-helper`, `project/gh-helper` and `gh-helper.md` all hide `gh-helper`). Nothing on disk changes. See [Muting a memory](#muting-a-memory). |
+| `--llm-context LAYERS` | This session's own LLM context strategy: `none`, or layers such as `stale` or `stale,forget` (comma, space or `\|` separated). Saved in the session, before the model's `llm_context_strategy`. With `--resume` it is set on the resumed session; on an attached or resumed worker it runs as `/llm-context` before the first prompt (after `--model`'s `/model`). A value that isn't one is an error before anything starts. See "LLM context: a session's own strategy" in configuration.md. |
+| `--llm-context-apply RULE` | This session's own apply rule: `payoff`, `next_request` or `turn_end`. |
+| `--llm-context-budget TOKENS` | This session's own context budget: `64000`, `64k` (4k to 10M), or `off` (wins over the model's budget). |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
 | `-v`, `--verbose` | Log at debug level (raw LLM responses, tool call/result payloads) and print every log record to stderr too. |
@@ -436,6 +439,22 @@ reply without server token counts or a non-streamed one. A delegated child
 keeps its own numbers: a parent's tokens and cost leave them out. `/recap` is in
 [Session recap](#session-recap), `/model` and `/models` in [Runtime Model
 Switch](#runtime-model-switch-assist-mode).
+
+`/llm-context` shows the LLM context strategy, apply rule and budget the next
+turn runs under, each with where it came from (`the session`, `models: <key>`,
+`hosts entry '<name>'`, `llm_context.*`), and the session's own values.
+`/llm-context strategy <none|stale|stale,forget> apply <payoff|next_request|turn_end>
+budget <tokens|64k|off>` sets the session's own (any of the three, in one line;
+`default` unsets one), and `/llm-context reset` unsets them all. A change is
+saved with the session and applies from the next turn's start; the reply says
+what it costs: `forget` on or off re-reads the whole prompt once, `stale` turned
+on stages the reads already superseded as one batch under the apply rule, and a
+layer turned off sends its stubs whole again (turning it back on brings them
+back). It runs between turns (a worker answers `busy` mid-turn). `/stats` shows
+the same values on its `llm context:` line. The web's info bar shows them as the
+`llm ctx` chip (`llm ctx stale,forget · session`), whose popover sets them
+through `/llm-context`. See "LLM context: a session's own strategy" in
+[configuration.md](configuration.md).
 
 ### Typing during a turn
 
