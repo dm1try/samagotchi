@@ -173,6 +173,10 @@ module Samagotchi
 
           return remove(entry_name, scope)
         end
+        if entry_name.include?(",")
+          return "Error: invalid memory name '#{entry_name}': no commas (memory_read reads a comma list of names); " \
+                 "use '#{entry_name.tr(",", "_")}'"
+        end
         return dotted_model_note_error(entry_name) if dotted_model_note?(entry_name)
         if (error = model_note_body_error(entry_name, body, current_model_only))
           return error

@@ -199,6 +199,14 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     end
   end
 
+  describe "names with a comma" do
+    it "refuses them (memory_read would read them as two names) and writes nothing" do
+      expect(described_class.call("x", path: "a,b", scope: "system"))
+        .to eq("Error: invalid memory name 'a,b': no commas (memory_read reads a comma list of names); use 'a_b'")
+      expect(Dir.children(system_memories_dir)).to eq([])
+    end
+  end
+
   describe "model note names" do
     it "refuses a dotted model_notes_ name (it would read as a model overlay) and writes nothing" do
       result = described_class.call("models: *\nx", path: "model_notes_qwen3.6", scope: "system")
