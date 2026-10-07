@@ -3,6 +3,7 @@
 require_relative "output_formatter"
 require_relative "turn_note"
 require_relative "context_note"
+require_relative "llm/errors"
 
 module Samagotchi
   # The state around turns that the REPL and a session worker share, kept out
@@ -95,17 +96,44 @@ module Samagotchi
       end
     end
 
-    # A prompt turn failed: back to the conversation before it, plus the
-    # note that says so (TurnNote.failed) in place of an older one at the
-    # tail, so the model reads why its last message went unanswered.
-    def prompt_turn_failed(note: nil)
-      if @checkpoint
-        restore(@checkpoint, note: note)
-      elsif note
-        @engine.rollback_to(TurnNote.replace_trailing(@engine.messages_checkpoint, note))
-      end
+    # A prompt turn (or a wake turn) failed. One that got somewhere (the
+    # Engine kept its tool results: LLM::FailedTurn.kept_steps, never for
+    # a context overflow) stays, as after a cancel: its tool calls ran, and
+    # the model must see what they did. The checkpoint stays for !rollback, and
+    # the prompt is answered by what the turn did, so it doesn't go back to
+    # its sender. One that got nowhere goes back to the conversation before
+    # it, and its prompt to its sender (the caller hands it back).
+    # Either way the note at the tail says why (TurnNote.failed), in place
+    # of an older one, so the model reads why its last message went
+    # unanswered.
+    # @param error [Exception, nil] what failed: its one line is the note's
+    # @param wake [String, nil] what woke the turn (TurnNote.failed's wake:)
+    # @param wake_kept [String, nil] what becomes of the wake's news when
+    #   the turn is rolled back (TurnNote.failed's kept:)
+    # @param note [Boolean] false: no note (an image that never reached the
+    #   model)
+    # @return [Symbol] :kept or :restored
+    def prompt_turn_failed(error: nil, wake: nil, wake_kept: nil, note: true)
+      summary = error && (error.respond_to?(:summary) ? error.summary : error.message)
+      steps = LLM::FailedTurn.kept_steps(error)
       @offer = nil
+      if steps
+        # The Engine's note says so already; a wake turn's says what woke it.
+        if wake && note
+          @engine.rollback_to(TurnNote.replace_trailing(@engine.messages_checkpoint,
+                                                        TurnNote.failed(summary, wake: wake, steps: steps)))
+        end
+        return :kept
+      end
+
+      failed = note && summary && TurnNote.failed(summary, restored: wake.nil?, wake: wake, kept: wake_kept)
+      if @checkpoint
+        restore(@checkpoint, note: failed)
+      elsif failed
+        @engine.rollback_to(TurnNote.replace_trailing(@engine.messages_checkpoint, failed))
+      end
       @checkpoint = nil
+      :restored
     end
 
     # Answer the offer with no (Stop): the interrupted turn stays, as

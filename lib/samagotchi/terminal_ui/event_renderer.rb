@@ -94,6 +94,8 @@ module Samagotchi
           # that couldn't be used).
           @view.finish_thinking_spinner
           @view.print_line(@view.turn_failed_line(event[:summary] || event[:message], event[:duration_ms]))
+          # Its work so far stayed (the Engine's kept_steps), as after a cancel.
+          @view.print_line(@view.turn_end_hint(Formatting::ROLLBACK_HINT)) if event[:kept_steps] && !@turn_continues
         when :guardrail_warning
           @view.print_line(self.class.load_warning_line(event))
         when :hook_notice

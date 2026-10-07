@@ -133,10 +133,19 @@ RSpec.describe Samagotchi::TurnFlow do
   end
 
   describe "#prompt_turn_failed" do
-    it "restores the pre-turn conversation and drops the checkpoint" do
-      run_prompt("go", [{ role: "tool_response", content: "partial" }])
+    # A provider error the Engine marked: the turn's work stayed in the
+    # session (kept_steps), or nothing past the prompt did (nil).
+    def failure(summary = "HTTP 500", kept_steps: nil)
+      error = Samagotchi::LLM::ServerError.new("main: #{summary}", host: "main", status: 500)
+      Samagotchi::LLM::FailedTurn.attach(error, nil).tap { |e| e.kept_steps = kept_steps }
+    end
 
-      flow.prompt_turn_failed
+    def restored_note(error) = Samagotchi::TurnNote.failed(error.summary, restored: true)
+
+    it "restores the pre-turn conversation and drops the checkpoint" do
+      run_prompt("go", [])
+
+      expect(flow.prompt_turn_failed).to eq(:restored)
 
       expect(engine.messages).to eq(before)
       expect(flow.rollback!).to be(false)
@@ -144,33 +153,94 @@ RSpec.describe Samagotchi::TurnFlow do
     end
 
     it "leaves the failure note after the restored conversation, in one rollback" do
-      run_prompt("go", [{ role: "tool_response", content: "partial" }])
-      note = Samagotchi::TurnNote.failed("HTTP 500", restored: true)
+      run_prompt("go", [])
+      error = failure
       allow(engine).to receive(:rollback_to).and_call_original
 
-      flow.prompt_turn_failed(note: note)
+      expect(flow.prompt_turn_failed(error: error)).to eq(:restored)
 
-      expect(engine.messages).to eq(before + [note])
+      expect(engine.messages).to eq(before + [restored_note(error)])
       expect(engine).to have_received(:rollback_to).once
     end
 
     it "replaces the note a previous failure left" do
-      first = Samagotchi::TurnNote.failed("HTTP 500", restored: true)
-      flow.prompt_turn_failed(note: first)
-      run_prompt("again", [{ role: "tool_response", content: "partial" }])
-      second = Samagotchi::TurnNote.failed("HTTP 503", restored: true)
+      flow.prompt_turn_failed(error: failure("HTTP 500"))
+      run_prompt("again", [])
+      second = failure("HTTP 503")
 
-      flow.prompt_turn_failed(note: second)
+      flow.prompt_turn_failed(error: second)
 
-      expect(engine.messages).to eq(before + [second])
+      expect(engine.messages).to eq(before + [restored_note(second)])
     end
 
     it "leaves the note even with no checkpoint" do
-      note = Samagotchi::TurnNote.failed("HTTP 500", restored: true)
+      error = failure
 
-      flow.prompt_turn_failed(note: note)
+      flow.prompt_turn_failed(error: error)
 
-      expect(engine.messages).to eq(before + [note])
+      expect(engine.messages).to eq(before + [restored_note(error)])
+    end
+
+    it "leaves no note when told not to (an image that never reached the model)" do
+      run_prompt("go", [])
+
+      flow.prompt_turn_failed(error: failure, note: false)
+
+      expect(engine.messages).to eq(before)
+    end
+
+    it "words a wake turn's note for what woke it, with what becomes of its news" do
+      run_prompt("go", [])
+      error = failure
+
+      flow.prompt_turn_failed(error: error, wake: "a delegate's report", wake_kept: "chi keeps the report.")
+
+      expect(engine.messages.last).to eq(Samagotchi::TurnNote.failed(error.summary, wake: "a delegate's report",
+                                                                                    kept: "chi keeps the report."))
+    end
+
+    describe "after a turn that got somewhere (the Engine kept its steps)" do
+      let(:kept_note) { Samagotchi::TurnNote.failed("server error from host main: main: HTTP 500", steps: 2) }
+      let(:steps) do
+        [{ role: "model", content: "calling" }, { role: "tool_response", content: "r1" },
+         { role: "model", content: "calling" }, { role: "tool_response", content: "r2" }, kept_note]
+      end
+
+      it "keeps the turn as the Engine left it, and the checkpoint for !rollback" do
+        run_prompt("go", steps)
+        kept = engine.messages.map(&:dup)
+        allow(engine).to receive(:rollback_to).and_call_original
+
+        expect(flow.prompt_turn_failed(error: failure(kept_steps: 2))).to eq(:kept)
+
+        expect(engine.messages).to eq(kept)
+        expect(engine).not_to have_received(:rollback_to)
+        expect(flow.awaiting_continue?).to be(false)
+        expect(flow.rollback!).to be(true)
+        expect(engine.messages).to eq(before)
+      end
+
+      it "rolls a context overflow back and restores its prompt all the same (kept, it would stay over the window)" do
+        run_prompt("go", steps)
+        overflow = Samagotchi::LLM::BadRequest.new("main: HTTP 400: too long", host: "main", status: 400, context_overflow: true)
+        error = Samagotchi::LLM::FailedTurn.attach(overflow, nil).tap { |e| e.kept_steps = 2 }
+
+        expect(flow.prompt_turn_failed(error: error)).to eq(:restored)
+
+        expect(engine.messages).to eq(before + [restored_note(error)])
+        expect(flow.rollback!).to be(false)
+      end
+
+      it "words a wake turn's note for what woke it, without the news the rollback would keep" do
+        run_prompt("go", steps)
+        error = failure(kept_steps: 2)
+
+        flow.prompt_turn_failed(error: error, wake: "a delegate's report", wake_kept: "chi keeps the report.")
+
+        expect(engine.messages.first(before.length + 5)).to eq(before + [{ role: "user", content: "go" }] + steps.first(4))
+        expect(engine.messages.last).to eq(Samagotchi::TurnNote.failed(error.summary, wake: "a delegate's report", steps: 2))
+        expect(engine.messages.last[:content]).not_to include("chi keeps the report")
+      end
     end
   end
 

@@ -45,7 +45,7 @@ module Samagotchi
     #   decided the outcome loaded it (a caller's next baseline); nil for
     #   :canceled and :timeout
     Result = Struct.new(:status, :text, :file, :question, :outcome, :limit, :error_kind, :retryable, :cancel_reason,
-                        :stopped_by, :session, keyword_init: true)
+                        :stopped_by, :kept_steps, :session, keyword_init: true)
 
     module_function
 
@@ -171,8 +171,8 @@ module Samagotchi
         return Result.new(status: :no_reply, outcome: "exhausted", limit: last["limit"], session: session)
       end
 
-      text = outcome == "failed" ? failure_summary(session.messages) : nil
-      why = fresh ? last.slice("error_kind", "retryable", "cancel_reason", "stopped_by").transform_keys(&:to_sym) : {}
+      text = outcome == "failed" ? TurnNote.failure_summary(session.messages) : nil
+      why = fresh ? last.slice("error_kind", "retryable", "cancel_reason", "stopped_by", "kept_steps").transform_keys(&:to_sym) : {}
       Result.new(status: :no_reply, outcome: outcome, text: text, session: session, **why)
     end
 
@@ -198,20 +198,6 @@ module Samagotchi
       end
     rescue ArgumentError
       session
-    end
-
-    # The summary in the failed-turn note at the conversation's tail, nil
-    # without one.
-    def failure_summary(messages)
-      list = Array(messages)
-      index = TurnNote.trailing_index(list)
-      return nil unless index
-
-      text = (list[index][:content] || list[index]["content"]).to_s
-      prefix = "#{TurnNote::OPEN}#{TurnNote::FAILED}"
-      return nil unless text.start_with?(prefix)
-
-      text[prefix.length..].sub(/\. [^.]*\.\]\z/, "")
     end
 
     # @return [Result, nil] :done with the newest reply past the cursor

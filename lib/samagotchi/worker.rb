@@ -413,10 +413,9 @@ module Samagotchi
       run_engine_turn(nil, continue: true, origin: context_wake.origin,
                            id: context_wake.turn_id, max_iterations: IterationLimit.for) do |result, error|
         if error
-          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message,
-                                 wake: "the change in attached context #{name}")
-          @turn_flow.prompt_turn_failed(note: note)
-          @inbound.unmark_wake(context_wake)
+          kept = @turn_flow.prompt_turn_failed(error: error, wake: "the change in attached context #{name}") == :kept
+          # A turn that got somewhere stays, its wake mark with it.
+          @inbound.unmark_wake(context_wake) unless kept
           @wakes.pause!
         else
           @continue_offer.after_turn(result)
@@ -510,12 +509,13 @@ module Samagotchi
       @turn_flow.before_prompt_turn
       run_engine_turn(nil, continue: true, origin: reports.first.origin, max_iterations: IterationLimit.for) do |result, error|
         if error
-          # The rings stay (settle_child_reports): the user's next turn takes them.
-          note = TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message,
-                                 wake: reports.size == 1 ? "a delegate's report" : "#{reports.size} delegate reports",
-                                 kept: "chi keeps #{reports.size == 1 ? "the report and brings it" : "the reports and brings them"} " \
-                                       "again with the user's next message.")
-          @turn_flow.prompt_turn_failed(note: note)
+          # Rolled back, the rings stay (settle_child_reports): the user's
+          # next turn takes them. A turn that got somewhere stays, and read them.
+          @turn_flow.prompt_turn_failed(
+            error: error, wake: reports.size == 1 ? "a delegate's report" : "#{reports.size} delegate reports",
+            wake_kept: "chi keeps #{reports.size == 1 ? "the report and brings it" : "the reports and brings them"} " \
+                       "again with the user's next message."
+          )
           @wakes.pause!
         else
           @continue_offer.after_turn(result)
@@ -680,15 +680,17 @@ module Samagotchi
         SessionInbox.write_output(@session_dir, response)
       end
       save_or_log(:turn) { save_session }
-      settle_child_reports(error)
+      # A failed turn whose work stayed (TurnFlow#prompt_turn_failed) read
+      # the reports it merged, as a turn that ended does.
+      settle_child_reports(rolled_back: error && !LLM::FailedTurn.kept_steps(error))
       ring_parent_after_turn
     end
 
     # The delegate reports this turn took: a kept turn moves the cursors on
-    # and deletes their rings; a failed one (rolled back) leaves the rings
-    # for the next turn.
-    def settle_child_reports(error)
-      error ? @child_reports.release : @child_reports.commit
+    # and deletes their rings; a rolled-back one leaves the rings for the
+    # next turn.
+    def settle_child_reports(rolled_back:)
+      rolled_back ? @child_reports.release : @child_reports.commit
     end
 
     # A delegate child's turn that was its parent's (#reports_to_parent?)
@@ -735,16 +737,18 @@ module Samagotchi
     # prompt it took (its own and any merged into it) goes back to its
     # sender, who can send it again. The rollback and the announcements are
     # one step of the event log: a snapshot shows the failed turn's messages
-    # or the restored ones, never the one without the other.
+    # or the restored ones, never the one without the other. A turn that
+    # got somewhere stays instead (TurnFlow#prompt_turn_failed), with the
+    # prompts it took: nothing goes back.
     # @param prompts [Array<Array(String, Hash|nil, Array|nil)>] [prompt,
     #   origin, images] (a web client gets its image chips back)
     # @param error [Exception, nil] what failed: its one line stays in the
     #   conversation as a turn note
     # Not saved here: run_engine_turn saves after its block.
     def restore_failed_turn(prompts, error: nil)
-      note = error && TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message, restored: true)
       @engine.synchronize_events do
-        @turn_flow.prompt_turn_failed(note: note)
+        next if @turn_flow.prompt_turn_failed(error: error) == :kept
+
         prompts.each do |prompt, origin, images|
           restored = { type: :prompt_restored, prompt: prompt, origin: origin }
           restored[:images] = images unless Array(images).empty?

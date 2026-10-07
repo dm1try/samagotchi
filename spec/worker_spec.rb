@@ -612,6 +612,21 @@ RSpec.describe Samagotchi::Worker do
           prompt = messages.last[:content]
           turns << [prompt, mono]
           sleep(@boom_delay) if @boom_delay && prompt == "boom"
+          if %w[steps overflow].include?(prompt)
+            # Two tool steps, then the host refuses the next request (402,
+            # or a 400 context overflow).
+            steps = [{ role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: {} }] },
+                     { role: "tool_response", content: "[execute]\nstep1", tool_call_id: "c1" },
+                     { role: "model", content: "", tool_calls: [{ id: "c2", name: "execute", arguments: {} }] },
+                     { role: "tool_response", content: "[execute]\nstep2", tool_call_id: "c2" }]
+            error = if prompt == "overflow"
+                      Samagotchi::LLM::BadRequest.new("main: HTTP 400: exceeds the context", host: "main", status: 400,
+                                                                                             context_overflow: true)
+                    else
+                      Samagotchi::LLM::OutOfCredits.new("main: HTTP 402: Insufficient credits", host: "main", status: 402)
+                    end
+            raise Samagotchi::LLM::FailedTurn.attach(error, messages.map(&:dup) + steps)
+          end
           raise Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500) unless prompt == "fine"
 
           Samagotchi::LLM::ModelResult.new(text: "FINE", conversation: messages + [{ role: "model", content: "FINE" }],
@@ -657,6 +672,58 @@ RSpec.describe Samagotchi::Worker do
         expect(next_turn&.first).to eq("fine")
         expect(wait_until { saved_messages.drop(1).grep_v(/\A\[SYSTEM: /) == %w[earlier ok fine FINE] }).to be(true)
         expect(saved_messages[3]).to start_with("[SYSTEM: the previous turn failed")
+      end
+
+      it "keeps a turn that failed after tool steps: saved with its steps, no prompt handed back, !rollback still erases it" do
+        start_worker(poll_interval: 5)
+
+        post_turn("steps")
+        expect(next_turn&.first).to eq("steps")
+        seen = []
+        expect(wait_until { (seen += drain_events).any? { |e| e[:type] == :turn_failed } }).to be(true)
+        expect(seen.find { |e| e[:type] == :turn_failed }).to include(error_kind: :credits, kept_steps: 2)
+        # The system head is the Engine's own prompt now (the turn's).
+        kept = ["earlier", "ok", "steps", "", "[execute]\nstep1", "", "[execute]\nstep2"]
+        expect(wait_until { saved_messages.drop(1).first(7) == kept && saved_messages.length == 9 }).to be(true)
+        expect(saved_messages.last).to eq("[SYSTEM: the previous turn failed after 2 tool steps: out of credits on host main: " \
+                                          "HTTP 402: Insufficient credits; add credits, then send again. Its work so far " \
+                                          "(tool calls, file changes) stays; the user's last message is not answered yet.]")
+        expect(conversation.length).to eq(9)
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_turn).to include("outcome" => "failed", "kept_steps" => 2)
+        expect(@thread).to be_alive
+
+        # The next prompt continues from the kept steps.
+        post_turn("fine")
+        expect(next_turn&.first).to eq("fine")
+        expect(wait_until { saved_messages.last == "FINE" }).to be(true)
+        expect(saved_messages.drop(1).grep_v(/\A\[SYSTEM: /)).to eq(kept + %w[fine FINE])
+        expect(seen + drain_events).to(satisfy { |events| events.none? { |e| e[:type] == :prompt_restored } })
+      end
+
+      it "rolls back a context overflow after tool steps and gives its prompt back, as before" do
+        start_worker(poll_interval: 5)
+
+        post_turn("overflow")
+        expect(next_turn&.first).to eq("overflow")
+        seen = []
+        expect(wait_until { (seen += drain_events).any? { |e| e[:type] == :prompt_restored } }).to be(true)
+        expect(seen.find { |e| e[:type] == :turn_failed }).not_to have_key(:kept_steps)
+        expect(seen.find { |e| e[:type] == :prompt_restored }).to include(prompt: "overflow")
+        expect(wait_until { saved_messages.first(3) == %w[sys earlier ok] && saved_messages.length == 4 }).to be(true)
+        expect(saved_messages.last).to include("failed before any answer: the conversation is too long")
+          .and include("went back to the user")
+      end
+
+      it "lets !rollback erase a kept failed turn" do
+        start_worker(poll_interval: 5)
+
+        post_turn("steps")
+        expect(wait_until { saved_messages.length == 9 }).to be(true)
+        port = JSON.parse(File.read(sidecar))["port"]
+        Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/command"),
+                       JSON.generate(line: "!rollback", client_id: "web:1"), "Content-Type" => "application/json")
+
+        expect(wait_until { saved_messages.drop(1) == %w[earlier ok] }).to be(true)
       end
 
       it "rolls back with the event log held, so a snapshot sees the failed turn or its restore, not half of it" do

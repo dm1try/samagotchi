@@ -154,8 +154,11 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       allow(engine).to receive(:run_turn) do |turn_session, prompt, **kwargs|
         wake_turns << [prompt, kwargs, turn_session.messages.last]
         if @fail_next
+          error = Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500)
+          # :kept: the turn got to tool steps (Engine#failed_messages marks it).
+          error = Samagotchi::LLM::FailedTurn.attach(error, nil).tap { |e| e.kept_steps = 2 } if @fail_next == :kept
           @fail_next = false
-          raise Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500)
+          raise error
         end
         result
       end
@@ -251,6 +254,24 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       expect(note).to include(context_source: "a")
       expect(note).not_to include(:turn_start, :turn_id)
       expect(note[:content]).to include("don't act on it unless your user asks you to")
+
+      push("b", "v2", wake: true)
+      expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)
+      expect(wake_turns.pop(timeout: 0.5)).to be_nil
+    end
+
+    it "keeps a failed wake turn that got to tool steps, its wake mark too, and still pauses wakes" do
+      start_worker
+      attach_seen("a")
+      attach_seen("b")
+      @fail_next = :kept
+      push("a", "v2", wake: true)
+      expect(wake_turns.pop(timeout: 3)).not_to be_nil
+      expect(wait_until { Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:kind] == "turn_note" })
+        .to be(true)
+      expect(Samagotchi::Session.load(session.id, state_dir: state_dir).messages.last[:content])
+        .to include("failed after 2 tool steps").and include("the wake turn for the change in attached context a stopped there")
+      expect(saved_context_notes.last).to include(context_source: "a", turn_start: true)
 
       push("b", "v2", wake: true)
       expect(wait_until { saved_context_notes.count { |m| m[:context_source] == "b" } == 2 }).to be(true)

@@ -152,14 +152,13 @@ module Samagotchi
         when :tool_call_started
           @iteration = event[:iteration]
           @calls = event[:call_index].to_i
-        when :turn_failed
+        # The turns that stay in the conversation (a failed one whose work
+        # stayed too); a failed one rolled back leaves none.
+        when *Events::TURN_END
           @running = false
-          settle_during(after_turn: false)
-        # The turns that stay in the conversation.
-        when *Events::TURN_KEPT
-          @running = false
-          @turns_done += 1
-          settle_during(after_turn: true)
+          kept = Events.kept_turn?(event)
+          @turns_done += 1 if kept
+          settle_during(after_turn: kept)
         when :card then add_card(event)
         when :hook_notice then add_notice(event)
         # What failed to load (guardrails, plugins): before the first turn

@@ -105,6 +105,17 @@ RSpec.describe Samagotchi::ParentReport do
     expect(json(by_user).keys).to eq(%w[status session_id cancel_reason detail])
   end
 
+  it "says a failed turn's work stayed, with its steps (kept_steps), in the detail and the report" do
+    kept = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", text: "out of credits on host or: x",
+                                             error_kind: "credits", retryable: false, kept_steps: 3)
+    expect(json(kept)).to eq("status" => "failed", "session_id" => id, "error_kind" => "credits", "retryable" => false,
+                             "kept_steps" => 3,
+                             "detail" => "the turn failed after 3 tool steps: out of credits on host or: x; its work so far stays; " \
+                                         "chi --attach #{id} shows it")
+    one = Samagotchi::ReplyWait::Result.new(status: :no_reply, outcome: "failed", kept_steps: 1)
+    expect(described_class.no_reply_line(one, id)).to eq("the turn failed after 1 tool step; its work so far stays")
+  end
+
   it "says a waiting approval is the user's to allow, a question where to open it" do
     approval_wait = Samagotchi::ReplyWait::Result.new(status: :waiting_for_answer, question: approval)
     expect(described_class.detail(approval_wait, session_id: id))

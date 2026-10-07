@@ -1158,7 +1158,9 @@ module Samagotchi
     # cancel's reason and the hook that stopped it. Only what is known.
     def stop_facts(event)
       case event&.dig(:type)
-      when :turn_failed then { "error_kind" => event[:error_kind]&.to_s, "retryable" => event[:retryable] }.compact
+      # kept_steps: the turn's work stayed (a parent must not send the task again).
+      when :turn_failed
+        { "error_kind" => event[:error_kind]&.to_s, "retryable" => event[:retryable], "kept_steps" => event[:kept_steps] }.compact
       when :turn_canceled
         { "cancel_reason" => event[:cancellation_reason]&.to_s, "stopped_by" => event[:cancelled_by]&.to_s }.compact
       else {}

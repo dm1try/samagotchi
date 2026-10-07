@@ -759,20 +759,21 @@ module Samagotchi
       rescue LLM::ProviderError, ImageStore::Error => e
         # Engine closed the turn (:turn_failed), which the renderer showed.
         # An @path image that can't be used fails the turn the same way.
-        summary = e.respond_to?(:summary) ? e.summary : e.message
         # The model reads why on its next turn. An image that couldn't be
         # used, or that the host refused, never reached it: no note for that
         # (a first turn refused that way leaves the session empty, as before).
-        note = TurnNote.failed(summary, restored: true) if e.is_a?(LLM::ProviderError) && !e.is_a?(LLM::VisionUnsupported)
-        @turn_flow.prompt_turn_failed(note: note)
+        note = e.is_a?(LLM::ProviderError) && !e.is_a?(LLM::VisionUnsupported)
+        # A turn that got somewhere stays (the renderer said so, and that
+        # !rollback erases it), as the Engine saved it: no prompt goes back.
+        kept = @turn_flow.prompt_turn_failed(error: e, note: note) == :kept
         # The Engine saved the failed turn; the file follows the rollback.
-        save_session(session) if note
+        save_session(session) if note || kept
         if piped_input?
           # Nobody can edit a restored prompt, and Reline would hand it back
           # as the next line: the turn would run again and again. It failed;
           # the exit status says so.
           @piped_turn_failed = true
-        else
+        elsif !kept
           @surface.commit(turn_end_hint(restore_prompt_for_retry(input)))
         end
         return

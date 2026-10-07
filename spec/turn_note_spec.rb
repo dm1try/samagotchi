@@ -89,6 +89,16 @@ RSpec.describe Samagotchi::TurnNote do
     expect(described_class.restored_failure([described_class.failed("HTTP 500", steps: 2)])).to be_nil
   end
 
+  it "reads the summary of either failed note at the tail, behind context notes" do
+    context = { role: "system", content: "[CONTEXT: x]" }
+    expect(described_class.failure_summary([described_class.failed("HTTP 500: a. b", steps: 2), context])).to eq("HTTP 500: a. b")
+    expect(described_class.failure_summary([described_class.failed("HTTP 500: boom", steps: 1, continued: true)])).to eq("HTTP 500: boom")
+    expect(described_class.failure_summary([described_class.failed("HTTP 500: boom", restored: true)])).to eq("HTTP 500: boom")
+    expect(described_class.failure_summary([described_class.failed("HTTP 500: boom")])).to eq("HTTP 500: boom")
+    expect(described_class.failure_summary([described_class.cancelled(:user)])).to be_nil
+    expect(described_class.failure_summary([])).to be_nil
+  end
+
   it "says a restored prompt went back to the user" do
     expect(described_class.failed("HTTP 500", restored: true)[:content]).to end_with("The message went back to the user, who may send it again.]")
   end

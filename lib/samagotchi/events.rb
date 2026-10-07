@@ -9,7 +9,8 @@ module Samagotchi
     # A turn is over: it completed, was canceled, or failed.
     TURN_END = %i[turn_completed turn_canceled turn_failed].freeze
     # Turn ends that leave the turn in the conversation: a failed turn's
-    # prompt goes back to the composer instead.
+    # prompt goes back to the composer instead, unless its work stayed
+    # (#kept_turn?).
     TURN_KEPT = %i[turn_completed turn_canceled].freeze
     # The kinds of a running turn's parts (Bridge::TurnAccumulator), which a
     # joining UI replays as live events.
@@ -19,5 +20,11 @@ module Samagotchi
     # turn, turn_events.js snapshotEvents).
     STREAM_FRAMES = %i[snapshot reset stream_closed].freeze
     SYNTHETIC = %i[merged_input].freeze
+
+    # Whether +event+ ends a turn that stays in the conversation: completed,
+    # canceled, or failed with its work kept (turn_failed's kept_steps).
+    def self.kept_turn?(event)
+      TURN_KEPT.include?(event[:type]) || (event[:type] == :turn_failed && !event[:kept_steps].nil?)
+    end
   end
 end

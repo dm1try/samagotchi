@@ -94,7 +94,7 @@ module Samagotchi
     # @return [Hash]
     def stop_facts(result)
       case status(result)
-      when "failed" then { error_kind: result.error_kind, retryable: result.retryable }.compact
+      when "failed" then { error_kind: result.error_kind, retryable: result.retryable, kept_steps: result.kept_steps }.compact
       when "canceled" then { cancel_reason: result.cancel_reason, stopped_by: result.stopped_by }.compact
       else {}
       end
@@ -242,7 +242,7 @@ module Samagotchi
 
     def no_reply_line(result, session_id = nil)
       case result.outcome
-      when "failed" then result.text.to_s.strip.empty? ? "the turn failed" : "the turn failed: #{result.text.strip}"
+      when "failed" then failed_line(result)
       when "canceled" then "the turn was canceled"
       when "completed" then "the turn ended with no visible answer"
       when "not_continued" then "the turn was not continued (Stop); its work so far stays"
@@ -251,6 +251,16 @@ module Samagotchi
           "chi send #{session_id} -m '/continue yes' continues it, a message drops it"
       else "the turn ended without a reply (canceled, failed or empty)"
       end
+    end
+
+    # A failed turn's line; one whose work stayed says so, so the task isn't
+    # sent again over what it changed.
+    def failed_line(result)
+      why = result.text.to_s.strip
+      steps = result.kept_steps
+      return why.empty? ? "the turn failed" : "the turn failed: #{why}" unless steps.is_a?(Integer)
+
+      "the turn failed after #{steps} tool step#{"s" if steps != 1}#{": #{why}" unless why.empty?}; its work so far stays"
     end
 
     def first_line(text)

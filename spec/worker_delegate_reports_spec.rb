@@ -266,6 +266,23 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       expect(wait_until { rings.empty? }).to be(true)
     end
 
+    it "commits the report a failed turn read when the turn's work stays, and hands no prompt back" do
+      allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+        child_answers("found it")
+        turns << [prompt, kwargs[:pending_input].call]
+        error = Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500)
+        # What Engine#failed_messages marks on a turn that got to tool steps.
+        raise(Samagotchi::LLM::FailedTurn.attach(error, nil).tap { |e| e.kept_steps = 2 })
+      end
+      start_worker(parent)
+      send_turn(parent, "boom", "web:tab1")
+
+      expect(next_turn.last.map(&:source)).to eq(["delegate_report"])
+      expect(wait_until { rings.empty? }).to be(true)
+      expect(cursor.reply_file).to end_with(".txt")
+      expect(drain.none? { |e| e[:type] == :prompt_restored }).to be(true)
+    end
+
     describe "idle (a wake turn)" do
       let(:max_wakes) { [10] }
       let(:wake_turns) { Queue.new }

@@ -331,6 +331,19 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
                                    "chi --attach #{idle.id} shows it\n")
   end
 
+  it "says a failed turn's work stayed (its steps and why), so the task isn't sent again" do
+    idle = make(status: "idle")
+    @on_deliver = lambda do
+      update(idle, add_message: Samagotchi::TurnNote.failed("out of credits on host or: x", steps: 3),
+                   last_turn: { "outcome" => "failed", "ended_at" => "2026-09-30T10:00:05.000+02:00", "error_kind" => "credits",
+                                "kept_steps" => 3 })
+    end
+
+    expect(run("--wait", "--timeout", "2", "-m", "x", idle.id)).to eq(1)
+    expect(err.string).to end_with("chi send: the turn failed after 3 tool steps: out of credits on host or: x; " \
+                                   "its work so far stays; chi --attach #{idle.id} shows it\n")
+  end
+
   it "sees a turn that failed before the first look with nothing new in the messages (a failure after a failure)" do
     idle = make(status: "idle")
     update(idle, add_message: Samagotchi::TurnNote.failed("earlier", restored: true),

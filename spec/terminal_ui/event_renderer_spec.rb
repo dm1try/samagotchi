@@ -294,6 +294,17 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
 
       expect(view.lines).to eq(["✕ turn failed: auth failed for host fw: set FW_KEY · 2.0s", "✕ turn failed: shot.png is too large"])
     end
+
+    it "says a failed prompt turn kept its work (kept_steps); a failed continue gets no hint" do
+      renderer.call({ type: :turn_started, prompt: "go" })
+      renderer.call({ type: :turn_failed, message: "x", summary: "out of credits on host or", kept_steps: 3, duration_ms: 2000 })
+      renderer.call({ type: :turn_started, prompt: nil, continue: true })
+      renderer.call({ type: :turn_failed, message: "x", summary: "server error", kept_steps: 1, duration_ms: 400 })
+
+      expect(view.lines).to eq(["✕ turn failed: out of credits on host or · 2.0s",
+                                "  partial progress kept; !rollback restores the pre-turn state",
+                                "✕ turn failed: server error · 400ms"])
+    end
   end
 
   it "ignores events it does not render" do

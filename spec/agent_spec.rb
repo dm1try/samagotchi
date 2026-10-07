@@ -1153,6 +1153,31 @@ file2.rb")
       expect { agent.run }.to output(/✕ turn failed: network error after 6 attempts \(host llama.cpp: Errno::ECONNREFUSED\) · .*\n  prompt restored for retry/).to_stdout
     end
 
+    # The native loop hands back its completed tool step on the error
+    # (KernelLoop, FailedTurn); the REPL keeps it, as after a Ctrl-C.
+    it "keeps a turn that failed after a tool step: no prompt restored, the rollback hint, the steps saved" do
+      calls = 0
+      allow(client).to receive(:complete) do
+        calls += 1
+        next %(<|tool_call>call:execute{command: "true"}<tool_call|>) if calls == 1
+
+        raise Samagotchi::Client::RetryExhausted.new(attempts: 6, last_error: Errno::ECONNREFUSED.new)
+      end
+      allow(Reline).to receive(:readmultiline).and_return("run it", nil)
+
+      agent = described_class.new(client: client)
+      allow(agent).to receive(:piped_input?).and_return(false) # typed at a terminal
+      expect(agent).not_to receive(:queue_input_prefill)
+      expect { agent.run }.to output(/✕ turn failed: network error after 6 attempts .*
+  partial progress kept; !rollback restores the pre-turn state/).to_stdout
+
+      saved = Samagotchi::Session.load(agent.engine.session.id).messages
+      expect(saved.map { |m| m[:role] }.last(4)).to eq(%w[user model tool_response system])
+      expect(saved.last[:content]).to start_with("[SYSTEM: the previous turn failed after 1 tool step: network error after 6 attempts")
+      expect(agent.instance_variable_get(:@turn_flow).rollback!).to be(true)
+      expect(agent.engine.session.messages.map { |m| m[:role] }).not_to include("user")
+    end
+
     it "injects queued prefill text into the next multiline input" do
       agent = described_class.new(prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)

@@ -219,6 +219,18 @@ RSpec.describe Samagotchi::ReplyWait do
                                                        error_kind: nil)
     end
 
+    it "reads a failed turn whose work stayed: its kept_steps, and the summary from its note" do
+      baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.messages << Samagotchi::TurnNote.failed("out of credits on host or: x", steps: 2)
+      s.last_turn = { "outcome" => "failed", "ended_at" => "2026-10-04T10:00:00.000+00:00", "error_kind" => "credits",
+                      "kept_steps" => 2 }
+      s.save(state_dir: tmpdir)
+
+      expect(wait(baseline: baseline).to_h).to include(status: :no_reply, outcome: "failed", kept_steps: 2,
+                                                       text: "out of credits on host or: x")
+    end
+
     it "doesn't take why from a last_turn that ended before the wait (not the turn waited for)" do
       s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       s.last_turn = { "outcome" => "failed", "ended_at" => "2026-10-04T10:00:00.000+00:00", "error_kind" => "credits",

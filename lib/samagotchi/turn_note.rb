@@ -17,6 +17,10 @@ module Samagotchi
     OPEN = "[SYSTEM: "
     CLOSE = "]"
     FAILED = "the previous turn failed before any answer: "
+    # A failed turn whose work stayed (#failed_after): "failed after N tool
+    # steps: <why>. Its work so far … stays; …".
+    FAILED_AFTER = "the previous turn failed after "
+    KEPT_WORK = ". Its work so far (tool calls, file changes) stays; "
     RESTORED = "The message went back to the user, who may send it again."
     TASKS_LISTED = 5
     TASK_COMMAND_CHARS = 60
@@ -61,14 +65,30 @@ module Samagotchi
     # after 3 tool steps: <why>. Its work so far (tool calls, file changes)
     # stays; …".
     def failed_after(summary, steps, continued: false, wake: nil)
-      at = "after #{steps} tool step#{"s" if steps != 1}"
+      count = "#{steps} tool step#{"s" if steps != 1}"
       tail = if wake
                "the wake turn for #{one_line(wake)} stopped there; chi starts no other wake turn until the user writes."
              elsif continued then "the continued turn stopped there."
              else
                "the user's last message is not answered yet."
              end
-      message("the previous turn failed #{at}: #{one_line(summary)}. Its work so far (tool calls, file changes) stays; #{tail}")
+      message("#{FAILED_AFTER}#{count}: #{one_line(summary)}#{KEPT_WORK}#{tail}")
+    end
+
+    # The failure summary of the failed-turn note at the tail of +messages+
+    # (behind context notes at most), either kind (rolled back, or its work
+    # kept), or nil without one.
+    def failure_summary(messages)
+      list = Array(messages)
+      index = trailing_index(list)
+      return nil unless index
+
+      text = (list[index][:content] || list[index]["content"]).to_s
+      if text.start_with?("#{OPEN}#{FAILED}")
+        text["#{OPEN}#{FAILED}".length..].sub(/\. [^.]*\.\]\z/, "")
+      elsif text.start_with?("#{OPEN}#{FAILED_AFTER}") && text.include?(KEPT_WORK)
+        text[0...text.rindex(KEPT_WORK)].sub(/\A#{Regexp.escape(OPEN + FAILED_AFTER)}\d+ tool steps?: /, "")
+      end
     end
 
     # @param reason [Symbol, String, nil] the cancel reason (:ctrl_c, :user…)

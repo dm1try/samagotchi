@@ -226,6 +226,16 @@ RSpec.describe "Cards" do
       expect(store.list.first[:turns_since]).to eq(1)
     end
 
+    it "counts a failed turn whose work stayed (kept_steps) as a kept turn: its card stays with it" do
+      turn(:turn_completed)
+      turn(:turn_started)
+      store.call(card("during", in_turn: true))
+      store.call({ type: :turn_failed, kept_steps: 5 })
+      expect(store.list.first).to include(turns_since: 0, current: false)
+      turn(:turn_started, :turn_completed)
+      expect(store.list.first).to include(turns_since: 1, current: false)
+    end
+
     it "keeps a card replaced during a turn in its first place" do
       store.call(card("btw"))
       turn(:turn_started)
