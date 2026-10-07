@@ -8,12 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-07
+
 ### Added
 
-- A plugin tool's `targets:` may return `acts_as:` (the tool a call stands for), `args:` (the arguments it acts
-  with) and `label:` (what the approval question names it by): a guardrail rule's `tool:` then matches the call's own
-  name or the tool it acts as, the approval question names that tool with those arguments, and "allow this call" is keyed by both names and those arguments. It can't
-  be one of chi's own tools or another bundle's (dropped and logged). See [docs/plugins.md](docs/plugins.md#guardrails).
+- For plugin authors: a tool's `targets:` may return `acts_as:` (the tool a call stands for, like an MCP tool behind
+  a dispatcher), `args:` (the arguments it acts with) and `label:` (the name the approval question shows). A guardrail
+  rule's `tool:` then matches either name, and "allow this call" is keyed by both names and those arguments. It can't
+  name one of chi's own tools or another bundle's (dropped and logged). See [docs/plugins.md](docs/plugins.md#guardrails).
 - `chi broadcast` asks a small triage model about the sessions no tag matched, instead of skipping them: it reads the
   note and each session's scope card and answers yes or no ("model: yes (p 0.91)" when the host gives logprobs,
   graded by `broadcast.threshold`). The model is `broadcast.triage_model` (with `triage_host_ref` or
@@ -26,6 +28,8 @@ and commands may change between minor versions. How releases are made:
   rotated at 2 MiB). `chi broadcast log [--last N] [--format json]` shows the last broadcasts and who got them, and
   `chi broadcast deliver BROADCAST_ID ID...` gives one to sessions it skipped, after all. See
   [docs/broadcast.md](docs/broadcast.md#the-triage-log).
+
+Update with `chi update` (mcp 0.5.1).
 
 ## [0.36.0] - 2026-10-07
 
@@ -1801,7 +1805,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/dm1try/samagotchi/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/dm1try/samagotchi/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/dm1try/samagotchi/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/dm1try/samagotchi/compare/v0.33.0...v0.34.0
