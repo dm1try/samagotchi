@@ -76,6 +76,23 @@ RSpec.shared_context "the mcp bundle in an Engine" do
     tools[name].handler.call({ name: name, args: args }, nil)
   end
 
+  # An MCP tool through mcp_call (<server>/<tool>).
+  def mcp(tool, args = {}, server: "fake")
+    call_tool("mcp_call", { "tool" => "#{server}/#{tool}", "args" => args })
+  end
+
+  def find(query, server = nil)
+    call_tool("find_mcp_tools", { "query" => query, "server" => server }.compact)
+  end
+
+  # The mcp bundle's tools in the registry.
+  def mcp_tools = tools.entries.select { |entry| entry.source == "mcp" }.map(&:name)
+
+  # mcp_call through ToolRunner, with the session's images in +session_dir+.
+  def run_mcp(tool, args = {}, vision: nil)
+    run_tool("mcp_call", { "tool" => "fake/#{tool}", "args" => args }, vision: vision)
+  end
+
   # Through ToolRunner, with the session's images in +session_dir+.
   def run_tool(name, args = {}, vision: nil)
     kernel = engine.instance_variable_get(:@kernel)
@@ -92,10 +109,16 @@ RSpec.shared_context "the mcp bundle in an Engine" do
     @init_events.select { |e| %i[hook_notice card].include?(e[:type]) }
   end
 
-  # The tokens /mcp should estimate for these registered tools: what
-  # LLM::ChatLoop#tool_definitions sends for them, its JSON ÷ CHARS_PER_TOKEN.
-  def chat_tokens(names)
-    schemas = names.map { |name| tools[name].schema }
+  # The tokens /mcp should estimate for these tools of the server (by the
+  # server's names, from its cache): what LLM::ChatLoop#tool_definitions
+  # would send for them as tools, its JSON ÷ CHARS_PER_TOKEN.
+  def chat_tokens(names, server: "fake")
+    cache = File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "tools-#{server}.json")
+    listed = JSON.parse(File.read(cache))["tools"].select { |tool| names.include?(tool["name"]) }
+    schemas = listed.map do |tool|
+      name = "mcp_#{server}_#{tool["name"]}".downcase.gsub(/[^a-z0-9_]+/, "_").squeeze("_")
+      Samagotchi::Plugin::Api.tool_spec(name, tool["description"], schema: tool["inputSchema"]) { nil }[:schema]
+    end
     chat = Samagotchi::LLM::ChatLoop.new(kernel: Struct.new(:tools).new(Struct.new(:schemas).new(schemas)))
     chat.tool_definitions.sum { |definition| Samagotchi::TokenUsage.estimate(JSON.generate(definition)) }
   end

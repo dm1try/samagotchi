@@ -8,8 +8,10 @@
 # FAKE_MCP_MODE_FILE, when set and present, holds the mode instead (the
 # mcp bundle's cache is keyed by the env, a file changes without it).
 # FAKE_MCP_TOOLS, when set, is a file whose lines name the tools it lists
-# (read at each tools/list; the rest of TOOLS is left out). FAKE_MCP_PIDS,
-# when set, gets the process's pid at start, one per line.
+# (read at each tools/list; the rest of TOOLS is left out, and EXTRA's are
+# listed only when named there). FAKE_MCP_PIDS, when set, gets the
+# process's pid at start, one per line. FAKE_MCP_INSTRUCTIONS replaces
+# initialize's instructions (empty: none).
 require "json"
 
 $stdout.sync = true
@@ -38,6 +40,25 @@ TOOLS = [
   { name: "blob", description: "A resource carrying an image blob.", inputSchema: { type: "object", properties: {} } }
 ].freeze
 
+# Browser-like tools that share words ("page", "browser"), for the search's
+# ranking, and one whose inputSchema isn't an object. Listed only when
+# FAKE_MCP_TOOLS names them.
+EXTRA = [
+  { name: "navigate_page", description: "Go to a URL in the selected page.",
+    inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } },
+  { name: "new_page", description: "Open a new page in the browser and load a URL.",
+    inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } },
+  { name: "list_pages", description: "List the pages open in the browser.", inputSchema: { type: "object", properties: {} } },
+  { name: "handle_dialog", description: "Accept or dismiss a dialog the browser page opened.",
+    inputSchema: { type: "object", properties: { action: { type: "string", enum: %w[accept dismiss] } } } },
+  { name: "take_screenshot", description: "Take a screenshot of the page or of an element on the page.",
+    inputSchema: { type: "object", properties: { fullPage: { type: "boolean" } } } },
+  { name: "bad", description: "Its inputSchema is not an object.", inputSchema: { type: "string" } },
+  { name: "odd_prop", description: "A property schema that is a string.", inputSchema: { type: "object", properties: { a: "string" } } }
+].freeze
+
+INSTRUCTIONS = "A fake server for chi's specs. It echoes, adds and fails on request."
+
 # spec/fixtures/images/tiny.png (3×2).
 TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACAQMAAACnuvRZAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkXExgsFXZ2gAAAAAxJREFUCNdjYGBgAAAABAABJzQnCgAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0yM1QxOToyNDo0NCswMDowMGbCXVYAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMjNUMTk6MjQ6NDQrMDA6MDAXn+XqAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTIzVDE5OjI0OjQ0KzAwOjAwQIrENQAAAABJRU5ErkJggg=="
 
@@ -62,12 +83,14 @@ $stdin.each_line do |line|
 
     # A request of its own first: the client must answer it and go on.
     $stdout.puts(JSON.generate(jsonrpc: "2.0", id: "srv-1", method: "ping"))
-    reply(id, { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" } })
+    instructions = ENV.fetch("FAKE_MCP_INSTRUCTIONS", INSTRUCTIONS)
+    reply(id, { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" },
+                instructions: instructions.empty? ? nil : instructions }.compact)
   when "tools/list"
     tools = TOOLS
     if (file = ENV["FAKE_MCP_TOOLS"])
       names = File.readlines(file, chomp: true)
-      tools = TOOLS.select { |tool| names.include?(tool[:name]) }
+      tools = (TOOLS + EXTRA).select { |tool| names.include?(tool[:name]) }
     end
     # Two pages.
     if message.dig("params", "cursor")
@@ -91,6 +114,11 @@ $stdin.each_line do |line|
       $stdout.puts(JSON.generate(jsonrpc: "2.0", method: "notifications/tools/list_changed"))
       reply(id, text("changed"))
     when "path" then reply(id, text(args["path"]))
+    when "navigate_page", "new_page"
+      next reply(id, { content: [{ type: "text", text: "url must be a string" }], isError: true }) unless args["url"].is_a?(String)
+
+      reply(id, text("opened #{args["url"]}"))
+    when "take_screenshot" then reply(id, text("fullPage: #{args["fullPage"].inspect}"))
     when "blob"
       reply(id, { content: [{ type: "text", text: "here" },
                             { type: "resource", resource: { uri: "file:///shot.png", mimeType: "image/png", blob: TINY_PNG } }] })

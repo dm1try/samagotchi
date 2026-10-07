@@ -4,7 +4,7 @@ require "spec_helper"
 require_relative "../../support/mcp_bundle"
 
 # The mcp bundle's tools/list cache (start: lazy): a server's tools
-# registered from the cache, without starting it.
+# indexed from the cache, without starting it.
 RSpec.describe "The mcp bundle" do
   include_context "the mcp bundle in an Engine"
 
@@ -18,7 +18,10 @@ RSpec.describe "The mcp bundle" do
     end
 
     def spawned = File.exist?(pids_file) ? File.readlines(pids_file).size : 0
-    def mcp_tools = tools.entries.map(&:name).grep(/\Amcp_/)
+    # The fake server's tools in the index, as find_mcp_tools lists them.
+    def indexed = find("")[/^fake(?: \(.*?\))?: (.*)$/, 1].to_s.split(", ")
+    def cache_file = File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "tools-fake.json")
+    def find_description = tools["find_mcp_tools"].schema[:description]
     def cache = JSON.parse(File.read(File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "tools-fake.json")))
 
     # The next session: a new Engine on the same data dir.
@@ -43,53 +46,77 @@ RSpec.describe "The mcp bundle" do
       expect(spawned).to eq(1)
     end
 
-    it "saves the unfiltered list keyed by a digest, never the env" do
+    it "saves the unfiltered list keyed by a digest, and the instructions' first sentence, never the env" do
       expect(cache["tools"].map { |t| t["name"] }).to eq(%w[echo add slow])
+      expect(cache["info"]).to eq("A fake server for chi's specs.")
       expect(cache["digest"]).to match(/\A\h{64}\z/)
       expect(File.read(File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "tools-fake.json")))
         .not_to include(pids_file)
     end
 
-    it "registers a hit's tools without starting the server; the first call starts it" do
+    it "indexes a hit's tools without starting the server; the first call starts it" do
       next_engine
-      expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
+      expect(indexed).to eq(%w[echo add slow])
       expect(spawned).to eq(1)
-      tokens = chat_tokens(mcp_tools)
+      tokens = chat_tokens(%w[echo add slow])
       expect(mcp_card).to eq("**fake**: cached (not started), 3 tools, ~#{tokens} tokens\n- `mcp_fake_add`\n- `mcp_fake_echo`\n" \
                              "- `mcp_fake_slow`\n\nTotal: ~#{tokens} tokens of tool definitions in every request " \
                              "(estimated: their JSON as the chat API gets it, ÷ 4).")
       expect(spawned).to eq(1)
-      expect(call_tool("mcp_fake_echo", { "text" => "lazy" })).to eq("echo: lazy")
+      expect(mcp("echo", { "text" => "lazy" })).to eq("echo: lazy")
       expect(spawned).to eq(2)
-      expect(call_tool("mcp_fake_add", { "a" => 1, "b" => 2 })).to eq("3")
+      expect(mcp("add", { "a" => 1, "b" => 2 })).to eq("3")
       expect(spawned).to eq(2)
       expect(mcp_card).to start_with("**fake**: running (pid ")
       expect(engine.apply_staged_tools!).to be(false)
     end
 
-    it "replaces the tools for the next turn when the live list differs, and rewrites the cache" do
+    it "indexes the live list when it differs, rewrites the cache, and never replaces the model's tools" do
       File.write(tools_file, "echo\nfail\n")
       next_engine
-      expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
-      expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("echo: x")
+      expect(indexed).to eq(%w[echo add slow])
+      expect(mcp("echo", { "text" => "x" })).to eq("echo: x")
       expect(cache["tools"].map { |t| t["name"] }).to eq(%w[echo fail])
-      expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
-      expect(engine.apply_staged_tools!).to be(true)
-      expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_fail])
-      expect(call_tool("mcp_fake_fail")).to eq("Error: it broke")
+      expect(indexed).to eq(%w[echo fail])
+      expect(engine.apply_staged_tools!).to be(false)
+      expect(mcp("fail")).to start_with("Error: it broke\n\n")
     end
 
-    it "lists the tools again on notifications/tools/list_changed: the cache and the next turn's tools" do
+    context "with the server's description" do
+      it "names the server by it in find_mcp_tools' description, with its tool count" do
+        servers["fake"] = fake.merge("description" => "echoes and adds")
+        next_engine
+        expect(find_description).to end_with("\nServers:\n- fake: echoes and adds (3 tools)")
+      end
+    end
+
+    it "names a cached server by its instructions' first sentence, else its first tool names" do
+      next_engine
+      expect(find_description).to end_with("\nServers:\n- fake: A fake server for chi's specs. (3 tools)")
+      File.write(cache_file, JSON.generate(cache.except("info")))
+      next_engine
+      expect(find_description).to end_with("\nServers:\n- fake: tools echo, add, slow (3 tools)")
+    end
+
+    it "saves the cache when only the instructions changed" do
+      File.write(cache_file, JSON.generate(cache.merge("info" => "Old words.")))
+      next_engine
+      expect(find_description).to include("- fake: Old words. (3 tools)")
+      expect(mcp("echo", { "text" => "x" })).to eq("echo: x")
+      expect(cache["info"]).to eq("A fake server for chi's specs.")
+      expect(find_description).to include("- fake: Old words. (3 tools)") # declared once, never replaced
+    end
+
+    it "lists the tools again on notifications/tools/list_changed: the cache and the index" do
       File.write(tools_file, "echo\nadd\nslow\nchanged\n")
       next_engine
-      expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("echo: x")
-      expect(engine.apply_staged_tools!).to be(true)
+      expect(mcp("echo", { "text" => "x" })).to eq("echo: x")
       File.write(tools_file, "echo\nchanged\n")
-      expect(call_tool("mcp_fake_changed")).to eq("changed")
+      expect(mcp("changed")).to eq("changed")
       Timeout.timeout(5) { sleep(0.05) until cache["tools"].map { |t| t["name"] } == %w[echo changed] }
-      Timeout.timeout(5) { sleep(0.05) until engine.apply_staged_tools! }
-      expect(mcp_tools).to eq(%w[mcp_fake_changed mcp_fake_echo])
-      expect(call_tool("mcp_fake_echo", { "text" => "still" })).to eq("echo: still")
+      Timeout.timeout(5) { sleep(0.05) until indexed == %w[echo changed] }
+      expect(engine.apply_staged_tools!).to be(false)
+      expect(mcp("echo", { "text" => "still" })).to eq("echo: still")
       expect(spawned).to eq(2)
     end
 
@@ -109,7 +136,7 @@ RSpec.describe "The mcp bundle" do
         servers["fake"] = fake.merge("start" => "eager")
         next_engine
         expect(spawned).to eq(2)
-        expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
+        expect(indexed).to eq(%w[echo add slow])
       end
     end
 
@@ -121,22 +148,20 @@ RSpec.describe "The mcp bundle" do
       allow(engine).to receive(:active_cancel_controller) { double(cancelled?: cancel) }
       Thread.new { sleep(0.3); cancel = true }
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("Error: initialize was cancelled")
+      expect(mcp("echo", { "text" => "x" })).to eq("Error: initialize was cancelled")
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
       File.write(mode_file, "")
       cancel = false
-      expect(call_tool("mcp_fake_echo", { "text" => "again" })).to eq("echo: again")
+      expect(mcp("echo", { "text" => "again" })).to eq("echo: again")
     end
 
     context "when the cache is over a day old" do
-      let(:cache_file) { File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "tools-fake.json") }
-
       before do
         File.write(cache_file, JSON.generate(cache.merge("saved_at" => (Time.now - (25 * 3600)).utc.iso8601)))
         File.write(tools_file, "echo\n")
       end
 
-      it "still registers the cached tools; a quiet refresh lists them with a server of its own and replaces them" do
+      it "still indexes the cached tools; a quiet refresh lists them with a server of its own and replaces them" do
         next_engine
         # The refresh's server, stopped after listing; the session's isn't started.
         expect(spawned).to eq(2)
@@ -144,8 +169,8 @@ RSpec.describe "The mcp bundle" do
         expect(@init_events.map { |e| e[:type] }).not_to include(:plugin_init_started, :plugin_init_finished)
         expect(cache["tools"].map { |t| t["name"] }).to eq(%w[echo])
         expect(Time.iso8601(cache["saved_at"])).to be > Time.now - 60
-        expect(mcp_tools).to eq(%w[mcp_fake_echo])
-        expect(mcp_card).to start_with("**fake**: cached (not started), 1 tool, ~#{chat_tokens(%w[mcp_fake_echo])} tokens\n" \
+        expect(indexed).to eq(%w[echo])
+        expect(mcp_card).to start_with("**fake**: cached (not started), 1 tool, ~#{chat_tokens(%w[echo])} tokens\n" \
                                        "- `mcp_fake_echo`\n\nTotal: ")
       end
 
@@ -155,27 +180,27 @@ RSpec.describe "The mcp bundle" do
           next_engine
         end
         expect(spawned).to eq(1)
-        expect(mcp_tools).to eq(%w[mcp_fake_add mcp_fake_echo mcp_fake_slow])
+        expect(indexed).to eq(%w[echo add slow])
       end
     end
 
     %w[hang exit].each do |mode|
       context "when a cached server doesn't start (#{mode})" do
-        it "fails the first call once, answers later calls at once, and drops its tools next turn; the cache stays" do
+        it "fails the first call once, answers later calls at once, and searches say it failed; the cache stays" do
           File.write(mode_file, mode)
           next_engine
           notices = []
           engine.subscribe(observer: ->(e) { notices << e if e[:type] == :hook_notice })
-          expect(call_tool("mcp_fake_echo", { "text" => "x" })).to start_with("Error: MCP server fake didn't start: ")
+          expect(mcp("echo", { "text" => "x" })).to start_with("Error: MCP server fake didn't start: ")
           started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          expect(call_tool("mcp_fake_add", { "a" => 1, "b" => 2 })).to start_with("Error: MCP server fake didn't start: ")
+          expect(mcp("add", { "a" => 1, "b" => 2 })).to start_with("Error: MCP server fake didn't start: ")
           expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
           expect(spawned).to eq(2)
           expect(notices.map { |n| n[:text] }).to contain_exactly(
-            a_string_starting_with("MCP server fake didn't start: ").and(ending_with("its tools are left out from the next turn"))
+            a_string_starting_with("MCP server fake didn't start: ").and(ending_with("its calls fail until chi restarts"))
           )
-          expect(engine.apply_staged_tools!).to be(true)
-          expect(mcp_tools).to be_empty
+          expect(engine.apply_staged_tools!).to be(false)
+          expect(find("echo")).to include("fake/echo (failed: ")
           expect(cache["tools"].size).to eq(3)
         end
       end

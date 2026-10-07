@@ -178,9 +178,11 @@ module Samagotchi
       # down) and returns a short summary ("3 tools") or raises (the UIs
       # show a warn card). Every UI shows it running (the label) and done.
       # @param label [String] what it does, shown while it runs
-      # @param provides_tools [Boolean] it registers tools (chi.replace_tools):
-      #   a turn sent meanwhile waits for it before its first model request,
-      #   up to +timeout+; a Ctrl-C ends the wait
+      # @param provides_tools [Boolean] it provides what the plugin's tools
+      #   need (its own, or through chi.replace_tools; the mcp bundle's
+      #   index of a server's tools): a turn sent meanwhile waits for it
+      #   before its first model request, up to +timeout+; a Ctrl-C ends
+      #   the wait
       # @param quiet [Boolean] shown only if it fails (a background refresh)
       # @param timeout [Numeric, nil] seconds a turn waits for it (default 60)
       # @param failed [String, nil] the warn card's short title if it raises
