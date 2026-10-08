@@ -706,6 +706,50 @@ test("the info bar: copy chi --attach copies the full id, delete removes the ses
   await expect(page.locator("#actionBtn")).toHaveText("Start");
 });
 
+test("the start page's llm ctx chip starts the new chat under the strategy picked; it is not kept for the next one", async ({ page, script }) => {
+  script("plain");
+  const chip = page.locator("#llmContextNew");
+  await expect(chip).toHaveText("llm ctx none");
+  await expect(chip).not.toHaveClass(/\bown\b/);
+  await chip.click();
+  const pop = page.locator("#llmContextNewPopover");
+  await expect(pop.locator(".ctx-pop-kind")).toHaveText("new chat");
+  await expect(pop.locator(".llmctx-now")).toContainText("Now: none (llm_context.strategy)");
+  // A budget chi wouldn't take is said in the form; an edit clears it.
+  await pop.locator('input[name="budget"]').fill("12");
+  await pop.locator(".llmctx-set").click();
+  await expect(pop.locator(".llmctx-error")).toContainText("A budget is a number of tokens");
+  await pop.locator('input[name="budget"]').fill("");
+  await expect(pop.locator(".llmctx-error")).toBeHidden();
+  await pop.locator('select[name="strategy"]').selectOption("stale");
+  await pop.locator(".llmctx-set").click();
+  await expect(pop).toBeHidden();
+  await expect(chip).toHaveText("llm ctx stale · new chat");
+  await expect(chip).toHaveClass(/\bown\b/);
+
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  await expect(chip).toBeHidden();
+  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx stale · session");
+
+  await page.locator("#newBtn").click();
+  await expect(chip).toHaveText("llm ctx none");
+  await expect(page).not.toHaveURL(/#\/s\//);
+  await page.reload();
+  await expect(chip).toHaveText("llm ctx none");
+  await expect(chip).not.toHaveClass(/\bown\b/);
+
+  // Opening a session drops a choice made for a new chat.
+  await chip.click();
+  await pop.locator('select[name="strategy"]').selectOption("stale");
+  await pop.locator(".llmctx-set").click();
+  await expect(chip).toHaveText("llm ctx stale · new chat");
+  await page.locator("#topStrip .card[data-id]").first().click();
+  await expect(page).toHaveURL(/#\/s\//);
+  await page.locator("#newBtn").click();
+  await expect(chip).toHaveText("llm ctx none");
+});
+
 test("the info bar's llm ctx chip sets the session's own strategy through its worker, and a reload keeps it", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");

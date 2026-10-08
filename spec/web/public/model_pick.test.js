@@ -59,6 +59,13 @@ test("modelRows carries a model's configured sampling", () => {
   assert.equal(r[0].sampling, "temperature=0.6 (hosts.work)");
 });
 
+test("modelRows keeps a model's LLM context summary, and none that isn't one", () => {
+  const summary = { strategy: "stale", strategy_source: "model_setting", strategy_where: "models: q" };
+  const r = modelRows({ models: [{ name: "q", id: "q", llm_context: summary }, { name: "p", id: "p", llm_context: "stale" }] });
+  assert.deepEqual(r[0].llm_context, summary);
+  assert.equal("llm_context" in r[1], false);
+});
+
 test("modelRows puts the server's unshifted default (host nil) in the default group, shown by its name", () => {
   const r = modelRows({ default: "openrouter:x", models: [
     { name: "openrouter:x", host: null, id: "openrouter:x" },

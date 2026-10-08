@@ -102,6 +102,17 @@ test("createIdleSession sends the folder in the body when given", async () => {
   assert.deepEqual(bodies, [{ idle: true, dir: "/r" }, { idle: true }]);
 });
 
+test("createIdleSession sends llm_context only when the start page's chip set one", async () => {
+  const bodies = [];
+  const fetchImpl = (_path, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return Promise.resolve(okResponse({ id: "new" }));
+  };
+  await createIdleSession({ llm_context: { strategy: "stale", budget: "off" }, fetchImpl });
+  await createIdleSession({ llm_context: undefined, fetchImpl });
+  assert.deepEqual(bodies, [{ idle: true, llm_context: { strategy: "stale", budget: "off" } }, { idle: true }]);
+});
+
 test("createIdleSession sends the model and the preview in the body when given, not when blank", async () => {
   const bodies = [];
   const fetchImpl = (_path, opts) => {
