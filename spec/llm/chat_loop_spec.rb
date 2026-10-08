@@ -28,7 +28,9 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     kernel
   end
   let(:adapter) { FakeChatAdapter.new(FakeChatAdapter.text("hello back")) }
-  let(:backend) { described_class.new(kernel: fake_kernel, adapter: adapter) }
+  # The waits before a dropped stream's step is asked again (no real sleep).
+  let(:sleeps) { [] }
+  let(:backend) { described_class.new(kernel: fake_kernel, adapter: adapter, sleeper: ->(seconds) { sleeps << seconds }) }
   let(:events) { [] }
 
   def run(messages = [{ role: "user", content: "go" }], **options)
@@ -419,6 +421,139 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       expect(events.find { |e| e[:type] == :generation_retrying })
         .to include(iteration: 1, attempt: 1, next_delay: 0.5, error_class: "Errno::ECONNREFUSED")
+    end
+
+    describe "a generation whose stream drops mid-answer" do
+      # A RetryExhausted like LLM::HTTP raises once a stream that already
+      # showed something fails (a dropped socket, Net::ReadTimeout): see
+      # lib/samagotchi/llm/http.rb ("a retry would repeat output").
+      def dropped(last_error = Net::ReadTimeout.new("Net::ReadTimeout with #<TCPSocket>"))
+        Samagotchi::LLM::RetryExhausted.new(attempts: 1, last_error: last_error, label: "openrouter")
+      end
+
+      # A streamed answer that dies partway: deltas arrive, then the error.
+      def dropping(partial = "half an ans", error: dropped)
+        lambda do |on_delta:, **|
+          on_delta.call(content: partial, reasoning: "", payload: {})
+          raise error
+        end
+      end
+
+      it "asks again for the same step and reports it as generation_retrying" do
+        backend.adapter = FakeChatAdapter.new(dropping, text("the whole answer"))
+
+        expect(run.text).to eq("the whole answer")
+        expect(backend.adapter.requests.size).to eq(2)
+        expect(events.find { |e| e[:type] == :generation_retrying })
+          .to include(iteration: 1, attempt: 1, max_retries: 2, error_class: "Samagotchi::LLM::RetryExhausted",
+                      error_message: include("Net::ReadTimeout"))
+        # The dropped partial is not kept: only the retry's text is in the
+        # conversation, and both requests asked the same conversation.
+        expect(backend.adapter.requests.last[:messages])
+          .to eq(backend.adapter.requests.first[:messages])
+        expect(events.find { |e| e[:type] == :generation_completed }).to include(content_length: 16)
+      end
+
+      it "waits the retry backoff (retry.base_delay, doubling) before each ask-again, as next_delay" do
+        backend.adapter = FakeChatAdapter.new(dropping, dropping, text("the whole answer"))
+
+        expect(run.text).to eq("the whole answer")
+        expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:next_delay] }).to eq([0.5, 1.0])
+        expect(sleeps.sum).to be_within(0.001).of(1.5)
+      end
+
+      it "stops waiting when the turn is canceled during the backoff, and asks nothing more" do
+        controller = Samagotchi::CancellationController.new
+        backend = described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(dropping, text("never")),
+                                      sleeper: ->(_seconds) { controller.cancel! })
+
+        result = backend.complete(messages: [{ role: "user", content: "go" }], model_name: "m",
+                                  on_stream_event: ->(event) { events << event }, cancel_controller: controller)
+
+        expect(result).to be_canceled
+        expect(backend.adapter.requests.size).to eq(1)
+      end
+
+      it "fires generation_started and the before/after generation hooks once per step, not per attempt" do
+        registry = Samagotchi::Hooks::Registry.new
+        fired = []
+        registry.register(:before_generation) { |event| fired << [:before, event[:iteration]] }
+        registry.register(:after_generation) { |event| fired << [:after, event[:response]] }
+        allow(fake_kernel).to receive(:hooks).and_return(registry)
+        backend.adapter = FakeChatAdapter.new(dropping, text("ok"))
+
+        run
+
+        expect(fired).to eq([[:before, 1], [:after, "ok"]])
+        expect(events.count { |e| e[:type] == :generation_started }).to eq(1)
+      end
+
+      it "gives each step its own two ask-agains" do
+        backend.adapter = FakeChatAdapter.new(dropping, dropping, tools(["c1", "read", { "path" => "a.rb" }]),
+                                              dropping, dropping, text("after tools"))
+
+        expect(run.text).to eq("after tools")
+        expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| [e[:iteration], e[:attempt]] })
+          .to eq([[1, 1], [1, 2], [2, 1], [2, 2]])
+      end
+
+      it "gives up after two retries, failing the turn with the last error" do
+        backend.adapter = FakeChatAdapter.new(dropping)
+        error = nil
+
+        expect { run }.to raise_error(Samagotchi::LLM::RetryExhausted) { |raised| error = raised }
+
+        expect(error.summary).to include("Net::ReadTimeout")
+        expect(backend.adapter.requests.size).to eq(3)
+        expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:attempt] }).to eq([1, 2])
+      end
+
+      it "does not ask again when nothing was streamed yet, nor after a first-token timeout or a refusal" do
+        cases = {
+          nothing_streamed: ->(**) { raise dropped },
+          first_token_timeout: lambda { |on_delta:, **|
+            on_delta.call(content: "x", reasoning: "", payload: {})
+            raise Samagotchi::LLM::FirstTokenTimeout.new(limit: 120, host: "openrouter")
+          },
+          refused: lambda { |on_delta:, **|
+            on_delta.call(content: "x", reasoning: "", payload: {})
+            raise Samagotchi::LLM::ConnectionRefused.new(host: "openrouter", address: "h:443")
+          },
+          provider_status: lambda { |on_delta:, **|
+            on_delta.call(content: "x", reasoning: "", payload: {})
+            raise Samagotchi::LLM::ServerError.new("openrouter: HTTP 503: boom", host: "openrouter", status: 503,
+                                                                                 retryable: true)
+          }
+        }
+        cases.each do |name, step|
+          adapter = FakeChatAdapter.new(step)
+          loop = described_class.new(kernel: fake_kernel, adapter: adapter)
+          seen = []
+
+          expect do
+            loop.complete(messages: [{ role: "user", content: "go" }], model_name: "m",
+                          on_stream_event: ->(event) { seen << event })
+          end.to raise_error(Samagotchi::LLM::ProviderError), "expected #{name} to fail as before"
+
+          expect(adapter.requests.size).to eq(1), "expected #{name} not to be retried"
+          expect(seen.map { |event| event[:type] }).not_to include(:generation_retrying)
+        end
+      end
+
+      it "does not ask again after a cancel" do
+        controller = Samagotchi::CancellationController.new
+        backend.adapter = FakeChatAdapter.new(lambda { |on_delta:, **|
+          on_delta.call(content: "x", reasoning: "", payload: {})
+          controller.cancel!
+          raise Samagotchi::LLM::RequestCancelled, controller.reason
+        })
+
+        result = backend.complete(messages: [{ role: "user", content: "go" }], model_name: "m",
+                                  on_stream_event: ->(event) { events << event }, cancel_controller: controller)
+        expect(result).to be_canceled
+        # The retry would have hit the adapter again; only the cancel's one ran.
+        expect(backend.adapter.requests.size).to eq(1)
+      end
     end
 
     it "fires the before/after generation hooks" do

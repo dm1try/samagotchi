@@ -54,10 +54,40 @@ module Samagotchi
       #   per turn for the effective model's host
       # @param stable_length [#call, nil] text → the length of the system
       #   prompt's part every session shares (SystemPrompt#stable_length), or nil
-      def initialize(kernel:, adapter: nil, stable_length: nil)
+      # @param sleeper [#call, nil] waits the given seconds before a dropped
+      #   stream's step is asked again (specs pass one that doesn't sleep)
+      def initialize(kernel:, adapter: nil, stable_length: nil, sleeper: nil)
         @kernel = kernel
         @adapter = adapter
         @stable_length = stable_length
+        @sleeper = sleeper || ->(seconds) { sleep(seconds) }
+      end
+
+      # The seconds before the +attempt+-th ask-again of a dropped stream's
+      # step: the transport's own backoff (retry.base_delay doubling, capped
+      # at retry.max_delay; LLM::HTTP::RetryPolicy), 0 when retry.max is
+      # spent.
+      def generation_retry_delay(attempt)
+        HTTP::RetryPolicy.from_config.delay_for(attempt) || 0.0
+      rescue StandardError
+        0.0
+      end
+
+      # Waits +seconds+ in short slices, raising RequestCancelled as soon as
+      # one of +controllers+ (the turn's, the generation's) is cancelled, as
+      # LLM::HTTP's own wait between retries does.
+      def wait_retry(seconds, *controllers)
+        remaining = seconds.to_f
+        while remaining.positive?
+          cancelled = controllers.compact.find(&:cancelled?)
+          raise RequestCancelled, cancelled.reason if cancelled
+
+          slice = [remaining, 0.05].min
+          @sleeper.call(slice)
+          remaining -= slice
+        end
+        cancelled = controllers.compact.find(&:cancelled?)
+        raise RequestCancelled, cancelled.reason if cancelled
       end
 
       def provider = :chat
@@ -468,16 +498,18 @@ module Samagotchi
           @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
           streamed = +""
           thought = +""
-          response = with_generation do |generation_controller|
+          generation_controller = nil
+          response = with_generation do |controller|
+            generation_controller = controller
             begin
-              request(iteration, retry_generation, streamed, thought, generation_controller)
+              request_with_drops(iteration, retry_generation, streamed, thought, 0, controller)
             rescue BadRequest => e
               raise unless thinking_refused?(e)
 
               # Once per model: asked again without the thinking fields.
               @loop.thinking_refused!(@model_name)
               emit(type: :thinking_refused, iteration: iteration, model: @model_name, level: @loop.thinking, detail: e.detail)
-              request(iteration, retry_generation, streamed, thought, generation_controller)
+              request_with_drops(iteration, retry_generation, streamed, thought, 0, controller)
             end
           rescue RequestCancelled
             raise unless generation_controller&.cancelled? && !@cancel_controller.cancelled?
@@ -525,7 +557,7 @@ module Samagotchi
           [response, nil]
         end
 
-        def request(iteration, retry_generation, streamed, thought, generation_controller)
+        def request(iteration, retry_generation, streamed, thought, generation_controller, streamed_any = nil)
           @loop.adapter.chat(
             messages: @loop.wire_messages(@conversation), tools: @loop.tool_definitions, model: @model_name,
             cancel_controller: generation_controller || @cancel_controller, session_id: @loop.session_id,
@@ -536,11 +568,41 @@ module Samagotchi
               event = { type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,
                         thinking: reasoning, payload: payload }
               # A tool call streaming: a steer doesn't cut it (Engine#cut_for_steer).
-              event[:tool_call] = true if OpenAIChat.tool_call_delta?(payload)
+              tool_call = OpenAIChat.tool_call_delta?(payload)
+              event[:tool_call] = true if tool_call
+              streamed_any&.call if !content.to_s.empty? || !reasoning.to_s.empty? || tool_call
               emit(event)
             },
             on_retry: ->(**retry_event) { emit({ type: :generation_retrying, iteration: iteration }.merge(retry_event)) }
           )
+        end
+
+        # A dropped stream (LLM::HTTP raises RetryExhausted once a stream
+        # that already showed something fails, where a retry would repeat
+        # output) is asked again here, from the same conversation, up to
+        # MAX_STREAM_DROPS times per step, after the transport's backoff: the
+        # partial reply is dropped and the step restarts. A refusal or a
+        # first-token timeout fails as before, and a cancel (before or
+        # during the wait) never retries.
+        MAX_STREAM_DROPS = 2
+
+        # Runs one request, asking again on a mid-stream drop. +attempt+
+        # counts the drops already retried this step.
+        def request_with_drops(iteration, retry_generation, streamed, thought, attempt, generation_controller)
+          streamed_any = false
+          request(iteration, retry_generation, streamed, thought, generation_controller, -> { streamed_any = true })
+        rescue RetryExhausted => e
+          raise if attempt >= MAX_STREAM_DROPS || !streamed_any
+          raise if @cancel_controller&.cancelled? || generation_controller&.cancelled?
+
+          attempt += 1
+          streamed.clear
+          thought.clear
+          delay = @loop.generation_retry_delay(attempt)
+          emit(type: :generation_retrying, iteration: iteration, attempt: attempt, max_retries: MAX_STREAM_DROPS,
+               next_delay: delay, error_class: e.class.name, error_message: e.message, status: nil)
+          @loop.wait_retry(delay, @cancel_controller, generation_controller)
+          retry
         end
 
         # A 400 about reasoning, for a request that carried thinking fields

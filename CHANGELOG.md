@@ -30,6 +30,14 @@ and commands may change between minor versions. How releases are made:
 - The web model picker lists a host's declared ids first under it, noted `config` (the default model keeps
   `default`), with `served by config (hosts.<name>.models)` in the row's tooltip.
 
+### Fixed
+
+- A chat generation whose stream dropped mid-answer (a read timeout or a reset after deltas had shown) failed the
+  whole turn: the chat loop now drops the partial reply and asks again for the same step, from the same
+  conversation, at most twice, reporting each ask-again as `generation_retrying`, as the transport's retries do.
+  A cancel, a provider error, a first-token timeout and a connection refused still fail as before, and a step whose
+  retries run out fails the turn with the same error.
+
 ## [0.45.0] - 2026-10-08
 
 ### Added

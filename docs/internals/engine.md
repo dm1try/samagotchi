@@ -293,7 +293,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:context_status` | the window's fill crossed a bucket | `{iteration, ...}` |
 | `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source}` (native adds `profile`, `profile_source`) |
 | `:generation_chunk` | each streamed chunk | `{iteration, content, text, thinking, payload, tool_call?}` |
-| `:generation_retrying` | the transport retries the request | `{iteration, ...}` (the retry's fields) |
+| `:generation_retrying` | the transport retries the request, or the chat loop asks again for a step whose stream dropped mid-answer | `{iteration, attempt, max_retries, next_delay, error_class, error_message, status}` |
 | `:generation_completed` | a generation ended, or was cut | `{iteration, content_length, thinking_chars, served_model, requested_model, finish_reason, ...}`; a cut adds `stopped_by`, `stop_reason`; the Engine adds `speed`, `tokens` |
 | `:generation_cancelled` | the turn was cancelled mid-loop | `{iteration, reason, stopped_by}` |
 | `:empty_answer_retry` | an empty, cut or malformed answer is asked again | `{iteration, attempt, of, finish_reason, thinking_chars, stopped_by?, malformed?}` |

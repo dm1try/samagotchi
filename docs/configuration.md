@@ -730,7 +730,10 @@ Transient network failures are retried automatically with exponential backoff.
   budget, so it fails at once (lower `default.max_tokens` or raise the key's limit).
 - A refused connection (nothing listening) is not retried: the turn fails at once with `can't reach host <name> at
   <address> (connection refused) — is the server running?`.
-- A stream that has already produced output is never retried (the retry would repeat it); it fails the turn.
+- A stream that has already produced output is never retried at the transport (the retry would repeat it). The
+  chat loop (an OpenAI-compatible host) drops the partial reply and asks again for the whole step, from the same
+  conversation, at most twice, reported as a retry (`↻ retrying …`); once those run out the turn fails with the
+  error, as before. A refusal, a first-token timeout, a provider error and a cancel are never retried this way.
 - Cancellation (`Ctrl-C`) is never retried.
 
 Configuration:
