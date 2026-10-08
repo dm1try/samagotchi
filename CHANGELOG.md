@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-08
+
 ### Added
 
 - LLM context edits are visible: each batch of stubs that reaches the prompt gets a ✂ row in its step, in the web
@@ -2024,7 +2026,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.43.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.44.0...HEAD
+[0.44.0]: https://github.com/dm1try/samagotchi/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/dm1try/samagotchi/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/dm1try/samagotchi/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/dm1try/samagotchi/compare/v0.40.0...v0.41.0
