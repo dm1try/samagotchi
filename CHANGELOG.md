@@ -42,6 +42,9 @@ and commands may change between minor versions. How releases are made:
   middle of the turn and the stream hooks drop the partial reply, so the answer shows once.
 - `task_stop` could signal an unrelated process group whose leader reused a finished task's pid. A task now records
   its process's start time, and a pid that started at another time is not signalled (the task ends as failed).
+- A delegate's report merged into a reminder or continue turn was lost when the turn failed past its loop (the
+  turn's own end, say): the turn kept only its start, yet the report counted as read. Its ring now stays, and the
+  next turn brings it.
 
 ## [0.45.0] - 2026-10-08
 

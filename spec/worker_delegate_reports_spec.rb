@@ -286,9 +286,14 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
     # L3 (2026-10-08): a reminder or continue turn that failed before any
     # progress isn't rolled back (the Engine keeps it with its failed note,
     # the report it merged included), but its reports were released, so the
-    # next turn delivered them again.
+    # next turn delivered them again. A failure past the loop is the
+    # opposite: the Engine drops what the loop merged, so the ring stays.
     describe "a failed turn nothing rolled back" do
-      let(:server_error) { Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500) }
+      # Marked as the loops mark a failure inside them (LLM::FailedTurn):
+      # the Engine keeps their conversation, the merged report in it.
+      let(:server_error) do
+        Samagotchi::LLM::FailedTurn.attach(Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500), [])
+      end
 
       before do
         # queue: no wake turn takes the ring first.
@@ -323,6 +328,54 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
         send_turn(parent, "again", "web:tab1")
         expect(next_turn).to eq(["again", []])
+      end
+
+      # A failure that escapes past the loop (the Engine's own end of the
+      # turn, before the turn ended) carries no partial conversation: the
+      # Engine keeps the turn's start only, without the report the loop
+      # merged. The parent must still get the report.
+      it "keeps the report a reminder turn read when the turn fails after its loop, on the real Engine" do
+        reminder = nil
+        allow(Samagotchi::Engine).to receive(:new) do |**kwargs|
+          reminder = kwargs.dig(:reminders, :callback)
+          engine
+        end
+        allow(engine).to receive(:reminders_due?).and_return(true)
+        allow(engine).to receive(:run_turn).and_call_original
+        backend = Object.new
+        seen = turns
+        backend.define_singleton_method(:provider) { :chat }
+        backend.define_singleton_method(:complete) do |messages:, pending_input:, **|
+          lines = pending_input.call
+          seen << lines
+          conversation = messages + lines.map { |line| { role: "user", content: line.text } } +
+                         [{ role: "model", content: "noted" }]
+          Samagotchi::LLM::ModelResult.new(text: "noted", conversation: conversation)
+        end
+        allow(engine).to receive(:backend_for).and_return(backend)
+        failed = false
+        allow(engine).to receive(:record_last_turn).and_wrap_original do |original, session, outcome, *rest, **options|
+          if outcome == "completed" && !failed
+            failed = true
+            raise IOError, "disk full"
+          end
+          original.call(session, outcome, *rest, **options)
+        end
+        start_worker(parent)
+        child_answers("found it")
+        reminder.call(["stretch"])
+
+        expect(next_turn.map(&:source)).to eq(["delegate_report"])
+        expect(wait_until { drain.any? { |e| e[:type] == :turn_failed } }).to be(true)
+        sleep(0.3)
+        kept = Samagotchi::Session.load(parent.id, state_dir: tmpdir).messages.any? { |m| m[:content].to_s.include?("found it") }
+
+        send_turn(parent, "again", "web:tab1")
+        again = next_turn
+        expect(again).not_to be_nil
+        brought = again.any? { |line| line.text.include?("found it") }
+        # Once: in the conversation the failed turn kept, or brought by the next turn.
+        expect([kept, brought].count(true)).to eq(1)
       end
 
       it "commits the report a continue turn read when the turn fails, and gives a canceled one's back" do

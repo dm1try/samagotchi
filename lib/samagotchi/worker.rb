@@ -16,6 +16,7 @@ require_relative "session_manager"
 require_relative "archive_store"
 require_relative "log"
 require_relative "turn_flow"
+require_relative "llm/errors"
 require_relative "continue_offer"
 require_relative "iteration_limit"
 require_relative "session_commands"
@@ -830,7 +831,7 @@ module Samagotchi
       # failed prompt or wake turn that got nowhere, a canceled continue
       # turn). A failed turn whose work stayed, and a reminder or continue
       # turn that failed (kept with its failed note), read them.
-      settle_child_reports(rolled_back: @turn_flow.restores != restores)
+      settle_child_reports(rolled_back: @turn_flow.restores != restores || merges_lost?(error))
       ring_parent_after_turn
     end
 
@@ -842,6 +843,14 @@ module Samagotchi
     def settle_child_reports(rolled_back:)
       rolled_back ? @child_reports.release : @child_reports.commit
     end
+
+    # Whether +error+ ended the turn without its loop's conversation: a
+    # failure the loops didn't mark (LLM::FailedTurn), one past their end
+    # (the Engine's own end of the turn, say). The Engine kept the turn's
+    # start only, so the reports its loop merged are not in the
+    # conversation: their rings stay for the next turn, even when the turn
+    # itself stays (a reminder or continue turn).
+    def merges_lost?(error) = !error.nil? && !error.is_a?(LLM::FailedTurn)
 
     # A delegate child's turn that was its parent's (#reports_to_parent?)
     # rings the parent, after the save: the parent reads a settled child.
