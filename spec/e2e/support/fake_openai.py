@@ -140,8 +140,10 @@ class H(http.server.BaseHTTPRequestHandler):
         size = int(it.get("chunk_chars") or 0)
         # "drop_after": N cuts this iteration's first stream after N pieces (no last chunk: the client's read
         # fails mid-stream, as a dropped provider stream does); a marker file in DIR makes the next ask whole.
+        # The marker is keyed by script.json's mtime too, so each test that picks the script (a repeat too) drops once.
         drop_after = it.get("drop_after")
-        marker = os.path.join(DIR, "dropped_%d" % done)
+        stamp = os.stat(os.path.join(DIR, "script.json")).st_mtime_ns
+        marker = os.path.join(DIR, "dropped_%d_%d" % (stamp, done))
         if drop_after is not None and os.path.exists(marker): drop_after = None
         sent = 0
         try:

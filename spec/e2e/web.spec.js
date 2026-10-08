@@ -1026,16 +1026,26 @@ test("a turn that fails after a tool step keeps its step and its failure line, l
   await shown();
 });
 
-// A stream that drops mid-answer (the fake cuts it after 7 pieces) is asked
-// again by the chat loop: the live step drops what the dropped stream showed,
-// so the answer reads once, live and after a reload.
-test("a step whose stream drops mid-answer is asked again, and its answer shows once, live and after a reload", async ({ page, script }) => {
+// A stream that drops mid-answer (the fake cuts it partway through its second sentence)
+// is asked again by the chat loop. Live, the retry's note shows and the step
+// is back to "…" (the fake holds each stream 1.5 s): the dropped sentence
+// is gone, not left above the new one. The answer reads once, at the end and
+// after a reload.
+test("a step whose stream drops mid-answer is asked again: the partial goes live, and the answer shows once", async ({ page, script }) => {
   script("stream_drop");
   await send(page, "Answer in one piece");
-  const answer = "The whole answer comes in one piece.";
+  // Each live state lasts about a second: checked every frame, not by
+  // expect's backoff polling.
+  const live = (text, note) => page.waitForFunction(([want, note]) => {
+    const step = [...document.querySelectorAll(".gen.live .gen-text")].pop();
+    const timing = [...document.querySelectorAll(".turn-timing")].pop();
+    return step?.innerText.trim() === want && (!note || timing?.innerText.includes(note));
+  }, [text, note], { timeout: 10_000 });
+  await live("The first sentence comes.");
+  await live("…", "↻ retrying (stream dropped)");
+  const answer = "The first sentence comes. The whole answer comes in one piece.";
   await turnEnded(page, 1);
   await expect(page.locator("#history .bubble.output")).toHaveText(answer);
-  await expect(page.locator("#history .bubble.output")).toHaveCount(1);
   await page.reload();
   await turnEnded(page, 1);
   await expect(page.locator("#history .bubble.output")).toHaveText(answer);
