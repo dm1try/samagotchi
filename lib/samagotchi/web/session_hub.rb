@@ -297,7 +297,7 @@ module Samagotchi
 
         entry.owner = owner
         entry.live = live
-        summary = SessionSummary.build(entry.session, owner: owner, session_dir: dir)
+        summary = SessionSummary.build(entry.session, owner: owner, session_dir: dir, registry: hub_registry)
         # A new worker (pid) or a new Bridge for the same session is an
         # event for the page even when the summary reads the same: it
         # reconnects its stream on it.
@@ -305,6 +305,14 @@ module Samagotchi
 
         entry.summary = summary
         emit("session", session: summary)
+      end
+
+      # One HostRegistry for the hub's lifetime: every session's ctx_pct may
+      # need its llm_context budget resolved, and the registry's config read
+      # is what would otherwise repeat per scan and per session. Built on
+      # the first summary that needs it.
+      def hub_registry
+        @hub_registry ||= HostRegistry.new
       end
 
       def drop(id)

@@ -163,6 +163,20 @@ RSpec.describe "chi sessions list" do
     expect(by_id).to include(counted.id => 12.3, unknown.id => nil)
   end
 
+  it "counts the fill against the session's llm_context budget when it is smaller than the window" do
+    budgeted = make("counted", live: true)
+    budgeted.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 20_000)
+    budgeted.save(state_dir: state_dir)
+    save_context(budgeted, 12_340, 100_000)
+
+    out, err, status = run_chi
+    expect(status).to eq(0), err
+    expect(out).to include("#{budgeted.id}  idle      ctx 62%   ")
+
+    json, = run_chi("--format", "json", "--scope=all")
+    expect(JSON.parse(json).first["ctx_pct"]).to eq(61.7)
+  end
+
   it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id (delegate false: no delegate tool started it)" do
     parent = make("the plan")
     child = make("count the specs", live: true, parent_id: parent.id)

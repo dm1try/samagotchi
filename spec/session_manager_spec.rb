@@ -1912,5 +1912,23 @@ RSpec.describe Samagotchi::SessionManager do
       expect(ids).to include(test.id)
       expect(ids(include_tests: false, exclude: mine.id)).to eq([other.id])
     end
+
+    it "counts a row's ctx_pct against the session's llm_context budget when it is smaller than the window" do
+      plain = make(updated: "2026-09-24T11:00:00Z")
+      budgeted = make(updated: "2026-09-24T10:00:00Z")
+      budgeted.model_name = "box:gemma-small"
+      budgeted.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 20_000)
+      budgeted.save(state_dir: tmpdir)
+      [plain, budgeted].each do |s|
+        dir = Samagotchi::Session.session_dir(s.id, state_dir: tmpdir)
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "analytics.json"),
+                   JSON.generate("context" => { "used_tokens" => 12_340, "window_tokens" => 100_000 }))
+      end
+
+      rows = described_class.session_summaries(state_dir: tmpdir).to_h { |s| [s[:id], s[:ctx_pct]] }
+      expect(rows[budgeted.id]).to eq(61.7)
+      expect(rows[plain.id]).to eq(12.3)
+    end
   end
 end

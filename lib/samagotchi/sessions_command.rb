@@ -226,14 +226,24 @@ module Samagotchi
         recap = Samagotchi::RecapStore.preview(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
         (recap || Samagotchi::SessionManager.summary_text(s))[0, 60]
       end
+      # How full the context was after the last turn: "ctx 12%", counted
+      # against the session's llm_context budget when one is set and smaller
+      # than the window, as the live meter counts it (one registry for the
+      # whole table, built when the first row has a saved context). Blank when
+      # unknown.
+      budgets = nil
+      ctx = lambda do |s|
+        Samagotchi::SessionMetrics.context_label(
+          Samagotchi::SessionMetrics.saved_context_pct(
+            Samagotchi::Session.session_dir(s.id, state_dir: state_dir),
+            budget_tokens: -> { Samagotchi::LLMContextStrategy.session_budget(s, registry: budgets ||= Samagotchi::HostRegistry.new) }
+          )
+        )
+      end
       # A delegated session points at its parent: ↳ <parent's short id>.
       row = lambda do |s|
         flag = session_flag(scratch: s.scratch, test_run: s.test_run, archived: s.archived, stopped_by: s.stopped_by)
         child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
-        # How full the context was after the last turn: "ctx 12%", blank when unknown.
-        ctx = Samagotchi::SessionMetrics.context_label(
-          Samagotchi::SessionMetrics.saved_context_pct(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
-        )
         # A question waits for an answer (chi answer, the web, chi --attach).
         live = s.pending_question && Samagotchi::SessionManager.worker_live?(s.id, state_dir: state_dir)
         waiting = s.waiting_question(live: !!live)
@@ -241,7 +251,7 @@ module Samagotchi
                  elsif waiting then "waiting"
                  else s.status
                  end
-        "#{s.id}  #{status.ljust(8)}  #{ctx.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
+        "#{s.id}  #{status.ljust(8)}  #{ctx.call(s).ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
       end
       if project
         sessions.each { |s| @stdout.puts row.call(s) }

@@ -4,6 +4,8 @@ require_relative "../session"
 require_relative "../recap_store"
 require_relative "../archive_store"
 require_relative "../session_metrics"
+require_relative "../llm_context_strategy"
+require_relative "../host_registry"
 require_relative "../bridge_client"
 require_relative "../worker_sidecar"
 require_relative "../bridge/pending_card"
@@ -26,12 +28,18 @@ module Samagotchi
       # @param root_cache [Hash, nil] ProjectScope.root_for's cache, shared
       #   across one listing (a session saved before project_root existed
       #   looks its project up)
+      # @param registry [HostRegistry, nil] the hosts to resolve the
+      #   session's llm_context budget against (its ctx_pct counts against
+      #   the smaller of that budget and the window, as the live meter
+      #   does). nil: one is built here; a caller that builds many summaries
+      #   (the session hub) keeps one and passes it.
       # @return [Hash] symbol keys
-      def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil)
+      def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil,
+                registry: nil)
         used = Array(session.used_memory_names)
         up = bridge_up?(session_dir, owner)
         sidecar = up ? WorkerSidecar.read(session_dir) : nil
-        saved = SessionMetrics.saved_summary(session_dir)
+        saved = SessionMetrics.saved_summary(session_dir, budget_tokens: budget_resolver(session, registry))
         {
           id: session.id,
           status: status,
@@ -85,6 +93,15 @@ module Samagotchi
           last_turn: session.last_turn
         }
       end
+
+      # The budget resolver SessionMetrics.saved_summary takes: a callable,
+      # so the session's llm_context budget (config + the registry's index,
+      # no network) is resolved only for a session that has a saved context
+      # to count. One registry per caller (the hub) or one built here.
+      def budget_resolver(session, registry)
+        -> { LLMContextStrategy.session_budget(session, registry: registry ||= HostRegistry.new) }
+      end
+      private_class_method :budget_resolver
 
       # status is turn state (idle/running). The live worker's snapshot is the
       # truth; on disk, a "running" with no live owner was left by a worker

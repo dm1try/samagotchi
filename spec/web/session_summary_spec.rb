@@ -49,6 +49,35 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s)))
         .to include(ctx_pct: nil, tokens: nil, memory_index: nil)
     end
+
+    # The card's ctx % counts against the smaller of the window and the
+    # session's llm_context budget, as the live meter does (the saving
+    # worker's own snapshot, and the page's meter after a reload).
+    it "counts against the session's llm_context budget when it is smaller than the window" do
+      s = session
+      s.model_name = "box:gemma-small"
+      s.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 4000)
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "analytics.json"),
+                 JSON.generate("context" => { "used_tokens" => 2500, "window_tokens" => 10_000 }))
+      registry = Samagotchi::HostRegistry.new(hosts_config: { "box" => { host: "box.test", port: 8081 } })
+
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s), registry: registry)[:ctx_pct]).to eq(62.5)
+    end
+
+    it "keeps the window without a budget, and for one larger than it" do
+      s = session
+      s.model_name = "box:gemma-small"
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "analytics.json"),
+                 JSON.generate("context" => { "used_tokens" => 2500, "window_tokens" => 10_000 }))
+      registry = Samagotchi::HostRegistry.new(hosts_config: { "box" => { host: "box.test", port: 8081 } })
+
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s), registry: registry)[:ctx_pct]).to eq(25.0)
+
+      s.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 60_000)
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s), registry: registry)[:ctx_pct]).to eq(25.0)
+    end
   end
 
   describe "the notification fields" do

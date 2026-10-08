@@ -167,6 +167,43 @@ module Samagotchi
                     budget_tokens: budget_origin)
     end
 
+    # A session's LLM context strategy, apply rule and budget, each with
+    # where it came from (Explained#summary), as its worker would resolve
+    # them; nil when they can't be (an unreadable config, a model that
+    # resolves nowhere). Resolves from config and the registry only: no
+    # network, no model call. What a session page, a session list's ctx %
+    # and a spawn-time check all read.
+    # @param session [Session, nil]
+    # @param registry [HostRegistry, nil] the hosts to resolve against;
+    #   HostRegistry.new by default (what the caller usually has)
+    # @return [Hash, nil] Explained#summary, symbol keys
+    def for_session(session, registry: nil)
+      return nil if session.nil?
+
+      require_relative "config"
+      registry ||= begin
+        require_relative "host_registry"
+        HostRegistry.new
+      end
+      name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
+      target = registry.resolve(name)
+      names = registry.lookup_names(session.model_typed || name, resolved: name, target: target)
+      own = session.llm_context
+      explain(target, names: names, **(own&.resolve_args || {})).summary(own)
+    rescue StandardError
+      nil
+    end
+
+    # The budget a session's turns run under (for_session's :budget_tokens),
+    # nil when it is off or can't be resolved. What a session list's ctx %
+    # counts against, so a saved session's fill reads as the live meter.
+    # @param session [Session, nil]
+    # @param registry [HostRegistry, nil] see .for_session
+    # @return [Integer, nil]
+    def session_budget(session, registry: nil)
+      for_session(session, registry: registry)&.fetch(:budget_tokens, nil)
+    end
+
     # [the budget, its Origin]: the session's own first (0 there is off,
     # whatever the model says).
     def budget_for(target, names, models, session_budget)

@@ -12,6 +12,8 @@ require_relative "config"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "session_metrics"
+require_relative "llm_context_strategy"
+require_relative "host_registry"
 require_relative "utf8_default"
 require_relative "turn_note"
 require_relative "owner_lock"
@@ -290,6 +292,10 @@ module Samagotchi
       sd = state_dir || Session.default_state_dir
       root = cwd && folder_path(cwd)
       roots = {}
+      # One registry per listing, built only when a row has a saved context
+      # to count: its session's llm_context budget is what ctx_pct counts
+      # against (SessionMetrics.saved_context_pct).
+      budgets = listing_budgets
       summaries = Session.list(state_dir: sd, sort: sort || "updated_at", order: order || "desc", project_root: project_root,
                                include_archived: include_archived).lazy
                          .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
@@ -302,7 +308,8 @@ module Samagotchi
         { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
           project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
           owner: owner&.kind, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
-          ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd))&.round(1),
+          ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd),
+                                                    budget_tokens: -> { budgets.call(s) })&.round(1),
           parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), delegate: s.delegate?, archived: s.archived,
           scratch: s.scratch, test_run: s.test_run, stopped_by: s.stopped_by }.merge(waiting_fields(s.waiting_question(live: owned)))
       end
@@ -315,6 +322,17 @@ module Samagotchi
       { waiting: waiting&.dig(:kind), waiting_id: waiting&.dig(:id), relayed_to: waiting&.dig(:relayed_to) }
     end
     private_class_method :waiting_fields
+
+    # One HostRegistry for a whole listing, built on the first row that
+    # needs it (a saved context to count) and kept for the rest: resolving a
+    # session's llm_context budget reads config.yml (mtime-cached), so not
+    # one registry per row.
+    # @return [#call] (session) -> the session's budget in tokens or nil
+    def self.listing_budgets
+      registry = nil
+      ->(session) { LLMContextStrategy.session_budget(session, registry: registry ||= HostRegistry.new) }
+    end
+    private_class_method :listing_budgets
 
     # The sessions delegated by +parent_id+ (the `delegate` tool), newest
     # first, as .session_summaries rows. A running one (busy) counts against

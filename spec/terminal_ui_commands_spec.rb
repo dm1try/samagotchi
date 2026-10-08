@@ -133,6 +133,36 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, { llm_context: symbolic })).to include(line)
     end
 
+    # context used: counts against the smaller of the window and the
+    # session's llm_context budget, as the live meter does, and says which.
+    it "counts context used against a budget smaller than the window, and names it" do
+      context = { used_tokens: 16_000, window_tokens: 128_000, window_source: "server" }
+      summary = { strategy: "stale", strategy_where: "the session", apply: "turn_end",
+                  apply_where: "llm_context.apply", budget_tokens: 64_000, budget_where: "the session" }
+      stringy = summary.transform_keys(&:to_s)
+
+      expect(agent.send(:format_session_metrics, { context: context, llm_context: summary }))
+        .to include("context used:     16000 tokens (25.0% of the 64000 budget)")
+      expect(agent.send(:format_session_metrics, { context: context, llm_context: stringy }))
+        .to include("context used:     16000 tokens (25.0% of the 64000 budget)")
+      expect(agent.send(:format_session_metrics, { context: context, llm_context: summary }))
+        .to include("context window:   128000 tokens (server)")
+    end
+
+    it "keeps the plain percentage without a budget, for one larger than the window, and for 0" do
+      context = { used_tokens: 16_000, window_tokens: 64_000, window_source: "server" }
+      base = { strategy: "stale", strategy_where: "the session", apply: "turn_end", apply_where: "llm_context.apply" }
+
+      [{}, { budget_tokens: nil }, { budget_tokens: 128_000 }, { budget_tokens: 0 }].each do |extra|
+        output = agent.send(:format_session_metrics, { context: context, llm_context: base.merge(extra) })
+        expect(output).to include("context used:     16000 tokens (25.0%)"), extra.inspect
+        expect(output).not_to include("budget)")
+      end
+      # No llm context at all (an older worker): the window, as before.
+      expect(agent.send(:format_session_metrics, { context: context }))
+        .to include("context used:     16000 tokens (25.0%)")
+    end
+
     it "shows the memory indexes the session's prompt holds in /stats, none from an older worker" do
       index = { "system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 } }
 

@@ -1137,6 +1137,34 @@ RSpec.describe Samagotchi::TokenUsage do
       File.write(File.join(dir, "analytics.json"), "{")
       expect(Samagotchi::SessionMetrics.saved_context_pct(dir)).to be_nil
     end
+
+    it "counts against the llm_context budget when it is smaller than the window, as the live meter does" do
+      save("context" => { "used_tokens" => 2500, "window_tokens" => 10_000 })
+      expect(Samagotchi::SessionMetrics.saved_context_pct(dir, budget_tokens: 4000)).to eq(62.5)
+      expect(Samagotchi::SessionMetrics.saved_summary(dir, budget_tokens: 4000).ctx_pct).to eq(62.5)
+    end
+
+    it "keeps the window for a budget larger than it, nil and 0" do
+      save("context" => { "used_tokens" => 2500, "window_tokens" => 10_000 })
+
+      [60_000, nil, 0].each do |budget|
+        pct = Samagotchi::SessionMetrics.saved_context_pct(dir, budget_tokens: budget)
+        expect(pct).to eq(25.0), "budget #{budget.inspect}"
+      end
+    end
+
+    it "resolves a budget a caller passes as a callable only when there is a context to count" do
+      calls = 0
+      budget = -> { calls += 1; 4000 }
+
+      save("turns" => 3)
+      expect(Samagotchi::SessionMetrics.saved_context_pct(dir, budget_tokens: budget)).to be_nil
+      expect(calls).to eq(0)
+
+      save("context" => { "used_tokens" => 2500, "window_tokens" => 10_000 })
+      expect(Samagotchi::SessionMetrics.saved_context_pct(dir, budget_tokens: budget)).to eq(62.5)
+      expect(calls).to eq(1)
+    end
   end
 
   describe "SessionMetrics.saved_tool_records" do

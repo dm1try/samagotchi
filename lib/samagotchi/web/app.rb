@@ -488,15 +488,10 @@ module Samagotchi
       # A session's LLM context strategy, apply rule and budget, each with
       # where it came from (LLMContextStrategy::Explained#summary), as its
       # worker would resolve them; nil when they can't be.
+      # (LLMContextStrategy.for_session, shared with the ctx % the session
+      # lists count.)
       def llm_context_for(session)
-        registry = host_registry
-        name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
-        target = registry.resolve(name)
-        names = registry.lookup_names(session.model_typed || name, resolved: name, target: target)
-        own = session.llm_context
-        LLMContextStrategy.explain(target, names: names, **(own&.resolve_args || {})).summary(own)
-      rescue StandardError
-        nil
+        LLMContextStrategy.for_session(session, registry: host_registry)
       end
 
       # Built again when config.yml's hosts: changed (compared as read: the
@@ -1498,7 +1493,8 @@ module Samagotchi
       # @param owner [OwnerLock::Owner, nil] #session_owner; its kind is shown as `owner`
       def session_to_json(s, status: s.status, owner: nil)
         SessionSummary.build(s, status: status, owner: owner,
-                                session_dir: @session_class.session_dir(s.id, state_dir: default_state_dir))
+                                session_dir: @session_class.session_dir(s.id, state_dir: default_state_dir),
+                                registry: host_registry)
       end
 
       # The whole timing: analytics.json's records merged with a live

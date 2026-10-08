@@ -141,22 +141,29 @@ module Samagotchi
     # its saved analytics.json: a percentage, or nil when the file, the count
     # or the window is missing (the session lists read it per row).
     # @param session_dir [String]
+    # @param budget_tokens [Integer, Proc, nil] the session's LLM context
+    #   budget; a positive one smaller than the window is what the fill is
+    #   counted against (the live meter counts the same way,
+    #   ContextStatus#counted_against). nil or 0: the window. A callable is
+    #   resolved only when there is a context to count, so a caller can build
+    #   a registry lazily.
     # @return [Float, nil]
-    def self.saved_context_pct(session_dir)
-      saved_summary(session_dir)&.ctx_pct
+    def self.saved_context_pct(session_dir, budget_tokens: nil)
+      saved_summary(session_dir, budget_tokens: budget_tokens)&.ctx_pct
     end
 
     # The context's fill and the token totals from the session's saved
     # analytics.json, read once; nil without a readable file.
     # @param session_dir [String]
+    # @param budget_tokens [Integer, Proc, nil] see .saved_context_pct
     # @return [SavedSummary, nil]
-    def self.saved_summary(session_dir)
+    def self.saved_summary(session_dir, budget_tokens: nil)
       data = JSON.parse(File.read(File.join(session_dir, "analytics.json")))
       return nil unless data.is_a?(Hash)
 
       tokens = data["tokens"].is_a?(Hash) ? data["tokens"] : {}
       count = ->(key) { tokens[key].is_a?(Numeric) ? tokens[key] : 0 }
-      SavedSummary.new(ctx_pct: saved_pct(data["context"]), prompt_sum: count.call("prompt_sum"),
+      SavedSummary.new(ctx_pct: saved_pct(data["context"], budget_tokens), prompt_sum: count.call("prompt_sum"),
                        completion_sum: count.call("completion_sum"), cached_sum: count.call("cached_sum"),
                        reasoning_sum: count.call("reasoning_sum"), cost_sum: count.call("cost_sum"),
                        memory_index: data["memory_index"].is_a?(Hash) ? data["memory_index"] : nil)
@@ -164,15 +171,25 @@ module Samagotchi
       nil
     end
 
-    def self.saved_pct(context)
+    def self.saved_pct(context, budget_tokens)
       return nil unless context.is_a?(Hash)
 
       used = context["used_tokens"]
       window = context["window_tokens"]
       return nil unless used.is_a?(Numeric) && window.is_a?(Numeric) && window.positive?
 
-      used * 100.0 / window
+      used * 100.0 / counted_against(budget_tokens, window)
     end
+
+    # What the saved fill counts against: the window, or the budget when one
+    # is set and smaller (ContextStatus#counted_against, the live meter's
+    # rule). The budget is resolved here, not by the caller, so a caller
+    # that builds one lazily doesn't build it for a row with no context.
+    def self.counted_against(budget_tokens, window_tokens)
+      budget = budget_tokens.respond_to?(:call) ? budget_tokens.call : budget_tokens
+      budget.is_a?(Numeric) && budget.positive? ? [budget, window_tokens].min : window_tokens
+    end
+    private_class_method :counted_against
     private_class_method :saved_pct
 
     # One turn's tool records from the session's saved analytics.json, in

@@ -486,7 +486,7 @@ module Samagotchi
         lines << "output cap hits:  #{snapshot[:capped].to_i}"
         context = snapshot[:context] || {}
         if context[:used_tokens]
-          pct = context[:window_tokens].to_i.positive? ? format(" (%.1f%%)", context[:used_tokens] * 100.0 / context[:window_tokens]) : ""
+          pct = context_pct_text(context, snapshot[:llm_context])
           lines << "context used:     #{context[:used_tokens]} tokens#{pct}"
         end
         lines << "context window:   #{context[:window_tokens]} tokens (#{context[:window_source]})" if context[:window_tokens]
@@ -504,6 +504,24 @@ module Samagotchi
           lines << "served model:     #{snapshot[:served_model]}#{note}"
         end
         lines.join("\n")
+      end
+
+      # " (25.0% of the 64000 budget)" when the session's llm_context budget
+      # is set and smaller than the window, else " (12.5%)": the live meter
+      # counts against the smaller of the two (ContextStatus#counted_against),
+      # and so does this. The summary is Explained#summary (symbol or string
+      # keys: the attached TUI's come as JSON); "" when there is no window.
+      def context_pct_text(context, llm_context)
+        window = context[:window_tokens].to_i
+        return "" unless window.positive?
+
+        summary = llm_context.is_a?(Hash) ? llm_context : {}
+        budget = summary[:budget_tokens] || summary["budget_tokens"]
+        budget = nil unless budget.is_a?(Numeric) && budget.positive?
+        used = context[:used_tokens] * 100.0
+        return format(" (%.1f%%)", used / window) unless budget && budget < window
+
+        format(" (%.1f%% of the %d budget)", used / budget, budget)
       end
 
       # "stale,forget (the session); apply turn_end (models: x); budget
