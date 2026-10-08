@@ -20,6 +20,19 @@ and commands may change between minor versions. How releases are made:
   `execute`, the longest run without an edit and the Continues and steers each session needed (`--model`,
   `--since`, `--min-steps`, `--json`). It isn't part of the gem. See [docs/testing.md](docs/testing.md).
 
+### Fixed
+
+- The web showed no failure line after a reload for a failed turn whose steps stayed (new in 0.41.0), so the turn
+  looked unfinished; it ends with the same `✕ turn failed: <why>; partial progress kept (!rollback restores the
+  pre-turn state)` line as live (from the turn record, which keeps the failure now; a turn recorded before this
+  shows none).
+- A delegate report could reach the parent's model twice: a reminder or continue turn that failed before any
+  progress kept the report it had read, and the next turn brought it again. A canceled continue turn's report was
+  never delivered. A report's ring now goes only when the turn that read it stays in the conversation.
+- `/llm-context` (the web's `llm ctx` chip, `--llm-context` on `--attach`) against a worker on an older chi answered
+  `400 not a session command`; the web (`501 not_supported`) and the attached terminal say the worker runs an older
+  chi, with the line that restarts it.
+
 ## [0.41.0] - 2026-10-08
 
 ### Added
