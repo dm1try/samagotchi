@@ -212,6 +212,20 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
   end
 
+  it "ends the wait for a turn that ended with no reply while the answer was being posted" do
+    update(child, pending_question: approval)
+    user_answers("Deny", 2)
+    # The child takes the answer and ends its turn inside the relay's POST,
+    # before the wait looks again.
+    client.on_answered = lambda do
+      update(child, pending_question: nil, status: "idle",
+                    last_turn: { "outcome" => "completed", "ended_at" => Time.now.iso8601(6) })
+    end
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    expect(wait(timeout: 3)).to include("status: no_answer\napproval relayed to your user: execute: git push → denied\n")
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+  end
+
   it "doesn't count the time the card was open against the timeout" do
     update(child, pending_question: approval)
     relay.answer = lambda do |_f, _w|
