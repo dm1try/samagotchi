@@ -38,10 +38,11 @@ module Samagotchi
 
     # Return the expected file path for an overlay in the given scope.
     # Respects MemoryBundle overrides (delegates to Tools::MemoryRead.memories_dir).
-    def self.overlay_path_for(name, key, scope)
+    # @param env [Hash] the XDG env the scope's memories dir resolves from
+    def self.overlay_path_for(name, key, scope, env: ENV)
       return nil unless key && !key.to_s.strip.empty?
 
-      File.join(Tools::MemoryRead.memories_dir(scope), "#{name}.#{key.to_s.strip}.md")
+      File.join(Tools::MemoryRead.memories_dir(scope, env: env), "#{name}.#{key.to_s.strip}.md")
     end
 
     # Regex matching overlay file names: /<something>.<lowercase-dashed-key>.md\z

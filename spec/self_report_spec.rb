@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/self_report"
+require "samagotchi/engine"
 
 RSpec.describe Samagotchi::SelfReport do
   let(:tmp) { Dir.mktmpdir("self-report") }
@@ -261,6 +262,31 @@ RSpec.describe Samagotchi::SelfReport do
       session.save(state_dir: Samagotchi::Session.default_state_dir(env: env))
       env["SAMAGOTCHI_PARENT_SESSION"] = session.id
       expect(field("model notes")).to eq("none")
+    end
+
+    it "names a note's fallback overlay when the session's model was typed as an alias, as the Engine does" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\nmodel_aliases:\n  fast: main:small\n")
+      allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("main:small")
+      memories = File.join(config_home, "samagotchi", "memories")
+      FileUtils.mkdir_p(memories)
+      File.write(File.join(memories, "model_notes_alias.md"), "models: small*\nSPEC\n")
+      File.write(File.join(memories, "model_notes_alias.fast.md"), "Alias guidance.\n")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "main:small", model_typed: "fast",
+                                                working_directory: tmp)
+      session.save(state_dir: Samagotchi::Session.default_state_dir(env: env))
+      env["SAMAGOTCHI_SESSION_MODEL"] = "main:small"
+      env["SAMAGOTCHI_PARENT_SESSION"] = session.id
+
+      engine = Samagotchi::Engine.new(host_registry: Samagotchi::HostRegistry.new(env: env),
+                                      model_name: "main:small", model_typed: "fast", plugins: false)
+
+      expect(engine.model_key).to eq("small")
+      expect(field("model notes")).to eq(Samagotchi::PromptNote.text(engine.prompt_notes))
+      # The row counts the base note *and* the typed alias's overlay (the
+      # base alone would be "SPEC".length).
+      expect(field("model notes")).to eq("model_notes_alias (system, #{engine.model_notes.first.chars} chars)")
+      expect(engine.model_notes.first.chars).to be > "SPEC".length
+      expect(engine.model_notes.first.body).to include("Alias guidance.")
     end
 
     it "gives no size warning for a large model note (the prompt's build does)" do

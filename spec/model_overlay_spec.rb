@@ -82,6 +82,16 @@ RSpec.describe Samagotchi::ModelOverlay do
       system_path = described_class.overlay_path_for("test", "key1", "system")
       expect(project_path).not_to eq(system_path)
     end
+
+    it "resolves the memories dir from the env it is given, the process's by default" do
+      env = { "XDG_CONFIG_HOME" => File.join(Dir.mktmpdir("overlay-env-"), "config") }
+      expect(described_class.overlay_path_for("my_entry", "gemma4o", "system", env: env))
+        .to eq(File.join(env["XDG_CONFIG_HOME"], "samagotchi", "memories", "my_entry.gemma4o.md"))
+      expect(described_class.overlay_path_for("my_entry", "gemma4o", "system"))
+        .to eq(File.join(Samagotchi::Tools::MemoryRead.memories_dir("system"), "my_entry.gemma4o.md"))
+      expect(described_class.overlay_path_for("my_entry", "gemma4o", "project", env: env))
+        .to start_with(File.join(env["XDG_CONFIG_HOME"], "samagotchi", "memories", "projects"))
+    end
   end
 
   describe ".overlay_file?" do

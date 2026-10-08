@@ -121,6 +121,21 @@ RSpec.describe Samagotchi::ModelNotes do
     expect(notes("m", fallback_key: "typed").first.body).to include("Typed overlay.")
   end
 
+  it "reads a note's overlay from the env it is given, not the process's (chi self)" do
+    other = File.join(tmp, "other")
+    other_system = File.join(other, "samagotchi", "memories")
+    write(system_dir, "model_notes_a", "models: *\nA.\n")
+    write(system_dir, "model_notes_a.m", "Overlay from the process ENV.\n")
+    write(other_system, "model_notes_a", "models: *\nA.\n")
+    write(other_system, "model_notes_a.m", "Overlay from the given env.\n")
+
+    list = described_class.for(name: "m", key: "m", env: { "XDG_CONFIG_HOME" => other }, warn: false)
+
+    expect(list.map(&:name)).to eq(%w[model_notes_a])
+    expect(list.first.body).to include("Overlay from the given env.")
+    expect(list.first.body).not_to include("Overlay from the process ENV.")
+  end
+
   it "skips a dotted name that isn't an overlay, with a warning" do
     write(system_dir, "model_notes_qwen3.6", "models: *\nDotted.\n")
     expect(Samagotchi::Log).to receive(:warn).with(:memory, "model_note_skipped", hash_including(echo: /model_notes_qwen3\.6\.md.*dot/))

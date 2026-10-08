@@ -63,7 +63,8 @@ module Samagotchi
         files(scope, env).filter_map do |path|
           next unless seen.add?(File.expand_path(path))
 
-          note_at(path, scope, name: name, key: key, fallback_key: fallback_key, muted: muted, small: small_once)
+          note_at(path, scope, name: name, key: key, fallback_key: fallback_key, muted: muted, small: small_once,
+                  env: env)
         end
       end
       warn_sizes(notes) if warn
@@ -110,7 +111,7 @@ module Samagotchi
       []
     end
 
-    def note_at(path, scope, name:, key:, fallback_key:, muted:, small:)
+    def note_at(path, scope, name:, key:, fallback_key:, muted:, small:, env: ENV)
       stem = File.basename(path, ".md")
       return nil if dotted?(path, stem)
       return nil if MutedMemories.muted?(stem, muted)
@@ -122,7 +123,7 @@ module Samagotchi
       body = File.read(path, encoding: "UTF-8").sub(/\A[^\n]*\n?/, "").strip
       return nil if body.empty?
 
-      body = with_overlay(body, stem, scope, [key, fallback_key])
+      body = with_overlay(body, stem, scope, [key, fallback_key], env: env)
 
       Note.new(name: stem, scope: scope, body: body, chars: body.length, digest: Digest::SHA256.hexdigest(body)[0, 12])
     rescue StandardError
@@ -131,10 +132,11 @@ module Samagotchi
 
     # The note's model overlay appended as memory_read appends one: the
     # key's, else the fallback key's. The file is read by its own path, not
-    # by name through memory_read (whose names are comma lists).
-    def with_overlay(body, stem, scope, keys)
+    # by name through memory_read (whose names are comma lists). +env+: the
+    # XDG env the scope's dir (and so the overlay) resolves from.
+    def with_overlay(body, stem, scope, keys, env: ENV)
       keys.compact.each do |overlay_key|
-        overlay = ModelOverlay.overlay_path_for(stem, overlay_key, scope)
+        overlay = ModelOverlay.overlay_path_for(stem, overlay_key, scope, env: env)
         next unless overlay && File.file?(overlay)
 
         return "#{body}#{Tools::MemoryRead::SEPARATOR}Model-specific guidance (#{overlay_key}):\n" \

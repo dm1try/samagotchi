@@ -197,12 +197,41 @@ module Samagotchi
     # takes them at its next build (/stats names the ones it carries).
     def model_notes_for(model, env)
       bare = HostRegistry.new(env: env).bare_name(model)
-      notes = ModelNotes.for(name: bare, key: ModelOverlay.key_for(bare), muted: session_muted(env), env: env,
-                             warn: false)
+      key = ModelOverlay.key_for(bare)
+      notes = ModelNotes.for(name: bare, key: key, fallback_key: fallback_model_key(model, key, env),
+                             muted: session_muted(env), env: env, warn: false)
       text = PromptNote.text(notes.map { |note| PromptNote.from_note(note) })
       text.empty? ? "none" : text
     rescue StandardError => e
       "(unreadable: #{e.message})"
+    end
+
+    # The overlay key read when the key has none (SystemPrompt::ModelIdentity
+    # #fallback_key): the key of the name the model was typed as, when the
+    # session chi self runs in has one (an alias), else of the name chi self
+    # reports. nil when that is the key itself. Read-only, never raising.
+    def fallback_model_key(model, key, env)
+      typed = session_typed_model(env) || model
+      typed_key = ModelOverlay.key_for(HostRegistry.new(env: env).parse_qualified_model(typed).last)
+      typed_key == key ? nil : typed_key
+    rescue StandardError
+      nil
+    end
+
+    # The model name the session chi self runs in was typed as (an alias),
+    # its model_typed, else nil.
+    def session_typed_model(env)
+      id = env[PARENT_SESSION_ENV].to_s
+      return nil if id.empty? || !Session.valid_id?(id)
+
+      state_dir = Session.default_state_dir(env: env)
+      return nil unless Session.exist?(id, state_dir: state_dir)
+
+      session = Session.load(id, state_dir: state_dir)
+      typed = session.model_typed.to_s.strip
+      typed.empty? ? nil : typed
+    rescue StandardError
+      nil
     end
 
     # The --mute list of the session chi self runs in (its execute exports
