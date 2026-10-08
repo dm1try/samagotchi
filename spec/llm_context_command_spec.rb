@@ -66,6 +66,8 @@ RSpec.describe Samagotchi::SessionCommands, "/llm-context" do
     expect(result.output).to include("forget_outputs joins the tool list and the system prompt (and outputs show their ids): " \
                                      "the next request re-reads the whole prompt (a full cache break).")
     expect(engine.llm_context_explained.resolved.forget?).to be(true)
+    # /stats shows the same budget (/stats' snapshot feeds it).
+    expect(engine.stats_snapshot[:llm_context]).to include(budget_tokens: 64_000, budget_where: "the session")
   end
 
   it "takes none and off as values, unsets one with default, and goes back to the model's with reset" do

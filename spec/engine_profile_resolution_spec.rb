@@ -254,6 +254,16 @@ RSpec.describe "Engine#stats_snapshot" do
     expect(engine.session_state_snapshot).to include(served_model: "ornith-x", served_model_for: "house-blend-35b")
   end
 
+  # /stats' budget line comes from here, the session's own override included.
+  it "names a session's own LLM context budget" do
+    engine = engine_with(FakeResolvingClient.new(nil))
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "house-blend-35b", working_directory: Dir.pwd)
+    session.llm_context = Samagotchi::LLMContextOverride.new(budget_tokens: 64_000)
+    engine.session = session
+
+    expect(engine.stats_snapshot[:llm_context]).to include(budget_tokens: 64_000, budget_where: "the session")
+  end
+
   it "builds the metrics snapshot once per session state" do
     engine = engine_with(FakeResolvingClient.new(nil))
     engine.metrics.call(type: :generation_completed, served_model: "ornith-x", requested_model: "house-blend-35b")

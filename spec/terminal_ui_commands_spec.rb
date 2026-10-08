@@ -122,6 +122,17 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, {})).not_to include("llm context")
     end
 
+    it "names a set budget with its tokens and where it came from, string keys or symbol ones" do
+      stringy = { "strategy" => "stale", "strategy_where" => "the session", "apply" => "turn_end",
+                  "apply_where" => "llm_context.apply", "budget_tokens" => 64_000, "budget_where" => "the session" }
+      symbolic = { strategy: "stale", strategy_where: "the session", apply: "turn_end",
+                   apply_where: "llm_context.apply", budget_tokens: 64_000, budget_where: "the session" }
+
+      line = "llm context:      stale (the session); apply turn_end (llm_context.apply); budget 64000 tokens (the session)"
+      expect(agent.send(:format_session_metrics, { llm_context: stringy })).to include(line)
+      expect(agent.send(:format_session_metrics, { llm_context: symbolic })).to include(line)
+    end
+
     it "shows the memory indexes the session's prompt holds in /stats, none from an older worker" do
       index = { "system" => { "tokens" => 1997, "lines" => 54 }, "project" => { "tokens" => 1394, "lines" => 35 } }
 
