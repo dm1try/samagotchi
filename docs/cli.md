@@ -451,7 +451,8 @@ saved with the session and applies from the next turn's start; the reply says
 what it costs: `forget` on or off re-reads the whole prompt once, `stale` turned
 on stages the reads already superseded as one batch under the apply rule, and a
 layer turned off sends its stubs whole again (turning it back on brings them
-back). It runs between turns (a worker answers `busy` mid-turn). `/stats` shows
+back). `/llm-context` alone answers mid-turn too; a change sent while a turn runs
+waits for the turn's end (see *Typing during a turn*). `/stats` shows
 the same values on its `llm context:` line. The web's info bar shows them as the
 `llm ctx` chip (`llm ctx stale,forget · session`), whose popover sets them
 through `/llm-context`. See "LLM context: a session's own strategy" in
@@ -468,11 +469,28 @@ REPL alike:
   A line that comes after the turn's last step runs as the next turn, and so
   does one sent after Ctrl-C: it doesn't merge into the turn being cancelled.
   Reminder turns take merged lines too.
-- `/stats` and `/recap` answer at once, and in an attached terminal so do `/help`
-  and a plugin's anytime command (`/btw`). Other commands (`!cmd`, `/model`, `/models`,
-  `!rollback`, `/continue`, `/guardrails`) say `busy: wait for the turn to end`
-  and go back into the prompt, so Enter runs them once the turn ends. A
-  one-word `/word` no command answers (`/modle`) is not steering text either:
+- Commands answer, wait or are refused, by what they do:
+  - At once, beside the turn: `/stats`, `/recap`, `/help`, `/context`, a
+    plugin's anytime command (`/btw`), and the commands that only show
+    something: `/models` (with a filter too), and `/model`, `/llm-context` and
+    `/guardrails` alone.
+  - After the turn: the ones that change something (`/model X`, `/model clear`,
+    `/llm-context strategy …`, `/guardrails revoke N`) and `!cmd`, whose output
+    joins the conversation. `(queued: runs after this turn)` says so at once (the
+    web draws the command's bubble dashed, with the same words, until it ran);
+    when the turn ends they run in the order sent, a prompt sent before one
+    running first and one sent after it running after. A `/model X` sent
+    mid-turn doesn't change the running turn, nor a line merged into it later.
+    After a canceled or failed turn a waiting `!cmd` is dropped
+    (`turn canceled: !ls not run; send it again`): running it would close the
+    `!rollback` the turn left; the others still run. A command still waiting
+    when the session's worker stops is answered `dropped` too.
+  - Refused: `!rollback` (`busy: Ctrl-C the turn first, then !rollback`),
+    `/continue` and a plugin's command that isn't anytime
+    (`busy: wait for the turn to end`). The line goes back into the prompt, so
+    Enter runs it once the turn ends.
+
+  A one-word `/word` no command answers (`/modle`) is not steering text either:
   the hint prints and the line is dropped.
 - A question (`ask_user_question`, a guardrails approval) turns the prompt into
   a yellow `? ` and lists its choices under it, fitted to the terminal; only a
@@ -486,6 +504,10 @@ REPL alike:
   (`/exit --delete` deletes the session then too). In an
   attached terminal it detaches at once and the turn goes on in the worker
   (`/exit` then says the worker stays up: a turn is running).
+- `/archive` mid-turn archives once the turn ends:
+  `(archives after this turn; Ctrl-C cancels it)` in the plain REPL,
+  `(archives after this turn)` in an attached terminal, which also waits for
+  the commands queued behind the turn.
 
 With stdin that isn't a terminal (a pipe), the REPL reads a line only between
 turns.

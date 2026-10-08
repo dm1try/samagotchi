@@ -94,8 +94,9 @@ commands it knows.
 
 #### `anytime: true`
 
-A normal command waits for its turn: typed while a turn runs, it is refused
-as busy (the REPL puts it back into the prompt). An `anytime: true` command
+A plugin's normal command waits for its turn: typed while a turn runs, it is
+refused as busy (the REPL puts it back into the prompt; a plugin command can't
+ask to run after the turn, as the built-in `/model X` does). An `anytime: true` command
 runs **at once, on its own thread, beside the running turn**, and the turn
 goes on:
 
