@@ -743,7 +743,7 @@ module Samagotchi
       # /model, /models, !rollback, !cmd, /continue (shared with workers);
       # an anytime command's cards print as it shows them (btw's
       # "thinking…" before the answer).
-      command = if command_registry.lookup(input)&.anytime
+      command = if command_registry.mid_turn(input) == :anytime
                   @engine.running_anytime { @commands.run(input) }
                 else
                   @commands.run(input)
@@ -1049,7 +1049,7 @@ module Samagotchi
       return exit_after_turn(delete: SessionCommands.delete_on_exit?(line)) if line.nil? || local == :exit
       return detach_note if local == :detach
       return false if @active_cancel_controller&.cancelled?
-      return start_anytime_command(line) if command_registry.lookup(line)&.anytime
+      return start_anytime_command(line) if command_registry.mid_turn(line) == :anytime
       # A command, never steering text (/archive waits, back in the prompt).
       return command_during_turn(line) if local || command_registry.command?(line)
       return true if line.strip.empty?

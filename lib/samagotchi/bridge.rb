@@ -75,7 +75,8 @@ module Samagotchi
     #   SessionInbox::INPUT_FORMAT); nil advertises none
     # @param on_input [#call, nil] called once a turn for this session is
     #   queued, to wake the worker loop (Worker::Waker#wake)
-    # @param on_command [#call, nil] takes a session command
+    # @param on_command [#call, nil] takes a session command, returns its
+    #   mid-turn policy (:anytime when it runs now)
     #   ({command_id:, client_id:, line:}) for the worker loop to run; without
     #   one, POST /command answers 501
     # @param on_exit_request [#call, nil] a client asks the worker to exit
@@ -727,12 +728,13 @@ module Samagotchi
       [{}, 202, { status: "accepted", command_id: command[:command_id], session_id: @session_id }]
     end
 
-    # With the event log held.
+    # With the event log held. +on_command+ answers what it did with the
+    # line (Commands::Registry::MID_TURN).
     def queue_command_locked(command)
-      @on_command.call(command)
+      policy = @on_command.call(command)
       # An anytime command runs now, beside a turn (D8): the UIs show its
       # line here, so the cards it shows come after it.
-      anytime = command_registry.lookup(command[:line])&.anytime ? { anytime: true } : {}
+      anytime = policy == :anytime ? { anytime: true } : {}
       @engine.announce(type: :command_queued, **command, **anytime)
     end
 

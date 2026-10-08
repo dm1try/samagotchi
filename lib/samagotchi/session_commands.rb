@@ -149,7 +149,7 @@ module Samagotchi
       lines = entries.map do |entry|
         notes = []
         notes << entry.source unless entry.source == "core"
-        notes << "mid-turn too" if entry.anytime
+        notes << "mid-turn too" if entry.mid_turn_label == "anytime"
         notes << (entry.uis ? "#{entry.uis.join(" and ")} only" : "terminal only") if entry.local
         line = "  #{self.class.display_name(entry).ljust(width)}  #{entry.description}"
         notes.empty? ? line : "#{line}  (#{notes.join("; ")})"

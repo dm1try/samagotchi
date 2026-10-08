@@ -76,9 +76,22 @@ RSpec.describe Samagotchi::Commands::Registry do
       registry.register("/hello", "greet", anytime: true, source: "sample-plugin")
       registry.register("/detach", "detach", local: true, uis: [:attached])
       expect(registry.listing).to eq([
-        { name: "/hello", description: "greet", anytime: true, local: false, uis: nil, source: "sample-plugin" },
-        { name: "/detach", description: "detach", local: true, anytime: false, uis: ["attached"], source: "core" }
+        { name: "/hello", description: "greet", anytime: true, mid_turn: "anytime", local: false, uis: nil, source: "sample-plugin" },
+        { name: "/detach", description: "detach", local: true, anytime: false, mid_turn: "refuse", uis: ["attached"], source: "core" }
       ])
+    end
+
+    it "lists a line's own mid-turn policy as depends, not anytime" do
+      registry.register("/show", "show or set", mid_turn: ->(text) { text == "/show" ? :anytime : :refuse })
+      expect(registry.listing.first).to include(anytime: false, mid_turn: "depends")
+    end
+
+    it "takes a listed mid_turn, an older worker's anytime alone, and refuses depends or an unknown one" do
+      base = described_class.new
+      listing = [{ name: "/a", mid_turn: "anytime" }, { name: "/b", anytime: true }, { name: "/c", mid_turn: "depends" },
+                 { name: "/d", mid_turn: "later" }, { name: "/e" }]
+      rebuilt = described_class.from_listing(JSON.parse(JSON.generate(listing)), base: base)
+      expect(%w[/a /b /c /d /e].map { |line| rebuilt.mid_turn(line) }).to eq(%i[anytime anytime refuse refuse refuse])
     end
 
     it "keeps the base's entries (their match) and adds the listed ones it lacks, JSON keys too" do
@@ -94,6 +107,31 @@ RSpec.describe Samagotchi::Commands::Registry do
       expect(rebuilt.lookup("/foo")).to be_nil
       expect(rebuilt.completions(:attached)).to include("/hello", "/detach")
       expect(base.lookup("/hello")).to be_nil
+    end
+  end
+
+  describe "#mid_turn (what a line does while a turn runs)" do
+    it "is the entry's, :refuse by default and for a line no command answers" do
+      registry.register("/side", "side", anytime: true)
+      registry.register("/set", "set")
+      registry.register("/stats", "stats", local: true)
+      expect(registry.mid_turn(" /side q ")).to eq(:anytime)
+      expect(registry.mid_turn("/set x")).to eq(:refuse)
+      expect(registry.mid_turn("/stats")).to eq(:refuse)
+      expect(registry.mid_turn("hello")).to eq(:refuse)
+      expect(registry.lookup("/side").anytime).to be(true)
+      expect(registry.lookup("/set").anytime).to be(false)
+    end
+
+    it "asks the entry's lambda with the stripped line" do
+      seen = []
+      registry.register("/show", "show or set", mid_turn: lambda { |text|
+        seen << text
+        text == "/show" ? :anytime : :refuse
+      })
+      expect([registry.mid_turn(" /show "), registry.mid_turn("/show x")]).to eq(%i[anytime refuse])
+      expect(seen).to eq(["/show", "/show x"])
+      expect(registry.lookup("/show").anytime).to be(false)
     end
   end
 

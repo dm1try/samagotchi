@@ -1639,7 +1639,8 @@ RSpec.describe Samagotchi::Bridge do
         commands = @bridge.snapshot[:commands]
         expect(commands.map { |c| c[:name] }).to include("/model", "/stats", "/hello")
         expect(commands.find { |c| c[:name] == "/hello" })
-          .to eq(name: "/hello", description: "greet", anytime: true, local: false, uis: nil, source: "sample-plugin")
+          .to eq(name: "/hello", description: "greet", anytime: true, mid_turn: "anytime", local: false, uis: nil,
+                 source: "sample-plugin")
       end
 
       it "answers 501 when nothing runs commands (a Bridge without a worker loop)" do

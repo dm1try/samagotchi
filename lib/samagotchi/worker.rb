@@ -215,14 +215,7 @@ module Samagotchi
     def serve
       @bridge = SessionManager.start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
                                             on_input: -> { @waker.wake },
-                                            on_command: lambda { |command|
-                                              next start_anytime_command(command) if anytime_command?(command[:line])
-
-                                              # Called with the event log held: the
-                                              # count says which turn ends came before it.
-                                              @command_queue << command.merge(after_seq: @engine.event_count)
-                                              @waker.wake
-                                            },
+                                            on_command: method(:on_command),
                                             on_exit_request: method(:exit_request),
                                             # Decided again as it leaves (a note may still come in).
                                             exit_discards: method(:empty_session?))
@@ -562,16 +555,23 @@ module Samagotchi
     # A command queued while a turn ran is refused (S1), not run after it:
     # at the turn's iteration boundaries (mid_turn: all of them), and when
     # it ends (the ones queued before its end event; later ones run next).
+    # With the event log held, so a command the Bridge queues meanwhile
+    # stays behind the ones kept, in arrival order. One that comes after
+    # the empty look is the next boundary's (or end's), as it would be.
     def refuse_queued_commands(mid_turn: false)
-      later = []
-      while (command = next_command)
-        if mid_turn || command[:after_seq].to_i < @turn_end_seq
-          announce_command(command, status: "busy", output: BUSY_OUTPUT, changed: [])
-        else
-          later << command
+      return if @command_queue.empty?
+
+      @engine.synchronize_events do
+        later = []
+        while (command = next_command)
+          if mid_turn || command[:after_seq].to_i < @turn_end_seq
+            announce_command(command, status: "busy", output: BUSY_OUTPUT, changed: [])
+          else
+            later << command
+          end
         end
+        later.each { |command| @command_queue << command }
       end
-      later.each { |command| @command_queue << command }
     end
 
     def next_command
@@ -607,7 +607,22 @@ module Samagotchi
       [result || SessionCommands::Result.new(status: :error, output: "not a session command", changed: []), shown]
     end
 
-    def anytime_command?(line) = @engine.command_registry.lookup(line)&.anytime == true
+    # A session command from the Bridge, called with the event log held:
+    # an anytime one starts now, any other is queued for the loop (and
+    # refused if a turn runs: #refuse_queued_commands).
+    # @return [Symbol] the mid-turn policy it applied (the Bridge marks
+    #   an anytime one's command_queued)
+    def on_command(command)
+      policy = @engine.command_registry.mid_turn(command[:line])
+      if policy == :anytime
+        start_anytime_command(command)
+      else
+        # The count says which turn ends came before it.
+        @command_queue << command.merge(after_seq: @engine.event_count)
+        @waker.wake
+      end
+      policy
+    end
 
     # An anytime command (/help, a plugin's /btw; D8) runs now, on its own
     # thread, never queued behind a turn: it is never busy. The Bridge calls
