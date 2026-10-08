@@ -1205,6 +1205,23 @@ RSpec.describe Samagotchi::Worker do
                                              output: "dropped: the session's worker stopped before it ran")
         end
 
+        # D1: an idle command that came just after the turn ended stays behind
+        # one still waiting for a prompt sent before it.
+        it "runs in arrival order: a ready command waits behind one still waiting for its prompt file" do
+          worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir)
+          queue = Thread::Queue.new
+          waiting = { command_id: "x", line: "/model X", mid_turn: :queue, after_file: "20261008000000000000001.json" }
+          queue << waiting << { command_id: "y", line: "/model Y", mid_turn: :loop }
+          File.write(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, waiting[:after_file]), "{}")
+          worker.instance_variable_set(:@command_queue, queue)
+          worker.instance_variable_set(:@engine, engine)
+
+          expect(worker.send(:next_ready_command)).to be_nil
+          expect(queue.size).to eq(2)
+          File.delete(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, waiting[:after_file]))
+          expect([worker.send(:next_ready_command), worker.send(:next_ready_command)].map { |c| c[:command_id] }).to eq(%w[x y])
+        end
+
         it "is in the snapshot until it ran" do
           start_worker(poll_interval: 5)
           post_turn("slow, no boundary")

@@ -553,8 +553,9 @@ module Samagotchi
 
     def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)
 
-    # The queued commands that may run now, in order: all but one whose
-    # after_file (D1) still waits in the inbox, which stays queued.
+    # The queued commands that may run now, in order, up to one whose
+    # after_file (D1) still waits in the inbox: it and those behind it stay
+    # queued.
     # @return [Boolean] whether any command ran
     def run_queued_commands
       ran = false
@@ -565,20 +566,27 @@ module Samagotchi
       ran
     end
 
-    # Pops the first queued command that may run now (its after_file is
-    # taken), keeping the others in order (with the event log held, as
-    # the Bridge queues).
+    # Pops the first queued command if it may run now (its after_file is
+    # taken), else none: one behind it waits too, in arrival order (an idle
+    # /model Y that came just after the turn ended stays behind a /model X
+    # still waiting for a prompt sent before it). With the event log held,
+    # as the Bridge queues.
     def next_ready_command
       return nil if @command_queue.empty?
 
       @engine.synchronize_events do
-        waiting = SessionInbox.find_new_input_files(@session_dir).map { |path| File.basename(path) }
         commands = drain_commands
-        index = commands.index { |command| command[:after_file].nil? || waiting.none? { |name| name <= command[:after_file] } }
-        ready = index && commands.delete_at(index)
+        first = commands.first
+        ready = first && ready_command?(first) ? commands.shift : nil
         commands.each { |command| @command_queue << command }
         ready
       end
+    end
+
+    def ready_command?(command)
+      return true if command[:after_file].nil?
+
+      SessionInbox.find_new_input_files(@session_dir).none? { |path| File.basename(path) <= command[:after_file] }
     end
 
     def drain_commands
