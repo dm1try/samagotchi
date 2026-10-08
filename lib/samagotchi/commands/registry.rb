@@ -11,8 +11,9 @@ module Samagotchi
     # for Tab completion and help, and #lookup never returns it.
     class Registry
       # What a line does while a turn runs: runs now on its own thread
-      # (:anytime), or is refused (:refuse, "busy").
-      MID_TURN = %i[anytime refuse].freeze
+      # (:anytime), runs after the turn ends (:queue), or is refused
+      # (:refuse, "busy").
+      MID_TURN = %i[anytime queue refuse].freeze
 
       # @!attribute id [Symbol] the entry's key (:model, :rollback, …)
       # @!attribute name [String] "/model", "!rollback", …

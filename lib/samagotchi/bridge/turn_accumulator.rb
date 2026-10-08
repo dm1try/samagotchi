@@ -26,6 +26,7 @@ module Samagotchi
         # When each running tool call started, by [iteration, call_index].
         @tool_started_at = {}
         @queued = []
+        @queued_commands = []
         @merged_origins = []
         @recap = nil
         @continue_offer = nil
@@ -199,11 +200,22 @@ module Samagotchi
         @mutex.synchronize { @queued.map(&:dup) }
       end
 
+      # @return [Array<Hash>] commands queued for after the running turn
+      #   (command_queued with waits) that haven't run or been dropped yet:
+      #   {command_id:, client_id:, line:}, in arrival order
+      def queued_commands
+        @mutex.synchronize { @queued_commands.map(&:dup) }
+      end
+
       private
 
       def fold(event)
         type = event[:type]
         case type
+        when :command_queued
+          @queued_commands << event.slice(:command_id, :client_id, :line) if event[:waits]
+        when :command_ran
+          @queued_commands.reject! { |entry| entry[:command_id] == event[:command_id] } if event[:queued]
         when :turn_enqueued
           queued = { enqueued_id: event[:enqueued_id], client_id: event[:client_id], prompt: event[:prompt] }
           queued[:images] = event[:images] if event[:images]

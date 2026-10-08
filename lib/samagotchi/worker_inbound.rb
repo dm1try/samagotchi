@@ -61,8 +61,9 @@ module Samagotchi
     # @param wakes [WorkerWakes] the wake budget a context wake asks
     # @param awaiting_continue [#call] whether a continue offer waits
     # @param stopped [#call] whether the session was stopped on disk
-    # @param queue_command [#call] (line, client_id) queues a session
-    #   command for the loop's next pass
+    # @param queue_command [#call] (line, client_id, after_file) queues a
+    #   session command for the loop's next pass; after_file is the input
+    #   file it came in, or nil
     def initialize(session:, state_dir:, session_dir:, engine:, context_absorber:, wakes:, awaiting_continue:,
                    stopped:, queue_command:)
       @session = session
@@ -182,7 +183,7 @@ module Samagotchi
       begin
         message, origin, no_interrupt, images = SessionInbox.read_input(claimed_file)
         return if message.to_s.strip.empty?
-        return if Array(images).empty? && queue_as_command(message, origin)
+        return if Array(images).empty? && queue_as_command(message, origin, File.basename(input_file))
 
         yield Prompt.new(text: message, origin: origin, no_interrupt: !!no_interrupt, images: images || [])
       ensure
@@ -211,10 +212,10 @@ module Samagotchi
     # POST /turn; an unknown /word stays a prompt. Queued: the loop's next
     # pass runs it.
     # @return [Boolean] whether +text+ was one
-    def queue_as_command(text, origin)
+    def queue_as_command(text, origin, after_file = nil)
       return false unless @engine.command_registry.command?(text.to_s)
 
-      @queue_command.call(text, origin&.dig(:client_id))
+      @queue_command.call(text, origin&.dig(:client_id), after_file)
       true
     end
 

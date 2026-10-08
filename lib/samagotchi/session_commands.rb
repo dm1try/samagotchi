@@ -57,12 +57,13 @@ module Samagotchi
     # help only).
     #
     # While a turn runs, a show form (the name alone) runs at once beside
-    # it (it only reads); setting forms wait (Commands::Registry::MID_TURN).
+    # it (it only reads); setting forms and !cmd run after the turn; !rollback
+    # and /continue are refused (Commands::Registry::MID_TURN).
     def self.register_builtins(registry)
       registry.register(ROLLBACK_COMMAND, "discard the interrupted turn and restore the pre-turn state",
                         id: :rollback) { |_text| rollback }
       registry.register("!", "run a shell command; its output goes into the conversation",
-                        id: :shell, match: ->(text) { text.match?(/\A!\s*\S/) }) { |text| shell(text) }
+                        id: :shell, mid_turn: :queue, match: ->(text) { text.match?(/\A!\s*\S/) }) { |text| shell(text) }
       registry.register(CONTINUE_COMMAND, "answer the continue offer (yes, no or no, <reason>)") do |text|
         next reply("nothing to continue") unless @turn_flow.awaiting_continue?
 
@@ -103,9 +104,10 @@ module Samagotchi
       registry
     end
 
-    # @return [#call] line → :anytime for +name+ alone (it shows), else :refuse
+    # @return [#call] line → :anytime for +name+ alone (it shows), else
+    #   :queue (it sets what the next turn runs under)
     def self.show_mid_turn(name)
-      ->(text) { text == name ? :anytime : :refuse }
+      ->(text) { text == name ? :anytime : :queue }
     end
     private_class_method :show_mid_turn
 

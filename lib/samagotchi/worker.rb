@@ -59,6 +59,8 @@ module Samagotchi
     # How much of a command's output goes into its :command_ran.
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
+    # !rollback mid-turn would mean "the turn I'm in".
+    ROLLBACK_BUSY_OUTPUT = "busy: Ctrl-C the turn first, then !rollback"
 
     # Wakes the worker loop. Whoever queues work writes it first and wakes
     # after, and #wait drains every wake before the loop looks for work: a
@@ -184,7 +186,10 @@ module Samagotchi
       # queued while that turn ran.
       @turn_end_seq = 0
       @engine.subscribe(observer: lambda { |event|
-        @turn_end_seq = event[:event_seq] if Events::TURN_END.include?(event[:type])
+        if Events::TURN_END.include?(event[:type])
+          @turn_end_seq = event[:event_seq]
+          @turn_end_type = event[:type]
+        end
         @turn_id = event[:turn_id] if event[:type] == :turn_started
         ring_question(event) if event[:type] == :question_requested
       })
@@ -198,7 +203,9 @@ module Samagotchi
                                    context_absorber: @context_absorber, wakes: @wakes,
                                    awaiting_continue: -> { @turn_flow.awaiting_continue? },
                                    stopped: -> { stopped_on_disk? },
-                                   queue_command: ->(line, client_id) { @bridge.queue_command(line, client_id: client_id) })
+                                   queue_command: lambda { |line, client_id, after_file|
+                                     @bridge.queue_command(line, client_id: client_id, after_file: after_file)
+                                   })
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.
       @default_model = ModelProfile.required_model_name(nil)
@@ -300,6 +307,9 @@ module Samagotchi
         # A stop between two queued turns leaves the rest queued.
         break if stopped_on_disk?
 
+        # Commands that came before this file (D1: a queued /model X sent
+        # before this prompt, a command an earlier file carried) run first.
+        run_queued_commands
         @inbound.absorb_notes
         run_input_file(input_file)
       end
@@ -327,6 +337,7 @@ module Samagotchi
     # group) before the Engine does.
     def teardown
       @context_poller&.stop
+      drop_queued_commands
       @engine&.shutdown
       @bridge&.stop
       # The process exits next: a parent wake it rang for (a crash's
@@ -542,36 +553,101 @@ module Samagotchi
 
     def max_iterations(no_interrupt) = IterationLimit.for(no_interrupt: no_interrupt)
 
+    # The queued commands that may run now, in order: all but one whose
+    # after_file (D1) still waits in the inbox, which stays queued.
     # @return [Boolean] whether any command ran
     def run_queued_commands
       ran = false
-      while (command = next_command)
+      while (command = next_ready_command)
         run_command(command)
         ran = true
       end
       ran
     end
 
-    # A command queued while a turn ran is refused (S1), not run after it:
+    # Pops the first queued command that may run now (its after_file is
+    # taken), keeping the others in order (with the event log held, as
+    # the Bridge queues).
+    def next_ready_command
+      return nil if @command_queue.empty?
+
+      @engine.synchronize_events do
+        waiting = SessionInbox.find_new_input_files(@session_dir).map { |path| File.basename(path) }
+        commands = drain_commands
+        index = commands.index { |command| command[:after_file].nil? || waiting.none? { |name| name <= command[:after_file] } }
+        ready = index && commands.delete_at(index)
+        commands.each { |command| @command_queue << command }
+        ready
+      end
+    end
+
+    def drain_commands
+      commands = []
+      while (command = next_command)
+        commands << command
+      end
+      commands
+    end
+
+    # A command a turn refuses (:refuse while it ran, S1) is answered busy:
     # at the turn's iteration boundaries (mid_turn: all of them), and when
     # it ends (the ones queued before its end event; later ones run next).
-    # With the event log held, so a command the Bridge queues meanwhile
-    # stays behind the ones kept, in arrival order. One that comes after
-    # the empty look is the next boundary's (or end's), as it would be.
+    # A queued one (:queue) stays for after the turn, but a !cmd after a
+    # canceled or failed turn (D4): running it would close the rollback
+    # window the turn left, so it is dropped. With the event log held, so
+    # a command the Bridge queues meanwhile stays behind the ones kept, in
+    # arrival order. One that comes after the empty look is the next
+    # boundary's (or end's), as it would be.
     def refuse_queued_commands(mid_turn: false)
       return if @command_queue.empty?
 
       @engine.synchronize_events do
-        later = []
-        while (command = next_command)
-          if mid_turn || command[:after_seq].to_i < @turn_end_seq
-            announce_command(command, status: "busy", output: BUSY_OUTPUT, changed: [])
-          else
-            later << command
+        drain_commands.each do |command|
+          during = mid_turn || command[:after_seq].to_i < @turn_end_seq
+          case (during ? turn_answer(command, ended: !mid_turn) : :keep)
+          when :refuse then announce_command(command, status: "busy", output: busy_output(command), changed: [])
+          when :drop then drop_command(command, "turn #{@turn_end_type == :turn_failed ? "failed" : "canceled"}: " \
+                                                "#{command[:line]} not run; send it again")
+          else @command_queue << command
           end
         end
-        later.each { |command| @command_queue << command }
       end
+    end
+
+    # What a turn does with +command+, queued while it ran: :refuse, :drop
+    # (D4, once it +ended+) or :keep. One queued idle just as the turn
+    # began (:loop) goes by its line's policy (a show form waits too).
+    def turn_answer(command, ended:)
+      policy = command[:mid_turn]
+      policy = @engine.command_registry.mid_turn(command[:line]) if policy == :loop
+      return :refuse if policy == :refuse
+      return :drop if ended && command[:mid_turn] == :queue && shell_command?(command) &&
+                      %i[turn_canceled turn_failed].include?(@turn_end_type)
+
+      :keep
+    end
+
+    def shell_command?(command) = @engine.command_registry.lookup(command[:line])&.id == :shell
+
+    def busy_output(command)
+      @engine.command_registry.lookup(command[:line])&.id == :rollback ? ROLLBACK_BUSY_OUTPUT : BUSY_OUTPUT
+    end
+
+    # +command+ won't run: its sender (a UI's queued bubble) is told.
+    def drop_command(command, output)
+      announce_command(command, status: "dropped", output: output, changed: [])
+    end
+
+    # The worker leaves with commands still queued (a stop, a crash): each
+    # one's sender is told it won't run, so no UI shows it waiting for good.
+    def drop_queued_commands
+      return if @command_queue.nil? || @command_queue.empty? || @engine.nil?
+
+      @engine.synchronize_events do
+        drain_commands.each { |command| drop_command(command, "dropped: the session's worker stopped before it ran") }
+      end
+    rescue StandardError => e
+      Log.warn(:worker, "drop_commands_failed", error: e.class.name, msg: e.message)
     end
 
     def next_command
@@ -615,22 +691,35 @@ module Samagotchi
     # idle /model X then /model run in order. A turn starting or ending
     # right now may see the other side: the line is only shown early or
     # run in order.
+    #
+    # A queued one (:queue) keeps arrival order with the prompts (D1): it
+    # runs once every input file written before it is taken (after_file,
+    # the newest one now; names compare, not clocks), so a prompt sent
+    # before it runs first and one sent after it runs after. One that came
+    # in an input file runs once that file is taken (+after_file+).
     # @return [Symbol] the policy it applied (the Bridge marks an anytime
-    #   one's command_queued): :anytime, or :refuse while a turn runs, or
-    #   :loop idle
-    def on_command(command)
+    #   one's command_queued, and a queued one's): :anytime, :queue or
+    #   :refuse while a turn runs, :loop idle
+    def on_command(command, after_file: nil)
       registry = @engine.command_registry
       policy = if @engine.turn_running? then registry.mid_turn(command[:line])
                else registry.anytime?(command[:line]) ? :anytime : :loop
                end
       if policy == :anytime
         start_anytime_command(command)
-      else
-        # The count says which turn ends came before it.
-        @command_queue << command.merge(after_seq: @engine.event_count)
-        @waker.wake
+        return policy
       end
+
+      after_file ||= newest_input_file if policy == :queue
+      # The count says which turn ends came before it.
+      @command_queue << command.merge(after_seq: @engine.event_count, mid_turn: policy, after_file: after_file).compact
+      @waker.wake
       policy
+    end
+
+    # @return [String, nil] the newest input file waiting (its basename)
+    def newest_input_file
+      SessionInbox.find_new_input_files(@session_dir).map { |path| File.basename(path) }.max
     end
 
     # An anytime command (/help, a plugin's /btw; D8) runs now, on its own
@@ -664,6 +753,8 @@ module Samagotchi
                 status: status, output: text[0, COMMAND_OUTPUT_LIMIT], changed: changed.map(&:to_s),
                 model_name: @engine.effective_model_name }
       event[:anytime] = true if anytime
+      # Its line was shown at its command_queued (waits: turn_end).
+      event[:queued] = true if command[:mid_turn] == :queue
       event[:card] = true if command[:card]
       # /llm-context or /model: what the next turn runs under now (the web's chip).
       event[:llm_context] = @engine.llm_context_summary if changed.intersect?(%i[llm_context model])

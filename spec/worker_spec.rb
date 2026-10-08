@@ -882,13 +882,13 @@ RSpec.describe Samagotchi::Worker do
           when "slow"
             release.pop
             kwargs[:pending_input]&.call # an iteration boundary
-          when "slow, no boundary"
+          when "slow, no boundary", "slow, then canceled"
             release.pop
           end
           if prompt == "long task"
             Samagotchi::LLM::ModelResult.new(text: "", conversation: messages + [{ role: "tool_response", content: "r1" }],
                                              exhausted: true, pending_tool_calls: true, tool_activity: [], canceled: false)
-          elsif prompt == "cancel me"
+          elsif ["cancel me", "slow, then canceled"].include?(prompt)
             Samagotchi::LLM::ModelResult.new(text: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]" }],
                                              exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true,
                                              cancellation_reason: :manual)
@@ -1051,6 +1051,22 @@ RSpec.describe Samagotchi::Worker do
         expect(turns).to be_empty
       end
 
+      it "runs a command an input file carries before the next file's turn, not busy" do
+        ["one", "/model Qwen3-14B", "two"].each do |prompt|
+          Samagotchi::SessionManager.write_turn_input(session.id, prompt: prompt, client_id: "cli:send", state_dir: tmpdir)
+          sleep 0.001 # distinct file names, in order
+        end
+        start_worker(poll_interval: 5)
+
+        expect(next_turn&.first).to eq("one")
+        expect(next_turn&.first).to eq("two")
+        done = nil
+        wait_until { done = events_seen.find { |e| e[:type] == :command_ran } }
+        expect(done).to include(line: "/model Qwen3-14B", status: "ok")
+        started_two = seen.index { |e| e[:type] == :turn_started && e[:prompt] == "two" }
+        expect(seen.index(done)).to be < started_two
+      end
+
       it "refuses lines that aren't commands, and other sessions" do
         start_worker(poll_interval: 5)
 
@@ -1092,33 +1108,121 @@ RSpec.describe Samagotchi::Worker do
         expect(wait_until { saved_messages.empty? }).to be(true)
       end
 
-      it "is busy while a turn runs: at the turn's next iteration boundary" do
+      it "refuses !rollback and /continue while a turn runs: at the turn's next iteration boundary" do
         start_worker(poll_interval: 5)
         post_turn("slow")
         expect(next_turn&.first).to eq("slow")
 
-        command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+        rollback = JSON.parse(post_command("!rollback").body)["command_id"]
+        continue = JSON.parse(post_command("/continue").body)["command_id"]
         release << true
 
-        done = ran(command_id)
-        expect(done).to include(status: "busy", output: "busy: wait for the turn to end")
+        expect(ran(rollback)).to include(status: "busy", output: "busy: Ctrl-C the turn first, then !rollback")
+        expect(ran(continue)).to include(status: "busy", output: "busy: wait for the turn to end")
+        expect(ran(continue)).not_to have_key(:queued)
         types = seen.map { |e| e[:type] }
         expect(types.index(:command_ran)).to be < types.index(:turn_completed)
+        expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "!rollback" }).not_to have_key(:waits)
       end
 
-      it "is busy while a turn runs: at the latest when it ends" do
+      it "refuses while a turn runs: at the latest when it ends" do
         start_worker(poll_interval: 5)
         post_turn("slow, no boundary")
         expect(next_turn&.first).to eq("slow, no boundary")
 
-        command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+        command_id = JSON.parse(post_command("!rollback").body)["command_id"]
         release << true
 
         expect(ran(command_id)).to include(status: "busy")
       end
 
+      describe "a setting command or !cmd while a turn runs (queued)" do
+        def started(prompt) = seen.index { |e| e[:type] == :turn_started && e[:prompt] == prompt }
+        def ran_at(command_id) = seen.index { |e| e[:type] == :command_ran && e[:command_id] == command_id }
+
+        it "waits for the turn's end, past its iteration boundaries, then runs marked queued" do
+          start_worker(poll_interval: 5)
+          post_turn("slow")
+          expect(next_turn&.first).to eq("slow")
+
+          command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+          release << true
+
+          done = ran(command_id)
+          expect(done).to include(status: "ok", changed: ["model"], model_name: "Qwen3-14B", queued: true)
+          expect(seen.find { |e| e[:type] == :command_queued && e[:command_id] == command_id }).to include(waits: "turn_end")
+          expect(seen.index { |e| e[:type] == :turn_completed }).to be < ran_at(command_id)
+          expect(seen.count { |e| e[:type] == :command_ran }).to eq(1)
+        end
+
+        # D1: arrival order with prompts that become later turns.
+        it "runs after a prompt sent before it and before one sent after it" do
+          start_worker(poll_interval: 5)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          post_turn("before")
+          command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+          post_turn("after")
+          release << true
+
+          expect(next_turn&.first).to eq("before")
+          expect(next_turn&.first).to eq("after")
+          expect(ran(command_id)).to include(status: "ok", queued: true)
+          wait_until { started("after") }
+          expect(started("before")).to be < ran_at(command_id)
+          expect(ran_at(command_id)).to be < started("after")
+        end
+
+        # D4: running it would close the rollback window the turn left.
+        it "drops a queued !cmd after a canceled turn, and still runs a queued /model" do
+          start_worker(poll_interval: 5)
+          post_turn("slow, then canceled")
+          expect(next_turn&.first).to eq("slow, then canceled")
+
+          shell = JSON.parse(post_command("!echo hi").body)["command_id"]
+          model = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+          release << true
+
+          expect(ran(shell)).to include(status: "dropped", output: "turn canceled: !echo hi not run; send it again",
+                                        queued: true)
+          expect(ran(model)).to include(status: "ok", queued: true)
+          rollback = ran(JSON.parse(post_command("!rollback").body)["command_id"])
+          expect(rollback).to include(output: "salvaged turn discarded; restored pre-turn state")
+        end
+
+        it "is dropped, not left waiting, when the worker leaves (a stop)" do
+          start_worker(poll_interval: 0.05)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+          Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+          release << true
+
+          expect(@thread.join(2)&.value).to eq(:stopped)
+          expect(ran(command_id)).to include(status: "dropped", queued: true,
+                                             output: "dropped: the session's worker stopped before it ran")
+        end
+
+        it "is in the snapshot until it ran" do
+          start_worker(poll_interval: 5)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+          snapshot = -> { @worker.instance_variable_get(:@bridge).snapshot }
+          during = snapshot.call
+          release << true
+          ran(command_id)
+
+          expect(during[:queued_commands]).to eq([{ command_id: command_id, client_id: "tui:9", line: "/model Qwen3-14B" }])
+          expect(snapshot.call[:queued_commands]).to eq([])
+        end
+      end
+
       describe "a show form (/model, /models, … alone) while a turn runs" do
-        it "runs at once beside the turn, marked anytime, and a setting form stays busy" do
+        it "runs at once beside the turn, marked anytime, and a setting form waits for the turn's end" do
           allow(engine.host_registry).to receive(:list_all_models).and_return({})
           start_worker(poll_interval: 5)
           post_turn("slow, no boundary")
@@ -1135,8 +1239,10 @@ RSpec.describe Samagotchi::Worker do
           expect(shown[:output]).to start_with("runtime model:")
           expect(listed).to include(status: "ok", output: "no hosts configured", anytime: true)
           expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "/model" }).to include(anytime: true)
-          expect(ran(setting)).to include(status: "busy")
-          expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "/model Qwen3-14B" }).not_to have_key(:anytime)
+          expect(ran(setting)).to include(status: "ok", queued: true)
+          queued = seen.find { |e| e[:type] == :command_queued && e[:line] == "/model Qwen3-14B" }
+          expect(queued).to include(waits: "turn_end")
+          expect(queued).not_to have_key(:anytime)
         end
 
         it "runs on the loop in order when idle: /model X then /model shows X" do
@@ -1210,7 +1316,7 @@ RSpec.describe Samagotchi::Worker do
           release << true
 
           expect(side).to include(status: "ok", output: "side: ")
-          expect(ran(normal)).to include(status: "busy")
+          expect(ran(normal)).to include(status: "ok", queued: true)
           expect(ran(JSON.parse(post_command("/side again").body)["command_id"])).to include(status: "ok", output: "side: again")
         end
       end

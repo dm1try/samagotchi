@@ -223,7 +223,9 @@ module Samagotchi
     # doesn't keep it.
     # chi_version: the chi this worker runs (an attaching TUI compares it
     # with its own).
-    # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, pending_question:,
+    # The commands queued for after the running turn (queued_commands,
+    # TurnAccumulator#queued_commands) too.
+    # @return [Hash] {messages:, current_turn:, queued:, queued_commands:, recap:, saved_recap:, continue_offer:, pending_question:,
     #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
@@ -232,6 +234,7 @@ module Samagotchi
           messages: @engine.messages_checkpoint,
           current_turn: @accumulator.current_turn,
           queued: @accumulator.queued,
+          queued_commands: @accumulator.queued_commands,
           recap: @accumulator.recap,
           saved_recap: @engine.saved_recap,
           continue_offer: @accumulator.continue_offer,
@@ -278,13 +281,15 @@ module Samagotchi
     # The worker's own way in for a session command that came as a message
     # (its first prompt, an input file): queued and announced as a POST
     # /command's is (#handle_command).
+    # @param after_file [String, nil] the input file it came in (its
+    #   basename): it runs once that file is taken (Worker#on_command)
     # @return [String] its command_id
-    def queue_command(line, client_id: nil, card: false)
+    def queue_command(line, client_id: nil, card: false, after_file: nil)
       command = { command_id: SecureRandom.uuid, client_id: client_id, line: line.to_s.strip }
       # A card's action (the step-limit question's answer): the UIs leave
       # its line out.
       command[:card] = true if card
-      @engine.synchronize_events { queue_command_locked(command) }
+      @engine.synchronize_events { queue_command_locked(command, after_file: after_file) }
       command[:command_id]
     end
 
@@ -730,12 +735,17 @@ module Samagotchi
 
     # With the event log held. +on_command+ answers what it did with the
     # line (Commands::Registry::MID_TURN).
-    def queue_command_locked(command)
-      policy = @on_command.call(command)
+    def queue_command_locked(command, after_file: nil)
+      policy = after_file ? @on_command.call(command, after_file: after_file) : @on_command.call(command)
       # An anytime command runs now, beside a turn (D8): the UIs show its
-      # line here, so the cards it shows come after it.
-      anytime = policy == :anytime ? { anytime: true } : {}
-      @engine.announce(type: :command_queued, **command, **anytime)
+      # line here, so the cards it shows come after it. A queued one runs
+      # when the turn ends: the UIs show it waiting until its command_ran.
+      marks = case policy
+              when :anytime then { anytime: true }
+              when :queue then { waits: "turn_end" }
+              else {}
+              end
+      @engine.announce(type: :command_queued, **command, **marks)
     end
 
     # A client asks the worker to exit now (`/exit` in the attached TUI), or

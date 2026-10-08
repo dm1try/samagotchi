@@ -222,6 +222,22 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.queued).to eq([{ enqueued_id: "e3", client_id: "tui:1", prompt: "three" }])
   end
 
+  it "keeps commands queued for after the turn until they run or are dropped, not a plain or anytime one" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :command_queued, command_id: "c1", client_id: "web:1", line: "/model x", waits: "turn_end" },
+         { type: :command_queued, command_id: "c2", client_id: "tui:1", line: "!ls", waits: "turn_end" },
+         { type: :command_queued, command_id: "c3", client_id: "tui:1", line: "/help", anytime: true },
+         { type: :command_queued, command_id: "c4", client_id: "tui:1", line: "!rollback" })
+    expect(acc.queued_commands).to eq([{ command_id: "c1", client_id: "web:1", line: "/model x" },
+                                       { command_id: "c2", client_id: "tui:1", line: "!ls" }])
+
+    feed({ type: :command_ran, command_id: "c4", status: "busy" }, { type: :turn_canceled },
+         { type: :command_ran, command_id: "c2", status: "dropped", queued: true })
+    expect(acc.queued_commands.map { |c| c[:command_id] }).to eq(%w[c1])
+    feed({ type: :command_ran, command_id: "c1", status: "ok", queued: true })
+    expect(acc.queued_commands).to eq([])
+  end
+
   it "clears the turn when it completes, is canceled or fails" do
     %i[turn_completed turn_canceled turn_failed].each do |ending|
       feed({ type: :turn_started, prompt: "hi" }, { type: :generation_chunk, iteration: 1, content: "x" })

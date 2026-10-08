@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::WorkerInbound do
   let(:inbound) do
     described_class.new(session: session, state_dir: tmpdir, session_dir: session_dir, engine: engine,
                         context_absorber: absorber, wakes: wakes, awaiting_continue: -> { awaiting[0] },
-                        stopped: -> { stopped[0] }, queue_command: ->(line, client_id) { queued << [line, client_id] })
+                        stopped: -> { stopped[0] }, queue_command: ->(line, client_id, _after_file) { queued << [line, client_id] })
   end
 
   after { FileUtils.rm_rf(tmpdir) }
