@@ -105,13 +105,15 @@ module Samagotchi
 
       # Whether the session is a delegate child (Session#delegate?): a task
       # another session handed over, not the user's own.
-      def delegate?
-        id = session_id
-        return false unless id
+      def delegate? = !!saved_session&.delegate?
 
-        Session.load(id, state_dir: @host.state_dir&.call || Session.default_state_dir).delegate?
-      rescue ArgumentError
-        false
+      # Whether the session is a fork (ctx.sessions.fork: /btw keep, a
+      # plugin's): it has a parent and isn't a delegate child, and it
+      # started from a conversation, so its first prompt isn't its first
+      # user message.
+      def fork?
+        session = saved_session
+        !session.nil? && !session.parent_id.nil? && !session.delegate?
       end
 
       # @return [String] the session's working directory
@@ -295,6 +297,16 @@ module Samagotchi
         event = Thread.current[CURRENT_EVENTS]&.[](self)
         helper = event[name] if event.is_a?(Hash)
         helper.respond_to?(:call) ? helper : nil
+      end
+
+      # The session's file as saved, nil without an id or a file.
+      def saved_session
+        id = session_id
+        return nil unless id
+
+        Session.load(id, state_dir: @host.state_dir&.call || Session.default_state_dir)
+      rescue ArgumentError
+        nil
       end
 
       def deep_freeze(value)

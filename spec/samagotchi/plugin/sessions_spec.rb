@@ -62,6 +62,21 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(sessions.fork(messages: [])).to match(/\A[\w-]{36}\z/)
     end
 
+    it "is what the child's ctx.fork? says (a delegate child, the parent and no session are not forks)" do
+      ctx_of = lambda do |id|
+        Samagotchi::Plugin::Context.new(bundle: "b", label: "l", settings: {},
+                                        host: Samagotchi::Plugin::Host.new(session_id: -> { id }, cwd: -> { tmpdir },
+                                                                           state_dir: -> { tmpdir }))
+      end
+      delegate = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir,
+                                                 parent_id: parent.id, delegate: true).tap { |s| s.save(state_dir: tmpdir) }
+
+      expect(ctx_of.call(sessions.fork(messages: [])).fork?).to be(true)
+      expect([ctx_of.call(delegate.id).fork?, ctx_of.call(parent.id).fork?, ctx_of.call(nil).fork?, ctx_of.call("nope").fork?])
+        .to eq([false, false, false, false])
+      expect(ctx_of.call(delegate.id).delegate?).to be(true)
+    end
+
     context "from a scratch session" do
       let(:host) do
         Samagotchi::Plugin::Host.new(session_id: -> { session_id }, cwd: -> { tmpdir }, model_name: -> { "gemma4" },

@@ -218,13 +218,20 @@ class Plugin
   # Offer mode: every session's first prompt (offered or not; a web chat's
   # first turn starts before the init task's gh returns), joined to the
   # offers by session at analysis time. First = no user message yet (a
-  # context note may be in messages already).
+  # context note may be in messages already); a fork starts from its
+  # parent's conversation, user messages and all, so its first is the one
+  # the log has no first_prompt row for yet.
   def log_first_prompt(event, ctx)
     return if event[:prompt].nil? || auto_attach_mode(ctx) != :offer
-    return if Array(event[:messages]).any? { |message| message_role(message) == "user" }
-    return if ctx.scratch? || ctx.delegate? || ctx.session_id.nil?
+    return if ctx.scratch? || ctx.session_id.nil?
 
-    offers_log(ctx).write("first_prompt", session: ctx.session_id, prompt: event[:prompt].to_s[0, FIRST_PROMPT_CHARS])
+    log = offers_log(ctx)
+    if Array(event[:messages]).any? { |message| message_role(message) == "user" }
+      return unless ctx.fork? && !log.first_prompt?(ctx.session_id)
+    elsif ctx.delegate?
+      return
+    end
+    log.write("first_prompt", session: ctx.session_id, prompt: event[:prompt].to_s[0, FIRST_PROMPT_CHARS])
   rescue StandardError => e
     ctx.log.debug(:pr_offers_log_failed, error: e.class.name)
   end
@@ -364,6 +371,17 @@ class OffersLog
   rescue StandardError => e
     @log.debug(:pr_offers_log_failed, error: e.class.name)
     nil
+  end
+
+  # Whether the log (or its old file) has session +id+'s first_prompt row.
+  def first_prompt?(id)
+    [@path, "#{@path}.1"].any? do |path|
+      File.exist?(path) && File.foreach(path).any? do |line|
+        line.include?(%("session":#{JSON.generate(id)})) && JSON.parse(line)["event"] == "first_prompt"
+      rescue JSON::ParserError
+        false
+      end
+    end
   end
 end
 

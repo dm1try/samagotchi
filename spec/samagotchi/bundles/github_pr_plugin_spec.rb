@@ -310,6 +310,38 @@ RSpec.describe "The github-pr bundle" do
         expect(offers).to match([hash_including("event" => "first_prompt", "session" => session.id, "prompt" => "x" * 160)])
       end
 
+      context "in a fork (ctx.sessions.fork)" do
+        let(:parent) do
+          Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
+                             .tap { |s| s.save(state_dir: state_dir) }
+        end
+        let(:session) do
+          Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir, parent_id: parent.id)
+                             .tap { |s| s.save(state_dir: state_dir) }
+        end
+        let(:seed) { [{ role: "user", content: "the parent's question" }, { role: "model", content: "its answer" }] }
+
+        it "logs its first prompt after the parent's conversation, once, beside another session's row" do
+          plugin.register(fake_chi)
+          hook = fake_chi.hooks[:before_turn][1]
+          namespace::OffersLog.new(offers_path, ctx.log).write("first_prompt", session: parent.id, prompt: "parent")
+
+          hook.call({ type: :before_turn, messages: seed, prompt: "the fork's own" }, ctx)
+          hook.call({ type: :before_turn, messages: seed + [{ role: "user", content: "the fork's own" }], prompt: "next" }, ctx)
+
+          expect(offers.select { _1["session"] == session.id })
+            .to match([hash_including("event" => "first_prompt", "prompt" => "the fork's own")])
+        end
+
+        it "finds its row in the rotated file too" do
+          FileUtils.mkdir_p(File.dirname(offers_path))
+          namespace::OffersLog.new("#{offers_path}.1", ctx.log).write("first_prompt", session: session.id, prompt: "older")
+          plugin.register(fake_chi)
+          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: seed, prompt: "again" }, ctx)
+          expect(offers).to eq([])
+        end
+      end
+
       it "rotates the log over 1 MB, keeping one old file" do
         FileUtils.mkdir_p(File.dirname(offers_path))
         File.write(offers_path, "a" * ((1024 * 1024) + 1))
@@ -364,10 +396,11 @@ RSpec.describe "The github-pr bundle" do
                                           delegate: true).tap { |s| s.save(state_dir: state_dir) }
         end
 
-        it "offers nothing and logs no first prompt" do
+        it "offers nothing and logs no first prompt (with a user message before it either: it isn't a fork)" do
           expect(plugin.attach_branch_pr(ctx)).to eq("skipped: a delegate child")
           plugin.register(fake_chi)
           fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "hi" }, ctx)
+          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [{ role: "user", content: "hi" }], prompt: "more" }, ctx)
           expect(cards).to eq([])
           expect(offers).to eq([])
         end
