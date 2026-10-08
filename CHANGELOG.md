@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
 - Declared `hosts.<name>.models` ids show first under their host in `/models` (as `rr/x (config)`, outside the 20
   per host, also on a host that lists nothing), `chi models` (plain names; `--format json` adds `configured: true`)
   and `GET /api/models` (`configured: true`). A host that doesn't answer shows none of them.
+- The web model picker lists a host's declared ids first under it, noted `config` (the default model keeps
+  `default`), with `served by config (hosts.<name>.models)` in the row's tooltip.
 
 ## [0.45.0] - 2026-10-08
 

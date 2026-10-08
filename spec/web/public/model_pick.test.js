@@ -23,7 +23,7 @@ test("the storage key is stable", () => {
 });
 
 import {
-  modelRows, groupRows, matchModels, RECENT_KEY, pushRecent, recentRows,
+  modelRows, groupRows, matchModels, RECENT_KEY, pushRecent, recentRows, rowNote, rowTitle,
 } from "../../../lib/samagotchi/web/public/model_pick.js";
 
 const orPayload = {
@@ -164,4 +164,37 @@ test("the recent list: newest first, no duplicates (any case), capped, only offe
   const rec = recentRows(rows, ["gone:model", "OPENROUTER:deepseek/deepseek-v4.1-flash", "qwen3.6-35b", 7]);
   assert.deepEqual(rec.map((r) => r.name), ["openrouter:deepseek/deepseek-v4.1-flash", "qwen3.6-35b"]);
   assert.deepEqual(recentRows(rows, "junk"), []);
+});
+
+test("modelRows marks a row configured (declared under hosts.<name>.models) only when the server says so", () => {
+  const r = modelRows({ models: [{ name: "work:rr/x", host: "work", id: "rr/x", configured: true },
+                                 { name: "work:a", host: "work", id: "a" }] });
+  assert.equal(r[0].configured, true);
+  assert.equal("configured" in r[1], false);
+});
+
+test("groupRows puts a host's configured ids first, each part A-Z", () => {
+  const r = modelRows({ models: [
+    { name: "work:a", host: "work", id: "a" },
+    { name: "work:rr/z", host: "work", id: "rr/z", configured: true },
+    { name: "work:b", host: "work", id: "b" },
+    { name: "work:rr/y", host: "work", id: "rr/y", configured: true },
+  ] });
+  assert.deepEqual(groupRows(r)[0].rows.map((row) => row.id), ["rr/y", "rr/z", "a", "b"]);
+});
+
+test("rowNote says default for the default, config for a configured row, default when both", () => {
+  const configured = { name: "work:rr/x", host: "work", id: "rr/x", configured: true };
+  assert.equal(rowNote(configured, "gemma"), "config");
+  assert.equal(rowNote(configured, "work:rr/x"), "default");
+  assert.equal(rowNote({ name: "gemma", host: "", id: "gemma" }, "gemma"), "default");
+  assert.equal(rowNote({ name: "work:a", host: "work", id: "a" }, "gemma"), "");
+});
+
+test("rowTitle joins the sampling tooltip and where a configured row comes from", () => {
+  assert.equal(rowTitle({ host: "work", configured: true, sampling: "temperature=0.6 (hosts.work)" }),
+    "sampling: temperature=0.6 (hosts.work); served by config (hosts.work.models)");
+  assert.equal(rowTitle({ host: "work", configured: true }), "served by config (hosts.work.models)");
+  assert.equal(rowTitle({ host: "work", sampling: "top_p=0.9" }), "sampling: top_p=0.9");
+  assert.equal(rowTitle({ host: "work" }), "");
 });
