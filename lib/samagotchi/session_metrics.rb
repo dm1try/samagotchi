@@ -100,9 +100,11 @@ module Samagotchi
       :gen_first_chunk_at,
       # The turn's generations, folded as each one ends: the count, the last
       # one's prompt and completion, the sums, and which kinds of counts
-      # (server / estimate) they came from.
+      # (server / estimate) they came from; prompt_max is the largest
+      # prompt (an LLM context edit can make a later one smaller).
       :generations,
       :prompt_last,
+      :prompt_max,
       :prompt_sum,
       :completion_last,
       :completion_sum,
@@ -508,6 +510,7 @@ module Samagotchi
           gen_reasoning_max: 0,
           generations: 0,
           prompt_last: nil,
+          prompt_max: nil,
           prompt_sum: 0,
           completion_last: 0,
           completion_sum: 0,
@@ -627,6 +630,7 @@ module Samagotchi
       if turn.gen_had_server
         completion = turn.gen_completion_max
         turn.prompt_last = turn.gen_prompt_max
+        turn.prompt_max = [turn.prompt_max.to_i, turn.gen_prompt_max].max
         turn.prompt_sum += turn.gen_prompt_max
         turn.token_sources |= ["server"]
         speed = close_server_report(turn, completion)
@@ -708,6 +712,7 @@ module Samagotchi
         model: turn.model,
         generations: turn.generations,
         prompt_tokens: turn.prompt_last,
+        prompt_tokens_max: turn.prompt_max,
         prompt_tokens_sum: turn.prompt_sum,
         completion_tokens: turn.completion_sum,
         context_used_tokens: turn.prompt_last && (turn.prompt_last + turn.completion_last),

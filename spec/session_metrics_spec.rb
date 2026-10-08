@@ -279,6 +279,21 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(metrics.snapshot[:turn_records].last[:gen_ms]).to be_a(Integer)
     end
 
+    it "keeps the turn's largest prompt: an LLM context edit can make a later one smaller" do
+      feed([
+        { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "a", payload: usage(500, 5) },
+        { type: :generation_completed, iteration: 1 },
+        { type: :generation_started, iteration: 2 },
+        { type: :generation_chunk, iteration: 2, content: "b", payload: usage(300, 5) },
+        { type: :generation_completed, iteration: 2 },
+        { type: :turn_completed }
+      ])
+
+      expect(metrics.snapshot[:turn_records].last).to include(prompt_tokens: 300, prompt_tokens_max: 500)
+    end
+
     it "keeps the prompt per generation, not the largest in the session" do
       feed([
         { type: :turn_started, session_id: "sess-1", prompt: "one" },
