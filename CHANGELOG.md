@@ -15,6 +15,10 @@ and commands may change between minor versions. How releases are made:
   model_notes_deepseek (system, 612 chars)`), at the end of `/model`'s line (`; notes: …`, after a switch the new
   model's), as a `notes: deepseek` chip in the web's info bar and as a `model notes` row in `chi self`. Nothing shows
   without notes. See [docs/memory.md](docs/memory.md) ("Model notes").
+- For development: `script/model_notes_report.rb`, which groups stored sessions by model and by the model notes
+  their prompt carried and compares the calls to the first edit and commit, commits per 100 steps, bare `&` in
+  `execute`, the longest run without an edit and the Continues and steers each session needed (`--model`,
+  `--since`, `--min-steps`, `--json`). It isn't part of the gem. See [docs/testing.md](docs/testing.md).
 
 ## [0.41.0] - 2026-10-08
 
