@@ -169,6 +169,18 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(session.prompt_notes.map(&:name)).to eq(%w[model_notes_gemma])
     end
 
+    it "names the notes a fresh session's prompt will load, before any turn runs" do
+      fresh = Samagotchi::Session.new_session(mode: "assist", model_name: "beta:Qwen3-14B", working_directory: Dir.pwd)
+      engine.session = fresh
+      gemma = Samagotchi::ModelNotes::Note.new(name: "model_notes_gemma", scope: "project", body: "B", chars: 1, digest: "d")
+      allow(Samagotchi::ModelNotes).to receive(:for).and_return([gemma])
+
+      expect(commands.run("/model").output)
+        .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); " \
+               "notes: model_notes_gemma (project, 1 chars)")
+      expect(fresh.prompt_notes).to eq([])
+    end
+
     it "switches the Engine's model and saves it on the session" do
       result = commands.run("/model alpha:gemma-small")
 

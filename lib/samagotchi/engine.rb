@@ -481,11 +481,16 @@ module Samagotchi
 
     # The model notes the session's prompt carried at its last build
     # (Session#prompt_notes): a resumed session's or a woken worker's saved
-    # ones until this process builds its prompt; without a session, the
-    # notes the effective model's prompt would load.
+    # ones until this process builds its prompt; a fresh session (no build
+    # yet, no messages) has none saved, so the effective model's prompt
+    # would load them: the notes #model_notes names, as without a session.
+    # The three readers (/model, /stats, the web) share this.
     # @return [Array<PromptNote>]
     def prompt_notes
-      return @session.prompt_notes.dup if @session
+      return model_notes.map { |note| PromptNote.from_note(note) } unless @session
+
+      saved = @session.prompt_notes
+      return saved.dup if !@prompt_builder.prompt_notes.nil? || !saved.empty? || @session.messages.to_a.any?
 
       model_notes.map { |note| PromptNote.from_note(note) }
     rescue StandardError

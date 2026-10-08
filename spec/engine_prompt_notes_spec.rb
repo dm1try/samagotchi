@@ -40,13 +40,37 @@ RSpec.describe Samagotchi::Engine, "prompt notes" do
   it "records the notes a build carries on the session, the state snapshot and /stats' snapshot" do
     e = engine("box:gemma-small")
     e.session = new_session("box:gemma-small")
-    expect(e.session_state_snapshot[:prompt_notes]).to eq([])
+    expect(e.session_state_snapshot[:prompt_notes]).to eq([gemma])
 
     e.system_prompt
 
     expect(e.session.prompt_notes).to eq([Samagotchi::PromptNote.new(**gemma)])
     expect(e.session_state_snapshot[:prompt_notes]).to eq([gemma])
     expect(e.stats_snapshot[:prompt_notes]).to eq([gemma])
+  end
+
+  it "names the notes the effective model's prompt will load on a fresh session, before any build" do
+    e = engine("box:gemma-small")
+    e.session = new_session("box:gemma-small")
+
+    expect(e.prompt_notes.map(&:name)).to eq(%w[model_notes_gemma])
+    # The row is recomputed; the session file keeps its shape ([] until a build).
+    expect(e.session.prompt_notes).to eq([])
+  end
+
+  it "leaves a muted note out of a fresh session's prompt notes" do
+    e = engine("box:gemma-small", muted_memories: ["model_notes_gemma"])
+    e.session = new_session("box:gemma-small")
+
+    expect(e.prompt_notes).to eq([])
+  end
+
+  it "keeps a session's saved [] when a turn ran and its prompt carried none" do
+    e = engine("box:gemma-small")
+    e.session = new_session("box:gemma-small")
+    e.session.messages = [{ role: "user", content: "hi" }]
+
+    expect(e.prompt_notes).to eq([])
   end
 
   it "keeps a resumed session's saved notes until its prompt is built again, then records the new ones" do
