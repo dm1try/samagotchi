@@ -23,8 +23,8 @@ RSpec.describe Samagotchi::ContextCommand do
     end
   end
 
-  def run(*argv, stdin: StringIO.new(""), cwd: repo)
-    described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: state_dir, env: env, cwd: cwd).run
+  def run(*argv, stdin: StringIO.new(""), cwd: repo, clock: -> { Time.now })
+    described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: state_dir, env: env, cwd: cwd, clock: clock).run
   end
 
   def own(session) = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
@@ -214,8 +214,11 @@ RSpec.describe Samagotchi::ContextCommand do
       run("push", "pr-1", "-m", "text", a.id)
       run("mute", "ci", a.id)
       reset_out
+      # The age is against the push's stamp (whole seconds), not the wall
+      # clock: a loaded machine (a full parallel run) read "1s ago".
+      pushed = Time.iso8601(own(a).snapshot("pr-1").fetched_at)
 
-      expect(run("ls", a.id)).to eq(0), err.string
+      expect(run("ls", a.id, clock: -> { pushed + 0.9 })).to eq(0), err.string
       expect(out.string.lines.map(&:split)).to eq([
         %w[pr-1 session push 0s ago ok mine],
         %w[ci project cmd every default - muted build status],

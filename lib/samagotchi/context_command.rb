@@ -75,7 +75,9 @@ module Samagotchi
     end
 
     # @param argv [Array<String>] the arguments after "context"
-    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, env: ENV, cwd: Dir.pwd)
+    # @param clock [#call] now, for ls's ages ("4s ago")
+    def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil, env: ENV, cwd: Dir.pwd,
+                   clock: -> { Time.now })
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
@@ -83,6 +85,7 @@ module Samagotchi
       @state_dir = state_dir || Session.default_state_dir
       @env = env
       @cwd = cwd
+      @clock = clock
     end
 
     # @return [Integer] exit status: 0 done, 1 refused or failed, 2 usage
@@ -437,7 +440,7 @@ module Samagotchi
     def age(iso)
       return "-" unless iso
 
-      seconds = (Time.now - Time.iso8601(iso)).to_i
+      seconds = (@clock.call - Time.iso8601(iso)).to_i
       if seconds < 60 then "#{seconds}s ago"
       elsif seconds < 3600 then "#{seconds / 60}m ago"
       elsif seconds < 86_400 then "#{seconds / 3600}h ago"
