@@ -238,6 +238,12 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.queued_commands).to eq([])
   end
 
+  it "leaves a card's action out of the queued commands: the card is its echo, live and after a reload" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :command_queued, command_id: "c1", client_id: "web:1", line: "/pr-attach 42", waits: "turn_end", card: true })
+    expect(acc.queued_commands).to eq([])
+  end
+
   it "clears the turn when it completes, is canceled or fails" do
     %i[turn_completed turn_canceled turn_failed].each do |ending|
       feed({ type: :turn_started, prompt: "hi" }, { type: :generation_chunk, iteration: 1, content: "x" })

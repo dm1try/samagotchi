@@ -201,7 +201,8 @@ module Samagotchi
       end
 
       # @return [Array<Hash>] commands queued for after the running turn
-      #   (command_queued with waits) that haven't run or been dropped yet:
+      #   (command_queued with waits, not a card's action) that haven't run
+      #   or been dropped yet:
       #   {command_id:, client_id:, line:}, in arrival order
       def queued_commands
         @mutex.synchronize { @queued_commands.map(&:dup) }
@@ -213,7 +214,8 @@ module Samagotchi
         type = event[:type]
         case type
         when :command_queued
-          @queued_commands << event.slice(:command_id, :client_id, :line) if event[:waits]
+          # A card's action shows as its card, never as a line (the UIs skip it live).
+          @queued_commands << event.slice(:command_id, :client_id, :line) if event[:waits] && !event[:card]
         when :command_ran
           @queued_commands.reject! { |entry| entry[:command_id] == event[:command_id] } if event[:queued]
         when :turn_enqueued
