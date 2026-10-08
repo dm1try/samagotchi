@@ -504,6 +504,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.repo_root` | the git checkout holding `cwd`, or nil |
 | `ctx.scratch?` | whether the session is a `chi scratch` one (deleted when it ends) |
 | `ctx.delegate?` | whether the session is a delegate child: a task another session handed over |
+| `ctx.fork?` | whether the session is a fork (`ctx.sessions.fork`): it has a parent but isn't a delegate child, and started from a conversation, so its first prompt isn't its first user message |
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
 | `ctx.model_key` | that model's memory overlay key (`<name>.<key>.md`, what `memory_write current_model_only` writes) |
 | `ctx.settings` | the bundle's settings, frozen |

@@ -225,7 +225,8 @@ later when an offer is wanted: one JSON line per event, `offered` (session,
 project root, working directory, branch, PR URL, main checkout or worktree,
 model), `attached` and `declined` (with the seconds since the offer), and
 `first_prompt` (the first 160 characters of every session's first message,
-offered or not; not scratch sessions or delegate children). Over 1 MB it is
+offered or not; a fork's first after the conversation it started from, once;
+not scratch sessions or delegate children). Over 1 MB it is
 renamed to `offers.ndjson.1` (one old file is kept). Only you can read it
 (0600), and nothing leaves your machine.
 
