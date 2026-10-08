@@ -1060,13 +1060,14 @@ module Samagotchi
     def steer_line(line)
       local = local_command(line) unless line.nil?
       return exit_after_turn(delete: SessionCommands.delete_on_exit?(line)) if line.nil? || local == :exit
+      return archive_after_turn if local == :archive
       return detach_note if local == :detach
       return false if @active_cancel_controller&.cancelled?
 
       policy = command_registry.mid_turn(line)
       return start_anytime_command(line) if policy == :anytime
       return command_queued if policy == :queue
-      # A command, never steering text (/archive waits, back in the prompt).
+      # A command, never steering text.
       return command_during_turn(line) if local || command_registry.command?(line)
       return true if line.strip.empty?
 
@@ -1094,6 +1095,18 @@ module Samagotchi
 
     def detach_note
       @surface.commit(REPL_DETACH_NOTE)
+      true
+    end
+
+    # /archive during a turn (D2): the REPL leaves and archives once the
+    # turn and the lines queued behind it (S5) ran, as /exit does.
+    # @return [true]
+    def archive_after_turn
+      return @surface.commit(SCRATCH_ARCHIVE_REFUSED).then { true } if @scratch
+
+      @exit_after_turn = true
+      @archive_on_exit = true
+      @surface.commit("(archives after this turn; Ctrl-C cancels it)")
       true
     end
 

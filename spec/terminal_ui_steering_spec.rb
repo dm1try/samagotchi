@@ -270,7 +270,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(agent.instance_variable_get(:@exit_after_turn)).to be(true)
   end
 
-  it "puts /archive typed during a turn back in the prompt instead of merging it into the turn" do
+  it "archives after the turn on /archive typed during it (D2), never merging it into the turn" do
     drained = nil
     allow(engine).to receive(:run_turn) do |*, pending_input:, **|
       repl_input << [:line, "/archive"]
@@ -281,7 +281,9 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     agent.run_engine_turn(session, "go")
 
     expect(drained).to eq([])
-    expect(surface.lines).to include(described_class::COMMAND_BUSY)
+    expect(surface.lines).to include("(archives after this turn; Ctrl-C cancels it)")
+    expect(agent.instance_variable_get(:@exit_after_turn)).to be(true)
+    expect(agent.exit_action).to eq(:archive)
   end
 
   it "ends the loop on /exit --delete without the resume line" do

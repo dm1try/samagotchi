@@ -2133,6 +2133,36 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
       expect(screen.lines.last).to start_with("Detached; archived session s-1234.")
     end
 
+    # D2: it waits for the running turn and the commands queued behind it.
+    it "archives after the turn when typed during it, once the commands queued behind it ran" do
+      allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting"}'))
+      running = idle.merge("current_turn" => { "prompt" => "work", "parts" => [] },
+                           "queued_commands" => [{ "command_id" => "c1", "client_id" => "web:tab", "line" => "/model x" }])
+      push = nil
+      allow(client).to receive(:follow) do |**, &block|
+        push = block
+        block.call("type" => "snapshot", "snapshot" => running)
+        stream
+      end
+      reads = ["/archive"]
+      ended = attached.run(input: lambda { |_prompt, _prefill|
+        next reads.shift unless reads.empty?
+
+        push.call("type" => "turn_completed", "result" => "done")
+        expect(client).not_to have_received(:request_exit)
+        push.call("type" => "command_ran", "command_id" => "c1", "client_id" => "web:tab", "line" => "/model x",
+                  "status" => "ok", "output" => "runtime model set to x", "changed" => ["model"], "queued" => true)
+        sleep 2
+        nil
+      })
+
+      expect(ended).to eq(:detached)
+      expect(screen.lines).to include("(archives after this turn)")
+      expect(client).to have_received(:request_exit).once.with(client_id: "tui:1")
+      expect(archived).to eq(["s-1234"])
+      expect(screen.lines.last).to eq("Detached; archived session s-1234. chi sessions list --archived finds it.")
+    end
+
     it "says so when the archive is refused (a turn running)" do
       allow(client).to receive(:request_exit).and_return(response(409, '{"status":"held","reason":"turn_running"}'))
       refusing = ->(id) { raise Samagotchi::SessionManager::ArchiveRefused.new(id, :busy) }

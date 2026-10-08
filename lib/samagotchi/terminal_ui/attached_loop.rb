@@ -126,6 +126,10 @@ module Samagotchi
         @early_lines = []
         @question = nil
         @answered_ids = Set.new
+        # Commands queued for after the running turn, any UI's: a /archive
+        # typed during the turn waits for them too (#archive_due?).
+        @queued_ids = Set.new
+        @archive_after_turn = false
         @reader = nil
         @first_prompt = first_prompt
         @first_commands = Array(first_command)
@@ -188,6 +192,7 @@ module Samagotchi
           when :event
             ended = safely_handle(payload)
             return ended if %i[closed failed unanswered].include?(ended)
+            return archive_now if archive_due?
 
             ended = take_early_lines
             return ended if ended
@@ -381,6 +386,7 @@ module Samagotchi
         local = command_registry.lookup_local(text)&.id
         return submit(nil) if local == :detach
         return SessionCommands.delete_on_exit?(text) ? exit_and_delete : exit_worker if local == :exit
+        return archive_after_turn if local == :archive && (@running || !@queued_ids.empty?)
         return exit_and_archive if local == :archive
 
         if @continue_offer
@@ -446,6 +452,24 @@ module Samagotchi
         detach("#{exit_failed_line(e.message)} Not deleted.")
       rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError => e
         detach("Detached; the worker is stopping, but session #{id} was not deleted (#{e.message}): chi sessions delete #{id}")
+      end
+
+      # /archive during a turn (D2): it waits for the turn's end and the
+      # commands queued behind it (#archive_due?), then runs.
+      # @return [nil]
+      def archive_after_turn
+        @archive_after_turn = true
+        @screen.commit("(archives after this turn)")
+        nil
+      end
+
+      def archive_due? = @archive_after_turn && !@running && @queued_ids.empty?
+
+      # @return [Symbol] :detached
+      def archive_now
+        @archive_after_turn = false
+        exit_and_archive
+        :detached
       end
 
       # /archive: the worker is asked to exit as for /exit, then the session
@@ -554,6 +578,7 @@ module Samagotchi
       # waits): its line now (another client's) and a note; its command_ran
       # has no line again (queued: true).
       def command_waits(event)
+        @queued_ids << event[:command_id]
         if own?(event[:client_id])
           first = event[:command_id] == @first_command_id
           return @screen.commit(first ? first_command_queued : QUEUED_NOTE)
@@ -569,6 +594,7 @@ module Samagotchi
 
       def command_ran(event)
         @open_ids.delete(event[:command_id])
+        @queued_ids.delete(event[:command_id])
         unless own?(event[:client_id]) || event[:anytime] || event[:card] || event[:queued]
           @screen.commit(prompt_line(event[:client_id], event[:line]))
         end
@@ -1016,7 +1042,9 @@ module Samagotchi
           @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
         end
         # Commands waiting for the turn's end (their command_ran prints no line).
+        @queued_ids.clear
         Array(snapshot[:queued_commands]).each do |entry|
+          @queued_ids << entry[:command_id]
           @screen.commit("queued #{prompt_line(entry[:client_id], entry[:line])}")
         end
         return send_first_command unless @first_commands.empty?
