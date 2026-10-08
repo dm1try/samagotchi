@@ -72,3 +72,22 @@ test("toolRowHtml: a call with no params has no empty title part; an error says 
   assert.match(html, /<span class="activity-tool">chrome: screenshot<\/span><span class="activity-state error">error<\/span><div class="thumbs">1<\/div><details class="activity-diff">/);
   assert.doesNotMatch(html, /activity-params|activity-output/);
 });
+
+import { llmEditLine, toolRowInnerHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
+
+test("llmEditLine: a reloaded row's ✂ mark for each kind of LLM context edit", () => {
+  assert.equal(llmEditLine({ kind: "stale", note: "superseded by a later read", tokens: 1002 }), "✂ stubbed: superseded by a later read · ~1.0k tokens");
+  assert.equal(llmEditLine({ kind: "stale", note: "superseded by a later edit", tokens: 40 }), "✂ stubbed: superseded by a later edit · ~40 tokens");
+  assert.equal(llmEditLine({ kind: "forget", note: "ls shows 3 files" }), "✂ forgotten: ls shows 3 files");
+  assert.equal(llmEditLine({ kind: "forget", with: "t41", kept: "12-40" }), "✂ forgotten with t41 · lines 12-40 kept");
+  assert.equal(llmEditLine({ kind: "forget", staged: true, note: "x" }), "✂ forget staged");
+  assert.equal(llmEditLine(null), "");
+  assert.equal(llmEditLine({ kind: "file" }), "");
+});
+
+test("toolRowInnerHtml: the ✂ mark goes above the output, its hover naming the output's id", () => {
+  const html = toolRowInnerHtml({ key: "1:1", tool: "read", title: "a.rb", status: "ok", output: "[read]\nx", tool_id: "t1",
+    edit: { kind: "forget", note: "a <b>" } });
+  assert.match(html, /<div class="activity-edit" title="t1: ✂ forgotten: a &lt;b&gt;\nThe model is sent this instead of the output; the session keeps it.">✂ forgotten: a &lt;b&gt;<\/div><div class="activity-output"/);
+  assert.doesNotMatch(toolRowInnerHtml({ key: "1:1", tool: "read", status: "ok" }), /activity-edit/);
+});

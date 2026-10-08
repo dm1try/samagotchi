@@ -672,6 +672,19 @@ RSpec.describe Samagotchi::Web::App do
                            { role: "assistant", content: "found it" }])
     end
 
+    it "gives a reload's tool parts their ✂ marks from the session's saved edits, string-keyed (a snapshot) too" do
+      messages = [{ "role" => "user", "content" => "look" },
+                  { "role" => "model", "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "read", "arguments" => { "path" => "a.rb" } }] },
+                  { "role" => "tool_response", "content" => "[read]\nx", "tool_call_id" => "c1", "tool_ids" => ["t1"],
+                    "edits" => { "t1" => { "kind" => "forget", "note" => "a.rb is empty", "by" => "model", "staged_at" => "s",
+                                           "applied_at" => "a" } } },
+                  { "role" => "model", "content" => "found it" }]
+
+      shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages, parts: true)
+
+      expect(shown[1][:parts][:tools].first).to include(tool_id: "t1", edit: { kind: "forget", note: "a.rb is empty" })
+    end
+
     it "keeps a prompt's turn id, which pairs it with its turn record" do
       messages = [{ role: "user", content: "look", turn_id: "T1" }, { "role" => "user", "content" => "again", "turn_id" => "T2" }]
 

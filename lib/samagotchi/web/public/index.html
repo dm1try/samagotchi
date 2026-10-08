@@ -172,6 +172,8 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .activity-output{flex:1 1 100%;min-width:0}
 /* An edit/write's change: a closed "diff +3 −1" under the output, lined up with it. */
 .activity-diff{flex:1 1 100%;min-width:0;margin:2px 0 2px var(--row-gutter)}
+/* A reloaded row's ✂ mark (an LLM context edit on its output), one line above the output. */
+.activity-edit{flex:1 1 100%;min-width:0;margin:2px 0 0 var(--row-gutter);font-size:12px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
 .activity-diff>summary{cursor:pointer;font-size:12px;color:var(--text-muted);width:max-content;font-variant-numeric:tabular-nums}
 .activity-diff>summary:hover{color:var(--text-2)}
 .activity-diff[open]>summary{margin-bottom:4px}
@@ -212,6 +214,7 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
   .activity-params{flex:1 1 0}
   .activity-output{margin-left:0}
   .activity-diff{margin-left:0}
+  .activity-edit{margin-left:0}
   .activity-row>.activity-command{margin-left:0}
 }
 .bubble.thinking{border-left:3px solid var(--think);background:color-mix(in srgb,var(--think) 6%,var(--bg-panel));padding:8px 12px}

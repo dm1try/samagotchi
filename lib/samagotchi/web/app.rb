@@ -1658,6 +1658,8 @@ module Samagotchi
       def messages_for_display(msgs, parts: false, cwd: nil)
         filtered = []
         list = Array(msgs)
+        # The outputs' ✂ marks (LLM context edits), by id, for the parts.
+        marks = parts ? MessageParts.edit_marks(list) : {}
         list.each_with_index do |m, index|
           role = (m[:role] || m["role"]).to_s
           content = (m[:content] || m["content"]).to_s
@@ -1689,7 +1691,7 @@ module Samagotchi
           next if role == "tool_response"
 
           stripped = Samagotchi::OutputFormatter.strip_markup(content)
-          did = parts && %w[model assistant].include?(role) ? message_parts(list, index, cwd) : nil
+          did = parts && %w[model assistant].include?(role) ? message_parts(list, index, cwd, marks) : nil
           next if stripped.empty? && did.nil?
 
           norm_role = role == "model" ? "assistant" : role
@@ -1757,10 +1759,11 @@ module Samagotchi
       end
 
       # The parts of the assistant message at +index+, with the tool_response
-      # messages right after it.
-      def message_parts(list, index, cwd = nil)
+      # messages right after it; +marks+: the session's ✂ marks
+      # (MessageParts.edit_marks).
+      def message_parts(list, index, cwd = nil, marks = {})
         responses = list.drop(index + 1).take_while { |r| (r[:role] || r["role"]).to_s == "tool_response" }
-        MessageParts.for_message(list[index], responses, cwd: cwd)
+        MessageParts.for_message(list[index], responses, cwd: cwd, marks: marks)
       end
 
       # The last message messages_for_display shows as an answer

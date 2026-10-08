@@ -254,4 +254,74 @@ RSpec.describe Samagotchi::Web::MessageParts do
       expect(tools.first).not_to have_key(:title)
     end
   end
+
+  describe "LLM context edits (the ✂ marks)" do
+    def edit(kind, note, applied: true, staged_at: "s1", keep: nil)
+      { "kind" => kind, "note" => note, "by" => kind == "stale" ? "chi" : "model", "staged_at" => staged_at,
+        "applied_at" => applied ? "a1" : nil, "keep" => keep }.compact
+    end
+
+    let(:big) { "[read]\n#{"x" * 4000}" }
+    let(:messages) do
+      [{ role: "user", content: "go" },
+       { role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "a.rb" } }] },
+       { role: "tool_response", content: big, tool_call_id: "c1", tool_ids: ["t1"],
+         edits: { t1: edit("stale", "a.rb: superseded by a later read") } },
+       { role: "model", content: "", tool_calls: [{ id: "c2", name: "execute", arguments: { "command" => "ls" } },
+                                                  { id: "c3", name: "read", arguments: { "path" => "b.rb" } }] },
+       { role: "tool_response", content: "[execute]\nout", tool_call_id: "c2", tool_ids: ["t2"],
+         edits: { "t2" => edit("forget", "ls shows 3 files") } },
+       { role: "tool_response", content: "[read]\nb", tool_call_id: "c3", tool_ids: ["t3"],
+         edits: { "t3" => edit("forget", "ls shows 3 files", keep: [[12, 40]]) } },
+       { role: "model", content: "", tool_calls: [{ id: "c4", name: "execute", arguments: { "command" => "pwd" } }] },
+       { role: "tool_response", content: "[execute]\n/p", tool_call_id: "c4", tool_ids: ["t4"],
+         edits: { "t4" => edit("forget", "where we are", applied: false, staged_at: "s2") } }]
+    end
+
+    it "marks each edited output by id: a stale stub's reason, a forget call's note on its first output, staged ones" do
+      expect(described_class.edit_marks(messages)).to eq(
+        "t1" => { kind: "stale", note: "superseded by a later read" },
+        "t2" => { kind: "forget", note: "ls shows 3 files" },
+        "t3" => { kind: "forget", with: "t2", kept: "12-40" },
+        "t4" => { kind: "forget", staged: true, note: "where we are" }
+      )
+    end
+
+    it "gives a part its output's id and its mark; an applied stale stub says what it frees (its whole output)" do
+      marks = described_class.edit_marks(messages)
+      first = described_class.for_message(messages[1], [messages[2]], marks: marks)[:tools].first
+      second = described_class.for_message(messages[3], messages[4..5], marks: marks)[:tools]
+
+      expect(first).to include(tool_id: "t1", edit: { kind: "stale", note: "superseded by a later read", tokens: 1002 },
+                               output_truncated: true)
+      expect(second.map { |part| [part[:tool_id], part[:edit]] })
+        .to eq([["t2", { kind: "forget", note: "ls shows 3 files" }], ["t3", { kind: "forget", with: "t2", kept: "12-40" }]])
+    end
+
+    [nil, "", "dup"].each do |id|
+      it "pairs results by position when their tool_call_id is #{id.inspect} (omitted, empty or repeated)" do
+        message = { role: "model", content: "", tool_calls: [{ id: id, name: "read", arguments: { "path" => "a.txt" } },
+                                                             { id: id, name: "read", arguments: { "path" => "b.txt" } }] }
+        responses = [{ role: "tool_response", content: "[read]\na", tool_call_id: id, tool_ids: ["t1"] },
+                     { role: "tool_response", content: "[read]\nb", tool_call_id: id, tool_ids: ["t2"],
+                       edits: { "t2" => edit("stale", "b.txt: superseded by a later read") } }]
+
+        tools = described_class.for_message(message, responses, marks: described_class.edit_marks(responses))[:tools]
+
+        expect(tools.map { |part| [part[:title], part[:output], part[:tool_id], part.key?(:edit)] })
+          .to eq([["a.txt", "[read]\na", "t1", false], ["b.txt", "[read]\nb", "t2", true]])
+      end
+    end
+
+    it "reads a native entry's ids by call, and string-keyed messages (a Bridge snapshot) the same" do
+      content = "#{qwen_call("read", path: "a.rb")}#{qwen_call("execute", command: "ls")}"
+      response = { "role" => "tool_response", "content" => "[read]\n#{"y" * 200}\n\n---\n\n[execute]\nz",
+                   "tool_ids" => %w[t5 t6], "edits" => { "t6" => edit("forget", "nothing there") } }
+      parts = described_class.for_message({ "role" => "model", "content" => content }, [response],
+                                          marks: described_class.edit_marks([JSON.parse(JSON.generate(response))]))
+
+      expect(parts[:tools].map { |part| [part[:tool_id], part[:edit]] })
+        .to eq([["t5", nil], ["t6", { kind: "forget", note: "nothing there" }]])
+    end
+  end
 end
