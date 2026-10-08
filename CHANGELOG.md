@@ -15,6 +15,14 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `/stats`, `/model` and the web named no model notes for a fresh session (a REPL's before the first turn, a new
+  web or worker session), though its first turn's prompt carries them; they now name the notes that prompt will
+  load. A session whose prompt carried none keeps saying so.
+
+- `chi self`'s `model notes` row resolved a note's model overlay from the process's `XDG_CONFIG_HOME` while it
+  read the note itself from the env it was given, so the row could count no overlay (or another config's); it now
+  reads both from the same env, and passes the fallback key the session's prompt does, so a model typed as an
+  alias whose note overlay is keyed by the alias's name shows it — the row agrees with the notes the session's prompt loads.
 - The web's ctx meter under an LLM context budget smaller than the window (`llm_context.budget_tokens`) read the
   percentage of the window after a reload (`ctx 12%`) where live it read the budget's (`ctx 25%`); it now counts
   against the budget both ways, as the `[CONTEXT: …]` line and the status line do, and a generation's final counts
