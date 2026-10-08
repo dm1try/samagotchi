@@ -368,6 +368,20 @@ RSpec.describe "task tools" do
       end
     end
 
+    it "keeps a running task running when its start time can't be read, and reads it only to stop" do
+      record, = described_class.create_task("sleep 30")
+      allow(Samagotchi::ProcessGroup).to receive(:start_time).and_return(nil)
+
+      3.times { expect(described_class.get_record(record["id"]).first).to include("status" => "running") }
+      expect(described_class.list_records.first).to include("status" => "running")
+      expect(Samagotchi::ProcessGroup).not_to have_received(:start_time)
+
+      stopped, error = described_class.stop_task(record["id"], by: "model")
+      expect(error).to be_nil
+      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_model")
+      expect(Samagotchi::ProcessGroup).to have_received(:start_time).with(record["pid"])
+    end
+
     it "records the task's start time, and signals nothing for a group leader whose pid was reused since" do
       record, = described_class.create_task("sleep 30")
       expect(record["pid_started"]).to eq(Samagotchi::ProcessGroup.start_time(record["pid"]))

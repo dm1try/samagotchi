@@ -193,7 +193,7 @@ module Samagotchi
 
         pid = refreshed["pid"]
         # Checked again just before the signal: never a group chi didn't start.
-        return [mark_not_chis(refreshed), nil] unless chis_group?(refreshed)
+        return [mark_not_chis(refreshed), nil] unless chis_group?(refreshed, started: refreshed["pid_started"])
 
         refreshed["stop_requested_by"] = by.to_s
         write_record(refreshed)
@@ -220,9 +220,11 @@ module Samagotchi
         mark_not_chis(record)
       end
 
-      # Whether the record's pid still leads the group chi spawned: the same
-      # process, by the start time recorded at task_create (when there is one).
-      def chis_group?(record) = ProcessGroup.leader?(record["pid"], started: record["pid_started"])
+      # Whether the record's pid still leads its own group. With +started+
+      # (the start time recorded at task_create), also the same process: a
+      # ps per call, so only task_stop asks it, just before the signal;
+      # a refresh (each task_wait poll, task_list) checks the group only.
+      def chis_group?(record, started: nil) = ProcessGroup.leader?(record["pid"], started: started)
 
       # A running record whose pid isn't a group chi started (NOT_CHIS_PROCESS)
       # ends as failed, unless its exit code or a stop on disk says more.

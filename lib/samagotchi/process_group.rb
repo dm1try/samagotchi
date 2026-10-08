@@ -54,14 +54,17 @@ module Samagotchi
     # Whether +pid+ runs and leads its own group, as #spawn's process does
     # (not, then, a reused pid in some other group).
     # @param started [String, nil] the start time #start_time read when chi
-    #   spawned it: a process that started at another time (or whose time
-    #   can't be read) is one that reused the pid, even as a group leader.
-    #   nil checks the group only (a record from an older chi).
+    #   spawned it: a process that started at another time is one that
+    #   reused the pid, even as a group leader. nil checks the group only (a
+    #   record from an older chi), and so does a time that can't be read
+    #   now (a ps that failed once must not disown a live task).
     # @param start_time [#call] (pid) the reader, #start_time by default
     def leader?(pid, started: nil, start_time: method(:start_time))
       return false unless signalable?(pid) && Process.getpgid(pid) == pid
+      return true if started.nil?
 
-      started.nil? || start_time.call(pid) == started
+      now = start_time.call(pid)
+      now.nil? || now == started
     rescue Errno::ESRCH, Errno::EPERM
       false
     end

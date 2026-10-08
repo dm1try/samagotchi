@@ -124,10 +124,10 @@ RSpec.describe Samagotchi::ProcessGroup do
       reap(pid)
     end
 
-    it "is no leader when the start time can't be read any more (the process is gone)" do
+    it "checks only the group when the start time can't be read now (a ps that failed once)" do
       pid = spawn_group("sleep 31.96")
 
-      expect(described_class.leader?(pid, started: "Thu Oct  9 10:00:00 2026", start_time: ->(_pid) {})).to be(false)
+      expect(described_class.leader?(pid, started: "Thu Oct  9 10:00:00 2026", start_time: ->(_pid) {})).to be(true)
     ensure
       reap(pid)
     end
