@@ -592,8 +592,11 @@ module Samagotchi
           streamed_any = false
           request(iteration, retry_generation, streamed, thought, generation_controller, -> { streamed_any = true })
         rescue RetryExhausted => e
+          # A cancel that landed as the stream dropped ends the turn canceled,
+          # not failed, whatever the drop's count.
+          cancelled = [@cancel_controller, generation_controller].compact.find(&:cancelled?)
+          raise RequestCancelled, cancelled.reason if cancelled
           raise if attempt >= MAX_STREAM_DROPS || !streamed_any
-          raise if @cancel_controller&.cancelled? || generation_controller&.cancelled?
 
           attempt += 1
           streamed.clear

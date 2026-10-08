@@ -540,6 +540,21 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         end
       end
 
+      it "ends canceled, not failed, when the cancel lands as the stream drops" do
+        controller = Samagotchi::CancellationController.new
+        backend.adapter = FakeChatAdapter.new(lambda { |on_delta:, **|
+          on_delta.call(content: "x", reasoning: "", payload: {})
+          controller.cancel!
+          raise dropped
+        })
+
+        result = backend.complete(messages: [{ role: "user", content: "go" }], model_name: "m",
+                                  on_stream_event: ->(event) { events << event }, cancel_controller: controller)
+
+        expect(result).to be_canceled
+        expect(backend.adapter.requests.size).to eq(1)
+      end
+
       it "does not ask again after a cancel" do
         controller = Samagotchi::CancellationController.new
         backend.adapter = FakeChatAdapter.new(lambda { |on_delta:, **|
