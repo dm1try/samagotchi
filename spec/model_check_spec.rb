@@ -67,6 +67,15 @@ RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
     expect(check("box:qwen3")).to be_nil
   end
 
+  it "says nothing and never re-lists for an id the host declares under hosts.<name>.models" do
+    save("box", %w[gemma-small], at: saved_a_while_ago)
+    hosts["box"] = { models: Samagotchi::HostModel.parse_map(%w[rr/X], "box") }
+    relist = ->(*_args) { raise "re-listed" }
+
+    expect(check("box:rr/x", relist: relist)).to be_nil
+    expect(check("box:rr/y", relist: ->(*_args) {})).to start_with("host 'box' doesn't list model 'rr/y'")
+  end
+
   it "matches an id by case, as routing does" do
     save("box", %w[gemma-small])
 

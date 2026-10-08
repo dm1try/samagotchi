@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `hosts.<name>.models:` declares the model ids a host serves whatever its `/v1/models` lists (a gateway's
+  round-robin ids), as a map of ids or a plain list. A declared `host:id` is never warned about or re-listed at
+  `chi send --new` and delegate spawns, and a bare id routes to its declaring host as if listed, before any
+  `/models` and in workers too. Two hosts declaring one id warn at start. See "Models a host serves but doesn't
+  list" in [docs/configuration.md](docs/configuration.md).
+
 ## [0.45.0] - 2026-10-08
 
 ### Added

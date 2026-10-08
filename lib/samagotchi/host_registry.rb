@@ -39,10 +39,12 @@ module Samagotchi
     # window_tokens: the configured context window (ContextWindow.setting), nil when unset;
     # llm_context_strategy: the configured layers (LLMContextStrategy), nil when unset;
     # llm_context_apply: the configured apply rule (LLMContextStrategy), nil when unset;
-    # llm_context_budget_tokens: the configured context budget (LLMContextStrategy), nil when unset.
+    # llm_context_budget_tokens: the configured context budget (LLMContextStrategy), nil when unset;
+    # models: the ids the host serves whatever it lists, {downcased id => HostModel} ({} when none).
     HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :profile,
                            :first_token_timeout, :vision, :sampling, :thinking, :remote, :window_tokens,
-                           :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens, keyword_init: true) do
+                           :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens, :models,
+                           keyword_init: true) do
       # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
       # raw-prompt loop.
       def chat? = api == :openai
@@ -104,7 +106,7 @@ module Samagotchi
                               vision: cfg[:vision], sampling: cfg[:sampling], thinking: cfg[:thinking],
                               remote: cfg[:remote], window_tokens: cfg[:window_tokens],
                               llm_context_strategy: cfg[:llm_context_strategy], llm_context_apply: cfg[:llm_context_apply],
-                              llm_context_budget_tokens: cfg[:llm_context_budget_tokens])
+                              llm_context_budget_tokens: cfg[:llm_context_budget_tokens], models: cfg[:models] || {})
         entry.client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme],
                                   first_token_timeout: entry.first_token_limit, name: entry.name,
                                   api_key_env: entry.api_key_env, env: env)
@@ -116,7 +118,8 @@ module Samagotchi
         host = "localhost" if host.empty?
         port = Config.get("server.port").to_i
         port = 8080 if port <= 0
-        @entries["default"] = HostEntry.new(name: "default", host: host, port: port, transport: nil, client: Client.new(host: host, port: port, name: "default"))
+        @entries["default"] = HostEntry.new(name: "default", host: host, port: port, transport: nil, models: {},
+                                            client: Client.new(host: host, port: port, name: "default"))
       end
       @mutex = Mutex.new
       @cache = nil
@@ -195,18 +198,21 @@ module Samagotchi
 
     # The host a model name, alias or host:model ref goes to and the model
     # id it is sent as (ModelRef: one alias pass). A ref that names a host
-    # goes there. A bare id goes to the default host when its cached list
-    # has it, else to the first host in hosts: order whose list has it,
-    # else to the default host (before /models nothing is listed: no
+    # goes there. A bare id goes to the hosts whose cached list has it or
+    # that declare it (hosts.<name>.models, known before any /models): the
+    # default host when it is one of them, else the first in hosts: order,
+    # else the default host (before /models nothing is listed: no
     # discovery here, the latency budget). Never by a substring.
     def host_for_model(raw_model)
       ref = model_ref(raw_model)
       # ModelRef names a host only when it is one of ours
       return [find_entry(ref.host_name), ref.id] if ref.host_name
 
-      listed = @mutex.synchronize { @model_index }&.fetch(ref.id.to_s.strip.downcase, nil) || []
+      down = ref.id.to_s.strip.downcase
+      listed = @mutex.synchronize { @model_index }&.fetch(down, nil) || []
+      candidates = @entries.values.select { |e| listed.include?(e.name) || e.models&.key?(down) }.map(&:name)
       default = default_entry
-      name = listed.include?(default.name) ? default.name : listed.first
+      name = candidates.include?(default.name) ? default.name : candidates.first
       [(name && find_entry(name)) || default, ref.id]
     end
 

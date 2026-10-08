@@ -555,7 +555,8 @@ When `default.model` is unset or blank, Samagotchi fails fast with a clear start
 With several `hosts:`, `host:model` (or an alias naming a host) pins the host.
 An unqualified model name goes to the default host when its `/models` list has
 that exact id, else to the first host in `hosts:` order whose list has it, else
-to the default host. Only exact ids count, never a substring: `/model gemma` on
+to the default host. A host's declared ids (`hosts.<name>.models`, below) count
+as listed. Only exact ids count, never a substring: `/model gemma` on
 a box that lists `gemma-4-26b` needs `box:gemma` or the exact id. The lists are
 known only after `/models` ran (nothing is fetched before the first turn), so
 until then an unqualified name goes to the default host; use `host:model` to pin
@@ -607,6 +608,39 @@ The check applies wherever the model comes in: `--model`, `default.model`, an
 alias, `/model`, `chi send --new --model`, the web's new-session model and a
 delegate's model. Any other unknown prefix (`nosuch:x`) is sent to the default
 host as the model id.
+
+### Models a host serves but doesn't list
+
+A gateway can serve ids its `/v1/models` never lists (round-robin aliases such
+as `rr/deepseek-v4.1`). Declare them under the host:
+
+```yaml
+hosts:
+  work:
+    url: https://gateway.example/v1
+    api: openai
+    api_key_env: WORK_API_KEY
+    models:
+      rr/deepseek-v4.1:
+      rr/qwen3.8-27b:
+```
+
+A plain list says the same: `models: [rr/deepseek-v4.1, rr/qwen3.8-27b]`. Ids are
+full ids (no globs), matched case-insensitively. A declared id is known on its
+host whatever the host lists:
+
+- `work:rr/deepseek-v4.1` never gets the "host 'work' doesn't list model" warning,
+  and the host isn't re-listed for it (`chi send --new --model`, delegates).
+- A bare `rr/deepseek-v4.1` goes to `work` as if `work` listed it, also before
+  any `/models` and in a session's worker. When several hosts list or declare an
+  id, the default host wins if it is one of them, else the first in `hosts:`
+  order; two hosts declaring one id get a warning at start saying which one a
+  bare id goes to. `host:id` still pins a host.
+
+**Root `models:` vs `hosts.<name>.models:`.** The root `models:` holds settings
+by model name (sampling, thinking, window, profile…), on whatever host the model
+runs on; it says nothing about which host serves a model. `hosts.<name>.models:`
+says which models that host serves. Keep settings in the root one.
 
 ### Model aliases
 
@@ -1036,6 +1070,7 @@ described in their own sections.
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
+| `hosts.<name>.models` | none | | The model ids a host serves whatever its `/v1/models` lists: a map of ids, or a plain list. See "Models a host serves but doesn't list". |
 | `hosts.<name>.remote` | by address | | `true`/`false`: treat the host as a remote provider or a local server. See "Remote or local". |
 | `max_tool_output_chars` | `10000` | yes | Characters of each tool output kept in the conversation (both loops); a longer one is cut and ends with `[cut: N of M chars; read it in parts]`. A top-level key (see below). |
 | `cache.warmup` | `auto` | | `auto`: after a turn, send the next turn's prompt (up to the next message) to a local llama.cpp host on the native loop, so the next turn prefills only its message; never a remote or `api: openai` host. `off`: never. See [prompt caching](internals/prompt-caching.md#the-turn-end-warm-up). |

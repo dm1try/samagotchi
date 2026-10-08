@@ -10,6 +10,7 @@ require_relative "log"
 require_relative "model_ref"
 require_relative "paths"
 require_relative "llm_context_strategy"
+require_relative "host_model"
 
 module Samagotchi
   # Parses the thinking: levels of host and model entries (it needs Config).
@@ -263,10 +264,12 @@ module Samagotchi
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
       "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking enabled
-                    remote window_tokens llm_context_strategy llm_context_apply llm_context_budget_tokens].freeze,
+                    remote window_tokens llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
       "models" => %w[profile vision sampling thinking window_tokens llm_context_strategy llm_context_apply
                      llm_context_budget_tokens].freeze
     }.freeze
+    # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).
+    HOST_MODEL_KEYS = [].freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
 
@@ -615,6 +618,20 @@ module Samagotchi
 
           (entry.keys.map(&:to_s) - allowed).map do |k|
             unknown_key_message("#{map}.#{name}.#{k}", k, allowed, prefix: "#{map}.#{name}.")
+          end + (map == "hosts" ? host_model_problems(name, entry["models"]) : [])
+        end
+      end
+
+      # hosts.<name>.models' entries, one level further down.
+      def host_model_problems(host, models)
+        return [] unless models.is_a?(Hash)
+
+        models.flat_map do |id, model|
+          next [] unless model.is_a?(Hash)
+
+          prefix = "hosts.#{host}.models.#{id}."
+          (model.keys.map(&:to_s) - HOST_MODEL_KEYS).map do |k|
+            unknown_key_message("#{prefix}#{k}", k, HOST_MODEL_KEYS, prefix: prefix)
           end
         end
       end
@@ -853,6 +870,7 @@ module Samagotchi
                                                  "hosts entry '#{name}'")
           llm_context_apply = LLMContextStrategy.parse_apply(raw_cfg.key?(LLMContextStrategy::APPLY_KEY) ? raw_cfg[LLMContextStrategy::APPLY_KEY] : raw_cfg[:llm_context_apply],
                                                              "hosts entry '#{name}'")
+          models = HostModel.parse_map(raw_cfg.key?("models") ? raw_cfg["models"] : raw_cfg[:models], name)
           llm_context_budget = LLMContextStrategy.parse_budget(raw_cfg.key?(LLMContextStrategy::BUDGET_KEY) ? raw_cfg[LLMContextStrategy::BUDGET_KEY] : raw_cfg[:llm_context_budget_tokens],
                                                                "hosts entry '#{name}'")
           unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
@@ -920,8 +938,10 @@ module Samagotchi
                                   profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout,
                                   vision: vision, sampling: sampling, thinking: thinking, remote: remote,
                                   window_tokens: window, llm_context_strategy: llm_context,
-                                  llm_context_apply: llm_context_apply, llm_context_budget_tokens: llm_context_budget }
+                                  llm_context_apply: llm_context_apply, llm_context_budget_tokens: llm_context_budget,
+                                  models: models }
         end
+        warn_duplicate_host_models(normalized)
       end
 
       # If no hosts defined, synthesize "default" from server.host/port/transport.
@@ -940,6 +960,30 @@ module Samagotchi
     rescue StandardError
       {}
     end
+
+    # hosts.<name>.models as written back (HostModel#to_config), nil when none.
+    def host_models_config(models)
+      models.values.to_h { |m| [m.id, m.to_config] } unless models.nil? || models.empty?
+    end
+    private_class_method :host_models_config
+
+    # Two hosts declaring one id under hosts.<name>.models: a bare id goes
+    # where HostRegistry#host_for_model sends it (the default host when it
+    # declares the id, else the first in hosts: order); say so once.
+    def warn_duplicate_host_models(hosts)
+      declared = Hash.new { |h, k| h[k] = [] }
+      hosts.each { |name, cfg| cfg[:models].each { |down, model| declared[down] << [name, model.id] } }
+      declared.each_value do |owners|
+        next if owners.size < 2
+
+        names = owners.map(&:first)
+        winner = names.include?("default") ? "default" : names.first
+        id = owners.first.last
+        warn_once "Warning: #{names.map { |n| "hosts.#{n}.models" }.join(" and ")} #{names.size == 2 ? "both" : "all"} declare #{id}; " \
+                  "a bare #{id} goes to #{winner}"
+      end
+    end
+    private_class_method :warn_duplicate_host_models
 
     # The names (lowercased) of the hosts entries with enabled: false, which
     # hosts_config leaves out. Read from the same source: config.yml's
@@ -1070,7 +1114,8 @@ module Samagotchi
                        "remote" => v[:remote], "window_tokens" => v[:window_tokens],
                        "llm_context_strategy" => v[:llm_context_strategy]&.map(&:to_s),
                        "llm_context_apply" => v[:llm_context_apply]&.to_s,
-                       "llm_context_budget_tokens" => v[:llm_context_budget_tokens]).compact
+                       "llm_context_budget_tokens" => v[:llm_context_budget_tokens],
+                       "models" => host_models_config(v[:models])).compact
       end
       # Disabled hosts travel as just that, so a worker refuses "box:x"
       # the way its parent does instead of sending it to the default host.

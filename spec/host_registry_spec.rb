@@ -50,6 +50,54 @@ RSpec.describe Samagotchi::HostRegistry do
     end
   end
 
+  describe "a bare id declared under hosts.<name>.models" do
+    def declared(*ids) = Samagotchi::HostModel.parse_map(ids, "spec")
+
+    let(:registry) do
+      described_class.new(hosts_config: {
+        "default" => { host: "localhost", port: 8080 },
+        "box" => { host: "box.test", port: 8081 },
+        "work" => { host: "gateway.example", port: 443, models: declared("rr/X", "rr/shared") },
+        "other" => { host: "other.example", port: 443, models: declared("rr/shared") }
+      })
+    end
+
+    before { allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({}) }
+
+    def list(hosts_ids)
+      allow(registry).to receive(:list_models_for) do |entry|
+        Array(hosts_ids[entry.name]).map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) }
+      end
+      registry.list_all_models
+    end
+
+    it "goes to the declaring host before any /models, by case, sent as typed" do
+      target = registry.resolve("RR/x")
+
+      expect(target.entry.name).to eq("work")
+      expect(target.bare_model).to eq("RR/x")
+    end
+
+    it "goes to the first declaring host in hosts: order, and to the default host when it is one" do
+      expect(registry.resolve("rr/shared").entry.name).to eq("work")
+
+      list("default" => ["rr/shared"])
+      expect(registry.resolve("rr/shared").entry.name).to eq("default")
+    end
+
+    it "orders listing and declaring hosts alike, by hosts: order" do
+      list("box" => ["rr/x"])
+
+      expect(registry.resolve("rr/x").entry.name).to eq("box")
+      expect(registry.resolve("rr/shared").entry.name).to eq("work")
+    end
+
+    it "leaves a host-qualified ref alone" do
+      expect(registry.resolve("other:rr/x").entry.name).to eq("other")
+      expect(registry.resolve("box:rr/shared").entry.name).to eq("box")
+    end
+  end
+
   describe "client_override" do
     let(:stub) { double("client") }
 
