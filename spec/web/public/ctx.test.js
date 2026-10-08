@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  extractCtxPct, savedCtxPct, cardCtxText, speedText, costText, tokensTipText, lastSpeedText, generationTokens,
+  extractCtxPct, savedCtxPct, cardCtxText, ctxBarText, ctxWindowText, speedText, costText, tokensTipText, lastSpeedText, generationTokens,
 } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
@@ -115,4 +115,26 @@ test("generationTokens: the event's totals with its speed; an event without them
   assert.deepEqual(generationTokens(previous, { tokens: totals, speed: null }), totals);
   assert.deepEqual(generationTokens(previous, { type: "generation_completed" }), previous);
   assert.equal(generationTokens(undefined, {}), null);
+});
+
+test("ctxBarText: the percent; ~ when the window is chi's default guess", () => {
+  assert.equal(ctxBarText(12.4, "server"), "ctx 12%");
+  assert.equal(ctxBarText(12.4, null), "ctx 12%");
+  assert.equal(ctxBarText(12.4, "default"), "ctx ~12%");
+  assert.equal(ctxBarText(null, "default"), "");
+});
+
+test("ctxWindowText: used of window with its source; the default says it's a guess", () => {
+  assert.equal(ctxWindowText({ tokens: 128000, source: "server", pct: 32 }), "context: ~41.0k of 128.0k tokens (server)");
+  assert.equal(ctxWindowText({ tokens: 256000, source: "default", pct: 10 }),
+    "context: ~25.6k of 256.0k tokens (chi's default, a guess: set window_tokens for this model)");
+  assert.equal(ctxWindowText({ tokens: 32768, source: "model_setting", pct: null }), "context: 32.8k tokens (model_setting)");
+  assert.equal(ctxWindowText({ tokens: null, source: "server", pct: 5 }), "");
+  assert.equal(ctxWindowText(null), "");
+});
+
+test("tokensTipText: the window line under the title", () => {
+  assert.equal(tokensTipText({ prompt_sum: 300, completion_sum: 56 }, "ctx", null, { tokens: 1000, source: "config", pct: 35.6 }),
+    "ctx\ncontext: ~356 of 1.0k tokens (config)\ntokens: in 300 · out 56\nthis session only, all requests");
+  assert.equal(tokensTipText(null, "ctx", null, { tokens: 1000, source: "config", pct: null }), "ctx\ncontext: 1.0k tokens (config)");
 });
