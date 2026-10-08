@@ -107,7 +107,7 @@ RSpec.describe "Shared labels matrix (TUI side)" do
 
   cases(matrix, "costs").each do |entry|
     it "words the cost #{entry["cost"].inspect}" do
-      expect(fmt.cost_text(entry["cost"])).to eq(expected(entry))
+      expect(fmt.cost_text(entry["cost"], estimate: entry["estimate"] == true)).to eq(expected(entry))
     end
   end
 

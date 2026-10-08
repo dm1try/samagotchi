@@ -342,13 +342,25 @@ module Samagotchi
           "(#{scopes.map { |scope, tokens| "#{scope} #{count.call(tokens)}" }.join(", ")})"
       end
 
-      # "$0.42"; a cost under a cent keeps four decimals ("$0.0012"); "" for
-      # none. As ctx.js costText.
-      def cost_text(cost)
+      # "$0.42"; a cost under a cent keeps four decimals ("$0.0012"); "~$0.12"
+      # for an estimate (hosts.<name>.models prices); "" for none. As ctx.js
+      # costText.
+      def cost_text(cost, estimate: false)
         value = cost.to_f
         return "" unless value.positive?
 
-        value >= 0.01 ? format("$%.2f", value) : format("$%.4f", value)
+        "#{"~" if estimate}#{value >= 0.01 ? format("$%.2f", value) : format("$%.4f", value)}"
+      end
+
+      # /stats' cost: the reported part and the estimated one, each when present.
+      def stats_cost_text(tokens)
+        reported = cost_text(tokens[:cost_sum])
+        estimated = cost_text(tokens[:cost_estimate_sum], estimate: true)
+        return nil if reported.empty? && estimated.empty?
+        return "#{reported} (this session only)" if estimated.empty?
+
+        estimate = "#{estimated} from hosts.<name>.models prices"
+        "#{reported.empty? ? estimate : "#{reported} reported + #{estimate}"} (this session only)"
       end
 
       private
@@ -477,7 +489,8 @@ module Samagotchi
                  "#{token_breakdown_text(tokens)}"
         speed = stats_speed_text(tokens)
         lines << "speed:            #{speed}" if speed
-        lines << "cost:             #{cost_text(tokens[:cost_sum])} (this session only)" if tokens[:cost_sum].to_f.positive?
+        cost = stats_cost_text(tokens)
+        lines << "cost:             #{cost}" if cost
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"
         lines << "retries:          #{snapshot[:retries]}"

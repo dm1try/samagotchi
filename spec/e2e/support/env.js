@@ -20,14 +20,15 @@ export const APPROVAL_COMMAND = "echo E2E_APPROVED";
 export const EDIT_ASK_FILE = "e2e-settings.conf";
 
 // @param extra YAML appended (a scenario's own settings: useTurnLimit)
-function config(fakePort, extra = "") {
+// @param mainModels YAML for hosts.main.models (useHostModels), "" for none
+function config(fakePort, extra = "", mainModels = "") {
   return `default:
   model: fake-script
 hosts:
   main:
     url: http://127.0.0.1:${fakePort}/v1
     api: openai
-retry:
+${mainModels ? `    models:\n${mainModels.replace(/^/gm, "      ")}\n` : ""}retry:
   max: 0
 recap: false
 bundles:
@@ -219,8 +220,20 @@ export function useScript(env, name) {
 // Each +key+ keeps its own (useTurnLimit's is "turn"), so they add up.
 export function useConfigExtra(env, extra, key = "extra") {
   env.configExtras = { ...env.configExtras, [key]: extra ?? "" };
+  writeConfig(env);
+}
+
+function writeConfig(env) {
   fs.writeFileSync(path.join(env.dirs.config, "samagotchi", "config.yml"),
-    config(env.fakePort, Object.values(env.configExtras).join("")));
+    config(env.fakePort, Object.values(env.configExtras || {}).join(""), env.mainModels || ""));
+}
+
+// hosts.main.models (YAML, e.g. a price for fake-script) for the sessions
+// started next (a worker gets its hosts when it is spawned), or none again
+// with null.
+export function useHostModels(env, yaml) {
+  env.mainModels = yaml ?? "";
+  writeConfig(env);
 }
 
 // A turn's step limit (turn.max_iterations) for the next turns, or the

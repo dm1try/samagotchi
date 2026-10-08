@@ -234,6 +234,16 @@ test("a reload after the turn shows the context meter and the card's ctx", async
   await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
 });
 
+// A price under hosts.<name>.models: the fake reports usage without
+// usage.cost, so the info bar's ctx tooltip shows the estimate with "~".
+test("a configured price estimates the cost the provider doesn't report: ~$ in the info bar's ctx tooltip", async ({ page, script, hostModels }) => {
+  hostModels("fake-script:\n  price: {input: 1000, output: 2000}\n");
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  await expect(page.locator("#infoBar .meta .ctx")).toHaveAttribute("title", /\ncost: ~\$\d+\.\d{2} \(estimated\)\n/);
+});
+
 test("a session whose prompt carried a model note names it in the info bar", async ({ page, script, chi }) => {
   script("plain");
   useModelNote(chi, "e2e", "Keep answers short.");

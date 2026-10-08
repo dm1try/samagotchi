@@ -99,7 +99,7 @@ test("speeds per the shared labels matrix", () => {
 
 test("costs per the shared labels matrix", () => {
   for (const entry of cases("costs")) {
-    assert.equal(costText(entry.cost), expected(entry), `cost ${entry.cost}`);
+    assert.equal(costText(entry.cost, { estimate: entry.estimate === true }), expected(entry), `cost ${entry.cost}`);
   }
 });
 

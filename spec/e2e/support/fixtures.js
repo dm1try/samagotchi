@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { test as base, expect } from "@playwright/test";
-import { startEnv, stopEnv, useConfigExtra, useMode, useScript, useTurnLimit } from "./env.js";
+import { startEnv, stopEnv, useConfigExtra, useHostModels, useMode, useScript, useTurnLimit } from "./env.js";
 
 export const test = base.extend({
   view: ["stage", { option: true }],
@@ -56,6 +56,15 @@ export const test = base.extend({
       await use((extra) => useConfigExtra(chi, extra));
     } finally {
       useConfigExtra(chi, null);
+    }
+  },
+
+  // hostModels(yaml): hosts.main.models for this test (none after it).
+  hostModels: async ({ chi }, use) => {
+    try {
+      await use((yaml) => useHostModels(chi, yaml));
+    } finally {
+      useHostModels(chi, null);
     }
   },
 

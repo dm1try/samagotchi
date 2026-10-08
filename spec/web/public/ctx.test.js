@@ -98,6 +98,20 @@ test("tokensTipText: in with its cached share, out with reasoning, the cost; thi
   ].join("\n"));
 });
 
+test("tokensTipText: an estimated cost (hosts.<name>.models prices) shows with ~, apart from a reported one", () => {
+  const tokens = { prompt_sum: 1000, completion_sum: 40, cost_sum: 0.42, cost_estimate_sum: 0.12 };
+  assert.equal(tokensTipText(tokens, "ctx").split("\n")[2], "cost: ~$0.54 ($0.42 reported, ~$0.12 estimated)");
+  assert.equal(tokensTipText({ ...tokens, cost_sum: 0 }, "ctx").split("\n")[2], "cost: ~$0.12 (estimated)");
+  assert.equal(tokensTipText({ ...tokens, cost_estimate_sum: 0 }, "ctx").split("\n")[2], "cost: $0.42");
+});
+
+test("tokensTipText: a live snapshot from an older worker, and an older saved summary, have no estimate key", () => {
+  const live = { prompt_sum: 1000, completion_sum: 40, cached_sum: 0, cost_sum: 0.42, last_decode_tps: 50 };
+  assert.equal(tokensTipText(live, "ctx").split("\n")[2], "cost: $0.42");
+  const saved = { prompt_sum: 1000, completion_sum: 40, cached_sum: 0, reasoning_sum: 0, cost_sum: 0 };
+  assert.equal(tokensTipText(saved, "ctx"), "ctx\ntokens: in 1,000 · out 40\nthis session only, all requests");
+});
+
 test("tokensTipText: a local session has no cached or cost line; no tokens leaves the title alone", () => {
   assert.equal(tokensTipText({ prompt_sum: 300, completion_sum: 56, cached_sum: 0, cost_sum: 0 }, "ctx"),
     "ctx\ntokens: in 300 · out 56\nthis session only, all requests");

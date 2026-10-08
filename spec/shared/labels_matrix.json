@@ -133,8 +133,11 @@
     ]
   },
   "costs": {
-    "note": "A cost in USD (Formatting#cost_text in /stats; ctx.js costText in the ctx tooltip): cents, four decimals under a cent; none or zero: \"\".",
+    "note": "A cost in USD (Formatting#cost_text in /stats; ctx.js costText in the ctx tooltip): cents, four decimals under a cent; \"~\" marks an estimate (hosts.<name>.models prices); none or zero: \"\".",
     "cases": [
+      { "cost": 0.1234, "estimate": true, "expected": "~$0.12" },
+      { "cost": 0.00056, "estimate": true, "expected": "~$0.0006" },
+      { "cost": 0, "estimate": true, "expected": "" },
       { "cost": 0.4213, "expected": "$0.42" },
       { "cost": 12.5, "expected": "$12.50" },
       { "cost": 0.00123, "expected": "$0.0012" },

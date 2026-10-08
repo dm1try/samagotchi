@@ -433,8 +433,10 @@ reports them),
 the decode speed, generation latency, cancellations, retries (the network's),
 thinking cuts (generations a plugin such as loop-guard cut) and output cap hits
 (generations that ended at the provider's cap), context used and window (the used figure is counted against the smaller of the window and the session's LLM context budget, and says so: `context used:     16000 tokens (25.0% of the 64000 budget)`), the memory indexes the session's prompt holds ([Memory](memory.md#the-indexs-size)), the model notes it carried (`model notes:      model_notes_deepseek (system, 612 chars)`, none without any; [Memory](memory.md#model-notes)), the prompt profile and the model the server says it ran, and the
-cost when the provider reports one (OpenRouter's `usage.cost`; no prices are
-guessed). The speed line is the last generation's and the session's average
+cost when the provider reports one (OpenRouter's `usage.cost`), and the cost
+estimated from a price under `hosts.<name>.models` when it reports none or 0,
+marked `~` (`cost:             $0.42 reported + ~$0.12 from hosts.<name>.models prices (this session only)`;
+see "Prices" in [configuration](configuration.md#prices)). The speed line is the last generation's and the session's average
 (weighted by tokens): llama.cpp reports it exactly (`87 tok/s out, 1.9k tok/s
 prompt (last, server)`); for other servers it is estimated from the first
 streamed chunk to the end and marked `~` (`~64 tok/s out (last, estimate)`).

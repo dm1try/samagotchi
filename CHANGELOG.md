@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
   cost of a generation whose provider reports none, or reports 0. A reported non-zero cost always wins. The estimate
   is saved apart (`cost_estimate` per turn, `cost_estimate_sum` in the totals). See "Prices" in
   [docs/configuration.md](docs/configuration.md).
+- An estimated cost shows with `~`: `/stats` (`$0.42 reported + ~$0.12 from hosts.<name>.models prices`) and the
+  ctx tooltip on the info bar and the session cards (`cost: ~$0.54 ($0.42 reported, ~$0.12 estimated)`).
 - The web model picker lists a host's declared ids first under it, noted `config` (the default model keeps
   `default`), with `served by config (hosts.<name>.models)` in the row's tooltip.
 
