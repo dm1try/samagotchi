@@ -297,7 +297,7 @@ RSpec.describe Samagotchi::SessionCommands do
                                   Samagotchi::LLM::ModelInfo.new(id: "rr/a:batch", context_window: nil, supports_tools: nil, raw: {})]
 
         expect(commands.run("/models rr/").output.lines(chomp: true).first(4))
-          .to eq(["gw (gw.example:443):", "  rr/a (config, loaded)", "  rr/b (config)", "  … plus 1 :batch variant; /models :batch lists them"])
+          .to eq(["gw (gw.example:443):", "  RR/A (config, loaded)", "  rr/b (config)", "  … plus 1 :batch variant; /models :batch lists them"])
       end
 
       it "counts them as discovered for the orphan aliases, and filters them like any id" do

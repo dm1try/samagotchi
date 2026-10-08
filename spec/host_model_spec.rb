@@ -42,12 +42,12 @@ RSpec.describe Samagotchi::HostModel do
     def info(id) = Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {})
     def entry(*ids) = Struct.new(:models).new(described_class.parse_map(ids, "spec"))
 
-    it "puts a host's declared ids first, one row for an id it also lists, and the listed rest after" do
+    it "puts a host's declared ids first, one row in the host's spelling for an id it also lists, and the listed rest after" do
       rows = described_class.rows({ "work" => { models: [info("a"), info("rr/x"), info("b")], error: nil } },
                                   { "work" => entry("RR/x", "rr/y") })
 
       expect(rows["work"].map { |r| [r.id, r.configured, r.info&.id] })
-        .to eq([["RR/x", true, "rr/x"], ["rr/y", true, nil], ["a", false, "a"], ["b", false, "b"]])
+        .to eq([["rr/x", true, "rr/x"], ["rr/y", true, nil], ["a", false, "a"], ["b", false, "b"]])
     end
 
     it "shows a host that lists nothing its declared ids, and an errored host nothing" do

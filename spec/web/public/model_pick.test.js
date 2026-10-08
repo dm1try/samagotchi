@@ -197,4 +197,7 @@ test("rowTitle joins the sampling tooltip and where a configured row comes from"
   assert.equal(rowTitle({ host: "work", configured: true }), "served by config (hosts.work.models)");
   assert.equal(rowTitle({ host: "work", sampling: "top_p=0.9" }), "sampling: top_p=0.9");
   assert.equal(rowTitle({ host: "work" }), "");
+  const both = { name: "work:rr/x", host: "work", id: "rr/x", configured: true };
+  assert.equal(rowNote(both, "work:rr/x"), "default");
+  assert.equal(rowTitle(both), "served by config (hosts.work.models)");
 });

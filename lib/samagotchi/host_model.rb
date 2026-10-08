@@ -62,7 +62,11 @@ module Samagotchi
         infos = Array(data[:models])
         by_id = infos.group_by { |info| info.id.to_s.downcase }
         declared = entries[name]&.models || {}
-        out[name] = declared.values.map { |m| HostModel::Row.new(id: m.id, configured: true, info: by_id[m.id.downcase]&.first) } +
+        out[name] = declared.values.map do |m|
+          info = by_id[m.id.downcase]&.first
+          # A listed id keeps the host's spelling: a case-sensitive server takes only that.
+          HostModel::Row.new(id: info ? info.id.to_s : m.id, configured: true, info: info)
+        end +
                     infos.reject { |info| declared.key?(info.id.to_s.downcase) }
                          .map { |info| HostModel::Row.new(id: info.id.to_s, configured: false, info: info) }
       end
@@ -73,7 +77,8 @@ module Samagotchi
     def to_config = nil
   end
 
-  # A listing row (HostModel.rows): id as written (declared) or listed;
+  # A listing row (HostModel.rows): id as the host lists it, else as
+  # declared;
   # configured: declared under hosts.<name>.models; info: the host's
   # ModelInfo for it, nil when only declared.
   HostModel::Row = Data.define(:id, :configured, :info)
