@@ -679,6 +679,9 @@ ctx.sessions.stop(id)      # one of this session's own children
 ctx.context.attach(url: "https://github.com/acme/app/pull/42", why: "branch feat/x has open PR #42")
 ctx.context.attach(name: "ci", cmd: "bin/ci-status", why: "this branch's CI", every_seconds: 120)
 ctx.context.list  # => [{name:, scope:, why:, hint:, fetched_at:, error:, provider:}]
+ctx.context.decline(url: "https://github.com/acme/app/pull/42")    # => "pr-42"
+ctx.context.mark_offered("pr-42", "https://github.com/acme/app/pull/42", why: "branch feat/x has open PR #42")
+ctx.context.offered("pr-42")  # => #<data Offer name="pr-42", hint="https://…", why="branch…", at="2026-10-08T…Z">, or nil
 ```
 
 [Attached context](context.md) for the session the plugin runs in: chi runs
@@ -691,13 +694,30 @@ gets a note when its text changes.
   command of the plugin's own. A source of that name already attached stays
   as it is. It returns the name, or nil when the user removed that name (or
   that URL) from the session: a plugin doesn't attach it again until the
-  user adds it (`ctx.context.declined?(name)` says so).
+  user adds it (`ctx.context.declined?(name, url: nil)` says so, by the
+  name or by the URL). `force: true` is for the user's own explicit choice
+  (a click on the plugin's card): it attaches anyway and clears the
+  declined marker, by the name and by the URL.
+- `decline(url:)` or `decline(name:)` marks the source declined in this
+  session, as the user's removal does: `attach` skips it from then on. With
+  `url:`, the name and hint come from the bundle's provider (`name:`
+  replaces the name). It returns the name. A source attached already stays
+  attached (`chi context rm` removes it).
+- `mark_offered(name, hint, why: nil)` records that the plugin offered a
+  source here (the hint is usually its URL; `why:` is kept for the attach
+  that may follow); `offered(name)` returns that record
+  (`ContextSources::Offer`: `name`, `hint`, `why`, `at`) or nil. A plugin that asks
+  before it attaches uses it so a worker restart doesn't ask again. Neither
+  an attach nor a decline clears it; deleting the session does.
 - The source is the session's (not the project's), marked
   `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
   the agent's `chi context add --cmd` is.
 - `list` gives the session's sources, its own then its project's.
-- `attach` raises `Samagotchi::Plugin::AttachedContext::Error` with the
-  reason (no session yet, no provider for the URL, a bad name).
+- Two attaches of one source at once (a double click) both return its
+  name.
+- `attach`, `decline` and `mark_offered` raise
+  `Samagotchi::Plugin::AttachedContext::Error` with the reason (no session
+  yet, no provider for the URL, a bad name).
 
 The [github-pr bundle](#the-github-pr-bundle) attaches the branch's PR from
 a quiet `chi.init` task.

@@ -256,6 +256,7 @@ sessions/<id>/<name>.json, …snapshot.json     a session's own
 sessions/<id>/subscriptions.json              what the session has seen and read (its worker writes it)
 sessions/<id>/muted/<name>                    a project source this session mutes
 sessions/<id>/declined/<name>                 a source you removed (its hint inside): auto-attach skips it
+sessions/<id>/offered/<name>                  a source a plugin offered here ({hint, why, at}): it isn't offered again
 ```
 
 Deleting a session deletes its folder. A source and its snapshot go with
