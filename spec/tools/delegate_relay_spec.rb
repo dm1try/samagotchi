@@ -91,13 +91,12 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
   end
 
   # The child takes the answer: its question goes, its turn ends with +reply+.
-  def finish_child(reply = "pushed", after: 0.1)
+  # At once, inside the relay's POST (no thread racing the wait's timeout):
+  # the wait sees the reply on its next look.
+  def finish_child(reply = "pushed")
     update(child, pending_question: nil)
-    Thread.new do
-      sleep(after)
-      Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), reply)
-      update(child, status: "idle")
-    end
+    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), reply)
+    update(child, status: "idle")
   end
 
   def wait(timeout: 5) = Timeout.timeout(10) { described_class.call(child.id, peers: peers, timeout: timeout, owner_grace: 0.3) }
@@ -199,12 +198,14 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
   it "waits on after the relay for a turn that ends with no reply, not until the timeout" do
     update(child, pending_question: approval)
     user_answers("Deny", 2)
-    client.on_answered = lambda do
-      update(child, pending_question: nil)
-      Thread.new do
-        sleep(0.1)
-        update(child, status: "idle", last_turn: { "outcome" => "completed", "ended_at" => Time.now.iso8601(3) })
-      end
+    client.on_answered = -> { update(child, pending_question: nil) }
+    # The child's turn ends once the wait looks again after the relay (its
+    # second ReplyWait leg), not on a thread racing it.
+    legs = 0
+    allow(Samagotchi::ReplyWait).to receive(:call).and_wrap_original do |original, *args, **opts|
+      legs += 1
+      update(child, status: "idle", last_turn: { "outcome" => "completed", "ended_at" => Time.now.iso8601(6) }) if legs == 2
+      original.call(*args, **opts)
     end
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     expect(wait(timeout: 30)).to include("status: no_answer\napproval relayed to your user: execute: git push → denied\n")
@@ -214,6 +215,8 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
   it "doesn't count the time the card was open against the timeout" do
     update(child, pending_question: approval)
     relay.answer = lambda do |_f, _w|
+      # The card is open longer than the whole timeout (the time passing is
+      # the point, not a wait for something); the child replies at once.
       sleep(1.3)
       { id: "pq", selected: ["Allow once"], selected_indices: [0] }
     end
@@ -266,11 +269,8 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
         next unless client.posts.last[:question_id] == "o1"
 
         update(other, pending_question: nil)
-        Thread.new do
-          sleep(0.2)
-          Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), "child done")
-          update(child, status: "idle")
-        end
+        Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), "child done")
+        update(child, status: "idle")
       end
 
       expect(wait).to eq("session: #{child.id}\nstatus: answered\n---\nchild done")
