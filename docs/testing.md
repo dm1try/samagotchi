@@ -71,3 +71,19 @@ strategies (freed tokens, wrongly forgotten outputs, one-step re-reads, re-prefi
 model's answers to chi's offer, with its call rate and notes). It is opt-in: the suite
 runs its code only on small synthetic sessions, never on yours. See
 [internals/llm-context-bench.md](internals/llm-context-bench.md).
+
+## The model notes report
+
+`ruby script/model_notes_report.rb` reads a sessions folder (`--sessions DIR`, else chi's own) and groups the
+sessions by model and by the model notes their prompt carried (the session file's `prompt_notes`, as
+`name@digest`; `none` without notes, or in a file from before they were recorded). For each session and group it
+prints the numbers a model note is meant to move: the place of the first edit (an `edit` or `write` call) and of the
+first commit (an `execute` call that runs `git [options] commit`) among the tool calls, commits per 100 steps (model
+requests), `execute` calls with a bare `&`, the longest run of calls with no edit, and what the session needed from
+outside: Continues (the turns in its `analytics.json` that had no prompt of their own), steers (lines that reached a
+running turn from the user, `chi send` or a parent, and a Continue's text), follow-up prompts and plugin nudges. A
+group has the medians of the places and runs, commits per 100 steps pooled and the counts summed. `--help` defines
+each column; `--model GLOB`, `--since DATE` and `--min-steps N` filter, `--json` gives JSON. It reads only and prints
+no session text (ids, model names, note names and digests, dates, numbers), and the suite runs it only on small
+synthetic sessions. It is how a note is judged on and off (`chi --mute model_notes_<name>`) for the same kind of
+task: see [memory.md](memory.md) ("Model notes").

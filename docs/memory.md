@@ -100,6 +100,12 @@ Working habits for this model:
   in one, `none` without any. None of the others shows a line without notes.
   A resumed session, or a web worker that woke, shows the saved ones until its
   first turn builds the prompt again.
+- **Judged**: `ruby script/model_notes_report.rb` (a development script, not
+  shipped) groups stored sessions by model and recorded notes and compares the
+  calls to the first edit and commit, commits per 100 steps, bare `&`, the
+  longest run without an edit and the Continues and steers each needed; run a
+  note on and muted for the same kind of task. See
+  [testing.md](testing.md) ("The model notes report").
 - Without a model note the system prompt is what it was.
 
 
