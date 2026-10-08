@@ -247,6 +247,64 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       end
     end
 
+    context "with the session's saved turn record" do
+      def save_analytics(turn_records: [], tool_records: [])
+        dir = Samagotchi::Session.session_dir("s-1234")
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "analytics.json"),
+                   JSON.generate("turn_records" => turn_records, "tool_records" => tool_records))
+      end
+
+      # The ✕ and the hint are painted; compare the words (as the neighbour specs).
+      def plain_lines = screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") }
+
+      # The last turn failed with its steps kept: its own record, and the
+      # step text a failed turn must not show as its answer.
+      let(:messages) do
+        [{ role: "user", content: "find it", turn_id: "t1" },
+         { role: "model", content: "Searching.", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "true" } }] },
+         { role: "tool_response", tool_call_id: "c1", content: "exit: 0" },
+         { role: "model", content: "Still searching." }]
+      end
+
+      after { FileUtils.rm_rf(Samagotchi::Session.session_dir("s-1234")) }
+
+      it "draws a failed turn's line and the kept-progress hint after its steps, as live" do
+        save_analytics(turn_records: [{ "id" => "t1", "status" => "failed", "duration_ms" => 2000,
+                                        "failure" => { "summary" => "HTTP 500: boom", "kept_steps" => 1 } }])
+        feed(snapshot(messages: messages))
+
+        expect(plain_lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                   "✕ turn failed: HTTP 500: boom · 2.0s",
+                                   "  #{Samagotchi::TerminalUI::Formatting::ROLLBACK_HINT}"])
+      end
+
+      it "draws a failed turn's message without the hint when its steps didn't stay" do
+        save_analytics(turn_records: [{ "id" => "t1", "status" => "failed", "duration_ms" => 1500,
+                                        "failure" => { "message" => "bad image", "error_class" => "ArgumentError" } }])
+        feed(snapshot(messages: messages))
+
+        expect(plain_lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                   "✕ turn failed: bad image · 1.5s"])
+      end
+
+      it "leaves a failed record saved before the failure field as it was" do
+        save_analytics(turn_records: [{ "id" => "t1", "status" => "failed", "duration_ms" => 2000 }])
+        feed(snapshot(messages: messages))
+
+        expect(plain_lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                   "Still searching."])
+      end
+
+      it "leaves a completed turn's answer as it was" do
+        save_analytics(turn_records: [{ "id" => "t1", "status" => "completed", "duration_ms" => 2000 }])
+        feed(snapshot(messages: messages))
+
+        expect(plain_lines).to eq(["user> find it", 'tool> running command (execute command="true"): ok',
+                                   "Still searching."])
+      end
+    end
+
     it "shows only the end of an answer made of long lines" do
       feed(snapshot(messages: [{ role: "user", content: "essay" }, { role: "model", content: "#{"x" * 2000}END" }]))
 

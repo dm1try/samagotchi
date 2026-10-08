@@ -1076,10 +1076,18 @@ module Samagotchi
         Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         from = messages.index { |m| m.equal?(exchange[last_user]) }
         render_join_steps(messages, from, durations: join_tool_records(exchange[last_user]))
+        failed = join_failed_record(exchange[last_user])
         # A turn that ended with no answer: its notice, as live.
         empty = messages.drop(from + 1).filter_map { |m| TurnNote.empty_answer(m) }.last
         if empty
           @screen.commit(format_empty_answer_line(empty[:retries] || empty["retries"]))
+        elsif failed
+          # A failed turn whose steps stayed: the line the live view left,
+          # and no step text as if it were the answer (the web keeps a
+          # failed turn's texts as steps too).
+          failure = failed["failure"]
+          @screen.commit(@view.turn_failed_line(failure["summary"] || failure["message"], failed["duration_ms"]))
+          @screen.commit(@view.turn_end_hint(ROLLBACK_HINT)) if failure["kept_steps"]
         else
           # The saved answer is raw: the latest keeps its thinking, and one may
           # be only a tool call.
@@ -1117,6 +1125,23 @@ module Samagotchi
         SessionMetrics.saved_tool_records(Session.session_dir(@client.session_id), prompt[:turn_id] || prompt["turn_id"])
       rescue Session::InvalidId
         []
+      end
+
+      # The turn's saved record when it failed with the fields its line is
+      # made of (SessionMetrics#failure_fields), else nil: a completed,
+      # canceled or older turn — or one saved before the failure field —
+      # draws its answer as before.
+      def join_failed_record(prompt)
+        record = SessionMetrics.saved_turn_record(Session.session_dir(@client.session_id),
+                                                  prompt[:turn_id] || prompt["turn_id"])
+        return nil unless record && record["status"] == "failed" && record["failure"].is_a?(Hash)
+
+        failure = record["failure"]
+        return nil if failure["summary"].to_s.empty? && failure["message"].to_s.empty?
+
+        record
+      rescue Session::InvalidId
+        nil
       end
 
       # The duration of +part+'s call: the next record of its tool, in call

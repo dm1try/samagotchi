@@ -192,6 +192,22 @@ module Samagotchi
       []
     end
 
+    # One turn's saved record from the session's analytics.json, string-keyed
+    # as saved: what a join replays the turn's failure (or cancel) line from.
+    # nil without a turn id (an older session's prompt), the file, records,
+    # or a record for the turn.
+    # @param session_dir [String]
+    # @param turn_id [String, nil]
+    # @return [Hash, nil]
+    def self.saved_turn_record(session_dir, turn_id)
+      return nil if turn_id.to_s.empty?
+
+      records = JSON.parse(File.read(File.join(session_dir, "analytics.json")))["turn_records"]
+      Array(records).find { |r| r.is_a?(Hash) && r["id"] == turn_id }
+    rescue JSON::ParserError, SystemCallError, TypeError
+      nil
+    end
+
     # "ctx 12%" for the session lists, "" when unknown.
     # @param pct [Float, nil]
     # @return [String]

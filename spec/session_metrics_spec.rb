@@ -1166,6 +1166,33 @@ RSpec.describe Samagotchi::TokenUsage do
     end
   end
 
+  describe "SessionMetrics.saved_turn_record" do
+    let(:dir) { Dir.mktmpdir }
+
+    def save(data) = File.write(File.join(dir, "analytics.json"), JSON.generate(data))
+
+    it "reads the saved record whose id is the turn id" do
+      save("turn_records" => [
+        { "id" => "t0", "status" => "completed" },
+        { "id" => "t1", "status" => "failed", "failure" => { "summary" => "boom" } }
+      ])
+
+      expect(Samagotchi::SessionMetrics.saved_turn_record(dir, "t1"))
+        .to eq({ "id" => "t1", "status" => "failed", "failure" => { "summary" => "boom" } })
+    end
+
+    it "is nil without a turn id, a matching record, a file, or with a broken file" do
+      expect(Samagotchi::SessionMetrics.saved_turn_record(dir, "t1")).to be_nil
+      save("turn_records" => [{ "id" => "t1", "status" => "completed" }])
+      expect(Samagotchi::SessionMetrics.saved_turn_record(dir, nil)).to be_nil
+      expect(Samagotchi::SessionMetrics.saved_turn_record(dir, "t9")).to be_nil
+      save("turns" => 3)
+      expect(Samagotchi::SessionMetrics.saved_turn_record(dir, "t1")).to be_nil
+      File.write(File.join(dir, "analytics.json"), "{")
+      expect(Samagotchi::SessionMetrics.saved_turn_record(dir, "t1")).to be_nil
+    end
+  end
+
   describe ".from_payload" do
     it "extracts llama.cpp timings" do
       result = described_class.from_payload("timings" => { "prompt_n" => 50, "predicted_n" => 12 })
