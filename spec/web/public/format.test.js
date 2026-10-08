@@ -128,9 +128,11 @@ test("modelLabel keeps the model when the served name is the same or extends it,
 });
 
 test("modelLabel keeps the model asked for, no marker, when the served one is expected (served:)", () => {
-  assert.deepEqual(modelLabel("work:rr/x", "fireworks/x", "rr/x", true),
-    { text: "work:rr/x", title: "work:rr/x; served: fireworks/x (expected: hosts.<name>.models served:)", mismatch: false });
-  assert.equal(modelLabel("work:rr/x", "fireworks/x", "rr/x", false).mismatch, true);
+  assert.deepEqual(modelLabel("work:rr/x", "fireworks/x", "rr/x", "work"),
+    { text: "work:rr/x", title: "work:rr/x; served: fireworks/x (expected: hosts.work.models)", mismatch: false });
+  assert.equal(modelLabel("work:rr/x", "fireworks/x", "rr/x", null).mismatch, true);
+  // The served model is the one asked for: no served note at all.
+  assert.deepEqual(modelLabel("work:rr/x", "rr/x", "rr/x", "work"), { text: "work:rr/x", title: "work:rr/x", mismatch: false });
 });
 
 import { deleteConfirmText } from "../../../lib/samagotchi/web/public/format.js";

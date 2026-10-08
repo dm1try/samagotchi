@@ -951,7 +951,7 @@ module Samagotchi
       target = @host_registry.resolve(@effective_model_name)
       served, served_for = served_model_for(snapshot, target: target)
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for,
-                                served_expected: served_expected?(served, target: target), llm_context: llm_context_summary,
+                                served_expected_by: served_expected_by(served, target: target), llm_context: llm_context_summary,
                                 prompt_notes: prompt_notes.map(&:to_h))
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(target)
@@ -1046,15 +1046,18 @@ module Samagotchi
       served_model_for(@metrics.served_report, target: probe ? @host_registry.resolve(@effective_model_name) : nil)
     end
 
-    # Whether +served+ is a model the current model's host is expected to
-    # answer it with (hosts.<name>.models.<id>.served: a gateway's
-    # round-robin targets): not a mismatch to warn about.
-    def served_expected?(served, target: nil)
+    # The host whose hosts.<name>.models.<id>.served names +served+ for the
+    # current model (a gateway's round-robin targets): not a mismatch to
+    # warn about. nil when none does.
+    # @return [String, nil]
+    def served_expected_by(served, target: nil)
       target ||= @host_registry.resolve(@effective_model_name)
-      target.entry.models&.dig(target.bare_model.to_s.strip.downcase)&.serves?(served) || false
+      target.entry.name if target.entry.models&.dig(target.bare_model.to_s.strip.downcase)&.serves?(served)
     rescue StandardError
-      false
+      nil
     end
+
+    def served_expected?(served) = !served_expected_by(served).nil?
 
     # Read-only snapshot of the engine's view of the current session plus the
     # live event sequence. Cheap primitive used by the bridge's reconnect-too-
@@ -1076,8 +1079,8 @@ module Samagotchi
     #   :served_model, :served_model_for [String, nil] what a generation of
     #     that model reported serving, and the name asked (#served_model
     #     without the probe)
-    #   :served_expected [Boolean] that served model is one its host's
-    #     models: entry names under served: (#served_expected?)
+    #   :served_expected_by [String, nil] the host whose models: entry names
+    #     that served model under served: (#served_expected_by)
     #   :recap_enabled [Boolean]   whether an idle recap is configured, with
     #     :recap_min_user_turns and :recap_inactivity_seconds (nil when not)
     def session_state_snapshot
@@ -1098,7 +1101,7 @@ module Samagotchi
         model_name: effective_model_ref,
         served_model: served_pair[0],
         served_model_for: served_pair[1],
-        served_expected: served_expected?(served_pair[0]),
+        served_expected_by: served_expected_by(served_pair[0]),
         context_status: @last_context_status&.dup || saved_context_status(metrics[:context]),
         llm_context: llm_context_summary,
         recap_enabled: !@recap.nil?,
@@ -2582,12 +2585,12 @@ module Samagotchi
     # A :generation_completed with the generation's decode speed (`speed:`
     # {decode_tps:, source:}, nil without one), the session's running
     # token totals (`tokens:`, the snapshot's block) and whether its served
-    # model is an expected one (`served_expected:`): the web's info bar
+    # model is an expected one (`served_expected_by:`, its host): the web's info bar
     # reads them from the stream. SessionMetrics closes the generation here,
     # so the event it gets next finds it closed.
     def with_generation_report(event)
       report = @metrics.finish_generation
-      event.merge(speed: report.speed&.to_h, tokens: report.tokens, served_expected: served_expected?(event[:served_model]))
+      event.merge(speed: report.speed&.to_h, tokens: report.tokens, served_expected_by: served_expected_by(event[:served_model]))
     rescue StandardError
       event
     end

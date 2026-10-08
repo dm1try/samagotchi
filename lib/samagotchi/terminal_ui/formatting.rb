@@ -513,7 +513,7 @@ module Samagotchi
         lines << "llm context:      #{llm_context}" if llm_context
         if snapshot[:served_model]
           asked = snapshot[:served_model_for]
-          differs = !snapshot[:served_expected] && ServedModel.differs?(asked, snapshot[:served_model])
+          differs = !snapshot[:served_expected_by] && ServedModel.differs?(asked, snapshot[:served_model])
           note = differs ? " (asked for #{asked})" : ""
           lines << "served model:     #{snapshot[:served_model]}#{note}"
         end

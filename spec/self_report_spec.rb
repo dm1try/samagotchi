@@ -322,6 +322,12 @@ RSpec.describe Samagotchi::SelfReport do
         expect(field("served model")).to eq("ornith-1.5 (not spec-model: the server serves its own model)")
         expect(@probed).to eq(["spec-model"])
       end
+
+      it "names it alone when the host's models: entry expects it (served:)" do
+        write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n    models:\n      spec-model: {served: [ornith-1.5]}\n")
+
+        expect(field("served model")).to eq("ornith-1.5")
+      end
     end
 
     context "when it serves the configured model" do

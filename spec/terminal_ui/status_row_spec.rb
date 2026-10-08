@@ -112,13 +112,13 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
   end
 
   it "keeps the model asked for when the served one is expected (hosts.<name>.models served:)" do
-    row.take_state({ model_name: "work:rr/x", served_model: "fireworks/x", served_model_for: "rr/x", served_expected: true })
+    row.take_state({ model_name: "work:rr/x", served_model: "fireworks/x", served_model_for: "rr/x", served_expected_by: "work" })
     expect(surface.slots[:status]).to eq(["status> model=work:rr/x"])
 
-    row.take_event({ type: :generation_completed, served_model: "together/x", requested_model: "rr/x", served_expected: false })
+    row.take_event({ type: :generation_completed, served_model: "together/x", requested_model: "rr/x", served_expected_by: nil })
     expect(surface.slots[:status]).to eq(["status> model=together/x (served; asked work:rr/x)"])
 
-    row.take_event({ type: :generation_completed, served_model: "baseten/x", requested_model: "rr/x", served_expected: true })
+    row.take_event({ type: :generation_completed, served_model: "baseten/x", requested_model: "rr/x", served_expected_by: "work" })
     expect(surface.slots[:status]).to eq(["status> model=work:rr/x"])
   end
 

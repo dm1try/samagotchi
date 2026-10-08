@@ -249,22 +249,22 @@ RSpec.describe Samagotchi::Engine, "#run_turn price" do
   describe "served: a model the host's served: names isn't a mismatch" do
     def reported(served) = engine.metrics.call(type: :generation_completed, served_model: served, requested_model: "rr/x")
 
-    it "marks the snapshots served_expected for a listed served model, not for another" do
+    it "marks the snapshots served_expected_by its host for a listed served model, not for another" do
       reported("Fireworks/x")
-      expect(engine.session_state_snapshot).to include(served_model: "Fireworks/x", served_model_for: "rr/x", served_expected: true)
-      expect(engine.stats_snapshot).to include(served_expected: true)
+      expect(engine.session_state_snapshot).to include(served_model: "Fireworks/x", served_model_for: "rr/x", served_expected_by: "work")
+      expect(engine.stats_snapshot).to include(served_expected_by: "work")
       expect(engine.served_expected?("fireworks/x")).to be(true)
 
       reported("together/x")
-      expect(engine.session_state_snapshot).to include(served_model: "together/x", served_expected: false)
+      expect(engine.session_state_snapshot).to include(served_model: "together/x", served_expected_by: nil)
     end
 
     it "marks a generation_completed it relays" do
       relayed = engine.send(:with_generation_report, { type: :generation_completed, served_model: "baseten/x", requested_model: "rr/x" })
 
-      expect(relayed).to include(served_expected: true)
+      expect(relayed).to include(served_expected_by: "work")
       expect(engine.send(:with_generation_report, { type: :generation_completed, served_model: "x", requested_model: "rr/x" }))
-        .to include(served_expected: false)
+        .to include(served_expected_by: nil)
     end
   end
 end

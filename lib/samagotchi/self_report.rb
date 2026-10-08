@@ -294,7 +294,8 @@ module Samagotchi
       served = ServedModel.from_props(props)
       return "unknown (no answer from the server's /props)" unless served
 
-      ServedModel.differs?(bare, served) ? "#{served} (not #{bare}: the server serves its own model)" : served
+      expected = entry.models&.dig(bare.to_s.downcase)&.serves?(served)
+      ServedModel.differs?(bare, served) && !expected ? "#{served} (not #{bare}: the server serves its own model)" : served
     rescue StandardError => e
       "unknown (#{e.class})"
     end
