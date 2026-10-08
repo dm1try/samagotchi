@@ -42,6 +42,10 @@ and commands may change between minor versions. How releases are made:
   closed cloud it was out of sight and, unlike a hook's notice, flashed nothing. It now flashes in the
   trail for a few seconds, as its row reads (`✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k
   tokens (paid off)`), as a hook notice does.
+- The web's stage trail: when a message cut a generation that was still thinking, its row (`↪ cut in
+  for your message`, `… a message sent with chi send`, `… the parent agent's message`) landed in its
+  step inside the closed cloud and, out of sight, flashed nothing. It now flashes in the trail for a
+  few seconds, as its row reads, as the ✂ row and a hook notice do.
 
 ## [0.44.0] - 2026-10-08
 
