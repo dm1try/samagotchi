@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-08
+
 ### Added
 
 - A new web chat can start under its own LLM context: the start page has an `llm ctx` chip beside the model
@@ -29,6 +31,8 @@ and commands may change between minor versions. How releases are made:
 - For plugins: `ctx.context.decline(url:|name:)`, `declined?(name, url:)`, `attach(…, force: true)` (the user's
   explicit choice, past a decline) and `mark_offered(name, hint)` / `offered(name)`, a per-session record that a
   plugin offered a source. See [docs/plugins.md](docs/plugins.md) ("Attached context").
+
+Update with `chi update`: it updates github-pr (0.3.0: `auto_attach`; needs chi 0.43.0).
 
 ## [0.42.0] - 2026-10-08
 
@@ -2004,7 +2008,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.42.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.43.0...HEAD
+[0.43.0]: https://github.com/dm1try/samagotchi/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/dm1try/samagotchi/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/dm1try/samagotchi/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/dm1try/samagotchi/compare/v0.39.0...v0.40.0
