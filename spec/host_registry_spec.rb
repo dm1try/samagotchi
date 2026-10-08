@@ -210,4 +210,52 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(registry.resolve("late-model").entry.name).to eq("slow")
     end
   end
+
+  describe "#list_models (one host, for the spawn-time model check)" do
+    let(:registry) do
+      described_class.new(hosts_config: {
+        "box" => { host: "box.test", port: 8081 },
+        "oai" => { host: "oai.test", port: 8000, api: :openai }
+      })
+    end
+    let(:state_home) { Dir.mktmpdir("model-check-registry") }
+    let(:config_home) { Dir.mktmpdir("model-check-registry-config") }
+
+    around do |example|
+      with_env("XDG_STATE_HOME" => state_home, "XDG_CONFIG_HOME" => config_home) do
+        Samagotchi::Config.reload!(cli_overrides: {})
+        example.run
+      ensure
+        Samagotchi::Config.reload!(cli_overrides: {})
+      end
+    end
+
+    before do
+      allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({})
+      allow(registry.entries["box"].client).to receive(:list_models)
+        .and_return([{ "id" => "gemma-4-26b", "status" => "loaded" }])
+      allow(registry.adapter_for(registry.entries["oai"])).to receive(:list_models)
+        .and_return([Samagotchi::LLM::ModelInfo.new(id: "qwen-local", context_window: 32_768, supports_tools: nil, raw: {})])
+    end
+
+    after { FileUtils.rm_rf([state_home, config_home]) }
+
+    it "lists only the named host (the adapter for a chat host, the client for a raw one) and saves it to the store" do
+      expect(registry.list_models("box")).to eq(["gemma-4-26b"])
+      expect(registry.list_models("oai")).to eq(["qwen-local"])
+
+      expect(Samagotchi::ModelListStore.find("box").ids).to eq(%w[gemma-4-26b])
+      expect(Samagotchi::ModelListStore.find("oai").ids).to eq(%w[qwen-local])
+    end
+
+    it "asks nothing for a name with no host (nothing is saved), and returns nil when the host fails to list" do
+      expect(registry.list_models("nosuch")).to be_nil
+      expect(registry.list_models(nil)).to be_nil
+      expect(Samagotchi::ModelListStore.find("box")).to be_nil
+
+      allow(registry.entries["box"].client).to receive(:list_models).and_raise("connection refused")
+      expect(registry.list_models("box")).to be_nil
+      expect(Samagotchi::ModelListStore.find("box")).to be_nil
+    end
+  end
 end

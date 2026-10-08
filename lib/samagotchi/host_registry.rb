@@ -235,6 +235,26 @@ module Samagotchi
       end
     end
 
+    # List one host's models and save them to ModelListStore: what
+    # ModelProfile.model_warning re-lists on a miss (a fresh saved list that
+    # lacks the id: the server may have been reloaded with another model),
+    # so the saved list catches up at spawn time. Only that host is asked,
+    # and never through the cache (a fresh listing is the point).
+    # @param name [String, Symbol, nil] a host name; anything else lists
+    #   nothing
+    # @return [Array<String>, nil] the ids the host lists now, nil for an
+    #   unknown name or when the host fails to list (nothing is saved then:
+    #   a host that is down keeps the ids we know)
+    def list_models(name)
+      entry = name.nil? ? nil : find_entry(name)
+      return nil unless entry
+
+      save_model_list(entry.name, list_models_for(entry))&.ids
+    rescue StandardError => e
+      Log.warn(:model, "list_failed", host: name.to_s, error: e.class.name, msg: e.message.to_s[0, 500])
+      nil
+    end
+
     def client_for_model(raw_model)
       host_entry, bare = host_for_model(raw_model)
       [client_for(host_entry), bare, host_entry]
@@ -293,9 +313,7 @@ module Samagotchi
             models = list_models_for(entry)
             data = { host: entry.host, port: entry.port, transport: entry.transport, models: models, error: nil }
             @mutex.synchronize { @host_lists[name] = { data: data, at: @clock.call } }
-            # On disk too: a process that spawns a worker without listing
-            # (`chi send --new --model`, delegate) checks an id against it.
-            ModelListStore.save(name, models.map(&:id))
+            save_model_list(name, models)
           rescue StandardError => e
             Log.warn(:model, "list_failed", host: name, error: e.class.name, msg: e.message.to_s[0, 500])
             data = { host: entry.host, port: entry.port, transport: entry.transport, models: [], error: e.message }
@@ -349,6 +367,13 @@ module Samagotchi
     end
 
     private
+
+    # Save a host's just-listed models on disk, for the processes that spawn
+    # a worker without listing (`chi send --new --model`, delegate):
+    # ModelListStore is what they check an id against.
+    def save_model_list(name, models)
+      ModelListStore.save(name, Array(models).map(&:id))
+    end
 
     def fresh_list(name, entry)
       @mutex.synchronize do

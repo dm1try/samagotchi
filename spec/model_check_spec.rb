@@ -42,9 +42,23 @@ RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
     Samagotchi::ModelListStore.save(host, ids, at: at)
   end
 
-  def check(name, **kwargs)
-    described_class.model_warning(name, hosts: hosts, **kwargs)
+  # model_warning re-lists the host on a MISS (a saved list that lacks the
+  # id) when that list is older than ModelProfile::RELIST_AFTER_SECONDS: the
+  # network. These examples are mostly about the saved list itself, so the
+  # default re-list answers nothing (a failed re-list: the warning comes
+  # from the saved list, as before). Examples that test the re-list pass
+  # their own.
+  def check(name, relist: ->(*_args) {}, **kwargs)
+    described_class.model_warning(name, hosts: hosts, relist: relist, **kwargs)
   end
+
+  # What model_warning's relist: callable is: takes the host name and the
+  # env, returns the ids the host lists now (or nil: it listed nothing).
+  def relist(ids) = ->(_name, _env) { ids }
+
+  # A saved list old enough for a miss to re-list the host: younger than the
+  # TTL (still evidence) and older than ModelProfile::RELIST_AFTER_SECONDS.
+  def saved_a_while_ago = Time.now.to_i - Samagotchi::ModelProfile::RELIST_AFTER_SECONDS - 60
 
   it "says nothing for a host's id that its saved list has" do
     save("box", %w[gemma-small qwen3])
@@ -140,13 +154,69 @@ RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
     expect(check("box:nosuch")).to include("doesn't list")
   end
 
-  it "never asks a host (no network on this path)" do
+  it "never re-lists a host it already knows (a hit in the saved list, no network on this path)" do
     require "samagotchi/client"
     save("box", %w[gemma-small])
     allow_any_instance_of(Samagotchi::Client).to receive(:list_models).and_raise("a host was asked")
 
-    expect(check("box:gemma-small")).to be_nil
-    expect(check("box:nosuch")).to include("doesn't list")
+    expect(check("box:gemma-small", relist: ->(*_args) { raise "a host was asked" })).to be_nil
+    expect(check("box:GEMMA-SMALL", relist: ->(*_args) { raise "a host was asked" })).to be_nil
+  end
+
+  it "never re-lists a host with no saved list" do
+    save("main", %w[local-model])
+    expect(check("box:nosuch", relist: ->(*_args) { raise "a host was asked" })).to be_nil
+  end
+
+  it "never re-lists a stale saved list (a week old: it is no evidence either way)" do
+    save("box", %w[gemma-small], at: Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS - 60)
+    expect(check("box:nosuch", relist: ->(*_args) { raise "a host was asked" })).to be_nil
+  end
+
+  it "never re-lists for a ref that names no host (a bare id no single list can judge)" do
+    save("box", %w[gemma-small])
+    expect(check("locl-model", relist: ->(*_args) { raise "a host was asked" })).to be_nil
+  end
+
+  it "never re-lists a saved list from the last minutes (a miss warns from it at once)" do
+    save("box", %w[gemma-small])
+
+    expect(check("box:nosuch", relist: ->(*_args) { raise "a host was asked" }))
+      .to eq("host 'box' doesn't list model 'nosuch'; started it anyway; `chi models` lists what the hosts serve")
+    expect(Samagotchi::ModelListStore.find("box").ids).to eq(%w[gemma-small])
+  end
+
+  it "says nothing and updates the saved list when the re-list lists the typed id (the host was reloaded)" do
+    save("box", %w[gemma-small], at: saved_a_while_ago)
+
+    expect(check("box:incoai/Qwen3.8-27B-Splash", relist: relist(%w[incoai/Qwen3.8-27B-Splash gemma-small]))).to be_nil
+    expect(Samagotchi::ModelListStore.find("box").ids).to eq(%w[incoai/Qwen3.8-27B-Splash gemma-small])
+  end
+
+  it "warns from the re-list's ids (with its did-you-mean) when the re-list still lacks the id" do
+    save("box", %w[stale-model], at: saved_a_while_ago)
+
+    expect(check("box:gemma-smal", relist: relist(%w[gemma-small qwen3])))
+      .to eq("host 'box' doesn't list model 'gemma-smal' (did you mean: gemma-small?); " \
+             "started it anyway; `chi models` lists what the hosts serve")
+    expect(Samagotchi::ModelListStore.find("box").ids).to eq(%w[gemma-small qwen3])
+  end
+
+  it "warns from the saved list when the re-list fails" do
+    save("box", %w[gemma-small gemma-smal3], at: saved_a_while_ago)
+
+    expect(check("box:gemma-smal", relist: ->(*_args) { raise "connection refused" }))
+      .to eq("host 'box' doesn't list model 'gemma-smal' (did you mean: gemma-smal3, gemma-small?); " \
+             "started it anyway; `chi models` lists what the hosts serve")
+    expect(Samagotchi::ModelListStore.find("box").ids).to eq(%w[gemma-small gemma-smal3])
+  end
+
+  it "warns from the saved list and keeps it when the re-list returns nothing" do
+    save("box", %w[gemma-small], at: saved_a_while_ago)
+
+    expect(check("box:nosuch", relist: relist(nil)))
+      .to eq("host 'box' doesn't list model 'nosuch'; started it anyway; `chi models` lists what the hosts serve")
+    expect(Samagotchi::ModelListStore.find("box").ids).to eq(%w[gemma-small])
   end
 
   it "takes a store to read (ModelListStore by default)" do

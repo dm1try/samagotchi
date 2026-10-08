@@ -504,10 +504,15 @@ RSpec.describe Samagotchi::SessionManager do
     describe "an unknown model id, with a saved list for the host" do
       before do
         require "samagotchi/model_list_store"
+        require "samagotchi/host_registry"
         stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" =>
           JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
         Samagotchi::ModelListStore.save("main", %w[gemma-small qwen3])
         allow(Process).to receive(:spawn).and_return(12_345)
+        # A miss re-lists the host once (ModelProfile.model_warning). No host
+        # is up here: the re-list answers nothing, so the warning comes from
+        # the saved list (spec/model_check_spec.rb covers the re-list).
+        allow_any_instance_of(Samagotchi::HostRegistry).to receive(:list_models).and_return(nil)
       end
 
       it "starts it with a warning on the session, with a did-you-mean" do

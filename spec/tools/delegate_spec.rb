@@ -31,6 +31,12 @@ RSpec.describe "delegate tools" do
     allow(Process).to receive(:detach)
     allow(Samagotchi::Config).to receive(:get).and_call_original
     allow(Samagotchi::Config).to receive(:get).with("session.max_children").and_return(4)
+    # A child whose model id its host's saved list lacks makes
+    # ModelProfile.model_warning re-list that host once. No host is up in
+    # these examples: the re-list answers nothing and the warning comes from
+    # the saved list, as before (spec/model_check_spec.rb covers the
+    # re-list).
+    allow_any_instance_of(Samagotchi::HostRegistry).to receive(:list_models).and_return(nil)
   end
 
   after do

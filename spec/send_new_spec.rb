@@ -88,9 +88,15 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
   describe "an unknown --model with a saved model list" do
     before do
       require "samagotchi/model_list_store"
+      require "samagotchi/host_registry"
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_call_original
       allow(Process).to receive(:spawn).and_return(12_345)
       allow(Process).to receive(:detach)
+      # A miss re-lists the host once (ModelProfile.model_warning). There is
+      # no host here: the re-list answers nothing and the warning comes from
+      # the saved list, as before (spec/model_check_spec.rb covers the
+      # re-list itself).
+      allow_any_instance_of(Samagotchi::HostRegistry).to receive(:list_models).and_return(nil)
     end
 
     it "warns in one line on stderr and starts the session anyway" do

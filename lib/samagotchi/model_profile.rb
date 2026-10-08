@@ -187,7 +187,6 @@ module Samagotchi
     # named before the worker's first turn fails on it. Only a warning: some
     # hosts serve ids they don't list (a one-model llama.cpp server takes any
     # name, OpenRouter's :nitro variants), so the session starts anyway.
-    # Never asks a host.
     #
     # Only a ref that names a host is checked (its alias resolved first, as
     # ModelRef.parse does), and only against that host's own list: a bare id
@@ -195,11 +194,24 @@ module Samagotchi
     # single list can judge it. Nothing is checked either without a saved
     # list for the host or with one older than ModelListStore::TTL_SECONDS
     # (a week: the host may serve different models by now).
+    #
+    # A saved list that lacks the id may itself be stale by content: a
+    # one-model server was reloaded with another model while the list still
+    # names the old one. So a miss in a saved list older than
+    # RELIST_AFTER_SECONDS re-lists that one host once, judges again against
+    # what it lists now, and lets the saved list take the re-list's ids (the
+    # default re-list saves them too). A younger saved list, a hit, no list,
+    # a stale list (TTL_SECONDS) or a ref that names no host never asks a
+    # host; a re-list that fails, times out (RE_LIST_TIMEOUT_SECONDS) or
+    # lists nothing warns from the saved list (a host that is down is no
+    # evidence either way).
     # @param hosts [Hash, nil] the hosts a prefix may name (a HostRegistry's
     #   entries); config.yml's by default
     # @param lists [#read] ModelListStore by default
+    # @param relist [#call, nil] how a miss re-lists the host:
+    #   (host_name, env) -> ids or nil. HostRegistry#list_models by default.
     # @return [String, nil]
-    def self.model_warning(model_name, env: ENV, hosts: nil, lists: nil)
+    def self.model_warning(model_name, env: ENV, hosts: nil, lists: nil, relist: nil)
       require_relative "config"
       require_relative "model_list_store"
       hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
@@ -210,9 +222,66 @@ module Samagotchi
 
       list = lists.read(env: env)[host.to_s.strip.downcase]
       return nil if list.nil? || list.stale? || list.known?(parsed.id)
+      # A saved list this recent is taken at its word. Re-listing every miss
+      # would make each launch of an id a host serves but never lists (a
+      # gateway's round-robin aliases) pay the re-list's cap and warn
+      # anyway; a list that old is the case worth catching (a one-model
+      # server reloaded with another model).
+      return unknown_model_message(parsed.id, host, list.ids) if list.age < RELIST_AFTER_SECONDS
 
+      fresh_ids = relist_or_nil(relist || default_relist(hosts), host, env)
+      # A re-list that answered: the saved list catches up (the default
+      # re-list, HostRegistry#list_models, saved it already).
+      if fresh_ids
+        Samagotchi::ModelListStore.save(host, fresh_ids, env: env)
+        return nil if fresh_ids.any? { |id| id.to_s.casecmp?(parsed.id.to_s.strip) }
+
+        return unknown_model_message(parsed.id, host, fresh_ids)
+      end
+
+      # No answer (failed, timed out, listed nothing): the saved list stands.
       unknown_model_message(parsed.id, host, list.ids)
     end
+
+    # How long a miss's re-list may take before it is treated as failed: a
+    # spawn (`chi send --new --model`, delegate) warns from the saved list
+    # then, rather than wait on a slow host.
+    RE_LIST_TIMEOUT_SECONDS = 5
+
+    # A saved list younger than this is not re-listed on a miss (the other
+    # way it can be wrong: stale by CONTENT within its TTL, a one-model
+    # server reloaded with another model). A host that serves ids it never
+    # lists (a gateway's round-robin aliases) would otherwise pay the
+    # re-list's cap on every launch.
+    RELIST_AFTER_SECONDS = 10 * 60
+
+    # The default re-list: one HostRegistry, one host listed (and saved).
+    # Bounded like `chi models`' `wait:`: a thread still listing at the cap
+    # is left running and its answer ignored (only a short-lived spawn is
+    # ever here).
+    # @return [#call] (host_name, env) -> ids or nil
+    def self.default_relist(hosts)
+      lambda do |host_name, relist_env|
+        require_relative "host_registry"
+        registry = Samagotchi::HostRegistry.new(hosts_config: hosts, env: relist_env)
+        answer = nil
+        thread = Thread.new { answer = registry.list_models(host_name) }
+        thread.join(RE_LIST_TIMEOUT_SECONDS)
+        answer
+      end
+    end
+    private_class_method :default_relist
+
+    # The re-list's ids, or nil when it fails, times out or lists nothing.
+    # A failing re-list is no evidence either way: the caller warns from the
+    # saved list.
+    def self.relist_or_nil(relist, host, env)
+      ids = relist.call(host, env)
+      ids.respond_to?(:any?) && ids.any? ? ids : nil
+    rescue StandardError
+      nil
+    end
+    private_class_method :relist_or_nil
 
     # The warning for an id the host doesn't list, with up to three close
     # ids (Config.near_names) when there are any.
