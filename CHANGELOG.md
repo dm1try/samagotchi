@@ -21,6 +21,14 @@ and commands may change between minor versions. How releases are made:
 - The web's `ctx` chip shows the context window and where it came from: its tooltip gains `context: ~41.0k of
   128.0k tokens (server)`, and the chip reads `ctx ~12%` when the window is chi's 256k default, a guess no server,
   model list or setting gave (the tooltip says to set `window_tokens` for the model).
+- github-pr 0.3.0: `bundles: github-pr: auto_attach:` says what happens to the branch's open PR when a worker
+  starts: `attach` (the default, as before), `offer` (a card, "PR #42 for branch feat/x", with **Attach** and **Not
+  here**, shown once per session; `/pr-attach 42` and `/pr-decline 42`) or `off` (nothing). In `offer` mode the
+  offers, what you clicked and each session's first prompt go to a local log, `plugins/github-pr/offers.ndjson` in
+  the state dir. See [docs/context.md](docs/context.md) ("Attach, offer or off").
+- For plugins: `ctx.context.decline(url:|name:)`, `declined?(name, url:)`, `attach(…, force: true)` (the user's
+  explicit choice, past a decline) and `mark_offered(name, hint)` / `offered(name)`, a per-session record that a
+  plugin offered a source. See [docs/plugins.md](docs/plugins.md) ("Attached context").
 
 ## [0.42.0] - 2026-10-08
 
