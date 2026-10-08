@@ -1,17 +1,20 @@
 ---
 name: github-pr
-version: 0.2.0
+version: 0.3.0
 scope: system
-description: Attaches the branch's open GitHub pull request to a session as context (and any PR URL with chi context add or the web's "+ URL"); the agent gets a note when reviews, comments, checks or its state change; in the web, a path:line in an answer links to that line of the PR
+description: Attaches the branch's open GitHub pull request to a session as context (and any PR URL with chi context add or the web's "+ URL"); the agent gets a note when reviews, comments, checks or its state change; in the web, a path:line in an answer links to that line of the PR; the auto_attach setting can offer the PR with a card first, or attach nothing
 trust_level: reviewed
 requires_chi: ">= 0.32.0"
+# requires_chi: raise to the release that has ctx.context's decline, attach(force:) and mark_offered/offered
+# (">= 0.43.0", the next release after 0.42.0; docs/releasing.md); not before it, or the plugin won't load on a dev
+# chi still at 0.42.0
 needs:
 - command: gh
   why: reads the pull request
   hint: brew install gh, then gh auth login
 plugin:
   file: plugin.rb
-  sha256: sha256:f8b9794f84681f3a16a4d49da3b857a59fec3ccdc2d0a2b16d1192fd2a26bdf3
+  sha256: sha256:8c3b1b2de9112320d95d42d19b924a2a6bb0418715d3c78a24ac695c7b825487
 scripts:
   pr_context.rb: sha256:a883d2780e89c68c0d7b6d5e0fcb22c273f17bb167e79064e0e99db6bd2ee6f0
 context_providers:

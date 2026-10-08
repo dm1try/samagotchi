@@ -25,14 +25,39 @@ RSpec.describe "The github-pr bundle" do
   end
   let(:scratch) { false }
   let(:settings) { {} }
+  let(:cards) { [] }
   let(:ctx) do
     host = Samagotchi::Plugin::Host.new(session_id: -> { session.id }, cwd: -> { tmpdir }, state_dir: -> { state_dir },
-                                        scratch: -> { scratch })
-    Samagotchi::Plugin::Context.new(bundle: "github-pr", label: "plugin.rb (bundle github-pr)", settings: settings, host: host)
+                                        scratch: -> { scratch }, model_name: -> { "host:gemma4" },
+                                        card: ->(**card) { cards << card and card[:id] })
+    Samagotchi::Plugin::Context.new(bundle: "github-pr", label: "plugin.rb (bundle github-pr)", settings: settings, host: host,
+                                    env: { "XDG_STATE_HOME" => File.join(tmpdir, "state") })
   end
   let(:namespace) { Module.new.tap { |n| n.module_eval(File.read(File.join(shipped, "plugin.rb")), "plugin.rb", 1) } }
   let(:plugin) { namespace.const_get(:Plugin).new }
   let(:own) { Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir) }
+  # What the plugin's register gets: its inits, hooks and commands.
+  let(:fake_chi) do
+    Class.new do
+      attr_reader :inits, :hooks, :commands
+
+      def initialize
+        @inits = []
+        @hooks = {}
+        @commands = {}
+      end
+
+      def init(_label, **_options, &block) = @inits << block
+
+      def on(event, priority: 100, &block)
+        @hooks[event] = [priority, block]
+      end
+
+      def command(name, _description, anytime: false, &block)
+        @commands[name] = [anytime, block]
+      end
+    end.new
+  end
 
   around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
@@ -57,7 +82,7 @@ RSpec.describe "The github-pr bundle" do
 
   def on_branch_with(pr)
     fake("git", 'echo "feat/x"')
-    fake("gh", "echo '#{JSON.generate(pr)}'")
+    fake("gh", "printf '%s\\n' '#{JSON.generate(pr)}'")
   end
 
   it "resolves a PR URL to pr-<n>, run by its installed script" do
@@ -124,6 +149,232 @@ RSpec.describe "The github-pr bundle" do
     end
   end
 
+  describe "auto_attach" do
+    let(:pr_url) { "https://github.com/acme/app/pull/42" }
+    let(:offers_path) { File.join(tmpdir, "state", "samagotchi", "plugins", "github-pr", "offers.ndjson") }
+
+    before { on_branch_with("number" => 42, "url" => pr_url, "state" => "OPEN", "title" => "Make  the\nthing") }
+
+    def offers = File.exist?(offers_path) ? File.readlines(offers_path).map { |line| JSON.parse(line) } : []
+
+    def run_command(name, args)
+      plugin.register(fake_chi)
+      anytime, block = fake_chi.commands.fetch(name)
+      expect(anytime).to be(true)
+      block.call(args, ctx)
+    end
+
+    def ctx_with(new_settings)
+      Samagotchi::Plugin::Context.new(bundle: "github-pr", label: "l", settings: new_settings, host: ctx.instance_variable_get(:@host),
+                                      env: { "XDG_STATE_HOME" => File.join(tmpdir, "state") })
+    end
+
+    it "reads the mode: attach by default, YAML's true/false, any case, an unknown value as attach (warned once)" do
+      expect(plugin.auto_attach_mode(ctx_with({}))).to eq(:attach)
+      expect(plugin.auto_attach_mode(ctx_with("auto_attach" => true))).to eq(:attach)
+      expect(plugin.auto_attach_mode(ctx_with("auto_attach" => false))).to eq(:off)
+      expect(plugin.auto_attach_mode(ctx_with("auto_attach" => " Offer "))).to eq(:offer)
+      expect(plugin.auto_attach_mode(ctx_with("auto_attach" => "OFF"))).to eq(:off)
+
+      expect(Samagotchi::Log).to receive(:warn).with(:plugins, "pr_auto_attach_unknown", bundle: "github-pr", value: "ask").once
+      expect(plugin.auto_attach_mode(ctx_with("auto_attach" => "ask"))).to eq(:attach)
+      expect(plugin.auto_attach_mode(ctx_with("auto_attach" => "ask"))).to eq(:attach)
+    end
+
+    context "when off" do
+      let(:settings) { { "auto_attach" => "off" } }
+
+      it "attaches and offers nothing, running neither git nor gh" do
+        fake("gh", "touch #{tmpdir}/gh-ran; exit 1")
+        fake("git", "touch #{tmpdir}/git-ran; exit 1")
+
+        expect(plugin.attach_branch_pr(ctx)).to eq("auto_attach: off")
+        expect(own.sources).to eq([])
+        expect(cards).to eq([])
+        expect(File.exist?(File.join(tmpdir, "gh-ran")) || File.exist?(File.join(tmpdir, "git-ran"))).to be(false)
+      end
+    end
+
+    context "when attach (the default)" do
+      it "attaches without a card, an offer or a log line" do
+        expect(plugin.attach_branch_pr(ctx)).to eq("attached pr-42")
+        expect(cards).to eq([])
+        expect(ctx.context.offered("pr-42")).to be_nil
+        expect(offers).to eq([])
+      end
+
+      it "logs no first prompt" do
+        plugin.register(fake_chi)
+        fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "hi" }, ctx)
+        expect(offers).to eq([])
+      end
+    end
+
+    context "when offer" do
+      let(:settings) { { "auto_attach" => "offer", "line_links" => false } }
+
+      it "posts one card with Attach and Not here, attaches nothing, and logs the offer" do
+        expect(plugin.attach_branch_pr(ctx)).to eq("offered pr-42")
+
+        expect(own.sources).to eq([])
+        expect(cards).to eq([{ source: "github-pr", id: "github-pr-offer-42", title: "PR #42 for branch feat/x",
+                               body: "Make the thing\n\nNot attached: the agent gets nothing until you attach it.",
+                               level: :info, actions: [{ label: "Attach", command: "/pr-attach 42" },
+                                                       { label: "Not here", command: "/pr-decline 42" }] }])
+        expect(ctx.context.offered("pr-42")).to have_attributes(hint: pr_url)
+        expect(offers).to match([hash_including("event" => "offered", "session" => session.id, "pr" => pr_url, "branch" => "feat/x",
+                                                "cwd" => tmpdir, "model" => "host:gemma4", "ts" => String)])
+        expect(offers.first).to include("project_root", "checkout")
+      end
+
+      it "doesn't post the card again on a second init in the session (a worker restart)" do
+        plugin.attach_branch_pr(ctx)
+        expect(namespace.const_get(:Plugin).new.attach_branch_pr(ctx)).to eq("pr-42 was offered already")
+        expect(cards.size).to eq(1)
+      end
+
+      it "leaves no offer marker when the card fails" do
+        allow(ctx).to receive(:card).and_raise(ArgumentError, "bad card")
+        expect(plugin.attach_branch_pr(ctx)).to eq("no pull request attached")
+        expect(ctx.context.offered("pr-42")).to be_nil
+      end
+
+      it "doesn't offer a PR the user removed from the session" do
+        ctx.context.decline(url: pr_url)
+        expect(plugin.attach_branch_pr(ctx)).to eq("pr-42 was removed from this session; not offered")
+        expect(cards).to eq([])
+      end
+
+      it "/pr-attach attaches with the offer's URL and why (no git) and replaces the card with a notice" do
+        plugin.attach_branch_pr(ctx)
+        fake("git", "exit 1")
+
+        expect(run_command("/pr-attach", "#42")).to be_nil
+        expect(own.source("pr-42")).to have_attributes(hint: pr_url, provider: "github-pr",
+                                                       why: "branch feat/x has open PR #42 (attached from the offer)")
+        expect(cards.last).to include(id: "github-pr-offer-42", body: "Attached pr-42", actions: [])
+        expect(offers.last).to include("event" => "attached", "session" => session.id, "pr" => pr_url, "seconds" => Integer)
+      end
+
+      it "/pr-decline declines (attach mode then doesn't attach either) and replaces the card" do
+        plugin.attach_branch_pr(ctx)
+
+        expect(run_command("/pr-decline", "42")).to be_nil
+        expect(ctx.context.declined?("pr-42", url: pr_url)).to be(true)
+        expect(cards.last).to include(id: "github-pr-offer-42", body: "Not attached here; + URL attaches it", actions: [])
+        expect(offers.last).to include("event" => "declined", "pr" => pr_url)
+
+        expect(namespace.const_get(:Plugin).new.attach_branch_pr(ctx_with({})))
+          .to eq("pr-42 was removed from this session; not attached again")
+        expect(own.sources).to eq([])
+      end
+
+      it "/pr-decline of a PR attached here (a stale card) writes nothing and says how to remove it" do
+        plugin.attach_branch_pr(ctx)
+        run_command("/pr-attach", "42")
+        cards_before = cards.dup
+
+        expect(run_command("/pr-decline", "42")).to eq("pr-42 is attached here; `chi context rm pr-42` removes it")
+        expect(ctx.context.declined?("pr-42", url: pr_url)).to be(false)
+        expect(own.source("pr-42")).not_to be_nil
+        expect(cards).to eq(cards_before)
+        expect(offers.map { _1["event"] }).to eq(%w[offered attached])
+      end
+
+      it "/pr-attach after /pr-decline attaches (the user's click)" do
+        plugin.attach_branch_pr(ctx)
+        run_command("/pr-decline", "42")
+
+        expect(run_command("/pr-attach", "42")).to be_nil
+        expect(own.source("pr-42")).not_to be_nil
+        expect(ctx.context.declined?("pr-42", url: pr_url)).to be(false)
+      end
+
+      it "answers a PR it didn't offer and a bad argument" do
+        expect(run_command("/pr-attach", "7")).to eq("no offered PR #7 here; use `chi context add <PR URL>`")
+        expect(run_command("/pr-decline", "7")).to eq("no offered PR #7 here; use `chi context add <PR URL>`")
+        expect(run_command("/pr-attach", "")).to eq("usage: /pr-attach <PR number>, as the offer card names it")
+        expect(run_command("/pr-decline", "x7")).to eq("usage: /pr-decline <PR number>, as the offer card names it")
+        expect(own.sources).to eq([])
+      end
+
+      it "logs every session's first prompt, not one after a user message, a continue or a context note-only history" do
+        plugin.register(fake_chi)
+        hook = fake_chi.hooks[:before_turn][1]
+        note = { role: "system", kind: "context", content: "pr-9 changed" }
+
+        hook.call({ type: :before_turn, messages: [note], prompt: "x" * 200 }, ctx)
+        hook.call({ type: :before_turn, messages: [note, { "role" => "user", "content" => "x" }], prompt: "second" }, ctx)
+        hook.call({ type: :before_turn, messages: [], prompt: nil }, ctx)
+
+        expect(offers).to match([hash_including("event" => "first_prompt", "session" => session.id, "prompt" => "x" * 160)])
+      end
+
+      it "rotates the log over 1 MB, keeping one old file" do
+        FileUtils.mkdir_p(File.dirname(offers_path))
+        File.write(offers_path, "a" * ((1024 * 1024) + 1))
+        File.write("#{offers_path}.1", "older")
+
+        plugin.attach_branch_pr(ctx)
+
+        expect(File.size("#{offers_path}.1")).to eq((1024 * 1024) + 1)
+        expect(offers.map { _1["event"] }).to eq(["offered"])
+      end
+
+      it "keeps the log private (0600)" do
+        plugin.attach_branch_pr(ctx)
+        expect(File.stat(offers_path).mode & 0o777).to eq(0o600)
+      end
+
+      it "writes (and rotates) only while it holds the log's lock" do
+        FileUtils.mkdir_p(File.dirname(offers_path))
+        File.open("#{offers_path}.lock", File::RDWR | File::CREAT) do |lock|
+          lock.flock(File::LOCK_EX)
+          writer = Thread.new { namespace::OffersLog.new(offers_path, ctx.log).write("first_prompt", session: "s") }
+          sleep 0.2
+          expect(File.exist?(offers_path)).to be(false)
+          lock.flock(File::LOCK_UN)
+          writer.join(5)
+        end
+        expect(offers.map { _1["event"] }).to eq(["first_prompt"])
+      end
+
+      it "never breaks the offer when the log can't be written" do
+        FileUtils.mkdir_p(offers_path) # a folder where the file goes
+        expect(plugin.attach_branch_pr(ctx)).to eq("offered pr-42")
+      end
+
+      context "in a scratch session" do
+        let(:scratch) { true }
+
+        it "offers nothing and logs no first prompt" do
+          expect(plugin.attach_branch_pr(ctx)).to eq("skipped: a scratch session")
+          plugin.register(fake_chi)
+          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "hi" }, ctx)
+          expect(cards).to eq([])
+          expect(offers).to eq([])
+        end
+      end
+
+      context "in a delegate child" do
+        let(:session) do
+          parent = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
+          parent.save(state_dir: state_dir)
+          Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir, parent_id: parent.id,
+                                          delegate: true).tap { |s| s.save(state_dir: state_dir) }
+        end
+
+        it "offers nothing and logs no first prompt" do
+          expect(plugin.attach_branch_pr(ctx)).to eq("skipped: a delegate child")
+          plugin.register(fake_chi)
+          fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "hi" }, ctx)
+          expect(cards).to eq([])
+          expect(offers).to eq([])
+        end
+      end
+    end
+  end
+
   describe "line links" do
     let(:pr_url) { "https://github.com/acme/app/pull/42" }
     let(:gh_log) { File.join(tmpdir, "gh.log") }
@@ -138,22 +389,6 @@ RSpec.describe "The github-pr bundle" do
        { "filename" => "lib/new_name.rb", "status" => "renamed", "previous_filename" => "lib/old_name.rb",
          "patch" => "@@ -5,3 +5,4 @@\n+z" },
        { "filename" => "assets/logo.png", "status" => "added", "previous_filename" => nil, "patch" => nil }]
-    end
-    let(:fake_chi) do
-      Class.new do
-        attr_reader :inits, :hooks
-
-        def initialize
-          @inits = []
-          @hooks = {}
-        end
-
-        def init(_label, **_options, &block) = @inits << block
-
-        def on(event, priority: 100, &block)
-          @hooks[event] = [priority, block]
-        end
-      end.new
     end
 
     def anchor(path, side_lines) = "#{pr_url}/files#diff-#{Digest::SHA256.hexdigest(path)}#{side_lines}"
