@@ -193,6 +193,36 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   expect(order).toEqual(["user", "block", "card", "steered", "answer", "timing"]);
 });
 
+// LLM context edits (llm_context.strategy stale, apply next_request): the
+// second read of a file stubs the first from the next request, a ✂ row of
+// the step that read it again, live and after a reload; the reload also
+// marks the first read's row with what the model is sent instead.
+test("a stale read's stub shows as a ✂ row live and after a reload, and a reload marks the stubbed read", async ({ page, script, configExtra, projectFile }) => {
+  projectFile("e2e-notes.txt",
+    Array.from({ length: 40 }, (_, i) => `${i + 1}: a note line long enough to be worth a stub`).join("\n") + "\n");
+  configExtra("llm_context:\n  strategy: [stale]\n  apply: next_request\n");
+  script("llm_context");
+  await send(page, "Read the notes twice");
+  const LINE = /^✂ stubbed 1 stale read · frees ~\d+ tokens$/;
+  // The answer holds: the row is in, before it.
+  const live = page.locator(`${H()} .hook-notice.llm-context`);
+  await expect(live).toHaveCount(1);
+  await expect(live).toHaveText(LINE);
+  await expect(live).toHaveAttribute("title", /^Stubbed as stale:\n {2}t1 read e2e-notes\.txt — e2e-notes\.txt: superseded by a later read\n/);
+  await turnEnded(page, 1);
+
+  await page.reload();
+  await turnEnded(page, 1);
+  const work = page.locator("#history .turn-work.done");
+  await expect(work.locator(".gen").nth(1).locator(".activity-body > .hook-notice.llm-context")).toHaveText(LINE);
+  await expect(page.locator("#history .hook-notice.llm-context")).toHaveCount(1);
+  const rows = work.locator(".activity-row");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0).locator(".activity-edit")).toHaveText(/^✂ stubbed: superseded by a later read · ~\d+ tokens$/);
+  await expect(rows.nth(0).locator(".activity-edit")).toHaveAttribute("title", /^t1: ✂ stubbed/);
+  await expect(rows.nth(1).locator(".activity-edit")).toHaveCount(0);
+});
+
 // Nothing streams after the turn: the meter and the card read the saved context.
 test("a reload after the turn shows the context meter and the card's ctx", async ({ page, script }) => {
   script("plain");

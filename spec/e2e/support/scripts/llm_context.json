@@ -1,0 +1,8 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"tools": [{"name": "read", "arguments": {"path": "e2e-notes.txt"}}]},
+    {"tools": [{"name": "read", "arguments": {"path": "e2e-notes.txt"}}]},
+    {"hold": 3, "text": "Read the notes twice."}
+  ]
+}

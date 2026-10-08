@@ -214,11 +214,19 @@ export function useScript(env, name) {
   fs.copyFileSync(path.join(SCRIPTS, `${name}.json`), path.join(env.dirs.fake, "script.json"));
 }
 
+// A scenario's own settings (YAML appended to config.yml) for the next
+// turns, or none again with null: the workers read config.yml at each turn.
+// Each +key+ keeps its own (useTurnLimit's is "turn"), so they add up.
+export function useConfigExtra(env, extra, key = "extra") {
+  env.configExtras = { ...env.configExtras, [key]: extra ?? "" };
+  fs.writeFileSync(path.join(env.dirs.config, "samagotchi", "config.yml"),
+    config(env.fakePort, Object.values(env.configExtras).join("")));
+}
+
 // A turn's step limit (turn.max_iterations) for the next turns, or the
-// default again with null: the workers read config.yml at each turn.
+// default again with null.
 export function useTurnLimit(env, limit) {
-  const extra = limit == null ? "" : `turn:\n  max_iterations: ${limit}\n`;
-  fs.writeFileSync(path.join(env.dirs.config, "samagotchi", "config.yml"), config(env.fakePort, extra));
+  useConfigExtra(env, limit == null ? null : `turn:\n  max_iterations: ${limit}\n`, "turn");
 }
 
 // A model note (model_notes_<name>, system scope) whose models: line

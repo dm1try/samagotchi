@@ -1,12 +1,16 @@
 // Playwright fixtures: `chi` is the isolated chi of this worker (started
 // once, torn down after the last test or a failure), `script(name)` picks the
 // fake model's script, `fakeMode(mode)` makes it answer otherwise (an error;
-// back to the script after the test), and `page` opens chi web's start page
+// back to the script after the test), `configExtra(yaml)` adds a test's own
+// settings, `projectFile(name, text)` a file of its own in the project, and
+// `page` opens chi web's start page
 // (the default view, stage; ?view=turn in the turn project: the `view`
 // option). The lan project's
 // chi web also listens on the LAN address (the `lan` option).
+import fs from "node:fs";
+import path from "node:path";
 import { test as base, expect } from "@playwright/test";
-import { startEnv, stopEnv, useMode, useScript, useTurnLimit } from "./env.js";
+import { startEnv, stopEnv, useConfigExtra, useMode, useScript, useTurnLimit } from "./env.js";
 
 export const test = base.extend({
   view: ["stage", { option: true }],
@@ -42,6 +46,31 @@ export const test = base.extend({
       await use((limit) => useTurnLimit(chi, limit));
     } finally {
       useTurnLimit(chi, null);
+    }
+  },
+
+  // configExtra(yaml): settings of this test's own, appended to config.yml
+  // (none after it).
+  configExtra: async ({ chi }, use) => {
+    try {
+      await use((extra) => useConfigExtra(chi, extra));
+    } finally {
+      useConfigExtra(chi, null);
+    }
+  },
+
+  // projectFile(name, text): a file in the project the turns run in (the
+  // worker's chi is shared), removed after the test.
+  projectFile: async ({ chi }, use) => {
+    const made = [];
+    try {
+      await use((name, text) => {
+        const file = path.join(chi.dirs.project, name);
+        fs.writeFileSync(file, text);
+        made.push(file);
+      });
+    } finally {
+      for (const file of made) fs.rmSync(file, { force: true });
     }
   },
 
