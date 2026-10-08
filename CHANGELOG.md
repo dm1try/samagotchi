@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-10-08
+
 ### Added
 
 - Which model notes a session's prompt carried: each prompt build (and `/model`) records them in the session file
@@ -1980,7 +1982,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.41.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.42.0...HEAD
+[0.42.0]: https://github.com/dm1try/samagotchi/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/dm1try/samagotchi/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/dm1try/samagotchi/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/dm1try/samagotchi/compare/v0.38.0...v0.39.0

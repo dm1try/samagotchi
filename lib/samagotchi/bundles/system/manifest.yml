@@ -1,6 +1,6 @@
 ---
 name: samagotchi-system
-version: 0.41.0
+version: 0.42.0
 scope: system
 description: Default system memories — identity, self map, config modification protocol, memory guide and the delegated-session rules
 files:
