@@ -1322,6 +1322,8 @@ module Samagotchi
 
       # The activity row goes while the question waits.
       @view.finish_thinking_spinner
+      return dismiss_unaskable_question(prompt) if @non_interactive
+
       # An edit's diff goes above the slot, into the scrollback.
       preview = prompt.preview_lines(paint: method(:paint))
       @surface.commit(preview.join("\n")) unless preview.empty?
@@ -1343,6 +1345,17 @@ module Samagotchi
       end
     ensure
       @surface.clear_slot(:notes)
+    end
+
+    # --non-interactive has no one to ask (as for an approval or a hook's
+    # question there): the question is dismissed at once, as an empty answer
+    # would be, and the model finishes its reply. Never a read of stdin: a
+    # pipe its writer keeps open would block it forever. Its one line goes to
+    # stderr (#banner): stdout is the answer's alone.
+    def dismiss_unaskable_question(prompt)
+      @engine.cancel_question("user") rescue nil
+      banner(prompt.summary("(dismissed: no one to answer in a non-interactive run)", paint: method(:paint)))
+      false
     end
 
     # Loop until a valid selection or a cancel. The block reads one answer:

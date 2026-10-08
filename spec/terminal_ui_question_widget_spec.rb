@@ -304,4 +304,36 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       expect(answer).to include(selected_indices: [2], freeform: "no thanks")
     end
   end
+
+  # --non-interactive has no one to ask: the model's question is dismissed at
+  # once, never read from stdin. A pipe whose writer stays open (a parent
+  # holding chi's stdin) would block that read forever.
+  describe "in a --non-interactive run" do
+    let(:agent) { described_class.new(client: client, prompt: "hi", non_interactive: true) }
+
+    it "dismisses the question without reading stdin, even from a pipe left open" do
+      reader, writer = IO.pipe
+      old_stdin = $stdin
+      old_stdout = $stdout
+      old_stderr = $stderr
+      $stdin = reader
+      $stdout = StringIO.new
+      $stderr = StringIO.new
+      result = Timeout.timeout(5) do
+        engine.request_question(question: "Which one?", options: %w[Apple Banana], header: "Fruit")
+      end
+
+      expect(JSON.parse(result)).to include("dismissed" => true, "note" => Samagotchi::QuestionDesk::DISMISSED_NOTE)
+      expect(engine.pending_question).to be_nil
+      # stdout keeps the answer alone; the question's line goes to stderr.
+      expect($stdout.string).to eq("")
+      expect($stderr.string).to include("? Which one? → (dismissed: no one to answer in a non-interactive run)")
+    ensure
+      $stdin = old_stdin
+      $stdout = old_stdout
+      $stderr = old_stderr
+      writer&.close
+      reader&.close
+    end
+  end
 end

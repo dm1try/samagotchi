@@ -248,6 +248,9 @@ Notes:
   then `chi: the session is kept with your prompt; continue it with: chi
   --resume ID` (exit 1). Ctrl-C saves the session with the prompt and a
   cancel note and exits 130.
+  Nobody can answer there: an approval is denied, and a question the model
+  asks (`ask_user_question`) is dismissed at once (one line on stderr), never
+  read from stdin, so the model finishes its reply.
 
 ### Scratch sessions
 

@@ -49,6 +49,11 @@ and commands may change between minor versions. How releases are made:
   while the answer was being posted; it now ends there.
 - Chi Helper: a send that ended after the panel was reopened wrote its "sent"/"failed" line into the new panel, and
   a success could close it; like a broadcast, it now leaves the new open alone.
+- `chi -p … --non-interactive` hung forever when the model asked a question (`ask_user_question`) while its stdin
+  was a pipe that stayed open (`sleep 30 | chi -p …`, a parent holding stdin): it waited for an answer line. Nobody
+  can answer there, as for an approval: the question is dismissed at once (one line on stderr), the model finishes
+  its reply, and stdin is never read. Piped answers without `--non-interactive` (`printf '2\n' | chi --no-shared -p
+  …`) work as before.
 
 ## [0.45.0] - 2026-10-08
 
