@@ -49,21 +49,24 @@ module Samagotchi
     # @param muted [Array<String>] the session's muted names (MutedMemories)
     # @param small [#call, nil] → whether the model is a small one; nil:
     #   guardrails.small_models (Guardrails::ModelSize)
+    # @param env [Hash] the XDG env the memories dirs resolve from
+    # @param warn [Boolean] false: no size warnings (a read-only report such
+    #   as chi self; the prompt's build gives them)
     # @return [Array<Note>]
-    def for(name:, key:, fallback_key: nil, muted: [], small: nil)
+    def for(name:, key:, fallback_key: nil, muted: [], small: nil, env: ENV, warn: true)
       return [] if name.nil? || name.to_s.strip.empty?
 
       small ||= -> { Guardrails::ModelSize.small?(name, key) }
       small_once = memo(small)
       seen = Set.new
       notes = SCOPES.flat_map do |scope|
-        files(scope).filter_map do |path|
+        files(scope, env).filter_map do |path|
           next unless seen.add?(File.expand_path(path))
 
           note_at(path, scope, name: name, key: key, fallback_key: fallback_key, muted: muted, small: small_once)
         end
       end
-      warn_sizes(notes)
+      warn_sizes(notes) if warn
       notes
     end
 
@@ -96,7 +99,7 @@ module Samagotchi
       @warn_mutex.synchronize { @warned.clear }
     end
 
-    def files(scope) = files_in(MemoryPaths.scope_dir(scope))
+    def files(scope, env = ENV) = files_in(MemoryPaths.scope_dir(scope, env: env))
 
     # The `model_notes_*.md` files in +dir+, by their names on disk: the
     # prefix exactly as written (a case-insensitive disk's glob matches

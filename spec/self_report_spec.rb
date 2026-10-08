@@ -246,6 +246,31 @@ RSpec.describe Samagotchi::SelfReport do
       expect(field("model key")).to eq("qwen3-8-27b")
     end
 
+    it "names the model notes the model's prompt loads, without the session's muted ones, none when none match" do
+      memories = File.join(config_home, "samagotchi", "memories")
+      FileUtils.mkdir_p(memories)
+      File.write(File.join(memories, "model_notes_qwen.md"), "models: qwen3*\nQWEN HABITS\n")
+      File.write(File.join(memories, "model_notes_spec.md"), "models: spec-*\nSPEC\n")
+      expect(field("model notes")).to eq("model_notes_spec (system, 4 chars)")
+
+      env["SAMAGOTCHI_SESSION_MODEL"] = "splash:Qwen3.8-27B"
+      expect(field("model notes")).to eq("model_notes_qwen (system, 11 chars)")
+
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "splash:Qwen3.8-27B", working_directory: tmp,
+                                                muted_memory_names: ["model_notes_qwen"])
+      session.save(state_dir: Samagotchi::Session.default_state_dir(env: env))
+      env["SAMAGOTCHI_PARENT_SESSION"] = session.id
+      expect(field("model notes")).to eq("none")
+    end
+
+    it "gives no size warning for a large model note (the prompt's build does)" do
+      memories = File.join(config_home, "samagotchi", "memories")
+      FileUtils.mkdir_p(memories)
+      File.write(File.join(memories, "model_notes_big.md"), "models: spec-*\n#{"x" * 3_100}\n")
+      expect(Samagotchi::Log).not_to receive(:warn).with(:memory, "model_notes_large", anything)
+      expect(field("model notes")).to eq("model_notes_big (system, 3100 chars)")
+    end
+
     it "puts the model key right after the model row" do
       labels = described_class.fields(env: env).map(&:first)
       expect(labels[labels.index("model") + 1]).to eq("model key")

@@ -782,7 +782,9 @@ RSpec.describe Samagotchi::Web::App do
           "event_id" => "40-e1"
         },
         "session_state_snapshot" => { "status" => "running", "event_seq" => 40, "model_name" => "Qwen3-14B",
-                                      "served_model" => "ornith-1.5", "served_model_for" => "Qwen3-14B" }
+                                      "served_model" => "ornith-1.5", "served_model_for" => "Qwen3-14B",
+                                      "prompt_notes" => [{ "name" => "model_notes_qwen", "scope" => "system",
+                                                           "chars" => 40, "digest" => "0123456789ab" }] }
       }
       stub_worker(app, live)
       status, _headers, body = app.call(env_for("/api/sessions/s1"))
@@ -814,6 +816,9 @@ RSpec.describe Samagotchi::Web::App do
       # What the worker's server said it served for it.
       expect(payload.dig("session", "served_model")).to eq("ornith-1.5")
       expect(payload.dig("session", "served_model_for")).to eq("Qwen3-14B")
+      # The model notes its prompt carries now (the info bar's notes chip).
+      expect(payload.dig("session", "prompt_notes")).to eq([{ "name" => "model_notes_qwen", "scope" => "system",
+                                                              "chars" => 40, "digest" => "0123456789ab" }])
     end
 
     it "names the LLM context strategy the next turn runs under: the live worker's, else read from the session file" do
@@ -957,7 +962,9 @@ RSpec.describe Samagotchi::Web::App do
           { "role" => "model", "content" => "<think>hm</think>see [x](https://example.test)" }
         ], "recap" => "We did things.", "queued" => [{ "prompt" => "next" }], "event_id" => "40-e1" },
           "session_state_snapshot" => { "status" => "idle", "event_seq" => 40, "model_name" => "Qwen3-14B",
-                                        "used_memory_names" => ["project:notes"] } }
+                                        "used_memory_names" => ["project:notes"],
+                                        "prompt_notes" => [{ "name" => "model_notes_qwen", "scope" => "system",
+                                                             "chars" => 40, "digest" => "0123456789ab" }] } }
       end
 
       it "answers the session, the timing and the last assistant message only, rendered" do
@@ -977,7 +984,9 @@ RSpec.describe Samagotchi::Web::App do
         expect(payload["messages"].first).to include("role" => "assistant", "content" => "see [x](https://example.test)")
         expect(payload["messages"].first["html"]).to include('href="https://example.test"')
         # What the page reads of the session, from the worker (no file read).
-        expect(payload["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => ["project:notes"])
+        expect(payload["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => ["project:notes"],
+                                         "prompt_notes" => [{ "name" => "model_notes_qwen", "scope" => "system",
+                                                              "chars" => 40, "digest" => "0123456789ab" }])
         expect(payload["timing"]).to include("turn_records", "tool_records")
         # The responses file is the full answer's alone.
         expect(manager).not_to have_received(:read_responses)
@@ -1002,6 +1011,18 @@ RSpec.describe Samagotchi::Web::App do
         payload = JSON.parse(app.call(env_for("/api/sessions/s1?tail=1"))[2].first)
 
         expect(payload["messages"].map { |m| m["content"] }).to eq(["see [x](https://example.test)"])
+      end
+
+      it "a stopped session's model notes come from its file (the info bar's notes chip)" do
+        loader = Class.new(StubSessionLoader) do
+          def self.load(id, state_dir: nil)
+            super.tap { |s| s.prompt_notes = [{ "name" => "model_notes_a", "scope" => "project", "chars" => 5, "digest" => "d" }] }
+          end
+        end
+        payload = JSON.parse(build_app(state_dir: Dir.mktmpdir, session_class: loader).call(env_for("/api/sessions/s1?tail=1"))[2].first)
+
+        expect(payload.dig("session", "prompt_notes")).to eq([{ "name" => "model_notes_a", "scope" => "project", "chars" => 5,
+                                                                "digest" => "d" }])
       end
 
       it "no answer yet: no messages; a stopped session reads its file" do
@@ -1041,7 +1062,8 @@ RSpec.describe Samagotchi::Web::App do
 
           payload = read("?tail=1")
           expect(payload["messages"].map { |m| m["content"] }).to eq(["see [x](https://example.test)"])
-          expect(payload["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => ["project:notes"])
+          expect(payload["session"]).to include("id" => "s1", "status" => "idle", "used_memory_names" => ["project:notes"])
+          expect(payload.dig("session", "prompt_notes").map { |note| note["name"] }).to eq(["model_notes_qwen"])
           expect(read("?cards=1")["cards"]).to eq([{ "type" => "hook_notice", "text" => "saved" }])
         end
 
@@ -1063,7 +1085,8 @@ RSpec.describe Samagotchi::Web::App do
 
         it "no worker: the disk" do
           expect(read("?tail=1")["messages"]).to eq([{ "role" => "assistant", "content" => "hi there" }])
-          expect(read("?tail=1")["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => [])
+          expect(read("?tail=1")["session"]).to eq("id" => "s1", "status" => "idle", "used_memory_names" => [],
+                                                   "prompt_notes" => [])
         end
 
         it "an unknown session id: 404, live or not" do

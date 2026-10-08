@@ -626,6 +626,8 @@ module Samagotchi
         # What the worker's server said it served for that model (after a turn).
         if snapshot
           session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"])
+          # The model notes its prompt carries now (a /model there changes them).
+          session_json = session_json.merge(prompt_notes: snapshot["prompt_notes"]) if snapshot["prompt_notes"].is_a?(Array)
         end
         # The LLM context strategy the next turn runs under (the info bar's
         # chip): the worker's, else worked out here from the session file.
@@ -680,8 +682,9 @@ module Samagotchi
       # history again (nor a render of every earlier answer). Live: the
       # worker's GET tail alone (no session file read); else the file. The
       # session part is what the page reads of it (id, status, used memory
-      # names). ?turn_id=: that turn's answer (a queued turn's page re-reads
-      # after the next one started). ?recent=1 (the page since this
+      # names, the model notes its prompt carried: the first turn's build or
+      # a /model records them). ?turn_id=: that turn's answer (a queued
+      # turn's page re-reads after the next one started). ?recent=1 (the page since this
       # release): the timing's records are the newest turn's (#recent_timing),
       # which the page merges by id; without it, the whole timing as before.
       def handle_tail_read(req, id)
@@ -692,12 +695,14 @@ module Samagotchi
         tail = live_tail(id, turn_id: turn_id)
         state = tail && tail["session_state_snapshot"]
         if state.is_a?(Hash)
-          session_json = { id: id, status: state["status"], used_memory_names: Array(state["used_memory_names"]) }
+          session_json = { id: id, status: state["status"], used_memory_names: Array(state["used_memory_names"]),
+                           prompt_notes: Array(state["prompt_notes"]) }
           messages = last_assistant_for_display([tail["answer"]].compact)
         else
           session = @session_class.load(id, state_dir: default_state_dir)
           state = nil
-          session_json = { id: id, status: displayed_status(session), used_memory_names: Array(session.used_memory_names) }
+          session_json = { id: id, status: displayed_status(session), used_memory_names: Array(session.used_memory_names),
+                           prompt_notes: session.prompt_notes.map(&:to_h) }
           messages = last_assistant_for_display(session.messages, turn_id: turn_id)
         end
         live_metrics = state && state["metrics"]

@@ -150,5 +150,16 @@
       { "index": { "system": { "tokens": 1200, "lines": 20 } }, "expected": "~1.2k tokens in this session's prompt (system 1.2k)" },
       { "index": null, "expected": "" }
     ]
+  },
+  "prompt_notes": {
+    "note": "The model notes a session's prompt carried (its prompt_notes: name, scope, chars, digest; PromptNote.text after \"model notes:\" in /stats, \"; notes: \" in /model and chi self's model notes row; format.js promptNotesText in the info bar's notes chip tooltip): each note's name with its scope and size, comma-separated; a part missing is left out; none: \"\".",
+    "cases": [
+      { "notes": [{ "name": "model_notes_deepseek", "scope": "system", "chars": 612, "digest": "0123456789ab" }], "expected": "model_notes_deepseek (system, 612 chars)" },
+      { "notes": [{ "name": "model_notes_a", "scope": "system", "chars": 80 }, { "name": "model_notes_a", "scope": "project", "chars": 5 }], "expected": "model_notes_a (system, 80 chars), model_notes_a (project, 5 chars)" },
+      { "notes": [{ "name": "model_notes_x" }], "expected": "model_notes_x" },
+      { "notes": [{ "scope": "system", "chars": 3 }], "expected": "" },
+      { "notes": [], "expected": "" },
+      { "notes": null, "expected": "" }
+    ]
   }
 }

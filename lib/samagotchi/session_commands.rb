@@ -3,6 +3,7 @@
 require_relative "config"
 require_relative "model_profile"
 require_relative "served_model"
+require_relative "prompt_note"
 require_relative "turn_flow"
 require_relative "tools/execute"
 require_relative "tools/builtins"
@@ -362,9 +363,9 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}", false] if model_name == @engine.model_ref_for(@default_model)
+        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}#{notes_note}", false] if model_name == @engine.model_ref_for(@default_model)
 
-        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{thinking_note}", false]
+        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{thinking_note}#{notes_note}", false]
       end
 
       # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
@@ -434,14 +435,14 @@ module Samagotchi
           return ["--default cannot be combined with clear/default/none/off", false] if persist_default
 
           switch_model(@default_model)
-          return ["runtime model reset to #{model_name}#{model_note}", true]
+          return ["runtime model reset to #{model_name}#{model_note}#{notes_note}", true]
         end
 
         switch_model(arg, persist_default: persist_default)
         if persist_default
-          ["runtime model set to #{model_name}#{model_note} and default updated", true]
+          ["runtime model set to #{model_name}#{model_note} and default updated#{notes_note}", true]
         else
-          ["runtime model set to #{model_name}#{model_note}", true]
+          ["runtime model set to #{model_name}#{model_note}#{notes_note}", true]
         end
       end
     end
@@ -478,6 +479,16 @@ module Samagotchi
     def sampling_note
       summary = @engine.sampling_summary
       summary ? "; sampling: #{summary}" : ""
+    rescue StandardError
+      ""
+    end
+
+    # "; notes: model_notes_deepseek (system, 612 chars)": the model notes
+    # the session's prompt carries (after a switch, the ones the new
+    # model's prompt loads); "" without any.
+    def notes_note
+      text = PromptNote.text(@engine.prompt_notes)
+      text.empty? ? "" : "; notes: #{text}"
     rescue StandardError
       ""
     end

@@ -6,6 +6,7 @@ require_relative "../image_store"
 require_relative "../turn_note"
 require_relative "../steer"
 require_relative "../memory_bundle/index_size"
+require_relative "../prompt_note"
 
 module Samagotchi
   class TerminalUI
@@ -485,6 +486,9 @@ module Samagotchi
         lines << "prompt profile:   #{snapshot[:profile]} (#{snapshot[:profile_source]})" if snapshot[:profile]
         memory_index = memory_index_text(snapshot[:memory_index])
         lines << "memory index:     #{memory_index}" unless memory_index.empty?
+        # The model notes the session's prompt carried (Engine#prompt_notes).
+        notes = PromptNote.text(snapshot[:prompt_notes])
+        lines << "model notes:      #{notes}" unless notes.empty?
         llm_context = llm_context_stats_text(snapshot[:llm_context])
         lines << "llm context:      #{llm_context}" if llm_context
         if snapshot[:served_model]

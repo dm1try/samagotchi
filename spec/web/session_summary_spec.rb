@@ -154,6 +154,15 @@ RSpec.describe Samagotchi::Web::SessionSummary do
         .to include(preloaded_memory_names: [], muted_memory_names: [])
     end
 
+    it "carries the model notes its prompt carried (the info bar's notes chip)" do
+      s = session
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(prompt_notes: [])
+      s.prompt_notes = [{ "name" => "model_notes_a", "scope" => "system", "chars" => 12, "digest" => "0123456789ab" }]
+
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s)))
+        .to include(prompt_notes: [{ name: "model_notes_a", scope: "system", chars: 12, digest: "0123456789ab" }])
+    end
+
     it "carries the parent link of a delegated session" do
       s = session
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(parent_id: nil)

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
 import { clientLabel, emptyAnswerLine, emptyRetryLine, hookNoticeLabel, noticeLine, reminderText, retryStatusLine, steerCutLine } from "../../../lib/samagotchi/web/public/turn_events.js";
-import { servedModelDiffers, steerRowHtml, steerSender } from "../../../lib/samagotchi/web/public/format.js";
+import { promptNotesText, servedModelDiffers, steerRowHtml, steerSender } from "../../../lib/samagotchi/web/public/format.js";
 import { flashOf } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { costText, memoryIndexText, speedText } from "../../../lib/samagotchi/web/public/ctx.js";
 
@@ -106,5 +106,11 @@ test("costs per the shared labels matrix", () => {
 test("memory index sizes per the shared labels matrix", () => {
   for (const entry of cases("memory_index")) {
     assert.equal(memoryIndexText(entry.index), expected(entry), `memory index ${JSON.stringify(entry.index)}`);
+  }
+});
+
+test("prompt notes per the shared labels matrix", () => {
+  for (const entry of cases("prompt_notes")) {
+    assert.equal(promptNotesText(entry.notes), expected(entry), `prompt notes ${JSON.stringify(entry.notes)}`);
   }
 });

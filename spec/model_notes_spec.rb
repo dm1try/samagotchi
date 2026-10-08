@@ -136,6 +136,12 @@ RSpec.describe Samagotchi::ModelNotes do
     expect(names("m")).to eq(%w[model_notes_a model_notes_b])
   end
 
+  it "gives no size warning with warn: false (a read-only report)" do
+    write(system_dir, "model_notes_a", "models: *\n#{"a" * 3_100}\n")
+    expect(Samagotchi::Log).not_to receive(:warn)
+    expect(described_class.for(name: "m", key: "m", warn: false).map(&:name)).to eq(%w[model_notes_a])
+  end
+
   describe ".filter_index" do
     it "drops the lines of the notes that load and keeps every other byte" do
       write(system_dir, "model_notes_deepseek", "models: deepseek-*\nDeepSeek.\n")

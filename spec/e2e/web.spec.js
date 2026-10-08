@@ -1,7 +1,7 @@
 // Happy paths of the web UI against a scripted fake model (support/scripts).
 // Assertions are on page state only; every wait is on the DOM, no sleeps.
 import { test, expect } from "./support/fixtures.js";
-import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedFamily } from "./support/env.js";
+import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedFamily, useModelNote } from "./support/env.js";
 
 // The stage view (the default; the turn project runs @turn scenarios again
 // on ?view=turn): a running turn's rows are in #turnStage until the hand-off
@@ -202,6 +202,25 @@ test("a reload after the turn shows the context meter and the card's ctx", async
   await turnEnded(page, 1);
   await expect(page.locator("#infoBar .meta")).toContainText(/ctx \d+%/);
   await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
+});
+
+test("a session whose prompt carried a model note names it in the info bar", async ({ page, script, chi }) => {
+  script("plain");
+  useModelNote(chi, "e2e", "Keep answers short.");
+  try {
+    await send(page, "Say pong");
+    await turnEnded(page, 1);
+    // The turn-end re-read brings them (the first turn's build recorded them).
+    const chip = page.locator("#infoBar .meta .notes-chip");
+    await expect(chip).toHaveText("notes: e2e");
+    await expect(chip).toHaveAttribute("title", "model notes in this session's prompt: model_notes_e2e (system, 19 chars)");
+    // And a reload: the live worker's snapshot.
+    await page.reload();
+    await turnEnded(page, 1);
+    await expect(chip).toHaveText("notes: e2e");
+  } finally {
+    useModelNote(chi, "e2e", null);
+  }
 });
 
 test("cancel mid-turn shows the canceled turn (its timing line too), and the next send works", { tag: "@turn" }, async ({ page, script }) => {

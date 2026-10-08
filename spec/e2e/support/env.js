@@ -221,6 +221,21 @@ export function useTurnLimit(env, limit) {
   fs.writeFileSync(path.join(env.dirs.config, "samagotchi", "config.yml"), config(env.fakePort, extra));
 }
 
+// A model note (model_notes_<name>, system scope) whose models: line
+// matches the fake model, for the next prompt builds; null text removes it.
+// @return the note's file
+export function useModelNote(env, name, text) {
+  const dir = path.join(env.dirs.config, "samagotchi", "memories");
+  const file = path.join(dir, `model_notes_${name}.md`);
+  if (text == null) {
+    fs.rmSync(file, { force: true });
+  } else {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, `models: fake-*\n${text}\n`);
+  }
+  return file;
+}
+
 // The fake's mode (fake_openai.py's header: 500, stall, …); "script" plays
 // the script again.
 export function useMode(env, mode) {

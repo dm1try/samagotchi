@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { leadTrimmed, previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, steerRowHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace } from "../../../lib/samagotchi/web/public/format.js";
+import { leadTrimmed, previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, steerRowHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace, promptNotesChip } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -320,4 +320,18 @@ test("delegatesSummary: the counter childrenSummary and the family chip share; l
   assert.equal(sum.live, 2);
   assert.equal(sum.waitingText, "1 waiting");
   assert.equal(sum.title, "3 delegates: 1 running · 1 waiting · 1 done");
+});
+
+test("promptNotesChip: the names without model_notes_, the full line its tooltip; null without notes", () => {
+  const notes = [
+    { name: "model_notes_deepseek", scope: "system", chars: 612, digest: "0123456789ab" },
+    { name: "model_notes_tidy", scope: "project", chars: 80, digest: "ba9876543210" },
+  ];
+  assert.deepEqual(promptNotesChip(notes), {
+    text: "notes: deepseek, tidy",
+    title: "model notes in this session's prompt: model_notes_deepseek (system, 612 chars), model_notes_tidy (project, 80 chars)",
+  });
+  assert.equal(promptNotesChip([]), null);
+  assert.equal(promptNotesChip(undefined), null);
+  assert.equal(promptNotesChip([{ scope: "system" }]), null);
 });

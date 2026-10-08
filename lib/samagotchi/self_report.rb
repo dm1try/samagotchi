@@ -10,6 +10,8 @@ require_relative "session"
 require_relative "log_path"
 require_relative "model_profile"
 require_relative "model_overlay"
+require_relative "model_notes"
+require_relative "prompt_note"
 require_relative "thinking"
 require_relative "served_model"
 require_relative "host_registry"
@@ -59,6 +61,7 @@ module Samagotchi
         ["log", log_path(env)],
         ["model", model ? model_label(model, default, env) : "(not configured)"],
         ["model key", model ? model_key_for(model, env) : "-"],
+        ["model notes", model ? model_notes_for(model, env) : "-"],
         ["host", model ? host_for(model, env) : "-"],
         ["api key", model ? api_key_for(model, env) : "-"],
         ["loop", model ? loop_for(model, env) : "-"],
@@ -185,6 +188,35 @@ module Samagotchi
       ModelOverlay.key_for(HostRegistry.new(env: env).bare_name(model)) || "-"
     rescue StandardError
       ModelOverlay.key_for(model) || "-"
+    end
+
+    # "model_notes_deepseek (system, 612 chars)": the model notes a prompt
+    # of +model+ loads (ModelNotes: matched on its bare id and key, the
+    # session's --mute list left out when chi self runs in one), "none"
+    # without any. Read from the memories dirs now: a session's prompt
+    # takes them at its next build (/stats names the ones it carries).
+    def model_notes_for(model, env)
+      bare = HostRegistry.new(env: env).bare_name(model)
+      notes = ModelNotes.for(name: bare, key: ModelOverlay.key_for(bare), muted: session_muted(env), env: env,
+                                            warn: false)
+      text = PromptNote.text(notes.map { |note| PromptNote.from_note(note) })
+      text.empty? ? "none" : text
+    rescue StandardError => e
+      "(unreadable: #{e.message})"
+    end
+
+    # The --mute list of the session chi self runs in (its execute exports
+    # SAMAGOTCHI_PARENT_SESSION); [] outside one.
+    def session_muted(env)
+      id = env[PARENT_SESSION_ENV].to_s
+      return [] if id.empty? || !Session.valid_id?(id)
+
+      state_dir = Session.default_state_dir(env: env)
+      return [] unless Session.exist?(id, state_dir: state_dir)
+
+      MutedMemories.normalize_list(Session.load(id, state_dir: state_dir).muted_memory_names)
+    rescue StandardError
+      []
     end
 
     def model_name

@@ -130,6 +130,15 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, {})).not_to include("memory index")
     end
 
+    it "shows the model notes the session's prompt carried in /stats, none without any" do
+      notes = [{ "name" => "model_notes_deepseek", "scope" => "system", "chars" => 612, "digest" => "0123456789ab" }]
+
+      expect(agent.send(:format_session_metrics, { prompt_notes: notes }))
+        .to include("model notes:      model_notes_deepseek (system, 612 chars)")
+      expect(agent.send(:format_session_metrics, { prompt_notes: [] })).not_to include("model notes")
+      expect(agent.send(:format_session_metrics, {})).not_to include("model notes")
+    end
+
     it "shows the prompt profile and where it came from in /stats" do
       metrics = agent.engine.metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")

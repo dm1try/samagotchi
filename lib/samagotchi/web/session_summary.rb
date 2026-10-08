@@ -47,6 +47,8 @@ module Samagotchi
           # The session's --memory and --mute lists (info-bar tooltip).
           preloaded_memory_names: Array(session.preloaded_memory_names),
           muted_memory_names: Array(session.muted_memory_names),
+          # The model notes its prompt carried (the info bar's notes chip).
+          prompt_notes: Array(session.prompt_notes).map(&:to_h),
           # The session that delegated this one (the `delegate` tool), else nil.
           parent_id: session.parent_id,
           # Started by the delegate tool (Session#delegate?); a fork has a

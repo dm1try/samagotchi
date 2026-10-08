@@ -154,6 +154,21 @@ RSpec.describe Samagotchi::SessionCommands do
         .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); thinking: off (models: qwen3-14b)")
     end
 
+    it "names the model notes the session's prompt carries, and the new model's after a switch" do
+      session.prompt_notes = [{ "name" => "model_notes_qwen", "scope" => "system", "chars" => 40, "digest" => "0123456789ab" }]
+
+      expect(commands.run("/model").output)
+        .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); " \
+               "notes: model_notes_qwen (system, 40 chars)")
+
+      gemma = Samagotchi::ModelNotes::Note.new(name: "model_notes_gemma", scope: "project", body: "B", chars: 1, digest: "d")
+      allow(Samagotchi::ModelNotes).to receive(:for).and_return([gemma])
+      expect(commands.run("/model alpha:gemma-small").output)
+        .to eq("runtime model set to alpha:gemma-small (profile=gemma4, name); notes: model_notes_gemma (project, 1 chars)")
+      expect(saved.last).to eq("alpha:gemma-small")
+      expect(session.prompt_notes.map(&:name)).to eq(%w[model_notes_gemma])
+    end
+
     it "switches the Engine's model and saves it on the session" do
       result = commands.run("/model alpha:gemma-small")
 

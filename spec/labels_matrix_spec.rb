@@ -3,6 +3,7 @@
 require "json"
 require "samagotchi/terminal_ui"
 require "samagotchi/served_model"
+require "samagotchi/prompt_note"
 
 # Shared contract: spec/shared/labels_matrix.json, the words the TUI and the
 # web put on the same event. spec/web/public/labels_matrix.test.js reads the
@@ -115,6 +116,14 @@ RSpec.describe "Shared labels matrix (TUI side)" do
       expect(fmt.memory_index_text(entry["index"])).to eq(expected(entry))
       symbols = entry["index"]&.to_h { |scope, figures| [scope.to_sym, figures.transform_keys(&:to_sym)] }
       expect(fmt.memory_index_text(symbols)).to eq(expected(entry))
+    end
+  end
+
+  cases(matrix, "prompt_notes").each do |entry|
+    it "words the prompt notes #{entry["notes"].inspect}" do
+      expect(Samagotchi::PromptNote.text(entry["notes"])).to eq(expected(entry))
+      symbols = Array(entry["notes"]).map { |note| note.transform_keys(&:to_sym) }
+      expect(Samagotchi::PromptNote.text(symbols)).to eq(expected(entry))
     end
   end
 end
