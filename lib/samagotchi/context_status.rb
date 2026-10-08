@@ -63,13 +63,21 @@ module Samagotchi
       "context elevated — be concise, prefer range reads, avoid re-reading large files",
       "context critical — summarize aggressively, avoid large outputs, delegate broad work to subagents"
     ].freeze
+    # The top level's words when the buckets count against a budget
+    # (llm_context.budget_tokens) and no forget layer: nothing in the
+    # model's hands shrinks the context, so no "summarize".
+    BUDGET_CRITICAL = "context budget critical — avoid large outputs and re-reads, delegate broad work to subagents"
 
     # @param bucket [String] "under<N>" or "<N>plus"
     # @param thresholds [Array<Integer>] the configured ones, sorted
-    def self.guidance(bucket, thresholds = DEFAULT_THRESHOLDS)
+    # @param budget [Boolean] the buckets count against a budget
+    def self.guidance(bucket, thresholds = DEFAULT_THRESHOLDS, budget: false)
       rank = bucket_rank(bucket, thresholds)
       level = rank < GUIDANCE_FROM_RANK ? 0 : GUIDANCE.size - 1 - (thresholds.size - rank)
-      GUIDANCE[level.clamp(0, GUIDANCE.size - 1)]
+      level = level.clamp(0, GUIDANCE.size - 1)
+      return BUDGET_CRITICAL if budget && level == GUIDANCE.size - 1
+
+      GUIDANCE[level]
     end
 
     # 0 for the bucket under the first threshold, then one per threshold.
@@ -331,11 +339,16 @@ module Samagotchi
 
     def k(tokens) = tokens >= 1000 ? "#{(tokens / 1000.0).round}k" : tokens.to_s
 
+    # The buckets count against the budget (set, and not over the window).
+    def budget_counted?(usage) = !@budget.nil? && usage[:window_tokens] == @budget
+
     def guidance_message(usage:, bucket:)
       how = usage[:source].to_s == "server" ? "as the server reports" : "estimated"
+      budget = budget_counted?(usage)
+      of = budget ? "the context budget (#{k(@budget)} tokens)" : "the context window"
       { role: "system", kind: LINE_KIND,
-        content: "#{LINE_PREFIX}about #{usage[:estimated_pct].to_f.round}% of the context window is in use " \
-                 "(#{how}; bucket=#{bucket}). #{self.class.guidance(bucket, @thresholds)}]" }
+        content: "#{LINE_PREFIX}about #{usage[:estimated_pct].to_f.round}% of #{of} is in use " \
+                 "(#{how}; bucket=#{bucket}). #{self.class.guidance(bucket, @thresholds, budget: budget)}]" }
     end
 
     def status_message(usage:, bucket:)
@@ -350,7 +363,7 @@ module Samagotchi
         bucket: bucket,
         thresholds: @thresholds.join(","),
         src: usage[:source],
-        guidance: self.class.guidance(bucket, @thresholds)
+        guidance: self.class.guidance(bucket, @thresholds, budget: budget_counted?(usage))
       )
     end
   end

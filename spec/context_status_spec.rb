@@ -106,6 +106,29 @@ RSpec.describe Samagotchi::ContextStatus do
       expect(described_class.new(llm_context: strategy(500)).display_for(used_tokens: 400, window_tokens: 1_000))
         .to eq(est_pct: 80.0, bucket: "80plus")
     end
+
+    it "under none, names the budget, not the window, and asks nothing the model has no tool for" do
+      none = ->(budget) { Samagotchi::LLMContextStrategy::Resolved.new(layers: [], strategy: :none, source: :config, budget_tokens: budget) }
+      big = Samagotchi::ContextWindow::Resolved.new(tokens: 128_000, source: :config)
+      tracker = described_class.new(llm_context: none.call(64_000))
+
+      event = tracker.observe(204_800, iteration_index: 0, window: big)
+
+      expect(tracker.take_guidance[:content]).to eq(
+        "[CONTEXT: about 80% of the context budget (64k tokens) is in use (estimated; bucket=80plus). " \
+        "context budget critical — avoid large outputs and re-reads, delegate broad work to subagents]"
+      )
+      expect(event[:status]).to include("guidance=context budget critical")
+      lower = described_class.new(llm_context: none.call(64_000))
+      lower.observe(102_400, iteration_index: 0, window: big)
+      expect(lower.take_guidance[:content]).to start_with("[CONTEXT: about 40% of the context budget (64k tokens) is in use")
+        .and end_with("context moderate — prefer targeted and range reads over full-file dumps]")
+      # A budget over the window: the window counts, and the line says so.
+      window_counted = described_class.new(llm_context: none.call(500_000))
+      window_counted.observe(409_600, iteration_index: 0, window: big)
+      expect(window_counted.take_guidance[:content]).to start_with("[CONTEXT: about 80% of the context window is in use")
+        .and end_with("context critical — summarize aggressively, avoid large outputs, delegate broad work to subagents]")
+    end
   end
 
   describe "under the forget layer: tiered offers of forget_outputs" do

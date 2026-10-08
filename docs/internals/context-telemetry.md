@@ -36,7 +36,10 @@ both loops):
 
 - `llm_context.budget_tokens` (or a model's or host's `llm_context_budget_tokens`): the buckets count against the
   budget instead of the window, the smaller of the two. The event's `window_tokens` and the status line's percentage
-  are of it too, and so is `payoff`'s top bucket.
+  are of it too, and so is `payoff`'s top bucket. Without the forget layer the model's line names it, `[CONTEXT:
+  about 62% of the context budget (64k tokens) is in use (…)]` (the window when that is the smaller), and its top
+  bucket reads "context budget critical — avoid large outputs and re-reads, delegate broad work to subagents": no
+  "summarize", as nothing in the model's hands shrinks the context.
 - The forget layer replaces the guidance with tiered offers of `forget_outputs`, each line a readout,
   `[CONTEXT: ~52k/64k tokens in use (bucket=60plus). …]`: the readout alone in the guided buckets below the top two
   (CLM: how-to at low pressure makes a model wipe everything); "Finish the unit of work in flight, then tidy once
