@@ -922,6 +922,26 @@ test("a first turn that fails shows its prompt and why, once live and again afte
   await expect(page.locator("#history .hint")).toHaveCount(0);
 });
 
+// A turn that fails after a tool step keeps it (turn_failed's kept_steps):
+// no prompt goes back, and its failure line is drawn again after a reload
+// from the turn record (SessionMetrics' failure; turn_view.js failedLineHtml).
+test("a turn that fails after a tool step keeps its step and its failure line, live and after a reload", async ({ page, script }) => {
+  script("failed_after_steps");
+  await send(page, "Check the shell");
+  const line = "✕ turn failed: server error from host main: HTTP 500: boom; partial progress kept (!rollback restores the pre-turn state)";
+  const shown = async () => {
+    await expect(page.locator("#history .bubble.cancel")).toHaveText(line);
+    await expect(page.locator("#history .bubble.user.failed")).toHaveCount(0);
+    await expect(page.locator("#history .turn-work")).toContainText("1 tool call");
+  };
+  await turnEnded(page, 1);
+  await shown();
+  await expect(page.locator("#prompt")).toHaveValue("");
+  await page.reload();
+  await turnEnded(page, 1);
+  await shown();
+});
+
 // The /turn ack held back until the failed turn's prompt_restored has come
 // over the stream. `landed` waits until the page handled the ack: its send
 // handler focuses the composer last, so the composer is blurred first.

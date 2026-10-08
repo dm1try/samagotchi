@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { turnHistoryHtml } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+import { failedTurnText } from "../../../lib/samagotchi/web/public/format.js";
 import { commandBlockHtml } from "../../../lib/samagotchi/web/public/command_view.js";
 
 const timing = normalizeTiming({
@@ -350,4 +351,26 @@ test("turnHistoryHtml: a context wake turn starts with its note (turn_start): th
     '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>' +
     '<div class="bubble note"><div class="note-line">note from context pr-1</div><div class="note-text">Updated: pr-1.</div></div>' +
     '<div class="bubble output">Bob asked for changes.</div><div class="turn-timing">turn 2 · 2.0s</div>');
+});
+
+test("turnHistoryHtml: a failed turn whose steps stayed ends with the live failure line, after its timing; its texts stay steps", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Checking.", parts: { tools: [{ tool: "execute", params: 'command="true"', output: "exit: 0" }] } },
+    { role: "assistant", content: "Now the tests." },
+  ];
+  const failure = { summary: "402 Payment Required (openrouter)", kept_steps: 1 };
+  const failed = normalizeTiming({
+    turn_records: [{ id: "T1", status: "failed", duration_ms: 12000, failure }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
+  });
+  const html = turnHistoryHtml(items, failed, { thumbs });
+  assert.doesNotMatch(html, /bubble output/);
+  assert.match(html, /Now the tests\./);
+  // The live turn_failed's words (format.js failedTurnText), in the live class.
+  const line = failedTurnText({ ...failure, kept_steps: 1 }).replace(/[()!]/g, "\\$&");
+  assert.match(html, new RegExp(`<div class="turn-timing">turn 1 · 12s</div><div class="bubble cancel">${line}</div>$`));
+  // A record from before failures were kept, or another end: no line.
+  const bare = normalizeTiming({ turn_records: [{ id: "T1", status: "failed", duration_ms: 12000 }] });
+  assert.doesNotMatch(turnHistoryHtml(items, bare, { thumbs }), /bubble cancel/);
 });

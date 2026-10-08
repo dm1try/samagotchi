@@ -11,6 +11,8 @@
 # an answer. An iteration's "thinking_file" (a path relative to scripts/, its leading "#" header lines dropped)
 # streams in place of "thinking", "repeat" times over (default 1), and "chunk_chars" streams N chars per chunk
 # instead of word by word (the script's "delay" still applies): a long looping thinking (loop-guard's watch).
+# An iteration with "error": N answers HTTP N ({"error": {"message": "boom"}}) instead: a turn that fails after its
+# tool steps (scripts/failed_after_steps.json).
 # "branches" pick another iteration list by the first user message (a delegated child's task; see _script), or with
 # "when_last" by the last one (a queued turn's prompt).
 # /v1/models lists "fake-script" (or serves <dir>/models.json when there is one, e.g. with
@@ -120,6 +122,7 @@ class H(http.server.BaseHTTPRequestHandler):
                 its = branch["iterations"]
                 break
         it = its[min(done, len(its) - 1)]
+        if it.get("error"): return self._send(int(it["error"]), json.dumps({"error": {"message": "boom"}}))
         delay = float(script.get("delay", 0.12))
         time.sleep(float(it.get("hold", 0)))
         self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.send_header("Transfer-Encoding", "chunked"); self.end_headers()

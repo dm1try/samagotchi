@@ -37,6 +37,8 @@ module Samagotchi
     # The most turns (with their tool calls) a live snapshot carries: the
     # unsaved ones of a collector whose saves keep failing stay bounded.
     LIVE_RECORDS_CAP = 20
+    # The most characters of a failed turn's error message its record keeps.
+    FAILURE_MESSAGE_CHARS = 2000
 
     # A generation shorter than this gets no decode speed of its own: one
     # tiny generation would skew the session's average.
@@ -308,7 +310,7 @@ module Samagotchi
       when :turn_canceled
         end_turn(status: "canceled", reason: event[:cancellation_reason], by: event[:cancelled_by])
       when :turn_failed
-        end_turn(status: "failed")
+        end_turn(status: "failed", failure: failure_fields(event))
       end
 
       @mutex.synchronize { @last_activity_at = now.iso8601(3) }
@@ -497,9 +499,10 @@ module Samagotchi
     end
 
     # A canceled turn's record keeps why (+reason+: "user", "ctrl_c", ...)
-    # and who stopped it (+by+: a hook's bundle), so a reloaded web history
-    # can show the cancel line the live one did.
-    def end_turn(status: "completed", reason: nil, by: nil)
+    # and who stopped it (+by+: a hook's bundle), a failed one what its line
+    # says (+failure+, #failure_fields), so a reloaded web history can show
+    # the cancel or failure line the live one did.
+    def end_turn(status: "completed", reason: nil, by: nil, failure: nil)
       @mutex.synchronize do
         if @turn
           # A turn that failed mid-stream never saw its generation end:
@@ -522,12 +525,26 @@ module Samagotchi
           }
           record[:cancellation_reason] = reason.to_s unless reason.nil? || reason.to_s.empty?
           record[:cancelled_by] = by.to_s unless by.nil? || by.to_s.empty?
+          record[:failure] = failure if failure
           record.merge!(turn_token_fields(@turn))
           @turn_records << record
           count_turn(record)
         end
         @turn = nil
       end
+    end
+
+    # What turn_failed's line is made of (format.js failedTurnText): a
+    # provider error's summary, else the message (capped: a server's error
+    # page can be long) and class, and the steps that stayed (kept_steps).
+    def failure_fields(event)
+      summary = event[:summary].to_s
+      return { summary: summary, kept_steps: event[:kept_steps] }.compact unless summary.empty?
+
+      message = event[:message].to_s
+      message = "#{message[0, FAILURE_MESSAGE_CHARS - 1]}…" if message.length > FAILURE_MESSAGE_CHARS
+      { message: message.empty? ? nil : message, error_class: event[:error_class]&.to_s,
+        kept_steps: event[:kept_steps] }.compact
     end
 
     # The model the server says answered, and the name asked for then (a

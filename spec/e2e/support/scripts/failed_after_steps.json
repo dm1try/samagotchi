@@ -1,0 +1,8 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"thinking": "A no-op command first.", "text": "Let me check the shell first.",
+     "tools": [{"name": "execute", "arguments": {"command": "true", "description": "See that the shell answers"}}]},
+    {"error": 500}
+  ]
+}

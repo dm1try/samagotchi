@@ -619,6 +619,31 @@ RSpec.describe Samagotchi::SessionMetrics do
                                                               satisfy { |r| !r.key?(:cancelled_by) }])
   end
 
+  # The web's reload draws the failure line the live turn_failed did
+  # (turn_view.js failedLineHtml, format.js failedTurnText).
+  it "keeps what a failed turn's line says on its record: the summary, else the message and class; the kept steps" do
+    feed([
+      { type: :turn_started, session_id: "sess-f", prompt: "x" },
+      { type: :turn_failed, error_class: "Samagotchi::LLM::ProviderError", message: "HTTP 402\nbody", kept_steps: 3,
+        summary: "402 Payment Required (openrouter)", error_kind: :payment, retryable: false },
+      { type: :turn_started, session_id: "sess-f", prompt: "y" },
+      { type: :turn_failed, error_class: "RuntimeError", message: "boom" }
+    ])
+
+    first, second = metrics.snapshot[:turn_records].last(2)
+    expect(first).to include(status: "failed", failure: { summary: "402 Payment Required (openrouter)", kept_steps: 3 })
+    expect(second[:failure]).to eq(message: "boom", error_class: "RuntimeError")
+  end
+
+  it "caps a failed turn's message on its record" do
+    feed([
+      { type: :turn_started, session_id: "sess-f2", prompt: "x" },
+      { type: :turn_failed, error_class: "RuntimeError", message: "x" * 5000 }
+    ])
+
+    expect(metrics.snapshot[:turn_records].last[:failure][:message].length).to eq(described_class::FAILURE_MESSAGE_CHARS)
+  end
+
   it "keeps no cancellation reason on a completed turn's record" do
     feed([
       { type: :turn_started, session_id: "sess-3b", prompt: "x" },
