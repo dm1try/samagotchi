@@ -73,7 +73,10 @@ RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
     relist = ->(*_args) { raise "re-listed" }
 
     expect(check("box:rr/x", relist: relist)).to be_nil
-    expect(check("box:rr/y", relist: ->(*_args) {})).to start_with("host 'box' doesn't list model 'rr/y'")
+    relisted = []
+    expect(check("box:rr/y", relist: ->(name, _env) { relisted << name; nil }))
+      .to start_with("host 'box' doesn't list model 'rr/y'")
+    expect(relisted).to eq(["box"])
   end
 
   it "matches an id by case, as routing does" do

@@ -559,8 +559,8 @@ to the default host. A host's declared ids (`hosts.<name>.models`, below) count
 as listed. Only exact ids count, never a substring: `/model gemma` on
 a box that lists `gemma-4-26b` needs `box:gemma` or the exact id. The lists are
 known only after `/models` ran (nothing is fetched before the first turn), so
-until then an unqualified name goes to the default host; use `host:model` to pin
-one. A **remote** host (an `https` url or a public address; see "Remote or local") keeps its model
+until then an unqualified name goes to the default host, unless a host declares
+it; use `host:model` to pin one. A **remote** host (an `https` url or a public address; see "Remote or local") keeps its model
 list for 10 minutes (60s for local hosts).
 
 **The context window** (what the context status and `ctx=` count against) comes from,

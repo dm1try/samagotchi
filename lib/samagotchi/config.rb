@@ -977,10 +977,10 @@ module Samagotchi
         next if owners.size < 2
 
         names = owners.map(&:first)
-        winner = names.include?("default") ? "default" : names.first
         id = owners.first.last
+        goes = names.include?("default") ? "default" : "#{names.first} unless the default host lists it"
         warn_once "Warning: #{names.map { |n| "hosts.#{n}.models" }.join(" and ")} #{names.size == 2 ? "both" : "all"} declare #{id}; " \
-                  "a bare #{id} goes to #{winner}"
+                  "a bare #{id} goes to #{goes}"
       end
     end
     private_class_method :warn_duplicate_host_models

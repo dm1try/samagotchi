@@ -190,7 +190,7 @@ module Samagotchi
     #
     # Only a ref that names a host is checked (its alias resolved first, as
     # ModelRef.parse does), and only against that host's own list: a bare id
-    # goes to whichever host lists it (HostRegistry#host_for_model), so no
+    # goes to whichever host lists or declares it (HostRegistry#host_for_model), so no
     # single list can judge it. Nothing is checked either without a saved
     # list for the host or with one older than ModelListStore::TTL_SECONDS
     # (a week: the host may serve different models by now).

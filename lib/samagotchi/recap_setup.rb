@@ -49,7 +49,7 @@ module Samagotchi
                elsif !IdleTarget.host_named?(**settings)
                  # A model naming no host goes where a bare --model goes
                  # (HostRegistry#host_for_model: the default host unless
-                 # another's list has it), resolved at each attempt.
+                 # another lists or declares it), resolved at each attempt.
                  -> { IdleTarget.resolve(**settings) }
                else
                  fixed = fixed_target(settings)

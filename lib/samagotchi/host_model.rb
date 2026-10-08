@@ -22,22 +22,30 @@ module Samagotchi
               when Hash then raw.to_a
               when Array then raw.map { |id| [id, nil] }
               else
-                ConfigFile.warn_once "Warning: #{where} must be a map or a list of model ids; ignored"
+                warn_once "Warning: #{where} must be a map or a list of model ids; ignored"
                 return {}
               end
       pairs.each_with_object({}) do |(id, entry), models|
         id = id.to_s.strip if id.is_a?(String) || id.is_a?(Symbol)
         unless id.is_a?(String) && !id.empty?
-          ConfigFile.warn_once "Warning: #{where}: #{id.inspect} is not a model id; ignored"
+          warn_once "Warning: #{where}: #{id.inspect} is not a model id; ignored"
           next
         end
         unless entry.nil? || entry.is_a?(Hash)
-          ConfigFile.warn_once "Warning: #{where}.#{id} must be empty or a mapping; ignored"
+          warn_once "Warning: #{where}.#{id} must be empty or a mapping; ignored"
           next
         end
         models[id.downcase] ||= new(id: id)
       end
     end
+
+    # config.rb requires this file, so config is required here only when a
+    # warning needs it (this file loaded alone).
+    def self.warn_once(message)
+      require_relative "config"
+      ConfigFile.warn_once(message)
+    end
+    private_class_method :warn_once
 
     # One host's rows as the listings show them, declared ids first, then
     # the listed ones in the host's order (see Row). An id both declared and

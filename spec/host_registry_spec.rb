@@ -85,6 +85,15 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(registry.resolve("rr/shared").entry.name).to eq("default")
     end
 
+    it "goes to the default host when it declares the id too, whatever the hosts: order" do
+      declaring_default = described_class.new(hosts_config: {
+        "work" => { host: "gateway.example", port: 443, models: declared("rr/both") },
+        "default" => { host: "localhost", port: 8080, models: declared("rr/both") }
+      })
+
+      expect(declaring_default.resolve("rr/both").entry.name).to eq("default")
+    end
+
     it "orders listing and declaring hosts alike, by hosts: order" do
       list("box" => ["rr/x"])
 

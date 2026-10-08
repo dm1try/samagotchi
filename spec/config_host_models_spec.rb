@@ -47,7 +47,7 @@ RSpec.describe "hosts.<name>.models" do
 
   it "warns once when two hosts declare the same id, naming where a bare one goes" do
     expect(Samagotchi::ConfigFile).to receive(:warn_once)
-      .with("Warning: hosts.a.models and hosts.b.models both declare rr/dup; a bare rr/dup goes to a")
+      .with("Warning: hosts.a.models and hosts.b.models both declare rr/dup; a bare rr/dup goes to a unless the default host lists it")
 
     hosts("a" => { "host" => "a", "models" => ["rr/dup"] }, "b" => { "host" => "b", "models" => ["RR/dup"] })
   end
