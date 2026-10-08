@@ -1222,6 +1222,30 @@ RSpec.describe Samagotchi::Worker do
           expect([worker.send(:next_ready_command), worker.send(:next_ready_command)].map { |c| c[:command_id] }).to eq(%w[x y])
         end
 
+        # Queued idle just as the turn began (on_command saw no turn running).
+        it "marks one queued idle just before the turn began as waiting, and drops its !cmd after a canceled turn" do
+          worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir)
+          queue = Thread::Queue.new
+          queue << { command_id: "a", client_id: "web:1", line: "!ls", mid_turn: :loop, after_seq: 0 }
+          queue << { command_id: "b", client_id: "web:1", line: "/model X", mid_turn: :loop, after_seq: 0 }
+          worker.instance_variable_set(:@command_queue, queue)
+          worker.instance_variable_set(:@engine, engine)
+          worker.instance_variable_set(:@turn_end_seq, 0)
+
+          worker.send(:refuse_queued_commands, mid_turn: true)
+          waits = events_seen.select { |e| e[:type] == :command_queued }
+          expect(waits.map { |e| [e[:command_id], e[:waits]] }).to eq([%w[a turn_end], %w[b turn_end]])
+          expect(events_seen.none? { |e| e[:type] == :command_ran }).to be(true)
+
+          worker.instance_variable_set(:@turn_end_seq, engine.event_count + 1)
+          worker.instance_variable_set(:@turn_end_type, :turn_canceled)
+          worker.send(:refuse_queued_commands)
+          expect(events_seen.find { |e| e[:type] == :command_ran })
+            .to include(command_id: "a", status: "dropped", queued: true, output: "turn canceled: !ls not run; send it again")
+          expect(queue.size).to eq(1)
+          expect(queue.pop).to include(command_id: "b", mid_turn: :queue)
+        end
+
         it "is in the snapshot until it ran" do
           start_worker(poll_interval: 5)
           post_turn("slow, no boundary")

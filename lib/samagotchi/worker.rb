@@ -614,9 +614,9 @@ module Samagotchi
           during = mid_turn || command[:after_seq].to_i < @turn_end_seq
           case (during ? turn_answer(command, ended: !mid_turn) : :keep)
           when :refuse then announce_command(command, status: "busy", output: busy_output(command), changed: [])
-          when :drop then drop_command(command, "turn #{@turn_end_type == :turn_failed ? "failed" : "canceled"}: " \
-                                                "#{command[:line]} not run; send it again")
-          else @command_queue << command
+          when :drop then drop_command(waiting_for_turn_end(command), "turn #{@turn_end_type == :turn_failed ? "failed" : "canceled"}: " \
+                                                                      "#{command[:line]} not run; send it again")
+          else @command_queue << (during ? waiting_for_turn_end(command) : command)
           end
         end
       end
@@ -629,10 +629,23 @@ module Samagotchi
       policy = command[:mid_turn]
       policy = @engine.command_registry.mid_turn(command[:line]) if policy == :loop
       return :refuse if policy == :refuse
-      return :drop if ended && command[:mid_turn] == :queue && shell_command?(command) &&
+      return :drop if ended && policy == :queue && shell_command?(command) &&
                       %i[turn_canceled turn_failed].include?(@turn_end_type)
 
       :keep
+    end
+
+    # +command+, kept for after the turn. One queued idle just as the turn
+    # began (:loop) whose line waits for a turn's end (/model X, !cmd) is
+    # marked as one queued mid-turn: its command_queued (waits) tells the
+    # UIs now, and its command_ran says queued.
+    def waiting_for_turn_end(command)
+      return command unless command[:mid_turn] == :loop && @engine.command_registry.mid_turn(command[:line]) == :queue
+
+      event = { type: :command_queued, **command.slice(:command_id, :client_id, :line), waits: "turn_end" }
+      event[:card] = true if command[:card]
+      @engine.announce(event)
+      command.merge(mid_turn: :queue)
     end
 
     def shell_command?(command) = @engine.command_registry.lookup(command[:line])&.id == :shell
