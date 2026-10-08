@@ -33,14 +33,15 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       File.write(File.join(session_dir(s), "analytics.json"), JSON.generate(
         "context" => { "used_tokens" => 250, "window_tokens" => 1000 },
         "tokens" => { "prompt_sum" => 900, "completion_sum" => 80, "cached_sum" => 600, "reasoning_sum" => 20,
-                      "cost_sum" => 0.42, "source" => "server" },
+                      "cost_sum" => 0.42, "cost_estimate_sum" => 0.12, "source" => "server" },
         "memory_index" => { "system" => { "tokens" => 1997, "lines" => 54 } }
       ))
 
       json = described_class.build(s, owner: nil, session_dir: session_dir(s))
 
       expect(json[:ctx_pct]).to eq(25.0)
-      expect(json[:tokens]).to eq(prompt_sum: 900, completion_sum: 80, cached_sum: 600, reasoning_sum: 20, cost_sum: 0.42)
+      expect(json[:tokens]).to eq(prompt_sum: 900, completion_sum: 80, cached_sum: 600, reasoning_sum: 20, cost_sum: 0.42,
+                                  cost_estimate_sum: 0.12)
       expect(json[:memory_index]).to eq("system" => { "tokens" => 1997, "lines" => 54 })
     end
 

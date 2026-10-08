@@ -7,6 +7,7 @@ require "fileutils"
 require "securerandom"
 require_relative "atomic_file"
 require_relative "token_usage"
+require_relative "model_price"
 require_relative "session"
 
 module Samagotchi
@@ -58,9 +59,11 @@ module Samagotchi
     # memory_index: the memory indexes the session's prompt held
     # ({ system: { tokens:, lines: }, project: … }, string keys as saved),
     # nil when an older file has none.
+    # cost_estimate_sum: the estimated cost (hosts.<name>.models prices), 0
+    # in an older file.
     SavedSummary = Data.define(:ctx_pct, :prompt_sum, :completion_sum, :cached_sum, :reasoning_sum, :cost_sum,
-                               :memory_index) do
-      def initialize(memory_index: nil, **) = super
+                               :cost_estimate_sum, :memory_index) do
+      def initialize(memory_index: nil, cost_estimate_sum: 0, **) = super
 
       def tokens = to_h.except(:ctx_pct, :memory_index)
     end
@@ -94,6 +97,10 @@ module Samagotchi
       :gen_cache_write_max,
       :gen_reasoning_max,
       :gen_cost,
+      # The generation's configured price (ModelPrice, from
+      # :generation_started), what a generation without a reported cost
+      # (or a reported 0) is estimated from.
+      :gen_price,
       :gen_decode_tps,
       :gen_prefill_tps,
       :gen_decode_ms,
@@ -120,6 +127,8 @@ module Samagotchi
       :reprefill_sum,
       :reasoning_sum,
       :cost_sum,
+      # The estimated cost of the generations priced from config (0 when none).
+      :cost_estimate_sum,
       :decode_ms_sum,
       :decode_tokens_sum,
       :last_decode_tps,
@@ -168,6 +177,7 @@ module Samagotchi
       SavedSummary.new(ctx_pct: saved_pct(data["context"], budget_tokens), prompt_sum: count.call("prompt_sum"),
                        completion_sum: count.call("completion_sum"), cached_sum: count.call("cached_sum"),
                        reasoning_sum: count.call("reasoning_sum"), cost_sum: count.call("cost_sum"),
+                       cost_estimate_sum: count.call("cost_estimate_sum"),
                        memory_index: data["memory_index"].is_a?(Hash) ? data["memory_index"] : nil)
     rescue JSON::ParserError, SystemCallError, TypeError
       nil
@@ -324,6 +334,7 @@ module Samagotchi
             @turn.gen_started_at = monotonic_time
             @turn.generations += 1
             reset_generation_tokens
+            @turn.gen_price = generation_price(event[:price])
             @turn.gen_open = true
           end
         end
@@ -459,6 +470,7 @@ module Samagotchi
         reprefill_sum: add.call(:reprefill_sum),
         reasoning_sum: add.call(:reasoning_sum),
         cost_sum: add.call(:cost_sum),
+        cost_estimate_sum: add.call(:cost_estimate_sum),
         decode_ms_sum: decode_ms.round,
         decode_tokens_sum: decode_tokens,
         avg_decode_tps: decode_ms.positive? ? (decode_tokens * 1000.0 / decode_ms).round(1) : nil,
@@ -520,6 +532,7 @@ module Samagotchi
           reprefill_sum: 0,
           reasoning_sum: 0,
           cost_sum: nil,
+          cost_estimate_sum: 0,
           decode_ms_sum: 0,
           decode_tokens_sum: 0,
           retries: 0,
@@ -660,6 +673,12 @@ module Samagotchi
       turn.cache_write_sum += turn.gen_cache_write_max
       turn.reasoning_sum += turn.gen_reasoning_max
       turn.cost_sum = turn.cost_sum.to_f + turn.gen_cost if turn.gen_cost
+      # A reported cost wins; a reported 0 with a price is taken as no report
+      # (a gateway that doesn't bill per call); the 0 stays in cost.
+      if turn.gen_price && (turn.gen_cost.nil? || turn.gen_cost.zero?)
+        turn.cost_estimate_sum += turn.gen_price.cost(prompt_tokens: turn.gen_prompt_max, cached_tokens: turn.gen_cached_max,
+                                                      cache_write_tokens: turn.gen_cache_write_max, completion_tokens: completion)
+      end
       turn.last_prefill_tps = turn.gen_prefill_tps.round(1) if turn.gen_prefill_tps
       speed = generation_speed(turn, completion)
       return unless speed
@@ -699,6 +718,7 @@ module Samagotchi
       @turn.gen_cache_write_max = 0
       @turn.gen_reasoning_max = 0
       @turn.gen_cost = nil
+      @turn.gen_price = nil
       @turn.gen_decode_tps = @turn.gen_prefill_tps = @turn.gen_decode_ms = nil
       @turn.gen_first_chunk_at = nil
     end
@@ -743,6 +763,7 @@ module Samagotchi
       fields[:cache_write_tokens_sum] = turn.cache_write_sum if turn.cache_write_sum.positive?
       fields[:reprefill_tokens_sum] = turn.reprefill_sum if turn.reprefill_sum.positive?
       fields.merge!(cost: turn.cost_sum, cost_source: "reported") if turn.cost_sum
+      fields[:cost_estimate] = turn.cost_estimate_sum if turn.cost_estimate_sum.positive?
       fields
     end
 
@@ -867,6 +888,13 @@ module Samagotchi
       event_content.is_a?(String) ? event_content : ""
     end
 
+    # The :generation_started event's price (ModelPrice#to_h), nil for none.
+    def generation_price(hash)
+      hash.is_a?(Hash) ? ModelPrice.new(**hash.transform_keys(&:to_sym)) : nil
+    rescue ArgumentError
+      nil
+    end
+
     def monotonic_time
       @clock.call
     end
@@ -986,7 +1014,7 @@ module Samagotchi
       @totals = { cancellations: 0, prompt_sum: 0, completion_sum: 0, token_sources: [], iterations: 0,
                   gen_ms: 0, retries: 0, cuts: 0, capped: 0, by_tool: {}, tool_errors: 0, cached_sum: 0, cache_write_sum: 0,
                   reprefill_sum: 0, reasoning_sum: 0,
-                  cost_sum: 0, decode_ms_sum: 0, decode_tokens_sum: 0, last_decode_tps: nil,
+                  cost_sum: 0, cost_estimate_sum: 0, decode_ms_sum: 0, decode_tokens_sum: 0, last_decode_tps: nil,
                   last_prefill_tps: nil, tps_source: nil }
     end
 
@@ -1005,6 +1033,7 @@ module Samagotchi
       totals[:reprefill_sum] += number(record[:reprefill_tokens_sum])
       totals[:reasoning_sum] += number(record[:reasoning_tokens])
       totals[:cost_sum] += number(record[:cost])
+      totals[:cost_estimate_sum] += number(record[:cost_estimate])
       totals[:decode_ms_sum] += number(record[:decode_ms])
       totals[:decode_tokens_sum] += number(record[:decode_tokens])
       # The newest speeds a record has (an older record has none).

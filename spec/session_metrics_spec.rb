@@ -558,6 +558,105 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(metrics.finish_generation.speed).to be_nil
     end
 
+    describe "the cost estimate from a configured price (hosts.<name>.models.<id>.price)" do
+      let(:price) { { input: 2.0, cache_read: 0.5, cache_write: 2.0, output: 10.0 } }
+
+      # router_chunk: 1000 prompt tokens, none cached, +completion+ out.
+      def estimate_for(completion) = ((1000 * 2.0) + (completion * 10.0)) / 1e6
+
+      def priced_generation(completion, cost: nil, price: self.price, chunk: true)
+        metrics.call(type: :generation_started, iteration: 1, price: price)
+        if chunk
+          metrics.call(router_chunk("", completion, cost: cost))
+        else
+          metrics.call(type: :generation_chunk, iteration: 1, content: "x" * 40, payload: { "choices" => [] })
+        end
+        metrics.call(type: :generation_completed, iteration: 1)
+      end
+
+      it "doesn't estimate when the provider reports a cost" do
+        start_turn
+        priced_generation(40, cost: 0.25)
+        metrics.call(type: :turn_completed)
+
+        expect(metrics.snapshot[:tokens]).to include(cost_sum: 0.25, cost_estimate_sum: 0)
+        expect(metrics.snapshot[:turn_records].last).to include(cost: 0.25, cost_source: "reported")
+        expect(metrics.snapshot[:turn_records].last).not_to include(:cost_estimate)
+      end
+
+      it "estimates a generation the provider reports no cost for" do
+        start_turn
+        priced_generation(40)
+        metrics.call(type: :turn_completed)
+
+        expect(metrics.snapshot[:tokens][:cost_estimate_sum]).to be_within(1e-12).of(estimate_for(40))
+        expect(metrics.snapshot[:tokens][:cost_sum]).to eq(0)
+        expect(metrics.snapshot[:turn_records].last[:cost_estimate]).to be_within(1e-12).of(estimate_for(40))
+        expect(metrics.snapshot[:turn_records].last).not_to include(:cost)
+      end
+
+      it "estimates a reported 0 when a price is configured, and keeps the reported 0 as the cost" do
+        start_turn
+        priced_generation(40, cost: 0)
+        metrics.call(type: :turn_completed)
+
+        expect(metrics.snapshot[:turn_records].last).to include(cost: 0.0, cost_source: "reported")
+        expect(metrics.snapshot[:turn_records].last[:cost_estimate]).to be_within(1e-12).of(estimate_for(40))
+      end
+
+      it "leaves a reported 0 alone without a price" do
+        start_turn
+        priced_generation(40, cost: 0, price: nil)
+        metrics.call(type: :turn_completed)
+
+        expect(metrics.snapshot[:turn_records].last).to include(cost: 0.0)
+        expect(metrics.snapshot[:turn_records].last).not_to include(:cost_estimate)
+        expect(metrics.snapshot[:tokens]).to include(cost_estimate_sum: 0)
+      end
+
+      it "keeps a turn's reported and estimated generations apart" do
+        start_turn
+        priced_generation(40, cost: 0.25)
+        priced_generation(10)
+        metrics.call(type: :turn_completed)
+
+        record = metrics.snapshot[:turn_records].last
+        expect(record[:cost]).to eq(0.25)
+        expect(record[:cost_estimate]).to be_within(1e-12).of(estimate_for(10))
+      end
+
+      it "doesn't estimate a generation with only chars/4 counts" do
+        start_turn
+        priced_generation(0, chunk: false)
+        metrics.call(type: :turn_completed)
+
+        expect(metrics.snapshot[:turn_records].last).not_to include(:cost_estimate)
+        expect(metrics.snapshot[:tokens]).to include(cost_estimate_sum: 0)
+      end
+
+      it "shows the running turn's estimate and brings both sums back apart on reload" do
+        dir = Dir.mktmpdir
+        metrics.state_dir = dir
+        start_turn("t1")
+        priced_generation(40, cost: 0.25)
+        priced_generation(10)
+        expect(metrics.snapshot[:tokens][:cost_estimate_sum]).to be_within(1e-12).of(estimate_for(10))
+        metrics.call(type: :turn_completed)
+        start_turn("t2")
+        priced_generation(20, cost: 0)
+        metrics.call(type: :turn_completed)
+        metrics.persist
+
+        woken = described_class.new.tap { |m| m.state_dir = dir }
+        woken.session_id = "speed"
+        expect(woken.snapshot[:tokens][:cost_sum]).to eq(0.25)
+        expect(woken.snapshot[:tokens][:cost_estimate_sum]).to be_within(1e-12).of(estimate_for(10) + estimate_for(20))
+        summary = described_class.saved_summary(Samagotchi::Session.session_dir("speed", state_dir: dir))
+        expect(summary.cost_sum).to eq(0.25)
+        expect(summary.cost_estimate_sum).to be_within(1e-12).of(estimate_for(10) + estimate_for(20))
+      end
+    end
+
     it "brings the sums back on reload, with the newest saved speeds; an older record counts as zeros" do
       dir = Dir.mktmpdir
       metrics.state_dir = dir
@@ -1114,14 +1213,15 @@ RSpec.describe Samagotchi::TokenUsage do
                          "cost_sum" => 0.42 })
       summary = Samagotchi::SessionMetrics.saved_summary(dir)
       expect(summary.ctx_pct).to eq(25.0)
-      expect(summary.tokens).to eq(prompt_sum: 900, completion_sum: 80, cached_sum: 600, reasoning_sum: 20, cost_sum: 0.42)
+      expect(summary.tokens).to eq(prompt_sum: 900, completion_sum: 80, cached_sum: 600, reasoning_sum: 20, cost_sum: 0.42,
+                                   cost_estimate_sum: 0)
     end
 
     it "has zeros for the counts an older file lacks, and is nil without a file" do
       expect(Samagotchi::SessionMetrics.saved_summary(dir)).to be_nil
       save("tokens" => { "prompt_sum" => 9, "completion_sum" => 1, "source" => "server" })
       expect(Samagotchi::SessionMetrics.saved_summary(dir))
-        .to have_attributes(ctx_pct: nil, cached_sum: 0, cost_sum: 0, memory_index: nil)
+        .to have_attributes(ctx_pct: nil, cached_sum: 0, cost_sum: 0, cost_estimate_sum: 0, memory_index: nil)
     end
 
     it "reads the memory indexes the prompt held, apart from the token totals" do

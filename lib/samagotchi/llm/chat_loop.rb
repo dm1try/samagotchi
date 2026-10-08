@@ -180,6 +180,9 @@ module Samagotchi
       # turn_settings), or nil.
       def vision = @kernel.turn_settings.vision
 
+      # The turn's configured price (the kernel's turn_settings), or nil.
+      def price = (@kernel.turn_settings&.price if @kernel.respond_to?(:turn_settings))
+
       # The turn's request parameters (the kernel's turn_settings).
       def sampling = @kernel.turn_settings.sampling || {}
 
@@ -461,7 +464,7 @@ module Samagotchi
           observe_context(iteration, window)
           retry_generation = @empty_retry.take_sampling!
           emit(type: :generation_started, iteration: iteration, context_window_tokens: window&.tokens,
-               context_window_source: window&.source)
+               context_window_source: window&.source, price: @loop.price&.to_h)
           @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
           streamed = +""
           thought = +""

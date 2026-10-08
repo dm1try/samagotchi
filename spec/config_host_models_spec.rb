@@ -45,6 +45,17 @@ RSpec.describe "hosts.<name>.models" do
     end
   end
 
+  it "keeps a declared price through the SAMAGOTCHI_HOSTS_JSON round trip" do
+    price = { "input" => 0.27, "cache_read" => 0.07, "output" => 1.1 }
+    with_config("work" => { "url" => "https://gateway.example/v1", "models" => { "rr/x" => { "price" => price } } }) do |path, dir|
+      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
+      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json },
+                                                   path: File.join(dir, "none.yml"))
+
+      expect(worker["work"][:models]["rr/x"].price).to eq(Samagotchi::ModelPrice.new(input: 0.27, cache_read: 0.07, cache_write: 0.27, output: 1.1))
+    end
+  end
+
   it "warns once when two hosts declare the same id, naming where a bare one goes" do
     expect(Samagotchi::ConfigFile).to receive(:warn_once)
       .with("Warning: hosts.a.models and hosts.b.models both declare rr/dup; a bare rr/dup goes to a unless the default host lists it")
@@ -62,14 +73,17 @@ RSpec.describe "hosts.<name>.models" do
   describe "validation" do
     def problems(yaml) = Samagotchi::Config.validate_yaml_sections(YAML.safe_load(yaml))
 
-    it "takes models: on a host and checks each entry's keys" do
-      expect(problems(<<~YAML)).to eq(["config: unknown key 'hosts.work.models.rr/b.prise'"])
+    it "takes models: on a host and checks each entry's keys and its price's" do
+      expected = ["config: unknown key 'hosts.work.models.rr/b.prise' (did you mean 'hosts.work.models.rr/b.price'?)",
+                  "config: unknown key 'hosts.work.models.rr/d.price.cached'"]
+      expect(problems(<<~YAML)).to eq(expected)
         hosts:
           work:
             url: "https://gateway.example/v1"
             models:
               rr/a:
               rr/b: {prise: 1}
+              rr/d: {price: {input: 1, cached: 0.1, output: 2}}
           box:
             host: box.test
             models: [rr/c]

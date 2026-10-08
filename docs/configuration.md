@@ -413,6 +413,41 @@ models:
 `SAMAGOTCHI_HOSTS_JSON`, and reads `models:` from the config file each turn: after changing a host's `sampling:`,
 stop the session's worker (`chi sessions stop`) for it to take effect.
 
+## Prices
+
+A provider that reports no cost (`usage.cost`), or reports 0, can still be priced: give the model a price under
+the host that serves it, in USD per 1M tokens.
+
+```yaml
+hosts:
+  work:
+    url: https://gateway.example/v1
+    api: openai
+    models:
+      rr/deepseek-v4.1:
+        price: {input: 0.27, cache_read: 0.07, output: 1.10}
+  openrouter:
+    url: https://openrouter.ai/api/v1
+    api: openai
+    models:
+      qwen/qwen3.8-27b: {price: {input: 0.10, output: 0.40}}   # a listed id, here only for its price
+```
+
+- `input` and `output` are required; `cache_read` and `cache_write` are optional. Each is a number >= 0; a price
+  missing one of the required two, or with a value that isn't a number >= 0, warns at start and is ignored.
+- An unset rate is the input rate: that overstates cached reads, and understates Anthropic cache writes (billed
+  1.25x input for the 5 min cache, 2x for 1 h). Set them when it matters.
+- A price is per host, since one model can cost differently on two hosts. It is looked up by the model the session
+  asked for (its host and id), never by the model the host says it served.
+- Each generation with the server's token counts is estimated as uncached prompt × `input` + cached reads ×
+  `cache_read` + cache writes × `cache_write` + completion × `output`, over 1M. A generation with only estimated
+  counts (characters / 4, no usage from the server) isn't priced.
+- A reported cost wins: a generation with a non-zero `usage.cost` is never estimated. A reported 0 with a price is
+  estimated (a gateway that bills elsewhere reports 0); the 0 is kept as the reported cost.
+- The estimate is saved apart from the reported cost (`cost_estimate` per turn, `cost_estimate_sum` in the
+  session's totals in `analytics.json`) and shows with a `~`.
+- A server that sends no cached counts has its whole prompt priced at `input`: an overestimate.
+
 ## Thinking
 
 How much a model thinks before it answers. One level, `off`, `low`, `medium`, `high` or `default`, set per model,
@@ -1071,6 +1106,7 @@ described in their own sections.
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
 | `hosts.<name>.models` | none | | The model ids a host serves whatever its `/v1/models` lists: a map of ids, or a plain list. See "Models a host serves but doesn't list". |
+| `hosts.<name>.models.<id>.price` | none | | The model's price on that host, USD per 1M tokens: `input`, `output`, optional `cache_read` and `cache_write`. Estimates the cost a provider doesn't report. See "Prices". |
 | `hosts.<name>.remote` | by address | | `true`/`false`: treat the host as a remote provider or a local server. See "Remote or local". |
 | `max_tool_output_chars` | `10000` | yes | Characters of each tool output kept in the conversation (both loops); a longer one is cut and ends with `[cut: N of M chars; read it in parts]`. A top-level key (see below). |
 | `cache.warmup` | `auto` | | `auto`: after a turn, send the next turn's prompt (up to the next message) to a local llama.cpp host on the native loop, so the next turn prefills only its message; never a remote or `api: openai` host. `off`: never. See [prompt caching](internals/prompt-caching.md#the-turn-end-warm-up). |

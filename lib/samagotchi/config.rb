@@ -269,7 +269,7 @@ module Samagotchi
                      llm_context_budget_tokens].freeze
     }.freeze
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).
-    HOST_MODEL_KEYS = [].freeze
+    HOST_MODEL_KEYS = %w[price].freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
 
@@ -632,7 +632,15 @@ module Samagotchi
           prefix = "hosts.#{host}.models.#{id}."
           (model.keys.map(&:to_s) - HOST_MODEL_KEYS).map do |k|
             unknown_key_message("#{prefix}#{k}", k, HOST_MODEL_KEYS, prefix: prefix)
-          end
+          end + price_key_problems("#{prefix}price.", model["price"])
+        end
+      end
+
+      def price_key_problems(prefix, price)
+        return [] unless price.is_a?(Hash)
+
+        (price.keys.map(&:to_s) - ModelPrice::KEYS).map do |k|
+          unknown_key_message("#{prefix}#{k}", k, ModelPrice::KEYS, prefix: prefix)
         end
       end
 

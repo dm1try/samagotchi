@@ -18,6 +18,10 @@ and commands may change between minor versions. How releases are made:
 - Declared `hosts.<name>.models` ids show first under their host in `/models` (as `rr/x (config)`, outside the 20
   per host, also on a host that lists nothing), `chi models` (plain names; `--format json` adds `configured: true`)
   and `GET /api/models` (`configured: true`). A host that doesn't answer shows none of them.
+- `hosts.<name>.models.<id>.price: {input, output, cache_read?, cache_write?}` (USD per 1M tokens) estimates the
+  cost of a generation whose provider reports none, or reports 0. A reported non-zero cost always wins. The estimate
+  is saved apart (`cost_estimate` per turn, `cost_estimate_sum` in the totals). See "Prices" in
+  [docs/configuration.md](docs/configuration.md).
 - The web model picker lists a host's declared ids first under it, noted `config` (the default model keeps
   `default`), with `served by config (hosts.<name>.models)` in the row's tooltip.
 

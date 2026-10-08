@@ -189,3 +189,51 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
                   own: { "strategy" => ["stale"], "budget_tokens" => 64_000 })
   end
 end
+
+RSpec.describe Samagotchi::Engine, "#run_turn price" do
+  around do |example|
+    with_env("SAMAGOTCHI_DEFAULT_MODEL" => "work:rr/x") do
+      Dir.mktmpdir("chi-state") do |dir|
+        @state_dir = dir
+        example.run
+      end
+    end
+  end
+
+  let(:registry) do
+    Samagotchi::HostRegistry.new(hosts_config: {
+      "work" => { host: "gateway.example", port: 443,
+                  models: Samagotchi::HostModel.parse_map({ "RR/x" => { "price" => { "input" => 1, "output" => 2 } },
+                                                            "rr/y" => { "price" => { "input" => 3, "output" => 4 } },
+                                                            "rr/free" => nil }, "work") }
+    })
+  end
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
+  let(:engine) do
+    described_class.new(client: client, kernel: kernel, host_registry: registry, profile: "qwen36",
+                        model_name: "work:rr/x").tap { |e| e.session_state_dir = @state_dir }
+  end
+  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "work:rr/x", working_directory: Dir.pwd) }
+  let(:prices) { [] }
+
+  before do
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+    allow(kernel).to receive(:run) do |messages, **|
+      prices << kernel.turn_settings.price
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+    end
+  end
+
+  it "sets the effective model's price from its host's models: on the kernel each turn, nil without one" do
+    engine.run_turn(session, "hi")
+    engine.switch_model!("work:rr/y")
+    engine.run_turn(session, "again")
+    engine.switch_model!("work:rr/free")
+    engine.run_turn(session, "and again")
+
+    expect(prices.map { |p| p&.to_h }).to eq([{ input: 1, cache_read: 1, cache_write: 1, output: 2 },
+                                              { input: 3, cache_read: 3, cache_write: 3, output: 4 }, nil])
+  end
+end

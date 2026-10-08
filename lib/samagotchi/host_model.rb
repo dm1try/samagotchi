@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "model_price"
+
 module Samagotchi
   # A model a host serves, declared under hosts.<name>.models: whatever the
   # host's /v1/models says (a gateway's round-robin ids it never lists). A
@@ -7,8 +9,11 @@ module Samagotchi
   # and a bare id routes there as if the host listed it
   # (HostRegistry#host_for_model).
   #
-  # id: the id as written (keys are matched downcased).
-  HostModel = Data.define(:id) do
+  # id: the id as written (keys are matched downcased); price: its
+  # ModelPrice on this host, nil when none.
+  HostModel = Data.define(:id, :price) do
+    def initialize(id:, price: nil) = super
+
     # hosts.<name>.models as written: a map of ids (each nil or a map), or
     # a plain list of ids. Anything else warns once and is skipped.
     # @param raw [Hash, Array, nil]
@@ -35,7 +40,8 @@ module Samagotchi
           warn_once "Warning: #{where}.#{id} must be empty or a mapping; ignored"
           next
         end
-        models[id.downcase] ||= new(id: id)
+        price = ModelPrice.parse(entry && (entry.key?("price") ? entry["price"] : entry[:price]), "#{where}.#{id}")
+        models[id.downcase] ||= new(id: id, price: price)
       end
     end
 
@@ -74,7 +80,7 @@ module Samagotchi
 
     # The entry as written back to config (SAMAGOTCHI_HOSTS_JSON for
     # workers): nil for a bare id.
-    def to_config = nil
+    def to_config = price && { "price" => price.to_config }
   end
 
   # A listing row (HostModel.rows): id as the host lists it, else as

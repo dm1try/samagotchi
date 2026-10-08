@@ -20,6 +20,15 @@ RSpec.describe Samagotchi::HostModel do
     expect(parse("[rr/a, rr/b]")).to eq(parse("{rr/a: , rr/b: }"))
   end
 
+  it "reads an entry's price, by host, nil without one" do
+    models = parse("{rr/a: {price: {input: 0.27, cache_read: 0.07, output: 1.1}}, rr/b: }")
+
+    expect(models["rr/a"].price).to eq(Samagotchi::ModelPrice.new(input: 0.27, cache_read: 0.07, cache_write: 0.27, output: 1.1))
+    expect(models["rr/b"].price).to be_nil
+    expect(models["rr/a"].to_config).to eq("price" => { "input" => 0.27, "cache_read" => 0.07, "cache_write" => 0.27, "output" => 1.1 })
+    expect(models["rr/b"].to_config).to be_nil
+  end
+
   it "is empty when unset" do
     expect(described_class.parse_map(nil, "work")).to eq({})
   end

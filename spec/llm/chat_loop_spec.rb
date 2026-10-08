@@ -397,6 +397,18 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         .to include(context_window_tokens: 40_000, context_window_source: :host_setting)
     end
 
+    it "carries the turn's configured price on generation_started, for SessionMetrics' estimate" do
+      backend.adapter = FakeChatAdapter.new(text("ok"))
+      allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+      price = Samagotchi::ModelPrice.new(input: 1, cache_read: 0.5, cache_write: 1, output: 2)
+      allow(fake_kernel).to receive(:turn_settings).and_return(Samagotchi::LLM::TurnSettings.none.with(price: price))
+
+      run
+
+      expect(events.find { |e| e[:type] == :generation_started })
+        .to include(price: { input: 1, cache_read: 0.5, cache_write: 1, output: 2 })
+    end
+
     it "reports retries as generation_retrying" do
       backend.adapter = FakeChatAdapter.new(lambda { |on_retry:, **|
         on_retry.call(attempt: 1, max_retries: 5, next_delay: 0.5, error_class: "Errno::ECONNREFUSED", error_message: "refused")

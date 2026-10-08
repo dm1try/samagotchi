@@ -353,7 +353,8 @@ module Samagotchi
       # thought or a tool call doesn't leave the next one "inside" it.
       stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
       emit(turn, type: :generation_started, iteration: turn.iteration, context_window_tokens: request.window.tokens,
-                 context_window_source: request.window.source, profile: @profile.name, profile_source: @profile_source)
+                 context_window_source: request.window.source, profile: @profile.name, profile_source: @profile_source,
+                 price: @turn_settings.price&.to_h)
       # This generation's own server counts (the run-long ones in the
       # context tracker can be an earlier one's), and the thinking it
       # streamed, for the log (a stuck thinking generation shows as
