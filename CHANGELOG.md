@@ -40,6 +40,8 @@ and commands may change between minor versions. How releases are made:
   which a cancel cuts short, and `retry.max` caps the asks-again (`retry.max: 0` turns them off). Its
   `generation_retrying` carries `restarted: true`: the web's live step, the TUI's activity line, a reload in the
   middle of the turn and the stream hooks drop the partial reply, so the answer shows once.
+- `task_stop` could signal an unrelated process group whose leader reused a finished task's pid. A task now records
+  its process's start time, and a pid that started at another time is not signalled (the task ends as failed).
 
 ## [0.45.0] - 2026-10-08
 

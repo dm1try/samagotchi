@@ -77,6 +77,58 @@ RSpec.describe Samagotchi::ProcessGroup do
     end
   end
 
+  describe ".start_time" do
+    it "reads the same start time twice for a running process, and none once it is gone" do
+      pid = spawn_group("sleep 31.94")
+      first = described_class.start_time(pid)
+
+      expect(first).to be_a(String).and(satisfy { |time| !time.empty? })
+      expect(described_class.start_time(pid)).to eq(first)
+    ensure
+      reap(pid)
+      expect(described_class.start_time(pid)).to be_nil if pid
+    end
+
+    it "takes /proc/PID/stat's field 22, past a command name with spaces and parentheses" do
+      fields = %w[S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 98765 1024]
+      expect(described_class.proc_start_time("4242 (a) b (c)) #{fields.join(" ")}\n")).to eq("98765")
+    end
+
+    it "reads nothing for a pid chi may not signal" do
+      expect(described_class.start_time(0)).to be_nil
+      expect(described_class.start_time("12")).to be_nil
+    end
+  end
+
+  describe ".leader? with the start time chi recorded" do
+    it "is a leader when the start time matches, and not when the pid's process started at another time (reused)" do
+      pid = spawn_group("sleep 31.95")
+      reader = ->(_pid) { "Thu Oct  9 10:00:00 2026" }
+
+      expect(described_class.leader?(pid, started: "Thu Oct  9 10:00:00 2026", start_time: reader)).to be(true)
+      expect(described_class.leader?(pid, started: "Wed Oct  8 09:00:00 2026", start_time: reader)).to be(false)
+      expect(described_class.leader?(pid, started: described_class.start_time(pid))).to be(true)
+    ensure
+      reap(pid)
+    end
+
+    it "is no leader when the start time can't be read any more (the process is gone)" do
+      pid = spawn_group("sleep 31.96")
+
+      expect(described_class.leader?(pid, started: "Thu Oct  9 10:00:00 2026", start_time: ->(_pid) {})).to be(false)
+    ensure
+      reap(pid)
+    end
+
+    it "checks only the group without a recorded start time (a record from an older chi)" do
+      pid = spawn_group("sleep 31.97")
+
+      expect(described_class.leader?(pid, started: nil, start_time: ->(_pid) { raise "not read" })).to be(true)
+    ensure
+      reap(pid)
+    end
+  end
+
   describe ".signal" do
     it "says so when there is no such group" do
       pid = spawn_group("exit 0")

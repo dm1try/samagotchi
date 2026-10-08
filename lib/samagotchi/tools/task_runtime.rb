@@ -66,6 +66,8 @@ module Samagotchi
           err: output_io
         )
         Process.detach(pid)
+        # Read now, compared before each signal: a pid reused later is not this task.
+        pid_started = ProcessGroup.start_time(pid)
 
         now = timestamp
         record = {
@@ -76,6 +78,7 @@ module Samagotchi
           "workspace_root" => Dir.pwd,
           "status" => "running",
           "pid" => pid,
+          "pid_started" => pid_started,
           "created_at" => now,
           "started_at" => now,
           "finished_at" => nil,
@@ -190,7 +193,7 @@ module Samagotchi
 
         pid = refreshed["pid"]
         # Checked again just before the signal: never a group chi didn't start.
-        return [mark_not_chis(refreshed), nil] unless ProcessGroup.leader?(pid)
+        return [mark_not_chis(refreshed), nil] unless chis_group?(refreshed)
 
         refreshed["stop_requested_by"] = by.to_s
         write_record(refreshed)
@@ -210,12 +213,16 @@ module Samagotchi
         return record unless record["status"] == "running"
 
         pid = record["pid"]
-        return record if ProcessGroup.leader?(pid)
+        return record if chis_group?(record)
         # Gone: its exit code says how it ended.
         return mark_finished_without_exit_code(record) if ProcessGroup.signalable?(pid) && !ProcessGroup.alive?(pid)
 
         mark_not_chis(record)
       end
+
+      # Whether the record's pid still leads the group chi spawned: the same
+      # process, by the start time recorded at task_create (when there is one).
+      def chis_group?(record) = ProcessGroup.leader?(record["pid"], started: record["pid_started"])
 
       # A running record whose pid isn't a group chi started (NOT_CHIS_PROCESS)
       # ends as failed, unless its exit code or a stop on disk says more.

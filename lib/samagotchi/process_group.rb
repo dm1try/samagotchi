@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "open3"
+
 module Samagotchi
   # A command run in a process group of its own, so a stop reaches what it
   # started too: TERM the group, a grace, then KILL it. Execute, TaskRuntime
@@ -51,11 +53,40 @@ module Samagotchi
 
     # Whether +pid+ runs and leads its own group, as #spawn's process does
     # (not, then, a reused pid in some other group).
-    def leader?(pid)
-      signalable?(pid) && Process.getpgid(pid) == pid
+    # @param started [String, nil] the start time #start_time read when chi
+    #   spawned it: a process that started at another time (or whose time
+    #   can't be read) is one that reused the pid, even as a group leader.
+    #   nil checks the group only (a record from an older chi).
+    # @param start_time [#call] (pid) the reader, #start_time by default
+    def leader?(pid, started: nil, start_time: method(:start_time))
+      return false unless signalable?(pid) && Process.getpgid(pid) == pid
+
+      started.nil? || start_time.call(pid) == started
     rescue Errno::ESRCH, Errno::EPERM
       false
     end
+
+    # When +pid+'s process started, as an opaque string to compare: the
+    # start in clock ticks from /proc/PID/stat on Linux, ps's lstart (to the
+    # second, in UTC) elsewhere. nil when it isn't running or can't be read.
+    # @return [String, nil]
+    def start_time(pid)
+      return nil unless signalable?(pid)
+
+      stat = "/proc/#{pid}/stat"
+      return proc_start_time(File.read(stat)) if File.exist?(stat)
+
+      out, status = Open3.capture2({ "LC_ALL" => "C", "TZ" => "UTC" }, "ps", "-o", "lstart=", "-p", pid.to_s,
+                                   err: File::NULL)
+      time = out.strip
+      status.success? && !time.empty? ? time : nil
+    rescue SystemCallError, IOError
+      nil
+    end
+
+    # Field 22 (starttime); the command name (field 2) may hold spaces and
+    # parentheses, so the fields are counted after its last ")".
+    def proc_start_time(stat) = stat[/\A.*\)\s(.*)\z/m, 1]&.split&.[](19)
 
     # Whether +pid+ is still running (or a zombie not reaped yet).
     # @raise [ArgumentError] unless #signalable?

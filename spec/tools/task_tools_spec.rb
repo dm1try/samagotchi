@@ -368,6 +368,33 @@ RSpec.describe "task tools" do
       end
     end
 
+    it "records the task's start time, and signals nothing for a group leader whose pid was reused since" do
+      record, = described_class.create_task("sleep 30")
+      expect(record["pid_started"]).to eq(Samagotchi::ProcessGroup.start_time(record["pid"]))
+
+      other = Samagotchi::ProcessGroup.spawn({}, "sleep", "31.79", in: File::NULL, out: File::NULL, err: File::NULL)
+      reused = described_class.load_record(record["id"]).merge("pid" => other)
+      described_class.write_record(reused)
+      # ps reads start times to the second: the reused pid's process starts later.
+      allow(Samagotchi::ProcessGroup).to receive(:start_time).and_wrap_original do |original, pid|
+        pid == other ? "a later start" : original.call(pid)
+      end
+      allow(Process).to receive(:kill).and_call_original
+
+      stopped, error = described_class.stop_task(record["id"], by: "model")
+
+      expect(error).to be_nil
+      expect(stopped).to include("status" => "failed", "stop_reason" => described_class::NOT_CHIS_PROCESS)
+      expect(Process).not_to have_received(:kill).with(satisfy { |sig| sig.to_s != "0" }, anything)
+      expect(Process.wait2(other, Process::WNOHANG)).to be_nil
+    ensure
+      if other
+        Process.kill("KILL", other)
+        Process.wait(other)
+      end
+      Process.kill("KILL", -record["pid"]) if record && Samagotchi::ProcessGroup.leader?(record["pid"])
+    end
+
     it "keeps a stop that already finished on disk when a stale copy is refreshed" do
       record, = described_class.create_task("sleep 30")
       stale = described_class.load_record(record["id"])
