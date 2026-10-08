@@ -8,8 +8,24 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Plugins: `ctx.fork?` says whether the session is a fork (`ctx.sessions.fork`: it has a parent and isn't a
+  delegate child). See [docs/plugins.md](docs/plugins.md).
+
 ### Fixed
 
+- The web's ctx meter under an LLM context budget smaller than the window (`llm_context.budget_tokens`) read the
+  percentage of the window after a reload (`ctx 12%`) where live it read the budget's (`ctx 25%`); it now counts
+  against the budget both ways, as the `[CONTEXT: …]` line and the status line do, and a generation's final counts
+  no longer flip it back to the window mid-turn. The ctx tooltip's context line says so: `context: ~16.0k of the
+  64.0k budget, 128.0k window (server)`.
+- The web's strip of latest sessions, back from All sessions with the pointer still on it, could keep a waiting
+  family behind other cards until the pointer moved: an update that came while All sessions opened was drawn in
+  the order held for the pointer.
+- github-pr 0.3.1: in `auto_attach: offer` mode a forked session (`/btw keep`, a plugin's fork) now gets its
+  `first_prompt` row in `offers.ndjson` (its first prompt after the conversation it started from), as a new
+  session does; it got none.
 - A resumed or attached session (`chi --resume`, `chi --attach`) drew a turn that failed with its steps kept as its
   prompt and tool rows followed by an earlier step's text, as if that were the answer; the join now draws the line
   the live view left (`✕ turn failed: HTTP 500: boom · 2.0s`, then `  partial progress kept; !rollback restores the
