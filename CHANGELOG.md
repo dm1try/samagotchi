@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A resumed or attached session (`chi --resume`, `chi --attach`) drew a turn that failed with its steps kept as its
+  prompt and tool rows followed by an earlier step's text, as if that were the answer; the join now draws the line
+  the live view left (`✕ turn failed: HTTP 500: boom · 2.0s`, then `  partial progress kept; !rollback restores the
+  pre-turn state` when the steps stayed) after the rows, with no answer text, as the web does.
+
 ## [0.44.0] - 2026-10-08
 
 ### Added
