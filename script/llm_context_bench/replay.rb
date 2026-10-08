@@ -19,6 +19,19 @@ module LLMContextBench
     def read? = name == "read"
   end
 
+  # A session's file reads (Replay#read_counts): the reads of a path, those
+  # of a path the session had read before (re_reads), and of those the ones
+  # made after an earlier read of the path was stubbed (after_stub), split
+  # by the stub's kind. A stub counts from the request that caused it: a
+  # forget from the forget_outputs call that named the output, a stale one
+  # from the next read of the path (the read that superseded it). Only
+  # edits the session applied count (the model was sent those).
+  ReadCounts = Data.define(:reads, :re_reads, :after_stub, :after_forget, :after_stale)
+
+  # The LLM context edits a session applied (Replay#stubs): per kind, the
+  # outputs stubbed and their tokens, and the forget_outputs calls.
+  Stubs = Data.define(:stale, :stale_tokens, :forget, :forget_tokens, :forget_calls)
+
   # A stored session, read the way chi reads it (Samagotchi::Session.from_h),
   # laid out for replay: its requests (each model entry is one; request r's
   # prompt is every entry before it), its turns (a user input up to the
@@ -119,12 +132,74 @@ module LLMContextBench
       Array(entry[:tool_calls]).sum(tokens) { |call| TextRefs.tokens(call[:arguments]) }
     end
 
+    # The session's reads, re-reads and re-reads after a stub (ReadCounts).
+    def read_counts
+      @read_counts ||= begin
+        reads = outputs.select { |output| output.read? && !output.target.keys.empty? }
+        by_path = Hash.new { |hash, key| hash[key] = [] }
+        counts = Hash.new(0)
+        reads.each do |output|
+          earlier = by_path[output.target.keys.first]
+          unless earlier.empty?
+            counts[:re_reads] += 1
+            kinds = earlier.filter_map { |prev| stub_kind_before(prev, output.request, reads) }.uniq
+            counts[:after_stub] += 1 unless kinds.empty?
+            kinds.each { |kind| counts[:"after_#{kind}"] += 1 }
+          end
+          earlier << output
+        end
+        ReadCounts.new(reads: reads.size, re_reads: counts[:re_reads], after_stub: counts[:after_stub],
+                       after_forget: counts[:after_forget], after_stale: counts[:after_stale])
+      end
+    end
+
+    # The applied LLM context edits (Stubs).
+    def stubs
+      @stubs ||= begin
+        edited = outputs.filter_map { |output| (edit = applied_edit(output)) && [edit.kind, output.tokens] }
+        tally = ->(kind) { edited.select { |found, _| found == kind } }
+        Stubs.new(stale: tally.call(:stale).size, stale_tokens: tally.call(:stale).sum(0.0) { _2 }.round,
+                  forget: tally.call(:forget).size, forget_tokens: tally.call(:forget).sum(0.0) { _2 }.round,
+                  forget_calls: calls.flatten.count { |call| call.name == FORGET })
+      end
+    end
+
     # What the whole conversation resends, in tokens.
     def resent_tokens
       @resent_tokens ||= messages.sum { |entry| entry_tokens(entry) }
     end
 
     private
+
+    FORGET = Samagotchi::Tools::ForgetOutputs::NAME
+
+    # The applied edit saved on +output+'s entry for its id, nil for none.
+    def applied_edit(output)
+      edit = Samagotchi::LLMContextEdit.on(messages[output.entry_index])[output.id]
+      edit if edit&.applied?
+    end
+
+    # +prev+'s stub kind when that stub came before request +request+, else
+    # nil.
+    def stub_kind_before(prev, request, reads)
+      edit = applied_edit(prev)
+      return nil unless edit && request
+
+      cause = if edit.kind == :forget
+                forget_requests[prev.id]
+              else
+                reads.find { |other| other.ordinal > prev.ordinal && other.target.keys.first == prev.target.keys.first }&.request
+              end
+      edit.kind if cause && cause < request
+    end
+
+    # The request of the first forget_outputs call that named each id.
+    def forget_requests
+      @forget_requests ||= calls.flatten.select { |call| call.name == FORGET }.each_with_object({}) do |call, found|
+        request = Samagotchi::Tools::ForgetOutputs.parse(call.args.transform_keys(&:to_sym))
+        request.ids.each { |id| found[id] ||= call.request }
+      end
+    end
 
     def turn_ranges
       starts = messages.each_index.select { |index| role(index) == "user" && TURN_KINDS.include?(messages[index][:kind]) }

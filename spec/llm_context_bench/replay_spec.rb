@@ -66,6 +66,62 @@ RSpec.describe LLMContextBench::Replay do
     end
   end
 
+  describe "re-reads and stubs" do
+    def read_result(call_id, tool_id, path, edit: nil)
+      entry = BenchFixtures.result(call_id, "[read] #{path}\n1: class Cart\n2: end").merge("tool_ids" => [tool_id])
+      entry["edits"] = { tool_id => edit } if edit
+      entry
+    end
+
+    def edit(kind, applied: true)
+      { "kind" => kind, "note" => "Cart is two lines", "by" => "model", "staged_at" => "2026-10-01T10:00:00Z",
+        "applied_at" => applied ? "2026-10-01T10:01:00Z" : nil }
+    end
+
+    def read_call(id, path) = BenchFixtures.call(id, "read", { "path" => path })
+
+    # t1 lib/cart.rb (stale: t3 superseded it), t2 lib/tax.rb (forgotten
+    # at request 3), t3 lib/cart.rb, t4 lib/tax.rb (after the forget),
+    # t5 lib/cart.rb (after t1's stale stub).
+    let(:messages) do
+      [
+        { "role" => "system", "content" => "You are a coding agent." },
+        BenchFixtures.user("Read the cart and the tax."),
+        BenchFixtures.model("", calls: [read_call("c1", "lib/cart.rb")]),
+        read_result("c1", "t1", "lib/cart.rb", edit: edit("stale")),
+        BenchFixtures.model("", calls: [read_call("c2", "lib/tax.rb")]),
+        read_result("c2", "t2", "lib/tax.rb", edit: edit("forget")),
+        BenchFixtures.model("", calls: [read_call("c3", "lib/cart.rb")]),
+        read_result("c3", "t3", "lib/cart.rb"),
+        BenchFixtures.model("", calls: [BenchFixtures.call("c4", "forget_outputs", { "ids" => ["t2"], "note" => "tax is 8%" })]),
+        BenchFixtures.result("c4", "[forget_outputs] forgot t2").merge("tool_ids" => ["t4"]),
+        BenchFixtures.model("", calls: [read_call("c5", "lib/tax.rb")]),
+        read_result("c5", "t5", "lib/tax.rb"),
+        BenchFixtures.model("", calls: [read_call("c6", "lib/cart.rb")]),
+        read_result("c6", "t6", "lib/cart.rb"),
+        BenchFixtures.model("Done.")
+      ]
+    end
+
+    it "counts re-reads, and those after a stub from the request that caused it, by kind" do
+      expect(replay(messages).read_counts.to_h).to eq(reads: 5, re_reads: 3, after_stub: 2, after_forget: 1, after_stale: 1)
+    end
+
+    it "counts no stub the session never applied" do
+      messages[3]["edits"]["t1"] = edit("stale", applied: false)
+      messages[5]["edits"]["t2"] = edit("forget", applied: false)
+
+      expect(replay(messages).read_counts.to_h).to include(re_reads: 3, after_stub: 0)
+    end
+
+    it "tallies the applied stubs, their tokens and the forget calls" do
+      stubs = replay(messages).stubs
+
+      expect(stubs.to_h).to include(stale: 1, forget: 1, forget_calls: 1)
+      expect(stubs.stale_tokens).to be_positive
+    end
+  end
+
   describe ".from_dir" do
     it "keeps sessions of two turns or more, heaviest first, up to top" do
       small = BenchFixtures.chat_messages.first(7) + [BenchFixtures.user("ok"), BenchFixtures.model("ok")]
