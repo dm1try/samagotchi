@@ -88,6 +88,18 @@ Working habits for this model:
 - **Timing**: a note takes effect at the next prompt build: a session's start,
   a resume, a web worker waking, `/model`. A note written mid-session doesn't
   change the running prompt.
+- **Recorded and shown**: each prompt build writes the notes it carried to the
+  session file (`prompt_notes`: name, scope, size in characters and a short
+  digest of the text), so a session says later what it ran with; `/model`
+  switches record the new model's. `/stats` has a
+  `model notes:      model_notes_deepseek (system, 612 chars)` line, `/model`
+  ends its model line with `; notes: …` (after a switch, the new model's), the
+  web's info bar a `notes: deepseek` chip (the full line in its tooltip), and
+  `chi self` a `model notes` row after `model key`: the notes a prompt of the
+  reported model loads now, the session's `--mute` list left out when it runs
+  in one, `none` without any. None of the others shows a line without notes.
+  A resumed session, or a web worker that woke, shows the saved ones until its
+  first turn builds the prompt again.
 - Without a model note the system prompt is what it was.
 
 
