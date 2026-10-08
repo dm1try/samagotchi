@@ -679,6 +679,8 @@ module Samagotchi
           failed_turn: failed_turn_for(session, raw_messages),
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
+          # Commands waiting for the running turn's end (their bubbles).
+          queued_commands: turn_snapshot ? Array(turn_snapshot["queued_commands"]) : [],
           recap: turn_snapshot && turn_snapshot["recap"],
           saved_recap: saved_recap_for(id, session, turn_snapshot),
           continue_offer: turn_snapshot && turn_snapshot["continue_offer"],

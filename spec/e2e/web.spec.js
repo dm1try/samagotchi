@@ -1073,6 +1073,33 @@ test("/archive and /exit typed in the composer get a local reply, not a worker e
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
 });
 
+test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", async ({ page, script }) => {
+  script("mid_turn_command");
+  await send(page, "Take a moment");
+  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await page.locator("#prompt").fill("/model fake-other");
+  await page.locator("#actionBtn").click();
+  const bubble = page.locator(`${H()} .bubble.command`).filter({ hasText: "/model fake-other" });
+  await expect(bubble).toHaveCount(1);
+  await expect(bubble).toHaveClass(/queued/);
+  await expect(bubble.locator(".command-output")).toHaveText("queued: runs after this turn");
+  // The session's model in the info bar (not the new chat's picker).
+  const model = page.locator("#infoText .meta .status + .model");
+  await expect(model).toHaveText(/^fake-script/);
+
+  await page.reload();
+  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await expect(bubble).toHaveCount(1);
+  await expect(bubble).toHaveClass(/queued/);
+
+  await expect(answer(page)).toHaveText("Done after a while.", { timeout: 15_000 });
+  await turnEnded(page, 1);
+  await expect(bubble).toHaveCount(1);
+  await expect(bubble).not.toHaveClass(/queued|failed|busy/);
+  await expect(bubble.locator(".command-output")).toContainText("fake-other");
+  await expect(model).toHaveText(/^fake-other/);
+});
+
 test("/modle typed in the composer gets the hint, not a turn", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");

@@ -355,20 +355,42 @@ test("commandView: who ran what, what it said, and whether the conversation must
                 changed: ["messages"], model_name: "m1" };
 
   assert.deepEqual(commandView(ran, ME), { label: "tui", line: "!rollback", text: "salvaged turn discarded", busy: false,
-                                           failed: false, resync: true, modelName: "m1", anytime: false, commandId: null, hidden: false });
+                                           failed: false, resync: true, modelName: "m1", anytime: false, queued: false,
+                                           waiting: false, commandId: null, hidden: false });
   assert.deepEqual(commandView({ ...ran, client_id: ME, status: "busy", output: "busy: wait for the turn to end", changed: [] }, ME),
                    { label: null, line: "!rollback", text: "busy: wait for the turn to end", busy: true, failed: false,
-                     resync: false, modelName: "m1", anytime: false, commandId: null, hidden: false });
+                     resync: false, modelName: "m1", anytime: false, queued: false, waiting: false, commandId: null, hidden: false });
   assert.equal(commandView({ ...ran, status: "error" }, ME).failed, true);
 });
 
 test("commandView: an anytime command's queued and ran events name the bubble they share", () => {
   const queued = { type: "command_queued", command_id: "c9", client_id: ME, line: "/btw why?", anytime: true };
   assert.deepEqual(commandView(queued, ME), { label: null, line: "/btw why?", text: "", busy: false, failed: false,
-                                              resync: false, modelName: null, anytime: true, commandId: "c9", hidden: false });
+                                              resync: false, modelName: null, anytime: true, queued: false, waiting: false,
+                                              commandId: "c9", hidden: false });
   const ran = commandView({ ...queued, type: "command_ran", status: "ok", output: "", changed: [] }, ME);
   assert.equal(ran.anytime, true);
   assert.equal(ran.commandId, "c9");
+});
+
+test("commandView: a command queued for after the turn waits in its bubble, then its ran fills it (dropped as failed)", () => {
+  const queued = { type: "command_queued", command_id: "c5", client_id: "web:2", line: "/model x", waits: "turn_end" };
+  const waiting = commandView(queued, ME);
+  assert.equal(waiting.text, "queued: runs after this turn");
+  assert.deepEqual([waiting.queued, waiting.waiting, waiting.anytime, waiting.commandId, waiting.label], [true, true, false, "c5", "web"]);
+  const ran = commandView({ ...queued, waits: undefined, type: "command_ran", status: "ok", output: "switched to x", changed: ["model"],
+                            queued: true }, ME);
+  assert.deepEqual([ran.queued, ran.waiting, ran.failed, ran.text], [true, false, false, "switched to x"]);
+  const dropped = commandView({ ...queued, waits: undefined, type: "command_ran", status: "dropped", output: "turn canceled: !ls not run; send it again",
+                                queued: true }, ME);
+  assert.deepEqual([dropped.failed, dropped.busy], [true, false]);
+});
+
+test("snapshotEvents replays the commands waiting for the turn's end as their command_queued, after the queued prompts", () => {
+  const events = snapshotEvents({ queued: [{ enqueued_id: "e1", client_id: "web:1", prompt: "next" }],
+                                  queued_commands: [{ command_id: "c1", client_id: "tui:1", line: "/model x" }] });
+  assert.deepEqual(events.map((e) => e.type), ["turn_enqueued", "command_queued"]);
+  assert.deepEqual(events[1], { type: "command_queued", command_id: "c1", client_id: "tui:1", line: "/model x", waits: "turn_end" });
 });
 
 test("commandView: a card's action is hidden unless it says something back or fails", () => {

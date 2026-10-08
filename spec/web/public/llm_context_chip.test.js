@@ -39,7 +39,9 @@ test("the form starts from the session's own values, default for the unset ones"
   assert.match(html, /name="budget"[^>]*value="64000"/);
   assert.match(html, /Now: stale,forget \(the session\)/);
   assert.doesNotMatch(html, /disabled/);
-  assert.match(formHtml(own, esc, { running: true }), /class="llmctx-set" disabled/);
+  // Mid-turn a Set is queued for after the turn (it applies at the next turn's start anyway).
+  assert.doesNotMatch(formHtml(own, esc, { running: true }), /disabled/);
+  assert.match(formHtml(own, esc, { running: true }), /A turn is running: it applies after this turn\./);
 });
 
 test("a strategy the list has no option for (forget alone, forget,stale) is shown as the session's own, in chi's order", () => {

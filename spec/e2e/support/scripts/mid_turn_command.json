@@ -1,0 +1,6 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"hold": 6, "text": "Done after a while."}
+  ]
+}

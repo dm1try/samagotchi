@@ -783,6 +783,7 @@ RSpec.describe Samagotchi::Web::App do
           "current_turn" => { "prompt" => "second", "parts" => [{ "kind" => "text", "text" => "so far" }],
                               "pending_question" => { "id" => "q1", "status" => "pending" } },
           "queued" => [{ "enqueued_id" => "e1", "client_id" => "tui:1", "prompt" => "next" }],
+          "queued_commands" => [{ "command_id" => "c1", "client_id" => "tui:1", "line" => "/model x" }],
           "recap" => "We did things.",
           "saved_recap" => { "text" => "We did things.", "covered" => 4, "turns_since" => 0, "created_at" => "t" },
           "continue_offer" => { "context" => { "original_prompt" => "first" }, "no_interrupt" => false },
@@ -811,6 +812,7 @@ RSpec.describe Samagotchi::Web::App do
       ])
       expect(payload["current_turn"]["parts"]).to eq([{ "kind" => "text", "text" => "so far" }])
       expect(payload["queued"].map { |q| q["prompt"] }).to eq(["next"])
+      expect(payload["queued_commands"]).to eq([{ "command_id" => "c1", "client_id" => "tui:1", "line" => "/model x" }])
       expect(payload["pending_question"]).to eq("id" => "q1", "status" => "pending")
       expect(payload["last_event_seq"]).to eq(40)
       # The cursor to stream on from: it names the worker (its epoch).
