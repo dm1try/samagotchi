@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Under an `llm_context.budget_tokens` budget without the forget layer (strategy `none` or `stale`), the model's
+  `[CONTEXT: …]` line said "of the context window" for a percentage of the budget; it now reads "about 62% of the
+  context budget (64k tokens) is in use", and its top bucket no longer asks the model to "summarize aggressively"
+  ("context budget critical — avoid large outputs and re-reads, delegate broad work to subagents").
+
 ## [0.43.0] - 2026-10-08
 
 ### Added
