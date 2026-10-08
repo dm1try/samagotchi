@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Which model notes a session's prompt carried: each prompt build (and `/model`) records them in the session file
+  (`prompt_notes`: name, scope, size and a short digest), and they are shown in `/stats` (`model notes:
+  model_notes_deepseek (system, 612 chars)`), at the end of `/model`'s line (`; notes: …`, after a switch the new
+  model's), as a `notes: deepseek` chip in the web's info bar and as a `model notes` row in `chi self`. Nothing shows
+  without notes. See [docs/memory.md](docs/memory.md) ("Model notes").
+
 ## [0.41.0] - 2026-10-08
 
 ### Added
