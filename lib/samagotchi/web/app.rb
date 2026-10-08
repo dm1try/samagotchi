@@ -20,6 +20,7 @@ require_relative "../session_metrics"
 require_relative "../session_commands"
 require_relative "../steer"
 require_relative "../host_registry"
+require_relative "../llm_context_override"
 require_relative "../model_catalog"
 require_relative "../model_profile"
 require_relative "../sampling_settings"
@@ -458,7 +459,8 @@ module Samagotchi
       end
 
       # Each model's configured sampling as /model words it ("temperature=0.6
-      # (hosts.work)"), on the models that have some: the picker's tooltip.
+      # (hosts.work)"), on the models that have some: the picker's tooltip;
+      # and each model's LLM context (LLMContextStrategy::Explained#summary).
       # A config that can't be read leaves the list as it is.
       def add_sampling(models, registry)
         return if registry.nil? || models.empty?
@@ -466,10 +468,19 @@ module Samagotchi
         settings = ConfigFile.model_settings
         models.each do |model|
           target = registry.resolve(model[:name])
-          summary = SamplingSettings.summary(target, names: registry.lookup_names(model[:name], target: target),
-                                                     models: settings)
+          names = registry.lookup_names(model[:name], target: target)
+          summary = SamplingSettings.summary(target, names: names, models: settings)
           model[:sampling] = summary if summary
+          add_llm_context(model, target, names, settings)
         end
+      rescue StandardError
+        nil
+      end
+
+      # The LLM context +model+ starts under (the start page's llm ctx chip);
+      # one that can't be read leaves this model without, not the others.
+      def add_llm_context(model, target, names, settings)
+        model[:llm_context] = LLMContextStrategy.explain(target, names: names, models: settings).summary(nil)
       rescue StandardError
         nil
       end
@@ -563,6 +574,12 @@ module Samagotchi
         dir, error = scope_dir(body["dir"])
         return error if error
 
+        # llm_context: the session's own LLM context values before its first
+        # turn (the start page's llm ctx chip; chi --llm-context), read
+        # before anything spawns so a bad one spawns nothing.
+        llm_context, error = request_llm_context(body["llm_context"])
+        return error if error
+
         folder = dir ? { working_directory: dir } : {}
         # model: the model the session starts on (the start page's picker,
         # spelled as GET /api/models lists it); blank means the default.
@@ -573,6 +590,7 @@ module Samagotchi
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
         folder[:title] = preview unless preview.empty?
+        folder[:llm_context] = llm_context if llm_context
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
         rescue ModelProfile::MissingModel => e
@@ -586,6 +604,25 @@ module Samagotchi
         @hub&.touch(session.id)
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
         json_response(201, session_to_json(session).merge(bridge_port: port))
+      end
+
+      # The create request's "llm_context" ({strategy:, apply:, budget:},
+      # each a word as /llm-context takes it, "default" for unset) as an
+      # override: [override, nil] (nil when absent or all default), or
+      # [nil, a 400 response] for anything else.
+      def request_llm_context(raw)
+        return [nil, nil] if raw.nil?
+
+        fields = LLMContextOverride::COMMAND_WORDS.invert
+        unless raw.is_a?(Hash) && raw.all? { |key, word| fields.key?(key) && word.is_a?(String) }
+          return [nil, error_response(400, "invalid_llm_context",
+                                      "llm_context is an object of #{fields.keys.join(", ")} words")]
+        end
+
+        override = LLMContextOverride.update(nil, raw.to_h { |key, word| [fields.fetch(key), word] })
+        [override.empty? ? nil : override, nil]
+      rescue ArgumentError => e
+        [nil, error_response(400, "invalid_llm_context", e.message)]
       end
 
       def handle_show(req, id)

@@ -1551,6 +1551,45 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions with llm_context" do
+    def create(manager, llm_context)
+      body = JSON.generate({ "idle" => true, "llm_context" => llm_context })
+      status, _headers, resp = build_app(manager: manager).call(env_for("/api/sessions", method: "POST", body: body))
+      [status, JSON.parse(resp.first)]
+    end
+
+    it "starts the session with its own strategy, apply rule and budget, as /llm-context words them" do
+      manager = FakeResponsesManager.new
+      expect(create(manager, { "strategy" => "stale,forget", "apply" => "turn_end", "budget" => "64k" }).first).to eq(201)
+      expect(create(manager, { "strategy" => "none", "budget" => "off" }).first).to eq(201)
+
+      expect(manager.spawn_calls.map { |c| c[:extra][:llm_context] }).to eq(
+        [Samagotchi::LLMContextOverride.new(strategy: %i[stale forget], apply: :turn_end, budget_tokens: 64_000),
+         Samagotchi::LLMContextOverride.new(strategy: [], budget_tokens: 0)]
+      )
+    end
+
+    it "passes none when it is absent or every word is default" do
+      manager = FakeResponsesManager.new
+      build_app(manager: manager).call(env_for("/api/sessions", method: "POST", body: '{"idle":true}'))
+      create(manager, { "strategy" => "default", "apply" => "Default" })
+      create(manager, {})
+
+      expect(manager.spawn_calls.map { |c| c[:extra] }).to eq([{}, {}, {}])
+    end
+
+    it "answers 400 invalid_llm_context for a bad word, an unknown key or a value that isn't a word, and spawns nothing" do
+      manager = FakeResponsesManager.new
+      [{ "strategy" => "sideways" }, { "budget" => "12" }, { "budget_tokens" => "64000" }, { "strategy" => %w[stale] },
+       { "budget" => 64_000 }, "stale", ["stale"]].each do |bad|
+        status, payload = create(manager, bad)
+        expect([status, payload["error"]]).to eq([400, "invalid_llm_context"]), bad.inspect
+      end
+      expect(create(manager, { "strategy" => "sideways" }).last["detail"]).to include("unknown llm_context strategy sideways")
+      expect(manager.spawn_calls).to be_empty
+    end
+  end
+
   describe "POST /api/sessions idle with a preview" do
     it "names the idle session by the first message it is about to get; a prompted session takes none" do
       manager = FakeResponsesManager.new
@@ -1650,9 +1689,47 @@ RSpec.describe Samagotchi::Web::App do
 
       payload = models_payload(registry)
 
-      expect(payload["models"]).to eq([{ "name" => "Gemma-4B-it", "host" => "default", "id" => "Gemma-4B-it" },
-                                       { "name" => "work:qwen", "host" => "work", "id" => "qwen",
-                                         "sampling" => "temperature=0.6 (hosts.work)" }])
+      expect(payload["models"].map { |m| m.except("llm_context") }).to eq(
+        [{ "name" => "Gemma-4B-it", "host" => "default", "id" => "Gemma-4B-it" },
+         { "name" => "work:qwen", "host" => "work", "id" => "qwen", "sampling" => "temperature=0.6 (hosts.work)" }]
+      )
+    end
+
+    it "adds each model's LLM context, with where each value comes from: a model's llm_context_strategy is its own" do
+      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it"), model_info("qwen")], error: nil } })
+      entry = Samagotchi::HostRegistry::HostEntry.new(name: "default", host: "h", port: 1)
+      registry.define_singleton_method(:resolve) do |name|
+        Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
+      end
+      registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({ "qwen" => { llm_context_strategy: %i[stale] } })
+
+      models = models_payload(registry)["models"].to_h { |m| [m["name"], m["llm_context"]] }
+
+      expect(models["qwen"]).to include("strategy" => "stale", "strategy_source" => "model_setting",
+                                        "strategy_where" => "models: qwen", "own" => nil)
+      expect(models["Gemma-4B-it"]).to include("strategy_source" => "config", "apply" => a_kind_of(String),
+                                               "budget_where" => a_kind_of(String))
+      expect(models["Gemma-4B-it"]["strategy"]).not_to eq("stale")
+    end
+
+    it "leaves a model whose LLM context can't be read without one, and the later models' sampling as it is" do
+      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it"), model_info("qwen")], error: nil } })
+      entry = Samagotchi::HostRegistry::HostEntry.new(name: "default", host: "h", port: 1, sampling: { temperature: 0.6 })
+      registry.define_singleton_method(:resolve) do |name|
+        Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
+      end
+      registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+      allow(Samagotchi::LLMContextStrategy).to receive(:explain).and_call_original
+      allow(Samagotchi::LLMContextStrategy).to receive(:explain).with(having_attributes(model: "Gemma-4B-it"), any_args)
+                                                                 .and_raise(RuntimeError, "boom")
+
+      models = models_payload(registry)["models"]
+
+      expect(models.map { |m| [m["name"], m.key?("llm_context"), m["sampling"]] }).to eq(
+        [["Gemma-4B-it", false, "temperature=0.6 (hosts.default)"], ["qwen", true, "temperature=0.6 (hosts.default)"]]
+      )
     end
 
     it "keeps the default in the list when no host lists it, and leaves :batch variants out" do
