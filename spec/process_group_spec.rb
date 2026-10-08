@@ -40,14 +40,26 @@ RSpec.describe Samagotchi::ProcessGroup do
       reap(pid)
     end
 
-    it "KILLs a group that ignores TERM once the grace is over" do
+    it "KILLs a group that ignores TERM once the grace is over, and waits until it has stopped" do
       pid = spawn_group("trap '' TERM; sleep 31.92")
       expect(wait_until { system("pgrep", "-f", "sleep 31.92", out: File::NULL) }).to be(true)
       started = described_class.monotonic
+      status = nil
+      gone = -> { status ||= Process.wait2(pid, Process::WNOHANG)&.last }
 
-      expect(described_class.stop(pid, grace: 0.2, poll: 0.01, stopped: reaped(pid))).to be(false)
+      expect(described_class.stop(pid, grace: 0.2, poll: 0.01, stopped: gone)).to be(false)
       expect(described_class.monotonic - started).to be >= 0.2
-      expect(Process.wait2(pid).last.termsig).to eq(Signal.list["KILL"])
+      expect(status&.termsig).to eq(Signal.list["KILL"])
+    ensure
+      reap(pid) unless status
+    end
+
+    it "waits at most kill_wait after the KILL for a group that never says it stopped" do
+      pid = spawn_group("trap '' TERM; sleep 31.99")
+      started = described_class.monotonic
+
+      expect(described_class.stop(pid, grace: 0.05, poll: 0.01, stopped: -> { false }, kill_wait: 0.3)).to be(false)
+      expect(described_class.monotonic - started).to be_between(0.35, 1.5)
     ensure
       reap(pid)
     end

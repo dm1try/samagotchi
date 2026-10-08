@@ -100,24 +100,37 @@ module Samagotchi
       true
     end
 
-    # TERMs the group, waits up to +grace+ for +stopped+, then KILLs it.
+    # How long #stop waits for +stopped+ after the KILL by default.
+    KILL_WAIT_SEC = 1.0
+
+    # TERMs the group, waits up to +grace+ for +stopped+, then KILLs it and
+    # waits up to +kill_wait+ for +stopped+ again (a KILL is delivered, not
+    # done, when kill returns).
     # @param stopped [#call] true once it has stopped (default: the leader
     #   is gone)
     # @param wait [#call] (seconds) between two checks (default: a sleep)
     # @param signal_options [Hash] for #signal (leader:, quiet:)
     # @return [Boolean] true when it stopped within the grace (no KILL sent)
     # @raise [ArgumentError] unless #signalable?
-    def stop(pgid, grace:, poll:, stopped: -> { !alive?(pgid) }, wait: ->(seconds) { sleep(seconds) }, **signal_options)
+    def stop(pgid, grace:, poll:, stopped: -> { !alive?(pgid) }, wait: ->(seconds) { sleep(seconds) },
+             kill_wait: KILL_WAIT_SEC, **signal_options)
       check!(pgid)
       signal(pgid, "TERM", **signal_options)
-      deadline = monotonic + grace
+      return true if wait_for(stopped, grace, poll, wait)
+
+      signal(pgid, "KILL", **signal_options)
+      wait_for(stopped, kill_wait, poll, wait)
+      false
+    end
+
+    # Checks +stopped+ every +poll+ until it is true or +seconds+ are over.
+    # @return [Boolean] whether it stopped
+    def wait_for(stopped, seconds, poll, wait)
+      deadline = monotonic + seconds
       until (done = stopped.call) || monotonic >= deadline
         wait.call(poll)
       end
-      return true if done
-
-      signal(pgid, "KILL", **signal_options)
-      false
+      done ? true : false
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
