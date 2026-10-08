@@ -200,7 +200,7 @@ test("a reload after the turn shows the context meter and the card's ctx", async
   await turnEnded(page, 1);
   await page.reload();
   await turnEnded(page, 1);
-  await expect(page.locator("#infoBar .meta")).toContainText(/ctx \d+%/);
+  await expect(page.locator("#infoBar .meta")).toContainText(/ctx ~?\d+%/);
   await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
 });
 
