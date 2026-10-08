@@ -63,6 +63,17 @@ and commands may change between minor versions. How releases are made:
   for your message`, `… a message sent with chi send`, `… the parent agent's message`) landed in its
   step inside the closed cloud and, out of sight, flashed nothing. It now flashes in the trail for a
   few seconds, as its row reads, as the ✂ row and a hook notice do.
+- `chi send --new --model` and `delegate` warned `host 'h' doesn't list model 'x'` for an id the host serves, when
+  the on-disk model list still named the model a one-model server served before it was reloaded: a saved list
+  older than 10 minutes that misses the id now re-lists that one host once (bounded at 5 s) and judges again
+  against what it lists now, saving the fresh ids. A list from the last 10 minutes is taken at its word, so a host
+  that serves ids it never lists (a gateway's round-robin aliases) is not asked on every launch; a re-list that
+  fails, times out or lists nothing warns from the saved list.
+- The session lists' `ctx %` (the web's session cards, `chi sessions list` and its `ctx 12%` column, the
+  `list_sessions` tool's `ctx_pct`) and `/stats`' `context used:` still divided by the window when the session's
+  LLM context budget (`llm_context.budget_tokens`) was smaller, where the live meter counts the smaller of the
+  two; they now count the same way, and `/stats` says so: `context used:     16000 tokens (25.0% of the 64000
+  budget)`.
 
 ## [0.44.0] - 2026-10-08
 
