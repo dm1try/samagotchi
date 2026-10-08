@@ -139,6 +139,13 @@ RSpec.describe Samagotchi::SessionCommands do
         .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); served: ornith-1.5")
     end
 
+    it "says nothing of a served model the host's served: expects" do
+      allow(engine).to receive(:served_model).and_return(["ornith-1.5", "Qwen3-14B"])
+      allow(engine).to receive(:served_expected?).with("ornith-1.5").and_return(true)
+
+      expect(commands.run("/model").output).to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name)")
+    end
+
     it "names the configured sampling of the model" do
       allow(Samagotchi::ConfigFile).to receive(:model_settings)
         .and_return("qwen3-14b" => { profile: nil, sampling: { temperature: 0.6, presence_penalty: 1.5 } })

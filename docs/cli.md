@@ -842,7 +842,8 @@ status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | ctx=8.1% (under20) | me
 ```
 
 - `model=`: the model in use, `(default: …)` beside it when it isn't the config's default, and
-  `model=<served> (served; asked <name>)` when the server said it served another model.
+  `model=<served> (served; asked <name>)` when the server said it served another model (not for one its host's
+  `hosts.<name>.models.<id>.served` names; see [configuration](configuration.md#models-a-host-serves-but-doesnt-list)).
 - `↳ <id>`: the session that delegated this one.
 - `⑂ …`: this session's delegate children (forks aren't counted): how many run and how many wait
   for an answer; only the counts there are, nothing when none does (`/children` has the rest:

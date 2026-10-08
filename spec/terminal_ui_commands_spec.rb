@@ -104,6 +104,8 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output.call(served_model: "z-ai/glm-5.2", served_model_for: "z-ai/glm-5.2:free").lines.map(&:chomp))
         .to include("served model:     z-ai/glm-5.2")
       expect(output.call(served_model: nil, served_model_for: nil)).not_to include("served model")
+      expect(output.call(served_model: "fireworks/x", served_model_for: "rr/x", served_expected: true).lines.map(&:chomp))
+        .to include("served model:     fireworks/x")
     end
 
     it "shows the served model in the status line once a turn reported another one" do

@@ -127,6 +127,12 @@ test("modelLabel keeps the model when the served name is the same or extends it,
   assert.equal(modelLabel("a".repeat(50), null, null).text, "a".repeat(40));
 });
 
+test("modelLabel keeps the model asked for, no marker, when the served one is expected (served:)", () => {
+  assert.deepEqual(modelLabel("work:rr/x", "fireworks/x", "rr/x", true),
+    { text: "work:rr/x", title: "work:rr/x; served: fireworks/x (expected: hosts.<name>.models served:)", mismatch: false });
+  assert.equal(modelLabel("work:rr/x", "fireworks/x", "rr/x", false).mismatch, true);
+});
+
 import { deleteConfirmText } from "../../../lib/samagotchi/web/public/format.js";
 
 test("deleteConfirmText names the session and says it can't be undone", () => {

@@ -100,7 +100,7 @@ RSpec.describe "hosts.<name>.models" do
             models:
               rr/a:
               rr/b: {prise: 1}
-              rr/d: {price: {input: 1, cached: 0.1, output: 2}}
+              rr/d: {price: {input: 1, cached: 0.1, output: 2}, served: any}
           box:
             host: box.test
             models: [rr/c]

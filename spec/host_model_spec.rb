@@ -29,6 +29,25 @@ RSpec.describe Samagotchi::HostModel do
     expect(models["rr/b"].to_config).to be_nil
   end
 
+  it "reads served: as exact ids or any, and says whether a served model is one of them" do
+    models = parse("{rr/a: {served: [fireworks/A, baseten/a]}, rr/b: {served: any}, rr/c: }")
+
+    expect(models["rr/a"].serves?("FIREWORKS/a")).to be(true)
+    expect(models["rr/a"].serves?("together/a")).to be(false)
+    expect(models["rr/b"].serves?("anything/at-all")).to be(true)
+    expect(models["rr/c"].serves?("rr/c")).to be(false)
+    expect(models["rr/a"].to_config).to eq("served" => %w[fireworks/A baseten/a])
+    expect(models["rr/b"].to_config).to eq("served" => "any")
+  end
+
+  it "warns once and drops a served: that is neither a list of ids nor any" do
+    expect(Samagotchi::ConfigFile).to receive(:warn_once)
+      .with("Warning: hosts.work.models.rr/a.served must be a list of model ids or any; ignored").twice
+
+    expect(parse("{rr/a: {served: fireworks/a}}")["rr/a"].served).to be_nil
+    expect(parse("{rr/a: {served: [1, x]}}")["rr/a"].served).to be_nil
+  end
+
   it "is empty when unset" do
     expect(described_class.parse_map(nil, "work")).to eq({})
   end

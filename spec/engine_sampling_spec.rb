@@ -203,7 +203,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn price" do
   let(:registry) do
     Samagotchi::HostRegistry.new(hosts_config: {
       "work" => { host: "gateway.example", port: 443,
-                  models: Samagotchi::HostModel.parse_map({ "RR/x" => { "price" => { "input" => 1, "output" => 2 } },
+                  models: Samagotchi::HostModel.parse_map({ "RR/x" => { "price" => { "input" => 1, "output" => 2 },
+                                                                        "served" => %w[fireworks/x baseten/x] },
                                                             "rr/y" => { "price" => { "input" => 3, "output" => 4 } },
                                                             "rr/free" => nil }, "work") }
     })
@@ -243,5 +244,27 @@ RSpec.describe Samagotchi::Engine, "#run_turn price" do
     engine.run_turn(session, "hi")
 
     expect(prices.map { |p| p&.to_h }).to eq([{ input: 3, cache_read: 3, cache_write: 3, output: 4 }])
+  end
+
+  describe "served: a model the host's served: names isn't a mismatch" do
+    def reported(served) = engine.metrics.call(type: :generation_completed, served_model: served, requested_model: "rr/x")
+
+    it "marks the snapshots served_expected for a listed served model, not for another" do
+      reported("Fireworks/x")
+      expect(engine.session_state_snapshot).to include(served_model: "Fireworks/x", served_model_for: "rr/x", served_expected: true)
+      expect(engine.stats_snapshot).to include(served_expected: true)
+      expect(engine.served_expected?("fireworks/x")).to be(true)
+
+      reported("together/x")
+      expect(engine.session_state_snapshot).to include(served_model: "together/x", served_expected: false)
+    end
+
+    it "marks a generation_completed it relays" do
+      relayed = engine.send(:with_generation_report, { type: :generation_completed, served_model: "baseten/x", requested_model: "rr/x" })
+
+      expect(relayed).to include(served_expected: true)
+      expect(engine.send(:with_generation_report, { type: :generation_completed, served_model: "x", requested_model: "rr/x" }))
+        .to include(served_expected: false)
+    end
   end
 end

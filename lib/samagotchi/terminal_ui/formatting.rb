@@ -423,9 +423,9 @@ module Samagotchi
 
       # +served+ / +served_for+: the model the server said it served for the
       # name asked (see Engine#served_model); shown first when it's another
-      # model.
-      def status_model_text(model, default_model, served: nil, served_for: nil)
-        if ServedModel.differs?(served_for, served)
+      # model, unless +expected+ (the host's served: names it).
+      def status_model_text(model, default_model, served: nil, served_for: nil, expected: false)
+        if !expected && ServedModel.differs?(served_for, served)
           asked = model.to_s.length > STATUS_ASKED_MAX ? "#{model.to_s[0, STATUS_ASKED_MAX - 1]}…" : model
           return "model=#{served} (served; asked #{asked})"
         end
@@ -513,7 +513,8 @@ module Samagotchi
         lines << "llm context:      #{llm_context}" if llm_context
         if snapshot[:served_model]
           asked = snapshot[:served_model_for]
-          note = ServedModel.differs?(asked, snapshot[:served_model]) ? " (asked for #{asked})" : ""
+          differs = !snapshot[:served_expected] && ServedModel.differs?(asked, snapshot[:served_model])
+          note = differs ? " (asked for #{asked})" : ""
           lines << "served model:     #{snapshot[:served_model]}#{note}"
         end
         lines.join("\n")

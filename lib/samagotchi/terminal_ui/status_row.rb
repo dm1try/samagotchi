@@ -17,8 +17,9 @@ module Samagotchi
       # What the row shows:
       #   model, default_model  the model in use, and the config's default
       #                         (named beside another model)
-      #   served                [served, asked]: what the server said it
-      #                         served for the name asked (ServedModel)
+      #   served                [served, asked, expected]: what the server said it
+      #                         served for the name asked (ServedModel), and
+      #                         whether its host's served: expects it
       #   parent_id             the session that delegated this one
       #   children              its delegates' ChildrenStatus::Counts, or
       #                         nil (the segment shows running and waiting)
@@ -61,7 +62,7 @@ module Samagotchi
       # @param default_model [String, nil] the config's default, named beside
       #   another model
       def take_state(state, default_model: nil)
-        fields = { served: state[:served_model] ? [state[:served_model], state[:served_model_for]] : nil }
+        fields = { served: state[:served_model] ? [state[:served_model], state[:served_model_for], state[:served_expected]] : nil }
         fields.merge!(model: state[:model_name], default_model: default_model) if state[:model_name]
         STATE_LISTS.each { |field, key| fields[field] = Array(state[key]) if state.key?(key) }
         fields[:parent_id] = state[:parent_id] if state.key?(:parent_id)
@@ -82,7 +83,7 @@ module Samagotchi
         when :context_status then update(context: { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] })
         when :used_memories_updated then update(used_memories: Array(event[:used_memory_names]))
         when :generation_completed
-          update(served: [event[:served_model], event[:requested_model]]) if event[:served_model]
+          update(served: [event[:served_model], event[:requested_model], event[:served_expected]]) if event[:served_model]
         end
       end
 
@@ -104,10 +105,15 @@ module Samagotchi
 
       # @return [Array<String>] the row cut to +width+ (none with nothing to say)
       def rows(width)
-        served, served_for = @values[:served]
+        served, served_for, expected = @values[:served]
         model = @values[:model]
         parent = @values[:parent_id]
-        segments = [model ? status_model_text(model, @values[:default_model], served: served, served_for: served_for) : "",
+        model_text = ""
+        if model
+          model_text = status_model_text(model, @values[:default_model], served: served, served_for: served_for,
+                                                                         expected: expected == true)
+        end
+        segments = [model_text,
                     parent ? "↳ #{parent.to_s[0, 8]}" : "",
                     children_text(@values[:children]),
                     status_context_text(estimate: @values[:context]),

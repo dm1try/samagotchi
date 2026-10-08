@@ -269,7 +269,7 @@ module Samagotchi
                      llm_context_budget_tokens].freeze
     }.freeze
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).
-    HOST_MODEL_KEYS = %w[price].freeze
+    HOST_MODEL_KEYS = %w[price served].freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
 

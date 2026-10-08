@@ -10,9 +10,11 @@ module Samagotchi
   # (HostRegistry#host_for_model).
   #
   # id: the id as written (keys are matched downcased); price: its
-  # ModelPrice on this host, nil when none.
-  HostModel = Data.define(:id, :price) do
-    def initialize(id:, price: nil) = super
+  # ModelPrice on this host, nil when none; served: the models the host may
+  # answer it with (a gateway's round-robin targets), exact ids as written
+  # or "any", nil when none: no served-model warning for those (#serves?).
+  HostModel = Data.define(:id, :price, :served) do
+    def initialize(id:, price: nil, served: nil) = super
 
     # hosts.<name>.models as written: a map of ids (each nil or a map), or
     # a plain list of ids. Anything else warns once and is skipped.
@@ -40,9 +42,29 @@ module Samagotchi
           warn_once "Warning: #{where}.#{id} must be empty or a mapping; ignored"
           next
         end
-        price = ModelPrice.parse(entry && (entry.key?("price") ? entry["price"] : entry[:price]), "#{where}.#{id}")
-        models[id.downcase] ||= new(id: id, price: price)
+        value = ->(key) { entry && (entry.key?(key) ? entry[key] : entry[key.to_sym]) }
+        price = ModelPrice.parse(value.call("price"), "#{where}.#{id}")
+        models[id.downcase] ||= new(id: id, price: price, served: parse_served(value.call("served"), "#{where}.#{id}"))
       end
+    end
+
+    # served: a list of ids, or "any"; anything else warns once and is unset.
+    def self.parse_served(raw, where)
+      return nil if raw.nil?
+      return "any" if raw.is_a?(String) && raw.strip.casecmp?("any")
+
+      ids = raw.is_a?(Array) && raw.all? { |id| id.is_a?(String) && !id.strip.empty? } ? raw.map(&:strip) : nil
+      warn_once "Warning: #{where}.served must be a list of model ids or any; ignored" unless ids
+      ids
+    end
+    private_class_method :parse_served
+
+    # Whether the host answering this model with +name+ is expected
+    # (served: lists it, any case, or says any).
+    def serves?(name)
+      return false if served.nil? || name.to_s.strip.empty?
+
+      served == "any" || served.any? { |id| id.casecmp?(name.to_s.strip) }
     end
 
     # config.rb requires this file, so config is required here only when a
@@ -80,7 +102,10 @@ module Samagotchi
 
     # The entry as written back to config (SAMAGOTCHI_HOSTS_JSON for
     # workers): nil for a bare id.
-    def to_config = price && { "price" => price.to_config }
+    def to_config
+      config = { "price" => price&.to_config, "served" => served }.compact
+      config unless config.empty?
+    end
   end
 
   # A listing row (HostModel.rows): id as the host lists it, else as

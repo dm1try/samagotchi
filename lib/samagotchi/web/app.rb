@@ -659,7 +659,8 @@ module Samagotchi
         session_json = session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner)
         # What the worker's server said it served for that model (after a turn).
         if snapshot
-          session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"])
+          session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"],
+                                            served_expected: snapshot["served_expected"] == true)
           # The model notes its prompt carries now (a /model there changes them).
           session_json = session_json.merge(prompt_notes: snapshot["prompt_notes"]) if snapshot["prompt_notes"].is_a?(Array)
         end

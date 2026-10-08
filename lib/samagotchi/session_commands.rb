@@ -492,10 +492,11 @@ module Samagotchi
       end
     end
 
-    # "; served: <name>" when the server serves another model than asked.
+    # "; served: <name>" when the server serves another model than asked
+    # and its host's served: doesn't expect it.
     def served_note
       served, asked = @engine.served_model
-      ServedModel.differs?(asked, served) ? "; served: #{served}" : ""
+      ServedModel.differs?(asked, served) && !@engine.served_expected?(served) ? "; served: #{served}" : ""
     rescue StandardError
       ""
     end

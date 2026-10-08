@@ -672,6 +672,26 @@ host whatever the host lists:
   order; two hosts declaring one id get a warning at start saying which one a
   bare id goes to. `host:id` still pins a host.
 
+**A gateway that answers with another model.** A round-robin id is served by one
+of its targets, and the reply names that one (`fireworks/deepseek-v4.1`), so chi
+marks every turn as served by another model than asked (the web's `⚠`, the status
+line's `(served; asked …)`, `/model`'s `served:`). `served:` lists the models the
+host may answer with, as exact ids (any case), or `any`:
+
+```yaml
+hosts:
+  work:
+    models:
+      rr/deepseek-v4.1:
+        served: [fireworks/deepseek-v4.1, baseten/deepseek-v4.1]
+      rr/qwen3.8-27b:
+        served: any
+```
+
+A served model it names is no mismatch: the web and the status line keep the name
+you asked for, and `/stats` names the served model without "(asked for …)". One it
+doesn't name is still marked. `any` gives that check up for the id.
+
 **Root `models:` vs `hosts.<name>.models:`.** The root `models:` holds settings
 by model name (sampling, thinking, window, profile…), on whatever host the model
 runs on; it says nothing about which host serves a model. `hosts.<name>.models:`
@@ -1106,6 +1126,7 @@ described in their own sections.
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
 | `hosts.<name>.models` | none | | The model ids a host serves whatever its `/v1/models` lists: a map of ids, or a plain list. See "Models a host serves but doesn't list". |
+| `hosts.<name>.models.<id>.served` | none | | The models the host may answer that id with (exact ids, any case), or `any`: no served-model warning for those. See "Models a host serves but doesn't list". |
 | `hosts.<name>.models.<id>.price` | none | | The model's price on that host, USD per 1M tokens: `input`, `output`, optional `cache_read` and `cache_write`. Estimates the cost a provider doesn't report. See "Prices". |
 | `hosts.<name>.remote` | by address | | `true`/`false`: treat the host as a remote provider or a local server. See "Remote or local". |
 | `max_tool_output_chars` | `10000` | yes | Characters of each tool output kept in the conversation (both loops); a longer one is cut and ends with `[cut: N of M chars; read it in parts]`. A top-level key (see below). |
