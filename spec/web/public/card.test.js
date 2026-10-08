@@ -126,3 +126,11 @@ test("turnNoticePlace: a turn notice's step (0-based) and the row it came before
   assert.equal(turnNoticePlace({ type: "hook_notice", in_turn: false, iteration: 1, calls: 0 }), null);
   assert.equal(turnNoticePlace(null), null);
 });
+
+test("turnNoticePlace: a turn-end ✂ row names its turn's last step; a reload with no such step puts it before the answer", () => {
+  // CardStore keeps the last generation's iteration and no calls: the
+  // answer's own step, which a reloaded turn draws only with thinking or
+  // tools (else app.js's placeTurnNotice falls back to a bubble before the
+  // answer, as promote leaves it live).
+  assert.deepEqual(turnNoticePlace({ type: "llm_context_edited", in_turn: true, iteration: 3, calls: 0 }), { step: 2, rowKey: "3:1" });
+});

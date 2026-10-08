@@ -513,3 +513,42 @@ test("replaysDrawnTurn: a replayed turn_started for a turn the page already drew
   assert.equal(replaysDrawnTurn({ type: "turn_completed", turn_id: "t1" }, records), false);
   assert.equal(replaysDrawnTurn({ type: "turn_started", turn_id: "t1" }, []), false);
 });
+
+import { llmContextHover, llmContextLine } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+const edited = {
+  type: "llm_context_edited", moment: "request", why: "payoff", freed_tokens: 4100, tail_tokens: 200, staged: 1,
+  text: "✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k tokens (paid off) · 1 more staged",
+  groups: [
+    { kind: "stale", items: [{ id: "t1", tool: "read", title: "lib/a.rb", note: "lib/a.rb: superseded by a later read" }] },
+    { kind: "forget", note: "tests pass; NEXT: b.rb", by: "model",
+      items: [{ id: "t2", tool: "execute", title: "npm test" }, { id: "t3", tool: "read", title: "lib/b.rb", kept: "12-40" }] },
+  ],
+};
+
+test("llmContextLine: the ✂ row is the server's line (the TUI prints the same); a snapshot entry draws it too", () => {
+  assert.equal(llmContextLine(edited), edited.text);
+  assert.equal(noticeLine({ ...edited, in_turn: true, iteration: 2, calls: 1 }), edited.text);
+  assert.equal(llmContextLine({}), "✂ LLM context edited");
+});
+
+test("llmContextHover: each group's outputs, a forget's note once and its kept lines, the cost and when it is sent", () => {
+  assert.equal(llmContextHover(edited), [
+    "Stubbed as stale:",
+    "  t1 read lib/a.rb — lib/a.rb: superseded by a later read",
+    "Forgotten by the model: tests pass; NEXT: b.rb",
+    "  t2 execute npm test",
+    "  t3 read lib/b.rb · lines 12-40 kept",
+    "frees ~4100 tokens; the server reads ~200 tokens again",
+    "1 more staged until the turn ends",
+    "Sent from the next request on.",
+    "The session keeps the originals.",
+  ].join("\n"));
+  assert.match(llmContextHover({ moment: "turn_end", groups: [] }), /^Sent from the next turn on\./);
+});
+
+test("snapshotEvents: a joined turn's ✂ row comes back as its live event", () => {
+  const part = { kind: "notice", event: { type: "llm_context_edited", text: "✂ x", groups: [] } };
+  const events = snapshotEvents({ current_turn: { prompt: "p", parts: [part] } });
+  assert.deepEqual(events.at(-1), { type: "llm_context_edited", text: "✂ x", groups: [] });
+});
