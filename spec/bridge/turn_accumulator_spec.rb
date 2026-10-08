@@ -107,6 +107,8 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
          { type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1, finish_reason: "stop", thinking_chars: 40 },
          { type: :empty_answer_retry, iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" },
          { type: :steer_cut, iteration: 2, source: "chi_send" },
+         { type: :llm_context_edited, moment: "request", why: "payoff", freed_tokens: 1, tail_tokens: 2, staged: 0,
+           text: "✂ x", groups: [{ kind: "stale", items: [] }] },
          { type: :question_requested, pending_question: question },
          { type: :question_answered, id: "q1", answer: { selected: ["A"] } },
          { type: :question_cancelled, id: "q2", reason: "turn ended" })
@@ -118,6 +120,8 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
       { kind: "notice", event: { type: "empty_answer_retry", iteration: 1, attempt: 1, of: 1 } },
       { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } },
       { kind: "notice", event: { type: "steer_cut", iteration: 2, source: "chi_send" } },
+      { kind: "notice", event: { type: "llm_context_edited", moment: "request", why: "payoff", freed_tokens: 1, tail_tokens: 2,
+                                 staged: 0, text: "✂ x", groups: [{ kind: "stale", items: [] }] } },
       { kind: "notice", event: { type: "question_requested", pending_question: question } },
       { kind: "notice", event: { type: "question_answered", id: "q1", answer: { selected: ["A"] } } },
       { kind: "notice", event: { type: "question_cancelled", id: "q2", reason: "turn ended" } }

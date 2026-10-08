@@ -358,7 +358,8 @@ module Samagotchi
           # steps from them (ModelResult#empty_steps).
           @empty_steps = []
           @context = ContextStatus.new(conversation: conversation, llm_context: loop.llm_context)
-          loop.llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: @context)
+          loop.llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: @context,
+                                                             emit: method(:emit))
         end
 
         def call(max_iterations:, cap:)
@@ -455,7 +456,7 @@ module Samagotchi
         def generate(iteration)
           # The strategy's edits the apply rule lets through first (stale):
           # this request sends them.
-          @loop.apply_llm_context!(@conversation, context: @context)
+          @loop.apply_llm_context!(@conversation, context: @context, emit: method(:emit))
           window = @window = @loop.context_window(@model_name)
           observe_context(iteration, window)
           retry_generation = @empty_retry.take_sampling!
@@ -640,7 +641,7 @@ module Samagotchi
         def result(text, exhausted:)
           # The model answered: the staged edits reach the session now (a
           # turn that ran out of steps is mid-task; they wait).
-          @loop.apply_llm_context!(@conversation, moment: :turn_end) unless exhausted
+          @loop.apply_llm_context!(@conversation, moment: :turn_end, emit: method(:emit)) unless exhausted
           ModelResult.new(text: text, conversation: @loop.plain(@conversation), exhausted: exhausted,
                           tool_activity: @tool_activity, empty_steps: @empty_steps, empty_retries: @empty_retry.attempts,
                           context_status: @context.display)

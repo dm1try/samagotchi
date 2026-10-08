@@ -44,8 +44,12 @@ module Samagotchi
     SMALL = 80
 
     # The turn a forget_outputs call runs in: its conversation (the
-    # entries the edits are saved on) and its ContextStatus (nil: none).
-    Turn = Data.define(:conversation, :context)
+    # entries the edits are saved on), its ContextStatus (nil: none) and
+    # its stream (+emit+, nil: none), which gets an applied batch's ✂ row
+    # (LLMContextNotice).
+    Turn = Data.define(:conversation, :context, :emit) do
+      def initialize(emit: nil, **fields) = super
+    end
 
     # One output a call may name: its entry, its ToolIds ref, its tool,
     # its text (without the "[name]" lead) and its step; +offset+: what

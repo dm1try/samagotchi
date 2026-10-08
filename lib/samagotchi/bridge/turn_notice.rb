@@ -4,7 +4,8 @@ module Samagotchi
   class Bridge
     # The events a running turn shows as rows of its own (not text, thinking
     # or a tool call): a hook's notice, the loop asking again after an empty
-    # or cut answer, a question and how it was answered. A UI that joins the
+    # or cut answer, a batch of LLM context edits (✂), a question and how it
+    # was answered. A UI that joins the
     # turn mid-way (TurnAccumulator's "notice" part) and one that reloads a
     # finished turn (CardStore) get the event back with the fields listed
     # here, and draw it with the handler that drew it live, where it was.
@@ -13,6 +14,7 @@ module Samagotchi
         hook_notice: %i[hook text level fallback_for],
         empty_answer_retry: %i[iteration attempt of stopped_by malformed],
         steer_cut: %i[iteration source],
+        llm_context_edited: %i[moment why freed_tokens tail_tokens staged text groups],
         question_requested: %i[pending_question],
         question_answered: %i[id answer],
         question_cancelled: %i[id reason]

@@ -314,6 +314,33 @@ RSpec.describe "Cards" do
       expect(store.list.map { |e| e[:id] || e[:text] || e[:type] }).to eq(%w[a n1 n2])
     end
 
+    it "keeps a ✂ row in its step, saved, and caps ✂ rows apart from notices and cards" do
+      dir = Dir.mktmpdir("chi-cards")
+      path = File.join(dir, "cards.json")
+      store = described_class.new(capacity: 2, path: path)
+      row = lambda { |n|
+        { type: :llm_context_edited, moment: "request", why: "next_request", freed_tokens: n, tail_tokens: 9,
+          staged: 0, text: "✂ stubbed 1 stale read · frees ~#{n} tokens",
+          groups: [{ kind: "stale", items: [{ id: "t1", tool: "read", title: "a.rb", note: "a.rb: superseded" }] }] }
+      }
+      store.call(card("a"))
+      store.call({ type: :hook_notice, hook: "h", text: "n1", level: :info, between_turns: true })
+      store.call({ type: :turn_started })
+      store.call({ type: :generation_started, iteration: 2 })
+      store.call({ type: :tool_call_started, iteration: 2, call_index: 1 })
+      store.call(row.call(1))
+      expect(store.list.last).to eq(row.call(1).merge(in_turn: true, iteration: 2, calls: 1, turns_since: 0, current: true))
+      store.call(row.call(2))
+      store.call(row.call(3))
+      expect(store.list.map { |e| e[:id] || e[:text] }).to eq(["a", "n1", row.call(2)[:text], row.call(3)[:text]])
+
+      store.call({ type: :turn_completed })
+      later = described_class.saved(dir)
+      expect(later.last).to include(type: :llm_context_edited, groups: row.call(3)[:groups], in_turn: true, iteration: 2)
+    ensure
+      FileUtils.remove_entry(dir)
+    end
+
     it "keeps a turn's questions with how each was answered or cancelled, in their step" do
       store = described_class.new
       q1 = { id: "q1", question: "Which?", options: %w[A B], status: "pending" }

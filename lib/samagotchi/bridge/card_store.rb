@@ -16,7 +16,8 @@ module Samagotchi
     # iteration started before it (a before_tool_call hook's notice comes
     # before its call's row, so the web puts it above row calls + 1). The
     # loop's "asking again" row (:empty_answer_retry, after an empty or cut
-    # answer) and a steer's cut row (:steer_cut) are kept the same way, and so is a question the turn asked
+    # answer), a steer's cut row (:steer_cut) and a ✂ row (:llm_context_edited,
+    # LLMContextNotice) are kept the same way, and so is a question the turn asked
     # (:question_requested), with how it was answered or cancelled, so a
     # reload draws the resolved card where it was.
     #
@@ -28,9 +29,10 @@ module Samagotchi
     # as /btw) goes after that turn: its prompt is already in the history.
     # A failed turn leaves no prompt, so its cards stay before the next one.
     #
-    # Notices (hook notices, load warnings, "asking again" rows) and cards
-    # (with questions) are capped apart, +capacity+ each, so a burst of
-    # notices can't push out a card. An open question (an approval too) is
+    # Notices (hook notices, load warnings, "asking again" rows), ✂ rows
+    # and cards (with questions) are capped apart, +capacity+ each, so a
+    # burst of notices can't push out a card, nor a long turn's ✂ rows a
+    # hook's notice. An open question (an approval too) is
     # never pushed out: the oldest other card or answered question goes.
     #
     # With a +path+ (the Bridge's: FILE in the session's folder) the store
@@ -47,11 +49,14 @@ module Samagotchi
     class CardStore
       CAPACITY = 20
       NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry steer_cut].freeze
+      # Capped apart from the notices.
+      LLM_CONTEXT_TYPES = %i[llm_context_edited].freeze
+      LLM_CONTEXT_FIELDS = %i[type moment why freed_tokens tail_tokens staged text groups].freeze
       FILE = "cards.json"
       # The events after which the file is written again: the ones that
       # change an entry or the turn count.
-      SAVED_ON = (%i[card hook_notice empty_answer_retry steer_cut question_requested question_answered question_cancelled
-                     question_relay turn_failed] + Events::TURN_KEPT).freeze
+      SAVED_ON = (%i[card hook_notice empty_answer_retry steer_cut llm_context_edited question_requested question_answered
+                     question_cancelled question_relay turn_failed] + Events::TURN_KEPT).freeze
 
       # What a session's saved file lists, as a store started from it lists
       # (no turn running): the web's cards for a session no worker runs.
@@ -167,6 +172,7 @@ module Samagotchi
                                             .compact.merge(in_turn: false, turns: @turns_done))
         when :empty_answer_retry then add_turn_row(event.slice(:type, :attempt, :of, :stopped_by, :malformed)) if @running
         when :steer_cut then add_turn_row(event.slice(:type, :source)) if @running
+        when :llm_context_edited then add_turn_row(Marshal.load(Marshal.dump(event.slice(*LLM_CONTEXT_FIELDS)))) if @running
         when :question_requested
           add_turn_row({ type: :question, pending_question: Marshal.load(Marshal.dump(event[:pending_question])) }) if @running
         when :question_answered then resolve_question(event[:id], answer: event[:answer])
@@ -236,15 +242,20 @@ module Samagotchi
 
       def push(entry)
         @entries << entry
-        notice = notice?(entry)
-        kind = @entries.select { |e| notice?(e) == notice }
+        cap = cap_class(entry)
+        kind = @entries.select { |e| cap_class(e) == cap }
         return if kind.size <= @capacity
 
         evict = kind.find { |e| !open_question?(e) }
         @entries.delete_at(@entries.index { |e| e.equal?(evict) }) if evict
       end
 
-      def notice?(entry) = NOTICE_TYPES.include?(entry[:type])
+      # Which cap +entry+ counts against: :notice, :llm_context or :card.
+      def cap_class(entry)
+        return :llm_context if LLM_CONTEXT_TYPES.include?(entry[:type])
+
+        NOTICE_TYPES.include?(entry[:type]) ? :notice : :card
+      end
 
       def open_question?(entry)
         entry[:type] == :question && !entry.key?(:answer) && !entry[:cancelled]

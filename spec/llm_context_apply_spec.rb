@@ -220,8 +220,9 @@ RSpec.describe Samagotchi::LLMContextApply do
       kernel
     end
 
-    # The native loop on +steps+ (the model's answers in order): the prompts sent, the result, the kernel.
-    def native(llm_context, steps)
+    # The native loop on +steps+ (the model's answers in order): the prompts sent, the result, the kernel;
+    # the stream's events in +events+.
+    def native(llm_context, steps, events: [])
       sent = []
       client = test_client
       allow(client).to receive(:complete) do |prompt, on_chunk: nil, **|
@@ -231,7 +232,8 @@ RSpec.describe Samagotchi::LLMContextApply do
         text
       end
       kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), llm_context)
-      [sent, kernel.run([head, { role: "user", content: "go" }], max_iterations: 10), kernel]
+      [sent, kernel.run([head, { role: "user", content: "go" }], max_iterations: 10,
+                                                                   on_stream_event: ->(event) { events << event }), kernel]
     end
 
     def read_twice = [qwen_call("read", "path" => file), qwen_call("read", "path" => file), "Done."]
@@ -242,6 +244,38 @@ RSpec.describe Samagotchi::LLMContextApply do
       sent, = native(strategy(:next_request), read_twice)
 
       expect(sent.map { |prompt| prompt.include?(stub_line) }).to eq([false, false, true])
+    end
+
+    def rows(events) = events.select { |event| event[:type] == :llm_context_edited }
+
+    it "shows each applied batch as one ✂ row: next_request before the request that sends it, turn_end before the end" do
+      events = []
+      native(strategy(:next_request), read_twice, events: events)
+      expect(rows(events).map { |row| [row[:moment], row[:why], row[:groups].map { |group| group[:kind] }] })
+        .to eq([%w[request next_request] + [%w[stale]]])
+      expect(rows(events).first[:text]).to start_with("✂ stubbed 1 stale read · frees ~")
+      third = events.each_index.select { |at| events[at][:type] == :generation_started }[2]
+      expect(events.index(rows(events).first)).to be < third
+
+      events = []
+      _, result, kernel = native(strategy(:turn_end), read_twice, events: events)
+      expect(rows(events).map { |row| row[:moment] }).to eq(%w[turn_end])
+      expect(rows(events).first[:text]).to end_with("(at turn end)")
+
+      # The warm-up applies on its own copy: no row.
+      allow(Samagotchi::LLMContextNotice).to receive(:event).and_call_original
+      kernel.warmup_prompt(result.conversation.map { |entry| entry.except(:edits) }, llm_context: strategy(:turn_end))
+      expect(Samagotchi::LLMContextNotice).not_to have_received(:event)
+    end
+
+    it "shows no row for a batch payoff holds back, only at turn end, nor without a strategy" do
+      events = []
+      native(strategy(:payoff), read_twice, events: events)
+      expect(rows(events).map { |row| row[:moment] }).to eq(%w[turn_end])
+
+      events = []
+      native(nil, read_twice, events: events)
+      expect(rows(events)).to be_empty
     end
 
     it "rebases the turn's context estimate on the request that sends an applied batch" do
@@ -343,13 +377,13 @@ RSpec.describe Samagotchi::LLMContextApply do
     end
 
     describe "the chat loop" do
-      def chat(llm_context)
+      def chat(llm_context, events: [])
         adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "read", { "path" => file }]),
                                       FakeChatAdapter.tools(["c2", "read", { "path" => file }]),
                                       FakeChatAdapter.text("Done."))
         result = Samagotchi::LLM::ChatLoop.new(kernel: under(test_kernel, llm_context), adapter: adapter)
                                           .complete(messages: [head, { role: "user", content: "go" }], model_name: "m",
-                                                    max_iterations: 5)
+                                                    max_iterations: 5, on_stream_event: ->(event) { events << event })
         stubbed = adapter.requests.map do |request|
           request[:messages].any? { |message| message[:tool_call_id] == "c1" && message[:content] == stub_line }
         end
@@ -369,6 +403,17 @@ RSpec.describe Samagotchi::LLMContextApply do
         chat(nil)
 
         expect(stubbed.last).to be < observed.last - big.length + 200
+      end
+
+      it "shows each applied batch as one ✂ row, at the request or at turn end" do
+        events = []
+        chat(strategy(:next_request), events: events)
+        expect(rows(events).map { |row| row[:moment] }).to eq(%w[request])
+
+        events = []
+        chat(strategy(:turn_end), events: events)
+        expect(rows(events).map { |row| row[:moment] }).to eq(%w[turn_end])
+        expect(rows(events).first[:groups].first[:items].map { |item| item[:tool] }).to eq(%w[read])
       end
 
       it "sends the stub from the next request under next_request, and only from the next turn under turn_end" do

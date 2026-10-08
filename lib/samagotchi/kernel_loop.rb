@@ -28,6 +28,7 @@ require_relative "tool_ids"
 require_relative "llm_context_view"
 require_relative "llm_context_apply"
 require_relative "llm_context_forget"
+require_relative "llm_context_notice"
 require_relative "answer_display"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
@@ -279,7 +280,8 @@ module Samagotchi
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:)
       conversation = prepare_conversation(messages)
       context = ContextStatus.new(conversation: conversation, llm_context: @turn_settings.llm_context)
-      @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context)
+      emit = ->(event) { emit_stream_event(on_stream_event, event) }
+      @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context, emit: emit)
       Turn.new(
         conversation: conversation, context: context,
         empty_retry: EmptyAnswerRetry.new, empty_steps: [], tool_activity: [], buffer: +"", streamed_thinking: +"",
@@ -290,7 +292,7 @@ module Samagotchi
         prefill: Thinking.native(@turn_settings.thinking || Thinking::DEFAULT, @profile).prefill,
         pending_tool_calls: false, model_name: @turn_settings.model_name, pending_input: pending_input,
         on_stream_event: on_stream_event, cancel_controller: cancel_controller, cap: cap,
-        emit: ->(event) { emit_stream_event(on_stream_event, event) }
+        emit: emit
       )
     end
 
@@ -321,7 +323,7 @@ module Samagotchi
     # (the prompt cache keeps its prefix), and the prompt is formatted again
     # with it.
     def prepare_request(turn)
-      apply_llm_context!(turn.conversation, context: turn.context)
+      apply_llm_context!(turn.conversation, context: turn.context, emit: turn.emit)
       prompt, images = format_prompt(turn)
       image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(turn.conversation)
       window = ContextWindow.resolve(client: @client, model: turn.model_name, setting: @turn_settings.window_setting)
@@ -580,7 +582,7 @@ module Samagotchi
       # The model answered: the staged edits reach the session now (a turn
       # that ran out of steps, on tool results or on a retry's nudge, is
       # mid-task; they wait).
-      apply_llm_context!(turn.conversation, moment: :turn_end) if turn.answered
+      apply_llm_context!(turn.conversation, moment: :turn_end, emit: turn.emit) if turn.answered
       # An empty answer left the conversation: an earlier model message
       # isn't this turn's answer.
       output = turn.ended_empty ? "" : strip_thought_blocks(last_model_content(turn.conversation))
@@ -784,8 +786,8 @@ module Samagotchi
         return "Error: forget_outputs is off (the llm_context strategy has no forget layer)"
       end
 
-      LLMContextForget.call(turn, call, llm_context: llm_context,
-                                        apply: -> { apply_llm_context!(turn.conversation, llm_context, context: turn.context) })
+      apply = -> { apply_llm_context!(turn.conversation, llm_context, context: turn.context, emit: turn.emit) }
+      LLMContextForget.call(turn, call, llm_context: llm_context, apply: apply)
     end
 
     # Before each request of both loops (+moment+ :request; the warm-up
@@ -797,10 +799,12 @@ module Samagotchi
     # first, and the warm-up) is the first with the stubs. +context+: the
     # turn's ContextStatus (payoff applies in its top bucket; an applied
     # batch rebases its estimate, ContextStatus#edited!). none changes
-    # nothing. Logged as llm_context_apply when a batch is applied.
+    # nothing. Logged as llm_context_apply when a batch is applied, and
+    # shown to the user as a ✂ row (+emit+ takes the :llm_context_edited
+    # event, LLMContextNotice; the warm-up's own copy has none).
     # @return [LLMContextApply::Outcome]
     def apply_llm_context!(conversation, llm_context = @turn_settings&.llm_context, moment: :request, context: nil,
-                           warmup: false)
+                           warmup: false, emit: nil)
       view = llm_context_view(llm_context)
       return LLMContextApply::Outcome.none if view.none?
 
@@ -811,7 +815,10 @@ module Samagotchi
       if outcome.applied?
         # The prompt just shrank: the context estimate counts from it.
         context&.edited!
-        log_llm_context(outcome, llm_context, moment) unless warmup
+        unless warmup
+          log_llm_context(outcome, llm_context, moment)
+          emit_llm_context(emit, conversation, outcome, moment) if emit
+        end
       end
       outcome
     end
@@ -824,6 +831,14 @@ module Samagotchi
                                             model: @turn_settings&.model_name)
     end
     private :log_llm_context
+
+    # The batch's ✂ row; a row that can't be built never breaks the turn.
+    def emit_llm_context(emit, conversation, outcome, moment)
+      emit.call(LLMContextNotice.event(conversation, outcome, moment: moment))
+    rescue StandardError => e
+      Log.warn(:model, "llm_context_notice_failed", error: e.class.name, message: e.message)
+    end
+    private :emit_llm_context
 
     # A request's re-prefilled tokens, for both loops: of the prompt the
     # last request on +model+ sent (this kernel's, any turn), what the

@@ -298,6 +298,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:generation_cancelled` | the turn was cancelled mid-loop | `{iteration, reason, stopped_by}` |
 | `:empty_answer_retry` | an empty, cut or malformed answer is asked again | `{iteration, attempt, of, finish_reason, thinking_chars, stopped_by?, malformed?}` |
 | `:steer_cut` | a steer cut the generation | `{iteration, source}` |
+| `:llm_context_edited` | the apply rule applied a batch of LLM context edits (a request, a forget_outputs call, turn end; never the warm-up) | `{moment, why, freed_tokens, tail_tokens, staged, text, groups}` (`LLMContextNotice`) |
 | `:pending_input_merged` | queued input joined the conversation | `{iteration, count, content, steers?, answer}` |
 | `:tool_dispatch_started` / `:tool_dispatch_completed` | around a batch | `{iteration, call_count}` |
 | `:tool_call_started` | before a call runs | see ToolRunner |

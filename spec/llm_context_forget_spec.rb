@@ -204,9 +204,18 @@ RSpec.describe Samagotchi::LLMContextForget do
       kernel = test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36)
       kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)
 
-      result = kernel.run([{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 10)
+      events = []
+      result = kernel.run([{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 10,
+                          on_stream_event: ->(event) { events << event })
 
       expect(sent[1]).to include("[read]\n[#t1] line 1 of a.rb")
+      # One ✂ row, the forget's own batch, while its call runs.
+      rows = events.select { |event| event[:type] == :llm_context_edited }
+      expect(rows.map { |row| [row[:moment], row[:groups].map { |group| [group[:kind], group[:note]] }] })
+        .to eq([["request", [["forget", "a.rb holds 40 lines; NEXT: answer"]]]])
+      at = events.index(rows.first)
+      expect(events[...at].reverse.find { |event| event[:type].to_s.start_with?("tool_call_") })
+        .to include(type: :tool_call_started, tool: "forget_outputs")
       forget_result = result.conversation.select { |entry| entry[:role] == "tool_response" }.last[:content]
       expect(forget_result).to start_with("[forget_outputs]\nforgot t1: applied")
       expect(sent.last).to include("[read] [#t1] (forgotten) a.rb holds 40 lines; NEXT: answer")
@@ -225,7 +234,11 @@ RSpec.describe Samagotchi::LLMContextForget do
       kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0))
       expect(names.call.last).to eq("forget_outputs")
 
-      chat.complete(messages: [{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 5)
+      events = []
+      chat.complete(messages: [{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 5,
+                    on_stream_event: ->(event) { events << event })
+      expect(events.select { |event| event[:type] == :llm_context_edited }.map { |row| row[:text] })
+        .to eq(["✂ forgot 1 output · frees ~#{events.find { |e| e[:type] == :llm_context_edited }[:freed_tokens]} tokens"])
 
       last = adapter.requests.last[:messages]
       expect(last.find { |message| message[:tool_call_id] == "a" }[:content])
