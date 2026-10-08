@@ -18,6 +18,9 @@ and commands may change between minor versions. How releases are made:
   `llm_context` (`{strategy, apply, budget}` as `/llm-context` words them; anything else answers
   `400 invalid_llm_context`), and `GET /api/models` rows carry each model's `llm_context`. See
   [docs/configuration.md](docs/configuration.md) ("LLM context: a session's own strategy").
+- The web's `ctx` chip shows the context window and where it came from: its tooltip gains `context: ~41.0k of
+  128.0k tokens (server)`, and the chip reads `ctx ~12%` when the window is chi's 256k default, a guess no server,
+  model list or setting gave (the tooltip says to set `window_tokens` for the model).
 
 ## [0.42.0] - 2026-10-08
 
