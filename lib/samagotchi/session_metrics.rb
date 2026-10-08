@@ -708,7 +708,9 @@ module Samagotchi
       [tps, decode_ms, source]
     end
 
-    # Caller holds the mutex.
+    # The open generation's counts start over (a new generation, or a retry
+    # that streams from the start). Its price stays: generation_started sets
+    # it, and a retry sends none. Caller holds the mutex.
     def reset_generation_tokens
       @turn.gen_completion_max = 0
       @turn.gen_prompt_max = 0
@@ -718,7 +720,6 @@ module Samagotchi
       @turn.gen_cache_write_max = 0
       @turn.gen_reasoning_max = 0
       @turn.gen_cost = nil
-      @turn.gen_price = nil
       @turn.gen_decode_tps = @turn.gen_prefill_tps = @turn.gen_decode_ms = nil
       @turn.gen_first_chunk_at = nil
     end

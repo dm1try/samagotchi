@@ -595,6 +595,17 @@ RSpec.describe Samagotchi::SessionMetrics do
         expect(metrics.snapshot[:turn_records].last).not_to include(:cost)
       end
 
+      it "keeps the generation's price across a retry, which sends no new generation_started" do
+        start_turn
+        metrics.call(type: :generation_started, iteration: 1, price: price)
+        metrics.call(type: :generation_retrying, iteration: 1, attempt: 1, restarted: true)
+        metrics.call(router_chunk("", 40))
+        metrics.call(type: :generation_completed, iteration: 1)
+        metrics.call(type: :turn_completed)
+
+        expect(metrics.snapshot[:tokens][:cost_estimate_sum]).to be_within(1e-12).of(estimate_for(40))
+      end
+
       it "estimates a reported 0 when a price is configured, and keeps the reported 0 as the cost" do
         start_turn
         priced_generation(40, cost: 0)
