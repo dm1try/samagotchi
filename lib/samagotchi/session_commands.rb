@@ -39,6 +39,9 @@ module Samagotchi
     # /exit --delete: delete the session on the way out.
     EXIT_DELETE_FLAG = "--delete"
 
+    # /help's note per listed mid_turn (the web's command list says the same).
+    MID_TURN_NOTES = { "anytime" => "mid-turn too", "depends" => "show: mid-turn too" }.freeze
+
     # @!attribute status [Symbol] :ok, or :error when the line was refused
     # @!attribute output [String, nil] what to tell the user
     # @!attribute changed [Array<Symbol>] :messages and/or :model
@@ -52,6 +55,9 @@ module Samagotchi
     # Puts the built-in commands into +registry+, in lookup order (!rollback
     # before !cmd): the ones #run runs, then the UIs' own (local: Tab and
     # help only).
+    #
+    # While a turn runs, a show form (the name alone) runs at once beside
+    # it (it only reads); setting forms wait (Commands::Registry::MID_TURN).
     def self.register_builtins(registry)
       registry.register(ROLLBACK_COMMAND, "discard the interrupted turn and restore the pre-turn state",
                         id: :rollback) { |_text| rollback }
@@ -63,10 +69,13 @@ module Samagotchi
         answer = text.delete_prefix(CONTINUE_COMMAND).strip
         continue_answer(answer.empty? ? CONTINUE_COMMAND : answer)
       end
-      registry.register(MODELS_COMMAND, "list the hosts' models (/models <text> filters)") do |text|
+      # It reads the hosts only (the registry is mutex-guarded): mid-turn too.
+      registry.register(MODELS_COMMAND, "list the hosts' models (/models <text> filters)",
+                        mid_turn: ->(_text) { :anytime }) do |text|
         reply(models_listing(text.delete_prefix(MODELS_COMMAND).strip))
       end
-      registry.register(GUARDRAILS_COMMAND, "list the guardrail rules and approvals (/guardrails revoke N)") do |text|
+      registry.register(GUARDRAILS_COMMAND, "list the guardrail rules and approvals (/guardrails revoke N)",
+                        mid_turn: show_mid_turn(GUARDRAILS_COMMAND)) do |text|
         guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
       end
       # It only reads the store: mid-turn too.
@@ -74,11 +83,11 @@ module Samagotchi
                                                                                    match: ->(text) { text.casecmp?(CONTEXT_COMMAND) }) do |_text|
         reply(context_listing)
       end
-      registry.register(MODEL_COMMAND, "show or switch the model",
+      registry.register(MODEL_COMMAND, "show or switch the model", mid_turn: show_mid_turn(MODEL_COMMAND),
                         match: ->(text) { text.match?(%r{\A/model(?:\s+.*)?\z}) }) { |text| model(text) }
-      # Not anytime: it saves the session; it takes effect at the next turn's start.
+      # Setting it saves the session; it takes effect at the next turn's start.
       registry.register(LLM_CONTEXT_COMMAND, "show or set this session's LLM context strategy, apply rule and budget",
-                        id: :llm_context, match: ->(text) { text.match?(%r{\A/llm-context(?:\s+.*)?\z}) }) { |text| llm_context(text) }
+                        id: :llm_context, mid_turn: show_mid_turn(LLM_CONTEXT_COMMAND), match: ->(text) { text.match?(%r{\A/llm-context(?:\s+.*)?\z}) }) { |text| llm_context(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
@@ -93,6 +102,12 @@ module Samagotchi
                                                                         match: ->(text) { text.casecmp?("/detach") })
       registry
     end
+
+    # @return [#call] line → :anytime for +name+ alone (it shows), else :refuse
+    def self.show_mid_turn(name)
+      ->(text) { text == name ? :anytime : :refuse }
+    end
+    private_class_method :show_mid_turn
 
     # @param word [String] the regexp source of the exit word
     def self.exit_match(word)
@@ -149,7 +164,7 @@ module Samagotchi
       lines = entries.map do |entry|
         notes = []
         notes << entry.source unless entry.source == "core"
-        notes << "mid-turn too" if entry.mid_turn_label == "anytime"
+        notes << MID_TURN_NOTES[entry.mid_turn_label] if MID_TURN_NOTES[entry.mid_turn_label]
         notes << (entry.uis ? "#{entry.uis.join(" and ")} only" : "terminal only") if entry.local
         line = "  #{self.class.display_name(entry).ljust(width)}  #{entry.description}"
         notes.empty? ? line : "#{line}  (#{notes.join("; ")})"

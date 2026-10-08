@@ -609,11 +609,20 @@ module Samagotchi
 
     # A session command from the Bridge, called with the event log held:
     # an anytime one starts now, any other is queued for the loop (and
-    # refused if a turn runs: #refuse_queued_commands).
-    # @return [Symbol] the mid-turn policy it applied (the Bridge marks
-    #   an anytime one's command_queued)
+    # refused if a turn runs: #refuse_queued_commands). While a turn runs
+    # the line's policy decides (a show form like /model runs now); idle,
+    # only an always-anytime command (/help) runs beside the loop, so an
+    # idle /model X then /model run in order. A turn starting or ending
+    # right now may see the other side: the line is only shown early or
+    # run in order.
+    # @return [Symbol] the policy it applied (the Bridge marks an anytime
+    #   one's command_queued): :anytime, or :refuse while a turn runs, or
+    #   :loop idle
     def on_command(command)
-      policy = @engine.command_registry.mid_turn(command[:line])
+      registry = @engine.command_registry
+      policy = if @engine.turn_running? then registry.mid_turn(command[:line])
+               else registry.anytime?(command[:line]) ? :anytime : :loop
+               end
       if policy == :anytime
         start_anytime_command(command)
       else

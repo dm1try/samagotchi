@@ -743,7 +743,7 @@ module Samagotchi
       # /model, /models, !rollback, !cmd, /continue (shared with workers);
       # an anytime command's cards print as it shows them (btw's
       # "thinking…" before the answer).
-      command = if command_registry.mid_turn(input) == :anytime
+      command = if command_registry.anytime?(input)
                   @engine.running_anytime { @commands.run(input) }
                 else
                   @commands.run(input)

@@ -107,6 +107,11 @@ module Samagotchi
 
       def command?(line) = !lookup(line).nil?
 
+      # Whether every line of +line+'s command runs at once, a turn running
+      # or not (D8). A line whose #mid_turn is :anytime but whose command's
+      # isn't always (/model) runs at once only while a turn runs.
+      def anytime?(line) = lookup(line)&.anytime == true
+
       # What +line+ does while a turn runs (MID_TURN); :refuse for a line
       # no command answers.
       # @return [Symbol]

@@ -53,4 +53,6 @@ test("commandRow notes a bundle's source and an anytime command", () => {
   assert.deepEqual(commandRow(commands[5]), { name: "/hello-slow", description: "greet later", note: "sample-plugin · mid-turn too" });
   assert.deepEqual(commandRow(commands[2]), { name: "/model", description: "show or switch the model", note: "" });
   assert.deepEqual(commandRow({ name: "/x" }), { name: "/x", description: "", note: "" });
+  assert.deepEqual(commandRow({ name: "/model", description: "show or switch", anytime: false, mid_turn: "depends" }),
+                   { name: "/model", description: "show or switch", note: "show: mid-turn too" });
 });

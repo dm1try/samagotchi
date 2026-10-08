@@ -138,6 +138,21 @@ RSpec.describe Samagotchi::Commands::Registry do
   describe "the built-ins (SessionCommands.builtin_registry)" do
     let(:builtins) { Samagotchi::SessionCommands.builtin_registry }
 
+    it "runs the show forms mid-turn and refuses the rest" do
+      lines = ["/models", "/models qwen", "/model", " /model ", "/model x", "/model clear", "/llm-context",
+               "/llm-context strategy stale", "/guardrails", "/guardrails revoke 1", "/help", "/context", "!ls",
+               "!rollback", "/continue"]
+      expect(lines.to_h { |line| [line, builtins.mid_turn(line)] }).to eq(
+        "/models" => :anytime, "/models qwen" => :anytime, "/model" => :anytime, " /model " => :anytime,
+        "/model x" => :refuse, "/model clear" => :refuse, "/llm-context" => :anytime,
+        "/llm-context strategy stale" => :refuse, "/guardrails" => :anytime, "/guardrails revoke 1" => :refuse,
+        "/help" => :anytime, "/context" => :anytime, "!ls" => :refuse, "!rollback" => :refuse, "/continue" => :refuse
+      )
+      expect(%w[/model /models /llm-context /guardrails].map { |line| builtins.anytime?(line) }).to all(be(false))
+      expect(builtins.anytime?("/help")).to be(true)
+      expect(builtins.listing.find { |item| item[:name] == "/model" }).to include(anytime: false, mid_turn: "depends")
+    end
+
     it "offers the same Tab lists in the REPL and the attached TUI, but /detach (the REPL owns its session)" do
       expect(builtins.completions(:repl)).to eq(%w[/archive /context /continue /exit /guardrails /help /llm-context /model /models /quit /recap /stats])
       expect(builtins.completions(:attached))

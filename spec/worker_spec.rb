@@ -1097,7 +1097,7 @@ RSpec.describe Samagotchi::Worker do
         post_turn("slow")
         expect(next_turn&.first).to eq("slow")
 
-        command_id = JSON.parse(post_command("/model").body)["command_id"]
+        command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
         release << true
 
         done = ran(command_id)
@@ -1111,10 +1111,44 @@ RSpec.describe Samagotchi::Worker do
         post_turn("slow, no boundary")
         expect(next_turn&.first).to eq("slow, no boundary")
 
-        command_id = JSON.parse(post_command("/model").body)["command_id"]
+        command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
         release << true
 
         expect(ran(command_id)).to include(status: "busy")
+      end
+
+      describe "a show form (/model, /models, … alone) while a turn runs" do
+        it "runs at once beside the turn, marked anytime, and a setting form stays busy" do
+          allow(engine.host_registry).to receive(:list_all_models).and_return({})
+          start_worker(poll_interval: 5)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          shown = ran(JSON.parse(post_command("/model").body)["command_id"])
+          listed = ran(JSON.parse(post_command("/models qwen").body)["command_id"])
+          still_running = engine.turn_running?
+          setting = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+          release << true
+
+          expect(still_running).to be(true)
+          expect(shown).to include(status: "ok", anytime: true, changed: [])
+          expect(shown[:output]).to start_with("runtime model:")
+          expect(listed).to include(status: "ok", output: "no hosts configured", anytime: true)
+          expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "/model" }).to include(anytime: true)
+          expect(ran(setting)).to include(status: "busy")
+          expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "/model Qwen3-14B" }).not_to have_key(:anytime)
+        end
+
+        it "runs on the loop in order when idle: /model X then /model shows X" do
+          start_worker(poll_interval: 5)
+          switch = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+          shown = ran(JSON.parse(post_command("/model").body)["command_id"])
+
+          expect(ran(switch)).to include(status: "ok")
+          expect(shown[:output]).to start_with("runtime model: Qwen3-14B")
+          expect(shown).not_to have_key(:anytime)
+          expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "/model" }).not_to have_key(:anytime)
+        end
       end
 
       describe "an anytime command (D8)" do
@@ -1171,7 +1205,7 @@ RSpec.describe Samagotchi::Worker do
           start_worker(poll_interval: 5)
           post_turn("slow, no boundary")
           expect(next_turn&.first).to eq("slow, no boundary")
-          normal = JSON.parse(post_command("/model").body)["command_id"]
+          normal = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
           side = ran(JSON.parse(post_command("/side").body)["command_id"])
           release << true
 

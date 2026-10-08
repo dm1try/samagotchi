@@ -84,6 +84,7 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(lines.map { |l| l.split.first }.drop(1))
         .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /hello /side /archive /detach /exit /quit /recap /stats])
       expect(lines).to include("  /hello        greet  (sample-plugin)", "  /side         ask aside  (btw; mid-turn too)",
+                               start_with("  /model        show or switch the model  (show: mid-turn too)"),
                                "  /detach       leave and keep the worker running  (attached only)",
                                "  /stats        show the session's stats  (terminal only)")
       expect(result.status).to eq(:ok)

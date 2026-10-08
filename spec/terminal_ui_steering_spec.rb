@@ -157,6 +157,25 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       expect(reader).not_to have_received(:prefill_next)
     end
 
+    it "runs a show form (/models) at once mid-turn, and puts /model X back" do
+      lines_mid_turn = nil
+      allow(engine.host_registry).to receive(:list_all_models).and_return({})
+      allow(engine).to receive(:turn_running?).and_return(true)
+      allow(engine).to receive(:run_turn) do
+        repl_input << [:line, "/models"]
+        wait_until { surface.lines.include?("\nmodel> no hosts configured") }
+        lines_mid_turn = surface.lines.dup
+        repl_input << [:line, "/model other"]
+        result
+      end
+
+      agent.run_engine_turn(session, "go")
+
+      expect(lines_mid_turn).to include("\nmodel> no hosts configured")
+      expect(surface.lines).to include("busy: wait for the turn to end")
+      expect(reader).to have_received(:prefill_next).with("/model other")
+    end
+
     it "prints an anytime command's cards mid-turn as it shows them, not as the turn's" do
       started = Queue.new
       engine.command_registry.register("/side", "side", anytime: true, source: "b") do |_args|
