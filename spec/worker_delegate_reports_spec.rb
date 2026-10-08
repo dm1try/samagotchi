@@ -283,6 +283,101 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       expect(drain.none? { |e| e[:type] == :prompt_restored }).to be(true)
     end
 
+    # L3 (2026-10-08): a reminder or continue turn that failed before any
+    # progress isn't rolled back (the Engine keeps it with its failed note,
+    # the report it merged included), but its reports were released, so the
+    # next turn delivered them again.
+    describe "a failed turn nothing rolled back" do
+      let(:server_error) { Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500) }
+
+      before do
+        # queue: no wake turn takes the ring first.
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("queue")
+      end
+
+      it "commits the report a reminder turn read: the next turn doesn't bring it again" do
+        reminder = nil
+        allow(Samagotchi::Engine).to receive(:new) do |**kwargs|
+          reminder = kwargs.dig(:reminders, :callback)
+          engine
+        end
+        allow(engine).to receive(:reminders_due?).and_return(true)
+        calls = 0
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          calls += 1
+          turns << [prompt, kwargs[:pending_input].call]
+          raise server_error if calls == 1
+
+          result
+        end
+        start_worker(parent)
+        child_answers("found it")
+        reminder.call(["stretch"])
+
+        prompt, lines = next_turn
+        expect(prompt).to be_nil
+        expect(lines.map(&:source)).to eq(["delegate_report"])
+        expect(wait_until { rings.empty? }).to be(true)
+        expect(cursor.reply_file).to end_with(".txt")
+
+        send_turn(parent, "again", "web:tab1")
+        expect(next_turn).to eq(["again", []])
+      end
+
+      it "commits the report a continue turn read when the turn fails, and gives a canceled one's back" do
+        resumable = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: false, resumable?: true,
+                                                                  conversation: nil, tool_activity: [])
+        canceled = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: true, resumable?: false,
+                                                                 conversation: nil)
+        allow_any_instance_of(Samagotchi::TurnFlow).to receive(:interrupted_turn_context).and_return({})
+        outcomes = [resumable, canceled, resumable, :fail, result]
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          turns << [prompt, kwargs[:pending_input].call]
+          outcome = outcomes.shift
+          raise server_error if outcome == :fail
+
+          outcome
+        end
+        start_worker(parent)
+        port = JSON.parse(File.read(File.join(parent_dir, Samagotchi::WorkerSidecar::FILE)))["port"]
+        continue = lambda do
+          Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{parent.id}/command"),
+                         JSON.generate(line: "/continue", client_id: "web:tab1"), "Content-Type" => "application/json")
+        end
+
+        send_turn(parent, "long task", "web:tab1")
+        expect(next_turn).to eq(["long task", []])
+        expect(wait_until { drain.one? { |e| e[:type] == :continue_offered } }).to be(true)
+        child_answers("found it")
+
+        # Canceled, the continue turn goes back to before it (TurnFlow): its
+        # report with it, so its ring stays for the next turn.
+        continue.call
+        expect(next_turn.last.map(&:source)).to eq(["delegate_report"])
+        expect(wait_until { drain.any? { |e| e[:type] == :command_ran } }).to be(true)
+        sleep(0.3)
+        expect(rings.size).to eq(1)
+
+        offers = drain.count { |e| e[:type] == :continue_offered }
+        send_turn(parent, "long task", "web:tab1")
+        expect(next_turn.last.map(&:source)).to eq(["delegate_report"])
+        expect(wait_until { rings.empty? }).to be(true)
+        expect(wait_until { drain.count { |e| e[:type] == :continue_offered } == offers + 1 }).to be(true)
+        child_answers("more")
+
+        # Failed before any progress, the continue turn stays (the offer
+        # comes back): the report it read is delivered, once.
+        continue.call
+        expect(next_turn.last.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nmore"])
+        expect(wait_until { drain.count { |e| e[:type] == :continue_offered } == offers + 2 }).to be(true)
+        expect(wait_until { rings.empty? }).to be(true)
+
+        send_turn(parent, "again", "web:tab1")
+        expect(next_turn).to eq(["again", []])
+      end
+    end
+
     describe "idle (a wake turn)" do
       let(:max_wakes) { [10] }
       let(:wake_turns) { Queue.new }
@@ -334,6 +429,32 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         prompt, _kwargs, lines = next_turn
         expect(prompt).to eq("hello")
         # The report joins the human's turn.
+        expect(lines.map(&:source)).to eq(["delegate_report"])
+        expect(wait_until { rings.empty? }).to be(true)
+      end
+
+      # A Stop (or a before_turn hook's cancel) before the model call: the
+      # turn is restored, its rings released; without a pause the next
+      # idle tick woke again at once, up to session.max_wakes.
+      it "pauses wakes after a wake turn stopped before the model call, until a human's input" do
+        stopped = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: true, resumable?: false,
+                                                                conversation: nil)
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          lines = kwargs[:pending_input].call
+          (prompt.nil? ? wake_turns : turns) << [prompt, kwargs, lines]
+          prompt.nil? && !@stopped_once ? (@stopped_once = true) && stopped : result
+        end
+        start_worker(parent)
+        child_answers("found it")
+
+        expect(wake_turns.pop(timeout: 3)).not_to be_nil
+        sleep(0.5)
+        expect(wake_turns).to be_empty
+        expect(rings.size).to eq(1)
+
+        send_turn(parent, "hello", "web:tab1")
+        prompt, _kwargs, lines = next_turn
+        expect(prompt).to eq("hello")
         expect(lines.map(&:source)).to eq(["delegate_report"])
         expect(wait_until { rings.empty? }).to be(true)
       end

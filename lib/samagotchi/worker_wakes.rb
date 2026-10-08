@@ -73,7 +73,8 @@ module Samagotchi
     # A wake turn starts. @return [Integer] the wake turns in a row now
     def count! = @in_a_row += 1
 
-    # A wake turn failed: none starts again until a human's input.
+    # A wake turn failed (or was stopped before it got anywhere): none
+    # starts again until a human's input.
     def pause!
       @paused = true
     end

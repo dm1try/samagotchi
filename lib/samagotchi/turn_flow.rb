@@ -46,11 +46,18 @@ module Samagotchi
     #   (context summarizes the interrupted turn for a "no, <reason>")
     attr_reader :offer
 
+    # How many times the conversation went back to a checkpoint (a failed
+    # or canceled turn's restore, !rollback): a worker compares it across a
+    # turn to tell whether the turn's messages (the delegate reports it
+    # merged) left the conversation.
+    attr_reader :restores
+
     def initialize(engine:)
       @engine = engine
       @checkpoint = nil
       @continue_checkpoint = nil
       @offer = nil
+      @restores = 0
     end
 
     def awaiting_continue? = !@offer.nil?
@@ -198,6 +205,7 @@ module Samagotchi
       restored = Array(checkpoint) + arrived
       restored = TurnNote.replace_trailing(restored, note) if note
       @engine.rollback_to(restored)
+      @restores += 1
     end
 
     def conversation_of(result)

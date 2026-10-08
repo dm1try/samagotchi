@@ -244,6 +244,36 @@ RSpec.describe Samagotchi::TurnFlow do
     end
   end
 
+  # A worker settles a turn's delegate reports by it (Worker#run_engine_turn).
+  describe "#restores" do
+    it "counts each return to a checkpoint: a failed turn that got nowhere, a canceled continue turn, !rollback" do
+      expect(flow.restores).to eq(0)
+      run_prompt("go", [])
+      flow.prompt_turn_failed
+      expect(flow.restores).to eq(1)
+
+      flow.before_continue_turn
+      flow.after_turn(result(nil, canceled: true), continue: true)
+      expect(flow.restores).to eq(2)
+
+      run_prompt("again", [{ role: "model", content: "partial" }])
+      flow.after_turn(result(engine.messages, canceled: true))
+      flow.rollback!
+      expect(flow.restores).to eq(3)
+    end
+
+    it "stays when a failed turn's work stays, or a turn is kept" do
+      run_prompt("go", [{ role: "tool_response", content: "r1" }])
+      error = Samagotchi::LLM::FailedTurn.attach(Samagotchi::LLM::ServerError.new("main: HTTP 500", host: "main", status: 500), nil)
+      error.kept_steps = 1
+      flow.prompt_turn_failed(error: error)
+      run_prompt("then", [{ role: "model", content: "done" }])
+      flow.after_turn(result(engine.messages))
+
+      expect(flow.restores).to eq(0)
+    end
+  end
+
   describe "#abort_continue!" do
     before do
       run_prompt("the task", [{ role: "model", content: "working" }, { role: "tool_response", content: "r1" }])

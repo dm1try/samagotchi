@@ -110,9 +110,13 @@ module Samagotchi
   # thread, the drain inside them).
   #
   # A turn takes reports (#take, at each boundary) and the worker settles
-  # them as the turn ends: #commit when it is kept (completed or canceled):
-  # the cursors move on (DelegateCursors) and the rings go; #release when it
-  # failed: the next turn reads the same rings again.
+  # them as the turn ends: #commit when the turn stays in the conversation
+  # (completed, canceled, or failed but kept: its work stayed, or a reminder
+  # or continue turn's): the cursors move on (DelegateCursors) and the rings
+  # go; #release when its end rolled it back (a failed turn that got
+  # nowhere, a canceled continue turn): the next turn reads the same rings
+  # again. So the model gets each report once (a later !rollback that
+  # erases a kept turn drops what it read, as before).
   class ChildReports
     SOURCE = Steer::DELEGATE_REPORT
 
@@ -178,7 +182,7 @@ module Samagotchi
       @taken = {}
     end
 
-    # The turn failed (rolled back): its rings stay for the next one.
+    # The turn was rolled back: its rings stay for the next one.
     def release
       @taken = {}
     end

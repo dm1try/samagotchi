@@ -507,6 +507,7 @@ module Samagotchi
       @wakes.hand_over(reports)
       Log.info(:worker, "delegate_wake_turn", reports: reports.size, in_a_row: @wakes.count!)
       @turn_flow.before_prompt_turn
+      restores = @turn_flow.restores
       run_engine_turn(nil, continue: true, origin: reports.first.origin, max_iterations: IterationLimit.for) do |result, error|
         if error
           # Rolled back, the rings stay (settle_child_reports): the user's
@@ -519,6 +520,11 @@ module Samagotchi
           @wakes.pause!
         else
           @continue_offer.after_turn(result)
+          # Stopped before it got anywhere (a Stop or a before_turn hook's
+          # cancel before the model call) and restored: its rings stay, and
+          # wait for the user's next message as after a failure, rather
+          # than waking again at once.
+          @wakes.pause! if result.canceled? && @turn_flow.restores != restores
         end
       end
       true
@@ -656,6 +662,7 @@ module Samagotchi
       # a fresh worker's first), so the list is this turn's from the start.
       @merged_this_turn = []
       @reporting_turn = reports_to_parent?(turn_args[:origin])
+      restores = @turn_flow.restores
       begin
         @session.status = Session::STATUS_RUNNING
         @session.save(state_dir: @state_dir)
@@ -682,15 +689,20 @@ module Samagotchi
         SessionInbox.write_output(@session_dir, response)
       end
       save_or_log(:turn) { save_session }
-      # A failed turn whose work stayed (TurnFlow#prompt_turn_failed) read
-      # the reports it merged, as a turn that ended does.
-      settle_child_reports(rolled_back: error && !LLM::FailedTurn.kept_steps(error))
+      # The reports the turn merged were read unless its end took the turn
+      # back out of the conversation (TurnFlow restored a checkpoint: a
+      # failed prompt or wake turn that got nowhere, a canceled continue
+      # turn). A failed turn whose work stayed, and a reminder or continue
+      # turn that failed (kept with its failed note), read them.
+      settle_child_reports(rolled_back: @turn_flow.restores != restores)
       ring_parent_after_turn
     end
 
     # The delegate reports this turn took: a kept turn moves the cursors on
     # and deletes their rings; a rolled-back one leaves the rings for the
-    # next turn.
+    # next turn. Once either way: the model reads a report in the
+    # conversation, or the next turn brings it (unless a later !rollback
+    # erases a kept turn, which drops what it read).
     def settle_child_reports(rolled_back:)
       rolled_back ? @child_reports.release : @child_reports.commit
     end
