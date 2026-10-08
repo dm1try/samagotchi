@@ -15,7 +15,9 @@ module Samagotchi
 
       values = raw.is_a?(Hash) ? raw.transform_keys(&:to_s).slice(*ModelPrice::KEYS) : nil
       valid = values && values.key?("input") && values.key?("output") &&
-              values.values.all? { |v| v.is_a?(Numeric) && !v.negative? }
+              # YAML's .inf and .nan are Floats too: JSON can't carry them
+              # (hosts_json_for_env would drop every host) and NaN poisons the sums.
+              values.values.all? { |v| v.is_a?(Numeric) && v.finite? && !v.negative? }
       unless valid
         warn_once "Warning: #{where}.price needs input and output, each a number >= 0 (USD per 1M tokens); ignored"
         return nil

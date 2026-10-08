@@ -56,6 +56,23 @@ RSpec.describe "hosts.<name>.models" do
     end
   end
 
+  it "drops an infinite or NaN price (YAML .inf, .nan) and still passes the hosts to workers" do
+    allow(Samagotchi::ConfigFile).to receive(:warn_once)
+    yaml = "hosts:\n  work:\n    url: https://gateway.example/v1\n    models:\n      " \
+           "rr/inf: {price: {input: .inf, output: 1}}\n      rr/nan: {price: {input: 1, output: .nan}}\n"
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "config.yml")
+      File.write(path, yaml)
+      json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
+      worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
+
+      expect(worker["work"][:models].keys).to eq(%w[rr/inf rr/nan])
+      expect(worker["work"][:models].values.map(&:price)).to eq([nil, nil])
+    end
+    expect(Samagotchi::ConfigFile).to have_received(:warn_once).with(%r{rr/inf\.price needs input and output})
+    expect(Samagotchi::ConfigFile).to have_received(:warn_once).with(%r{rr/nan\.price needs input and output})
+  end
+
   it "warns once when two hosts declare the same id, naming where a bare one goes" do
     expect(Samagotchi::ConfigFile).to receive(:warn_once)
       .with("Warning: hosts.a.models and hosts.b.models both declare rr/dup; a bare rr/dup goes to a unless the default host lists it")

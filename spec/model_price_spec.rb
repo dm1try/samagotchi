@@ -21,12 +21,14 @@ RSpec.describe Samagotchi::ModelPrice do
   it "warns once and is unset without input or output, or with a value that isn't a number >= 0" do
     expect(Samagotchi::ConfigFile).to receive(:warn_once)
       .with("Warning: hosts.work.models.rr/x.price needs input and output, each a number >= 0 (USD per 1M tokens); ignored")
-      .exactly(4).times
+      .exactly(6).times
 
     expect(parse("input" => 1)).to be_nil
     expect(parse("input" => 1, "output" => "cheap")).to be_nil
     expect(parse("input" => 1, "output" => 2, "cache_read" => -1)).to be_nil
     expect(parse(3)).to be_nil
+    expect(parse("input" => Float::INFINITY, "output" => 1)).to be_nil
+    expect(parse("input" => 1, "output" => Float::NAN)).to be_nil
   end
 
   describe "#cost" do

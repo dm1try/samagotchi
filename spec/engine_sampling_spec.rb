@@ -236,4 +236,12 @@ RSpec.describe Samagotchi::Engine, "#run_turn price" do
     expect(prices.map { |p| p&.to_h }).to eq([{ input: 1, cache_read: 1, cache_write: 1, output: 2 },
                                               { input: 3, cache_read: 3, cache_write: 3, output: 4 }, nil])
   end
+
+  it "follows a before_turn hook's model switch in the same turn" do
+    engine.instance_variable_get(:@hooks).register(:before_turn) { |_event| engine.switch_model!("work:rr/y") }
+
+    engine.run_turn(session, "hi")
+
+    expect(prices.map { |p| p&.to_h }).to eq([{ input: 3, cache_read: 3, cache_write: 3, output: 4 }])
+  end
 end
