@@ -198,7 +198,7 @@ module Samagotchi
     def model_notes_for(model, env)
       bare = HostRegistry.new(env: env).bare_name(model)
       notes = ModelNotes.for(name: bare, key: ModelOverlay.key_for(bare), muted: session_muted(env), env: env,
-                                            warn: false)
+                             warn: false)
       text = PromptNote.text(notes.map { |note| PromptNote.from_note(note) })
       text.empty? ? "none" : text
     rescue StandardError => e
