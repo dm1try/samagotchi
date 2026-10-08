@@ -264,9 +264,11 @@ module Samagotchi
         when :answer_display then @display_pending = false
         when :context_status, :used_memories_updated then @status.take_event(event)
         # Another client's anytime command: its line now, before the cards
-        # it shows (its command_ran comes when it's done).
+        # it shows (its command_ran comes when it's done). One queued for
+        # after the turn says so now.
         when :command_queued
           @screen.commit(prompt_line(event[:client_id], event[:line])) if event[:anytime] && !own?(event[:client_id]) && !event[:card]
+          command_waits(event) if event[:waits] && !event[:card]
         when :command_ran
           command_ran(event)
           return first_command_ran(event) if @first_command_id && event[:command_id] == @first_command_id
@@ -546,13 +548,34 @@ module Samagotchi
         "worker unreachable: #{head.downcase}"
       end
 
+      QUEUED_NOTE = "(queued: runs after this turn)"
+
+      # A command queued for after the running turn (command_queued with
+      # waits): its line now (another client's) and a note; its command_ran
+      # has no line again (queued: true).
+      def command_waits(event)
+        if own?(event[:client_id])
+          first = event[:command_id] == @first_command_id
+          return @screen.commit(first ? first_command_queued : QUEUED_NOTE)
+        end
+
+        @screen.commit("#{prompt_line(event[:client_id], event[:line])} #{QUEUED_NOTE}")
+      end
+
+      def first_command_queued
+        flag = @first_command_line.to_s.start_with?("/model") ? "--model" : "--llm-context"
+        "(#{flag} queued: applies after the running turn)"
+      end
+
       def command_ran(event)
         @open_ids.delete(event[:command_id])
-        @screen.commit(prompt_line(event[:client_id], event[:line])) unless own?(event[:client_id]) || event[:anytime] || event[:card]
+        unless own?(event[:client_id]) || event[:anytime] || event[:card] || event[:queued]
+          @screen.commit(prompt_line(event[:client_id], event[:line]))
+        end
         output = event[:output].to_s
         if output.empty?
           nil
-        elsif event[:status] == "busy" || PromptHistory.shell_line?(event[:line])
+        elsif %w[busy dropped].include?(event[:status]) || PromptHistory.shell_line?(event[:line])
           @screen.commit(output)
           put_back_busy_command(event) if event[:status] == "busy"
         else
@@ -991,6 +1014,10 @@ module Samagotchi
 
           @shown_enqueued << entry[:enqueued_id]
           @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
+        end
+        # Commands waiting for the turn's end (their command_ran prints no line).
+        Array(snapshot[:queued_commands]).each do |entry|
+          @screen.commit("queued #{prompt_line(entry[:client_id], entry[:line])}")
         end
         return send_first_command unless @first_commands.empty?
 

@@ -1259,21 +1259,43 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
     expect(attached.model_name).to eq("m1")
   end
 
-  it "says a command waits for the turn to end, and puts ours back into the prompt" do
+  it "says a refused command waits for the turn to end, and puts ours back into the prompt" do
     reader = double("reader", prefill: true)
     attached.instance_variable_set(:@reader, reader)
 
-    feed(ran(status: "busy", line: "!ls", output: "busy: wait for the turn to end"),
-         ran(status: "busy", client_id: "web:tab", line: "/model x", output: "busy: wait for the turn to end"))
+    feed(ran(status: "busy", line: "!rollback", output: "busy: Ctrl-C the turn first, then !rollback"),
+         ran(status: "busy", client_id: "web:tab", line: "/continue", output: "busy: wait for the turn to end"))
 
-    expect(screen.lines.last(2)).to eq(["web> /model x", "busy: wait for the turn to end"])
-    expect(reader).to have_received(:prefill).once.with("!ls")
+    expect(screen.lines.last(2)).to eq(["web> /continue", "busy: wait for the turn to end"])
+    expect(reader).to have_received(:prefill).once.with("!rollback")
+  end
+
+  it "says a queued command runs after the turn, at its command_queued, and prints no line again when it ran" do
+    reader = double("reader", prefill: true)
+    attached.instance_variable_set(:@reader, reader)
+
+    feed({ type: :command_queued, command_id: "c1", client_id: "tui:1", line: "/model x", waits: "turn_end" },
+         { type: :command_queued, command_id: "c2", client_id: "web:tab", line: "!ls", waits: "turn_end" })
+    expect(screen.lines).to eq(["(queued: runs after this turn)", "web> !ls (queued: runs after this turn)"])
+
+    feed(ran(command_id: "c1", line: "/model x", output: "runtime model set to x", changed: ["model"], queued: true),
+         ran(command_id: "c2", client_id: "web:tab", line: "!ls", status: "dropped", queued: true,
+             output: "turn canceled: !ls not run; send it again"))
+    expect(screen.lines.drop(2)).to eq(["model> runtime model set to x", "turn canceled: !ls not run; send it again"])
+    expect(reader).not_to have_received(:prefill)
+  end
+
+  it "prints the snapshot's queued commands on attach" do
+    feed({ type: :snapshot, snapshot: { messages: [], current_turn: nil, queued: [], event_seq: 2,
+                                        queued_commands: [{ command_id: "c1", client_id: "web:tab", line: "/model x" }] } })
+
+    expect(screen.lines).to include("queued web> /model x")
   end
 
   it "points to the history when the prompt already holds text" do
     attached.instance_variable_set(:@reader, double("reader", prefill: false))
 
-    feed(ran(status: "busy", line: "!ls", output: "busy: wait for the turn to end"))
+    feed(ran(status: "busy", line: "!rollback", output: "busy: Ctrl-C the turn first, then !rollback"))
 
     expect(screen.lines.last).to eq("(the command is in the input history: ↑)")
   end
@@ -1499,6 +1521,23 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
     expect(client).not_to have_received(:post_turn)
   end
 
+  # S6: --model on a session whose turn runs waits for that turn's end.
+  it "says a queued --model applies after the running turn, and sends the first prompt once it ran" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
+    allow(client).to receive(:post_turn).and_return(ack)
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hi", first_command: "/model fast")
+
+    attached.handle_event(joined)
+    attached.handle_event({ "type" => "command_queued", "command_id" => "c1", "client_id" => "tui:1", "line" => "/model fast",
+                            "waits" => "turn_end" })
+    expect(screen.lines.last).to eq("(--model queued: applies after the running turn)")
+    expect(client).not_to have_received(:post_turn)
+    attached.handle_event(ran("ok", "runtime model set to fast").merge("queued" => true))
+
+    expect(client).to have_received(:post_turn).with(prompt: "hi", client_id: "tui:1")
+  end
+
+  # An older worker answers busy instead of queueing.
   it "stops the launch when the switch doesn't go through, saying why" do
     allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
     allow(client).to receive(:post_turn)
