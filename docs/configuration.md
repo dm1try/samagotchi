@@ -900,6 +900,24 @@ models:
 - `/stats` counts the re-prefilled tokens each applied batch costs; `script/llm_context_bench.rb --strategy
   forget_outputs` replays the offer on stored sessions (docs/internals/llm-context-bench.md).
 
+## LLM context: what you see (✂)
+
+Every edit is shown; the session keeps the originals.
+
+- **A ✂ row** for each batch of stubs that reaches the prompt (`stale`'s, a `forget_outputs` call's, or the ones
+  staged until a turn's end), in the step it came in, in the web and the terminal alike:
+  `✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k tokens (paid off)`. It says why it went now (`paid off`,
+  `the context is nearly full`, `at turn end`; nothing under `next_request`) and how many stubs stay staged. In the
+  web, its hover lists each output (its id, tool and path or command), a stale stub's reason, a forget's note once
+  with the lines it keeps, the tokens it frees and the tail the server reads again. A batch held back, the warm-up's
+  own copy and a restore show no row (the `forget_outputs` row says what a restore did). A reload puts the rows back
+  where they were (`cards.json`, its own cap of 20, apart from hook notices).
+- **A ✂ mark** on a tool row after a reload, above its output, when the model is sent a stub for it:
+  `✂ stubbed: superseded by a later read · ~1.0k tokens`, `✂ forgotten: <note>`, `✂ forgotten with t41` (the
+  other outputs of the call whose row carries the note), `✂ forget staged`, and `· lines 12-40 kept`.
+  The running turn's rows get theirs on the next reload.
+- Tokens are estimates (chars/4), hence the `~`.
+
 ## LLM context: a session's own strategy
 
 A session can set its own `llm_context` strategy, apply rule and budget, which come before the model's, its host's

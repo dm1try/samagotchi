@@ -8,6 +8,15 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- LLM context edits are visible: each batch of stubs that reaches the prompt gets a ✂ row in its step, in the web
+  and the terminal (`✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k tokens (paid off)`), whose web hover
+  lists the outputs, a stale stub's reason, a forget's note and kept lines, and the cost. After a reload a stubbed
+  output's tool row carries a ✂ mark (`✂ stubbed: superseded by a later read · ~1.0k tokens`, `✂ forgotten: <note>`,
+  `✂ forget staged`). The stream has a new event, `llm_context_edited`. See
+  [docs/configuration.md](docs/configuration.md) ("LLM context: what you see (✂)").
+
 ### Fixed
 
 - Under an `llm_context.budget_tokens` budget without the forget layer (strategy `none` or `stale`), the model's
