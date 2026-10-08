@@ -215,6 +215,16 @@ test("flashOf: a hook's notice (warn or info) and a plugin's nudge flash; chi's 
   assert.deepEqual(flashOf("steer", {}), { kind: "steer", text: "nudged the model" });
 });
 
+test("flashOf: the applied LLM context edit's ✂ row flashes (its cls, the line without the ✂)", () => {
+  assert.deepEqual(flashOf("notice", { line: "✂ forgot 2 outputs · frees ~4.1k tokens", cls: "llm-context", title: "the outputs" }),
+    { kind: "edit", text: "forgot 2 outputs · frees ~4.1k tokens" });
+  assert.deepEqual(flashOf("notice", { line: "✂ LLM context edited", cls: "llm-context", title: "x" }),
+    { kind: "edit", text: "LLM context edited" });
+  assert.deepEqual(flashOf("notice", { line: "context trimmed", cls: "llm-context" }),
+    { kind: "edit", text: "context trimmed" });
+  assert.equal(flashOf("notice", { line: "some other row", cls: "hook-notice" }), null);
+});
+
 test("liveSlots: the running tool and the trail carry a call's full command (for the hover), only when it has one", () => {
   const command = "cd /p && rg -n foo lib |\n  head -5";
   const turn = turnOf(
