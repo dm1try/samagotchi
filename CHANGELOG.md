@@ -45,6 +45,8 @@ and commands may change between minor versions. How releases are made:
 - A delegate's report merged into a reminder or continue turn was lost when the turn failed past its loop (the
   turn's own end, say): the turn kept only its start, yet the report counted as read. Its ring now stays, and the
   next turn brings it.
+- Chi Helper: a send that ended after the panel was reopened wrote its "sent"/"failed" line into the new panel, and
+  a success could close it; like a broadcast, it now leaves the new open alone.
 
 ## [0.45.0] - 2026-10-08
 

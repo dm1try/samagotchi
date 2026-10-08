@@ -980,6 +980,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     let kittyText = windows.isEmpty ? "" : Kitty.text(context: model.hasContext ? model.text : "", message: model.trimmedPrompt,
                                                      imagePaths: ImageIntake.keepForPaste(images), pasteOnly: kind == .paste)
 
+    let open = opens
     let group = DispatchGroup()
     var chiOutcome: SendOutcome?
     var kittyOutcomes: [(KittyWindow, KittyError?)] = []
@@ -1004,6 +1005,9 @@ final class PanelController: NSObject, NSWindowDelegate {
       // another try, unless the panel was closed or reopened meanwhile.
       if ok { self.model.images.removeAll { images.contains($0) } }
       ImageIntake.delete(images.filter { !self.model.images.contains($0) })
+      // Reopened meanwhile (as for a broadcast): the new open keeps its
+      // message and phase, and isn't closed by this send's success.
+      guard self.opens == open else { return }
       var parts: [String] = []
       if let chiOutcome { parts.append(chiOutcome.message) }
       if !pasted.isEmpty {
@@ -1014,7 +1018,7 @@ final class PanelController: NSObject, NSWindowDelegate {
       if ok {
         self.model.phase = .sent
         DispatchQueue.main.asyncAfter(deadline: .now() + (chiOutcome?.linger ?? 1.0)) { [weak self] in
-          if self?.model.phase == .sent { self?.panel.close() }
+          if self?.opens == open, self?.model.phase == .sent { self?.panel.close() }
         }
       } else {
         self.model.phase = .failed
@@ -1022,8 +1026,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
   }
 
-  /// Counts the panel's opens: a broadcast that ends after a reopen leaves
-  /// the new open alone.
+  /// Counts the panel's opens: a send or broadcast that ends after a
+  /// reopen leaves the new open alone.
   private var opens = 0
 
   /// The Everyone row: `chi broadcast` with the note (the source field is
