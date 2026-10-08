@@ -1041,11 +1041,13 @@ module Samagotchi
           @shown_enqueued << entry[:enqueued_id]
           @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
         end
-        # Commands waiting for the turn's end (their command_ran prints no line).
+        # Commands waiting for the turn's end (their command_ran prints no
+        # line); a resync prints only the ones it hadn't shown.
+        shown = @queued_ids.dup
         @queued_ids.clear
         Array(snapshot[:queued_commands]).each do |entry|
           @queued_ids << entry[:command_id]
-          @screen.commit("queued #{prompt_line(entry[:client_id], entry[:line])}")
+          @screen.commit("queued #{prompt_line(entry[:client_id], entry[:line])}") unless shown.include?(entry[:command_id])
         end
         return send_first_command unless @first_commands.empty?
 

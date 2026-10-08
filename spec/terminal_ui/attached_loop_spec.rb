@@ -1292,6 +1292,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
     expect(screen.lines).to include("queued web> /model x")
   end
 
+  it "prints a waiting command once, not again at each resync" do
+    snapshot = { messages: [], current_turn: nil, queued: [], event_seq: 2,
+                 queued_commands: [{ command_id: "c1", client_id: "web:tab", line: "/model x" }] }
+    feed({ type: :snapshot, snapshot: snapshot }, { type: :reset, snapshot: snapshot },
+         { type: :reset, snapshot: snapshot.merge(queued_commands: snapshot[:queued_commands] +
+                                                    [{ command_id: "c2", client_id: "web:tab", line: "!ls" }]) })
+
+    expect(screen.lines.grep(/\Aqueued web>/)).to eq(["queued web> /model x", "queued web> !ls"])
+  end
+
   it "points to the history when the prompt already holds text" do
     attached.instance_variable_set(:@reader, double("reader", prefill: false))
 
