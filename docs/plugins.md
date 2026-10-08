@@ -1239,8 +1239,10 @@ nothing without `gh`, a repository or an open PR), and resolves PR URLs for
 and a summary of what changed in counts, authors and states only; it wakes
 the session for a review requesting changes, checks turning red, or the PR
 merged or closed. In the web, a `path:line` in an answer links to that line
-of the session's PR ([Line links](context.md#line-links)). See [Attached
-context](context.md#github-prs-the-github-pr-bundle).
+of the session's PR ([Line links](context.md#line-links)). `auto_attach:
+offer` asks with a card first (`/pr-attach N`, `/pr-decline N`), `off`
+attaches nothing ([Attach, offer or off](context.md#attach-offer-or-off)).
+See [Attached context](context.md#github-prs-the-github-pr-bundle).
 
 ## The coordinator bundle
 

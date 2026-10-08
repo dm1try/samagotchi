@@ -175,6 +175,7 @@ It needs [`gh`](https://cli.github.com), logged in (`gh auth login`).
   the next start doesn't bring it back; `chi context add <PR URL>` or "+ URL"
   does.
 - `chi context add <PR URL>` and the web's "+ URL" attach any PR.
+- `auto_attach` (below) can make it ask first, or attach nothing.
 - The text: title, state, branch, description, reviews, comments (oldest
   first) and checks, every 5 minutes.
 - The summary says what changed in **counts, authors and states only**
@@ -183,6 +184,50 @@ It needs [`gh`](https://cli.github.com), logged in (`gh auth login`).
   only when it reads the text.
 - It wakes for a review requesting changes, checks turning red, and the PR
   merged or closed. Comments alone never wake.
+
+### Attach, offer or off
+
+```yaml
+bundles:
+  github-pr:
+    auto_attach: offer   # attach (the default) | offer | off
+```
+
+- `attach`: the branch's open PR is attached when the worker starts, as
+  above.
+- `offer`: nothing is attached; a card asks instead, once per session per
+  PR: **PR #42 for branch feat/x**, the PR's title and "Not attached: the
+  agent gets nothing until you attach it.", with **Attach** and **Not
+  here**. The terminal shows them as `→ /pr-attach 42` and
+  `→ /pr-decline 42`, to type. Attach attaches it as auto-attach would
+  (even after Not here: a click is your choice); Not here marks it removed
+  from the session, so `attach` mode won't attach it there either. Either
+  turns the card into a one-line notice. Not here on a PR that is attached
+  already changes nothing and says so: `chi context rm pr-42` removes it. A worker restart (idle exit,
+  resume) doesn't ask again; once the card has scrolled out of the last 20,
+  `/pr-attach 42` or "+ URL" still attaches it. `/pr-attach` and
+  `/pr-decline` act only on a PR offered in that session.
+- `off`: nothing is attached or offered. "+ URL", `chi context add <PR URL>`
+  and line links work as before.
+
+`true` and `false` (YAML reads a bare `on`/`off` as those) mean `attach` and
+`off`; an unknown value is `attach`, with a warning in the log. The setting
+is read when a worker starts.
+
+A web chat is created with its first message, so in `offer` mode the card
+arrives while that first turn runs: the first answer comes without the PR,
+and Attach delivers it before the next turn. An offered PR that isn't
+attached gets no line links (unless your message names its URL).
+
+In `offer` mode the bundle keeps a local log,
+`$XDG_STATE_HOME/samagotchi/plugins/github-pr/offers.ndjson`, to find out
+later when an offer is wanted: one JSON line per event, `offered` (session,
+project root, working directory, branch, PR URL, main checkout or worktree,
+model), `attached` and `declined` (with the seconds since the offer), and
+`first_prompt` (the first 160 characters of every session's first message,
+offered or not; not scratch sessions or delegate children). Over 1 MB it is
+renamed to `offers.ndjson.1` (one old file is kept). Only you can read it
+(0600), and nothing leaves your machine.
 
 ### Line links
 
