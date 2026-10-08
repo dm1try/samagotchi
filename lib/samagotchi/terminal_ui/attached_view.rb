@@ -93,6 +93,8 @@ module Samagotchi
       def generation_feedback_retrying(event)
         @lock.synchronize do
           @retry = format_generation_retry_line(event)
+          # A dropped stream's step asked again: its sentence so far is void.
+          @line.reset if event[:restarted]
           # The retry streams from the start: wait for its first token again.
           @waiting_since = @clock.call if @thinking
           redraw_status

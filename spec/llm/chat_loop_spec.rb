@@ -446,7 +446,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         expect(backend.adapter.requests.size).to eq(2)
         expect(events.find { |e| e[:type] == :generation_retrying })
           .to include(iteration: 1, attempt: 1, max_retries: 2, error_class: "Samagotchi::LLM::RetryExhausted",
-                      error_message: include("Net::ReadTimeout"))
+                      error_message: include("Net::ReadTimeout"), restarted: true)
         # The dropped partial is not kept: only the retry's text is in the
         # conversation, and both requests asked the same conversation.
         expect(backend.adapter.requests.last[:messages])

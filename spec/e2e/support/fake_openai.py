@@ -11,7 +11,8 @@
 # an answer. An iteration's "thinking_file" (a path relative to scripts/, its leading "#" header lines dropped)
 # streams in place of "thinking", "repeat" times over (default 1), and "chunk_chars" streams N chars per chunk
 # instead of word by word (the script's "delay" still applies): a long looping thinking (loop-guard's watch).
-# An iteration with "error": N answers HTTP N ({"error": {"message": "boom"}}) instead: a turn that fails after its
+# An iteration's "drop_after": N cuts its first stream after N pieces (a dropped provider stream; the ask-again
+# streams it whole). An iteration with "error": N answers HTTP N ({"error": {"message": "boom"}}) instead: a turn that fails after its
 # tool steps (scripts/failed_after_steps.json).
 # "branches" pick another iteration list by the first user message (a delegated child's task; see _script), or with
 # "when_last" by the last one (a queued turn's prompt).
@@ -137,11 +138,22 @@ class H(http.server.BaseHTTPRequestHandler):
             thinking = "\n".join(lines)
         thinking = thinking * int(it.get("repeat", 1))
         size = int(it.get("chunk_chars") or 0)
+        # "drop_after": N cuts this iteration's first stream after N pieces (no last chunk: the client's read
+        # fails mid-stream, as a dropped provider stream does); a marker file in DIR makes the next ask whole.
+        drop_after = it.get("drop_after")
+        marker = os.path.join(DIR, "dropped_%d" % done)
+        if drop_after is not None and os.path.exists(marker): drop_after = None
+        sent = 0
         try:
             for text, field in ((thinking, "reasoning_content"), (it.get("text") or "", "content")):
                 pieces = [text[i:i + size] for i in range(0, len(text), size)] if size else re.findall(r"\S+\s*|\s+", text)
                 for piece in pieces:
-                    w(ch({field: piece})); time.sleep(delay)
+                    if drop_after is not None and sent >= int(drop_after):
+                        open(marker, "w").write("1")
+                        import socket
+                        self.connection.shutdown(socket.SHUT_RDWR); self.close_connection = True
+                        return
+                    w(ch({field: piece})); time.sleep(delay); sent += 1
             tools = it.get("tools") or []
             for i, tool in enumerate(tools):
                 w(ch({"tool_calls": [{"index": i, "id": "call_%d_%d" % (done, i), "type": "function",

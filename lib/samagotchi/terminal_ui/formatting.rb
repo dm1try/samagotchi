@@ -103,6 +103,9 @@ module Samagotchi
         return "retrying (attempt #{event[:attempt]})" unless event[:max_retries]
 
         text = "retrying (#{event[:attempt]}/#{event[:max_retries]} in #{format("%.1f", event[:next_delay].to_f)}s)"
+        # restarted: a dropped stream's step asked again (the chat loop's).
+        return "#{text}: stream dropped" if event[:restarted]
+
         event[:error_class].to_s.empty? ? text : "#{text}: #{event[:error_class]}"
       end
 

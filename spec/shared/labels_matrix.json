@@ -97,7 +97,9 @@
       { "event": { "attempt": 2, "max_retries": 5, "next_delay": 4, "status": 503 },
         "ruby": "retrying (2/5 in 4.0s)", "js": "↻ retrying (503) in 4 s, 2/5" },
       { "event": { "attempt": 2 },
-        "ruby": "retrying (attempt 2)", "js": "↻ retrying, 2" }
+        "ruby": "retrying (attempt 2)", "js": "↻ retrying, 2" },
+      { "event": { "attempt": 1, "max_retries": 2, "next_delay": 0.5, "error_class": "Samagotchi::LLM::RetryExhausted", "restarted": true },
+        "ruby": "retrying (1/2 in 0.5s): stream dropped", "js": "↻ retrying (stream dropped) in 0.5 s, 1/2" }
     ]
   },
   "reminder_lines": {

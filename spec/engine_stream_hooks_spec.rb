@@ -159,6 +159,18 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
       expect(events.map { |e| e[:type] }).to eq(%i[generation_started generation_chunk])
     end
 
+    it "starts the hook's count over when a dropped stream's step is asked again (restarted)" do
+      seen = []
+      engine.register_hook(:generation_progress) { |e| seen << e[:thinking_chars] }
+      handler = engine.send(:build_stream_event_handler, ->(e) { events << e }, cancel_controller: controller)
+      handler.call({ type: :generation_started, iteration: 1 })
+      handler.call({ type: :generation_chunk, iteration: 1, text: "", thinking: "a" * 3000 })
+      handler.call({ type: :generation_retrying, iteration: 1, attempt: 1, restarted: true })
+      handler.call({ type: :generation_chunk, iteration: 1, text: "", thinking: "b" * 3000 })
+
+      expect(seen).to eq([3000, 3000])
+    end
+
     it "gives the UIs a chunk before the hook sees it" do
       order = []
       engine.register_hook(:generation_progress) { |_e| order << :hook }

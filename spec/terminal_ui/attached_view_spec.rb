@@ -153,6 +153,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
       expect(screen.statuses.last).to eq("| waiting for the first token… 3s")
     end
 
+    it "drops the sentence a dropped stream showed when its step is asked again (restarted)" do
+      view.generation_feedback_started
+      view.generation_feedback_chunk(text: "Half an answer.", thinking: "")
+      now[0] = 2.0
+      view.tick
+      expect(screen.statuses.last).to include("Half an answer.")
+
+      view.generation_feedback_retrying(attempt: 1, max_retries: 2, next_delay: 0.5, restarted: true)
+      view.generation_feedback_chunk(text: "The whole answer.", thinking: "")
+      now[0] = 4.0
+      view.tick
+      expect(screen.statuses.last).to eq("| writing · The whole answer.")
+    end
+
     it "does nothing once the slot is gone" do
       view.generation_feedback_started
       view.finish_thinking_spinner

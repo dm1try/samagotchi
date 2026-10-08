@@ -1026,6 +1026,21 @@ test("a turn that fails after a tool step keeps its step and its failure line, l
   await shown();
 });
 
+// A stream that drops mid-answer (the fake cuts it after 7 pieces) is asked
+// again by the chat loop: the live step drops what the dropped stream showed,
+// so the answer reads once, live and after a reload.
+test("a step whose stream drops mid-answer is asked again, and its answer shows once, live and after a reload", async ({ page, script }) => {
+  script("stream_drop");
+  await send(page, "Answer in one piece");
+  const answer = "The whole answer comes in one piece.";
+  await turnEnded(page, 1);
+  await expect(page.locator("#history .bubble.output")).toHaveText(answer);
+  await expect(page.locator("#history .bubble.output")).toHaveCount(1);
+  await page.reload();
+  await turnEnded(page, 1);
+  await expect(page.locator("#history .bubble.output")).toHaveText(answer);
+});
+
 // The /turn ack held back until the failed turn's prompt_restored has come
 // over the stream. `landed` waits until the page handled the ack: its send
 // handler focuses the composer last, so the composer is blurred first.

@@ -264,6 +264,11 @@ module Samagotchi
           else
             append_text(event[:iteration], "text", event[:content])
           end
+        when :generation_retrying
+          # A dropped stream's step asked again: what it streamed is void.
+          if event[:restarted]
+            parts.reject! { |part| %w[thinking text].include?(part[:kind]) && part[:iteration] == event[:iteration] }
+          end
         when :tool_call_started
           part = { kind: "tool", iteration: event[:iteration], call_index: event[:call_index],
                    tool: event[:tool], params: event[:params], status: "running" }

@@ -2566,6 +2566,12 @@ module Samagotchi
         when :generation_started
           @generation_thought = nil
           watch&.started(event[:iteration])
+        when :generation_retrying
+          # A dropped stream's step asked again: it streams from the start.
+          if event[:restarted]
+            @generation_thought = nil
+            watch&.started(event[:iteration])
+          end
         when :generation_chunk then note_generation_thought(progress[:thinking])
         end
         # The chat loop asked again without the thinking fields: a notice,

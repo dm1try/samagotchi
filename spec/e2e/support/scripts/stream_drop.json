@@ -1,0 +1,6 @@
+{
+  "delay": 0.05,
+  "iterations": [
+    {"thinking": "Reading the question once.", "text": "The whole answer comes in one piece.", "drop_after": 7}
+  ]
+}

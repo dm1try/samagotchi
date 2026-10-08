@@ -17,6 +17,38 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     end
   end
 
+  it "drops a restarted step's streamed thinking and text (a dropped stream asked again), keeping earlier steps" do
+    feed(
+      { type: :turn_started, session_id: "s", prompt: "hi" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_chunk, iteration: 1, thinking: "a", text: "Done" },
+      { type: :generation_started, iteration: 2 },
+      { type: :generation_chunk, iteration: 2, thinking: "half", text: "half an ans" },
+      { type: :generation_retrying, iteration: 2, attempt: 1, restarted: true },
+      { type: :generation_chunk, iteration: 2, thinking: "whole", text: "the whole answer" }
+    )
+
+    expect(acc.current_turn[:parts]).to eq([
+      { kind: "generation", iteration: 1 },
+      { kind: "thinking", iteration: 1, text: "a" },
+      { kind: "text", iteration: 1, text: "Done" },
+      { kind: "generation", iteration: 2 },
+      { kind: "thinking", iteration: 2, text: "whole" },
+      { kind: "text", iteration: 2, text: "the whole answer" }
+    ])
+  end
+
+  it "keeps the streamed text on a transport retry (nothing had streamed yet)" do
+    feed(
+      { type: :turn_started, session_id: "s", prompt: "hi" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_retrying, iteration: 1, attempt: 1 },
+      { type: :generation_chunk, iteration: 1, thinking: "", text: "ok" }
+    )
+
+    expect(acc.current_turn[:parts]).to eq([{ kind: "generation", iteration: 1 }, { kind: "text", iteration: 1, text: "ok" }])
+  end
+
   it "has nothing before a turn starts" do
     expect(acc.current_turn).to be_nil
     expect(acc.queued).to eq([])

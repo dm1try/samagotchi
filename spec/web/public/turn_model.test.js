@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { blockSummary, currentGen, genLabel, genLabelParts, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { blockSummary, currentGen, generationRestarted, genLabel, genLabelParts, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
@@ -262,4 +262,20 @@ test("notice: a hook's line goes to the current gen, before its tool row; none o
 test("notice: a new gen starts with no notices", () => {
   const { turn } = feed(LIVE.slice(0, 2));
   assert.deepEqual(currentGen(turn).notices, []);
+});
+
+test("a restarted step (a dropped stream asked again) drops its partial thinking and text, not the earlier steps'", () => {
+  const { turn } = feed([
+    { type: "turn_started" },
+    { type: "generation_started", iteration: 1 },
+    { type: "generation_chunk", iteration: 1, text: "Looking.", thinking: "hmm" },
+    { type: "generation_completed" },
+    { type: "generation_started", iteration: 2 },
+    { type: "generation_chunk", iteration: 2, text: "half an ans", thinking: "half" },
+  ]);
+  const r = generationRestarted(turn, 2);
+  assert.equal(r.gen, currentGen(turn));
+  applyEvent(turn, { type: "generation_chunk", iteration: 2, text: "the whole answer", thinking: "whole" });
+  assert.deepEqual(turn.gens.map((gen) => [gen.thinking, gen.text]), [["hmm", "Looking."], ["whole", "the whole answer"]]);
+  assert.equal(generationRestarted(turn, 9), null);
 });

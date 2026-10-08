@@ -599,8 +599,10 @@ module Samagotchi
           streamed.clear
           thought.clear
           delay = @loop.generation_retry_delay(attempt)
+          # restarted: the step's streamed chunks so far are void (the UIs
+          # and the Bridge's TurnAccumulator drop them).
           emit(type: :generation_retrying, iteration: iteration, attempt: attempt, max_retries: MAX_STREAM_DROPS,
-               next_delay: delay, error_class: e.class.name, error_message: e.message, status: nil)
+               next_delay: delay, error_class: e.class.name, error_message: e.message, status: nil, restarted: true)
           @loop.wait_retry(delay, @cancel_controller, generation_controller)
           retry
         end
