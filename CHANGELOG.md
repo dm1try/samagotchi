@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-08
+
 ### Added
 
 - Model notes: a memory named `model_notes_<name>` whose first line is `models: <globs>|small` goes into the system
@@ -52,6 +54,11 @@ and commands may change between minor versions. How releases are made:
   parent read `the turn failed after N tool steps: <why>; its work so far stays`). A turn that failed before it got
   anywhere, or on a context overflow (kept, the conversation would stay too long for the window), is rolled back and
   its prompt restored, as before. Since 0.2.0.
+- On a case-insensitive disk a write to the memories' `INDEX.md` (any case) was taken for a memory and added a bogus
+  line to the index.
+
+Update with `chi update`: it updates guardrails (0.9.0: asks before a model writes a memory that reaches the system
+prompt; needs chi 0.41.0).
 
 ## [0.40.0] - 2026-10-08
 
@@ -1948,7 +1955,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.40.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.41.0...HEAD
+[0.41.0]: https://github.com/dm1try/samagotchi/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/dm1try/samagotchi/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/dm1try/samagotchi/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/dm1try/samagotchi/compare/v0.37.0...v0.38.0
