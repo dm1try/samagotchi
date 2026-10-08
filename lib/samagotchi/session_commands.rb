@@ -604,7 +604,7 @@ module Samagotchi
           raw = row.info&.raw || {}
           raw_status = raw["status"] || raw[:status]
           status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
-          status = "config" if row.configured
+          status = ["config", status].reject { |s| s.to_s.empty? }.join(", ") if row.configured
           base = status.to_s.empty? ? "  #{identifier}" : "  #{identifier} (#{status})"
           alias_list = (by_model[identifier.to_s.downcase] || []) + (by_model["#{hname}:#{identifier}".downcase] || [])
           alias_list.uniq!
@@ -638,9 +638,10 @@ module Samagotchi
     def batch_variant_ids(models, needle)
       return Set.new if needle.include?("batch")
 
+      # Any case: a declared id keeps its own spelling (HostModel.rows).
       ids = models.map { |entry| entry.id.to_s }
-      plain = ids.to_set
-      ids.select { |id| id.end_with?(":batch") && plain.include?(id.delete_suffix(":batch")) }.to_set
+      plain = ids.to_set(&:downcase)
+      ids.select { |id| id.downcase.end_with?(":batch") && plain.include?(id.downcase.delete_suffix(":batch")) }.to_set
     end
   end
 end
