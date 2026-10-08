@@ -69,6 +69,17 @@ RSpec.describe Samagotchi::MemoryBundle::IndexSync do
     expect(index(project_dir)).to eq("# mine\n")
   end
 
+  # On a case-insensitive disk INDEX.md is index.md: a write/edit of it
+  # must not add a "- **INDEX**" line to the index it is.
+  it "takes index.md in any case for the index, not a memory" do
+    File.write(File.join(project_dir, "index.md"), "# mine\n")
+    %w[INDEX.md Index.md].each do |name|
+      expect(described_class.memory_scope(File.join(project_dir, name))).to be_nil
+      expect(described_class.refresh(File.join(project_dir, name))).to be(false)
+    end
+    expect(index(project_dir)).to eq("# mine\n")
+  end
+
   it "doesn't take a symlinked .md for a memory (write/edit would follow it out of the memories dir)" do
     target = File.join(tmpdir, "elsewhere.md")
     File.write(target, "x")

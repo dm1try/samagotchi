@@ -38,7 +38,7 @@ module Samagotchi
       end
 
       # "project" or "system" when +path+ is a memory's file (or an
-      # overlay's): a *.md right in that scope's memories dir, not index.md,
+      # overlay's): a *.md right in that scope's memories dir, not index.md (in any case),
       # not hidden, not a symlink. nil otherwise. The guardrails' outside_repo
       # uses it too: write/edit there is what memory_write does. A symlink
       # isn't: write/edit follow it to wherever it points, memory_write
@@ -47,7 +47,8 @@ module Samagotchi
         path = File.expand_path(path.to_s)
         name = File.basename(path, ".md")
         return nil unless File.extname(path) == ".md"
-        return nil if name == IndexUpdater::MEMORY_INDEX || name.start_with?(".") || File.symlink?(path)
+        # Any case: on a case-insensitive disk INDEX.md is the index itself.
+        return nil if name.casecmp?(IndexUpdater::MEMORY_INDEX) || name.start_with?(".") || File.symlink?(path)
 
         dir = real(File.dirname(path))
         SCOPES.find { |s| real(Tools::MemoryRead.memories_dir(s)) == dir }

@@ -516,6 +516,17 @@ RSpec.describe Samagotchi::ToolRunner do
         end
       end
 
+      it "isn't looked for on index.md written in another case, which gets no line of its own" do
+        write_memory("seed")
+        expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "1") do
+          index = File.read(File.join(memories, "index.md"))
+          upper = run({ name: "write", path: File.join(memories, "INDEX.md"), content: "#{index}#{"- **z** · 1 B\n" * 40}" })
+          expect(upper[:output]).not_to include("Note:")
+        end
+        expect(Dir.children(memories).grep(/index/i).map { |f| File.read(File.join(memories, f)) }.join).not_to include("**INDEX**")
+      end
+
       it "isn't looked for on a write outside the memories, or with limit 0" do
         write_memory("seed")
         expect(Samagotchi::MemoryBundle::IndexSize).not_to receive(:measure)
