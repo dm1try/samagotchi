@@ -4,10 +4,7 @@ version: 0.3.1
 scope: system
 description: Attaches the branch's open GitHub pull request to a session as context (and any PR URL with chi context add or the web's "+ URL"); the agent gets a note when reviews, comments, checks or its state change; in the web, a path:line in an answer links to that line of the PR; the auto_attach setting can offer the PR with a card first, or attach nothing
 trust_level: reviewed
-requires_chi: ">= 0.43.0"
-# requires_chi: raise to the release that has ctx.fork? (">= 0.45.0", the next release after 0.44.0; docs/releasing.md);
-# until then a fork on an older chi logs no first_prompt (the NoMethodError is logged at debug), and every other
-# session's row is written as before
+requires_chi: ">= 0.45.0"
 needs:
 - command: gh
   why: reads the pull request

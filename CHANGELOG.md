@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-10-08
+
 ### Added
 
 - Plugins: `ctx.fork?` says whether the session is a fork (`ctx.sessions.fork`: it has a parent and isn't a
@@ -30,7 +32,6 @@ and commands may change between minor versions. How releases are made:
 - `/stats`, `/model` and the web named no model notes for a fresh session (a REPL's before the first turn, a new
   web or worker session), though its first turn's prompt carries them; they now name the notes that prompt will
   load. A session whose prompt carried none keeps saying so.
-
 - `chi self`'s `model notes` row resolved a note's model overlay from the process's `XDG_CONFIG_HOME` while it
   read the note itself from the env it was given, so the row could count no overlay (or another config's); it now
   reads both from the same env, and passes the fallback key the session's prompt does, so a model typed as an
@@ -2093,7 +2094,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.44.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.45.0...HEAD
+[0.45.0]: https://github.com/dm1try/samagotchi/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/dm1try/samagotchi/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/dm1try/samagotchi/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/dm1try/samagotchi/compare/v0.41.0...v0.42.0
