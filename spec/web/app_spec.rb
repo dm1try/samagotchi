@@ -2631,6 +2631,24 @@ RSpec.describe Samagotchi::Web::App do
       expect(resp).to include("error" => "unknown_command", "detail" => "not a session command: /nope")
     end
 
+    # A worker on an older chi doesn't know a command this chi has (the
+    # llm ctx chip's /llm-context against a 0.39.0 worker, 2026-10-08): not
+    # "not a session command", but what to do about it, as for a route it
+    # doesn't have.
+    it "says the worker is older when its Bridge doesn't know one of this chi's own commands" do
+      detail = "not a session command: /llm-context strategy stale (known: /model, /help; /help lists them)"
+      server, thread, = serve_bridge_once("400 Bad Request", JSON.generate(error: "unknown_command", detail: detail))
+
+      status, resp = command(app_with_bridge(server.local_address.ip_port), '{"line":"/llm-context strategy stale"}')
+      thread.join(1)
+      server.close
+
+      expect(status).to eq(501)
+      expect(resp).to include("error" => "not_supported")
+      expect(resp["detail"]).to eq("this session's worker runs an older chi and can't run /llm-context; " \
+                                   "restart it: chi sessions stop s1 && chi --resume s1 (its turns still work)")
+    end
+
     it "says so when the session's worker is older than the route" do
       server, thread, = serve_bridge_once("404 Not Found", '{"error":"not_found"}')
 

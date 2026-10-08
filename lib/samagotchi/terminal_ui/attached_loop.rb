@@ -522,6 +522,9 @@ module Samagotchi
           return
         end
         return @screen.commit(stale_worker("run commands")) if reply.status == 404
+
+        name = older_worker_command(reply, line)
+        return @screen.commit(stale_worker("run #{name}")) if name
         return @screen.commit("could not run the command (#{LATE})") if too_late?(reply)
 
         detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
@@ -828,6 +831,14 @@ module Samagotchi
       # so it shows above what it got.
       def echo_answer(text) = @screen.commit("#{paint(QUESTION_PROMPT, 33)}#{text}")
 
+      # The name of this chi's own command +line+ when the worker answered it
+      # unknown_command (it runs an older chi without it), else nil.
+      def older_worker_command(reply, line)
+        return nil unless reply.status == 400 && reply.json&.fetch("error", nil) == "unknown_command"
+
+        SessionCommands.builtin_name(line)
+      end
+
       def stale_worker(cant)
         BridgeClient.stale_worker_message(@client.session_id, cant: cant)
       end
@@ -1002,6 +1013,7 @@ module Samagotchi
 
         why =
           if reply.status == 404 then stale_worker("run commands")
+          elsif (name = older_worker_command(reply, line)) then stale_worker("run #{name}")
           elsif too_late?(reply) then LATE
           else "the worker answered #{reply.status}"
           end

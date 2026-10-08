@@ -587,6 +587,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
       expect(screen.lines).to include("could not run the command (worker not answering: no reply within 30s)")
     end
 
+    it "says a command the worker's older chi doesn't have needs a restart" do
+      reply = Samagotchi::BridgeClient::Response.new(status: 400, body: '{"error":"unknown_command","detail":"not a session command"}')
+      allow(client).to receive(:post_command).and_return(reply)
+
+      expect(run_with(["/llm-context strategy stale", nil])).to eq(:detached)
+
+      expect(screen.lines).to include(start_with("this session's worker runs an older chi and can't run /llm-context; restart it:"))
+    end
+
     # The Bridge read it after its deadline and dropped it: it didn't run.
     it "says a command the worker dropped as too late didn't run" do
       reply = Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}')
@@ -1450,6 +1459,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
     expect(attached.handle_event(joined)).to eq(:failed)
     expect(screen.lines.last).to start_with("could not switch to the --model: this session's worker runs an older chi")
     expect(screen.lines.last).to include("chi sessions stop s-1234 && chi --resume s-1234")
+  end
+
+  # chi --attach ID --llm-context stale to a worker on an older chi (one
+  # with no /llm-context): it says so, not "the worker answered 400".
+  it "stops the launch when the worker runs a chi without the command" do
+    detail = '{"error":"unknown_command","detail":"not a session command: /llm-context strategy stale"}'
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 400, body: detail))
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_command: "/llm-context strategy stale")
+
+    expect(attached.handle_event(joined)).to eq(:failed)
+    expect(screen.lines.last).to eq("could not set the --llm-context: this session's worker runs an older chi and can't run /llm-context; " \
+                                    "restart it: chi sessions stop s-1234 && chi --resume s-1234 (its turns still work)")
   end
 
   it "stops the launch when the worker doesn't answer the command" do

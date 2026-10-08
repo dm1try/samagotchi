@@ -844,7 +844,12 @@ module Samagotchi
           when 202
             record_history(body, line) if PromptHistory.shell_line?(line)
             json_response(202, reply.json || { status: "accepted" })
-          when 400 then error_response(400, reply.json&.dig("error") || "unknown_command", reply_detail(reply, "not a session command"))
+          when 400
+            # One of this chi's own commands the worker doesn't know: it runs an older chi.
+            name = reply.json&.dig("error") == "unknown_command" && SessionCommands.builtin_name(line)
+            next error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: "run #{name}")) if name
+
+            error_response(400, reply.json&.dig("error") || "unknown_command", reply_detail(reply, "not a session command"))
           end
         end
       rescue SessionManager::OwnedByTUI => e

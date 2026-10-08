@@ -111,6 +111,14 @@ module Samagotchi
       @builtin_registry ||= register_builtins(Commands::Registry.new).freeze
     end
 
+    # The name of this chi's own session command +line+ is (one a worker
+    # runs), or nil. A worker that answers such a line unknown_command runs
+    # an older chi that doesn't have it yet (/llm-context against 0.39.0):
+    # the UIs say so (BridgeClient.stale_worker_message) instead of "not a
+    # session command".
+    # @return [String, nil]
+    def self.builtin_name(line) = builtin_registry.lookup(line)&.name
+
     # @return [String] the model /model clear goes back to
     attr_reader :default_model
 
