@@ -101,14 +101,14 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     allow(engine).to receive(:stats_snapshot).and_return({})
     allow(agent).to receive(:format_session_metrics).and_return("turns: 1")
     allow(engine).to receive(:run_turn) do
-      repl_input << [:line, "/stats"] << [:line, "!ls"]
+      repl_input << [:line, "/stats"] << [:line, "/continue"]
       result
     end
 
     agent.run_engine_turn(session, "go")
 
     expect(surface.lines).to include("\nmodel> session stats:\nturns: 1", "busy: wait for the turn to end")
-    expect(reader).to have_received(:prefill_next).with("!ls")
+    expect(reader).to have_received(:prefill_next).with("/continue")
     expect(repl_input.pop(timeout: 0)).to be_nil
   end
 
@@ -157,7 +157,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       expect(reader).not_to have_received(:prefill_next)
     end
 
-    it "runs a show form (/models) at once mid-turn, and puts /model X back" do
+    it "runs a show form (/models) at once mid-turn, and queues /model X for after the turn" do
       lines_mid_turn = nil
       allow(engine.host_registry).to receive(:list_all_models).and_return({})
       allow(engine).to receive(:turn_running?).and_return(true)
@@ -172,8 +172,10 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       agent.run_engine_turn(session, "go")
 
       expect(lines_mid_turn).to include("\nmodel> no hosts configured")
-      expect(surface.lines).to include("busy: wait for the turn to end")
-      expect(reader).to have_received(:prefill_next).with("/model other")
+      expect(surface.lines).to include("(queued: runs after this turn)")
+      expect(surface.lines).not_to include("busy: wait for the turn to end")
+      expect(reader).not_to have_received(:prefill_next)
+      expect(repl_input.pop(timeout: 0)).to eq([:line, "/model other"])
     end
 
     it "prints an anytime command's cards mid-turn as it shows them, not as the turn's" do
@@ -393,6 +395,37 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
 
     expect(agent).not_to have_received(:run_input_line)
     expect(surface.lines).to include("(not attached: this session runs in this terminal; /exit ends it)")
+  end
+
+  it "queues !cmd typed mid-turn in arrival order with a line sent after it, and refuses !rollback with its own hint" do
+    reader = double("reader", prefill_next: nil)
+    repl_input.instance_variable_set(:@reader, reader)
+    allow(engine).to receive(:run_turn) do |*, cancel_controller:, **|
+      repl_input << [:line, "!ls"] << [:line, "!rollback"]
+      cancel_controller.cancel!(:ctrl_c)
+      repl_input << [:line, "next"]
+      result
+    end
+
+    agent.run_engine_turn(session, "go")
+
+    expect(surface.lines).to include("(queued: runs after this turn)", "busy: Ctrl-C the turn first, then !rollback")
+    expect(reader).to have_received(:prefill_next).with("!rollback")
+    expect(Array.new(2) { repl_input.pop(timeout: 0).last }).to eq(["!ls", "next"])
+  end
+
+  it "runs a session command at a continue offer (one queued during the turn), the offer still open; /continue answers" do
+    turn_flow = agent.instance_variable_get(:@turn_flow)
+    allow(turn_flow).to receive(:awaiting_continue?).and_return(true)
+    allow(agent).to receive(:poll_input_with_reminder_check).and_return("/model other", "/continue no", nil)
+    allow(agent).to receive(:drain_pending_question?)
+    allow(agent).to receive(:answer_continue_offer)
+    allow(agent).to receive(:run_input_line)
+
+    agent.run_assist_loop(session: used_session, messages: [])
+
+    expect(agent).to have_received(:run_input_line).with(anything, "/model other")
+    expect(agent).to have_received(:answer_continue_offer).once.with(anything, "/continue no")
   end
 
   it "runs /stats and /recap at a continue offer instead of reading them as an answer" do

@@ -60,6 +60,9 @@ module Samagotchi
     REMINDER_PENDING_POLL_INTERVAL = 0.5
     # What a command sent during a turn gets, as from a worker (Worker::BUSY_OUTPUT).
     COMMAND_BUSY = "busy: wait for the turn to end"
+    ROLLBACK_BUSY = "busy: Ctrl-C the turn first, then !rollback"
+    # A command typed during a turn that runs after it (/model X, !cmd).
+    COMMAND_QUEUED = "(queued: runs after this turn)"
     # /detach is the attached terminal's; the REPL owns its session.
     REPL_DETACH_NOTE = "(not attached: this session runs in this terminal; /exit ends it)"
     IMAGE_LINE_WAITS = "(a line with images runs as the next turn)"
@@ -569,8 +572,10 @@ module Samagotchi
         # Not an answer to a continue offer either.
         next detach_note if local == :detach
 
-        # /stats and /recap run; the offer stays open.
-        if @turn_flow.awaiting_continue? && !%i[stats recap].include?(local)
+        # /stats and /recap run; the offer stays open. So does a session
+        # command (one queued during the turn: /model X, !cmd); /continue
+        # answers it.
+        if @turn_flow.awaiting_continue? && !%i[stats recap].include?(local) && !offer_leaves_open?(input)
           answer_continue_offer(session, input)
         else
           # The ? read left no echo: show what ran.
@@ -714,6 +719,13 @@ module Samagotchi
 
     # An answer at the ? prompt of a continue offer. A valid one closes the
     # offer's choices and leaves one line; an invalid one gets its error.
+    # Whether +input+ is a session command that runs past a continue offer,
+    # leaving it open: any but /continue (the worker's S2).
+    def offer_leaves_open?(input)
+      entry = command_registry.lookup(input)
+      !entry.nil? && entry.id != :continue
+    end
+
     def answer_continue_offer(session, input)
       answer = @commands.continue_answer(input)
       if answer.decision == :invalid
@@ -1041,15 +1053,19 @@ module Samagotchi
     # A line sent after Ctrl-C waits for the next turn (the kernel would not
     # merge it into the cancelled one). Ctrl-D or exit ends the REPL after
     # the turn. /stats and /recap run now, an anytime command (/help, a
-    # plugin's /btw) starts now on its own thread; other commands wait, back
-    # in the prompt.
+    # plugin's /btw, /model alone) starts now on its own thread; one that
+    # runs after the turn (/model X, !cmd) waits in the queue, in arrival
+    # order with the other lines that wait; others go back in the prompt.
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
       local = local_command(line) unless line.nil?
       return exit_after_turn(delete: SessionCommands.delete_on_exit?(line)) if line.nil? || local == :exit
       return detach_note if local == :detach
       return false if @active_cancel_controller&.cancelled?
-      return start_anytime_command(line) if command_registry.mid_turn(line) == :anytime
+
+      policy = command_registry.mid_turn(line)
+      return start_anytime_command(line) if policy == :anytime
+      return command_queued if policy == :queue
       # A command, never steering text (/archive waits, back in the prompt).
       return command_during_turn(line) if local || command_registry.command?(line)
       return true if line.strip.empty?
@@ -1098,8 +1114,14 @@ module Samagotchi
     def command_during_turn(line)
       return true if show_local_command(line)
 
-      @surface.commit(COMMAND_BUSY)
+      @surface.commit(command_registry.lookup(line)&.id == :rollback ? ROLLBACK_BUSY : COMMAND_BUSY)
       :back
+    end
+
+    # @return [false] not the turn's: the line waits for the prompt
+    def command_queued
+      @surface.commit(COMMAND_QUEUED)
+      false
     end
 
     # D8: an anytime command runs on its own thread while the turn goes on
