@@ -64,6 +64,14 @@ RSpec.describe Samagotchi::ToolDeclarations, ".chat_schemas" do
     expect(params[:properties][:remove][:type]).to eq("boolean")
   end
 
+  it "states memory_write's description limit from the tool's own constant" do
+    params = schemas.find { |schema| schema[:name] == "memory_write" }[:parameters]
+    limit = Samagotchi::Tools::MemoryWrite::DESCRIPTION_LIMIT
+    expect(params[:properties][:description][:description]).to include("at most #{limit} characters")
+    guide = File.read(File.expand_path("../lib/samagotchi/bundles/system/memory_guide.md", __dir__))
+    expect(guide).to include("at most #{limit} characters")
+  end
+
   it "closes every tool's parameters with additionalProperties: false" do
     expect(schemas.map { |schema| schema[:parameters][:additionalProperties] }.uniq).to eq([false])
   end

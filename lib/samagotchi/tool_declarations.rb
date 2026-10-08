@@ -3,6 +3,7 @@
 require "json"
 require_relative "tools/args"
 require_relative "llm_context_strategy"
+require_relative "tools/memory"
 
 module Samagotchi
   # Tool-declaration constants, protocol constants, and guidance text.
@@ -146,7 +147,7 @@ module Samagotchi
             },
             description: {
               type: "string",
-              description: "Optional one-line description (at most 200 characters) appended to the managed index line; without content, it changes only that line"
+              description: "Optional one-line description (at most #{Tools::MemoryWrite::DESCRIPTION_LIMIT} characters) appended to the managed index line; without content, it changes only that line"
             },
             current_model_only: {
               type: "boolean",
