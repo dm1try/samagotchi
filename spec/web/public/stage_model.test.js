@@ -225,6 +225,13 @@ test("flashOf: the applied LLM context edit's ✂ row flashes (its cls, the line
   assert.equal(flashOf("notice", { line: "some other row", cls: "hook-notice" }), null);
 });
 
+test("flashOf: the steer-cut row (a message cut in on a thinking-only generation) flashes, its line without the leading ↪", () => {
+  assert.deepEqual(flashOf("notice", { line: "↪ cut in for your message", cls: "steer-cut" }), { kind: "steer", text: "cut in for your message" });
+  assert.deepEqual(flashOf("notice", { line: "↪ cut in for a message sent with chi send", cls: "steer-cut" }), { kind: "steer", text: "cut in for a message sent with chi send" });
+  assert.deepEqual(flashOf("notice", { line: "cut in", cls: "steer-cut" }), { kind: "steer", text: "cut in" });
+  assert.equal(flashOf("notice", { line: "", cls: "steer-cut" }), null);
+});
+
 test("liveSlots: the running tool and the trail carry a call's full command (for the hover), only when it has one", () => {
   const command = "cd /p && rg -n foo lib |\n  head -5";
   const turn = turnOf(
