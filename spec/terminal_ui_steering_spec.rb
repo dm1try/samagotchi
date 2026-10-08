@@ -399,13 +399,11 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(surface.lines).to include("(not attached: this session runs in this terminal; /exit ends it)")
   end
 
-  it "queues !cmd typed mid-turn in arrival order with a line sent after it, and refuses !rollback with its own hint" do
+  it "queues !cmd typed mid-turn, and refuses !rollback with its own hint" do
     reader = double("reader", prefill_next: nil)
     repl_input.instance_variable_set(:@reader, reader)
-    allow(engine).to receive(:run_turn) do |*, cancel_controller:, **|
+    allow(engine).to receive(:run_turn) do
       repl_input << [:line, "!ls"] << [:line, "!rollback"]
-      cancel_controller.cancel!(:ctrl_c)
-      repl_input << [:line, "next"]
       result
     end
 
@@ -413,7 +411,27 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
 
     expect(surface.lines).to include("(queued: runs after this turn)", "busy: Ctrl-C the turn first, then !rollback")
     expect(reader).to have_received(:prefill_next).with("!rollback")
-    expect(Array.new(2) { repl_input.pop(timeout: 0).last }).to eq(["!ls", "next"])
+    expect(repl_input.pop(timeout: 0)).to eq([:line, "!ls"])
+  end
+
+  # D1: a line typed after a queued command never runs ahead of it.
+  it "keeps a queued command ahead of the lines typed after it: steering text left unmerged and an image line too" do
+    allow(engine).to receive(:run_turn) do |*, pending_input:, **|
+      repl_input << [:line, "earlier steer"]
+      pending_input.call # merged: the turn's
+      repl_input << [:line, "unmerged steer"] << [:line, "/model big"] << [:line, "redo it in more detail"]
+      repl_input << [:line, "look at @#{File.join(Dir.tmpdir, "x.png")}"]
+      result
+    end
+    allow(Samagotchi::TerminalUI::ImageInput).to receive(:extract) { |line| line.include?("@/") ? [{ path: "x.png" }] : [] }
+
+    agent.run_engine_turn(session, "go")
+
+    lines = []
+    while (item = repl_input.pop(timeout: 0))
+      lines << item.last
+    end
+    expect(lines).to eq(["unmerged steer", "/model big", "redo it in more detail", "look at @#{File.join(Dir.tmpdir, "x.png")}"])
   end
 
   it "runs a session command at a continue offer (one queued during the turn), the offer still open; /continue answers" do

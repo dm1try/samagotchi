@@ -1043,10 +1043,16 @@ module Samagotchi
     # While a turn runs, a line submitted at the open prompt steers it: it
     # merges at the next iteration boundary (Kernel), and one that comes after
     # the last runs as the next turn. Reminder turns too.
+    #
+    # A command that waits for the turn's end (/model X, !cmd) and every line
+    # after it wait in @after_turn, in the order typed (D1): once the turn
+    # ends they come back after the steering it didn't merge (typed before
+    # them), ahead of anything sent after Ctrl-C.
     def with_steering(&)
       return yield unless @repl_input
 
-      @repl_input.during_turn(method(:steer_line), leftovers: -> { @pending_input_queue.drain }, &)
+      @after_turn = []
+      @repl_input.during_turn(method(:steer_line), leftovers: -> { @pending_input_queue.drain + @after_turn.slice!(0..) }, &)
     end
 
     # On the reader thread, from ReplInput: takes a line for the running turn.
@@ -1066,7 +1072,7 @@ module Samagotchi
 
       policy = command_registry.mid_turn(line)
       return start_anytime_command(line) if policy == :anytime
-      return command_queued if policy == :queue
+      return command_queued(line) if policy == :queue
       # A command, never steering text.
       return command_during_turn(line) if local || command_registry.command?(line)
       return true if line.strip.empty?
@@ -1077,7 +1083,9 @@ module Samagotchi
         return true
       end
       # Steering merges text only: a line with images runs as the next turn.
-      return image_line_waits if ImageInput.extract(line).any?
+      return image_line_waits(line) if ImageInput.extract(line).any?
+      # Behind a line that waits for the turn's end, a line waits too.
+      return wait_for_turn_end(line) unless @after_turn.to_a.empty?
 
       epoch = @engine.input_epoch
       @pending_input_queue.push(line.strip)
@@ -1088,9 +1096,16 @@ module Samagotchi
       true
     end
 
-    def image_line_waits
+    def image_line_waits(line)
       @surface.commit(IMAGE_LINE_WAITS)
-      false
+      wait_for_turn_end(line)
+    end
+
+    # +line+ runs once the turn has ended, in the order typed (#with_steering).
+    # @return [true] the turn took it
+    def wait_for_turn_end(line)
+      @after_turn << line
+      true
     end
 
     def detach_note
@@ -1131,10 +1146,10 @@ module Samagotchi
       :back
     end
 
-    # @return [false] not the turn's: the line waits for the prompt
-    def command_queued
+    # @return [true] it waits for the turn's end (#wait_for_turn_end)
+    def command_queued(line)
       @surface.commit(COMMAND_QUEUED)
-      false
+      wait_for_turn_end(line)
     end
 
     # D8: an anytime command runs on its own thread while the turn goes on
