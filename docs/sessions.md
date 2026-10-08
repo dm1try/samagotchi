@@ -131,6 +131,10 @@ system message marked `kind: turn_note` (the UIs don't show it; they showed the 
 When the context window fills past 40% (then 60%, 80%), the native loop leaves a similar line (`kind: context`):
 `[CONTEXT: about 55% of the context window is in use (estimated; bucket=40plus). context moderate — prefer targeted
 and range reads over full-file dumps]`, once per rise; see [context telemetry](internals/context-telemetry.md).
+Under an LLM context budget smaller than the window (`llm_context.budget_tokens`, a session's `/llm-context budget`;
+see [configuration.md](configuration.md#all-settings)), the percentage is of the budget and the line says so
+(`about 62% of the context budget (64k tokens) is in use`); the status line's ctx and the web's ctx meter (live and
+after a reload) count against it too.
 
 Failed retries replace the note, they don't pile up. The note's text is escaped like user text (an error may
 quote what a server sent). A cancelled continue turn and `!rollback` go back to before the turn, note included.
