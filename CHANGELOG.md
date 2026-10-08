@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A new web chat can start under its own LLM context: the start page has an `llm ctx` chip beside the model
+  picker that shows the picked model's strategy, and its form (as the info bar's, titled "new chat") sets a
+  strategy, apply rule and budget for that chat's first turn on (`llm ctx stale · new chat`). The choice is not
+  remembered: it resets after a create, on a reload and when you open a session, and an untouched chip sends
+  nothing. `POST /api/sessions` takes
+  `llm_context` (`{strategy, apply, budget}` as `/llm-context` words them; anything else answers
+  `400 invalid_llm_context`), and `GET /api/models` rows carry each model's `llm_context`. See
+  [docs/configuration.md](docs/configuration.md) ("LLM context: a session's own strategy").
+
 ## [0.42.0] - 2026-10-08
 
 ### Added
