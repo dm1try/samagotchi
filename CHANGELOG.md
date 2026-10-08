@@ -13,6 +13,18 @@ and commands may change between minor versions. How releases are made:
 - Plugins: `ctx.fork?` says whether the session is a fork (`ctx.sessions.fork`: it has a parent and isn't a
   delegate child). See [docs/plugins.md](docs/plugins.md).
 
+### Changed
+
+- Commands sent while a turn runs no longer all answer `busy`. Those that only show something answer at once
+  (`/models`, and `/model`, `/llm-context` and `/guardrails` alone). Those that change something (`/model X`,
+  `/llm-context strategy …`, `/guardrails revoke N`) and `!cmd` run after the turn, in the order sent with the
+  prompts: the terminals say `(queued: runs after this turn)`, the web draws the command's bubble dashed until it
+  ran (after a reload too), and the web's `llm ctx` chip can Set mid-turn. A `!cmd` waiting after a canceled or
+  failed turn is dropped, so the turn's `!rollback` stays open, and one still waiting when the worker stops is
+  answered `dropped`. `!rollback` and `/continue` stay refused (`busy: Ctrl-C the turn first, then !rollback`).
+  `/archive` typed during a turn archives once it ends, in the REPL and an attached terminal. `chi --attach ID
+  --model X` on a running turn waits for its end. See "Typing during a turn" in [docs/cli.md](docs/cli.md).
+
 ### Fixed
 
 - `/stats`, `/model` and the web named no model notes for a fresh session (a REPL's before the first turn, a new
@@ -23,6 +35,11 @@ and commands may change between minor versions. How releases are made:
   read the note itself from the env it was given, so the row could count no overlay (or another config's); it now
   reads both from the same env, and passes the fallback key the session's prompt does, so a model typed as an
   alias whose note overlay is keyed by the alias's name shows it — the row agrees with the notes the session's prompt loads.
+- In the plain REPL a session command typed at a continue offer (other than `/continue`) was read as an invalid
+  answer and lost; it now runs and the offer stays open, as in a worker.
+- A session command sent as a message behind queued prompts (`chi send -m "/model x"` after `chi send -m "task"`)
+  could be answered `busy` by the next queued prompt's turn instead of running before it; it now runs once its
+  own message's turn comes.
 - The web's ctx meter under an LLM context budget smaller than the window (`llm_context.budget_tokens`) read the
   percentage of the window after a reload (`ctx 12%`) where live it read the budget's (`ctx 25%`); it now counts
   against the budget both ways, as the `[CONTEXT: …]` line and the status line do, and a generation's final counts
