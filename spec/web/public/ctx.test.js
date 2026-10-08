@@ -51,6 +51,21 @@ test("savedCtxPct: the saved context's fill, null without both counts", () => {
   assert.equal(savedCtxPct(null), null);
 });
 
+test("savedCtxPct: counted against the LLM context budget when it is smaller than the window, as live", () => {
+  const context = { used_tokens: 16000, window_tokens: 128000, window_source: "server" };
+  assert.equal(savedCtxPct(context, 64000), 25);
+  assert.equal(savedCtxPct(context, 256000), 12.5);
+  assert.equal(savedCtxPct(context, null), 12.5);
+  assert.equal(savedCtxPct({ used_tokens: 16000, window_tokens: null }, 64000), null);
+});
+
+test("extractCtxPct: a fill computed here counts against a smaller budget; a precomputed one passes through", () => {
+  assert.equal(extractCtxPct({ payload: { usage: { total_tokens: 250 } } }, 1000, 500), 50);
+  assert.equal(extractCtxPct({ payload: { n_ctx: 300, n_past: 150 } }, 1000, 600), 50);
+  assert.equal(extractCtxPct({ payload: { usage: { total_tokens: 250 } } }, 1000, 4000), 25);
+  assert.equal(extractCtxPct({ usage: { estimated_pct: 40 } }, 1000, 500), 40);
+});
+
 test("cardCtxText: a rounded percentage, empty when unknown", () => {
   assert.equal(cardCtxText(12.4), "12%");
   assert.equal(cardCtxText(0.2), "0%");
@@ -131,6 +146,15 @@ test("ctxWindowText: used of window with its source; the default says it's a gue
   assert.equal(ctxWindowText({ tokens: 32768, source: "model_setting", pct: null }), "context: 32.8k tokens (model_setting)");
   assert.equal(ctxWindowText({ tokens: null, source: "server", pct: 5 }), "");
   assert.equal(ctxWindowText(null), "");
+});
+
+test("ctxWindowText: under a smaller budget, used of the budget and the window", () => {
+  assert.equal(ctxWindowText({ tokens: 128000, source: "server", pct: 25, budget: 64000 }),
+    "context: ~16.0k of the 64.0k budget, 128.0k window (server)");
+  assert.equal(ctxWindowText({ tokens: 128000, source: "server", pct: 25, budget: 256000 }),
+    "context: ~32.0k of 128.0k tokens (server)");
+  assert.equal(ctxWindowText({ tokens: 128000, source: null, pct: null, budget: 64000 }),
+    "context: the 64.0k budget, 128.0k window");
 });
 
 test("tokensTipText: the window line under the title", () => {
