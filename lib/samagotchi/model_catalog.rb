@@ -7,33 +7,37 @@ module Samagotchi
   # picks from: GET /api/models and `chi models`. Every name question goes
   # to ModelRef / HostRegistry#resolve; nothing here parses a ref.
   module ModelCatalog
-    # host: the host that listed the id; ref: the name `--model` takes for
-    # it (see .spell).
-    Row = Data.define(:host, :id, :ref)
-    # rows: the default host's first, then the others by name; warnings:
+    # host: the host that listed (or declares) the id; ref: the name
+    # `--model` takes for it (see .spell); configured: declared under
+    # hosts.<name>.models (HostModel.rows).
+    Row = Data.define(:host, :id, :ref, :configured) do
+      def initialize(host:, id:, ref:, configured: false) = super
+    end
+    # rows: the default host's first, then the others by name, each host's
+    # declared ids first (HostModel.rows); warnings:
     # "host: error" per host that failed.
     Listing = Data.define(:rows, :warnings)
 
     module_function
 
     # @param results [Hash] list_all_models' answer
-    # @param registry [#default_entry]
+    # @param registry [#default_entry, #entries]
     # @return [Listing]
     def listing(results, registry:)
       default_host = registry.default_entry&.name
       rows = []
       warnings = []
+      host_rows = HostModel.rows(results, registry.entries)
       results.keys.sort_by { |name| [name == default_host ? 0 : 1, name] }.each do |host|
-        data = results[host]
-        if data[:error]
-          warnings << "#{host}: #{data[:error]}"
+        if results[host][:error]
+          warnings << "#{host}: #{results[host][:error]}"
           next
         end
-        Array(data[:models]).each do |info|
-          id = info.id.to_s
-          next if id.strip.empty? || id.end_with?(":batch")
+        host_rows[host].each do |row|
+          id = row.id
+          next if id.strip.empty? || (!row.configured && id.end_with?(":batch"))
 
-          rows << Row.new(host: host, id: id, ref: spell(host, id, default_host))
+          rows << Row.new(host: host, id: id, ref: spell(host, id, default_host), configured: row.configured)
         end
       end
       Listing.new(rows: rows, warnings: warnings)
@@ -58,6 +62,7 @@ module Samagotchi
       listing = listing(results, registry: registry)
       models = listing.rows.map do |row|
         hash = { name: row.ref, host: row.host, id: row.id }
+        hash[:configured] = true if row.configured
         shadow = shadowed_by(row, registry)
         shadow ? hash.merge(shadowed_by: shadow) : hash
       end

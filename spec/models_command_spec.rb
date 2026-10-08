@@ -64,6 +64,27 @@ RSpec.describe Samagotchi::ModelsCommand do
     expect(waits).to eq([{ force: true, wait: 1.5 }])
   end
 
+  context "with ids declared under hosts.<name>.models" do
+    let(:registry) do
+      Samagotchi::HostRegistry.new(hosts_config: {
+        "default" => { host: "localhost", port: 8080 },
+        "box" => { host: "box.test", port: 8081, models: Samagotchi::HostModel.parse_map(%w[rr/x big], "box") }
+      }, env: {})
+    end
+
+    it "prints them as plain names, first under their host; the JSON marks them configured" do
+      expect(run).to eq(0)
+      expect(out.string.lines.map(&:chomp))
+        .to eq(["gemma-4", "default:qwen3:8b", "box:rr/x", "box:big", "box:Qwen-Coder", "small -> box:big"])
+
+      out.truncate(0)
+      out.rewind
+      run("--format", "json")
+      expect(JSON.parse(out.string)["models"].select { |m| m["configured"] }.map { |m| m["name"] })
+        .to eq(%w[box:rr/x box:big])
+    end
+  end
+
   it "notes a failed host on stderr and still exits 0 when another host listed" do
     lists["box"] = nil
 

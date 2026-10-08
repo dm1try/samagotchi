@@ -59,6 +59,34 @@ RSpec.describe Samagotchi::ModelCatalog do
     end
   end
 
+  context "with ids declared under hosts.<name>.models" do
+    let(:registry) do
+      Samagotchi::HostRegistry.new(hosts_config: {
+        "default" => { host: "localhost", port: 8080 },
+        "box" => { host: "box.test", port: 8083, models: Samagotchi::HostModel.parse_map(%w[rr/X big], "box") },
+        "down" => { host: "down.test", port: 8084, models: Samagotchi::HostModel.parse_map(%w[rr/z], "down") }
+      }, env: {})
+    end
+    let(:lists) { { "default" => %w[gemma-4], "box" => %w[small big], "down" => [] } }
+
+    before { allow(registry.entries["down"].client).to receive(:list_models).and_raise("connection refused") }
+
+    it "lists them first under their host, once, marked configured; an errored host's not at all" do
+      rows = described_class.listing(results, registry: registry).rows
+
+      expect(rows.map { |r| [r.ref, r.configured] })
+        .to eq([["gemma-4", false], ["box:rr/X", true], ["box:big", true], ["box:small", false]])
+    end
+
+    it "adds configured: true to those rows in the JSON payload" do
+      models = described_class.payload(results, registry: registry, default_name: "gemma-4")[:models]
+
+      expect(models.first(3)).to eq([{ name: "gemma-4", host: "default", id: "gemma-4" },
+                                     { name: "box:rr/X", host: "box", id: "rr/X", configured: true },
+                                     { name: "box:big", host: "box", id: "big", configured: true }])
+    end
+  end
+
   describe ".payload" do
     let(:payload) { described_class.payload(results, registry: registry, default_name: "gemma-4") }
 

@@ -567,6 +567,7 @@ module Samagotchi
 
       seen = Set.new
       lines = []
+      host_rows = HostModel.rows(results, registry.entries)
       # Sort hosts for deterministic output
       results.keys.sort.each do |hname|
         data = results[hname]
@@ -575,29 +576,35 @@ module Samagotchi
           lines << "#{host_label} — unreachable: #{data[:error]}"
           next
         end
-        models = Array(data[:models])
-        if models.empty?
+        # Declared ids (hosts.<name>.models) first, as "(config)", never cut
+        # by MODELS_PER_HOST.
+        rows = host_rows[hname]
+        if rows.empty?
           lines << "#{host_label} — no models discovered"
           next
         end
+        declared = []
         shown = []
-        batch_variants = batch_variant_ids(models, needle)
-        models.each do |entry|
-          identifier = entry.id.to_s.empty? ? "unknown" : entry.id
+        batch_variants = batch_variant_ids(rows, needle)
+        rows.each do |row|
+          identifier = row.id.to_s.empty? ? "unknown" : row.id
           seen << identifier.to_s.downcase
           # also track host-qualified seen for orphan logic
           seen << "#{hname}:#{identifier}".downcase
-          next if batch_variants.include?(identifier)
+          next if !row.configured && batch_variants.include?(identifier)
+          next unless needle.empty? || identifier.to_s.downcase.include?(needle)
 
-          shown << [entry, identifier] if needle.empty? || identifier.to_s.downcase.include?(needle)
+          (row.configured ? declared : shown) << [row, identifier]
         end
-        next if shown.empty?
+        next if declared.empty? && shown.empty?
 
         lines << "#{host_label}:"
         hidden = needle.empty? ? [shown.size - MODELS_PER_HOST, 0].max : 0
-        shown.first(shown.size - hidden).each do |entry, identifier|
-          raw_status = entry.raw["status"] || entry.raw[:status]
+        (declared + shown.first(shown.size - hidden)).each do |row, identifier|
+          raw = row.info&.raw || {}
+          raw_status = raw["status"] || raw[:status]
           status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
+          status = "config" if row.configured
           base = status.to_s.empty? ? "  #{identifier}" : "  #{identifier} (#{status})"
           alias_list = (by_model[identifier.to_s.downcase] || []) + (by_model["#{hname}:#{identifier}".downcase] || [])
           alias_list.uniq!

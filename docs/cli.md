@@ -85,12 +85,15 @@ small -> box:gemma-small         # an alias and the ref it resolves to
 $ chi models qwen                # only the names containing "qwen" (any case)
 ```
 
+- A host's ids declared under `hosts.<name>.models` (see
+  [configuration](configuration.md#models-a-host-serves-but-doesnt-list)) come first under that host, listed or not,
+  as plain names like any other.
 - A default-host id is bare, except one with a `:` (`qwen3:8b`), which is written `<host>:qwen3:8b` so it can't
   read as a host name. An id that an alias of the same name hides is left out.
 - Each run lists anew (no cache); `--timeout S` caps the wait for the hosts (default 4 s). A host that fails or doesn't
   answer in time is noted on stderr (`chi models: box: no answer in 4 s`).
 - `--format json` prints one object: `default` (and `default_typed` when it was set as an alias), `default_host`,
-  `models` (`name`, `host`, `id`), `aliases` (`name`, `ref`, `host`) and `warnings`. The desktop helper's model
+  `models` (`name`, `host`, `id`, and `configured: true` on an id declared under `hosts.<name>.models`), `aliases` (`name`, `ref`, `host`) and `warnings`. The desktop helper's model
   chooser reads it.
 - Exit 0 when any host listed its models, 1 when none did (the default is still printed), 2 on a usage error.
 
@@ -734,7 +737,7 @@ In interactive assist mode, you can switch the request model without restarting:
 - `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=<name>, <source>)`, e.g. `profile=qwen36, server (chat_template)`). When the session's prompt carries model notes the line ends with `; notes: model_notes_deepseek (system, 612 chars)`; a switch's `runtime model set to …` names the new model's ([Memory](memory.md#model-notes)).
 - `/model clear` (or `default`/`none`/`off`): clear the session override, reverting to the configured default.
 - `/guardrails`: the guardrail rules (by source), what failed to load, and your stored approvals, numbered; `/guardrails revoke N` removes approval N (see [Guardrails](guardrails.md)).
-- `/models`: list model ids aggregated across all `hosts:` (an alias shows next to its id: a bare alias on every host listing the id, a `host:model` one only under its host; grouped `host (host:port):` with per-host `unreachable` warnings, e.g. an unset `api_key_env`; lists cached 60s, 10 minutes for a remote host; lazy — no startup prefill). At most 20 ids per host, then `… and N more`; `/models <text>` lists every id containing `<text>` (any case), e.g. `/models qwen` on OpenRouter.
+- `/models`: list model ids aggregated across all `hosts:` (an alias shows next to its id: a bare alias on every host listing the id, a `host:model` one only under its host; grouped `host (host:port):` with per-host `unreachable` warnings, e.g. an unset `api_key_env`; lists cached 60s, 10 minutes for a remote host; lazy — no startup prefill). Ids the host declares under `hosts.<name>.models` come first, as `rr/x (config)`, and don't count toward the cap. At most 20 ids per host, then `… and N more`; `/models <text>` lists every id containing `<text>` (any case), e.g. `/models qwen` on OpenRouter.
 
 Notes:
 

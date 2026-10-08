@@ -1620,10 +1620,11 @@ RSpec.describe Samagotchi::Web::App do
   # A registry as GET /api/models reads it: list_all_models(force:) answers
   # per host {models:, error:}; default_entry names the default host.
   class FakeModelRegistry
-    attr_reader :calls
+    attr_reader :calls, :entries
 
-    def initialize(results, default_host: "default", delay: 0, cached: nil)
+    def initialize(results, default_host: "default", delay: 0, cached: nil, entries: {})
       @results = results
+      @entries = entries
       @default_host = default_host
       @delay = delay
       @cached = cached
@@ -1686,6 +1687,17 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["models"].last).to eq("name" => "box:qwen3.6", "host" => "box", "id" => "qwen3.6")
       expect(payload).not_to have_key("warning")
       expect(registry.calls).to eq([false])
+    end
+
+    it "marks an id the host declares under hosts.<name>.models configured, listed first" do
+      declared = Samagotchi::HostModel.parse_map(%w[rr/x], "box")
+      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it")], error: nil },
+                                         "box" => { models: [model_info("qwen3.6")], error: nil } },
+                                       entries: { "box" => Samagotchi::HostRegistry::HostEntry.new(name: "box", models: declared) })
+
+      expect(models_payload(registry)["models"].drop(1))
+        .to eq([{ "name" => "box:rr/x", "host" => "box", "id" => "rr/x", "configured" => true },
+                { "name" => "box:qwen3.6", "host" => "box", "id" => "qwen3.6" }])
     end
 
     it "adds each model's configured sampling, as /model words it, to the models that have some" do

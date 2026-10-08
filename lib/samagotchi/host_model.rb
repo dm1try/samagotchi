@@ -39,8 +39,34 @@ module Samagotchi
       end
     end
 
+    # One host's rows as the listings show them, declared ids first, then
+    # the listed ones in the host's order (see Row). An id both declared and
+    # listed is one row. Pure: +results+ (list_all_models') is only read.
+    # A host that errored has no rows: its declared ids aren't shown
+    # either (the listings say it's unreachable).
+    # @param results [Hash{String => Hash}] host name => {models: [ModelInfo], error:}
+    # @param entries [Hash{String => HostRegistry::HostEntry}]
+    # @return [Hash{String => Array<Row>}] for the hosts that answered
+    def self.rows(results, entries)
+      results.each_with_object({}) do |(name, data), out|
+        next if data[:error]
+
+        infos = Array(data[:models])
+        by_id = infos.group_by { |info| info.id.to_s.downcase }
+        declared = entries[name]&.models || {}
+        out[name] = declared.values.map { |m| HostModel::Row.new(id: m.id, configured: true, info: by_id[m.id.downcase]&.first) } +
+                    infos.reject { |info| declared.key?(info.id.to_s.downcase) }
+                         .map { |info| HostModel::Row.new(id: info.id.to_s, configured: false, info: info) }
+      end
+    end
+
     # The entry as written back to config (SAMAGOTCHI_HOSTS_JSON for
     # workers): nil for a bare id.
     def to_config = nil
   end
+
+  # A listing row (HostModel.rows): id as written (declared) or listed;
+  # configured: declared under hosts.<name>.models; info: the host's
+  # ModelInfo for it, nil when only declared.
+  HostModel::Row = Data.define(:id, :configured, :info)
 end

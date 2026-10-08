@@ -269,6 +269,37 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("/models nothing-like-it").output).to eq('no model ids contain "nothing-like-it"')
     end
 
+    context "with ids declared under hosts.<name>.models" do
+      let(:registry) do
+        Samagotchi::HostRegistry.new(hosts_config: {
+          "remote" => { host: "openrouter.ai", port: 443, models: Samagotchi::HostModel.parse_map(%w[rr/x], "remote") },
+          "gw" => { host: "gw.example", port: 443, models: Samagotchi::HostModel.parse_map(%w[rr/a rr/b], "gw") }
+        })
+      end
+      let(:catalog) do
+        ids = (1..450).map { |i| format("vendor/model-%03d", i) }
+        { "remote" => { host: "openrouter.ai", port: 443,
+                        models: ids.map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) } },
+          "gw" => { host: "gw.example", port: 443, models: [] } }
+      end
+
+      it "prints them first under their host as (config), outside the 20 per host, and on a host that lists none" do
+        lines = commands.run("/models").output.lines(chomp: true)
+
+        expect(lines.first(4)).to eq(["gw (gw.example:443):", "  rr/a (config)", "  rr/b (config)", "remote (openrouter.ai:443):"])
+        expect(lines[4]).to eq("  rr/x (config)")
+        expect(lines[5..24]).to eq((1..20).map { |i| format("  vendor/model-%03d", i) })
+        expect(lines[25]).to eq("  … and 430 more; /models <text> lists the ids containing <text>")
+      end
+
+      it "counts them as discovered for the orphan aliases, and filters them like any id" do
+        allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({ "rr" => "gw:rr/a" })
+
+        expect(commands.run("/models").output).not_to include("orphan")
+        expect(commands.run("/models rr/b").output).to eq("gw (gw.example:443):\n  rr/b (config)")
+      end
+    end
+
     context "with OpenRouter's :batch variants" do
       def info(id) = Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {})
 

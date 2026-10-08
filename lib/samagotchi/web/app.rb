@@ -443,7 +443,9 @@ module Samagotchi
             warnings.concat(listing.warnings)
             # the web's own spelling, kept as it was: bare on the default host
             listing.rows.each do |row|
-              models << { name: row.host == default_host ? row.id : "#{row.host}:#{row.id}", host: row.host, id: row.id }
+              model = { name: row.host == default_host ? row.id : "#{row.host}:#{row.id}", host: row.host, id: row.id }
+              model[:configured] = true if row.configured
+              models << model
             end
           end
         rescue StandardError => e

@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
   `chi send --new` and delegate spawns, and a bare id routes to its declaring host as if listed, before any
   `/models` and in workers too. Two hosts declaring one id warn at start. See "Models a host serves but doesn't
   list" in [docs/configuration.md](docs/configuration.md).
+- Declared `hosts.<name>.models` ids show first under their host in `/models` (as `rr/x (config)`, outside the 20
+  per host, also on a host that lists nothing), `chi models` (plain names; `--format json` adds `configured: true`)
+  and `GET /api/models` (`configured: true`). A host that doesn't answer shows none of them.
 
 ## [0.45.0] - 2026-10-08
 
