@@ -395,7 +395,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       { kind: "notice", event: { type: "question_requested", pending_question: question } },
       { kind: "notice", event: { type: "question_answered", id: "q1", answer: { selected: ["A"] } } },
       { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } },
-      { kind: "notice", event: { type: "steer_cut", iteration: 3, source: "parent_agent" } }
+      { kind: "notice", event: { type: "steer_cut", iteration: 3, source: "parent_agent" } },
+      { kind: "notice", event: { type: "llm_context_edited", moment: "request", text: "✂ stubbed 1 stale read · frees ~1.0k tokens" } }
     ] }
     feed(snapshot(current_turn: turn))
 
@@ -407,6 +408,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     expect(plain[(first + 1)...cut].join("\n")).to include("read")
     expect(plain.join("\n")).not_to include("Which?")
     expect(plain.index("↪ cut in for the parent agent's message")).to be > cut
+    expect(plain.index("✂ stubbed 1 stale read · frees ~1.0k tokens")).to be > plain.index("↪ cut in for the parent agent's message")
   end
 
   describe "cards" do

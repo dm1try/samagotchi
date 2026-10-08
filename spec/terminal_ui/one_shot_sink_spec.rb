@@ -23,6 +23,12 @@ RSpec.describe Samagotchi::TerminalUI::OneShotSink do
     expect(err.string).to eq("↪ cut in for a message sent with chi send\n")
   end
 
+  it "prints a batch of LLM context edits as the server's ✂ line" do
+    sink.call({ type: :llm_context_edited, moment: "turn_end", text: "✂ stubbed 1 stale read · frees ~640 tokens (at turn end)" })
+
+    expect(err.string).to eq("✂ stubbed 1 stale read · frees ~640 tokens (at turn end)\n")
+  end
+
   it "prints the generation retry line" do
     sink.call({ type: :generation_retrying, attempt: 1, max_retries: 3, next_delay: 0.5, error_class: "Errno::ECONNREFUSED" })
 

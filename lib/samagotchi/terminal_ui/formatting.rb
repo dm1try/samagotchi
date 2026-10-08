@@ -83,6 +83,13 @@ module Samagotchi
         paint("↪ cut in for #{STEER_CUT_FOR.fetch(event[:source].to_s, "your message")}", 90)
       end
 
+      # "✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k tokens (paid
+      # off)": a batch of LLM context edits went in (LLMContextNotice builds
+      # the line; the web prints the same), dim like the retry row.
+      def format_llm_context_line(event)
+        paint(event[:text].to_s.empty? ? "✂ LLM context edited" : event[:text].to_s, 90)
+      end
+
       # "no answer: the model returned nothing (after 1 retry)", dim like the
       # retry row: a turn that ended with no answer (TurnNote.empty_answer_line).
       def format_empty_answer_line(retries)

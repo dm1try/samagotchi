@@ -83,6 +83,9 @@ module Samagotchi
         when :steer_cut
           @view.finish_thinking_spinner
           @view.print_line(@view.format_steer_cut_line(event))
+        when :llm_context_edited
+          @view.finish_thinking_spinner
+          @view.print_line(@view.format_llm_context_line(event))
         when :turn_completed
           render_turn_summary(event[:turn_summary]) if event[:turn_summary]
         when :turn_canceled

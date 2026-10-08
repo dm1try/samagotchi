@@ -66,6 +66,14 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(["retry 1/1"])
   end
 
+  it "prints a batch of LLM context edits as its ✂ line, ending the spinner first" do
+    view.define_singleton_method(:format_llm_context_line) { |event| event[:text] }
+    renderer.call({ type: :llm_context_edited, moment: "request", text: "✂ forgot 1 output · frees ~200 tokens" })
+
+    expect(view.calls).to include(:finish_thinking_spinner)
+    expect(view.lines).to eq(["✂ forgot 1 output · frees ~200 tokens"])
+  end
+
   it "prints the answer a merge follows, then the merge note" do
     renderer.call({ type: :pending_input_merged, count: 1, content: "also", answer: "the essay" })
     renderer.call({ type: :pending_input_merged, count: 2, content: "a\n\nb" })
