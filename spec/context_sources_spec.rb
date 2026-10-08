@@ -189,9 +189,12 @@ RSpec.describe Samagotchi::ContextSources do
     expect(described_class.project_cwd(nil, "/fallback")).to eq("/fallback")
   end
 
-  it "removes a deleted session's folder, and nothing for an id that isn't one" do
+  it "removes a deleted session's folder (its markers too), and nothing for an id that isn't one" do
     loc = described_class.session_location(session_id, state_dir: state_dir)
     loc.add(source("a"))
+    loc.decline("b", "https://x")
+    loc.mark_offered("c", "https://y")
+    loc.mute("d")
 
     expect(described_class.remove_session("../x", state_dir: state_dir)).to eq([])
     expect(described_class.remove_session(session_id, state_dir: state_dir)).to eq([loc.dir])

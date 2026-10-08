@@ -27,27 +27,71 @@ module Samagotchi
       # +name+ and +cmd+ (+hint+, +every_seconds+). A source of that name
       # already attached stays as it is. One the user removed from the
       # session (its name, or its URL) isn't attached again (#declined?)
-      # until the user adds it again.
+      # until the user adds it again, or +force+: the user's own explicit
+      # choice (a click), which clears the declined marker (by the name,
+      # and by the URL).
       # @return [String, nil] the source's name; nil when declined
       # @raise [Error]
-      def attach(url: nil, name: nil, cmd: nil, why: nil, hint: nil, every_seconds: nil)
-        own = location or raise Error, "this session has no id yet"
+      def attach(url: nil, name: nil, cmd: nil, why: nil, hint: nil, every_seconds: nil, force: false)
+        own = own_location!
         source = url ? from_url(url, name: name, why: why) : from_cmd(name: name, cmd: cmd, why: why, hint: hint, every_seconds: every_seconds)
-        return nil if own.declined?(source.name) || (url && own.declined_hints.include?(source.hint))
+        if force
+          own.undecline(source.name, hint: url && source.hint)
+        elsif own.declined?(source.name) || (url && own.declined_hints.include?(source.hint))
+          return nil
+        end
         return source.name if own.source(source.name)
 
-        own.add(source.with(scope: own.scope))
-        source.name
+        add(own, source)
       rescue ContextSources::Invalid, ContextProviders::Invalid => e
         raise Error, e.message
       end
 
-      # Whether the user removed +name+ from this session (so #attach skips it).
-      def declined?(name)
-        own = location
-        own ? own.declined?(name) : false
+      # Marks +name+ (or +url+'s source, through its provider) declined in
+      # this session, as the user's removal does: #attach skips it until the
+      # user adds it again. An attached source stays (chi context rm).
+      # @return [String] the name
+      # @raise [Error]
+      def decline(url: nil, name: nil)
+        own = own_location!
+        if url
+          resolved = ContextProviders.resolve(url) or raise Error, "no installed bundle resolves #{url}"
+          name = name ? ContextSources.check_name!(name) : resolved.name
+          hint = resolved.hint
+        else
+          raise Error, "give url: or name:" if name.to_s.empty?
+
+          name = ContextSources.check_name!(name)
+        end
+        own.decline(name, hint)
+        name
+      rescue ContextSources::Invalid, ContextProviders::Invalid => e
+        raise Error, e.message
+      end
+
+      # Whether the user removed +name+ (or +url+) from this session (so
+      # #attach skips it).
+      def declined?(name = nil, url: nil)
+        own = location or return false
+        name_declined?(own, name) || (!url.to_s.empty? && own.declined_hints.include?(url))
+      end
+
+      # Records that this plugin offered +name+ (+hint+: its URL; +why+: the
+      # reason an attach from the offer gives) here, so a worker restart
+      # doesn't offer it again.
+      # @return [ContextSources::Offer]
+      # @raise [Error]
+      def mark_offered(name, hint, why: nil)
+        own_location!.mark_offered(name, hint, why: why)
+      rescue ContextSources::Invalid => e
+        raise Error, e.message
+      end
+
+      # @return [ContextSources::Offer, nil] the offer #mark_offered recorded
+      def offered(name)
+        location&.offered(name)
       rescue ContextSources::Invalid
-        false
+        nil
       end
 
       # This session's sources (its own, then its project's).
@@ -68,6 +112,26 @@ module Samagotchi
       private
 
       def state_dir = @host.state_dir&.call || Session.default_state_dir
+
+      # Two attaches at once (a double click): the one that lost the race
+      # finds the source there and returns its name too.
+      def add(own, source)
+        own.add(source.with(scope: own.scope))
+        source.name
+      rescue ContextSources::Invalid
+        raise unless own.source(source.name)
+
+        source.name
+      end
+
+      # An invalid name isn't declined (and doesn't hide the URL's check).
+      def name_declined?(own, name)
+        !name.nil? && own.declined?(name)
+      rescue ContextSources::Invalid
+        false
+      end
+
+      def own_location! = location || raise(Error, "this session has no id yet")
 
       def location
         id = @host.session_id.call

@@ -22,6 +22,7 @@ module Samagotchi
   #   sessions/<id>/subscriptions.json             {name => Subscription}; the worker writes it
   #   sessions/<id>/muted/<name>                   a marker: this session ignores <name>
   #   sessions/<id>/declined/<name>                a marker (its hint inside): the user removed <name>
+  #   sessions/<id>/offered/<name>                 a marker ({hint, why, at}): a plugin offered <name> (ctx.context.mark_offered)
   # The guardrails protect the root (ProtectedPaths, CHI_TEXT): a source's
   # command runs later, outside the gate.
   module ContextSources
@@ -39,6 +40,7 @@ module Samagotchi
     SUBSCRIPTIONS_FILE = "subscriptions.json"
     MUTED_DIR = "muted"
     DECLINED_DIR = "declined"
+    OFFERED_DIR = "offered"
 
     # A name, a command, a value the store can't take.
     class Invalid < ArgumentError; end
@@ -130,6 +132,11 @@ module Samagotchi
 
     # What a command printed or a push sent (the contract, ContextSources.parse_output).
     Fetched = Data.define(:text, :summary, :wake, :hint)
+
+    # A plugin's offer of a source to a session (ctx.context.mark_offered):
+    # +hint+ (often the URL), +why+ (the plugin's reason, for the attach
+    # that may follow; nil for none) and +at+, when it was offered (ISO 8601).
+    Offer = Data.define(:name, :hint, :why, :at)
 
     # A source as one session sees it: the definition, where it lives, and
     # +shadowed+ for a project source hidden by a session one of its name.
@@ -271,6 +278,39 @@ module Samagotchi
       def decline(name, hint)
         FileUtils.mkdir_p(File.join(dir, DECLINED_DIR))
         AtomicFile.write(declined_path(name), "#{hint}\n")
+      end
+
+      # Clears the declined marker of +name+ and any whose hint is +hint+
+      # (the user's explicit attach: a URL declined under another name).
+      def undecline(name, hint: nil)
+        FileUtils.rm_f(declined_path(name))
+        folder = File.join(dir, DECLINED_DIR)
+        return if hint.to_s.empty? || !Dir.exist?(folder)
+
+        Dir.children(folder).each do |file|
+          path = File.join(folder, file)
+          FileUtils.rm_f(path) if File.read(path).strip == hint
+        rescue SystemCallError
+          nil
+        end
+      end
+
+      def offered_path(name) = File.join(dir, OFFERED_DIR, ContextSources.check_name!(name))
+
+      # Session only: a plugin offered +name+ here (so it doesn't offer it
+      # again). Neither an add nor a decline clears it.
+      # @return [Offer]
+      def mark_offered(name, hint, why: nil, at: Time.now)
+        offer = Offer.new(name: ContextSources.check_name!(name), hint: hint, why: why, at: at.utc.iso8601)
+        FileUtils.mkdir_p(File.join(dir, OFFERED_DIR))
+        AtomicFile.write(offered_path(name), "#{JSON.generate({ "hint" => offer.hint, "why" => offer.why, "at" => offer.at }.compact)}\n")
+        offer
+      end
+
+      # @return [Offer, nil]
+      def offered(name)
+        data = ContextSources.read_json(offered_path(name))
+        data.is_a?(Hash) ? Offer.new(name: name, hint: data["hint"], why: data["why"], at: data["at"]) : nil
       end
 
       # Session only: the markers and the worker's subscription file.

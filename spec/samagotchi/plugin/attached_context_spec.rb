@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "json"
+require "delegate"
 require "samagotchi/plugin/context"
 
 # ctx.context (docs/plugins.md, Attached context): a plugin attaches
@@ -72,6 +73,75 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     expect(ctx.context.declined?("pr-4")).to be(false)
   end
 
+  it "declines by URL (the provider's name and hint) and by name; an attach then returns nil" do
+    install_provider
+
+    expect(ctx.context.decline(url: "https://example.com/pull/4")).to eq("pr-4")
+    expect(File.read(own.declined_path("pr-4"))).to eq("https://example.com/pull/4\n")
+    expect(ctx.context.attach(url: "https://example.com/pull/4", name: "other")).to be_nil
+    expect(ctx.context.declined?(url: "https://example.com/pull/4")).to be(true)
+    expect(ctx.context.declined?("other", url: "https://example.com/pull/5")).to be(false)
+
+    expect(ctx.context.decline(name: "ci")).to eq("ci")
+    expect(ctx.context.declined?("ci")).to be(true)
+    expect(ctx.context.attach(name: "ci", cmd: "date")).to be_nil
+    expect(own.sources).to eq([])
+  end
+
+  it "keeps an attached source when it declines it" do
+    ctx.context.attach(name: "ci", cmd: "date")
+    ctx.context.decline(name: "ci")
+    expect(own.source("ci")).not_to be_nil
+  end
+
+  it "attaches with force: true past a decline, clearing the markers by name and by URL" do
+    install_provider
+    ctx.context.decline(url: "https://example.com/pull/4", name: "old-name")
+    ctx.context.decline(name: "pr-4")
+
+    expect(ctx.context.attach(url: "https://example.com/pull/4", name: "pr-4", force: true)).to eq("pr-4")
+    expect(own.source("pr-4")).not_to be_nil
+    expect(ctx.context.declined?("pr-4")).to be(false)
+    expect(ctx.context.declined?("old-name", url: "https://example.com/pull/4")).to be(false)
+  end
+
+  it "checks the URL even when the name isn't a source name" do
+    install_provider
+    ctx.context.decline(url: "https://example.com/pull/4")
+
+    expect(ctx.context.declined?("Bad Name", url: "https://example.com/pull/4")).to be(true)
+    expect(ctx.context.declined?("Bad Name")).to be(false)
+  end
+
+  it "returns the name when a second attach of the same source loses the race (a double click)" do
+    install_provider
+    racing = Class.new(SimpleDelegator) do
+      def add(source)
+        __getobj__.add(source) # the other attach, between the check and this add
+        __getobj__.add(source)
+      end
+    end
+    allow(Samagotchi::ContextSources).to receive(:session_location).and_return(racing.new(own))
+
+    expect(ctx.context.attach(url: "https://example.com/pull/4", force: true)).to eq("pr-4")
+    expect(own.source("pr-4")).not_to be_nil
+  end
+
+  it "records an offer and reads it back" do
+    expect(ctx.context.offered("pr-4")).to be_nil
+
+    offer = ctx.context.mark_offered("pr-4", "https://example.com/pull/4", why: "branch x has open PR #4")
+
+    expect(ctx.context.offered("pr-4")).to eq(offer)
+    expect(offer).to have_attributes(name: "pr-4", hint: "https://example.com/pull/4", why: "branch x has open PR #4")
+    expect(ctx.context.mark_offered("ci", nil)).to have_attributes(hint: nil, why: nil)
+    expect(ctx.context.offered("ci")).to have_attributes(hint: nil, why: nil)
+    expect(Time.iso8601(offer.at)).to be_within(5).of(Time.now)
+    # Neither an attach nor a decline clears it.
+    ctx.context.decline(name: "pr-4")
+    expect(ctx.context.offered("pr-4")).to eq(offer)
+  end
+
   it "lists the session's sources" do
     ctx.context.attach(name: "date", cmd: "date", why: "the time")
     expect(ctx.context.list).to eq([{ name: "date", scope: "session", why: "the time", hint: nil, fetched_at: nil,
@@ -89,9 +159,13 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
   context "with no session yet" do
     let(:session_id) { nil }
 
-    it "attaches nothing" do
+    it "attaches, declines and offers nothing" do
       expect { ctx.context.attach(name: "date", cmd: "date") }.to raise_error(described_class::Error, "this session has no id yet")
+      expect { ctx.context.decline(name: "date") }.to raise_error(described_class::Error, "this session has no id yet")
+      expect { ctx.context.mark_offered("date", nil) }.to raise_error(described_class::Error, "this session has no id yet")
       expect(ctx.context.list).to eq([])
+      expect(ctx.context.declined?("date", url: "https://x")).to be(false)
+      expect(ctx.context.offered("date")).to be_nil
     end
   end
 end
