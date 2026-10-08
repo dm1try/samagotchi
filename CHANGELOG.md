@@ -30,6 +30,10 @@ and commands may change between minor versions. How releases are made:
   prompt and tool rows followed by an earlier step's text, as if that were the answer; the join now draws the line
   the live view left (`✕ turn failed: HTTP 500: boom · 2.0s`, then `  partial progress kept; !rollback restores the
   pre-turn state` when the steps stayed) after the rows, with no answer text, as the web does.
+- The web's stage trail: when the ✂ row of an applied LLM context edit landed in its step inside the
+  closed cloud it was out of sight and, unlike a hook's notice, flashed nothing. It now flashes in the
+  trail for a few seconds, as its row reads (`✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k
+  tokens (paid off)`), as a hook notice does.
 
 ## [0.44.0] - 2026-10-08
 
