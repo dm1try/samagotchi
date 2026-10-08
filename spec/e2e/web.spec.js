@@ -1031,7 +1031,9 @@ test("a turn that fails after a tool step keeps its step and its failure line, l
 // is back to "…" (the fake holds each stream 1.5 s): the dropped sentence
 // is gone, not left above the new one. The answer reads once, at the end and
 // after a reload.
-test("a step whose stream drops mid-answer is asked again: the partial goes live, and the answer shows once", async ({ page, script }) => {
+test("a step whose stream drops mid-answer is asked again: the partial goes live, and the answer shows once", async ({ page, script, configExtra }) => {
+  // The e2e config has retry.max 0, which turns the ask-again off.
+  configExtra("retry:\n  max: 1\n  base_delay: 0.05\n");
   script("stream_drop");
   await send(page, "Answer in one piece");
   // Each live state lasts about a second: checked every frame, not by

@@ -37,9 +37,9 @@ and commands may change between minor versions. How releases are made:
   conversation, at most twice, reporting each ask-again as `generation_retrying`, as the transport's retries do.
   A cancel, a provider error, a first-token timeout and a connection refused still fail as before, and a step whose
   retries run out fails the turn with the same error. Each ask-again waits the transport's backoff (`retry.*`),
-  which a cancel cuts short. Its `generation_retrying` carries `restarted: true`: the web's live step, the TUI's
-  activity line, a reload in the middle of the turn and the stream hooks drop the partial reply, so the answer
-  shows once.
+  which a cancel cuts short, and `retry.max` caps the asks-again (`retry.max: 0` turns them off). Its
+  `generation_retrying` carries `restarted: true`: the web's live step, the TUI's activity line, a reload in the
+  middle of the turn and the stream hooks drop the partial reply, so the answer shows once.
 
 ## [0.45.0] - 2026-10-08
 

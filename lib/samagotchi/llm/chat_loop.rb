@@ -63,6 +63,15 @@ module Samagotchi
         @sleeper = sleeper || ->(seconds) { sleep(seconds) }
       end
 
+      # How many times a dropped stream's step may be asked again: +cap+, or
+      # retry.max when that is smaller (retry.max: 0 turns it off, as it
+      # does the transport's retries).
+      def stream_drop_limit(cap)
+        [cap, HTTP::RetryPolicy.from_config.max].min
+      rescue StandardError
+        cap
+      end
+
       # The seconds before the +attempt+-th ask-again of a dropped stream's
       # step: the transport's own backoff (retry.base_delay doubling, capped
       # at retry.max_delay; LLM::HTTP::RetryPolicy), 0 when retry.max is
@@ -580,10 +589,11 @@ module Samagotchi
         # A dropped stream (LLM::HTTP raises RetryExhausted once a stream
         # that already showed something fails, where a retry would repeat
         # output) is asked again here, from the same conversation, up to
-        # MAX_STREAM_DROPS times per step, after the transport's backoff: the
-        # partial reply is dropped and the step restarts. A refusal or a
-        # first-token timeout fails as before, and a cancel (before or
-        # during the wait) never retries.
+        # MAX_STREAM_DROPS times per step (fewer under a smaller retry.max;
+        # none with 0), after the transport's backoff: the partial reply is
+        # dropped and the step restarts. A refusal or a first-token timeout
+        # fails as before, and a cancel (before or during the wait) never
+        # retries.
         MAX_STREAM_DROPS = 2
 
         # Runs one request, asking again on a mid-stream drop. +attempt+
@@ -596,7 +606,9 @@ module Samagotchi
           # not failed, whatever the drop's count.
           cancelled = [@cancel_controller, generation_controller].compact.find(&:cancelled?)
           raise RequestCancelled, cancelled.reason if cancelled
-          raise if attempt >= MAX_STREAM_DROPS || !streamed_any
+
+          limit = @loop.stream_drop_limit(MAX_STREAM_DROPS)
+          raise if attempt >= limit || !streamed_any
 
           attempt += 1
           streamed.clear
@@ -604,7 +616,7 @@ module Samagotchi
           delay = @loop.generation_retry_delay(attempt)
           # restarted: the step's streamed chunks so far are void (the UIs
           # and the Bridge's TurnAccumulator drop them).
-          emit(type: :generation_retrying, iteration: iteration, attempt: attempt, max_retries: MAX_STREAM_DROPS,
+          emit(type: :generation_retrying, iteration: iteration, attempt: attempt, max_retries: limit,
                next_delay: delay, error_class: e.class.name, error_message: e.message, status: nil, restarted: true)
           @loop.wait_retry(delay, @cancel_controller, generation_controller)
           retry

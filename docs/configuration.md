@@ -732,13 +732,15 @@ Transient network failures are retried automatically with exponential backoff.
   <address> (connection refused) — is the server running?`.
 - A stream that has already produced output is never retried at the transport (the retry would repeat it). The
   chat loop (an OpenAI-compatible host) drops the partial reply and asks again for the whole step, from the same
-  conversation, at most twice, reported as a retry (`↻ retrying …`); once those run out the turn fails with the
-  error, as before. A refusal, a first-token timeout, a provider error and a cancel are never retried this way.
+  conversation, at most twice (at most `retry.max` times when that is smaller: `retry.max: 0` turns it off), after
+  the same backoff, reported as a retry (`↻ retrying (stream dropped) …`); once those run out the turn fails with
+  the error, as before. A refusal, a first-token timeout, a provider error and a cancel are never retried this way.
 - Cancellation (`Ctrl-C`) is never retried.
 
 Configuration:
 
-- `retry.max` (default `5`, env `SAMAGOTCHI_RETRY_MAX`): number of retries after the first failed attempt.
+- `retry.max` (default `5`, env `SAMAGOTCHI_RETRY_MAX`): number of retries after the first failed attempt; it also
+  caps a dropped stream's asks-again (at most 2), and `0` turns those off too.
 - `retry.base_delay` (default `0.5`, env `SAMAGOTCHI_RETRY_BASE_DELAY`): backoff base delay in seconds.
 - `retry.max_delay` (default `8.0`, env `SAMAGOTCHI_RETRY_MAX_DELAY`): cap for backoff delay in seconds.
 

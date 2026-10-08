@@ -497,6 +497,28 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
           .to eq([[1, 1], [1, 2], [2, 1], [2, 2]])
       end
 
+      it "asks again at most retry.max times: none with retry.max 0, so the turn fails on the drop" do
+        backend.adapter = FakeChatAdapter.new(dropping, text("never"))
+
+        with_env("SAMAGOTCHI_RETRY_MAX" => "0") do
+          expect { run }.to raise_error(Samagotchi::LLM::RetryExhausted)
+        end
+
+        expect(backend.adapter.requests.size).to eq(1)
+        expect(events.map { |e| e[:type] }).not_to include(:generation_retrying)
+      end
+
+      it "asks again once with retry.max 1" do
+        backend.adapter = FakeChatAdapter.new(dropping, dropping, text("never"))
+
+        with_env("SAMAGOTCHI_RETRY_MAX" => "1") do
+          expect { run }.to raise_error(Samagotchi::LLM::RetryExhausted)
+        end
+
+        expect(backend.adapter.requests.size).to eq(2)
+        expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:max_retries] }).to eq([1])
+      end
+
       it "gives up after two retries, failing the turn with the last error" do
         backend.adapter = FakeChatAdapter.new(dropping)
         error = nil
