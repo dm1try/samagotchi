@@ -340,7 +340,8 @@ note or image) is deleted as its worker exits, and `/exit` says so; set
 
 `chi sessions stop ID...` stops each session's worker and waits for it to exit, so
 a `chi --resume ID` after it starts a fresh one. A worker still running an
-older chi (from before an upgrade) takes turns but not commands; the attached
+older chi (from before an upgrade) takes turns, but not commands, or not the
+ones newer than it (`/llm-context`, `--llm-context` on `--attach`); the attached
 terminal and the Web UI say so, with that restart line.
 
 `chi sessions restart ID...` hands each session to a new worker on the newest
@@ -885,8 +886,9 @@ Behavior notes:
   tool steps keeps them, as a cancel does, with the dim `partial progress kept; !rollback restores the pre-turn state`
   (the model reads a note saying how many steps ran and why it stopped; `chi send --wait` and a delegating parent
   read `the turn failed after N tool steps: <why>; its work so far stays`). The
-  REPL and attached mode say the same; the web says `■ canceled (Ctrl-C)` (`stopped` for its Stop button,
-  `by a hook` for a hook's). A turn a bundle's plugin stopped names it: `■ turn stopped by loop-guard` (the web:
+  REPL and attached mode say the same; the web ends a failed turn whose steps stayed with `✕ turn failed: <summary>;
+  partial progress kept (!rollback restores the pre-turn state)`, after a reload too, and says `■ canceled (Ctrl-C)`
+  (`stopped` for its Stop button, `by a hook` for a hook's). A turn a bundle's plugin stopped names it: `■ turn stopped by loop-guard` (the web:
   `■ stopped by loop-guard`).
 - Visible text the canceled request had streamed stays in the conversation, marked `[interrupted]`, so the next
   message (or a continue) picks up from the half-finished reply; the canceled request's thinking and any unfinished
