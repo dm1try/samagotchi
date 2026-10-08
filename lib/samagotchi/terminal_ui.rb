@@ -1052,7 +1052,26 @@ module Samagotchi
       return yield unless @repl_input
 
       @after_turn = []
-      @repl_input.during_turn(method(:steer_line), leftovers: -> { @pending_input_queue.drain + @after_turn.slice!(0..) }, &)
+      @repl_input.during_turn(method(:steer_line), leftovers: -> { @pending_input_queue.drain + lines_after_turn }, &)
+    end
+
+    # The lines that waited for the turn's end, taken from @after_turn. After
+    # a canceled or failed turn (Ctrl-C raises through here; a failure too)
+    # a !cmd among them is dropped (D4): running it would close the
+    # !rollback the turn left.
+    def lines_after_turn
+      lines = @after_turn.slice!(0..)
+      ended = if @active_cancel_controller&.cancelled? || $!.is_a?(Interrupt) then "canceled"
+              elsif $! then "failed"
+              end
+      return lines unless ended
+
+      lines.reject do |line|
+        next false unless command_registry.lookup(line)&.id == :shell
+
+        @surface.commit("turn #{ended}: #{line.strip} not run; send it again")
+        true
+      end
     end
 
     # On the reader thread, from ReplInput: takes a line for the running turn.

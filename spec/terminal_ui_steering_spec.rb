@@ -414,6 +414,56 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(repl_input.pop(timeout: 0)).to eq([:line, "!ls"])
   end
 
+  # D4: running it would close the !rollback the turn left.
+  it "drops a !cmd queued during a turn that is canceled, keeps the other lines" do
+    allow(engine).to receive(:run_turn) do |*, cancel_controller:, **|
+      repl_input << [:line, "!ls"] << [:line, "/model big"] << [:line, "then this"]
+      cancel_controller.cancel!(:ctrl_c)
+      repl_input << [:line, "after ctrl-c"]
+      result
+    end
+
+    agent.run_engine_turn(session, "go")
+
+    expect(surface.lines).to include("turn canceled: !ls not run; send it again")
+    lines = []
+    while (item = repl_input.pop(timeout: 0))
+      lines << item.last
+    end
+    expect(lines).to eq(["/model big", "then this", "after ctrl-c"])
+  end
+
+  it "drops a !cmd queued during a turn Ctrl-C interrupts" do
+    allow(engine).to receive(:run_turn) do
+      repl_input << [:line, "!ls"]
+      raise Interrupt
+    end
+    allow(agent).to receive(:cancelled_result_from).and_return(result)
+
+    agent.run_engine_turn(session, "go")
+
+    expect(surface.lines).to include("turn canceled: !ls not run; send it again")
+    expect(repl_input.pop(timeout: 0)).to be_nil
+  end
+
+  it "drops a !cmd queued during a turn that fails, and keeps it after one that ends" do
+    allow(engine).to receive(:run_turn) do
+      repl_input << [:line, "!ls"]
+      raise Samagotchi::LLM::ProviderError, "boom"
+    end
+
+    expect { agent.run_engine_turn(session, "go") }.to raise_error(Samagotchi::LLM::ProviderError)
+    expect(surface.lines).to include("turn failed: !ls not run; send it again")
+    expect(repl_input.pop(timeout: 0)).to be_nil
+
+    allow(engine).to receive(:run_turn) do
+      repl_input << [:line, "!ls"]
+      result
+    end
+    agent.run_engine_turn(session, "go")
+    expect(repl_input.pop(timeout: 0)).to eq([:line, "!ls"])
+  end
+
   # D1: a line typed after a queued command never runs ahead of it.
   it "keeps a queued command ahead of the lines typed after it: steering text left unmerged and an image line too" do
     allow(engine).to receive(:run_turn) do |*, pending_input:, **|
