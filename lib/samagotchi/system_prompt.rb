@@ -80,13 +80,17 @@ module Samagotchi
       key = [chat, thinking, layers]
       @built ||= {}
       @index_sizes ||= {}
+      @notes_loaded ||= {}
       unless @built.key?(key)
+        @section_notes = nil
         @built[key] = system_prompt_with_index(
           assist_system_prompt(chat: chat, thinking: thinking, layers: layers), chat: chat, thinking: thinking, layers: layers
         )
         @index_sizes[key] = @measured_index
+        @notes_loaded[key] = @section_notes || []
       end
       @memory_index = @index_sizes[key]
+      @prompt_notes = @notes_loaded[key]
       @built[key]
     end
 
@@ -98,11 +102,19 @@ module Samagotchi
     # @return [Hash, nil]
     attr_reader :memory_index
 
+    # The model notes the prompt #build returned last carries
+    # (Array<ModelNotes::Note>, [] with none), nil before a build and after
+    # #reset!. Read when the prompt is built, as the section is.
+    # @return [Array<ModelNotes::Note>, nil]
+    attr_reader :prompt_notes
+
     # Drops the built prompts: the next #build reads the profile, tools,
     # indexes and memories again (a model or profile switch, changed tools).
     def reset!
       @built = nil
       @index_sizes = nil
+      @notes_loaded = nil
+      @prompt_notes = nil
       @stable_lengths = nil
     end
 
@@ -323,6 +335,7 @@ module Samagotchi
     # identity: a heading per scope, each note under its name, the models:
     # line left out. nil without any, so the prompt stays as it was.
     def model_notes_section
+      @section_notes = []
       notes = Array(@model_notes_lookup.call)
       return nil if notes.empty?
 
@@ -330,7 +343,7 @@ module Samagotchi
       notes.group_by(&:scope).map do |scope, list|
         heading = ref.to_s.empty? ? "Model notes (scope=#{scope}):" : "Model notes (for #{ref}, scope=#{scope}):"
         [heading, *list.map { |note| "## #{note.name}\n#{note.body}" }].join("\n\n")
-      end.join("\n\n")
+      end.join("\n\n").tap { @section_notes = notes }
     rescue StandardError
       nil
     end

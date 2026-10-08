@@ -54,6 +54,7 @@ require_relative "engine_peers"
 require_relative "bundle_needs"
 require_relative "model_overlay"
 require_relative "model_notes"
+require_relative "prompt_note"
 require_relative "served_model"
 require_relative "image_store"
 require_relative "vision_context"
@@ -478,6 +479,26 @@ module Samagotchi
                      muted: @muted_memory_names)
     end
 
+    # The model notes the session's prompt carried at its last build
+    # (Session#prompt_notes): a resumed session's or a woken worker's saved
+    # ones until this process builds its prompt; without a session, the
+    # notes the effective model's prompt would load.
+    # @return [Array<PromptNote>]
+    def prompt_notes
+      return @session.prompt_notes.dup if @session
+
+      model_notes.map { |note| PromptNote.from_note(note) }
+    rescue StandardError
+      []
+    end
+
+    # Records +notes+ (ModelNotes::Note) on the session as the ones its
+    # prompt carries; saved with it.
+    def record_prompt_notes(notes)
+      @session.prompt_notes = Array(notes).map { |note| PromptNote.from_note(note) } if @session && notes
+    end
+    private :record_prompt_notes
+
     # +name+'s resolved ref (ModelRef#ref).
     def model_ref_for(name)
       @host_registry.model_ref(name).ref
@@ -856,6 +877,9 @@ module Samagotchi
       @profile_resolution = nil
       sync_model_key!
       @prompt_builder.reset!
+      # The notes the new model's prompt loads at its next build, so /model,
+      # /stats and the web name them before the next turn does.
+      record_prompt_notes(model_notes) if @session
       sync_kernel_client!
       @client.invalidate_context_window!
       @metrics.forget_model_reports!
@@ -921,7 +945,8 @@ module Samagotchi
       snapshot = @metrics.snapshot
       target = @host_registry.resolve(@effective_model_name)
       served, served_for = served_model_for(snapshot, target: target)
-      snapshot = snapshot.merge(served_model: served, served_model_for: served_for, llm_context: llm_context_summary)
+      snapshot = snapshot.merge(served_model: served, served_model_for: served_for, llm_context: llm_context_summary,
+                                prompt_notes: prompt_notes.map(&:to_h))
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(target)
         if window
@@ -1028,6 +1053,8 @@ module Samagotchi
     #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
     #   :pending_question [Hash, nil] current pending structured question
     #   :used_memory_names [Array<String>] deduped memory names active this session
+    #   :prompt_notes  [Array<Hash>] the model notes the prompt carried
+    #     ({name:, scope:, chars:, digest:}; #prompt_notes)
     #   :parent_id     [String, nil] the session that delegated this one
     #   :model_name    [String]    the model turns run on now (after /model)
     #   :served_model, :served_model_for [String, nil] what a generation of
@@ -1048,6 +1075,7 @@ module Samagotchi
         used_memory_names: @used_memories.names,
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: @muted_memory_names.dup,
+        prompt_notes: prompt_notes.map(&:to_h),
         parent_id: @session&.parent_id,
         model_name: effective_model_ref,
         served_model: served_pair[0],
@@ -1462,6 +1490,8 @@ module Samagotchi
       prompt = @prompt_builder.build(chat: chat, thinking: level, layers: llm_context_layers(target))
       # The memory indexes this prompt holds: /stats, the snapshot, analytics.json.
       @metrics.memory_index = @prompt_builder.memory_index
+      # The model notes it carries: the session records them (/stats, /model, the web).
+      record_prompt_notes(@prompt_builder.prompt_notes)
       prompt
     end
 

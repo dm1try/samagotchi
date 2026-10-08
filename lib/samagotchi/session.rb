@@ -7,6 +7,7 @@ require "time"
 require_relative "atomic_file"
 require_relative "context_note"
 require_relative "llm_context_override"
+require_relative "prompt_note"
 
 require_relative "paths"
 require_relative "project_scope"
@@ -44,6 +45,17 @@ module Samagotchi
     # from it (--mute): the worker rebuilds the same prompt on a respawn.
     # Names as given; the engine normalizes them.
     attr_accessor :preloaded_memory_names, :muted_memory_names
+    # The model notes the session's system prompt carried at its last build
+    # (Array<PromptNote>: name, scope, chars, digest; ModelNotes), set by the
+    # Engine at each build (a start, a resume's or a woken worker's first
+    # turn, /model) and saved, so what a session ran with can be read later.
+    attr_reader :prompt_notes
+
+    # @param notes [Array<PromptNote, Hash>] a file's hashes are read
+    #   (PromptNote.list)
+    def prompt_notes=(notes)
+      @prompt_notes = PromptNote.list(notes)
+    end
     # The name model_name was typed as when that differs from the resolved
     # ref stored in model_name (an alias: `small` for `gemma-small`), else
     # nil. The models: lookup takes it (HostRegistry#lookup_names).
@@ -118,7 +130,7 @@ module Samagotchi
                    first_preview: "", test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
-                   last_turn: nil, model_typed: nil, delegate: false, llm_context: nil)
+                   last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [])
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -136,6 +148,7 @@ module Samagotchi
       @used_memory_names = self.class.name_list(used_memory_names)
       @preloaded_memory_names = self.class.name_list(preloaded_memory_names)
       @muted_memory_names = self.class.name_list(muted_memory_names)
+      self.prompt_notes = prompt_notes
       @project_root = project_root
       @parent_id = parent_id&.to_s
       @scratch = !!scratch
@@ -269,6 +282,7 @@ module Samagotchi
       "project_root" => nil,
       "preloaded_memory_names" => [],
       "muted_memory_names" => [],
+      "prompt_notes" => [],
       "parent_id" => nil,
       "scratch" => false,
       "last_turn" => nil,
@@ -393,6 +407,7 @@ module Samagotchi
                 when "test_run" then !!@test_run
                 when "delegate" then @delegate
                 when "llm_context" then llm_context_file
+                when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names"
                   Array(instance_variable_get(:"@#{key}"))
                 else instance_variable_get(:"@#{key}")

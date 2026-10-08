@@ -166,6 +166,25 @@ RSpec.describe Samagotchi::Session do
       expect(summary.muted_memory_names).to eq(["gh-helper"])
     end
 
+    it "round-trips the model notes its prompt carried, a file without them read as none" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      expect(session.prompt_notes).to eq([])
+      session.prompt_notes = [{ name: "model_notes_a", scope: "system", chars: 12, digest: "0123456789ab" }, { "scope" => "x" }]
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+
+      raw = JSON.parse(File.read(path))
+      expect(raw["prompt_notes"]).to eq([{ "name" => "model_notes_a", "scope" => "system", "chars" => 12,
+                                           "digest" => "0123456789ab" }])
+      note = Samagotchi::PromptNote.new(name: "model_notes_a", scope: "system", chars: 12, digest: "0123456789ab")
+      expect(described_class.load(session.id, state_dir: tmpdir).prompt_notes).to eq([note])
+      expect(described_class.summary_from_file(path).prompt_notes).to eq([note])
+
+      raw.delete("prompt_notes")
+      File.write(path, JSON.generate(raw))
+      expect(described_class.load(session.id, state_dir: tmpdir).prompt_notes).to eq([])
+    end
+
     it "round-trips parent_id, the session that delegated this one, and reads nil where there is none" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
                                             parent_id: "parent-1234")
