@@ -556,6 +556,7 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripHide").click();
   await expect(title).toBeVisible();
   await expect(title).toHaveText("Say pong");
+  await expect(page).toHaveTitle(/^Say pong · Chi/);
   await page.locator("#stripShow").click();
   await expect(title).toBeHidden();
 
@@ -981,7 +982,7 @@ test("a question in a background tab: one notification and a title badge; in fro
   await expect.poll(() => notes(page)).toEqual([
     expect.objectContaining({ title: "Read a file of my choice", body: "needs an answer", tag: expect.stringMatching(/:/) }),
   ]);
-  await expect(page).toHaveTitle(/^\(1\) Chi/);
+  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
 
   // A reload with the question still open: old state, no notification.
   await page.reload();
@@ -1004,7 +1005,7 @@ test("the title badge counts while behind and clears when the tab comes to the f
   script("question");
   await send(page, "Read a file of my choice");
   const card = page.locator(`${H()} .bubble.question`);
-  await expect(page).toHaveTitle(/^\(1\) Chi/);
+  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
   // No bell: the badge still counts, and no notification is shown.
   expect(await notes(page)).toEqual([]);
   await page.evaluate(() => window.__setFront(true));
@@ -1019,7 +1020,7 @@ test("the title badge clears when the tab turns visible before it has focus (Saf
   script("question");
   await send(page, "Read a file of my choice");
   const card = page.locator(`${H()} .bubble.question`);
-  await expect(page).toHaveTitle(/^\(1\) Chi/);
+  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
   await page.evaluate(() => window.__showTab());
   await expect(page).not.toHaveTitle(/^\(/);
   await page.evaluate(() => window.__setFront(true));
@@ -1065,7 +1066,7 @@ test("the title badge drops a question answered from another client", async ({ p
   script("question");
   await send(page, "Read a file of my choice");
   const card = page.locator(`${H()} .bubble.question`);
-  await expect(page).toHaveTitle(/^\(1\) Chi/);
+  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
   // Another client answers; this tab stays behind.
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
   const qid = await card.getAttribute("data-qid");
@@ -1421,7 +1422,7 @@ test("check-in in a background tab: one 'needs you' notification; the card resol
   await expect.poll(() => notes(page)).toEqual([
     expect.objectContaining({ title: "Look through the README", body: "needs you", tag: expect.stringMatching(/:card:check-in-/) }),
   ]);
-  await expect(page).toHaveTitle(/^\(1\) Chi/);
+  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
 
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
   const res = await page.request.post(new URL(`/api/sessions/${id}/command`, page.url()).href, { data: { line: "/checkin later" } });

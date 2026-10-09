@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 - Web: the open session's title shows once: in its strip card, or in the top bar when the strip is hidden or the
   session has no card there (an older session, a folded delegate). The composer footer's first-message line and the
   banner that appeared at 20 % context are gone; the memory names stay in the footer's `mem N` chip and tooltip.
+- Web: the browser tab names the open session (`<first message> · Chi · <project>`), so several chi tabs read apart.
 
 ### Fixed
 
