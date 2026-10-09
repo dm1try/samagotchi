@@ -72,7 +72,8 @@ module Samagotchi
           # A replayed row (a join) carries its duration (nil: unknown).
           measured = tool_duration_ms(event)
           render_streamed_tool_activity(self.class.described(event), duration_ms: event.fetch(:duration_ms, measured),
-                                                                     images: event[:images], diff: event[:diff])
+                                                                     images: event[:images], diff: event[:diff],
+                                                                     output_truncated: event[:output_truncated])
         when :generation_completed, :generation_cancelled, :tool_dispatch_started
           @view.generation_feedback_finished
         when :pending_input_merged
@@ -211,13 +212,14 @@ module Samagotchi
 
       private
 
-      def render_streamed_tool_activity(activity, duration_ms:, images: nil, diff: nil)
+      def render_streamed_tool_activity(activity, duration_ms:, images: nil, diff: nil, output_truncated: nil)
         return if activity.nil?
 
         @streamed_tool_activity[tool_activity_key(activity)] += 1
         line = @view.format_tool_activity_line(activity, duration_ms: duration_ms)
         line += @view.format_tool_image_suffix(images) if images&.any?
         line += @view.format_tool_diff_suffix(diff) if diff
+        line += @view.format_tool_cut_suffix(output_truncated) if output_truncated
         @view.print_line(line)
       end
 

@@ -113,6 +113,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(screen.lines).to include("tool> edit path=k: ok +3 \u22121")
     end
 
+    it "marks a cut tool output on its replayed row, as the live one did" do
+      turn = { prompt: "go", origin: nil,
+               parts: [{ kind: "tool", tool: "read", params: "path=big", status: "ok", output_truncated: true, action: "reading file" },
+                       { kind: "tool", tool: "read", params: "path=old", status: "ok", output_truncated: true },
+                       { kind: "tool", tool: "read", params: "path=small", status: "ok", output_truncated: false }] }
+      feed(snapshot(current_turn: turn))
+
+      expect(screen.lines).to include("tool> reading file (read path=big): ok [cut]",
+                                      "tool> read path=old: ok [cut]",
+                                      "tool> read path=small: ok")
+    end
+
     it "does not repeat the joined turn's earlier tools in its summary" do
       activity = { action: "reading file", tool: "read", params: "path=log", status: "ok" }
       turn = { prompt: "go", origin: nil, parts: [{ kind: "tool", tool: "read", params: "path=log", status: "ok" }] }

@@ -1226,7 +1226,7 @@ module Samagotchi
                      params: part[:params], status: status,
                      description: ToolView.description_title(part[:view] || {}) }
         "#{format_tool_activity_line(activity, duration_ms: duration_ms)}" \
-          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
+          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}#{format_tool_cut_suffix(part[:output_truncated])}"
       end
 
       # The context notes that came since the last prompt (all of them in a
@@ -1320,7 +1320,7 @@ module Samagotchi
 
         activity = EventRenderer.described(event) || {}
         @screen.commit(snapshot_tool_line({ tool: event[:tool], params: activity[:params], status: activity[:status],
-                                            description: activity[:description],
+                                            description: activity[:description], output_truncated: event[:output_truncated],
                                             images: event[:images], diff: event[:diff] }))
       end
 

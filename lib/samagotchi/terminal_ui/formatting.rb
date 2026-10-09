@@ -138,6 +138,12 @@ module Samagotchi
         " #{paint("+#{get.call(:added).to_i}", 32)} #{paint("\u2212#{get.call(:removed).to_i}", 31)}"
       end
 
+      # A row whose output the runner cut (max_tool_output_chars): " [cut]",
+      # dim, beside the diff one.
+      def format_tool_cut_suffix(output_truncated)
+        output_truncated ? " #{paint("[cut]", 90)}" : ""
+      end
+
       # Prompt labels by the sender's client_id: a whole id, or a prefix
       # (ending in ":") it starts with (turn_events.js CLIENT_LABELS;
       # spec/shared/labels_matrix.json).
@@ -212,7 +218,7 @@ module Samagotchi
       def snapshot_tool_line(part)
         status = part[:status].to_s
         "#{paint("tool>", 36)} #{part[:tool]}#{tool_params_suffix(part)}: #{paint(status, status_color(status))}" \
-          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
+          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}#{format_tool_cut_suffix(part[:output_truncated])}"
       end
 
       # A card (Engine#show_card) as a framed block: the title and its
