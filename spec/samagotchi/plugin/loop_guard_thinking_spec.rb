@@ -364,6 +364,109 @@ RSpec.describe "The loop-guard thinking watch" do
       end
     end
 
+    # A dropped stream's step is asked again: the model re-thinks the same
+    # opening, and the restarted attempt's thinking repeats what the
+    # dropped attempt's watch already holds. Without a reset the watch
+    # would see the opening twice and cut a healthy turn (a false
+    # positive); with it the restart's fire starts a fresh watch.
+    describe "a dropped stream asked again (restarted: true)" do
+      # Healthy thinking over min_chars (distinct sentences, 40+ in any
+      # 48, so no window, cycle or run fires on it), repeating one sentence
+      # four times, spaced apart: under max_same (8), no run of it — but a
+      # second copy of the opening puts that sentence at 8, and only a
+      # watch that still holds the dropped attempt's copy sees that.
+      let(:repeated) { "I need to check the file again to be sure about it. " }
+      let(:opening) do
+        pieces = random_thinking(4000).split(/(?<=\. )/)
+        filler = pieces.each_slice(10).map(&:join)
+        out = +""
+        4.times { |i| out << filler[i] << repeated }
+        out << filler[4..-2].join << filler.last
+        out
+      end
+      # Distinct sentences, over min_chars, sharing no sentence with the
+      # opening (the restarted attempt's tail, after its repeated opening).
+      let(:healthy_tail) { random_thinking(4000)[2000..] }
+
+      it "is healthy on its own (the false positive needs the repeat)" do
+        expect(first_loop(opening)).to be_nil
+        expect(first_loop(opening + healthy_tail)).to be_nil
+      end
+
+      # One generation: +text+, then a restart mid-stream, then +after+ as
+      # the restarted attempt (fed in batches, the first fire carrying
+      # restarted: true, as StreamWatch fires it).
+      def restarted_generation(hooks, text, after, iteration: 1)
+        fire(hooks, { type: :before_generation, iteration: iteration })
+        text.each_char.each_slice(batch) do |slice|
+          fire(hooks, { type: :generation_progress, iteration: iteration, thinking: slice.join, text: "",
+                        elapsed_ms: 4000,
+                        stop_generation: ->(reason) { acts.push([:stop_generation, reason]).any? },
+                        stop_turn: ->(reason) { acts.push([:stop_turn, reason]).any? } })
+        end
+        fire(hooks, { type: :generation_retrying, iteration: iteration, attempt: 1, restarted: true })
+        after.each_char.each_slice(batch).with_index do |slice, i|
+          fire(hooks, { type: :generation_progress, iteration: iteration, thinking: slice.join, text: "",
+                        elapsed_ms: 8000 + (i * 4000),
+                        restarted: i.zero?,
+                        stop_generation: ->(reason) { acts.push([:stop_generation, reason]).any? },
+                        stop_turn: ->(reason) { acts.push([:stop_turn, reason]).any? } })
+        end
+      end
+
+      it "does not cut when the restarted attempt re-thinks the dropped attempt's opening" do
+        hooks = plugin
+        fire(hooks, { type: :before_turn })
+        restarted_generation(hooks, opening, opening + healthy_tail)
+
+        expect(acts).to be_empty
+        expect(notices).to be_empty
+        expect(cards).to be_empty
+      end
+
+      it "still cuts a real loop after a restart, for the loop and not the repeat" do
+        hooks = plugin
+        fire(hooks, { type: :before_turn })
+        restarted_generation(hooks, opening, opening + healthy_tail + looping)
+
+        expect(acts).to eq([[:stop_generation, "its thinking kept repeating itself"]])
+        expect(notices.size).to eq(1)
+        expect(notices.first.first).to include("3 sentences ×3")
+      end
+
+      it "keeps the loops counted before the restart: a second loop in the same turn stops it" do
+        hooks = plugin
+        fire(hooks, { type: :before_turn })
+        generation(hooks, looping)
+        # A restart mid-second-generation: the watch starts over, but the
+        # first loop still counts, so the next one stops the turn.
+        restarted_generation(hooks, opening, opening + looping, iteration: 2)
+
+        expect(acts.map(&:first)).to eq(%i[stop_generation stop_turn])
+        expect(cards.size).to eq(1)
+      end
+
+      it "watches the restarted attempt in notify mode after the dropped one already warned" do
+        hooks = plugin("thinking" => { "action" => "notify" })
+        fire(hooks, { type: :before_turn })
+        restarted_generation(hooks, looping, looping)
+
+        expect(acts).to be_empty
+        expect(notices.size).to eq(2)
+      end
+
+      it "red-check: without the reset the same input cuts (the false positive)" do
+        hooks = plugin
+        fire(hooks, { type: :before_turn })
+        # Feed the opening twice into one watch, as the old code did: the
+        # repeated sentence reaches max_same and the watch cuts.
+        generation(hooks, opening + opening)
+
+        expect(acts).to eq([[:stop_generation, "its thinking kept repeating itself"]])
+        expect(notices.first.first).to include("one sentence ×8")
+      end
+    end
+
     it "acts once per generation" do
       hooks = plugin("thinking" => { "action" => "notify" })
       fire(hooks, { type: :before_turn })

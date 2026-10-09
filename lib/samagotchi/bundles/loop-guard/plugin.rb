@@ -313,8 +313,20 @@ class Plugin
   # A stretch of streamed thinking. The first loop in a turn is cut and the
   # model asked again (action retry); a second one, or action stop, stops
   # the turn with a card; action notify only warns, once per generation.
+  #
+  # A restarted: true fire is a dropped stream's step asked again: the
+  # model streams from the start, and what the dropped attempt's watch
+  # holds is void — a re-thought opening would repeat it and look like a
+  # loop. The watch starts over (a new one, before this fire's thinking);
+  # the restart is no good step, and a loop cut before it still counts.
   def progress(event, ctx)
-    return if @watch.nil? || @watch_done
+    return if @watch.nil?
+
+    if event[:restarted]
+      @watch = ThinkingWatch.new(@thinking)
+      @watch_done = false
+    end
+    return if @watch_done
 
     found = @watch.feed(event[:thinking])
     return unless found
