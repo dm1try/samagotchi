@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { emptyAnswerHtml, stateBadgeHtml, statusParts, toolRowHtml, userBubbleHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
+import { commandBubbleHtml, emptyAnswerHtml, shellCommandMessage, stateBadgeHtml, statusParts, toolRowHtml, userBubbleHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
 
 test("userBubbleHtml: a plain prompt keeps its text as the copy source, its `>` lines as quotes", () => {
   assert.equal(userBubbleHtml({ content: "> quoted\nask" }),
@@ -28,6 +28,34 @@ test("userBubbleHtml: the live page's own fields, and a state without a badge is
 
 test("userBubbleHtml: no content is an empty bubble, not 'undefined'", () => {
   assert.equal(userBubbleHtml({ content: undefined }), '<div class="bubble user" data-copy-source=""><div class="user-message"></div></div>');
+});
+
+test("shellCommandMessage: a `!cmd`'s saved message parses to its line and output; anything else is null", () => {
+  assert.deepEqual(shellCommandMessage("!(echo hi)\nhi\n"), { line: "!echo hi", text: "hi\n" });
+  assert.deepEqual(shellCommandMessage("!(cd x && rspec spec/c_spec.rb)\n3 examples, 0 failures\n"),
+    { line: "!cd x && rspec spec/c_spec.rb", text: "3 examples, 0 failures\n" });
+  // An empty output still parses (the newline is the shape).
+  assert.deepEqual(shellCommandMessage("!(true)\n"), { line: "!true", text: "" });
+  // A command with a ")" in it: the last ")" before the newline closes it.
+  assert.deepEqual(shellCommandMessage("!(echo a)b)\nout"), { line: "!echo a)b", text: "out" });
+  // No match: a normal message, one that merely starts with "!" or "!(",
+  // one with no newline after the "!(" line, no content at all.
+  assert.equal(shellCommandMessage("hello"), null);
+  assert.equal(shellCommandMessage("! not a command"), null);
+  assert.equal(shellCommandMessage("!(no newline"), null);
+  assert.equal(shellCommandMessage("!(echo hi)"), null);
+  assert.deepEqual(shellCommandMessage("!(echo hi)\n\nsecond line"), { line: "!echo hi", text: "\nsecond line" });
+  assert.equal(shellCommandMessage(undefined), null);
+  assert.equal(shellCommandMessage(null), null);
+});
+
+test("commandBubbleHtml: the live page's command markup — the line, the output in a pre; HTML escaped", () => {
+  assert.equal(commandBubbleHtml({ line: "!echo <hi>", text: "<hi> & \"bye\"\n" }),
+    '<div class="bubble command"><div class="command-line">!echo &lt;hi&gt;</div>' +
+    '<pre class="command-output">&lt;hi&gt; &amp; &quot;bye&quot;\n</pre></div>');
+  // No output: no pre, as drawCommandBubble leaves it out.
+  assert.equal(commandBubbleHtml({ line: "!true", text: "" }),
+    '<div class="bubble command"><div class="command-line">!true</div></div>');
 });
 
 test("stateBadgeHtml: only the named states", () => {

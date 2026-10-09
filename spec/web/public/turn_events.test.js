@@ -283,7 +283,7 @@ test("composerAfterAck clears a sent message the composer held with surrounding 
 });
 
 
-import { commandView, continueLine, sessionCommandLine, startPageReply, startPageReplyOrHint, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { commandView, continueLine, historyHasCommandBubble, sessionCommandLine, startPageReply, startPageReplyOrHint, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("sessionCommandLine: the session's commands go to the command route, an unknown /word to the model", () => {
   const commands = [{ name: "/model" }, { name: "/models" }, { name: "!rollback" }, { name: "/hello", source: "b" }];
@@ -411,6 +411,24 @@ test("snapshotEvents replays the commands waiting for the turn's end as their co
                                   queued_commands: [{ command_id: "c1", client_id: "tui:1", line: "/model x" }] });
   assert.deepEqual(events.map((e) => e.type), ["turn_enqueued", "command_queued"]);
   assert.deepEqual(events[1], { type: "command_queued", command_id: "c1", client_id: "tui:1", line: "/model x", waits: "turn_end" });
+});
+
+test("historyHasCommandBubble: only the history's LAST command bubble counts, and only for its own line", () => {
+  // Fake elements: { line } stands in for the bubble with that .command-line.
+  const bubble = (line) => ({ querySelector: () => ({ textContent: line }) });
+  const other = { querySelector: () => ({ textContent: "!ls" }) };
+  // The redrawn history ends with this command's bubble (a `!cmd`'s saved
+  // message rendered as one): no second bubble.
+  assert.equal(historyHasCommandBubble([other, bubble("!echo hi")], "!echo hi"), true);
+  // An earlier bubble for the line, another command's at the end: a second
+  // bubble still goes (the last one is not this line's).
+  assert.equal(historyHasCommandBubble([bubble("!echo hi"), other], "!echo hi"), false);
+  // A different line at the end: no.
+  assert.equal(historyHasCommandBubble([other], "!echo hi"), false);
+  // No bubbles at all (no resync, or one that redrew nothing): no.
+  assert.equal(historyHasCommandBubble([], "!echo hi"), false);
+  // A bubble without a .command-line (a malformed one) never matches.
+  assert.equal(historyHasCommandBubble([{ querySelector: () => null }], "!echo hi"), false);
 });
 
 test("commandView: a card's action is hidden unless it says something back or fails", () => {

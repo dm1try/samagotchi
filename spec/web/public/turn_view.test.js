@@ -41,6 +41,16 @@ test("turnHistoryHtml: a plain answer and a note; the timing line under the answ
     '<div class="bubble note"><div class="note-line">note from x</div><div class="note-text">n</div></div>');
 });
 
+test("turnHistoryHtml: a `!cmd`'s saved user message renders as its command bubble, not a user bubble", () => {
+  const items = [{ role: "user", content: "!(echo <hi>)\n<hi>" }, { role: "assistant", content: "done" }];
+  const html = turnHistoryHtml(items, normalizeTiming({}), { thumbs });
+  assert.match(html, /^<div class="bubble command"><div class="command-line">!echo &lt;hi&gt;<\/div><pre class="command-output">&lt;hi&gt;<\/pre><\/div>/);
+  assert.doesNotMatch(html, /bubble user/);
+  // A message that merely starts with "!(" without the newline shape stays a user bubble.
+  const plain = turnHistoryHtml([{ role: "user", content: "!(no newline" }], normalizeTiming({}), { thumbs });
+  assert.match(plain, /^<div class="bubble user"/);
+});
+
 test("turnHistoryHtml: a turn canceled before any answer keeps its timing under the prompt, after its steps", () => {
   const items = [{ role: "user", content: "p" }];
   const canceled = normalizeTiming({
