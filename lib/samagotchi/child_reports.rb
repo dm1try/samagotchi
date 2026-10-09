@@ -57,16 +57,21 @@ module Samagotchi
     # @param wake [#call, nil] (parent id) wakes a parent with no worker;
     #   nil: SessionManager.wake_for_report on a thread
     # @return [String, nil] the ring file, nil when none was written
+    # The parent is read fresh: a continue may have moved the child to the
+    # chain's new link (Session::PARENT_FILE) since its worker loaded it.
     def ring(child, why:, state_dir:, wake: nil)
       return nil if mode == "off"
-      return nil unless child&.delegate? && child.parent_id
-      # A deleted parent gets no orphan dir.
-      return nil unless Session.exist?(child.parent_id, state_dir: state_dir)
+      return nil unless child&.delegate?
 
-      parent_dir = Session.session_dir(child.parent_id, state_dir: state_dir)
+      parent_id = Session.parent_override(child.id, state_dir: state_dir) || child.parent_id
+      return nil unless parent_id
+      # A deleted parent gets no orphan dir.
+      return nil unless Session.exist?(parent_id, state_dir: state_dir)
+
+      parent_dir = Session.session_dir(parent_id, state_dir: state_dir)
       path = SessionInbox.write_ring(parent_dir, child_id: child.id, why: why)
-      Log.info(:worker, "delegate_rang", parent: child.parent_id[0, 8], why: why)
-      wake_parent(child.parent_id, state_dir: state_dir, wake: wake) if mode == "wake"
+      Log.info(:worker, "delegate_rang", parent: parent_id[0, 8], why: why)
+      wake_parent(parent_id, state_dir: state_dir, wake: wake) if mode == "wake"
       path
     rescue StandardError => e
       Log.warn(:worker, "delegate_ring_failed", parent: child&.parent_id.to_s[0, 8], error: e.class.name, msg: e.message)

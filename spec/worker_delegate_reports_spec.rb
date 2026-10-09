@@ -115,6 +115,21 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       expect(wait_until { wakes == [parent.id] }).to be(true)
     end
 
+    it "takes a parent.json written while it runs at its next turn's start: the turn and the save see the new parent" do
+      child = make_child
+      seen = Queue.new
+      allow(engine).to receive(:run_turn) { |session, prompt, **| seen << [prompt, session.parent_id] and result }
+      start_worker(child)
+      moved_to = save(Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir))
+      Samagotchi::Session.reparent(child.id, to: moved_to.id, from: parent.id, state_dir: tmpdir)
+
+      send_turn(child, "from the web", "web:tab1")
+
+      expect(seen.pop(timeout: 3)).to eq(["from the web", moved_to.id])
+      expect(wait_until { JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))["parent_id"] == moved_to.id })
+        .to be(true)
+    end
+
     it "rings after a follow-up from its parent, not after a turn the user typed into it" do
       child = make_child
       start_worker(child)
@@ -509,6 +524,22 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(wait_until { rings.empty? }).to be(true)
         sleep(0.3)
         expect(wake_turns).to be_empty
+      end
+
+      it "takes a parent.json written while it idles at a wake turn's start too" do
+        start_worker(parent)
+        grand = save(Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir))
+        Samagotchi::Session.reparent(parent.id, to: grand.id, from: nil, state_dir: tmpdir)
+        allow(engine).to receive(:run_turn) do |session, prompt, **kwargs|
+          wake_turns << [prompt, session.parent_id, kwargs[:pending_input].call]
+          result
+        end
+        child_answers("found it")
+
+        prompt, parent_id, = wake_turns.pop(timeout: 3)
+        expect([prompt, parent_id]).to eq([nil, grand.id])
+        expect(wait_until { JSON.parse(File.read(File.join(tmpdir, "#{parent.id}.json")))["parent_id"] == grand.id })
+          .to be(true)
       end
 
       it "keeps the rings and stops waking after a failed wake turn, until a human's input" do

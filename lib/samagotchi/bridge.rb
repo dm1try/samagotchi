@@ -474,7 +474,9 @@ module Samagotchi
     # than a version.
     # restart: POST /exit takes "restart": true (WorkerIdleExit#hold_for_restart).
     # task_stop: POST tasks/stop (#handle_task_stop), the web's stop-task button.
-    FEATURES = %w[restart task_stop].freeze
+    # reparent: the worker reads Session::PARENT_FILE (its rings, each turn's
+    # start), so a continue may move it to the chain's new link (ChildMove).
+    FEATURES = %w[restart task_stop reparent].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].

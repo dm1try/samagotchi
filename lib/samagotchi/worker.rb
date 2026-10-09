@@ -802,6 +802,10 @@ module Samagotchi
       restores = @turn_flow.restores
       begin
         @session.status = Session::STATUS_RUNNING
+        # A continue that moved this session to the chain's new link wrote
+        # the new parent beside it (Session::PARENT_FILE): this turn's
+        # status, its rings and every save from here on say so.
+        @session.parent_id = Session.parent_override(@session_id, state_dir: @state_dir) || @session.parent_id
         @session.save(state_dir: @state_dir)
         result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, **turn_args)
       rescue StandardError => e

@@ -101,6 +101,19 @@ RSpec.describe "delegate reports" do
       expect(rings.size).to eq(1)
     end
 
+    it "rings the parent parent.json names, read fresh, over the one the child holds in memory, and wakes it" do
+      held = Samagotchi::Session.load(child.id, state_dir: tmpdir)
+      moved_to = make
+      Samagotchi::Session.reparent(child.id, to: moved_to.id, from: parent.id, state_dir: tmpdir)
+
+      path = described_class.ring(held, why: "turn_end", state_dir: tmpdir, wake: woken)
+
+      expect(held.parent_id).to eq(parent.id)
+      expect(File.dirname(path)).to eq(File.join(Samagotchi::Session.session_dir(moved_to.id, state_dir: tmpdir), "children"))
+      expect(rings).to be_empty
+      expect(wakes).to eq([moved_to.id])
+    end
+
     it "never rings for a fork or a session with no parent" do
       fork = make(parent_id: parent.id)
       expect(ring(fork)).to be_nil

@@ -47,6 +47,13 @@ RSpec.describe "Cross-version worker contract" do
     expect(Samagotchi::Session::STOPPED_FILE).to eq("stopped")
   end
 
+  # A continue moves a live delegate only when its worker reads parent.json
+  # (ChildMove asks the sidecar for "reparent").
+  it "keeps the parent.json override and names it in the sidecar's features" do
+    expect(Samagotchi::Session::PARENT_FILE).to eq("parent.json")
+    expect(Samagotchi::Bridge::FEATURES).to include("reparent", "restart", "task_stop")
+  end
+
   it "keeps the routes and client ids one session's worker uses on another's" do
     expect(Samagotchi::Bridge::ROUTES).to include(%w[POST relay/status] => :handle_relay_status)
     expect(Samagotchi::Bridge::ROUTES.keys).to include(%w[POST relay])
