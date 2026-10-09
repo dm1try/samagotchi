@@ -94,6 +94,13 @@ test("resultText for questions is unchanged", () => {
   assert.equal(approvalAllowed(q, { selected: ["A"] }), null);
 });
 
+test("resultText: a question closed in a non-interactive run says no one could answer, in words", () => {
+  const plain = "No one could answer (non-interactive run)";
+  assert.equal(resultText({ question: "Which?", options: ["A", "B"] }, { cancelled: true, reason: "non_interactive" }), plain);
+  assert.equal(resultText(approval, { cancelled: true, reason: "non_interactive" }), plain);
+  assert.equal(resultText({ kind: "continue", options: ["Continue", "Stop"] }, { cancelled: true, reason: "non_interactive" }), plain);
+});
+
 // 4.27: only a 503 (no live bridge) means the session isn't running; any
 // other failure shows what the server or the worker said.
 test("answerErrorText: 503 says restart, anything else shows the detail", () => {
