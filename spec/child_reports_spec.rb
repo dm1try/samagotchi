@@ -194,6 +194,15 @@ RSpec.describe "delegate reports" do
       expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
       expect(Samagotchi::Session.stopped_marker?(parent.id, state_dir: tmpdir)).to be(true)
     end
+
+    it "wakes the chain's next link for an archived parent a continue moved its children from" do
+      Samagotchi::ArchiveStore.archive(parent.id, state_dir: tmpdir)
+      link = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w", continues: parent.id)
+      link.save(state_dir: tmpdir)
+
+      expect(wake).to eq(:woken)
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).with(link.id, state_dir: tmpdir)
+    end
   end
 
   describe Samagotchi::ChildReports do
@@ -341,6 +350,45 @@ RSpec.describe "delegate reports" do
       moved = cursor
       box.commit
       expect(cursor).to eq(moved)
+    end
+
+    describe "a ring left in the predecessor (a continue moved the child as it rang)" do
+      let(:link) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/w", continues: parent.id)
+                           .tap { |s| s.save(state_dir: tmpdir) }
+      end
+
+      def link_reports = Samagotchi::ChildReports.new(session_id: link.id, state_dir: tmpdir, predecessor: parent.id)
+
+      it "is the new link's report, once, for a child moved to it" do
+        write_reply(child, "found it")
+        end_turn(child)
+        Samagotchi::Session.reparent(child.id, to: link.id, from: parent.id, state_dir: tmpdir)
+        Samagotchi::Tools::DelegateCursors.merge(link.id, Samagotchi::Tools::DelegateCursors.read(parent.id, state_dir: tmpdir),
+                                                 state_dir: tmpdir)
+        Samagotchi::SessionInbox.write_ring(parent_dir, child_id: child.id, why: "turn_end")
+
+        reports = link_reports
+        expect(reports.waiting?).to be(true)
+        expect(reports.take.map(&:child_id)).to eq([child.id])
+        reports.commit
+
+        expect(rings).to be_empty
+        expect(link_reports.waiting?).to be(false)
+        expect(link_reports.take).to eq([])
+      end
+
+      it "is neither reported nor deleted for a child that wasn't moved" do
+        write_reply(child, "found it")
+        end_turn(child)
+        ring
+
+        reports = link_reports
+        expect(reports.waiting?).to be(false)
+        expect(reports.take).to eq([])
+        reports.commit
+        expect(rings.size).to eq(1)
+      end
     end
 
     it "ignores a ring from a session that isn't this parent's child" do

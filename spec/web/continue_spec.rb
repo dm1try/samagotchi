@@ -106,17 +106,20 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
     expect(Samagotchi::Session.list(state_dir: state_dir).map(&:continues)).to include(previous.id)
   end
 
-  it "answers 409 open_children naming a delegate still open" do
+  it "answers 409 open_children naming a delegate still open that can't move (a chi REPL holds it)" do
     previous = previous_link
     child = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: folder,
                                             parent_id: previous.id, delegate: true)
     child.save(state_dir: state_dir)
     Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: state_dir), "done")
+    lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(child.id, state_dir: state_dir), kind: "tui")
 
     status, body = create(continues: previous.id, idle: true)
 
     expect(status).to eq(409)
     expect(body).to include("error" => "open_children", "ids" => [child.id])
     expect(archived?(previous.id)).to be(false)
+  ensure
+    lock&.release
   end
 end

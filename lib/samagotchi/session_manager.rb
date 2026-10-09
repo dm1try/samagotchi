@@ -31,6 +31,7 @@ require_relative "image_store"
 require_relative "plugin_session_state"
 require_relative "context_sources"
 require_relative "session_chain"
+require_relative "child_move"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -118,8 +119,9 @@ module Samagotchi
 
     # A continue that can't happen (#continue_session). reason: :continued
     # (another session continues it already: +ids+ names it), :open_children
-    # (children still running, waiting, live or with a reply it wasn't given:
-    # +ids+ names them) or :folder_gone (its folder isn't there).
+    # (open children it can't move to the new link: on an older chi's
+    # worker or open in a chi REPL; +ids+ names them) or :folder_gone (its
+    # folder isn't there).
     class ContinueRefused < StandardError
       attr_reader :session_id, :reason, :ids
 
@@ -137,7 +139,8 @@ module Samagotchi
         case @reason
         when :continued then "#{short} is continued already, by #{@ids.first[0, 8]}; continue that one (or last:#{short})"
         when :open_children
-          "#{short} has delegates still open: #{detail}; wait for them, stop them or archive them, then continue"
+          "#{short} has delegates still open that can't move to the next link: #{detail}; " \
+          "then continue (or wait for them, stop them or archive them)"
         else "#{short}'s folder #{detail} is gone"
         end
       end
@@ -231,10 +234,13 @@ module Samagotchi
     # it was typed as, so an alias holds) and with its own llm_context,
     # starting with a context note from chi: the link and the previous
     # link's recap (SessionChain.note_text). The previous link is archived
-    # first, with its delegates (archive_session's rules: a turn running,
-    # a prompt queued or the step-limit question refuse; an idle worker is
-    # stopped), so a refusal starts nothing. Before that its live worker is
-    # asked for a recap and given up to +recap_wait+ seconds to write it.
+    # first, with its finished delegates (archive_session's rules: a turn
+    # running, a prompt queued or the step-limit question refuse; an idle
+    # worker is stopped), so a refusal starts nothing. Its open delegates
+    # (running, waiting, live, an unreported reply, at any depth below them)
+    # move to the new link instead (ChildMove): their reports reach it.
+    # Before that its live worker is asked for a recap and given up to
+    # +recap_wait+ seconds to write it.
     # One continue of a session at a time (a lock in its folder): a double
     # click finds the first one's link and is refused; a last:<id> one
     # follows the chain to its new end instead.
@@ -242,9 +248,11 @@ module Samagotchi
     # @param prompt [String, nil] its first message (nil: it starts idle)
     # @param title [String, nil] what the lists show before the first turn;
     #   by default the prompt, else the previous link's preview
-    # @return [Session] the new link (#model_warning as spawn_session's)
+    # @return [Session] the new link (#model_warning as spawn_session's,
+    #   #moved_children: the delegates it took over)
     # @raise [ArgumentError] no such session (Session::AmbiguousId for a prefix of several)
-    # @raise [ContinueRefused] continued already, delegates still open, or its folder is gone
+    # @raise [ContinueRefused] continued already, delegates open that can't
+    #   move, or its folder is gone
     # @raise [ArchiveRefused, OwnedByTUI] as archive_session
     def self.continue_session(id_or_ref, prompt: nil, title: nil, state_dir: nil, recap_wait: CONTINUE_RECAP_WAIT,
                               archive_wait: 5)
@@ -273,82 +281,135 @@ module Samagotchi
 
     private_class_method def self.continue_locked(id, prompt:, title:, state_dir:, recap_wait:, archive_wait:)
       previous = Session.load(id, state_dir: state_dir)
-      check_continue!(previous, state_dir)
+      plan = check_continue!(previous, state_dir)
       # archive_session's refusals that can be known now, before the wait.
-      archivable!(id, state_dir)
+      archivable!(id, state_dir, except: plan.move)
       recap_before_archive(id, state_dir, wait: recap_wait)
-      # Again: a turn sent to it during the wait may have delegated.
-      check_open_children!(id, state_dir)
-      already = [id, *descendant_ids(id, state_dir)].select do |sid|
+      # Again: a turn sent to it during the wait may have delegated (they
+      # move too), or a delegate finished.
+      plan = move_plan!(id, state_dir)
+      already = [id, *descendant_ids(id, state_dir, except: plan.move)].select do |sid|
         ArchiveStore.archived?(Session.session_dir(sid, state_dir: state_dir))
       end
-      archived = archive_session(id, state_dir: state_dir, wait: archive_wait)[:archived] - already
+      archived = archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)[:archived] - already
       begin
-        spawn_continuation(previous, prompt: prompt, title: title, state_dir: state_dir)
+        spawn_continuation(previous, prompt: prompt, title: title, state_dir: state_dir, move: plan.move)
       rescue StandardError
-        # Nothing started: what this archived goes back to the lists, and
-        # a new link saved before its worker failed to spawn goes (left,
-        # it would hold the chain: "continued already", last: to it).
-        discard_failed_link(id, state_dir)
-        archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
+        # Nothing started: the delegates go back, what this archived goes
+        # back to the lists, and a new link saved before its worker failed
+        # to spawn goes (left, it would hold the chain: "continued already",
+        # last: to it).
+        undo_move(id, state_dir, moved: plan.move)
+        begin
+          discard_failed_link(id, state_dir)
+        ensure
+          archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
+          wake_for_rings(id, state_dir) unless plan.move.empty?
+        end
         raise
       end
     end
 
+    # The delegates a failed #continue_session moved, or began to (its
+    # intent names them), go back to +id+.
+    private_class_method def self.undo_move(id, state_dir, moved:)
+      link = SessionChain.next_of(id, state_dir: state_dir) or return
+      ids = ChildMove.read_intent(link, state_dir: state_dir)&.ids || moved
+      ChildMove.apply(ids, from: link, to: id, state_dir: state_dir, undo: true)
+      ChildMove.clear_intent(link, state_dir: state_dir)
+    rescue StandardError => e
+      Log.warn(:worker, "continue_undo_move_failed", sid: id, error: e.class.name, msg: e.message)
+    end
+
     # The link a failed #continue_session saved (no other continues +id+:
-    # check_continue! made sure under the lock).
+    # check_continue! made sure under the lock): its worker stopped if one
+    # started, then the rings a moved delegate wrote into it just before
+    # the undo go back to +id+, then the link goes. A worker that outlives
+    # the stop is raised (DeleteRefused): the link stays, and the caller
+    # hears it.
     private_class_method def self.discard_failed_link(id, state_dir)
       orphan = SessionChain.next_of(id, state_dir: state_dir) or return
+      if refuse_tui!(orphan, state_dir: state_dir) && !stop_session(orphan, state_dir: state_dir, wait: 10)
+        raise DeleteRefused.new(orphan, :still_stopping)
+      end
+
+      ChildMove.return_rings(from: orphan, to: id, state_dir: state_dir)
       delete_session(orphan, state_dir: state_dir)
+    rescue DeleteRefused
+      raise
     rescue StandardError => e
       Log.warn(:worker, "continue_cleanup_failed", sid: id, error: e.class.name, msg: e.message)
     end
 
-    private_class_method def self.spawn_continuation(previous, prompt:, title:, state_dir:)
+    # A failed continue's previous link, back in the lists, with rings that
+    # came in meanwhile: wake it for them, as the ring's own wake would have.
+    private_class_method def self.wake_for_rings(id, state_dir)
+      return if SessionInbox.find_ring_files(Session.session_dir(id, state_dir: state_dir)).empty?
+
+      wake_for_report(id, state_dir: state_dir)
+    rescue StandardError => e
+      Log.warn(:worker, "continue_wake_failed", sid: id, error: e.class.name, msg: e.message)
+    end
+
+    # The new link, holding off any worker but its own (ChildMove.starting?)
+    # while +move+ goes to it.
+    private_class_method def self.spawn_continuation(previous, prompt:, title:, state_dir:, move:)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       title = previous.first_preview if title.to_s.strip.empty? && start.nil?
-      spawn_session(prompt: start, title: title, working_directory: previous.working_directory,
-                    model_name: previous.model_typed || previous.model_name, llm_context: previous.llm_context,
-                    continues: previous.id, note: SessionChain.note_text(previous, recap: recap),
-                    note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir)
+      before_spawn = lambda do |link|
+        ChildMove.mark_starting(link.id, state_dir: state_dir)
+        ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
+      end
+      link = spawn_session(prompt: start, title: title, working_directory: previous.working_directory,
+                           model_name: previous.model_typed || previous.model_name, llm_context: previous.llm_context,
+                           continues: previous.id, note: SessionChain.note_text(previous, recap: recap),
+                           note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn)
+      link.moved_children = move
+      link
     end
 
     # The refusals that come before anything changes: continued already (no
-    # forks in a chain), a delegate still open (its report would go to the
-    # archived link), the folder gone (the worker would run elsewhere), a
+    # forks in a chain), an open delegate that can't move to the new link
+    # (ChildMove.plan), the folder gone (the worker would run elsewhere), a
     # model whose host config.yml no longer has.
+    # @return [ChildMove::Plan]
     # @raise [ContinueRefused, ModelProfile::MissingModel]
     private_class_method def self.check_continue!(previous, state_dir)
       if (following = SessionChain.next_of(previous.id, state_dir: state_dir))
         raise ContinueRefused.new(previous.id, :continued, ids: [following])
       end
 
-      check_open_children!(previous.id, state_dir)
+      plan = move_plan!(previous.id, state_dir)
       # Its model's host, as spawn_session checks it: before the archive
       # stops the previous link's worker.
       ModelProfile.check_host!(ModelProfile.required_model_name(previous.model_typed || previous.model_name))
       dir = previous.working_directory.to_s
       raise ContinueRefused.new(previous.id, :folder_gone, detail: dir) unless File.directory?(dir)
+
+      plan
     end
 
-    # A child the next link couldn't follow once its parent is archived.
+    # A child still open below a session (#open_children); why: running,
+    # waiting, live, unreported reply, or why it can't move (ChildMove).
     OpenChild = Data.define(:id, :short_id, :why)
 
-    # @raise [ContinueRefused] while #open_children has any
-    private_class_method def self.check_open_children!(id, state_dir)
-      open = open_children(id, state_dir)
-      return if open.empty?
+    # The delegates a continue of +id+ moves (ChildMove.plan).
+    # @return [ChildMove::Plan]
+    # @raise [ContinueRefused] for open ones it can't move
+    private_class_method def self.move_plan!(id, state_dir)
+      plan = ChildMove.plan(id, open: open_children(id, state_dir), state_dir: state_dir)
+      return plan if plan.refuse.empty?
 
-      raise ContinueRefused.new(id, :open_children, ids: open.map(&:id),
-                                                    detail: open.map { |c| "#{c.short_id} (#{c.why})" }.join(", "))
+      raise ContinueRefused.new(id, :open_children, ids: plan.refuse.map(&:id),
+                                                    detail: plan.refuse.map { |c| "#{c.short_id} (#{c.why})" }.join(", "))
     end
 
     # The unarchived children, at any depth (the archive's cascade), of the
     # session still running, waiting for an answer, with a live worker, or
     # (a delegate) with a reply its parent wasn't given (ChildrenStatus).
     # @return [Array<OpenChild>]
-    private_class_method def self.open_children(id, state_dir)
+    def self.open_children(id, state_dir)
       require_relative "children_status"
       [id, *descendant_ids(id, state_dir)].flat_map { |node| ChildrenStatus.of(node, state_dir: state_dir) }.uniq(&:id)
                                           .filter_map do |child|
@@ -626,7 +687,7 @@ module Samagotchi
 
     # Children, their children, …: a delegated session doesn't delegate
     # further today, a plugin's fork may. The walk doesn't enter +except+.
-    private_class_method def self.descendant_ids(id, state_dir, except: [])
+    def self.descendant_ids(id, state_dir, except: [])
       seen = [id]
       queue = [id]
       until queue.empty?
@@ -700,6 +761,9 @@ module Samagotchi
       # One this process just spawned may not hold the lock yet (a slow
       # start, deliver_turn's second resume): it would only lose it.
       return session if still_starting?(session.id, state_dir: sd)
+      # A continue moving delegates to it spawns its worker once they are
+      # moved; one spawned now (a moved child's ring) would race the move.
+      return session if ChildMove.starting?(session.id, state_dir: sd)
 
       Session.clear_stopped(session.id, state_dir: sd)
       session.status = Session::STATUS_IDLE
@@ -710,18 +774,27 @@ module Samagotchi
 
     # A delegate child rang a parent that has no worker (ChildRing): start
     # one, which runs a turn for the report. Not for a parent that is gone,
-    # stopped, archived, a scratch session, or open in a chi REPL: the ring
-    # waits on disk for whoever runs it next (#resume_session itself would
-    # clear the stop). A stop landing between the check and the resume is
-    # a small window, left as is.
+    # stopped, archived, a scratch session, open in a chi REPL, or a
+    # continue's new link still taking its delegates (its own spawn comes):
+    # the ring waits on disk for whoever runs it next (#resume_session
+    # itself would clear the stop). A stop landing between the check and
+    # the resume is a small window, left as is. An archived parent with a
+    # later link in its chain wakes that link instead: a ring a moved child
+    # wrote just as the continue moved it reaches the new link that way
+    # (ChildReports reads its predecessor's rings).
     # @return [Symbol] :woken, or why not (:gone, :stopped, :archived,
-    #   :scratch, :owned)
-    def self.wake_for_report(session_id, state_dir: nil)
+    #   :scratch, :owned, :starting)
+    def self.wake_for_report(session_id, state_dir: nil, forward: true)
       sd = state_dir || Session.default_state_dir
       return :gone unless Session.exist?(session_id, state_dir: sd)
       return :owned if session_owner(session_id, state_dir: sd)
       return :stopped if Session.stopped_marker?(session_id, state_dir: sd)
-      return :archived if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
+
+      if ArchiveStore.archived?(Session.session_dir(session_id, state_dir: sd))
+        following = forward && SessionChain.next_of(session_id, state_dir: sd)
+        return following ? wake_for_report(following, state_dir: sd, forward: false) : :archived
+      end
+      return :starting if ChildMove.starting?(session_id, state_dir: sd)
 
       session = Session.load(session_id, state_dir: sd)
       return :stopped if session.status == Session::STATUS_STOPPED

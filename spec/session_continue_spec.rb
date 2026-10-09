@@ -125,6 +125,211 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
     expect(archived?(link.id)).to be(false)
   end
 
+  describe "moving the open delegates to the new link" do
+    def cursors(id) = Samagotchi::Tools::DelegateCursors.read(id, state_dir: tmpdir)
+    def rings(id) = Samagotchi::SessionInbox.find_ring_files(dir_of(id))
+    def ring_ids(id) = rings(id).map { |f| Samagotchi::SessionInbox.read_ring(f)[:child_id] }
+
+    def started(parent, child)
+      Samagotchi::Tools::DelegateWait.mark_started(parent.id, child, state_dir: tmpdir)
+    end
+
+    # A child's notes, by source.
+    def notes_of(id)
+      Samagotchi::SessionInbox.find_new_note_files(dir_of(id)).map { |f| Samagotchi::SessionInbox.read_note(f) }
+    end
+
+    it "moves running, live and unreported delegates and an open grandchild's delegate; archives the finished one" do
+      previous = make
+      running = make(prompt: "a", parent_id: previous.id, delegate: true, status: Samagotchi::Session::STATUS_RUNNING)
+      own(running.id)
+      live = make(prompt: "b", parent_id: previous.id, delegate: true)
+      own(live.id)
+      unreported = make(prompt: "c", parent_id: previous.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(unreported.id), "done")
+      middle = make(prompt: "d", parent_id: previous.id, delegate: true)
+      grandchild = make(prompt: "e", parent_id: middle.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(grandchild.id), "done")
+      finished = make(prompt: "f", parent_id: previous.id, delegate: true)
+      [running, live, unreported, finished].each { |c| started(previous, c) }
+      Samagotchi::SessionInbox.write_ring(dir_of(previous.id), child_id: unreported.id, why: "turn_end")
+      moved = [running, live, unreported, middle].map(&:id)
+
+      link = continue(previous.id)
+
+      expect(link.moved_children).to match_array(moved)
+      expect(described_class.children_of(link.id, state_dir: tmpdir).map { |r| r[:id] }).to match_array(moved)
+      moved.each do |id|
+        expect(Samagotchi::Session.parent_override(id, state_dir: tmpdir)).to eq(link.id)
+        expect(archived?(id)).to be(false)
+        expect(notes_of(id).map { |n| n[:text] }).to eq(["Your parent session is now #{link.id[0, 8]} (#{link.id}), " \
+                                                          "the next link of its session chain: send notes there, " \
+                                                          "and your reports reach it."])
+      end
+      expect(load(grandchild.id).parent_id).to eq(middle.id)
+      expect(archived?(grandchild.id)).to be(false)
+      expect([archived?(previous.id), archived?(finished.id)]).to eq([true, true])
+      expect(load(finished.id).parent_id).to eq(previous.id)
+      # Cursors copied (the previous link keeps its own), rings moved.
+      expect(cursors(link.id).keys).to match_array([running, live, unreported].map(&:id))
+      expect(cursors(previous.id).keys).to include(finished.id, unreported.id)
+      expect(ring_ids(link.id)).to eq([unreported.id])
+      expect(rings(previous.id)).to be_empty
+      # The move is done: no intent. The starting marker stays until the
+      # spawned worker holds the link (Worker#start clears it).
+      expect(Samagotchi::ChildMove.read_intent(link.id, state_dir: tmpdir)).to be_nil
+      expect(Samagotchi::ChildMove.starting?(link.id, state_dir: tmpdir)).to be(true)
+      expect(Process).to have_received(:spawn).once
+      expect(Samagotchi::ChildrenStatus.counts(link.id, state_dir: tmpdir))
+        .to have_attributes(running: 1, unreported: 1)
+    end
+
+    it "lists a moved child under the new link even after its live worker saves its stale copy" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      own(child.id)
+      held = load(child.id)
+
+      link = continue(previous.id)
+      held.save(state_dir: tmpdir)
+
+      expect(JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))["parent_id"]).to eq(previous.id)
+      expect(Samagotchi::Session.list(state_dir: tmpdir).find { |s| s.id == child.id }.parent_id).to eq(link.id)
+      expect(described_class.children_of(link.id, state_dir: tmpdir).map { |r| r[:id] }).to eq([child.id])
+      expect(described_class.children_of(previous.id, state_dir: tmpdir)).to be_empty
+    end
+
+    it "moves a delegate started during the recap wait too" do
+      previous = make
+      late = nil
+      allow(described_class).to receive(:recap_before_archive) do
+        late = make(prompt: "late", parent_id: previous.id, delegate: true)
+        Samagotchi::SessionInbox.write_output(dir_of(late.id), "done")
+      end
+
+      link = continue(previous.id)
+
+      expect(link.moved_children).to eq([late.id])
+      expect(load(late.id).parent_id).to eq(link.id)
+      expect(archived?(late.id)).to be(false)
+    end
+
+    it "takes a ring a moved child writes between its override and the spawn once, and spawns one worker" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      started(previous, child)
+      Samagotchi::SessionInbox.write_output(dir_of(child.id), "found it")
+      allow(Samagotchi::Session).to receive(:reparent).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap do
+          # The child's turn ends now, in its own process: it rings and wakes.
+          Samagotchi::ChildRing.ring(load(child.id), why: "turn_end", state_dir: tmpdir)
+          Samagotchi::ChildRing.await_wakes
+        end
+      end
+      allow(described_class).to receive(:wake_for_report).and_call_original
+
+      link = continue(previous.id)
+
+      expect(described_class).to have_received(:wake_for_report).with(link.id, state_dir: tmpdir)
+      expect(Process).to have_received(:spawn).once
+      expect(ring_ids(link.id)).to eq([child.id])
+      reports = Samagotchi::ChildReports.new(session_id: link.id, state_dir: tmpdir, predecessor: previous.id).take
+      expect(reports.map(&:child_id)).to eq([child.id])
+    end
+
+    it "continues again after a crash between the archive and the new link (crash 1): the delegates move then" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+      Samagotchi::ArchiveStore.archive(previous.id, state_dir: tmpdir)
+
+      link = continue(previous.id)
+
+      expect(load(child.id).parent_id).to eq(link.id)
+      expect([archived?(previous.id), archived?(child.id)]).to eq([true, false])
+    end
+
+    it "moves the delegates back when the new link's worker fails to spawn" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+      Samagotchi::SessionInbox.write_ring(dir_of(previous.id), child_id: child.id, why: "turn_end")
+      allow(Process).to receive(:spawn).and_raise(Errno::EAGAIN)
+
+      expect { continue(previous.id) }.to raise_error(Errno::EAGAIN)
+
+      expect(load(child.id).parent_id).to eq(previous.id)
+      expect(ring_ids(previous.id)).to eq([child.id])
+      expect([archived?(previous.id), archived?(child.id)]).to eq([false, false])
+      expect(Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id))
+        .to contain_exactly(previous.id, child.id)
+      expect(notes_of(child.id).last[:text]).to start_with("Your parent session is #{previous.id[0, 8]} (#{previous.id}) " \
+                                                           "again: the continue that moved you to its next link failed.")
+    end
+
+    it "gives back a ring a child wrote into the failed link as it was moved back, and wakes the previous link for it" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+      allow(Process).to receive(:spawn).and_raise(Errno::EAGAIN)
+      allow(Samagotchi::ChildMove).to receive(:apply).and_wrap_original do |original, ids, **kwargs|
+        original.call(ids, **kwargs).tap do
+          # The child read the override just before the undo wrote it back.
+          Samagotchi::SessionInbox.write_ring(dir_of(kwargs[:from]), child_id: child.id, why: "turn_end") if kwargs[:undo]
+        end
+      end
+      allow(described_class).to receive(:wake_for_report)
+
+      expect { continue(previous.id) }.to raise_error(Errno::EAGAIN)
+
+      expect(ring_ids(previous.id)).to eq([child.id])
+      expect(described_class).to have_received(:wake_for_report).with(previous.id, state_dir: tmpdir)
+    end
+
+    describe "a failure once the new link's worker exists" do
+      let(:link_locks) { [] }
+
+      before do
+        allow(described_class).to receive(:spawn_worker_for_session) do |session, **|
+          link_locks << Samagotchi::OwnerLock.acquire(dir_of(session.id), kind: "worker")
+          raise IOError, "spawned, then failed"
+        end
+      end
+
+      after { link_locks.each(&:release) }
+
+      it "stops that worker, deletes the link and moves the delegates back" do
+        previous = make
+        child = make(prompt: "a", parent_id: previous.id, delegate: true)
+        Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+        allow(described_class).to receive(:stop_session) do
+          link_locks.each(&:release)
+          true
+        end
+
+        expect { continue(previous.id) }.to raise_error(IOError)
+
+        expect(described_class).to have_received(:stop_session).once
+        expect(Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id))
+          .to contain_exactly(previous.id, child.id)
+        expect(load(child.id).parent_id).to eq(previous.id)
+        expect(archived?(previous.id)).to be(false)
+      end
+
+      it "raises DeleteRefused when that worker outlives the stop, with the delegates back and nothing archived" do
+        previous = make
+        child = make(prompt: "a", parent_id: previous.id, delegate: true)
+        Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+        allow(described_class).to receive(:stop_session).and_return(false)
+
+        expect { continue(previous.id) }.to raise_error(described_class::DeleteRefused, /still shutting down/)
+
+        expect(load(child.id).parent_id).to eq(previous.id)
+        expect([archived?(previous.id), archived?(child.id)]).to eq([false, false])
+      end
+    end
+  end
+
   describe "refusals, which start nothing and archive nothing" do
     def expect_nothing_started(previous)
       expect(Process).not_to have_received(:spawn)
@@ -149,45 +354,20 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       expect(archived?(link.id)).to be(true)
     end
 
-    it "refuses while a delegate runs, waits, has a live worker or a reply its parent wasn't given, naming them" do
+    it "refuses a live delegate on an older chi's worker (no reparent feature), naming it, and starts nothing" do
       previous = make
-      running = make(prompt: "a", parent_id: previous.id, delegate: true, status: Samagotchi::Session::STATUS_RUNNING)
-      own(running.id)
-      live = make(prompt: "b", parent_id: previous.id, delegate: true)
-      own(live.id)
-      unreported = make(prompt: "c", parent_id: previous.id, delegate: true)
-      Samagotchi::SessionInbox.write_output(dir_of(unreported.id), "done")
+      old = make(prompt: "a", parent_id: previous.id, delegate: true)
+      own(old.id)
+      sidecar = Samagotchi::WorkerSidecar.new(port: 1, version: "0.46.1", features: %w[restart task_stop])
+      allow(Samagotchi::WorkerSidecar).to receive(:live).and_call_original
+      allow(Samagotchi::WorkerSidecar).to receive(:live).with(dir_of(old.id), unlink: false).and_return(sidecar)
 
       expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ContinueRefused) { |e|
-        expect(e.reason).to eq(:open_children)
-        expect(e.ids).to contain_exactly(running.id, live.id, unreported.id)
-        expect(e.message).to include("#{running.id[0, 8]} (running)", "#{live.id[0, 8]} (live)",
-                                     "#{unreported.id[0, 8]} (unreported reply)")
+        expect(e).to have_attributes(reason: :open_children, ids: [old.id])
+        expect(e.message).to include("#{old.id[0, 8]} (older chi worker 0.46.1; restart it)")
       }
       expect_nothing_started(previous)
-    end
-
-    it "refuses for an open delegate of a delegate (the archive's cascade goes that deep)" do
-      previous = make
-      child = make(prompt: "a", parent_id: previous.id, delegate: true)
-      grandchild = make(prompt: "b", parent_id: child.id, delegate: true)
-      Samagotchi::SessionInbox.write_output(dir_of(grandchild.id), "done")
-
-      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ContinueRefused) { |e|
-        expect(e).to have_attributes(reason: :open_children, ids: [grandchild.id])
-      }
-      expect_nothing_started(previous)
-    end
-
-    it "looks again after the recap wait: a delegate started meanwhile refuses it" do
-      previous = make
-      allow(described_class).to receive(:recap_before_archive) do
-        child = make(prompt: "late", parent_id: previous.id, delegate: true)
-        Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
-      end
-
-      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ContinueRefused, /unreported reply/)
-      expect_nothing_started(previous)
+      expect(Samagotchi::Session.parent_override(old.id, state_dir: tmpdir)).to be_nil
     end
 
     it "refuses what the archive would refuse before asking for the recap (a queued prompt)" do

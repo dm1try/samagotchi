@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Continuing a session moves its open delegates to the new link instead of refusing: running, waiting, live or with
+  an unreported reply, at any depth below. They stay unarchived, fold under the new link, and their reports (one
+  each, none lost or repeated) reach it; each gets a note naming its new parent. Only a delegate on an older chi's
+  worker (restart it) or open in a chi REPL still refuses the continue. See
+  [docs/sessions.md](docs/sessions.md#session-chains).
+
 ## [0.47.0] - 2026-10-09
 
 ### Added

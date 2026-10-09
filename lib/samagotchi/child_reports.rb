@@ -134,10 +134,14 @@ module Samagotchi
       def origin = { client_id: "#{ClientId::CHILD_PREFIX}#{child_id[0, 8]}" }
     end
 
-    def initialize(session_id:, state_dir:)
+    # @param predecessor [String, nil] the link this session continues
+    #   (Session#continues): a child a continue moved here may have rung it
+    #   just as it moved (#ring_files)
+    def initialize(session_id:, state_dir:, predecessor: nil)
       @session_id = session_id
       @state_dir = state_dir
       @session_dir = Session.session_dir(session_id, state_dir: state_dir)
+      @predecessor_dir = Session.valid_id?(predecessor) ? Session.session_dir(predecessor, state_dir: state_dir) : nil
       # child id → the Report this turn took for it (rings merged).
       @taken = {}
     end
@@ -147,7 +151,7 @@ module Samagotchi
       return false if ChildRing.mode == "off"
 
       taken = taken_rings
-      SessionInbox.find_ring_files(@session_dir).any? { |file| !taken.include?(file) }
+      ring_files.any? { |file| !taken.include?(file) }
     end
 
     # The reports for rings this turn hasn't taken yet, recorded as taken.
@@ -158,7 +162,7 @@ module Samagotchi
       return [] if ChildRing.mode == "off"
 
       taken = taken_rings
-      fresh = SessionInbox.find_ring_files(@session_dir).reject { |file| taken.include?(file) }
+      fresh = ring_files.reject { |file| taken.include?(file) }
       by_child = fresh.group_by { |file| SessionInbox.read_ring(file)&.dig(:child_id) }
       by_child.filter_map do |child_id, rings|
         report = child_id && report_for(child_id, rings)
@@ -196,6 +200,21 @@ module Samagotchi
 
     def taken_rings
       @taken.values.flat_map(&:rings)
+    end
+
+    # The rings in children/, and the predecessor's rings from children a
+    # continue moved here (their parent.json names this session): a ring
+    # its child wrote as the move went on. Another child's ring there is
+    # the predecessor's, left alone.
+    def ring_files
+      own = SessionInbox.find_ring_files(@session_dir)
+      return own unless @predecessor_dir
+
+      strays = SessionInbox.find_ring_files(@predecessor_dir).select do |file|
+        child_id = SessionInbox.read_ring(file)&.dig(:child_id)
+        Session.valid_id?(child_id) && Session.parent_override(child_id, state_dir: @state_dir) == @session_id
+      end
+      own + strays
     end
 
     # A second ring for a child taken earlier in this turn: read from where

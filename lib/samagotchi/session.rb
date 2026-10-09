@@ -136,6 +136,10 @@ module Samagotchi
     # not saved.
     attr_accessor :model_warning
 
+    # The delegates a continue moved to this new link (ChildMove;
+    # SessionManager.continue_session sets it); not saved.
+    attr_accessor :moved_children
+
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", test_run: false, pending_question: nil,

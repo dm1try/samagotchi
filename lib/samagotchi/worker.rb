@@ -22,6 +22,7 @@ require_relative "iteration_limit"
 require_relative "session_commands"
 require_relative "model_profile"
 require_relative "child_reports"
+require_relative "child_move"
 require_relative "context_absorber"
 require_relative "context_poller"
 require_relative "tools/task_runtime"
@@ -162,6 +163,11 @@ module Samagotchi
     def start
       # The wake turns' budget (delegate reports, attached context), from now.
       @wakes = WorkerWakes.new(grace: WAKE_START_GRACE)
+      # This worker holds the session now (a continue's starting marker held
+      # off any other until it did), and a continue that died moving
+      # delegates here left its intent: finish it.
+      ChildMove.clear_starting(@session_id, state_dir: @state_dir)
+      ChildMove.adopt(@session_id, state_dir: @state_dir)
       @session = Session.load(@session_id, state_dir: @state_dir)
       drop_dead_question
       @engine = build_engine
@@ -195,7 +201,8 @@ module Samagotchi
         ring_question(event) if event[:type] == :question_requested
       })
       # This session's own delegate children's news (rings in children/).
-      @child_reports = ChildReports.new(session_id: @session_id, state_dir: @state_dir)
+      @child_reports = ChildReports.new(session_id: @session_id, state_dir: @state_dir,
+                                        predecessor: @session.continues)
       # Its attached context's notes (ContextSources).
       @context_absorber = ContextAbsorber.new(session_id: @session_id, state_dir: @state_dir,
                                               project_root: @session.project_root)
