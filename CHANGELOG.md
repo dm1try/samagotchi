@@ -14,6 +14,9 @@ and commands may change between minor versions. How releases are made:
   model call it again): shell-like names (`bash`, `shell`, …) get `Error: no such tool. Shell commands run with
   execute (same arguments).` when `execute` is offered this turn, every other name the available-tools list; the
   UI's tool row and the logs still show what the model called.
+- Web: the open session's title shows once: in its strip card, or in the top bar when the strip is hidden or the
+  session has no card there (an older session, a folded delegate). The composer footer's first-message line and the
+  banner that appeared at 20 % context are gone; the memory names stay in the footer's `mem N` chip and tooltip.
 
 ### Fixed
 

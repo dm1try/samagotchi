@@ -45,8 +45,6 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #topStrip:empty{display:grid}
 #center{flex:1;display:flex;flex-direction:column;min-height:45vh;background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
 #stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:160px;background:var(--bg);overflow:hidden}
-#firstPeek{display:none;padding:8px 12px;background:var(--accent-bg);color:var(--text);border-bottom:1px solid var(--border);font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#firstPeek.visible{display:block}
 #composer #cancelBtn{order:2;background:var(--danger-bg)}
 #history{flex:1;overflow:auto;padding:16px max(16px,calc((100% - 960px)/2));display:flex;flex-direction:column;gap:12px;background:var(--bg);min-height:160px}
 /* No child shrinks to fit: a held (overflow:hidden) answer bubble would, clipped under the dock with nothing to scroll. */
@@ -681,8 +679,6 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:48ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 /* The footer sits on the card's glass: its chips are tinted, not solid, so the glass reads through them. */
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3)}
-/* The memory chip ("mem 2", when the session used some): phones only, where the "mem: …" line is hidden. */
-#infoBar .meta .mem-chip{display:none}
 #infoBar .meta .model.served-mismatch{background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border)}
 /* The open session's worker runs an older chi: its version, and Restart when it can. */
 #infoBar .meta .worker-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:2px 2px 2px 6px;border-radius:6px;background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border);white-space:nowrap}
@@ -690,9 +686,6 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar .meta .worker-restart{padding:1px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--warn-bright);border:1px solid var(--warn-border)}
 #infoBar .meta .worker-restart:hover:not(:disabled){background:var(--warn-border);color:var(--on-warn)}
 #infoBar .meta .worker-restart:disabled{opacity:.7;cursor:default}
-#infoBar .preview-line{font-size:13px;word-break:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;line-clamp:1;overflow:hidden;line-height:1.4;max-height:1.4em}
-#infoBar .preview-line .preview, #infoBar .preview-line .mem{word-break:break-word}
-#infoBar .mem{font-size:12px;color:var(--text-muted)}
 #infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
 #infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}
@@ -744,12 +737,11 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ctx-pop-actions button:hover{color:var(--text-hover)}
 .ctx-pop-actions .ctx-pop-detach{color:var(--text-muted);background:transparent}
 .ctx-pop-actions .ctx-pop-detach:hover{color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 55%,transparent)}
-/* Phones: the footer is one line; its meta scrolls sideways (all of it stays reachable) and the first-message line, the strip card's title, goes. */
+/* Phones: the footer is one line; its meta scrolls sideways (all of it stays reachable). */
 @media(max-width:600px){
   /* The key hint: cut off at this width, and phones have no Shift+Enter. */
   #composeHint{display:none}
   #infoBar{flex-wrap:nowrap;align-items:center;gap:6px;padding:6px 10px 8px}
-  #infoBar .preview-line{display:none}
   /* No terminal on a phone to attach from. */
   #infoBar .meta .copy-attach{display:none}
   #infoBar .meta{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
@@ -757,8 +749,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   #infoBar .meta>*{flex-shrink:0}
   #infoBar .meta .id{order:-2}
   #infoBar .meta .status{order:-1}
-  /* After the status (same order, later in the DOM): the meta scrolls, and only its start is in sight. */
-  #infoBar .meta .mem-chip{display:inline;order:-1}
+  /* The memory chip right after the status (same order, later in the DOM): the meta scrolls, and only its start is in sight. */
+  #infoBar .meta .mem-chip{order:-1}
   /* A parent's children chip too: its waiting part is what to see. */
   #infoBar .meta .children-chip{order:-1}
   /* A chain's ← → links too: the way to the other days. */
@@ -825,6 +817,14 @@ body.has-session #scope .scope-where{display:none}
 /* The ▾ glyph draws tiny at the pill's 11 px: at 20 px it is about as tall
    as the pill text's capitals (phone and desktop alike). */
 /* The bell (notifications): quiet at the top bar's right end; filled in the accent when on, struck through when the browser blocks it. */
+/* The open session's title, when no strip card in sight shows it (session_title.js): the bar's middle, cut with an ellipsis; the whole first message in its tooltip. */
+#sessionTitle{flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sessionTitle[hidden]{display:none}
+/* A phone: the title is its own row under the bar, so "chi + · pill · bell" stay one line. */
+@media(max-width:600px){
+  #topBar{flex-wrap:wrap;row-gap:2px}
+  #sessionTitle{flex-basis:100%;order:10;font-size:12px}
+}
 #notifyBtn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;min-height:0;background:transparent;border:1px solid transparent;border-radius:999px;color:var(--text-muted)}
 #notifyBtn[hidden]{display:none}
 #notifyBtn:hover{color:var(--text-2);border-color:var(--border)}
@@ -1016,11 +1016,11 @@ a{color:var(--accent)}
     <div id="scope" hidden></div>
     <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions"><span class="pill-arrow" aria-hidden="true">▾</span> sessions</button>
     <button type="button" class="strip-toggle" id="stripHideTop" title="Hide the latest sessions"><span class="pill-arrow" aria-hidden="true">▴</span> hide</button>
+    <span id="sessionTitle" hidden></span>
     <button type="button" id="notifyBtn" aria-label="Notifications" aria-pressed="false" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path class="bell" d="M8 1.75a4 4 0 0 0-4 4v2.6L2.75 10.6v.9h10.5v-.9L12 8.35v-2.6a4 4 0 0 0-4-4Z"/><path class="clapper" d="M6.5 13a1.5 1.5 0 0 0 3 0"/><path class="slash" d="M2.5 2.5l11 11"/></svg></button>
   </div>
   <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
   <section id="center">
-    <div id="firstPeek"></div>
     <div id="stage">
       <div id="markdownWarning" class="markdown-warning" hidden></div>
       <div id="history"></div>

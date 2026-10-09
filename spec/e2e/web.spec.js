@@ -550,6 +550,14 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
   const stripCard = page.locator(`#topStrip .card[data-id="${id}"]`);
   await expect(stripCard).toBeVisible();
+  // The title shows once: in the card while the strip shows it, in the top bar when hidden.
+  const title = page.locator("#sessionTitle");
+  await expect(title).toBeHidden();
+  await page.locator("#stripHide").click();
+  await expect(title).toBeVisible();
+  await expect(title).toHaveText("Say pong");
+  await page.locator("#stripShow").click();
+  await expect(title).toBeHidden();
 
   await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop", "delete"]);
   await page.locator("#infoArchiveBtn").click();
