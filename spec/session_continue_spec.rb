@@ -167,6 +167,29 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       expect_nothing_started(previous)
     end
 
+    it "refuses for an open delegate of a delegate (the archive's cascade goes that deep)" do
+      previous = make
+      child = make(prompt: "a", parent_id: previous.id, delegate: true)
+      grandchild = make(prompt: "b", parent_id: child.id, delegate: true)
+      Samagotchi::SessionInbox.write_output(dir_of(grandchild.id), "done")
+
+      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ContinueRefused) { |e|
+        expect(e).to have_attributes(reason: :open_children, ids: [grandchild.id])
+      }
+      expect_nothing_started(previous)
+    end
+
+    it "looks again after the recap wait: a delegate started meanwhile refuses it" do
+      previous = make
+      allow(described_class).to receive(:recap_before_archive) do
+        child = make(prompt: "late", parent_id: previous.id, delegate: true)
+        Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
+      end
+
+      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ContinueRefused, /unreported reply/)
+      expect_nothing_started(previous)
+    end
+
     it "refuses while the previous link runs a turn (archive_session's rule)" do
       previous = make(status: Samagotchi::Session::STATUS_RUNNING)
       own(previous.id)

@@ -248,6 +248,8 @@ module Samagotchi
         previous = Session.load(id, state_dir: sd)
         check_continue!(previous, sd)
         recap_before_archive(id, sd, wait: recap_wait)
+        # Again: a turn sent to it during the wait may have delegated.
+        check_open_children!(id, sd)
         already = [id, *descendant_ids(id, sd)].select { |sid| ArchiveStore.archived?(Session.session_dir(sid, state_dir: sd)) }
         archived = archive_session(id, state_dir: sd, wait: archive_wait)[:archived] - already
         begin
@@ -291,11 +293,7 @@ module Samagotchi
         raise ContinueRefused.new(previous.id, :continued, ids: [following])
       end
 
-      open = open_children(previous.id, state_dir)
-      unless open.empty?
-        raise ContinueRefused.new(previous.id, :open_children, ids: open.map(&:id),
-                                                               detail: open.map { |c| "#{c.short_id} (#{c.why})" }.join(", "))
-      end
+      check_open_children!(previous.id, state_dir)
       dir = previous.working_directory.to_s
       raise ContinueRefused.new(previous.id, :folder_gone, detail: dir) unless File.directory?(dir)
     end
@@ -303,13 +301,23 @@ module Samagotchi
     # A child the next link couldn't follow once its parent is archived.
     OpenChild = Data.define(:id, :short_id, :why)
 
-    # The session's unarchived children still running, waiting for an
-    # answer, with a live worker, or (a delegate) with a reply the parent
-    # wasn't given (ChildrenStatus).
+    # @raise [ContinueRefused] while #open_children has any
+    private_class_method def self.check_open_children!(id, state_dir)
+      open = open_children(id, state_dir)
+      return if open.empty?
+
+      raise ContinueRefused.new(id, :open_children, ids: open.map(&:id),
+                                                    detail: open.map { |c| "#{c.short_id} (#{c.why})" }.join(", "))
+    end
+
+    # The unarchived children, at any depth (the archive's cascade), of the
+    # session still running, waiting for an answer, with a live worker, or
+    # (a delegate) with a reply its parent wasn't given (ChildrenStatus).
     # @return [Array<OpenChild>]
     private_class_method def self.open_children(id, state_dir)
       require_relative "children_status"
-      ChildrenStatus.of(id, state_dir: state_dir).filter_map do |child|
+      [id, *descendant_ids(id, state_dir)].flat_map { |node| ChildrenStatus.of(node, state_dir: state_dir) }.uniq(&:id)
+                                          .filter_map do |child|
         why = if %w[waiting running].include?(child.state) then child.state
               elsif child.live then "live"
               elsif child.delegate && child.last_reply && !child.reported then "unreported reply"
