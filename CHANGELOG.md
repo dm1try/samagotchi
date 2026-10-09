@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.46.1] - 2026-10-09
+
 ### Changed
 
 - The terminal and the web word a retry line the same: `↻ retrying (503) in 4.0s, 2/5`, why in parens (the HTTP
@@ -22,12 +24,10 @@ and commands may change between minor versions. How releases are made:
   "Cancelled (non_interactive)".
 - A delegate's report read by a turn that ended canceled is no longer brought a second time when the Engine's
   post-turn work then fails (a full disk, say).
-- github-pr 0.3.2: a relative `path:line` that only ends with a PR file's path (`vendor/lib/foo.rb:21` for the PR's
-  `lib/foo.rb`) is no longer linked to that file in the web; an absolute path into a worktree, or one up from a
-  subdir (`../lib/foo.rb`), still is.
-- github-pr 0.3.3: an absolute `path:line` into a vendored copy inside a worktree
-  (`/abs/repo/vendor/lib/foo.rb:21`) is no longer linked to the PR's `lib/foo.rb`: the part before the PR path must
-  be a worktree's root (a directory with `.git`), or no directory on this machine.
+- github-pr 0.3.3: a `path:line` into a vendored copy (`vendor/lib/foo.rb:21`, or `/abs/repo/vendor/lib/foo.rb:21`)
+  is no longer linked to the PR's `lib/foo.rb` in the web: an absolute path's part before the PR path must be a
+  worktree's root (a directory with `.git`), or no directory on this machine. An absolute path into a worktree, or
+  one up from a subdir (`../lib/foo.rb`), still is.
 - A step whose stream kept dropping now fails saying how many requests it made ("after 3 attempts"), not
   "after 1 attempts"; one attempt is said in the singular.
 - A step that ends on another error after its stream dropped (a 503) counts the dropped requests in that
@@ -45,6 +45,8 @@ and commands may change between minor versions. How releases are made:
 - A host whose `/v1/models` fails no longer drops the ids declared under `hosts.<name>.models` from `chi models`,
   `/models` and the web model picker: they stay, marked `host down` (greyed in the picker, still pickable;
   `unavailable: true` in the JSON), next to the host's warning. Ids only the host itself lists still drop out.
+
+Update with `chi update`: it updates github-pr (0.3.3: no links from a vendored copy to the PR's file).
 
 ## [0.46.0] - 2026-10-09
 
@@ -2181,7 +2183,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.46.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.46.1...HEAD
+[0.46.1]: https://github.com/dm1try/samagotchi/compare/v0.46.0...v0.46.1
 [0.46.0]: https://github.com/dm1try/samagotchi/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/dm1try/samagotchi/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/dm1try/samagotchi/compare/v0.43.0...v0.44.0
