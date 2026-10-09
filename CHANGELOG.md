@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
   "after 1 attempts"; one attempt is said in the singular.
 - A host that is down is named once in the models list's warning and in `/models` (`gw: connection refused`, not
   `gw: gw: connection refused`).
+- `/stats`' estimated cost names the host whose prices it used (`from hosts.gw.models prices`), not a literal
+  `hosts.<name>.models`.
 
 ## [0.46.0] - 2026-10-09
 

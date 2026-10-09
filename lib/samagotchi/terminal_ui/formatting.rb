@@ -356,13 +356,16 @@ module Samagotchi
       end
 
       # /stats' cost: the reported part and the estimated one, each when present.
-      def stats_cost_text(tokens)
+      # +price_host+ names the host whose hosts.<name>.models prices the
+      # estimate came from (Engine#stats_snapshot; nil from an older worker).
+      def stats_cost_text(tokens, price_host: nil)
         reported = cost_text(tokens[:cost_sum])
         estimated = cost_text(tokens[:cost_estimate_sum], estimate: true)
         return nil if reported.empty? && estimated.empty?
         return "#{reported} (this session only)" if estimated.empty?
 
-        estimate = "#{estimated} from hosts.<name>.models prices"
+        source = price_host.to_s.empty? ? "configured prices" : "hosts.#{price_host}.models prices"
+        estimate = "#{estimated} from #{source}"
         "#{reported.empty? ? estimate : "#{reported} reported + #{estimate}"} (this session only)"
       end
 
@@ -492,7 +495,7 @@ module Samagotchi
                  "#{token_breakdown_text(tokens)}"
         speed = stats_speed_text(tokens)
         lines << "speed:            #{speed}" if speed
-        cost = stats_cost_text(tokens)
+        cost = stats_cost_text(tokens, price_host: snapshot[:price_host])
         lines << "cost:             #{cost}" if cost
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"

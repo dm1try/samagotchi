@@ -35,9 +35,9 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     describe "the token breakdown, speed and cost" do
-      def stats(tokens)
+      def stats(tokens, snapshot = {})
         base = agent.engine.metrics.snapshot
-        agent.send(:format_session_metrics, base.merge(tokens: base[:tokens].merge(tokens))).lines.map(&:chomp)
+        agent.send(:format_session_metrics, base.merge(tokens: base[:tokens].merge(tokens)).merge(snapshot)).lines.map(&:chomp)
       end
 
       it "shows the server's exact speeds, the cached and reasoning counts" do
@@ -69,11 +69,13 @@ RSpec.describe Samagotchi::TerminalUI do
         expect(stats(cost_sum: 0.00123)).to include("cost:             $0.0012 (this session only)")
       end
 
-      it "shows an estimated cost (hosts.<name>.models prices) with ~, apart from a reported one" do
-        expect(stats(cost_sum: 0.42, cost_estimate_sum: 0.12))
-          .to include("cost:             $0.42 reported + ~$0.12 from hosts.<name>.models prices (this session only)")
-        expect(stats(cost_estimate_sum: 0.12))
-          .to include("cost:             ~$0.12 from hosts.<name>.models prices (this session only)")
+      it "shows an estimated cost (hosts.<name>.models prices) with ~, apart from a reported one, naming the host" do
+        expect(stats({ cost_sum: 0.42, cost_estimate_sum: 0.12 }, { price_host: "gw" }))
+          .to include("cost:             $0.42 reported + ~$0.12 from hosts.gw.models prices (this session only)")
+        expect(stats({ cost_estimate_sum: 0.12 }, { price_host: "gw" }))
+          .to include("cost:             ~$0.12 from hosts.gw.models prices (this session only)")
+        # An older worker's snapshot has no price_host.
+        expect(stats(cost_estimate_sum: 0.12)).to include("cost:             ~$0.12 from configured prices (this session only)")
         expect(stats(cost_sum: 0.42, cost_estimate_sum: 0)).to include("cost:             $0.42 (this session only)")
       end
 

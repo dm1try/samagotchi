@@ -945,6 +945,8 @@ module Samagotchi
     # context window, the served model and (on a native host) the prompt
     # profile come from the effective model's server, so this may make one
     # short /props GET; the cheap #session_state_snapshot never does.
+    # price_host: the effective model's host, whose hosts.<name>.models
+    # prices the cost estimate names.
     # @return [Hash] @metrics.snapshot, filled in
     def stats_snapshot
       snapshot = @metrics.snapshot
@@ -952,7 +954,7 @@ module Samagotchi
       served, served_for = served_model_for(snapshot, target: target)
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for,
                                 served_expected_by: served_expected_by(served, target: target), llm_context: llm_context_summary,
-                                prompt_notes: prompt_notes.map(&:to_h))
+                                prompt_notes: prompt_notes.map(&:to_h), price_host: target.entry.name)
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(target)
         if window

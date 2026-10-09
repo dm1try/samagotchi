@@ -179,6 +179,12 @@ RSpec.describe "Engine#stats_snapshot" do
     expect(snapshot).to include(profile: "qwen36", profile_source: "server (chat_template)")
   end
 
+  it "names the effective model's host as price_host (the cost estimate's hosts.<name>.models prices)" do
+    snapshot = engine_with(FakeResolvingClient.new(nil), hosts: { "gw" => { host: "h.test", port: 8081 } }).stats_snapshot
+
+    expect(snapshot[:price_host]).to eq("gw")
+  end
+
   it "falls back to the configured window when the server has none" do
     snapshot = engine_with(FakeResolvingClient.new(nil)).stats_snapshot
 
