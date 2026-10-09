@@ -8,6 +8,23 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A turn record in `analytics.json` says whether the turn was a step-limit Continue (`continue: true`, else `false`),
+  and the model-notes report counts Continues from that mark when the file has it, instead of the older guess (its
+  turn records with no prompt of their own), which also counted reminder turns and prompts `!rollback` erased.
+
+### Fixed
+
+- TUI: a tool row whose output the runner cut says so with a dim `[cut]`, as the web's row already marks it.
+- `/models` is listed as an anytime command (`mid-turn too`) in `/help` and the web's command list, not the
+  per-line `depends` label it got while it always runs mid-turn.
+- Web: a host added to `hosts:` (or a `hosts.<name>.models` context window changed) in config.yml while `chi web`
+  runs now reaches the session cards' ctx % on their next refresh, not only after a restart; the hub's host registry
+  is rebuilt when `hosts:` changes, as the model picker's already was.
+- A host listing saved to the state dir when the registry was built with its own env (the spawn-time model check, the
+  self report) writes under that env's state dir, not `ENV`'s.
+
 ## [0.49.0] - 2026-10-09
 
 ### Added
