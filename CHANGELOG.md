@@ -17,6 +17,9 @@ and commands may change between minor versions. How releases are made:
 - github-pr 0.3.2: a relative `path:line` that only ends with a PR file's path (`vendor/lib/foo.rb:21` for the PR's
   `lib/foo.rb`) is no longer linked to that file in the web; an absolute path into a worktree, or one up from a
   subdir (`../lib/foo.rb`), still is.
+- github-pr 0.3.3: an absolute `path:line` into a vendored copy inside a worktree
+  (`/abs/repo/vendor/lib/foo.rb:21`) is no longer linked to the PR's `lib/foo.rb`: the part before the PR path must
+  be a worktree's root (a directory with `.git`), or no directory on this machine.
 - A step whose stream kept dropping now fails saying how many requests it made ("after 3 attempts"), not
   "after 1 attempts"; one attempt is said in the singular.
 - A host that is down is named once in the models list's warning and in `/models` (`gw: connection refused`, not

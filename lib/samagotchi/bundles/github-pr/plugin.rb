@@ -618,21 +618,38 @@ class LineLinker
   # The PR file +path+ names: the path (or a rename's old one) exactly,
   # after a leading `./`; else, for an absolute path (into a worktree) or
   # one up from the cwd (`../lib/foo.rb` from a subdir), the longest PR
-  # path it ends with on a `/` boundary; else the one PR path that ends
-  # with +path+ (a bare `foo.rb`). nil: none, or several. A relative path
-  # that only ends with a PR path (`vendor/lib/foo.rb`) is another file.
+  # path it ends with on a `/` boundary (see #worktree_suffix); else the
+  # one PR path that ends with +path+ (a bare `foo.rb`). nil: none, or
+  # several. A relative path that only ends with a PR path
+  # (`vendor/lib/foo.rb`) is another file.
   def resolve(files, path)
     path = path.sub(%r{\A(?:\./)+}, "")
     exact = files.find { |file| file.path == path } || files.find { |file| file.previous_path == path }
     return exact if exact
 
     if path.start_with?("/", "~/", "../")
-      longer = files.select { |file| path.end_with?("/#{file.path}") }.max_by { |file| file.path.length }
-      return longer
+      longer = files.select { |file| path.end_with?("/#{file.path}") }.sort_by { |file| -file.path.length }
+      return path.start_with?("../") ? longer.first : worktree_suffix(longer, path)
     end
 
     shorter = files.select { |file| file.path.end_with?("/#{path}") }
     shorter.one? ? shorter.first : nil
+  end
+
+  # The first of +files+ (longest path first) that the absolute +path+
+  # names inside a worktree: the part before the PR path is a directory
+  # with a `.git` (/abs/repo/vendor/lib/foo.rb is a vendored copy, not the
+  # PR's lib/foo.rb), or no directory here at all (a path from elsewhere;
+  # nothing to tell by). nil: each part before is a directory, none a
+  # worktree's root.
+  def worktree_suffix(files, path)
+    full = File.expand_path(path)
+    files.find do |file|
+      root = full.delete_suffix("/#{file.path}")
+      !File.directory?(root) || File.exist?(File.join(root, ".git"))
+    end
+  rescue ArgumentError
+    files.first
   end
 
   # The PR's Files changed anchor when the lines are inside one hunk (the

@@ -606,6 +606,14 @@ RSpec.describe "The github-pr bundle" do
         expect(answer(text)).to eq(text)
       end
 
+      it "links an absolute path into a worktree here, not into a vendored copy inside it" do
+        repo = File.join(tmpdir, "repo")
+        FileUtils.mkdir_p([File.join(repo, ".git"), File.join(repo, "vendor/lib"), File.join(repo, "lib")])
+        vendored = "#{repo}/vendor/lib/foo.rb:21"
+        expect(answer(vendored)).to eq(vendored)
+        expect(answer("#{repo}/lib/foo.rb:21")).to eq("[#{repo}/lib/foo.rb:21](#{anchor("lib/foo.rb", "R21")})")
+      end
+
       it "links a path up from a subdir of the worktree to the PR's file" do
         expect(answer("../lib/foo.rb:21"))
           .to eq("[../lib/foo.rb:21](#{anchor("lib/foo.rb", "R21")})")
