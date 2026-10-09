@@ -86,7 +86,8 @@ RSpec.describe Samagotchi::Tools::Registry do
       chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel)
       names = -> { chat.tool_definitions.map { |tool| tool[:function][:name] } }
 
-      expect(kernel.dispatch_tool_call(name: "tidy", content: "")[:output]).to start_with("Error: unknown tool 'tidy'")
+      expect(kernel.dispatch_tool_call(name: "tidy", content: "")[:output]).to start_with("Error: no such tool. Available:")
+      expect(kernel.dispatch_tool_call(name: "tidy", content: "")[:output]).not_to include("tidy")
       expect(names.call).not_to include("tidy")
 
       resolved = Samagotchi::LLMContextStrategy::Resolved.new(layers: %i[stale forget], strategy: %i[stale forget],
@@ -120,7 +121,25 @@ RSpec.describe Samagotchi::Tools::Registry do
     it "uses the built-ins with no registry given, and lists them for an unknown tool" do
       expect(kernel.tools).to be(Samagotchi::Tools::Builtins.default)
       result = kernel.dispatch_tool_call(name: "echo", content: "hi")
-      expect(result[:output]).to eq("Error: unknown tool 'echo'. Available: #{Samagotchi::ToolDeclarations::TOOL_SCHEMAS.map { |s| s[:name] }.join(", ")}")
+      expect(result[:output]).to eq("Error: no such tool. Available: #{Samagotchi::ToolDeclarations::TOOL_SCHEMAS.map { |s| s[:name] }.join(", ")}")
+      expect(result[:output]).not_to include("echo")
+    end
+
+    it "points a shell-like name at execute (case-insensitively), and lists the tools when execute is not offered" do
+      %w[run Run].each do |name|
+        expect(kernel.dispatch_tool_call(name: name, content: "ls")[:output])
+          .to eq("Error: no such tool. Shell commands run with `execute` (same arguments).")
+      end
+
+      no_execute = kernel.tools.entries.reject { |entry| entry.name == "execute" }
+      registry = described_class.new
+      no_execute.each do |entry|
+        registry.register(entry.name, schema: entry.schema, handler: entry.handler, label: entry.label,
+                                    preview: entry.preview, targets: entry.targets, source: entry.source, layer: entry.layer)
+      end
+      kernel.tools = registry
+      expect(kernel.dispatch_tool_call(name: "run", content: "ls")[:output]).to start_with("Error: no such tool. Available:")
+      expect(kernel.dispatch_tool_call(name: "run", content: "ls")[:output]).not_to include("run")
     end
 
     it "runs a set registry's handler with the call and the kernel's context" do

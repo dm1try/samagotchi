@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A call for a tool that doesn't exist no longer gets its own wrong name quoted back (seeing it again made the
+  model call it again): shell-like names (`bash`, `shell`, …) get `Error: no such tool. Shell commands run with
+  execute (same arguments).` when `execute` is offered this turn, every other name the available-tools list; the
+  UI's tool row and the logs still show what the model called.
+
 ### Fixed
 
 - A bare model id, or an alias with a bare target (`splash: incoai/Qwen3.8-27B-Splash`), in a process that hasn't

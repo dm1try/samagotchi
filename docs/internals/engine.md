@@ -203,7 +203,7 @@ One iteration with tool calls:
   title, view}.
 - Settles an ask verdict after `:tool_call_started`, so a UI shows the tool line and then the approval.
 - Dispatches through `KernelLoop#dispatch_tool_call`, or writes the denial text. Unknown tools are answered in
-  `KernelLoop#dispatch` ("Error: unknown tool ...").
+  `KernelLoop#dispatch` ("Error: no such tool ...", never repeating the wrong name).
 - For edit and write: diffs the file before and after, and refreshes a memory's index line
   (`MemoryBundle::IndexSync`).
 - Attaches returned images, at most `MAX_IMAGES_PER_RESULT` (4) per result.

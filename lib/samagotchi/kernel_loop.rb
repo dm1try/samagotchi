@@ -952,11 +952,30 @@ module Samagotchi
 
     private
 
+    # Shell-like names (the harness's is `execute`). The unknown-tool error
+    # never echoes the name the model used — a model that sees its own wrong
+    # name again calls it again (a steer that named `bash` raised one model's
+    # bash rate from 9% to 30%); the activity event and the logs keep it.
+    SHELL_LIKE_TOOL_NAMES = %w[
+      bash sh zsh shell terminal cmd command run run_command run_shell exec execute_command
+    ].freeze
+
+    # The error an unknown tool name gets back. A shell-like name with
+    # `execute` offered this turn points at `execute`; every other unknown
+    # name lists what is offered. Neither echoes the wrong name.
+    def unknown_tool_error(name, layers)
+      names = @tools.names(layers: layers)
+      if SHELL_LIKE_TOOL_NAMES.include?(name.to_s.downcase) && names.include?("execute")
+        "Error: no such tool. Shell commands run with `execute` (same arguments)."
+      else
+        "Error: no such tool. Available: #{names.join(", ")}"
+      end
+    end
+
     def dispatch(call)
       entry = @tools.offered(call[:name], layers: llm_context_layers)
       unless entry
-        available = @tools.names(layers: llm_context_layers).join(", ")
-        result = "Error: unknown tool '#{call[:name]}'. Available: #{available}"
+        result = unknown_tool_error(call[:name], llm_context_layers)
         return {
           output: result,
           activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)

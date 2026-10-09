@@ -11,8 +11,8 @@ module Samagotchi
     # the call, as it does for the Gemma and Qwen parsers.
     #
     # Unknown tool names pass through with their arguments on args:, so
-    # `dispatch` renders its standard "unknown tool … available: …" error —
-    # the loop feeds that back like any tool result.
+    # `dispatch` renders its standard "no such tool …" error (which never
+    # echoes the name) — the loop feeds that back like any tool result.
     class NativeToolNormalizer
       class << self
         # Map a single native tool call (LLM::ToolCall) to the internal call hash.

@@ -846,7 +846,9 @@ Need to inspect the filesystem first.
         prompts.length == 1 ? %(<|tool_call>call:unknown_tool{command: "hi"}<tool_call|>) : "OK"
       end
       kernel.run([{ role: "user", content: "test" }])
-      expect(prompts[1]).to include("unknown tool")
+      # The error tells the model what to do; it never repeats the wrong name
+      # (the prompt keeps the model's own call, so assert on the error text).
+      expect(prompts[1]).to include("Error: no such tool")
     end
 
     it "restores escaped literal control tokens in final user-visible output" do
@@ -1239,8 +1241,47 @@ Need to inspect the filesystem first.
         kernel.run([{ role: "user", content: "call a missing tool" }], on_stream_event: ->(event) { events << event })
 
         completed = events.find { |event| event[:type] == :tool_call_completed }
-        expect(completed[:output].to_s).to start_with("Error: unknown tool 'frobnicate'")
+        expect(completed[:output].to_s).to start_with("Error: no such tool. Available:")
+        expect(completed[:output].to_s).not_to match(/\bfrobnicate\b/i)
         expect(completed[:activity][:status]).to eq("error")
+      end
+
+      it "points a shell-like name at execute and never repeats the name" do
+        # `Bash` (capital) can't ride this profile's parser (its call names
+        # are lowercase), so the case-insensitive branch is covered in
+        # registry_spec; here the full run with a lowercase shell name.
+        responses = [%(<|tool_call>call:bash{command: "ls"}<tool_call|>), "done"]
+        allow(client).to receive(:complete) { responses.shift }
+        events = []
+        kernel.run([{ role: "user", content: "run a shell" }], on_stream_event: ->(event) { events << event })
+
+        completed = events.find { |event| event[:type] == :tool_call_completed }
+        expect(completed[:output]).to eq("Error: no such tool. Shell commands run with `execute` (same arguments).")
+        expect(completed[:output]).not_to match(/\bbash\b/i)
+        expect(completed[:activity][:status]).to eq("error")
+      end
+
+      it "lists the available tools for a shell-like name when execute is not offered" do
+        registry = Samagotchi::Tools::Builtins.default.entries.reject { |entry| entry.name == "execute" }
+        kernel.tools = Samagotchi::Tools::Registry.new.tap do |r|
+          registry.each do |entry|
+            r.register(entry.name, schema: entry.schema, handler: entry.handler, label: entry.label,
+                                        preview: entry.preview, targets: entry.targets, source: entry.source,
+                                        layer: entry.layer)
+          end
+        end
+
+        events = []
+        allow(client).to receive(:complete).and_return(
+          %(<|tool_call>call:shell{command: "ls"}<tool_call|>),
+          "done"
+        )
+        kernel.run([{ role: "user", content: "run a shell" }], on_stream_event: ->(event) { events << event })
+
+        completed = events.find { |event| event[:type] == :tool_call_completed }
+        expect(completed[:output]).to start_with("Error: no such tool. Available:")
+        expect(completed[:output]).not_to include("shell")
+        expect(completed[:output]).not_to include("execute")
       end
 
       it "carries the raised tool's error string and error status" do

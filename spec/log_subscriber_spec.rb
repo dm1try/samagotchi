@@ -141,7 +141,7 @@ RSpec.describe Samagotchi::LogSubscriber do
   it "marks a failed tool call" do
     feed({ type: :tool_call_completed, iteration: 1, call_index: 0, tool: "read", output: "[read] Error: no such file" },
          { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", output: "[read]\nError: denied" },
-         { type: :tool_call_completed, iteration: 1, call_index: 2, tool: "nope", output: "Error: unknown tool 'nope'" },
+         { type: :tool_call_completed, iteration: 1, call_index: 2, tool: "nope", output: "Error: no such tool. Available: read, write" },
          { type: :tool_call_completed, iteration: 1, call_index: 3, tool: "read", output: "[read]\nno Error: here" })
 
     expect(records.map { |r| r.fields["error"] }).to eq(["true", "true", "true", nil])
