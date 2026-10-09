@@ -147,6 +147,12 @@ RSpec.describe Samagotchi::SendCommand do
       expect(inputs_of(a)).to be_empty
     end
 
+    it "with --wait, an unknown id gets the no-session line, not a refusal" do
+      expect(run("--wait", "-m", "/stats", "zzzz")).to eq(1)
+      expect(err.string).to include("no session zzzz")
+      expect(err.string).not_to include("refused")
+    end
+
     it "with --new refuses it before a session is created" do
       allow(Process).to receive(:spawn)
 

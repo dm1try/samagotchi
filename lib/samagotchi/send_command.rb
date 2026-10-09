@@ -477,29 +477,28 @@ module Samagotchi
     # (ParentWait's end-of-run line when the reply never comes).
     # @return [Integer] 1
     def refuse_local_command(entry, options)
-      name = entry.name
-      detail = if name == "/stats"
-                 "#{name} is a terminal and web command; use chi sessions stats"
-               else
-                 "#{name} is a terminal and web command; chi send doesn't run it"
-               end
       if options[:new]
-        error_line("chi send: refused: #{detail}")
+        error_line("chi send: refused: #{local_refusal(entry.name, nil)}")
       elsif options[:wait]
-        # --wait: @info is stderr and the JSON line goes to stdout; the check
-        # runs before any id resolves, so name the one it was for.
-        id = Session.resolve_id(options[:ids].first, state_dir: @state_dir)
-        @session_id = id
-        @stderr.puts("#{id[0, 8]}  refused: #{detail}")
+        # --wait: the JSON line goes to stdout, @info is stderr; an unknown
+        # or ambiguous id gets resolve's own error line.
+        id = resolve(options[:ids].first) or return CLI::Exit::FAILED
+        @stderr.puts("#{id[0, 8]}  refused: #{local_refusal(entry.name, id)}")
       else
         options[:ids].uniq.each do |given|
-          id = Session.resolve_id(given, state_dir: @state_dir)
-          @info.puts("#{id[0, 8]}  refused: #{detail}#{name == "/stats" ? " #{id[0, 8]}" : ""}")
-        rescue ArgumentError => e
-          error_line("#{command_name}: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
+          id = resolve(given) or next
+          @info.puts("#{id[0, 8]}  refused: #{local_refusal(entry.name, id)}")
         end
       end
       CLI::Exit::FAILED
+    end
+
+    # Why a UI-only command isn't sent: /stats points at its model-free
+    # reader (naming the session when there is one).
+    def local_refusal(name, id)
+      return "#{name} is a terminal and web command; chi send doesn't run it" unless name == "/stats"
+
+      "#{name} is a terminal and web command; use chi sessions stats #{id ? id[0, 8] : "ID"}"
     end
 
     # --wait after a message that ran as a session command: no reply comes

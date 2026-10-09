@@ -45,6 +45,9 @@ module Samagotchi
     STOP_USAGE = "Usage: chi sessions stop ID...\n"
     RESTART_USAGE = "Usage: chi sessions restart ID...\n"
     STATS_USAGE = "Usage: chi sessions stats ID [--format text|json]\n"
+    # How long `stats` waits for a live worker's GET stats before reading the
+    # saved analytics.json instead (a stuck worker must not hold a driver).
+    STATS_TIMEOUT = 3
     SUBCOMMANDS = %w[list stop restart archive unarchive delete prune clean stats].freeze
 
     # Each subcommand's flags ("--flag V" or "--flag=V" for a value): an
@@ -327,7 +330,8 @@ module Samagotchi
     # @return [Array(Hash, nil, Boolean, String, nil)]
     def stats_snapshot_for(session)
       dir = Samagotchi::Session.session_dir(session.id)
-      if (client = Samagotchi::BridgeClient.discover(session.id, session_dir: dir))
+      if (port = Samagotchi::BridgeClient.sidecar_port(dir))
+        client = Samagotchi::BridgeClient.new(session_id: session.id, port: port, read_timeout: STATS_TIMEOUT)
         body = client.get_json("stats")&.dig("metrics")
         if body.is_a?(Hash)
           return [TerminalUI::EventRenderer.deep_symbolize_keys(body), true, nil]
