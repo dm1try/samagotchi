@@ -592,7 +592,14 @@ file2.rb")
 
         saved = Samagotchi::Session.load(id).messages.select { |m| m[:role] == "tool_response" }
         expect(saved.map { |m| m[:tool_ids] }).to eq([%w[t1], %w[t2]])
-        prompts.each { |prompt| expect(prompt).not_to match(/\bt[12]\b/) }
+        # The ids stay off the prompts; the paths in them (the temp dir, the
+        # cwd, home) may hold a "t1"/"t2" segment of their own, so they go first.
+        paths = [dir, Dir.pwd, Dir.tmpdir, Dir.home].flat_map { |path| [path, File.realpath(path)] }
+        paths = paths.uniq.sort_by { |path| -path.length }
+        prompts.each do |prompt|
+          text = paths.reduce(prompt.to_s) { |acc, path| acc.gsub(path, "") }
+          expect(text).not_to match(/\bt[12]\b/)
+        end
       end
     end
 
