@@ -1356,7 +1356,7 @@ module Samagotchi
     # dismissed it.
     def dismiss_unaskable_question(prompt)
       @engine.cancel_question(QuestionDesk::UNANSWERABLE_REASON) rescue nil
-      banner(prompt.summary("(dismissed: no one to answer in a non-interactive run)", paint: method(:paint)))
+      banner(prompt.summary(QuestionPrompt::UNANSWERABLE_TEXT, paint: method(:paint)))
       false
     end
 

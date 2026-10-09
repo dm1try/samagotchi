@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- An attached chi watching a `-p --non-interactive` run says a question there was dismissed because no one could
+  answer it (`(dismissed: no one to answer in a non-interactive run)`), as the run itself does, not
+  `(question cancelled)`.
+
 ## [0.48.0] - 2026-10-09
 
 ### Changed

@@ -2,6 +2,7 @@
 
 require_relative "question_slot"
 require_relative "../turn_flow"
+require_relative "../question_desk"
 
 module Samagotchi
   class TerminalUI
@@ -80,9 +81,15 @@ module Samagotchi
         "  waiting in parent #{@relayed_to} too (answering here works)" if @relayed_to
       end
 
+      # The line a question dismissed in a --non-interactive run leaves (no
+      # one could answer it there): the REPL's own, and an attached UI's on
+      # its cancel (QuestionDesk::UNANSWERABLE_REASON).
+      UNANSWERABLE_TEXT = "(dismissed: no one to answer in a non-interactive run)"
+
       # What a question closed with no answer here says: a relayed approval
       # names where it went; else "(question cancelled)".
       def closed_text(reason)
+        return UNANSWERABLE_TEXT if reason.to_s == QuestionDesk::UNANSWERABLE_REASON
         return CONTINUE_CLOSED.fetch(reason.to_s, "(question cancelled)") if continue?
         return "(question cancelled)" unless @delegate
 
