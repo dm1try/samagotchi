@@ -4,6 +4,7 @@ import {
   api,
   listSessions,
   createIdleSession,
+  continueSession,
   getSession,
   sendTurn,
   cancelTurn,
@@ -66,6 +67,25 @@ test("api errors carry the server's error code", async () => {
     (e) => e.code === "bad_images" && e.status === 400 && e.message === "unknown image ref (400)");
   await assert.rejects(() => fail({ error: "owned_by_tui", detail: "open in a chi REPL" }, 409), (e) => e.code === "owned_by_tui");
   await assert.rejects(() => fail({}, 500), (e) => e.code === null);
+});
+
+// A refused continue's answer carries more than its words: the page opens
+// next_id, or names the ids.
+test("api errors carry the server's whole answer", async () => {
+  const body = { error: "continued", detail: "d3 is continued already, by d4", next_id: "d4-full" };
+  await assert.rejects(() => api("/api/sessions", { fetchImpl: () => Promise.resolve(okResponse(body, 409)) }),
+    (e) => e.code === "continued" && e.body.next_id === "d4-full");
+});
+
+test("continueSession asks for an idle next link of the session's chain, nothing else", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push([String(path), opts.method, JSON.parse(opts.body)]);
+    return Promise.resolve(okResponse({ id: "d4", continues: "d3" }, 201));
+  };
+  const created = await continueSession("d3", { fetchImpl });
+  assert.deepEqual(calls, [["/api/sessions", "POST", { continues: "d3", idle: true }]]);
+  assert.equal(created.continues, "d3");
 });
 
 test("listSessions builds sort and order query params", async () => {
