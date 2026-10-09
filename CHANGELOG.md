@@ -28,6 +28,12 @@ and commands may change between minor versions. How releases are made:
   thinking as part of the new one — the model re-thinking the same opening after a restart could be cut or stopped
   as "thinking repeats itself". The first `:generation_progress` fire after such a restart carries `restarted: true`,
   and the loop-guard thinking watch starts over on it (loop-guard 0.3.7).
+- Web: the live timing line counts up from the first second (tenths of a second while under 10 s, ticking every
+  200 ms there) instead of reading "0ms" for the turn's first second.
+- Web: the stage trail's items hover their whole text — a flash (a hook notice) its whole line, a call its full
+  command when it has one, else its whole truncated text.
+- Web: a `!cmd`'s output shows once, as a command bubble: the history renders the saved `!(<command>)` message as
+  one (not a user bubble), and a live `command_ran` no longer adds a second bubble after the redraw.
 
 ## [0.49.0] - 2026-10-09
 
