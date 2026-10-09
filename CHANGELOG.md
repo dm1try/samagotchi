@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-10-09
+
 ### Changed
 
 - Continuing a session moves its open delegates to the new link instead of refusing: running, waiting, live or with
@@ -18,6 +20,9 @@ and commands may change between minor versions. How releases are made:
   - Web: the continue toast counts the delegates that moved (`1 open delegate moved`); `POST /api/sessions` with
     `continues` answers `moved: [ids]`.
   - CLI: `chi send --new --continues` prints `started (continues 3fa2c1d0; 2 delegates moved)`.
+
+Update with `chi update` (no bundle changed), then restart `chi web`. A delegate whose worker started on an older
+chi refuses to move until it is restarted.
 
 ## [0.47.0] - 2026-10-09
 
@@ -2226,7 +2231,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.47.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.48.0...HEAD
+[0.48.0]: https://github.com/dm1try/samagotchi/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/dm1try/samagotchi/compare/v0.46.1...v0.47.0
 [0.46.1]: https://github.com/dm1try/samagotchi/compare/v0.46.0...v0.46.1
 [0.46.0]: https://github.com/dm1try/samagotchi/compare/v0.45.0...v0.46.0
