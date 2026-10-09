@@ -83,13 +83,14 @@ function fakeEl({ rect = null, parent = null, card = null } = {}) {
   return el;
 }
 
-function setupPop({ vw = 1440, rows = { p: "<rows p>" } } = {}) {
+function setupPop({ vw = 1440, rows = { p: "<rows p>" }, id } = {}) {
   const body = fakeEl();
   const doc = { body, createElement: () => fakeEl() };
   const card = fakeEl({ rect: { left: 100, top: 20, bottom: 120, width: 360 } });
   const chips = { p: fakeEl({ rect: { left: 180, top: 90, bottom: 108, width: 120 }, card }), q: fakeEl({ rect: { left: 500, top: 90, bottom: 108, width: 120 }, card }) };
   const page = { picked: [], closes: 0, rows, chips };
   const pop = createFamilyPop({
+    ...(id ? { id } : {}),
     doc, win: { innerWidth: vw },
     rowsFor: (id) => page.rows[id] ?? null,
     anchorFor: (id) => page.chips[id] ?? null,
@@ -120,6 +121,13 @@ test("familyPop opens under the chip, as wide as its card, in body; toggle close
   pop.toggle("q");
   assert.equal(pop.openHead(), "q");
   assert.equal(el().innerHTML, "<rows q>");
+});
+
+test("a second popover (a chain's) is an element of its own id", () => {
+  const { pop, el } = setupPop({ id: "chainPop" });
+  pop.open("p");
+  assert.equal(el().id, "chainPop");
+  assert.equal(el().className, "family-pop");
 });
 
 test("familyPop: Esc closes it (and stops there, the chip focused), other keys and a closed popover pass", () => {
