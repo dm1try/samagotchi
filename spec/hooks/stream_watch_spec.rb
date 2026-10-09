@@ -62,6 +62,32 @@ RSpec.describe Samagotchi::Hooks::StreamWatch do
     expect(fires.first).to include(iteration: 2, thinking: "b" * 2000, thinking_chars: 2000)
   end
 
+  it "marks the first fire after a restarted start, and no other fire" do
+    watch.started(1)
+    watch.feed(thinking: "a" * 2500, text: "")
+    expect(fires.last).not_to have_key(:restarted)
+
+    watch.started(1, restarted: true)
+    watch.feed(thinking: "b" * 2500, text: "")
+    expect(fires.last).to include(iteration: 1, restarted: true, thinking_chars: 2500)
+
+    watch.feed(thinking: "c" * 2500, text: "")
+    expect(fires.last).not_to have_key(:restarted)
+
+    # A second restart before any fire: the next fire still carries it once.
+    watch.started(1, restarted: true)
+    watch.started(1, restarted: true)
+    watch.feed(thinking: "d" * 2500, text: "")
+    expect(fires.last).to include(restarted: true)
+    watch.feed(thinking: "e" * 2500, text: "")
+    expect(fires.last).not_to have_key(:restarted)
+
+    # A normal start carries no key.
+    watch.started(2)
+    watch.feed(thinking: "f" * 2500, text: "")
+    expect(fires.last).not_to have_key(:restarted)
+  end
+
   it "fires nothing once the turn is cancelled" do
     watch.started(1)
     controller.cancel!(:user)

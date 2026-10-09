@@ -2570,7 +2570,7 @@ module Samagotchi
           # A dropped stream's step asked again: it streams from the start.
           if event[:restarted]
             @generation_thought = nil
-            watch&.started(event[:iteration])
+            watch&.started(event[:iteration], restarted: true)
           end
         when :generation_chunk then note_generation_thought(progress[:thinking])
         end

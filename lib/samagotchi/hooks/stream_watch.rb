@@ -32,16 +32,20 @@ module Samagotchi
         @clock = clock
         @slow_logged = false
         @iteration = nil
+        @restarted = false
       end
 
-      # A new generation (:generation_started).
-      def started(iteration)
+      # A new generation (:generation_started), or a dropped stream's step
+      # asked again (restarted: true: the first fire after it carries
+      # restarted: true — what came before is void).
+      def started(iteration, restarted: false)
         @iteration = iteration
         @started_at = @last_fire_at = @clock.call
         @thinking = +""
         @text = +""
         @thinking_chars = 0
         @text_chars = 0
+        @restarted = restarted
       end
 
       # One chunk's new thinking and visible text.
@@ -70,6 +74,9 @@ module Samagotchi
                   elapsed_ms: ((now - @started_at) * 1000).round,
                   # A question would hold the HTTP read for minutes.
                   ask_user: ->(**) {} }
+        # The first fire after a restarted retry says so, once.
+        event[:restarted] = true if @restarted
+        @restarted = false
         @thinking = +""
         @text = +""
         @last_fire_at = now

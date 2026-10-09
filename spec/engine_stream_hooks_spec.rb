@@ -171,6 +171,31 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
       expect(seen).to eq([3000, 3000])
     end
 
+    it "marks the first progress fire after a restarted retry, and no other" do
+      seen = []
+      engine.register_hook(:generation_progress) { |e| seen << e }
+      handler = engine.send(:build_stream_event_handler, ->(e) { events << e }, cancel_controller: controller)
+      handler.call({ type: :generation_started, iteration: 1 })
+      handler.call({ type: :generation_chunk, iteration: 1, text: "", thinking: "a" * 3000 })
+      handler.call({ type: :generation_retrying, iteration: 1, attempt: 1, restarted: true })
+      handler.call({ type: :generation_chunk, iteration: 1, text: "", thinking: "b" * 3000 })
+      handler.call({ type: :generation_chunk, iteration: 1, text: "", thinking: "c" * 3000 })
+
+      expect(seen.map { |e| e.key?(:restarted) }).to eq([false, true, false])
+    end
+
+    it "leaves the fires unchanged on a retry before any chunk (no restarted)" do
+      seen = []
+      engine.register_hook(:generation_progress) { |e| seen << e }
+      handler = engine.send(:build_stream_event_handler, ->(e) { events << e }, cancel_controller: controller)
+      handler.call({ type: :generation_started, iteration: 1 })
+      handler.call({ type: :generation_retrying, iteration: 1, attempt: 1 })
+      handler.call({ type: :generation_chunk, iteration: 1, text: "", thinking: "a" * 3000 })
+
+      expect(seen.size).to eq(1)
+      expect(seen.first).not_to have_key(:restarted)
+    end
+
     it "gives the UIs a chunk before the hook sees it" do
       order = []
       engine.register_hook(:generation_progress) { |_e| order << :hook }
