@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chainChipHtml, chainDate, chainLinks, chainNeighbours, chainRowsHtml, foldChains } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, chainChipHtml, chainDate, chainLinks, chainNeighbours, chainRowsHtml, continueRefusal, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
 import { families, familyWaits, waitingFirst } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // A chain of three days: d1 ← d2 ← d3 (d3 continues d2, which continues d1).
@@ -110,4 +110,44 @@ test("chainRowsHtml lists the other links newest first: day, date, recap's first
   // Escaped.
   const [g] = foldChains(families([d3]), [d3, { ...d2, recap: "<b>x</b>" }]);
   assert.match(chainRowsHtml(g), /&lt;b&gt;x&lt;\/b&gt;/);
+});
+
+const refused = (code, body, message = "refused (409)") => Object.assign(new Error(message), { status: 409, code, body: { error: code, ...body } });
+
+test("continueRefusal: continued already opens the next link", () => {
+  assert.deepEqual(continueRefusal(refused("continued", { next_id: "d4" })), { kind: "open", id: "d4" });
+});
+
+test("continueRefusal: open delegates are named with their preview and state", () => {
+  const kids = [
+    { id: "aaaaaaaa-1", status: "running", first_preview: "fix the flaky spec" },
+    { id: "bbbbbbbb-2", status: "idle", first_preview: "write docs", pending_question: { id: "q", kind: "question" } },
+  ];
+  const detail = "d3 has delegates still open: aaaaaaaa (running), cccccccc (unreported reply); wait for them, stop them or archive them, then continue";
+  const r = continueRefusal(refused("open_children", { ids: ["aaaaaaaa-1", "bbbbbbbb-2", "cccccccc-3", "dddddddd-4"] },
+    `${detail} (409)`), kids);
+  assert.equal(r.kind, "children");
+  assert.equal(r.text, detail);
+  // Why: the server's word, else the state here; the preview when the list has it.
+  assert.deepEqual(r.children, [
+    { id: "aaaaaaaa-1", short: "aaaaaaaa", text: "fix the flaky spec (running)" },
+    { id: "bbbbbbbb-2", short: "bbbbbbbb", text: "write docs (waiting)" },
+    { id: "cccccccc-3", short: "cccccccc", text: "(unreported reply)" },
+    { id: "dddddddd-4", short: "dddddddd", text: "" },
+  ]);
+  const html = openChildrenHtml("d3d3d3d3-x", r.children, (id) => `#/s/${id}`);
+  assert.match(html, /Can't continue d3d3d3d3: 4 delegates are still open\. Wait for them, stop or archive them, then continue\./);
+  assert.match(html, /<a href="#\/s\/aaaaaaaa-1" class="cr-child">aaaaaaaa<\/a> fix the flaky spec \(running\)/);
+  assert.match(openChildrenHtml("d3", r.children.slice(0, 1), (id) => id), /1 delegate is still open\. Wait for it, stop or archive it/);
+});
+
+test("continueRefusal: anything else is the server's words", () => {
+  assert.deepEqual(continueRefusal(refused("busy", {}, "d3 is running a turn (409)")), { kind: "error", text: "d3 is running a turn" });
+  // A continued answer without its next_id (an older server) is words too.
+  assert.equal(continueRefusal(refused("continued", {})).kind, "error");
+  assert.deepEqual(continueRefusal(new Error("Failed to fetch")), { kind: "error", text: "Failed to fetch" });
+});
+
+test("the opener is the same neutral line for every chain", () => {
+  assert.equal(CONTINUE_OPENER, "Continue where we left off.");
 });

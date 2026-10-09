@@ -551,7 +551,7 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   const stripCard = page.locator(`#topStrip .card[data-id="${id}"]`);
   await expect(stripCard).toBeVisible();
 
-  await expect(page.locator("#infoBar > button:visible")).toHaveText(["archive", "stop", "delete"]);
+  await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop", "delete"]);
   await page.locator("#infoArchiveBtn").click();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
   await expect(page.locator("#toast")).toContainText(`Archived ${id.slice(0, 8)}`);
@@ -572,6 +572,48 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#infoArchiveBtn").click();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
   await expect(stripCard).toBeVisible();
+});
+
+test("continue → starts the next link with the opener in the composer, unsent; the previous link is archived and reached from the chain's chip and the ← → links", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Chain day one");
+  await turnEnded(page, 1);
+  const first = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+
+  await page.locator("#infoContinueBtn").click();
+  await expect(page).not.toHaveURL(new RegExp(`#/s/${first}$`));
+  const second = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  // Filled, not sent: no turn ran in the new link.
+  await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
+  await expect(page.locator(`${H()} .bubble.user`)).toHaveCount(0);
+  await expect(page.locator("#actionBtn")).toHaveText("Send");
+  await expect(page.locator("#toast")).toContainText(`Continued ${first.slice(0, 8)} in ${second.slice(0, 8)}`);
+
+  // The previous link is archived: its card is folded into the new one's day chip.
+  await expect(page.locator(`#topStrip .card[data-id="${first}"]`)).toHaveCount(0);
+  const chip = page.locator(`#topStrip .card[data-id="${second}"] .chain-chip`);
+  await expect(chip).toHaveText("↩day 2");
+  const back = page.locator("#infoBar a.chain-link");
+  await expect(back).toHaveText(/^← \d{4}-\d{2}-\d{2}$/);
+  await expect(back).toHaveAttribute("href", `#/s/${first}`);
+  await expect(page.locator("#infoContinueBtn")).toBeVisible();
+
+  // The chip's popover lists the earlier link; a click opens it.
+  await chip.click();
+  const row = page.locator(`#chainPop .chain-row[data-id="${first}"]`);
+  await expect(row).toContainText("day 1");
+  await expect(row.locator(".archived-badge")).toHaveText("archived");
+  await row.click();
+  await expect(page).toHaveURL(new RegExp(`#/s/${first}$`));
+  await expect(page.locator("#chainPop")).toBeHidden();
+  await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
+  // A link continued already: its → link, no Continue.
+  await expect(page.locator("#infoContinueBtn")).toBeHidden();
+  const forward = page.locator("#infoBar a.chain-link");
+  await expect(forward).toHaveText(/^\d{4}-\d{2}-\d{2} →$/);
+  await forward.click();
+  await expect(page).toHaveURL(new RegExp(`#/s/${second}$`));
+  await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
 });
 
 test("all sessions: a card's archive button hides it without opening it, the toast's Undo brings it back", async ({ page, script }) => {
