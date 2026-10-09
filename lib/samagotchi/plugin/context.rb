@@ -25,9 +25,11 @@ module Samagotchi
     # model's memory overlay key (ctx.model, ctx.model_key).
     # +steer+ takes (text, label), +stop_turn+ and +stop_generation+
     # (reason, label), each true when it acted on a running turn.
+    # +frontend+ returns the Engine's interface (:repl, :worker,
+    # :non_interactive), which ctx.frontend names for plugins.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :llm_context, :steer, :stop_turn, :stop_generation,
-                      keyword_init: true)
+                      :frontend, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -102,6 +104,16 @@ module Samagotchi
 
       # Whether the session is a `chi scratch` one (deleted when it ends).
       def scratch? = !!@host.scratch&.call
+
+      # ctx.frontend's values, by the Engine's interface.
+      FRONTENDS = { repl: :repl, non_interactive: :one_shot, worker: :worker }.freeze
+
+      # What runs the session, read now (the host sets it after the plugins
+      # load): :repl (the REPL, -p without --non-interactive), :one_shot
+      # (-p --non-interactive: one turn, then exit) or :worker (a session
+      # worker: the web, an attached TUI). A host without one is :worker.
+      # @return [Symbol]
+      def frontend = FRONTENDS.fetch(@host.frontend&.call, :worker)
 
       # Whether the session is a delegate child (Session#delegate?): a task
       # another session handed over, not the user's own.

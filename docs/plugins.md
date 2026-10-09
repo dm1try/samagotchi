@@ -505,6 +505,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.repo_root` | the git checkout holding `cwd`, or nil |
 | `ctx.scratch?` | whether the session is a `chi scratch` one (deleted when it ends) |
 | `ctx.delegate?` | whether the session is a delegate child: a task another session handed over |
+| `ctx.frontend` | what runs the session, read now: `:repl` (the REPL, `-p` without `--non-interactive`), `:one_shot` (`-p --non-interactive`: one turn, then exit) or `:worker` (a session worker: the web, an attached TUI). Only a worker's answers reach the web while it runs; a REPL's show there once the session is opened. Until the host sets it (while the plugins load, inside `Engine.new`) it reads `:one_shot`, so read it in hooks and init tasks, not in `register` |
 | `ctx.fork?` | whether the session is a fork (`ctx.sessions.fork`): it has a parent but isn't a delegate child, and started from a conversation, so its first prompt isn't its first user message |
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
 | `ctx.model_key` | that model's memory overlay key (`<name>.<key>.md`, what `memory_write current_model_only` writes) |

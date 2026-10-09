@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Native Gemma 4 on llama.cpp (with `--mmproj`) sees images: `@path`, `read` on an image and the web's pasted images
   reach it, as they do Qwen 3.6. Before, chi refused with "profile gemma4 has no image template yet".
+- Plugins: `ctx.frontend` says what runs the session: `:repl` (the REPL, `-p` without `--non-interactive`),
+  `:one_shot` (`-p --non-interactive`) or `:worker` (a session worker: the web, an attached TUI).
 
 ### Fixed
 

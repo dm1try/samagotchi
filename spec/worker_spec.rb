@@ -150,6 +150,8 @@ RSpec.describe Samagotchi::Worker do
     it "tells its Engine it is a worker, so approvals wait for an attached UI" do
       start_worker
       expect(engine.interface).to eq(:worker)
+      ctx = Samagotchi::Plugin::Context.new(bundle: "b", label: "l", settings: {}, host: engine.send(:plugin_host))
+      expect(ctx.frontend).to eq(:worker)
     end
 
     # The fallback tick is a minute away, so a turn that starts within a few
