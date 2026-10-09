@@ -202,6 +202,33 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(File.join(tmpdir, "#{plain.id}.json")))).to include("parent_id" => nil)
     end
 
+    it "takes the parent from parent.json over the file's in both load paths, and ignores none or a corrupt one" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                            parent_id: "parent-1234")
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+
+      described_class.reparent(session.id, to: "parent-5678", from: "parent-1234", state_dir: tmpdir)
+
+      expect(described_class.parent_override(session.id, state_dir: tmpdir)).to eq("parent-5678")
+      expect(described_class.load(session.id, state_dir: tmpdir).parent_id).to eq("parent-5678")
+      expect(described_class.summary_from_file(path).parent_id).to eq("parent-5678")
+      expect(JSON.parse(File.read(File.join(tmpdir, session.id, "parent.json"))))
+        .to include("parent_id" => "parent-5678", "from" => "parent-1234")
+      # The session file itself is never rewritten.
+      expect(JSON.parse(File.read(path))["parent_id"]).to eq("parent-1234")
+
+      File.write(File.join(tmpdir, session.id, "parent.json"), "{nope")
+      expect(described_class.load(session.id, state_dir: tmpdir).parent_id).to eq("parent-1234")
+      File.write(File.join(tmpdir, session.id, "parent.json"), JSON.generate(parent_id: "../etc"))
+      expect(described_class.summary_from_file(path).parent_id).to eq("parent-1234")
+
+      plain = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      plain.save(state_dir: tmpdir)
+      expect(described_class.parent_override(plain.id, state_dir: tmpdir)).to be_nil
+      expect(described_class.load(plain.id, state_dir: tmpdir).parent_id).to be_nil
+    end
+
     it "round-trips continues, the session this one continues, and reads nil where there is none" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
                                             continues: "prev-1234")

@@ -32,6 +32,12 @@ module Samagotchi
     # resume removes it. A file from before the marker says "stopped" in
     # its status field, which reads the same.
     STOPPED_FILE = "stopped"
+    # A moved session's parent, <session dir>/parent.json ({parent_id, from,
+    # at}): a continue moving a delegate to the chain's new link
+    # (ChildMove) writes it instead of rewriting the session file its live
+    # worker may save a stale copy of; both load paths apply it, like the
+    # stop marker. Never removed: a later move overwrites it.
+    PARENT_FILE = "parent.json"
     # The memory a delegate child starts with (Tools::Delegate::CHILD_MEMORIES).
     DELEGATE_MEMORY = "system/delegated"
 
@@ -258,6 +264,7 @@ module Samagotchi
 
       session = from_h(JSON.parse(File.read(path)))
       session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: state_dir)
+      session.parent_id = parent_override(session.id, state_dir: state_dir) || session.parent_id
       session
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -386,6 +393,7 @@ module Samagotchi
 
       session = from_h(data, messages: false)
       session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: File.dirname(path))
+      session.parent_id = parent_override(session.id, state_dir: File.dirname(path)) || session.parent_id
       session
     rescue JSON::ParserError, KeyError, SystemCallError
       nil
@@ -451,6 +459,29 @@ module Samagotchi
 
     def self.stopped_marker?(session_id, state_dir: default_state_dir)
       File.exist?(File.join(session_dir(session_id, state_dir: state_dir), STOPPED_FILE))
+    end
+
+    # Give +session_id+ a new parent (PARENT_FILE), +from+ the one it had.
+    def self.reparent(session_id, to:, from:, state_dir: default_state_dir)
+      dir = session_dir(session_id, state_dir: state_dir)
+      FileUtils.mkdir_p(dir)
+      AtomicFile.write(File.join(dir, PARENT_FILE),
+                       JSON.generate({ "parent_id" => check_id!(to), "from" => from, "at" => Time.now.iso8601(3) }))
+    end
+
+    # The parent PARENT_FILE gives the session, nil without one (or with
+    # one that doesn't hold an id).
+    # @return [String, nil]
+    def self.parent_override(session_id, state_dir: default_state_dir)
+      file = File.join(session_dir(session_id, state_dir: state_dir), PARENT_FILE)
+      # The lists read every session: most have none, so no exception each.
+      return nil unless File.exist?(file)
+
+      data = JSON.parse(File.read(file))
+      id = data.is_a?(Hash) && data["parent_id"]
+      valid_id?(id) ? id : nil
+    rescue JSON::ParserError, SystemCallError
+      nil
     end
 
     # An id that is not a session id: it could name a path outside the

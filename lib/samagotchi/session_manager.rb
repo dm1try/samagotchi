@@ -166,12 +166,14 @@ module Samagotchi
     # @param note [String, nil] a context note the session starts with,
     #   from +note_source+: queued before its worker spawns, so its first
     #   turn sees it
+    # @param before_spawn [#call, nil] (session) runs once the session and
+    #   its note are saved, before its worker spawns
     # @return [Session] with #seed_images_dropped: refs whose file was gone,
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
                            title: nil, delegate: false, llm_context: nil, continues: nil, note: nil,
-                           note_source: "chi")
+                           note_source: "chi", before_spawn: nil)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -210,6 +212,7 @@ module Samagotchi
       end
       setup_session_directory(session_dir, session, state_dir: sd)
       SessionInbox.write_note(session.id, text: note, source: note_source, state_dir: sd) if note
+      before_spawn&.call(session)
       spawn_worker_for_session(session, state_dir: sd)
       session
     end
@@ -557,10 +560,12 @@ module Samagotchi
     # @raise [ArchiveRefused] a turn runs in it or in a child, a prompt is
     #   queued in one (a later resume would run it), a live one offers to
     #   continue past the step limit, or it is a scratch session
-    def self.archive_session(id_or_prefix, state_dir: nil, wait: 5)
+    # @param except [Array<String>] descendants left alone with their own
+    #   subtrees (delegates a continue moves to the chain's new link)
+    def self.archive_session(id_or_prefix, state_dir: nil, wait: 5, except: [])
       sd = state_dir || Session.default_state_dir
       id = archive_target(id_or_prefix, sd)
-      tree, owners = archivable!(id, sd)
+      tree, owners = archivable!(id, sd, except: except)
       stopped = tree.select { |sid| owners[sid] }
       stopped.each { |sid| stop_session(sid, state_dir: sd, wait: wait) }
       archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
@@ -571,10 +576,10 @@ module Samagotchi
     # archived now (#archive_refusal for each), else the refusal.
     # @return [Array(Array<String>, Hash)] the ids, and id => OwnerLock::Owner or nil
     # @raise [ArchiveRefused, OwnedByTUI]
-    private_class_method def self.archivable!(id, state_dir)
+    private_class_method def self.archivable!(id, state_dir, except: [])
       raise ArchiveRefused.new(id, :scratch) if Session.load(id, state_dir: state_dir).scratch
 
-      tree = [id, *descendant_ids(id, state_dir)]
+      tree = [id, *descendant_ids(id, state_dir, except: except)]
       owners = tree.to_h { |sid| [sid, session_owner(sid, state_dir: state_dir)] }
       tree.each do |sid|
         refusal = archive_refusal(sid, owners[sid], state_dir)
@@ -620,13 +625,13 @@ module Samagotchi
     end
 
     # Children, their children, …: a delegated session doesn't delegate
-    # further today, a plugin's fork may.
-    private_class_method def self.descendant_ids(id, state_dir)
+    # further today, a plugin's fork may. The walk doesn't enter +except+.
+    private_class_method def self.descendant_ids(id, state_dir, except: [])
       seen = [id]
       queue = [id]
       until queue.empty?
         children_of(queue.shift, state_dir: state_dir).each do |child|
-          next if seen.include?(child[:id])
+          next if seen.include?(child[:id]) || except.include?(child[:id])
 
           seen << child[:id]
           queue << child[:id]

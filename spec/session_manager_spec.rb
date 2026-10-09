@@ -592,6 +592,21 @@ RSpec.describe Samagotchi::SessionManager do
                                       state_dir: tmpdir).parent_id).to be_nil
     end
 
+    it "runs before_spawn with the saved session and its note queued, before the worker spawns" do
+      seen = []
+      allow(Process).to receive(:spawn) { seen << :spawn and 12_345 }
+
+      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir, note: "hello",
+                                              before_spawn: lambda { |s|
+                                                dir = Samagotchi::Session.session_dir(s.id, state_dir: tmpdir)
+                                                seen << [Samagotchi::Session.exist?(s.id, state_dir: tmpdir),
+                                                         Samagotchi::SessionInbox.find_new_note_files(dir).size]
+                                              })
+
+      expect(seen).to eq([[true, 1], :spawn])
+      expect(session).to be_a(Samagotchi::Session)
+    end
+
     it "starts from a seed conversation, idle, titled, with the seed's images copied" do
       allow(Process).to receive(:spawn).and_return(12_345)
       parent_dir = File.join(tmpdir, "parent")

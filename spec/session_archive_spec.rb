@@ -172,6 +172,19 @@ RSpec.describe "Session archive" do
       expect([archived?(parent), archived?(child)]).to eq([false, false])
     end
 
+    it "leaves an except: subtree alone, and its busy delegate doesn't refuse the archive" do
+      parent = make
+      kept = make(parent: parent, owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      under_kept = make(parent: kept)
+      done = make(parent: parent)
+
+      result = Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir, except: [kept.id])
+
+      expect(result[:archived]).to contain_exactly(parent.id, done.id)
+      expect([archived?(parent), archived?(done), archived?(kept), archived?(under_kept)])
+        .to eq([true, true, false, false])
+    end
+
     it "refuses while a prompt is queued in it (a resume would run it), and stops nothing" do
       queued = make(owner: "worker")
       Samagotchi::SessionInbox.write_input(dir_of(queued), prompt: "run the tests")
