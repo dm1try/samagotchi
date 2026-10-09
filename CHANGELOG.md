@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
   session has no card there (an older session, a folded delegate). The composer footer's first-message line and the
   banner that appeared at 20 % context are gone; the memory names stay in the footer's `mem N` chip and tooltip.
 - Web: the browser tab names the open session (`<first message> · Chi · <project>`), so several chi tabs read apart.
+- Web: the hidden strip's "▾ N sessions" pill counts sessions, the number the "All sessions →" tile shows (it
+  counted cards, so a folded family made the two disagree).
 
 ### Fixed
 
