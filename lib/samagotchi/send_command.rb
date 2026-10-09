@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "client_id"
+require_relative "delivery"
 require_relative "session"
 require_relative "session_commands"
 require_relative "session_inbox"
@@ -75,6 +76,14 @@ module Samagotchi
                     nothing is sent: it waits for the session's next
                     reply, a running turn's too (after exit 3, 4 or 130,
                     wait again this way)
+        --cut       ask the running turn to cut the generation it is
+                    streaming and take the message now (a generation that
+                    has streamed only thinking for steer.cut_after; else
+                    the message waits for the thinking to pass it). A
+                    message without --cut goes in at the running turn's
+                    next step and cuts nothing. To an idle session it
+                    sends normally. Refused with --wait into a running
+                    turn (the steer's turn is the running one)
         --timeout S (--wait) give up after S seconds, exit 4 (the turn
                     goes on); default no limit
         --format json
@@ -82,7 +91,8 @@ module Samagotchi
                     status answered (text), question (question,
                     answer_with), running, or failed, canceled,
                     limit, no_answer, error, worker_gone, stopped,
-                    command (detail)
+                    command (detail); with --cut also delivery (what
+                    the worker applied) and cut (now, waits, off)
         Exit with --wait: 0 answered, 1 failed or gone, 2 usage, 3 a
         question waits, 4 still running (--timeout), 130 Ctrl-C.
         Only sessions on this machine. Answers show in the attached TUI
@@ -101,6 +111,7 @@ module Samagotchi
       f.value "--llm-context-budget", key: :llm_budget
       f.value "--image", key: :images, repeat: true
       f.switch "--wait"
+      f.switch "--cut"
       f.value "--timeout"
       f.value "--format"
       # Starting a turn in every live session at once is too easy to do
@@ -160,6 +171,7 @@ module Samagotchi
     def run_parsed(options)
       # With --wait stdout is the answer alone.
       @info = options[:wait] ? @stderr : @stdout
+      @cut = options[:cut] == true
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
       # Before the wait-only case, which would drop the images.
       return usage_error("--image needs a message: pass -m TEXT or pipe it in") if prompt.nil? && !options[:images].empty?
@@ -527,7 +539,11 @@ module Samagotchi
       owner = SessionManager.session_owner(id, state_dir: @state_dir)
       running = owner && session.status == Session::STATUS_RUNNING
       refs = copy_images(Session.session_dir(id, state_dir: @state_dir))
-      result = SessionManager.deliver_turn(id, prompt: prompt, client_id: CLIENT_ID, images: refs, state_dir: @state_dir)
+      # --cut asks the running turn for a cut; to an idle session it is an
+      # ordinary message (there is nothing to cut).
+      delivery = @cut && running ? Delivery::CUT : nil
+      result = SessionManager.deliver_turn(id, prompt: prompt, client_id: CLIENT_ID, images: refs, state_dir: @state_dir,
+                                               delivery: delivery)
       unless result[:status] == :accepted
         @info.puts("#{short}  failed: #{result.dig(:ack, "detail") || "could not queue it"}")
         return false
@@ -539,12 +555,12 @@ module Samagotchi
         return true
       end
 
-      # A busy worker runs a message with images as its own next turn
-      # rather than merging it into the running one.
-      note = if owner.nil? then " (started its worker)"
-             elsif running then refs.empty? ? " (the running turn picks it up)" : " (runs after the current turn)"
-             end
-      @info.puts("#{short}  sent#{with_images}#{note}")
+      ack = result[:ack].is_a?(Hash) ? result[:ack] : {}
+      # What the worker applied, for --format json: its ack's delivery
+      # (next_step for an idle session) and a cut's outcome.
+      @sent_delivery = ack["delivery"] || delivery
+      @sent_cut = ack["cut"]
+      @info.puts("#{short}  sent#{with_images}#{delivery_note(ack, delivery: delivery, running: running, owner: owner)}")
       true
     rescue SessionManager::OwnedByTUI
       @info.puts("#{short}  refused: it is open in a chi REPL; messages need attached mode")
@@ -552,6 +568,42 @@ module Samagotchi
     rescue StandardError => e
       @info.puts("#{short}  failed: #{e.message}")
       false
+    end
+
+    # What the line says became of the message: a plain one goes in at the
+    # running turn's next step (nothing cuts by default); a --cut one names
+    # the outcome from the ack (now, waits, off); images keep their own
+    # wording; an idle session's turn simply runs.
+    # @param ack [Hash] the Bridge's 202 body ({} for the input file)
+    # @return [String] "" or " (...)"
+    def delivery_note(ack, delivery:, running:, owner:)
+      return " (started its worker)" if owner.nil?
+      return "" unless running
+
+      # A busy worker runs a message with images as its own next turn
+      # rather than merging it into the running one.
+      return " (runs after the current turn)" unless @images.empty?
+
+      case (Delivery.cut?(delivery) ? ack["cut"].to_s : "")
+      when "now" then " (cut in now)"
+      when "waits" then " (cuts in once the thinking passes #{Config.get("steer.cut_after").to_i} s)"
+      when "off" then " (cutting is off; goes in at the next step)"
+      # No outcome: a plain message, or the input file (the Bridge went
+      # away), which the next step's drain takes.
+      else " (goes in at the running turn's next step)"
+      end
+    end
+
+    # More keys for --format json, with --cut only (the line is unchanged
+    # otherwise): the delivery the worker applied (next_step to an idle
+    # session) and a cut's outcome (now, waits, off). In P1 --cut --wait is
+    # refused for a running turn, so the json line says next_step.
+    def report_extra
+      return {} unless @cut
+
+      extra = { delivery: @sent_delivery || Delivery::NEXT_STEP }
+      extra[:cut] = @sent_cut if @sent_cut
+      extra
     end
 
     # What to say when +model_name+ is known not to take images, or nil

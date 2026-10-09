@@ -52,10 +52,15 @@ RSpec.describe Samagotchi::SendCommand do
   def dir_of(session) = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
 
   # A live worker's Bridge (no turn loop: it only writes input files and
-  # announces), with the events its engine sent.
-  def serve(session, on_command: nil)
+  # announces), with the events its engine sent. +cut+: the outcome its
+  # engine's Engine#cut_for_steer answers (nil: the real one, :off with no
+  # turn running).
+  def serve(session, on_command: nil, cut: nil)
     engine = Samagotchi::Engine.new(client: test_client,
                                     kernel: test_kernel)
+    @engines ||= {}
+    @engines[session.id] = engine
+    allow(engine).to receive(:cut_for_steer).and_return(cut) if cut
     events = []
     engine.subscribe(observer: ->(e) { events << e })
     bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
@@ -64,6 +69,9 @@ RSpec.describe Samagotchi::SendCommand do
     bridges << bridge
     events
   end
+
+  # The engine of the Bridge a #serve started for +session+.
+  def engine_of(session) = @engines.fetch(session.id)
 
   def run(*argv, stdin: StringIO.new(""))
     described_class.new(argv, stdin: stdin, stdout: out, stderr: err, state_dir: tmpdir).run
@@ -210,7 +218,88 @@ RSpec.describe Samagotchi::SendCommand do
     serve(a)
 
     expect(run("-m", "also check the tests", a.id)).to eq(0)
-    expect(out.string).to eq("#{short(a)}  sent (the running turn picks it up)\n")
+    expect(out.string).to eq("#{short(a)}  sent (goes in at the running turn's next step)\n")
+  end
+
+  describe "--cut" do
+    it "posts delivery cut, and names the outcome from the worker's ack" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a, cut: :now)
+
+      expect(run("--cut", "-m", "skip the tests", a.id)).to eq(0), err.string
+
+      expect(out.string).to eq("#{short(a)}  sent (cut in now)\n")
+      expect(inputs_of(a).map { |i| i["delivery"] }).to eq([nil])
+    end
+
+    it "names a cut that waits for the thinking, and one that is off" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a, cut: :waits)
+
+      expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (cuts in once the thinking passes 20 s)\n")
+    end
+
+    it "says cutting is off when the worker's ack says so" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a, cut: :off)
+
+      expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (cutting is off; goes in at the next step)\n")
+    end
+
+    it "to an idle session it sends normally, without a delivery" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("--cut", "-m", "hello", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent\n")
+      expect(inputs_of(a).map { |i| i["delivery"] }).to eq([nil])
+    end
+
+    it "sends the delivery to the worker (Bridge body) for a running session" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a, cut: :now)
+
+      expect(run("--cut", "-m", "go", a.id)).to eq(0), err.string
+      expect(engine_of(a)).to have_received(:cut_for_steer).once
+    end
+
+    it "says the next-step line when the ack names no cut (the Bridge went away: a file)" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a)
+      allow_any_instance_of(Samagotchi::BridgeClient).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+
+      expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (goes in at the running turn's next step)\n")
+    end
+
+    it "adds the applied delivery to the --format json line (an idle session: next_step, no cut)" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("--cut", "--wait", "--timeout", "0.3", "--format", "json", "-m", "hello", a.id)).to eq(4), err.string
+      line = JSON.parse(out.string)
+      expect(line).to include("delivery" => "next_step")
+      expect(line).not_to have_key("cut")
+    end
+
+    it "leaves the --format json line as it was without --cut" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("--wait", "--timeout", "0.3", "--format", "json", "-m", "hello", a.id)).to eq(4), err.string
+      expect(JSON.parse(out.string)).not_to have_key("delivery")
+    end
+
+    it "with --wait into a running turn keeps the busy refusal (exit 1)" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a, cut: :now)
+
+      expect(run("--cut", "--wait", "-m", "go", a.id)).to eq(1)
+      expect(err.string).to include("busy: a turn is running; wait or attach")
+      expect(inputs_of(a)).to be_empty
+    end
   end
 
   it "falls back to the input file when the Bridge goes away mid-send" do
