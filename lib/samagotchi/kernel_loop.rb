@@ -984,6 +984,13 @@ module Samagotchi
 
       dump_log("tool_call", call[:content], tool: call[:name], path: call[:path], scope: call[:scope])
 
+      if call[:called_as]
+        # The model's spelling for a tool an alias ran (bash → execute); its
+        # rate is what the alias exists for, so it goes in the log. Tag :turn
+        # like the other per-call tool logs (there is no :tool tag).
+        Log.info(:turn, "tool_alias", name: call[:called_as], as: call[:name])
+      end
+
       result = entry.handler.call(call, tool_context)
 
       dump_log("tool_result", result, tool: call[:name])

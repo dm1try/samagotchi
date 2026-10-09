@@ -73,4 +73,24 @@ RSpec.describe Samagotchi::Tools::BuiltinCalls do
     expect(described_class.row("list_sessions")).to have_attributes(fallback: :prefix, fallback_keys: %w[cwd])
     expect(described_class.row("ask_user_question").fallback).to eq(:raw)
   end
+
+  describe "the bash → execute alias" do
+    it "runs a bash call shaped like execute as execute, remembering the model's spelling" do
+      expect(described_class.build("bash", { "command" => "ls", "description" => "list files" }))
+        .to eq(name: "execute", content: "ls", path: nil, scope: nil, description: "list files", cwd: nil,
+               called_as: "bash")
+    end
+
+    it "recognizes the model's spelling case-insensitively" do
+      expect(described_class.build("Bash", { "command" => "ls" })[:name]).to eq("execute")
+      expect(described_class.build("BASH", { "command" => "ls" })[:called_as]).to eq("BASH")
+    end
+
+    it "passes a bash call that isn't execute-shaped through untouched, so it stays an unknown tool" do
+      expect(described_class.build("bash", { "cmd" => "ls" }))
+        .to eq(name: "bash", content: %({"cmd":"ls"}), path: nil, scope: nil, args: { "cmd" => "ls" })
+      expect(described_class.build("bash", { "command" => "ls", "nope" => 1 })[:name]).to eq("bash")
+      expect(described_class.build("bash", { "command" => 5 })[:name]).to eq("bash")
+    end
+  end
 end

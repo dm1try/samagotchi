@@ -20,6 +20,7 @@ module Samagotchi
     #
     # A tool that is not built in keeps its arguments whole on args: (typed
     # by its schema at dispatch, Tools::Args) with their JSON as its content.
+    #
     module BuiltinCalls
       # Per tool, what the schema alone doesn't say:
       #   content:  the property (or ordered list of keys to try) that fills
@@ -55,6 +56,13 @@ module Samagotchi
                                  fallback: :raw },
         "forget_outputs" => { content: "note", also: %w[note], verbatim: %w[ids keep restore] }
       }.freeze
+
+      # A name the model uses for a built-in, mapped to that built-in (a model
+      # that keeps calling `bash` with execute's arguments; before this such a
+      # call died as an unknown tool). It only takes effect when the
+      # arguments really are the target's shape; the call then carries
+      # called_as: with the model's own spelling.
+      ALIASES = { "bash" => "execute" }.freeze
 
       # One built-in's mapping, resolved from its schema and OVERRIDES.
       Row = Data.define(:name, :content_keys, :path_key, :fields, :aliases, :verbatim, :fallback, :fallback_key,
@@ -109,6 +117,14 @@ module Samagotchi
       def build(name, args, raw: nil)
         name = name.to_s
         args = args.is_a?(Hash) ? args.transform_keys(&:to_s) : {}
+        # An alias runs its target (bash → execute); the row is the target's,
+        # and the call keeps the model's own spelling on called_as:.
+        # Not the target's shape (a String main argument, only its keys) and
+        # the alias doesn't take: the call passes through as an unknown tool.
+        if (target = ALIASES[name.downcase])
+          return aliasable?(row(target), args) ? aliased(name, target, args, raw) : passthrough(name, args, raw)
+        end
+
         row = row(name)
         return passthrough(name, args, raw) unless row
 
@@ -118,6 +134,24 @@ module Samagotchi
         row.fields.each { |key| call[key.to_sym] = value(row, args, key) }
         call[:options] = options(call[:options]) if row.options
         call
+      end
+
+      # An execute-shaped call the model spelled +name+: built as its +target+,
+      # tagged with the model's spelling for the activity event and the log.
+      def aliased(name, target, args, raw)
+        call = build(target, args, raw: raw)
+        call[:called_as] = name
+        call
+      end
+
+      # The alias gate: a String main argument, and every key one the target's
+      # schema knows (its aliases included). More, or differently shaped, the
+      # call is the model's own and passes through as an unknown tool.
+      def aliasable?(row, args)
+        return false unless row
+
+        row.content_keys.map { |key| value(row, args, key) }.any?(String) &&
+          (args.keys - (row.content_keys + [row.path_key].compact + row.fields + row.aliases.keys)).empty?
       end
 
       def content_value(row, args)

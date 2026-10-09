@@ -87,6 +87,52 @@ RSpec.describe Samagotchi::KernelLoop do
       )
     end
 
+    describe "a bash call (aliased to execute at parse time)" do
+      it "runs the execute handler, whose guardrail rules see it" do
+        seen = []
+        rules = Samagotchi::Guardrails::Rules.parse(
+          [{ "id" => "no-rm", "tool" => "execute", "command" => "rm", "verdict" => "deny" }], source: "spec"
+        )
+        gate = Class.new do
+          define_method(:seen) { @seen }
+          def evaluate(call, iteration:, params:)
+            @seen << { tool: call[:name], command: call[:content] }
+            verdict = Samagotchi::Guardrails::Verdict.new(call: call)
+            verdict.targets = Samagotchi::Guardrails::Targets.for(call, Samagotchi::Guardrails::Context.new)
+            Samagotchi::Guardrails::Rules.new(@rules).check(verdict)
+            verdict
+          end
+        end.new.tap { |g| g.instance_variable_set(:@seen, seen); g.instance_variable_set(:@rules, rules) }
+        kernel.guardrail_gate = gate
+
+        responses = [
+          %(<|tool_call>call:bash{command: "rm -rf nope"}<tool_call|>),
+          "done"
+        ]
+        allow(client).to receive(:complete).and_return(*responses)
+        result = kernel.run([{ role: "user", content: "clean" }])
+
+        expect(result.output).to eq("done")
+        expect(gate.seen.map { |c| c[:tool] }).to eq(%w[execute])
+        event = result.tool_activity.find { |e| e[:tool] == "execute" }
+        expect(event).to include(status: "blocked", called_as: "bash")
+      end
+
+      it "keeps the model's spelling on the activity event and logs it" do
+        allow(Samagotchi::Log).to receive(:info)
+        responses = [
+          %(<|tool_call>call:bash{command: "echo aliased"}<tool_call|>),
+          "done"
+        ]
+        allow(client).to receive(:complete).and_return(*responses)
+        result = kernel.run([{ role: "user", content: "say" }])
+
+        expect(result.tool_activity.first).to include(tool: "execute", called_as: "bash")
+        expect(Samagotchi::Log).to have_received(:info)
+          .with(:turn, "tool_alias", name: "bash", as: "execute")
+      end
+    end
+
     it "turns a tool's bytes that aren't UTF-8 into ? and continues; the session saves and reloads" do
       prompts = []
       allow(client).to receive(:complete) do |prompt, **_|
@@ -1246,11 +1292,26 @@ Need to inspect the filesystem first.
         expect(completed[:activity][:status]).to eq("error")
       end
 
-      it "points a shell-like name at execute and never repeats the name" do
+      it "runs an execute-shaped call for a shell-like name as execute" do
         # `Bash` (capital) can't ride this profile's parser (its call names
         # are lowercase), so the case-insensitive branch is covered in
         # registry_spec; here the full run with a lowercase shell name.
-        responses = [%(<|tool_call>call:bash{command: "ls"}<tool_call|>), "done"]
+        responses = [%(<|tool_call>call:bash{command: "pwd"}<tool_call|>), "done"]
+        allow(client).to receive(:complete) { responses.shift }
+        events = []
+        kernel.run([{ role: "user", content: "run a shell" }], on_stream_event: ->(event) { events << event })
+
+        completed = events.find { |event| event[:type] == :tool_call_completed }
+        expect(completed[:tool]).to eq("execute")
+        expect(completed[:output]).to start_with("[execute]")
+        expect(completed[:output]).to include(Dir.pwd)
+        expect(completed[:activity]).to include(tool: "execute", called_as: "bash", status: "ok")
+      end
+
+      it "keeps a shell-like name that isn't execute-shaped unknown, and points it at execute" do
+        # {command: 5} is not a String main argument: the alias doesn't take
+        # and the old unknown-tool error (shell-like, execute offered) still applies.
+        responses = [%(<|tool_call>call:bash{bogus: 1}<tool_call|>), "done"]
         allow(client).to receive(:complete) { responses.shift }
         events = []
         kernel.run([{ role: "user", content: "run a shell" }], on_stream_event: ->(event) { events << event })

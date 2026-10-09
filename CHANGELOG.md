@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
   (`cut in now`, `cuts in once the thinking passes 20 s`, `cutting is off; goes in at the next step`); `--format json`
   adds `delivery` and `cut`. The Bridge's 202 for a turn names its `delivery` and, for a cut, the `cut` outcome.
 - `/queue TEXT` in the plain REPL runs TEXT as a turn of its own after the running one.
+- A tool call named `bash` (any case) with `execute`'s arguments runs as `execute`; the UI's tool row and the
+  logs keep the model's own spelling, so it stays visible that the model called it `bash`.
 
 ### Changed
 
