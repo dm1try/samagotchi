@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-10-09
+
 ### Added
 
 - `chi sessions stats ID [--format text|json]`: a session's cost, tokens and progress without running a model turn:
@@ -2299,7 +2301,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.49.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.50.0...HEAD
+[0.50.0]: https://github.com/dm1try/samagotchi/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/dm1try/samagotchi/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/dm1try/samagotchi/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/dm1try/samagotchi/compare/v0.46.1...v0.47.0
