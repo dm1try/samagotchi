@@ -904,7 +904,7 @@ Whether a model can see images is found out before a turn with images is sent:
 
 - a native llama.cpp host: `/props` must report `modalities.vision` (the server
   runs with `--mmproj`) and a media marker, and the prompt profile must know the
-  chat template's image wrapping (qwen36 does; gemma4 not yet);
+  chat template's image wrapping (qwen36 and gemma4 do);
 - mlx and oMLX hosts: no (not verified with recent chi versions);
 - an OpenAI-API host: a local llama.cpp's `/props`, else the host's model list
   (OpenRouter's `architecture.input_modalities`); when it doesn't say, the image
