@@ -599,6 +599,18 @@ RSpec.describe "The github-pr bundle" do
                  "[/Users/me/samagotchi-pr42/lib/foo.rb:21](#{anchor("lib/foo.rb", "R21")})")
       end
 
+      # A relative path that only ends with a PR path is another file (a
+      # vendored copy), not the PR's.
+      it "links no relative path that merely ends with a PR path" do
+        text = "vendor/lib/foo.rb:21 and vendor/bundle/lib/samagotchi/source_links.rb:2"
+        expect(answer(text)).to eq(text)
+      end
+
+      it "links a path up from a subdir of the worktree to the PR's file" do
+        expect(answer("../lib/foo.rb:21"))
+          .to eq("[../lib/foo.rb:21](#{anchor("lib/foo.rb", "R21")})")
+      end
+
       it "links a line outside every hunk to the file at the PR's head" do
         expect(answer("lib/foo.rb:100 and lib/foo.rb:30-40"))
           .to eq("[lib/foo.rb:100](https://github.com/acme/app/blob/head1/lib/foo.rb#L100) and " \

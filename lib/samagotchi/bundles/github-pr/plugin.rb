@@ -616,16 +616,20 @@ class LineLinker
   end
 
   # The PR file +path+ names: the path (or a rename's old one) exactly,
-  # after a leading `./`; else the longest PR path +path+ ends with on a
-  # `/` boundary (an absolute path into a worktree); else the one PR path
-  # that ends with +path+ (a bare `foo.rb`). nil: none, or several.
+  # after a leading `./`; else, for an absolute path (into a worktree) or
+  # one up from the cwd (`../lib/foo.rb` from a subdir), the longest PR
+  # path it ends with on a `/` boundary; else the one PR path that ends
+  # with +path+ (a bare `foo.rb`). nil: none, or several. A relative path
+  # that only ends with a PR path (`vendor/lib/foo.rb`) is another file.
   def resolve(files, path)
     path = path.sub(%r{\A(?:\./)+}, "")
     exact = files.find { |file| file.path == path } || files.find { |file| file.previous_path == path }
     return exact if exact
 
-    longer = files.select { |file| path.end_with?("/#{file.path}") }.max_by { |file| file.path.length }
-    return longer if longer
+    if path.start_with?("/", "~/", "../")
+      longer = files.select { |file| path.end_with?("/#{file.path}") }.max_by { |file| file.path.length }
+      return longer
+    end
 
     shorter = files.select { |file| file.path.end_with?("/#{path}") }
     shorter.one? ? shorter.first : nil

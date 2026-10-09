@@ -14,6 +14,9 @@ and commands may change between minor versions. How releases are made:
   it is told no one could answer (a non-interactive run). The question closes with reason `non_interactive`.
 - A delegate's report read by a turn that ended canceled is no longer brought a second time when the Engine's
   post-turn work then fails (a full disk, say).
+- github-pr 0.3.2: a relative `path:line` that only ends with a PR file's path (`vendor/lib/foo.rb:21` for the PR's
+  `lib/foo.rb`) is no longer linked to that file in the web; an absolute path into a worktree, or one up from a
+  subdir (`../lib/foo.rb`), still is.
 
 ## [0.46.0] - 2026-10-09
 
