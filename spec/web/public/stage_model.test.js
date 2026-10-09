@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailMark, trailTone,
+  flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
@@ -45,6 +45,26 @@ test("liveSlots: narration wins the headline; a running tool is the tool row; th
   assert.deepEqual(slots.headline, { text: "Let me look.", thinking: false });
   assert.deepEqual(slots.tool, { name: "execute", title: "rspec a", kind: "exec" });
   assert.deepEqual(slots.ticks, [{ kind: "exec", status: "running", step: 0 }]);
+});
+
+test("trailItemText: the shown text and the hover — the command when there is one, else the whole line", () => {
+  assert.deepEqual(trailItemText({ name: "read", title: "lib/a.rb", status: "ok" }),
+    { text: "✓ read lib/a.rb", hover: "✓ read lib/a.rb" });
+  assert.deepEqual(trailItemText({ name: "execute", title: "rspec", status: "ok", command: "cd x && rspec" }),
+    { text: "✓ execute rspec", hover: "cd x && rspec" });
+  assert.deepEqual(trailItemText({ name: "edit", title: "b.rb", status: "error" }),
+    { text: "✕ edit b.rb", hover: "✕ edit b.rb" });
+  assert.deepEqual(trailItemText({ name: "task_wait", title: "t1", status: "stopped" }),
+    { text: "■ task_wait t1", hover: "■ task_wait t1" });
+  // No title: the mark and the name only.
+  assert.deepEqual(trailItemText({ name: "mcp_x", status: "ok" }), { text: "✓ mcp_x", hover: "✓ mcp_x" });
+});
+
+test("trailFlashText: the whole flash line, shown and hovered", () => {
+  assert.deepEqual(trailFlashText({ kind: "warn", text: "rate limit soon" }, "⚠"),
+    { text: "⚠ rate limit soon", hover: "⚠ rate limit soon" });
+  assert.deepEqual(trailFlashText({ kind: "info", text: "memory saved" }, "ℹ"),
+    { text: "ℹ memory saved", hover: "ℹ memory saved" });
 });
 
 test("liveSlots: the trail is the last three finished calls, newest last, a file's title without its dir", () => {
