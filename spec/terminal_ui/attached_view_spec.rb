@@ -131,10 +131,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     it "says which retry it is, when, and what failed" do
       view.generation_feedback_started
       view.generation_feedback_retrying(attempt: 1, max_retries: 3, next_delay: 0.5, error_class: "Errno::ECONNREFUSED")
-      expect(screen.statuses.last).to eq("| retrying (1/3 in 0.5s): Errno::ECONNREFUSED")
+      expect(screen.statuses.last).to eq("| ↻ retrying (ECONNREFUSED) in 0.5s, 1/3")
 
       view.generation_feedback_retrying(attempt: 2)
-      expect(screen.statuses.last).to eq("| retrying (attempt 2)")
+      expect(screen.statuses.last).to eq("| ↻ retrying, 2")
     end
 
     it "stops counting at the first chunk, and again after a retry" do

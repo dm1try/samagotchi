@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::TerminalUI::OneShotSink do
   it "prints the generation retry line" do
     sink.call({ type: :generation_retrying, attempt: 1, max_retries: 3, next_delay: 0.5, error_class: "Errno::ECONNREFUSED" })
 
-    expect(err.string).to eq("retrying (1/3 in 0.5s): Errno::ECONNREFUSED\n")
+    expect(err.string).to eq("↻ retrying (ECONNREFUSED) in 0.5s, 1/3\n")
   end
 
   it "prints a hook's notice during the turn at once, and keeps one after its end for #flush (a fallback_for one too)" do

@@ -96,17 +96,29 @@ module Samagotchi
         paint(TurnNote.empty_answer_line(retries), 90)
       end
 
-      # "retrying (1/3 in 0.5s): Errno::ECONNREFUSED": the retry of all the
-      # retries there will be (as the web counts), the wait before it, and
-      # what failed (generation_retrying).
+      # "↻ retrying (503) in 4.0s, 2/5": the live status while the provider
+      # is asked again (generation_retrying), worded as the web words it
+      # (turn_events.js retryStatusLine; spec/shared/labels_matrix.json):
+      # why (the HTTP status, the error's short class name, or "stream
+      # dropped" for a dropped stream's step asked again), the wait before
+      # it, and the retry of all the retries there will be.
       def format_generation_retry_line(event)
-        return "retrying (attempt #{event[:attempt]})" unless event[:max_retries]
+        why = event[:restarted] ? "stream dropped" : retry_cause(event)
+        delay = Float(event[:next_delay], exception: false)
+        text = +"\u21bb retrying"
+        text << " (#{why})" unless why.empty?
+        text << " in #{format("%.1f", (delay * 10).round / 10.0)}s" if delay&.finite?
+        text << ", #{event[:attempt]}#{"/#{event[:max_retries]}" if event[:max_retries]}" if event[:attempt]
+        text
+      end
 
-        text = "retrying (#{event[:attempt]}/#{event[:max_retries]} in #{format("%.1f", event[:next_delay].to_f)}s)"
-        # restarted: a dropped stream's step asked again (the chat loop's).
-        return "#{text}: stream dropped" if event[:restarted]
+      # What failed, for a retry line: the HTTP status, else the error's
+      # class name without its namespace (Errno::ECONNREFUSED: ECONNREFUSED).
+      def retry_cause(event)
+        status = event[:status]
+        return status.to_s unless status.nil? || status.to_s.empty? || status.to_s == "0"
 
-        event[:error_class].to_s.empty? ? text : "#{text}: #{event[:error_class]}"
+        event[:error_class].to_s.split("::").last.to_s
       end
 
       # " → image 1280×800" after a tool line whose tool read an image.

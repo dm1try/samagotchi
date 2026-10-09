@@ -774,7 +774,9 @@ and a plugin's steer (`ctx.steer`, `ctx.sessions.send`) never cuts.
 
 Assist-mode UX:
 
-- While waiting, retry notices are rendered in the existing thinking spinner area as a red `network error: retrying ...` status.
+- While waiting, a retry shows in the activity row (the web's timing line words it the same):
+  `↻ retrying (503) in 4.0s, 2/5`: why (the HTTP status, the error's short name such as `ECONNREFUSED`, or
+  `stream dropped`), the wait, and the retry of all there will be.
 - If retry attempts are exhausted, the submitted prompt is restored into the input editor so you can edit and resubmit.
 
 ## Server errors

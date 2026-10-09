@@ -1044,7 +1044,7 @@ test("a step whose stream drops mid-answer is asked again: the partial goes live
     return step?.innerText.trim() === want && (!note || timing?.innerText.includes(note));
   }, [text, note], { timeout: 10_000 });
   await live("The first sentence comes.");
-  await live("…", "↻ retrying (stream dropped)");
+  await live("…", "↻ retrying (stream dropped) in 0.1s, 1/1");
   const answer = "The first sentence comes. The whole answer comes in one piece.";
   await turnEnded(page, 1);
   await expect(page.locator("#history .bubble.output")).toHaveText(answer);

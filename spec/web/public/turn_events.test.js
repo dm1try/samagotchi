@@ -504,11 +504,13 @@ test("snapshotEvents passes an edit's diff on, so a mid-turn join shows it", () 
 import { initWaitLine, retryStatusLine } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("retryStatusLine says the provider is asked again: why, when, which retry of how many", () => {
-  assert.equal(retryStatusLine({ attempt: 2, max_retries: 5, next_delay: 4, status: 503 }), "↻ retrying (503) in 4 s, 2/5");
+  assert.equal(retryStatusLine({ attempt: 2, max_retries: 5, next_delay: 4, status: 503 }), "↻ retrying (503) in 4.0s, 2/5");
   // No HTTP status (a network error): the error's short class name.
   assert.equal(retryStatusLine({ attempt: 1, max_retries: 3, next_delay: 0.5, error_class: "Samagotchi::LLM::ReadTimeout" }),
-    "↻ retrying (ReadTimeout) in 0.5 s, 1/3");
-  assert.equal(retryStatusLine({ attempt: 1, max_retries: 2, next_delay: 12.4 }), "↻ retrying in 12 s, 1/2");
+    "↻ retrying (ReadTimeout) in 0.5s, 1/3");
+  assert.equal(retryStatusLine({ attempt: 1, max_retries: 2, next_delay: 12.4 }), "↻ retrying in 12.4s, 1/2");
+  // No delay (null, as JSON sends a nil): none shown, not "0.0s".
+  assert.equal(retryStatusLine({ attempt: 1, max_retries: 2, next_delay: null }), "↻ retrying, 1/2");
 });
 
 test("initWaitLine names the plugin setup a turn waits for", () => {

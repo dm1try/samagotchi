@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- The terminal and the web word a retry line the same: `↻ retrying (503) in 4.0s, 2/5`, why in parens (the HTTP
+  status, the error's short name such as `ECONNREFUSED`, or `stream dropped`), the wait with one decimal, and the
+  retry of all there will be. The terminal said `retrying (2/5 in 4.0s)`, the web `↻ retrying (503) in 4 s, 2/5`.
+
 ### Fixed
 
 - A question the model asks in a `chi -p --non-interactive` run no longer tells the model the user dismissed it:

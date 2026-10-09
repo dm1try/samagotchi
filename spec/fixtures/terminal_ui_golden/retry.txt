@@ -2,7 +2,7 @@
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[J\e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J/ thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J- \e[90mretrying (1/3 in 0.5s): Errno::ECONNREFUSED\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J- \e[90m↻ retrying (ECONNREFUSED) in 0.5s, 1/3\e[0m
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\ thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
