@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-10-09
+
 ### Added
 
 - Native Gemma 4 on llama.cpp (with `--mmproj`) sees images: `@path`, `read` on an image and the web's pasted images
@@ -33,6 +35,9 @@ and commands may change between minor versions. How releases are made:
 - An attached chi watching a `-p --non-interactive` run says a question there was dismissed because no one could
   answer it (`(dismissed: no one to answer in a non-interactive run)`), as the run itself does, not
   `(question cancelled)`.
+
+Update with `chi update`: it updates github-pr (0.4.0: line links only where the web can show them). If you set
+`line_links: true` to get links in the REPL, set `line_links: always` instead.
 
 ## [0.48.0] - 2026-10-09
 
@@ -2257,7 +2262,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.48.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.49.0...HEAD
+[0.49.0]: https://github.com/dm1try/samagotchi/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/dm1try/samagotchi/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/dm1try/samagotchi/compare/v0.46.1...v0.47.0
 [0.46.1]: https://github.com/dm1try/samagotchi/compare/v0.46.0...v0.46.1
