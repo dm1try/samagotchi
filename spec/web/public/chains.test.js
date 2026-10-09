@@ -37,7 +37,9 @@ test("chainNeighbours: the previous link (from the open session's own continues 
   assert.deepEqual(chainNeighbours(list, "d3"), { prev: { id: "d2", session: d2 }, next: null });
   // A new link the hub hasn't brought yet: its continues comes from the page.
   assert.deepEqual(chainNeighbours(list, "d4", { continues: "d3" }), { prev: { id: "d3", session: d3 }, next: null });
-  assert.deepEqual(chainNeighbours([], "d4", { continues: "gone" }), { prev: { id: "gone", session: null }, next: null });
+  // A deleted previous link: no ← link (it would open a not-found page).
+  assert.deepEqual(chainNeighbours([d3], "d3"), { prev: null, next: null });
+  assert.deepEqual(chainNeighbours([], "d4", { continues: "gone" }), { prev: null, next: null });
   assert.deepEqual(chainNeighbours([lone], "lone"), { prev: null, next: null });
 });
 
