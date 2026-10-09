@@ -148,9 +148,11 @@ RSpec.describe Samagotchi::Commands::Registry do
         "/llm-context strategy stale" => :queue, "/guardrails" => :anytime, "/guardrails revoke 1" => :queue,
         "/help" => :anytime, "/context" => :anytime, "!ls" => :queue, "!rollback" => :refuse, "/continue" => :refuse
       )
-      expect(%w[/model /models /llm-context /guardrails].map { |line| builtins.anytime?(line) }).to all(be(false))
+      expect(%w[/model /llm-context /guardrails].map { |line| builtins.anytime?(line) }).to all(be(false))
       expect(builtins.anytime?("/help")).to be(true)
       expect(builtins.listing.find { |item| item[:name] == "/model" }).to include(anytime: false, mid_turn: "depends")
+      # It always runs mid-turn: not a line's own policy ("depends").
+      expect(builtins.listing.find { |item| item[:name] == "/models" }).to include(anytime: true, mid_turn: "anytime")
     end
 
     it "offers the same Tab lists in the REPL and the attached TUI, but /detach (the REPL owns its session)" do

@@ -71,8 +71,7 @@ module Samagotchi
         continue_answer(answer.empty? ? CONTINUE_COMMAND : answer)
       end
       # It reads the hosts only (the registry is mutex-guarded): mid-turn too.
-      registry.register(MODELS_COMMAND, "list the hosts' models (/models <text> filters)",
-                        mid_turn: ->(_text) { :anytime }) do |text|
+      registry.register(MODELS_COMMAND, "list the hosts' models (/models <text> filters)", anytime: true) do |text|
         reply(models_listing(text.delete_prefix(MODELS_COMMAND).strip))
       end
       registry.register(GUARDRAILS_COMMAND, "list the guardrail rules and approvals (/guardrails revoke N)",
