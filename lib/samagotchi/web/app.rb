@@ -24,6 +24,7 @@ require_relative "../llm_context_override"
 require_relative "../model_catalog"
 require_relative "../model_profile"
 require_relative "../sampling_settings"
+require_relative "../served_model"
 require_relative "../project_scope"
 require_relative "../prompt_history"
 require_relative "../version"
@@ -487,6 +488,33 @@ module Samagotchi
         nil
       end
 
+      # The served model a session's last generation reported (analytics.json,
+      # SessionMetrics#persist), for a session no worker runs: shown only
+      # while the name it answered is still the session's model, as
+      # Engine#served_model does, with the host whose served: expects it.
+      # {} when none applies.
+      def saved_served_model(session, persisted)
+        served = persisted["served_model"]
+        model = session.model_name.to_s
+        return {} unless served.is_a?(String) && !served.empty? && !model.empty?
+
+        registry = host_registry
+        asked = registry.bare_name(model)
+        return {} unless persisted["served_model_for"] == asked
+
+        { served_model: served, served_model_for: asked, served_expected_by: saved_served_expected_by(registry, model, served) }
+      rescue StandardError
+        {}
+      end
+
+      # See ServedModel.expected_by; nil when the model doesn't resolve (the
+      # mismatch still shows).
+      def saved_served_expected_by(registry, model, served)
+        ServedModel.expected_by(registry.resolve(model), served)
+      rescue StandardError
+        nil
+      end
+
       # A session's LLM context strategy, apply rule and budget, each with
       # where it came from (LLMContextStrategy::Explained#summary), as its
       # worker would resolve them; nil when they can't be.
@@ -657,18 +685,22 @@ module Samagotchi
         # A /model in the worker changes it before the file catches up.
         session.model_name = snapshot["model_name"] if snapshot && !snapshot["model_name"].to_s.empty?
         session_json = session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner)
-        # What the worker's server said it served for that model (after a turn).
+        # What the worker's server said it served for that model (after a turn);
+        # without a worker, what the session's analytics.json last saved.
+        persisted = snapshot ? nil : read_analytics(id)
         if snapshot
           session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"],
                                             served_expected_by: snapshot["served_expected_by"])
           # The model notes its prompt carries now (a /model there changes them).
           session_json = session_json.merge(prompt_notes: snapshot["prompt_notes"]) if snapshot["prompt_notes"].is_a?(Array)
+        else
+          session_json = session_json.merge(saved_served_model(session, persisted))
         end
         # The LLM context strategy the next turn runs under (the info bar's
         # chip): the worker's, else worked out here from the session file.
         session_json = session_json.merge(llm_context: (snapshot && snapshot["llm_context"]) || llm_context_for(session))
         raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
-        timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"])
+        timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
         json_response(200, {
           session: session_json,
           history: read_history(id),
@@ -1502,8 +1534,9 @@ module Samagotchi
 
       # The whole timing: analytics.json's records merged with a live
       # worker's (by id), and turn_count, the finished turns (#turn_count).
-      def timing_payload(session_id, live_metrics: nil)
-        persisted = read_analytics(session_id)
+      # +persisted+: the session's analytics.json when the caller read it.
+      def timing_payload(session_id, live_metrics: nil, persisted: nil)
+        persisted ||= read_analytics(session_id)
         live = live_metrics.is_a?(Hash)
         source = if live
                    persisted.merge(live_metrics).merge(

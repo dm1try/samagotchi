@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
   `gw: gw: connection refused`).
 - `/stats`' estimated cost names the host whose prices it used (`from hosts.gw.models prices`), not a literal
   `hosts.<name>.models`.
+- The web's ⚠ for a model the server served instead of the one asked now shows on a session opened with no
+  worker running too (from its saved analytics), not only while its worker runs.
 
 ## [0.46.0] - 2026-10-09
 

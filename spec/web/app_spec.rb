@@ -836,6 +836,46 @@ RSpec.describe Samagotchi::Web::App do
                                                               "chars" => 40, "digest" => "0123456789ab" }])
     end
 
+    # A session opened with no worker running: its ⚠ comes from the served
+    # model analytics.json saved, as long as it answered the session's model.
+    describe "the served model of a session no worker runs" do
+      let(:state_dir) { Dir.mktmpdir }
+      let(:registry) do
+        Samagotchi::HostRegistry.new(hosts_config: {
+          "work" => { host: "w.test", port: 1, api: "openai",
+                      models: Samagotchi::HostModel.parse_map({ "rr/x" => { "served" => ["fireworks/x"] } },
+                                                              "work") }
+        })
+      end
+
+      def saved_session(model_name, served:, served_for:)
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: model_name, working_directory: "/tmp")
+        session.save(state_dir: state_dir)
+        dir = FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir)).first
+        File.write(File.join(dir, "analytics.json"),
+                   JSON.generate("turn_records" => [], "served_model" => served, "served_model_for" => served_for))
+        session
+      end
+
+      def opened(session)
+        app = build_app(state_dir: state_dir, session_class: Samagotchi::Session, registry: registry)
+        JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)["session"]
+      end
+
+      it "comes from analytics.json, with the host whose served: expects it" do
+        mismatch = opened(saved_session("work:rr/x", served: "together/x", served_for: "rr/x"))
+        expect(mismatch).to include("served_model" => "together/x", "served_model_for" => "rr/x")
+        expect(mismatch["served_expected_by"]).to be_nil
+
+        expected = opened(saved_session("work:rr/x", served: "fireworks/x", served_for: "rr/x"))
+        expect(expected).to include("served_model" => "fireworks/x", "served_expected_by" => "work")
+      end
+
+      it "is left out when it answered another model (before a /model)" do
+        expect(opened(saved_session("work:rr/x", served: "other", served_for: "rr/old"))).not_to include("served_model")
+      end
+    end
+
     it "names the LLM context strategy the next turn runs under: the live worker's, else read from the session file" do
       state_dir = Dir.mktmpdir
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "Qwen3-14B", working_directory: "/tmp")

@@ -17,6 +17,15 @@ module Samagotchi
       name.is_a?(String) && !name.strip.empty? ? name : nil
     end
 
+    # The host whose hosts.<name>.models.<id>.served names +served+ for
+    # +target+'s model (a gateway's round-robin targets): not a mismatch to
+    # warn about. nil when none does.
+    # @param target [HostRegistry::ModelTarget]
+    # @return [String, nil]
+    def expected_by(target, served)
+      target.entry.name if target.entry.models&.dig(target.bare_model.to_s.strip.downcase)&.serves?(served)
+    end
+
     # The separators a provider uses when it decorates a model name: a tag
     # (`qwen3:latest`), a date or quant suffix (`gpt-4o-2024-08-06`), an
     # owner (`@org/name`) or a path (`meta-llama/Llama-3`). Anything else

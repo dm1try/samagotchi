@@ -1053,8 +1053,7 @@ module Samagotchi
     # warn about. nil when none does.
     # @return [String, nil]
     def served_expected_by(served, target: nil)
-      target ||= @host_registry.resolve(@effective_model_name)
-      target.entry.name if target.entry.models&.dig(target.bare_model.to_s.strip.downcase)&.serves?(served)
+      ServedModel.expected_by(target || @host_registry.resolve(@effective_model_name), served)
     rescue StandardError
       nil
     end
