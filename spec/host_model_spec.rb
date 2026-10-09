@@ -78,11 +78,13 @@ RSpec.describe Samagotchi::HostModel do
         .to eq([["rr/x", true, "rr/x"], ["rr/y", true, nil], ["a", false, "a"], ["b", false, "b"]])
     end
 
-    it "shows a host that lists nothing its declared ids, and an errored host nothing" do
-      rows = described_class.rows({ "work" => { models: [], error: nil }, "down" => { models: [], error: "refused" } },
-                                  { "work" => entry("rr/x"), "down" => entry("rr/z") })
+    it "shows a host that lists nothing its declared ids, and an errored host only its declared ids, unavailable" do
+      rows = described_class.rows({ "work" => { models: [], error: nil }, "down" => { models: [], error: "refused" },
+                                    "gone" => { models: [], error: "refused" } },
+                                  { "work" => entry("rr/x"), "down" => entry("rr/z"), "gone" => entry })
 
-      expect(rows.transform_values { |rs| rs.map(&:id) }).to eq("work" => ["rr/x"])
+      expect(rows.transform_values { |rs| rs.map { |r| [r.id, r.configured, r.info, r.unavailable] } })
+        .to eq("work" => [["rr/x", true, nil, false]], "down" => [["rr/z", true, nil, true]], "gone" => [])
     end
   end
 

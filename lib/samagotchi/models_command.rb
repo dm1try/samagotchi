@@ -23,13 +23,14 @@ module Samagotchi
         Lists the models every configured host offers, as the names
         --model takes: the default first, a default-host id bare, another
         host's as host:id, then the aliases as "name -> ref". A host that
-        fails or doesn't answer in time is noted on stderr.
+        fails or doesn't answer in time is noted on stderr; the ids
+        declared under its hosts.<name>.models are still listed.
         TEXT          only the names containing it (any case)
         --format json the default, the models (host, id, name), the aliases
                       and the warnings as one JSON object
         --timeout S   wait at most S seconds for the hosts; default 4
         Exit 0 when any host listed its models, 1 when none did (the
-        default is still printed), 2 on a usage error.
+        default and declared names still print), 2 on a usage error.
     TEXT
 
     FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) do |f|
@@ -59,8 +60,10 @@ module Samagotchi
       return usage_error("--timeout takes a number of seconds above 0") unless timeout&.positive?
 
       payload, listed = catalog(timeout)
+      # Before the filter: a down host's declared ids are listed even when TEXT hides them.
+      down_hosts = payload[:models].select { |m| m[:unavailable] }.map { |m| m[:host] }.uniq
       payload = filtered(payload, parsed.args.join(" ").strip)
-      options[:format] == "json" ? print_json(payload) : print_text(payload)
+      options[:format] == "json" ? print_json(payload) : print_text(payload, down_hosts)
       listed ? 0 : 1
     end
 
@@ -99,14 +102,18 @@ module Samagotchi
       @stdout.puts(JSON.generate(payload.except(:filter)))
     end
 
-    def print_text(payload)
+    # @param down_hosts [Array<String>] hosts that failed but declare ids
+    def print_text(payload, down_hosts)
       default = payload[:default]
       names = payload[:models].reject { |m| m[:shadowed_by] }.map { |m| m[:name] }
       shown_default = default && (payload[:filter].nil? || default.downcase.include?(payload[:filter].downcase))
       @stdout.puts(default) if shown_default
       (names - [default]).each { |name| @stdout.puts(name) }
       payload[:aliases].each { |a| @stdout.puts("#{a[:name]} -> #{a[:ref]}") }
-      payload[:warnings].each { |w| @stderr.puts("chi models: #{w}") }
+      payload[:warnings].each do |w|
+        kept = down_hosts.any? { |host| w.start_with?("#{host}: ") }
+        @stderr.puts("chi models: #{w}#{" (its declared ids are still listed)" if kept}")
+      end
     end
   end
 end

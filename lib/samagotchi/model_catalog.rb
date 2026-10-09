@@ -9,13 +9,14 @@ module Samagotchi
   module ModelCatalog
     # host: the host that listed (or declares) the id; ref: the name
     # `--model` takes for it (see .spell); configured: declared under
-    # hosts.<name>.models (HostModel.rows).
-    Row = Data.define(:host, :id, :ref, :configured) do
-      def initialize(host:, id:, ref:, configured: false) = super
+    # hosts.<name>.models (HostModel.rows); unavailable: a declared id of a
+    # host that failed to list its models (still pickable).
+    Row = Data.define(:host, :id, :ref, :configured, :unavailable) do
+      def initialize(host:, id:, ref:, configured: false, unavailable: false) = super
     end
     # rows: the default host's first, then the others by name, each host's
-    # declared ids first (HostModel.rows); warnings:
-    # "host: error" per host that failed.
+    # declared ids first (HostModel.rows; a host that failed keeps only
+    # those); warnings: "host: error" per host that failed.
     Listing = Data.define(:rows, :warnings)
 
     module_function
@@ -38,13 +39,13 @@ module Samagotchi
       results.keys.sort_by { |name| [name == default_host ? 0 : 1, name] }.each do |host|
         if results[host][:error]
           warnings << "#{host}: #{error_detail(host, results[host][:error])}"
-          next
         end
-        host_rows[host].each do |row|
+        host_rows.fetch(host, []).each do |row|
           id = row.id
           next if id.strip.empty? || (!row.configured && id.end_with?(":batch"))
 
-          rows << Row.new(host: host, id: id, ref: spell(host, id, default_host), configured: row.configured)
+          rows << Row.new(host: host, id: id, ref: spell(host, id, default_host), configured: row.configured,
+                          unavailable: row.unavailable)
         end
       end
       Listing.new(rows: rows, warnings: warnings)
@@ -62,7 +63,8 @@ module Samagotchi
     # go first (its rows are the "default host" group). default: the default's listed
     # row name when it resolves to one, else its resolved ref; default_typed:
     # the alias it was typed as. A row whose name resolves elsewhere (an
-    # alias named like the id shadows it) carries shadowed_by.
+    # alias named like the id shadows it) carries shadowed_by; a declared id
+    # of a host that failed to list carries unavailable.
     # @param default_name [String, nil] default.model as configured
     # @return [Hash]
     def payload(results, registry:, default_name:)
@@ -70,6 +72,7 @@ module Samagotchi
       models = listing.rows.map do |row|
         hash = { name: row.ref, host: row.host, id: row.id }
         hash[:configured] = true if row.configured
+        hash[:unavailable] = true if row.unavailable
         shadow = shadowed_by(row, registry)
         shadow ? hash.merge(shadowed_by: shadow) : hash
       end

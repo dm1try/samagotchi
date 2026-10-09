@@ -78,18 +78,22 @@ module Samagotchi
     # One host's rows as the listings show them, declared ids first, then
     # the listed ones in the host's order (see Row). An id both declared and
     # listed is one row. Pure: +results+ (list_all_models') is only read.
-    # A host that errored has no rows: its declared ids aren't shown
-    # either (the listings say it's unreachable).
+    # A host that errored keeps only its declared ids, marked unavailable
+    # (still pickable; the listings warn it's unreachable); [] when it
+    # declares none.
     # @param results [Hash{String => Hash}] host name => {models: [ModelInfo], error:}
     # @param entries [Hash{String => HostRegistry::HostEntry}]
-    # @return [Hash{String => Array<Row>}] for the hosts that answered
+    # @return [Hash{String => Array<Row>}] for every host in +results+
     def self.rows(results, entries)
       results.each_with_object({}) do |(name, data), out|
-        next if data[:error]
+        declared = entries[name]&.models || {}
+        if data[:error]
+          out[name] = declared.values.map { |m| HostModel::Row.new(id: m.id, configured: true, info: nil, unavailable: true) }
+          next
+        end
 
         infos = Array(data[:models])
         by_id = infos.group_by { |info| info.id.to_s.downcase }
-        declared = entries[name]&.models || {}
         out[name] = declared.values.map do |m|
           info = by_id[m.id.downcase]&.first
           # A listed id keeps the host's spelling: a case-sensitive server takes only that.
@@ -111,6 +115,9 @@ module Samagotchi
   # A listing row (HostModel.rows): id as the host lists it, else as
   # declared;
   # configured: declared under hosts.<name>.models; info: the host's
-  # ModelInfo for it, nil when only declared.
-  HostModel::Row = Data.define(:id, :configured, :info)
+  # ModelInfo for it, nil when only declared; unavailable: the host failed
+  # to list its models; only its declared ids are shown.
+  HostModel::Row = Data.define(:id, :configured, :info, :unavailable) do
+    def initialize(id:, configured:, info:, unavailable: false) = super
+  end
 end

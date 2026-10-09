@@ -93,6 +93,38 @@ RSpec.describe Samagotchi::ModelsCommand do
     expect(err.string).to include("chi models: box: ")
   end
 
+  context "when a host that declares ids under hosts.<name>.models fails" do
+    let(:registry) do
+      Samagotchi::HostRegistry.new(hosts_config: {
+        "default" => { host: "localhost", port: 8080 },
+        "box" => { host: "box.test", port: 8081, models: Samagotchi::HostModel.parse_map(%w[rr/x], "box") }
+      }, env: {})
+    end
+
+    before { lists["box"] = nil }
+
+    it "still prints its declared names, says so in the warning, and marks them unavailable in the JSON" do
+      expect(run).to eq(0)
+      expect(out.string.lines.map(&:chomp)).to eq(["gemma-4", "default:qwen3:8b", "box:rr/x", "small -> box:big"])
+      expect(err.string).to eq("chi models: box: connection refused (its declared ids are still listed)\n")
+
+      out.truncate(0)
+      out.rewind
+      run("--format", "json")
+      expect(JSON.parse(out.string)["models"].last)
+        .to eq("name" => "box:rr/x", "host" => "box", "id" => "rr/x", "configured" => true, "unavailable" => true)
+    end
+
+    it "exits 1 when every host fails, the declared names still printed" do
+      lists["default"] = nil
+
+      expect(run).to eq(1)
+      expect(out.string.lines.map(&:chomp)).to eq(["gemma-4", "box:rr/x", "small -> box:big"])
+      expect(err.string.lines.map(&:chomp))
+        .to eq(["chi models: default: connection refused", "chi models: box: connection refused (its declared ids are still listed)"])
+    end
+  end
+
   it "exits 1 when no host listed, still printing the default (and the JSON)" do
     lists["box"] = nil
     lists["default"] = nil

@@ -25,6 +25,9 @@ and commands may change between minor versions. How releases are made:
   `hosts.<name>.models`.
 - The web's ⚠ for a model the server served instead of the one asked now shows on a session opened with no
   worker running too (from its saved analytics), not only while its worker runs.
+- A host whose `/v1/models` fails no longer drops the ids declared under `hosts.<name>.models` from `chi models`,
+  `/models` and the web model picker: they stay, marked `host down` (greyed in the picker, still pickable;
+  `unavailable: true` in the JSON), next to the host's warning. Ids only the host itself lists still drop out.
 
 ## [0.46.0] - 2026-10-09
 

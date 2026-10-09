@@ -62,7 +62,8 @@ for an alias), your recent picks and every host's
 models and aliases (from [`chi models`](cli.md#listing-the-models)), at most nine at a time.
 
 - Type to search: every word must match the host or the id; names starting with what you typed rank first. A name
-  no host lists is offered at the bottom as "not listed" and sent as typed (a host that is down, a model just added).
+  no host lists is offered at the bottom as "not listed" and sent as typed (a model just added, or one a down host
+  doesn't declare: a down host's `hosts.<name>.models` ids stay in the list).
 - ↑/↓ and ⏎, a click, or ⌘1…⌘9 pick; Esc (or ⌘M) closes the chooser only, a second Esc the panel. While an input
   method is composing, ⏎, the arrows and Esc are its own.
 - The row then shows the pick in the accent colour, and ⏎ sends `chi send --new --model <name>`, the name exactly as

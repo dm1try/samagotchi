@@ -79,19 +79,28 @@ RSpec.describe Samagotchi::ModelCatalog do
 
     before { allow(registry.entries["down"].client).to receive(:list_models).and_raise("connection refused") }
 
-    it "lists them first under their host, once, marked configured; an errored host's not at all" do
-      rows = described_class.listing(results, registry: registry).rows
+    it "lists them first under their host, once, marked configured; an errored host's unavailable, with its warning" do
+      listing = described_class.listing(results, registry: registry)
 
-      expect(rows.map { |r| [r.ref, r.configured] })
-        .to eq([["gemma-4", false], ["box:rr/X", true], ["box:big", true], ["box:small", false]])
+      expect(listing.rows.map { |r| [r.ref, r.configured, r.unavailable] })
+        .to eq([["gemma-4", false, false], ["box:rr/X", true, false], ["box:big", true, false],
+                ["box:small", false, false], ["down:rr/z", true, true]])
+      expect(listing.warnings).to eq(["down: connection refused"])
     end
 
-    it "adds configured: true to those rows in the JSON payload" do
+    it "adds configured: true to those rows in the JSON payload, and unavailable: true to a down host's" do
       models = described_class.payload(results, registry: registry, default_name: "gemma-4")[:models]
 
       expect(models.first(3)).to eq([{ name: "gemma-4", host: "default", id: "gemma-4" },
                                      { name: "box:rr/X", host: "box", id: "rr/X", configured: true },
                                      { name: "box:big", host: "box", id: "big", configured: true }])
+      expect(models.last).to eq({ name: "down:rr/z", host: "down", id: "rr/z", configured: true, unavailable: true })
+    end
+
+    it "names a default declared on a down host by its row" do
+      payload = described_class.payload(results, registry: registry, default_name: "down:RR/Z")
+
+      expect(payload[:default]).to eq("down:rr/z")
     end
   end
 

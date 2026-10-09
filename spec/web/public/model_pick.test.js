@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { pickModel, MODEL_KEY } from "../../../lib/samagotchi/web/public/model_pick.js";
 
-const names = ["Gemma-4B-it", "Qwen3-14B", "box:gemma4-26b"];
+const named = (...names) => names.map((name) => ({ name }));
+const names = named("Gemma-4B-it", "Qwen3-14B", "box:gemma4-26b");
 
 test("pickModel prefers the remembered choice while it is offered, else the default", () => {
   assert.equal(pickModel(names, "Gemma-4B-it", "box:gemma4-26b"), "box:gemma4-26b");
@@ -13,9 +14,17 @@ test("pickModel prefers the remembered choice while it is offered, else the defa
 });
 
 test("pickModel falls back to the default even when no host lists it, then to the first name", () => {
-  assert.equal(pickModel(["a", "b"], "zzz", null), "zzz");
-  assert.equal(pickModel(["a", "b"], null, null), "a");
+  assert.equal(pickModel(named("a", "b"), "zzz", null), "zzz");
+  assert.equal(pickModel(named("a", "b"), null, null), "a");
   assert.equal(pickModel([], null, "x"), "");
+});
+
+test("pickModel keeps a remembered or default name whose host is down; only the last fallback skips one", () => {
+  const rows = [{ name: "down:rr/x", unavailable: true }, { name: "a" }];
+  assert.equal(pickModel(rows, "a", "down:rr/x"), "down:rr/x");
+  assert.equal(pickModel(rows, "down:rr/x", null), "down:rr/x");
+  assert.equal(pickModel(rows, null, null), "a");
+  assert.equal(pickModel(rows.slice(0, 1), null, null), "down:rr/x");
 });
 
 test("the storage key is stable", () => {
@@ -200,4 +209,28 @@ test("rowTitle joins the sampling tooltip and where a configured row comes from"
   const both = { name: "work:rr/x", host: "work", id: "rr/x", configured: true };
   assert.equal(rowNote(both, "work:rr/x"), "default");
   assert.equal(rowTitle(both), "served by config (hosts.work.models)");
+});
+
+test("modelRows marks a row unavailable (its host failed to list) only when the server says so", () => {
+  const r = modelRows({ models: [{ name: "down:rr/x", host: "down", id: "rr/x", configured: true, unavailable: true },
+                                 { name: "work:a", host: "work", id: "a", unavailable: "yes" }] });
+  assert.equal(r[0].unavailable, true);
+  assert.equal("unavailable" in r[1], false);
+});
+
+test("groupRows marks a host unavailable only when every row of it is", () => {
+  const r = modelRows({ models: [
+    { name: "a", host: "llama", id: "a" },
+    { name: "down:rr/x", host: "down", id: "rr/x", configured: true, unavailable: true },
+    { name: "down:rr/y", host: "down", id: "rr/y", configured: true, unavailable: true },
+  ] });
+  assert.deepEqual(groupRows(r).map((g) => [g.host, g.unavailable]), [["llama", false], ["down", true]]);
+});
+
+test("rowNote and rowTitle say a row's host is down", () => {
+  const down = { name: "down:rr/x", host: "down", id: "rr/x", configured: true, unavailable: true };
+  assert.equal(rowNote(down, "gemma"), "config · host down");
+  assert.equal(rowNote(down, "down:rr/x"), "default · host down");
+  assert.equal(rowTitle(down),
+    "served by config (hosts.down.models); host down didn't list its models (down?); a chat on it may fail");
 });

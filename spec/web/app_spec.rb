@@ -1820,6 +1820,19 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["warning"]).to eq("cloud: connection refused")
     end
 
+    it "keeps a down host's declared ids, unavailable, next to its warning" do
+      declared = Samagotchi::HostModel.parse_map(%w[rr/x], "cloud")
+      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it")], error: nil },
+                                         "cloud" => { models: [], error: "connection refused" } },
+                                       entries: { "cloud" => Samagotchi::HostRegistry::HostEntry.new(name: "cloud", models: declared) })
+
+      payload = models_payload(registry)
+
+      expect(payload["models"].drop(1))
+        .to eq([{ "name" => "cloud:rr/x", "host" => "cloud", "id" => "rr/x", "configured" => true, "unavailable" => true }])
+      expect(payload["warning"]).to eq("cloud: connection refused")
+    end
+
     it "answers the default alone with a warning when the registry fails" do
       payload = models_payload(FakeModelRegistry.new(RuntimeError.new("no config")))
 

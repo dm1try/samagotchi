@@ -314,6 +314,20 @@ RSpec.describe Samagotchi::SessionCommands do
           .to eq(["gw (gw.example:443):", "  RR/A (config, loaded)", "  rr/b (config)", "  … plus 1 :batch variant; /models :batch lists them"])
       end
 
+      it "lists a down host's declared ids as (config, host down) under its unreachable line" do
+        catalog["gw"] = { host: "gw.example", port: 443, models: [], error: "connection refused" }
+        allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({ "rr" => "gw:rr/a" })
+
+        lines = commands.run("/models").output.lines(chomp: true)
+
+        expect(lines.first(3)).to eq(["gw (gw.example:443) — unreachable: connection refused",
+                                      "  rr/a (config, host down) (alias: rr)", "  rr/b (config, host down)"])
+        expect(lines[3]).to eq("remote (openrouter.ai:443):")
+        expect(lines.join("\n")).not_to include("orphan")
+        expect(commands.run("/models rr/b").output)
+          .to eq("gw (gw.example:443) — unreachable: connection refused\n  rr/b (config, host down)")
+      end
+
       it "counts them as discovered for the orphan aliases, and filters them like any id" do
         allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({ "rr" => "gw:rr/a" })
 

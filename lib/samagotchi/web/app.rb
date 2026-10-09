@@ -446,6 +446,7 @@ module Samagotchi
             listing.rows.each do |row|
               model = { name: row.host == default_host ? row.id : "#{row.host}:#{row.id}", host: row.host, id: row.id }
               model[:configured] = true if row.configured
+              model[:unavailable] = true if row.unavailable
               models << model
             end
           end

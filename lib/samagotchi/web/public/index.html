@@ -494,6 +494,7 @@ body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 #composer .actions-col .model-pick:hover,#composer .actions-col .model-pick[aria-expanded="true"]{filter:none;background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}
 #composer .actions-col .model-pick[hidden],body.has-session #composer .actions-col .model-pick{display:none}
 .model-pick-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#composer .actions-col .model-pick.unavailable .model-pick-name{color:var(--text-faint)}
 .model-pick::after{content:"";position:absolute;right:9px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);pointer-events:none;transition:transform .12s ease}
 .model-pick[aria-expanded="true"]::after{transform:translateY(-20%) rotate(225deg)}
 @media(max-width:600px){#composer .actions-col .model-pick{max-width:60%}}
@@ -529,6 +530,8 @@ body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 #modelList mark{background:none;color:var(--accent);font-weight:600}
 #modelList .model-option.chosen mark{color:var(--text-bright)}
 #modelList .model-note{flex:none;font-size:11px;color:var(--text-faint)}
+#modelList .model-option.unavailable:not(.chosen) .model-id,#modelList .model-option.unavailable .model-host{color:var(--text-faint)}
+#modelList .model-option.unavailable .model-note{color:var(--warn-text)}
 #modelList .model-empty{padding:10px;font-size:13px;color:var(--text-faint)}
 @media(max-width:600px){#modelPanel{left:6px;width:calc(100% - 12px)}#modelSearch{font-size:16px}#modelList .model-option{padding-top:8px;padding-bottom:8px}}
 /* The / autocomplete: a list over the composer card's top edge. It wears the glass edge and shadow, but opaque:

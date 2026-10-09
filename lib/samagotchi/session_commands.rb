@@ -574,14 +574,14 @@ module Samagotchi
       results.keys.sort.each do |hname|
         data = results[hname]
         host_label = "#{hname} (#{data[:host]}:#{data[:port]})"
+        # Declared ids (hosts.<name>.models) first, as "(config)", never cut
+        # by MODELS_PER_HOST; a host that failed keeps only those, as
+        # "(config, host down)" under its unreachable line.
+        rows = host_rows.fetch(hname, [])
         if data[:error]
           lines << "#{host_label} — unreachable: #{ModelCatalog.error_detail(hname, data[:error])}"
-          next
-        end
-        # Declared ids (hosts.<name>.models) first, as "(config)", never cut
-        # by MODELS_PER_HOST.
-        rows = host_rows[hname]
-        if rows.empty?
+          next if rows.empty?
+        elsif rows.empty?
           lines << "#{host_label} — no models discovered"
           next
         end
@@ -600,13 +600,14 @@ module Samagotchi
         end
         next if declared.empty? && shown.empty?
 
-        lines << "#{host_label}:"
+        lines << "#{host_label}:" unless data[:error]
         hidden = needle.empty? ? [shown.size - MODELS_PER_HOST, 0].max : 0
         (declared + shown.first(shown.size - hidden)).each do |row, identifier|
           raw = row.info&.raw || {}
           raw_status = raw["status"] || raw[:status]
           status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
           status = ["config", status].reject { |s| s.to_s.empty? }.join(", ") if row.configured
+          status = "#{status}, host down" if row.unavailable
           base = status.to_s.empty? ? "  #{identifier}" : "  #{identifier} (#{status})"
           alias_list = (by_model[identifier.to_s.downcase] || []) + (by_model["#{hname}:#{identifier}".downcase] || [])
           alias_list.uniq!
