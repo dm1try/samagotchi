@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - A question the model asks in a `chi -p --non-interactive` run no longer tells the model the user dismissed it:
   it is told no one could answer (a non-interactive run). The question closes with reason `non_interactive`.
+- A delegate's report read by a turn that ended canceled is no longer brought a second time when the Engine's
+  post-turn work then fails (a full disk, say).
 
 ## [0.46.0] - 2026-10-09
 

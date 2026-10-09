@@ -850,13 +850,17 @@ module Samagotchi
     # start only, so the reports its loop merged are not in the
     # conversation: their rings stay for the next turn, even when the turn
     # itself stays (a reminder or continue turn). Not one raised after the
-    # turn ended (the Engine's post-turn work): the turn was kept as
-    # completed, the reports in it.
+    # turn ended (the Engine's post-turn work): the turn was kept as it
+    # ended, completed or canceled, the reports in it (a turn TurnFlow
+    # takes back is a restore, above).
     def merges_lost?(error)
       return false if error.nil? || error.is_a?(LLM::FailedTurn)
 
-      @session.last_turn&.dig("outcome") != "completed"
+      !KEPT_TURN_OUTCOMES.include?(@session.last_turn&.dig("outcome"))
     end
+
+    # The Engine's turn endings that keep the turn's conversation (#merges_lost?).
+    KEPT_TURN_OUTCOMES = %w[completed canceled].freeze
 
     # A delegate child's turn that was its parent's (#reports_to_parent?)
     # rings the parent, after the save: the parent reads a settled child.

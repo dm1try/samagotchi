@@ -334,7 +334,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       # answers, failed by the block (it installs a stub that raises once).
       # @return [Array(Boolean, Boolean)] whether the saved conversation
       #   holds the report, and whether the next turn brought it again
-      def reminder_turn_failing(outcome)
+      def reminder_turn_failing(outcome, canceled: false)
         reminder = nil
         allow(Samagotchi::Engine).to receive(:new) do |**kwargs|
           reminder = kwargs.dig(:reminders, :callback)
@@ -350,7 +350,8 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
           seen << lines
           conversation = messages + lines.map { |line| { role: "user", content: line.text } } +
                          [{ role: "model", content: "noted" }]
-          Samagotchi::LLM::ModelResult.new(text: "noted", conversation: conversation)
+          Samagotchi::LLM::ModelResult.new(text: "noted", conversation: conversation, canceled: canceled,
+                                           cancellation_reason: (:user if canceled))
         end
         allow(engine).to receive(:backend_for).and_return(backend)
         yield
@@ -359,7 +360,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         reminder.call(["stretch"])
 
         expect(next_turn.map(&:source)).to eq(["delegate_report"])
-        expect(wait_until { drain.any? { |e| %i[turn_failed turn_completed].include?(e[:type]) } }).to be(true)
+        expect(wait_until { drain.any? { |e| %i[turn_failed turn_completed turn_canceled].include?(e[:type]) } }).to be(true)
         # Saved as the turn ended (the Engine's failed save, or the worker's after the turn).
         saved = -> { Samagotchi::Session.load(parent.id, state_dir: tmpdir) }
         expect(wait_until { saved.call.last_turn&.dig("outcome") == outcome }).to be(true)
@@ -395,6 +396,22 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       # report twice.
       it "commits the report a reminder turn read when the Engine fails after the turn ended" do
         kept, brought = reminder_turn_failing("completed") do
+          failed = false
+          allow(engine.metrics).to receive(:persist).and_wrap_original do |original, **options|
+            next original.call(**options) if failed
+
+            failed = true
+            raise IOError, "disk full"
+          end
+        end
+
+        expect([kept, brought]).to eq([true, false])
+      end
+
+      # Likewise for a turn that ended canceled: it was kept with the report
+      # in it, so a post-turn error must not release the report.
+      it "commits the report a canceled reminder turn read when the Engine fails after the turn ended" do
+        kept, brought = reminder_turn_failing("canceled", canceled: true) do
           failed = false
           allow(engine.metrics).to receive(:persist).and_wrap_original do |original, **options|
             next original.call(**options) if failed
