@@ -594,6 +594,7 @@ module Samagotchi
         if prompt.to_s.strip.empty? && !idle
           return error_response(400, "missing_fields", "prompt is required")
         end
+        return handle_continue(body, prompt, idle) if body.key?("continues")
 
         # dir: the folder the chat starts in (the page's scope); without it,
         # the server's own cwd.
@@ -630,6 +631,43 @@ module Samagotchi
         @hub&.touch(session.id)
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
         json_response(201, session_to_json(session).merge(bridge_port: port))
+      end
+
+      # POST /api/sessions with continues: <id, prefix or last:id>: the next
+      # link of that session's chain (SessionManager.continue_session), in its
+      # folder, on its model and with its llm_context, so dir, model and
+      # llm_context are refused beside it. 409 continued (with next_id, the
+      # link that continues it already: the page opens that one),
+      # open_children (ids), folder_gone, busy, scratch or owned_by_tui.
+      def handle_continue(body, prompt, idle)
+        given = body["continues"]
+        unless given.is_a?(String) && !given.strip.empty?
+          return error_response(400, "invalid_continues", "continues is a session id")
+        end
+        if (fields = %w[dir model model_name llm_context].select { |key| body.key?(key) }).any?
+          return error_response(400, "invalid_continues",
+                                "continues takes the previous session's folder, model and llm_context; " \
+                                "leave out #{fields.join(", ")}")
+        end
+
+        preview = idle ? body["preview"].to_s.strip : ""
+        session = @manager.continue_session(given, prompt: idle ? nil : prompt.to_s, title: preview.empty? ? nil : preview,
+                                                   state_dir: @state_dir)
+        port = await_bridge_port(session.id)
+        [session.continues, session.id].each { |sid| @hub&.touch(sid) }
+        record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
+        json_response(201, session_to_json(session).merge(bridge_port: port))
+      rescue SessionManager::ContinueRefused => e
+        extra = e.reason == :continued ? { next_id: e.ids.first } : { ids: e.ids }
+        json_response(409, { error: e.reason.to_s, detail: e.message, **extra })
+      rescue SessionManager::ArchiveRefused => e
+        error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)
+      rescue SessionManager::OwnedByTUI
+        error_response(409, "owned_by_tui", "session #{given} is open in a chi REPL; close it there first")
+      rescue ModelProfile::MissingModel => e
+        error_response(400, "invalid_model", e.message)
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
       end
 
       # The create request's "llm_context" ({strategy:, apply:, budget:},

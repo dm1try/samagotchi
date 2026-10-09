@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
   link and carries its recap, asked for first from a live worker. The previous link is archived with its delegates;
   a continue is refused while one of them is still open, for a link continued already (no forks), and for a gone
   folder. `last:<id>` names a chain's latest link. See [docs/sessions.md](docs/sessions.md#session-chains).
+- `POST /api/sessions` takes `continues: <id>` (with `idle: true` or a `prompt`): the next link of that session's
+  chain. A link continued already answers 409 `continued` with `next_id`, an open delegate 409 `open_children`.
 
 ## [0.46.1] - 2026-10-09
 
