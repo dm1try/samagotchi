@@ -40,7 +40,10 @@ chi sessions list --archived                          # archived sessions too, m
 chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
 chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
 chi sessions clean [--dry-run] [--days N]             # test sessions: all, or older than N days
+chi sessions stats ID [--format text|json]            # cost, tokens and progress, without a model turn
 ```
+
+`chi sessions stats ID` prints what `/stats` prints in a terminal, headed by `<id8>  <status>  <model>`: a live worker answers its Bridge's `GET stats` (no model call, and the command never starts a worker); without one, or when the worker does not answer in time, the same snapshot is rebuilt from the session's saved `analytics.json` (and the line says so when a worker was live). `--format json` prints one object `{session_id, status, live, metrics}` with the snapshot as `metrics`; a session with no `analytics.json` yet reports `metrics: null` (`(no metrics yet)` in text) and still exits 0. An unknown or ambiguous id exits 1 with the same wording `chi sessions stop` uses.
 
 A session whose worker waits for an answer (a question, a hook's question, a guardrail approval, or the step-limit question of a turn that ran out of steps, which waits between turns) reads `waiting` in the status column, and json has `waiting: "question"|"approval"|"hook"|"continue"` and `waiting_id`, the question's id for `chi answer --question` (both null otherwise). A delegate's approval its parent relayed to its own card (see *Delegating*) reads `waiting (in parent ab12)`, json `relayed_to: "ab12…"` (the parent's short id, else null). Only while a worker runs it: a question a dead worker left in the file shows the saved status. Answer it with `chi answer`, the web or `chi --attach ID`; `chi sessions stop ID` frees the worker instead.
 

@@ -139,9 +139,9 @@ RSpec.describe "chi sessions archive" do
 
     it "names archive and unarchive in its usage and for an unknown subcommand" do
       help, = run_chi("--help")
-      expect(help).to include("<list|stop|restart|archive|unarchive|delete|prune|clean>")
+      expect(help).to include("<list|stop|restart|archive|unarchive|delete|prune|clean|stats>")
       _, err, status = run_chi("nope")
-      expect(err).to start_with("chi sessions: unknown subcommand nope\nUsage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean>")
+      expect(err).to start_with("chi sessions: unknown subcommand nope\nUsage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean|stats>")
       expect(status.exitstatus).to eq(2)
     end
   end

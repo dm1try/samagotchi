@@ -15,7 +15,7 @@
 - `chi web --web-host lan` — the Web UI on your home network too, for your phone: a link with an access token and its QR code (see [chi web on your phone](#chi-web-on-your-phone)); `chi web --new-token` replaces the token
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `chi web --web-view turn` — draw turns with the turn view (each turn as one block of steps, the running one at the bottom of the history) instead of the default stage view (the running turn pinned above the composer); `?view=stage|turn` on the page URL overrides it (see [Web views](#web-views))
-- `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)). A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, a bad `list --format` or `--scope`) exits 2; an unknown or refused session exits 1
+- `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean|stats` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)). `stats ID` prints a session's cost, tokens and progress (a live worker's `GET stats`, else its saved `analytics.json`; `--format json` one object) without running a model turn. A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, a bad `list --format` or `--scope`) exits 2; an unknown or refused session exits 1
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi context <add|push|ls|show|refresh|rm|mute|unmute> …` — attach live external text to sessions (a command chi runs every so often, or text pushed in); the model gets a short note when it changes and reads it with `context_read`; `chi context add <URL>` attaches a GitHub PR with the github-pr bundle (see [Attached context](context.md))
 - `chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead (`--new --continues ID|last:ID` the next link of that session's chain, see [Session chains](sessions.md#session-chains)), and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; `--format json` prints one JSON object instead; exit 3 a question waits, its options on stderr; exit 4 `--timeout` passed with the turn still running; see [Starting a session](sessions.md#starting-a-session))
@@ -391,6 +391,17 @@ one open in a plain REPL is always refused ("close it there first"). Exit
 status: 0 when all are gone, 1 when any was refused or unknown, 2 on a usage
 error. The Web UI deletes too: `delete` in the info bar, or the ✕ on a card in
 All sessions; it asks first and stops a live worker.
+
+`chi sessions stats ID [--format text|json]` prints a session's cost, tokens
+and progress without running a model turn — the same text `/stats` prints in
+a terminal, headed by `<id8>  <status>  <model>`: a live worker answers its
+Bridge's `GET stats`, else the snapshot is rebuilt from the session's saved
+`analytics.json` (never starting a worker; a worker that does not answer in
+time falls back to the disk and the line says so). `--format json` prints one
+object `{session_id, status, live, metrics}`; a session with no
+`analytics.json` yet reports `metrics: null` (`(no metrics yet)` in text) and
+exits 0. An unknown or ambiguous id exits 1 with `chi sessions stop`'s
+wording. See [Sessions](sessions.md#cli).
 
 **The plain REPL.** Some launches run the session in this process instead, with
 no worker:

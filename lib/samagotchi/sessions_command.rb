@@ -9,19 +9,22 @@ require_relative "session_metrics"
 require_relative "recap_store"
 require_relative "session_delete_command"
 require_relative "session_archive_command"
+require_relative "bridge_client"
+require_relative "terminal_ui/formatting"
+require_relative "terminal_ui/event_renderer"
 require_relative "cli/command"
 require_relative "cli/flags"
 
 module Samagotchi
-  # `chi sessions`: list, stop, restart, archive/unarchive, delete, prune and clean
-  # sessions from the shell (bin/chi dispatches here before OptionParser;
-  # the subcommands have their own flags). Not SessionCommands, the REPL's
-  # slash commands for sessions (session_commands.rb).
+  # `chi sessions`: list, stop, restart, archive/unarchive, delete, prune,
+  # clean and stats sessions from the shell (bin/chi dispatches here before
+  # OptionParser; the subcommands have their own flags). Not SessionCommands,
+  # the REPL's slash commands for sessions (session_commands.rb).
   class SessionsCommand
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean> [options]
+      Usage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean|stats> [options]
         list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
              [--live] [--cwd PATH] [--format text|json|tsv] [--archived]
              --live: sessions a worker runs now (the ones chi note reaches), 10 unless --limit
@@ -34,12 +37,15 @@ module Samagotchi
         delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
         clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days
+        stats ID [--format text|json]   # a session's cost, tokens and progress, without running a model turn:
+             a live worker's GET stats, else the snapshot its saved analytics.json rebuilds (never starts a worker)
       Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)
     TEXT
 
     STOP_USAGE = "Usage: chi sessions stop ID...\n"
     RESTART_USAGE = "Usage: chi sessions restart ID...\n"
-    SUBCOMMANDS = %w[list stop restart archive unarchive delete prune clean].freeze
+    STATS_USAGE = "Usage: chi sessions stats ID [--format text|json]\n"
+    SUBCOMMANDS = %w[list stop restart archive unarchive delete prune clean stats].freeze
 
     # Each subcommand's flags ("--flag V" or "--flag=V" for a value): an
     # unknown flag, a value flag with nothing after it or an argument where
@@ -53,6 +59,9 @@ module Samagotchi
       end,
       "stop" => CLI::Flags.new,
       "restart" => CLI::Flags.new,
+      "stats" => CLI::Flags.new do |f|
+        f.value "--format"
+      end,
       "prune" => CLI::Flags.new(args: false) do |f|
         %w[--days --keep --keep-status].each { |name| f.value name }
         f.switch "--dry-run"
@@ -98,6 +107,7 @@ module Samagotchi
       when "list" then list
       when "stop" then stop(parsed.args)
       when "restart" then restart(parsed.args)
+      when "stats" then stats(parsed.args)
       else prune(@sub)
       end
     end
@@ -105,7 +115,7 @@ module Samagotchi
     private
 
     def command_name = @sub && SUBCOMMANDS.include?(@sub) ? "chi sessions #{@sub}" : "chi sessions"
-    def usage_text = { "stop" => STOP_USAGE, "restart" => RESTART_USAGE }.fetch(@sub, USAGE)
+    def usage_text = { "stop" => STOP_USAGE, "restart" => RESTART_USAGE, "stats" => STATS_USAGE }.fetch(@sub, USAGE)
 
     # quirk: a number that isn't one is 0 (--days=abc turns the age limit off)
     def integers(options)
@@ -268,6 +278,69 @@ module Samagotchi
       end
       0
     end
+
+    # One session's cost, tokens and progress, for a script or an agent that
+    # drives sessions (chi send --wait): a live worker's GET stats, else the
+    # snapshot its saved analytics.json rebuilds. Never starts a worker, and
+    # never sends the model anything.
+    def stats(ids)
+      return usage_error("give a session id") if ids.empty?
+      return usage_error("stats takes one session id") if ids.size > 1
+
+      format = @opts[:format]
+      unless format.nil? || %w[text json].include?(format)
+        return usage_error("unknown format #{format.inspect}: use --format text|json")
+      end
+
+      id = begin
+        Samagotchi::Session.resolve_id(ids.first)
+      rescue Samagotchi::Session::AmbiguousId => e
+        @stdout.flush
+        @stderr.puts e.message
+        return 1
+      end
+      session = begin
+        Samagotchi::Session.load(id)
+      rescue ArgumentError => e
+        @stdout.flush
+        @stderr.puts e.message
+        return 1
+      end
+
+      metrics, live, note = stats_snapshot_for(session)
+      if format == "json"
+        @stdout.puts JSON.generate({ session_id: session.id, status: session.status, live: live, metrics: metrics })
+      else
+        @stdout.puts "#{session.id[0, 8]}  #{session.status.ljust(7)} #{session.model_name}"
+        @stdout.puts TerminalUI::Formatting.format_session_metrics(metrics)
+        @stdout.puts note if note
+      end
+      0
+    end
+
+    # [snapshot, live, note]: a live worker answers GET stats (no model call);
+    # without one — or one that does not answer in time — the snapshot comes
+    # from the session's saved analytics.json, rebuilt by SessionMetrics (the
+    # same collector a worker runs, loaded from disk). The note says when the
+    # worker did not answer. nil when the session has no analytics.json yet.
+    # Never starts a worker.
+    # @return [Array(Hash, nil, Boolean, String, nil)]
+    def stats_snapshot_for(session)
+      dir = Samagotchi::Session.session_dir(session.id)
+      if (client = Samagotchi::BridgeClient.discover(session.id, session_dir: dir))
+        body = client.get_json("stats")&.dig("metrics")
+        if body.is_a?(Hash)
+          return [TerminalUI::EventRenderer.deep_symbolize_keys(body), true, nil]
+        end
+      end
+      return [nil, false, nil] unless File.file?(File.join(dir, "analytics.json"))
+
+      snapshot = Samagotchi::SessionMetrics.new.tap { |m| m.session_id = session.id }.snapshot
+      note = live_worker?(session.id) ? "(no live worker answered; from the saved analytics.json)" : nil
+      [snapshot, false, note]
+    end
+
+    def live_worker?(session_id) = Samagotchi::SessionManager.worker_live?(session_id)
 
     def stop(ids)
       return usage_error("give session ids") if ids.empty?

@@ -24,7 +24,7 @@ RSpec.describe "chi sessions (CLI)" do
 
   let(:usage) do
     <<~TEXT
-      Usage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean> [options]
+      Usage: chi sessions <list|stop|restart|archive|unarchive|delete|prune|clean|stats> [options]
         list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
              [--live] [--cwd PATH] [--format text|json|tsv] [--archived]
              --live: sessions a worker runs now (the ones chi note reaches), 10 unless --limit
@@ -37,6 +37,8 @@ RSpec.describe "chi sessions (CLI)" do
         delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
         clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days
+        stats ID [--format text|json]   # a session's cost, tokens and progress, without running a model turn:
+             a live worker's GET stats, else the snapshot its saved analytics.json rebuilds (never starts a worker)
       Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)
     TEXT
   end

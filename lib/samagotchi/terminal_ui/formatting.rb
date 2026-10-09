@@ -14,6 +14,14 @@ module Samagotchi
     # `tool>` line, elapsed durations. Pure apart from reading whether
     # $stdout is a colour terminal.
     module Formatting
+      # The /stats text for a metrics snapshot, for the REPL and attached
+      # views (an instance includes the module) and for `chi sessions stats`
+      # (no UI: the same text from the CLI).
+      # @return [String] "(no metrics yet)" without a snapshot
+      def self.format_session_metrics(snapshot)
+        (@formatter ||= Object.new.extend(Formatting)).send(:format_session_metrics, snapshot)
+      end
+
       def format_tool_activity_line(activity, duration_ms: nil)
         status = activity[:status].to_s
         elapsed_suffix = duration_ms.nil? ? "" : " (#{format_elapsed_duration(duration_ms)})"
@@ -488,7 +496,8 @@ module Samagotchi
       end
 
       # Render the analytics snapshot as a compact, user-facing report. Raw event
-      # logs (debug-only) are intentionally excluded; this surface is for the REPL.
+      # logs (debug-only) are intentionally excluded; this surface is for the REPL
+      # and `chi sessions stats` (the module function above).
       def format_session_metrics(snapshot)
         return "(no metrics yet)" unless snapshot.is_a?(Hash)
 
