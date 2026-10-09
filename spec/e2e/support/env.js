@@ -291,6 +291,37 @@ export async function stopEnv(env) {
   if (left.length) throw new Error(`e2e: processes under ${root} survived SIGKILL: ${left.join(" ")}`);
 }
 
+// One delegate of +parentId+ written straight into the state dir, as
+// seedFamily writes them, with a reply its parent wasn't given (an
+// output/ file): open, so a continue of the parent moves it. No worker.
+// Returns its id and remove().
+export function seedDelegate(env, parentId, { tag = "Delegate" } = {}) {
+  const dir = path.join(env.dirs.state, "samagotchi", "sessions");
+  const id = `e2e-delegate-${Date.now().toString(16)}${Math.floor(Math.random() * 0xfff).toString(16)}`;
+  const now = new Date().toISOString();
+  const prompt = `${tag} child works`;
+  const s = {
+    metadata_version: 3, id, mode: "assist", model_name: "fake-script", model_typed: null,
+    working_directory: env.dirs.project, messages: [{ role: "user", content: prompt }],
+    created_at: now, updated_at: now, status: "idle", last_prompt: prompt, first_preview: prompt,
+    test_run: false, pending_question: null, used_memory_names: [], project_root: env.dirs.project,
+    preloaded_memory_names: [], muted_memory_names: [], parent_id: parentId, scratch: false, last_turn: null,
+    delegate: true,
+  };
+  fs.mkdirSync(path.join(dir, id, "output"), { recursive: true });
+  fs.writeFileSync(path.join(dir, id, "output", "20261009120000000000000.txt"), "done");
+  const file = path.join(dir, `${id}.json`);
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(s, null, 2));
+  fs.renameSync(`${file}.tmp`, file);
+  return {
+    id,
+    remove() {
+      fs.rmSync(file, { force: true });
+      fs.rmSync(path.join(dir, id), { recursive: true, force: true });
+    },
+  };
+}
+
 // A parent and two delegates (delegate: true, parent_id) written straight
 // into the state dir, as a worker saves them (tmp + rename): chi web's hub
 // lists them within its next scan. No worker runs them, except with

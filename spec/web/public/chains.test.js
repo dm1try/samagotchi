@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, allViewChains, chainChipHtml, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsHtml, continueRefusal, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, allViewChains, chainChipHtml, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsHtml, continueRefusal, continuedText, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
 import { families, familyWaits, filterFamilies, waitingFirst } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // A chain of three days: d1 ← d2 ← d3 (d3 continues d2, which continues d1).
@@ -104,6 +104,19 @@ test("a chain's card doesn't wait for a link that is a card of its own", () => {
   assert.deepEqual(fams.map((f) => [f.head.id, familyWaits(f)]), [["d3", false], ["d2", true]]);
 });
 
+// A continue moved A's open delegate M to B (the server's summaries carry
+// parent.json's parent): it folds under B, its new parent, never under A.
+test("a delegate a continue moved folds under the new link, archived links listed or not", () => {
+  const a = link("a", 7, { archived: true });
+  const done = link("done", 7, { archived: true, parent_id: "a", delegate: true });
+  const b = link("b", 8, { continues: "a" });
+  const m = link("m", 7, { parent_id: "b", delegate: true, status: "running" });
+  const all = [b, m, a, done];
+  const members = (fams) => fams.map((f) => [f.head.id, f.members.map((x) => x.session.id)]);
+  assert.deepEqual(members(foldChains(families(all.filter((s) => !s.archived)), all)), [["b", ["m"]]]);
+  assert.deepEqual(members(allViewChains(families(all), all, { query: "", includeArchived: true })), [["b", ["m"]], ["a", ["done"]]]);
+});
+
 test("foldChains hands back the same array when no session continues another", () => {
   const fams = families([lone, d1]);
   assert.equal(foldChains(fams, [lone, { ...d1, continues: null }]), fams);
@@ -158,22 +171,32 @@ test("continueRefusal: open delegates are named with their preview and state", (
     { id: "aaaaaaaa-1", status: "running", first_preview: "fix the flaky spec" },
     { id: "bbbbbbbb-2", status: "idle", first_preview: "write docs", pending_question: { id: "q", kind: "question" } },
   ];
-  const detail = "d3 has delegates still open: aaaaaaaa (running), cccccccc (unreported reply); wait for them, stop them or archive them, then continue";
+  const detail = "d3 has delegates still open that can't move to the next link: aaaaaaaa (older chi worker 0.46.1; restart it), cccccccc (open in a chi REPL; close it there); then continue (or wait for them, stop them or archive them)";
   const r = continueRefusal(refused("open_children", { ids: ["aaaaaaaa-1", "bbbbbbbb-2", "cccccccc-3", "dddddddd-4"] },
     `${detail} (409)`), kids);
   assert.equal(r.kind, "children");
   assert.equal(r.text, detail);
   // Why: the server's word, else the state here; the preview when the list has it.
   assert.deepEqual(r.children, [
-    { id: "aaaaaaaa-1", short: "aaaaaaaa", text: "fix the flaky spec (running)" },
+    { id: "aaaaaaaa-1", short: "aaaaaaaa", text: "fix the flaky spec (older chi worker 0.46.1; restart it)" },
     { id: "bbbbbbbb-2", short: "bbbbbbbb", text: "write docs (waiting)" },
-    { id: "cccccccc-3", short: "cccccccc", text: "(unreported reply)" },
+    { id: "cccccccc-3", short: "cccccccc", text: "(open in a chi REPL; close it there)" },
     { id: "dddddddd-4", short: "dddddddd", text: "" },
   ]);
   const html = openChildrenHtml("d3d3d3d3-x", r.children, (id) => `#/s/${id}`);
-  assert.match(html, /Can't continue d3d3d3d3: 4 delegates are still open\. Wait for them, stop or archive them, then continue\./);
-  assert.match(html, /<a href="#\/s\/aaaaaaaa-1" class="cr-child">aaaaaaaa<\/a> fix the flaky spec \(running\)/);
-  assert.match(openChildrenHtml("d3", r.children.slice(0, 1), (id) => id), /1 delegate is still open\. Wait for it, stop or archive it/);
+  assert.match(html, /Can't continue d3d3d3d3: 4 open delegates can't move to the next link\. Do what each says, or wait for them, then continue\./);
+  assert.match(html, /<a href="#\/s\/aaaaaaaa-1" class="cr-child">aaaaaaaa<\/a> fix the flaky spec \(older chi worker 0\.46\.1; restart it\)/);
+  assert.match(openChildrenHtml("d3", r.children.slice(0, 1), (id) => id), /1 open delegate can't move to the next link\. Do what it says, or wait for it/);
+});
+
+test("continuedText: the new link, the archive, and the delegates that moved", () => {
+  assert.equal(continuedText("d3d3d3d3-x", { id: "e4e4e4e4-y", moved: [] }), "Continued d3d3d3d3 in e4e4e4e4; d3d3d3d3 is archived");
+  assert.equal(continuedText("d3d3d3d3-x", { id: "e4e4e4e4-y", moved: ["a"] }),
+    "Continued d3d3d3d3 in e4e4e4e4; d3d3d3d3 is archived; 1 open delegate moved");
+  assert.equal(continuedText("d3d3d3d3-x", { id: "e4e4e4e4-y", moved: ["a", "b"] }, { opened: false }),
+    "Continued d3d3d3d3 in e4e4e4e4; 2 open delegates moved");
+  // An older server's answer has no moved.
+  assert.equal(continuedText("d3", { id: "e4" }), "Continued d3 in e4; d3 is archived");
 });
 
 test("continueRefusal: anything else is the server's words", () => {

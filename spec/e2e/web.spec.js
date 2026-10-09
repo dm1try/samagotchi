@@ -1,7 +1,7 @@
 // Happy paths of the web UI against a scripted fake model (support/scripts).
 // Assertions are on page state only; every wait is on the DOM, no sleeps.
 import { test, expect } from "./support/fixtures.js";
-import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedFamily, useModelNote } from "./support/env.js";
+import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
 
 // The stage view (the default; the turn project runs @turn scenarios again
 // on ?view=turn): a running turn's rows are in #turnStage until the hand-off
@@ -574,12 +574,21 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(stripCard).toBeVisible();
 });
 
-test("continue → starts the next link with the opener in the composer, unsent; the previous link is archived and reached from the chain's chip and the ← → links", async ({ page, script }) => {
+test("continue → starts the next link with the opener in the composer, unsent; the previous link is archived and reached from the chain's chip and the ← → links; its open delegate moves to the new link", async ({ page, script, chi }) => {
   script("plain");
   await send(page, "Chain day one");
   await turnEnded(page, 1);
   const first = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  // A delegate of the first link with a reply it wasn't given: open, it moves.
+  const kid = seedDelegate(chi, first, { tag: "Chain" });
+  try {
+    await continueAndCheck(page, first, kid.id);
+  } finally {
+    kid.remove();
+  }
+});
 
+async function continueAndCheck(page, first, kid) {
   await page.locator("#infoContinueBtn").click();
   await expect(page).not.toHaveURL(new RegExp(`#/s/${first}$`));
   const second = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
@@ -588,6 +597,13 @@ test("continue → starts the next link with the opener in the composer, unsent;
   await expect(page.locator(`${H()} .bubble.user`)).toHaveCount(0);
   await expect(page.locator("#actionBtn")).toHaveText("Send");
   await expect(page.locator("#toast")).toContainText(`Continued ${first.slice(0, 8)} in ${second.slice(0, 8)}`);
+  await expect(page.locator("#toast")).toContainText("1 open delegate moved");
+  // The moved delegate folds under the new link, unarchived.
+  const family = page.locator(`#topStrip .card[data-id="${second}"] .family-chip`);
+  await expect(family).toContainText("1 delegate");
+  await family.click();
+  await expect(page.locator(`#familyPop .family-row[data-id="${kid}"]`)).toBeVisible();
+  await page.keyboard.press("Escape");
 
   // The previous link is archived: its card is folded into the new one's day chip.
   await expect(page.locator(`#topStrip .card[data-id="${first}"]`)).toHaveCount(0);
@@ -614,7 +630,7 @@ test("continue → starts the next link with the opener in the composer, unsent;
   await forward.click();
   await expect(page).toHaveURL(new RegExp(`#/s/${second}$`));
   await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
-});
+}
 
 test("all sessions: a card's archive button hides it without opening it, the toast's Undo brings it back", async ({ page, script }) => {
   script("plain");

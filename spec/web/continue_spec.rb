@@ -7,6 +7,7 @@ require "fileutils"
 require "rack/mock"
 
 require "samagotchi/web/app"
+require "samagotchi/web/session_hub"
 require "samagotchi/session"
 require "samagotchi/session_manager"
 
@@ -27,7 +28,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
   before { allow(Process).to receive(:spawn).and_return(12_345) }
 
   def create(body)
-    status, _headers, chunks = app.call(Rack::MockRequest.env_for("/api/sessions", "HTTP_HOST" => "127.0.0.1",
+    status, _headers, chunks = (@app || app).call(Rack::MockRequest.env_for("/api/sessions", "HTTP_HOST" => "127.0.0.1",
                                                                                    method: "POST", input: JSON.generate(body)))
     [status, JSON.parse(chunks.join)]
   end
@@ -104,6 +105,29 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
     end
     expect(status).not_to eq(404)
     expect(Samagotchi::Session.list(state_dir: state_dir).map(&:continues)).to include(previous.id)
+  end
+
+  it "moves an open delegate to the new link and names it in moved" do
+    previous = previous_link
+    child = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: folder,
+                                            parent_id: previous.id, delegate: true)
+    child.save(state_dir: state_dir)
+    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: state_dir), "done")
+    hub = instance_double(Samagotchi::Web::SessionHub, touch: nil)
+    @app = described_class.new(manager: Samagotchi::SessionManager, state_dir: state_dir, bridge_wait_timeout: 0, hub: hub)
+
+    status, body = create(continues: previous.id, idle: true)
+
+    expect(status).to eq(201), body.inspect
+    expect(body["moved"]).to eq([child.id])
+    expect(Samagotchi::Session.load(child.id, state_dir: state_dir).parent_id).to eq(body["id"])
+    expect([archived?(previous.id), archived?(child.id)]).to eq([true, false])
+    [previous.id, body["id"], child.id].each { |sid| expect(hub).to have_received(:touch).with(sid) }
+  end
+
+  it "answers moved: [] when nothing moved" do
+    status, body = create(continues: previous_link.id, idle: true)
+    expect([status, body["moved"]]).to eq([201, []])
   end
 
   it "answers 409 open_children naming a delegate still open that can't move (a chi REPL holds it)" do

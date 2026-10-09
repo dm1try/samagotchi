@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
   each, none lost or repeated) reach it; each gets a note naming its new parent. Only a delegate on an older chi's
   worker (restart it) or open in a chi REPL still refuses the continue. See
   [docs/sessions.md](docs/sessions.md#session-chains).
+  - Web: the continue toast counts the delegates that moved (`1 open delegate moved`); `POST /api/sessions` with
+    `continues` answers `moved: [ids]`.
+  - CLI: `chi send --new --continues` prints `started (continues 3fa2c1d0; 2 delegates moved)`.
 
 ## [0.47.0] - 2026-10-09
 

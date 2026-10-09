@@ -655,9 +655,11 @@ module Samagotchi
         return error if error
 
         port = await_bridge_port(session.id)
-        [session.continues, session.id].each { |sid| @hub&.touch(sid) }
+        moved = session.moved_children || []
+        # The moved delegates' cards fold under the new link now.
+        [session.continues, session.id, *moved].each { |sid| @hub&.touch(sid) }
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
-        json_response(201, session_to_json(session).merge(bridge_port: port))
+        json_response(201, session_to_json(session).merge(bridge_port: port, moved: moved))
       end
 
       # SessionManager.continue_session, its refusals as responses: [session,

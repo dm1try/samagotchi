@@ -333,7 +333,12 @@ module Samagotchi
       false
     end
 
-    def continued_words(session) = session.continues ? " (continues #{session.continues[0, 8]})" : ""
+    def continued_words(session)
+      return "" unless session.continues
+
+      moved = Array(session.moved_children).size
+      " (continues #{session.continues[0, 8]}#{"; #{moved} delegate#{"s" if moved != 1} moved" if moved.positive?})"
+    end
 
     # One existing session, then its next reply. The cursor and baseline
     # are taken before the message goes in, so neither an older reply nor a

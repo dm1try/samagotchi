@@ -114,6 +114,17 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(previous.id, state_dir: tmpdir))).to be(true)
     end
 
+    it "says how many open delegates moved to the new link" do
+      child = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: folder,
+                                              parent_id: previous.id, delegate: true)
+      child.save(state_dir: tmpdir)
+      Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), "done")
+
+      expect(run("--new", "--continues", previous.id, "-m", "start the day")).to eq(0), err.string
+
+      expect(out.string).to eq("#{links.first.id}  started (continues #{previous.id[0, 8]}; 1 delegate moved)\n")
+    end
+
     it "starts it idle with no message, and takes last:ID for the chain's latest link" do
       expect(run("--new", "--continues", previous.id)).to eq(0), err.string
       second = links.first
