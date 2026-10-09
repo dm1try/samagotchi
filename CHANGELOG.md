@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Web: a command queued mid-turn (`/model X`) shows its bubble after the turn's answer once it runs, not among the
+  turn's rows above the answer.
 - A background task whose process exited and whose pid another process reused since no longer reads as running in
   `task_list`, `task_get` and `task_wait` until a `task_stop`: each read checks the process's start time.
 - A continue that died after noting its moved delegates no longer notes them again when the new link's worker

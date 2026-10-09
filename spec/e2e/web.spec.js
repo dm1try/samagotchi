@@ -1187,7 +1187,7 @@ test("/archive and /exit typed in the composer get a local reply, not a worker e
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
 });
 
-test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", async ({ page, script }) => {
+test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", { tag: "@turn" }, async ({ page, script }) => {
   script("mid_turn_command");
   await send(page, "Take a moment");
   await expect(page.locator("#cancelBtn")).toBeVisible();
@@ -1212,6 +1212,14 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   await expect(bubble).not.toHaveClass(/queued|failed|busy/);
   await expect(bubble.locator(".command-output")).toContainText("fake-other");
   await expect(model).toHaveText(/^fake-other/);
+  // It ran after the turn: its bubble follows the turn's answer and timing
+  // line, not where it waited among the turn's rows.
+  const after = (sel) => bubble.evaluate((el, s) => {
+    const other = [...document.querySelectorAll(s)].at(-1);
+    return !!other && !!(other.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }, sel);
+  await expect.poll(() => after("#history .bubble.output")).toBe(true);
+  await expect.poll(() => after("#history .turn-timing:not(.live)")).toBe(true);
 });
 
 test("/modle typed in the composer gets the hint, not a turn", async ({ page, script }) => {
