@@ -6,6 +6,7 @@ import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 test("starts every field empty", () => {
   const s = emptySessionState();
   assert.equal(s.parentId, null);
+  assert.equal(s.continues, null);
   assert.equal(s.owner, null);
   assert.equal(s.ctxPct, null);
   assert.equal(s.ctxWindow, null);

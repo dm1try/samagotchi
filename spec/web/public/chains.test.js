@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chainChipHtml, chainDate, chainLinks, chainRowsHtml, foldChains } from "../../../lib/samagotchi/web/public/chains.js";
+import { chainChipHtml, chainDate, chainLinks, chainNeighbours, chainRowsHtml, foldChains } from "../../../lib/samagotchi/web/public/chains.js";
 import { families, familyWaits, waitingFirst } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // A chain of three days: d1 ← d2 ← d3 (d3 continues d2, which continues d1).
@@ -28,6 +28,17 @@ test("chainLinks: a hand-edited loop ends where it started; a second continue of
   assert.deepEqual(chainLinks([x, y], "x").map((s) => s.id), ["y", "x"]);
   const late = link("late", 9, { continues: "d1", created_at: at(9, "23") });
   assert.deepEqual(chainLinks([late, d3, d2, d1], "d1").map((s) => s.id), ["d1", "d2", "d3"]);
+});
+
+test("chainNeighbours: the previous link (from the open session's own continues when the list lags) and the next one", () => {
+  const list = [d3, d2, d1];
+  assert.deepEqual(chainNeighbours(list, "d2"), { prev: { id: "d1", session: d1 }, next: { id: "d3", session: d3 } });
+  assert.deepEqual(chainNeighbours(list, "d1"), { prev: null, next: { id: "d2", session: d2 } });
+  assert.deepEqual(chainNeighbours(list, "d3"), { prev: { id: "d2", session: d2 }, next: null });
+  // A new link the hub hasn't brought yet: its continues comes from the page.
+  assert.deepEqual(chainNeighbours(list, "d4", { continues: "d3" }), { prev: { id: "d3", session: d3 }, next: null });
+  assert.deepEqual(chainNeighbours([], "d4", { continues: "gone" }), { prev: { id: "gone", session: null }, next: null });
+  assert.deepEqual(chainNeighbours([lone], "lone"), { prev: null, next: null });
 });
 
 test("chainDate is the local day the link started, as the carry note writes it", () => {

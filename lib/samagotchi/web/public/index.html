@@ -761,6 +761,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
   #infoBar .meta .mem-chip{display:inline;order:-1}
   /* A parent's children chip too: its waiting part is what to see. */
   #infoBar .meta .children-chip{order:-1}
+  /* A chain's ← → links too: the way to the other days. */
+  #infoBar .meta .chain-link{order:-1}
   /* The chips get a second line of their own (only when there are some), scrolling sideways. */
   #infoBar:has(#contextChips:not([hidden])){flex-wrap:wrap;row-gap:4px}
   #contextChips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
@@ -855,6 +857,9 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 .chain-chip .cc-waiting{font-family:system-ui,sans-serif;font-weight:600}
 .chain-row .cr-day{font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);white-space:nowrap}
 .chain-row .cr-date{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+/* The session page's links to the previous and the next link of its chain. */
+#infoBar .meta a.chain-link{text-decoration:none;font-family:ui-monospace,monospace;white-space:nowrap;color:var(--accent)}
+#infoBar .meta a.chain-link:hover{background:var(--accent-bg)}
 /* A parent's family chip: its delegates folded into its card; a click opens or closes their list. */
 /* A card with a family chip lets its meta row wrap: the chip goes to a line of its own when the card is narrow. */
 .card .meta:has(.family-chip){flex-wrap:wrap;row-gap:4px}
