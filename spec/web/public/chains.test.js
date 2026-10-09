@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, chainChipHtml, chainDate, chainLinks, chainNeighbours, chainRowsHtml, continueRefusal, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
-import { families, familyWaits, waitingFirst } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { CONTINUE_OPENER, allViewChains, chainChipHtml, chainDate, chainLinks, chainNeighbours, chainRowsHtml, continueRefusal, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
+import { families, familyWaits, filterFamilies, waitingFirst } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // A chain of three days: d1 ← d2 ← d3 (d3 continues d2, which continues d1).
 const at = (day, hh = "10") => `2026-10-0${day}T${hh}:00:00.000Z`;
@@ -67,6 +67,39 @@ test("foldChains: with the latest link not listed, an earlier one heads its own 
   const fams = foldChains(families(all.filter((s) => !s.archived)), all);
   assert.deepEqual(fams.map((f) => [f.head.id, f.chain.at]), [["d2", 1]]);
   assert.match(chainChipHtml(fams[0]), />day 2 of 3</);
+});
+
+// A archived with its archived delegate D; B continues A.
+test("the all view finds an earlier link and its delegate: a search or include archived lists every link as a card", () => {
+  const a = link("a", 7, { archived: true, first_preview: "triage the parser" });
+  const d = link("d", 7, { archived: true, parent_id: "a", delegate: true, first_preview: "fix the lexer" });
+  const b = link("b", 8, { continues: "a" });
+  const all = [b, a, d];
+  const search = (q, includeArchived) => {
+    const listed = includeArchived ? all : all.filter((s) => !s.archived);
+    const fams = allViewChains(families(listed), all, { query: q, includeArchived });
+    return q ? filterFamilies(fams, (s) => (s.first_preview || "").includes(q)) : fams;
+  };
+  // Archived ones included: A heads its own card with D folded in, its chip "day 1 of 2".
+  const fams = search("", true);
+  assert.deepEqual(fams.map((f) => [f.head.id, f.members.map((m) => m.session.id)]), [["b", []], ["a", ["d"]]]);
+  assert.match(chainChipHtml(fams[1]), />day 1 of 2</);
+  assert.deepEqual(search("lexer", true).map((f) => f.head.id), ["a"]);
+  assert.deepEqual(search("parser", true).map((f) => f.head.id), ["a"]);
+  // Without them, no search: one card, folded.
+  assert.deepEqual(search("", false).map((f) => [f.head.id, f.chain.folded]), [["b", true]]);
+  // An unarchived earlier link (typed in) is found by a search.
+  const typed = [b, { ...a, archived: false }, d];
+  const found = filterFamilies(allViewChains(families(typed.filter((s) => !s.archived)), typed, { query: "parser" }),
+    (s) => (s.first_preview || "").includes("parser"));
+  assert.deepEqual(found.map((f) => f.head.id), ["a"]);
+});
+
+test("a chain's card doesn't wait for a link that is a card of its own", () => {
+  const waitingD2 = { ...d2, archived: false, pending_question: { id: "q", kind: "question", question: "Which?" } };
+  const all = [d3, waitingD2, d1];
+  const fams = foldChains(families(all.filter((s) => !s.archived)), all, { fold: false });
+  assert.deepEqual(fams.map((f) => [f.head.id, familyWaits(f)]), [["d3", false], ["d2", true]]);
 });
 
 test("foldChains hands back the same array when no session continues another", () => {
