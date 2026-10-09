@@ -4,6 +4,7 @@ require_relative "client_id"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "session_manager"
+require_relative "session_chain"
 require_relative "context_quote"
 require_relative "reply_wait"
 require_relative "parent_report"
@@ -34,6 +35,7 @@ module Samagotchi
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...
              chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [-m TEXT] [--image PATH]...
+             chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --wait [--timeout S] [--format json] ID
         Sends a message to each session, as if typed in it: a turn starts,
@@ -52,6 +54,14 @@ module Samagotchi
                     web does, and print its id
         --dir DIR   (--new) its folder, the project it belongs to; default
                     the current one
+        --continues ID
+                    (--new) start the next link of that session's chain:
+                    in its folder, on its model and LLM context, with a
+                    note carrying its recap; it is archived. last:ID
+                    names the chain's latest link. Without -m the new
+                    session waits idle. Refused for a session continued
+                    already (naming the next link) or with delegates
+                    still open
         --model M   (--new) its model; default the configured one
         --llm-context LAYERS, --llm-context-apply RULE, --llm-context-budget N
                     (--new) its own LLM context strategy (none, stale,forget),
@@ -83,6 +93,7 @@ module Samagotchi
       f.value "-m", "--message"
       f.switch "--new"
       f.value "--dir"
+      f.value "--continues"
       f.value "--model"
       f.value "--llm-context", key: :llm_strategy
       f.value "--llm-context-apply", key: :llm_apply
@@ -152,10 +163,14 @@ module Samagotchi
       # Before the wait-only case, which would drop the images.
       return usage_error("--image needs a message: pass -m TEXT or pipe it in") if prompt.nil? && !options[:images].empty?
       return run_wait_only(options) if prompt.nil? && options[:wait] && !options[:new]
-      return usage_error("no message: pass -m TEXT or pipe it in") unless prompt
+
+      # The next link of a chain may start idle, waiting for its first message.
+      idle_link = prompt.nil? && options[:continues]
+      return usage_error("--wait needs a message to wait for: pass -m TEXT") if idle_link && options[:wait]
+      return usage_error("no message: pass -m TEXT or pipe it in") unless prompt || idle_link
 
       begin
-        prompt = SessionInbox.checked_text(prompt, noun: "message")
+        prompt &&= SessionInbox.checked_text(prompt, noun: "message")
       rescue SessionInbox::NoteRejected => e
         @stderr.puts("chi send: #{e.message}")
         return 1
@@ -205,7 +220,7 @@ module Samagotchi
       return usage_error("at most #{MAX_IMAGES} images") if options[:images].size > MAX_IMAGES
       return new_options(options) if options[:new]
 
-      %i[dir model].each { |key| return usage_error("--#{key} needs --new") if options[key] }
+      %i[dir model continues].each { |key| return usage_error("--#{key} needs --new") if options[key] }
       LLM_CONTEXT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") if options[key] }
       return usage_error("give session ids") if options[:ids].empty?
 
@@ -219,6 +234,15 @@ module Samagotchi
 
     def new_options(options)
       return usage_error("--new takes no session ids: it starts one session") unless options[:ids].empty?
+
+      if options[:continues]
+        taken = [("--dir" if options[:dir]), ("--model" if options[:model])] +
+                LLM_CONTEXT_FLAGS.filter_map { |key, flag| flag if options[key] }
+        unless taken.compact.empty?
+          return usage_error("--continues takes the previous session's folder, model and LLM context; " \
+                             "leave out #{taken.compact.join(", ")}")
+        end
+      end
 
       words = LLM_CONTEXT_FIELDS.filter_map { |key, field| [field, options[key]] if options[key] }.to_h
       begin
@@ -253,7 +277,10 @@ module Samagotchi
     # @return [Integer] the exit status
     def run_new(prompt, options)
       images = !@images.empty?
-      if images && (refusal = vision_refusal(options[:model]))
+      model, typed = continued_model(options)
+      return 1 if model == false
+
+      if images && (refusal = vision_refusal(model, typed: typed))
         error_line("chi send: refused: #{refusal}")
         return 1
       end
@@ -264,9 +291,16 @@ module Samagotchi
       through_worker = images || command_like?(prompt)
       begin
         start = through_worker ? { prompt: nil, title: prompt } : { prompt: prompt }
-        session = SessionManager.spawn_session(**start, working_directory: options[:dir],
-                                                        model_name: options[:model], llm_context: options[:llm_context],
-                                                        state_dir: @state_dir)
+        session = if options[:continues]
+                    SessionManager.continue_session(options[:continues], **start, state_dir: @state_dir)
+                  else
+                    SessionManager.spawn_session(**start, working_directory: options[:dir],
+                                                          model_name: options[:model], llm_context: options[:llm_context],
+                                                          state_dir: @state_dir)
+                  end
+      rescue SessionManager::ContinueRefused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e
+        error_line("chi send: refused: #{e.message}")
+        return 1
       rescue StandardError => e
         error_line("chi send: could not start a session: #{e.message}")
         return 1
@@ -275,7 +309,7 @@ module Samagotchi
       if through_worker
         return 1 unless deliver_new(session, prompt)
       else
-        @info.puts("#{session.id}  started")
+        @info.puts("#{session.id}  started#{continued_words(session)}")
       end
       @session_id = session.id
       return 0 unless options[:wait]
@@ -284,6 +318,22 @@ module Samagotchi
       wait_for_reply(session.id, cursor: nil, baseline: baseline_of(session, question_id: nil),
                                  timeout: options[:timeout])
     end
+
+    # --continues: the model the new link will run (the previous link's),
+    # for the images check; [nil, nil] without --continues.
+    # @return [Array, false] [model_name, model_typed], or false after the
+    #   error line (no such session)
+    def continued_model(options)
+      return [options[:model], nil] unless options[:continues]
+
+      previous = Session.load(SessionChain.resolve(options[:continues], state_dir: @state_dir), state_dir: @state_dir)
+      [previous.model_name, previous.model_typed]
+    rescue ArgumentError => e
+      error_line("chi send: #{e.message}")
+      false
+    end
+
+    def continued_words(session) = session.continues ? " (continues #{session.continues[0, 8]})" : ""
 
     # One existing session, then its next reply. The cursor and baseline
     # are taken before the message goes in, so neither an older reply nor a
@@ -371,7 +421,7 @@ module Samagotchi
       end
 
       @sent_command = command_ack?(result[:ack])
-      @info.puts("#{session.id}  started#{with_images}#{"; #{SENT_COMMAND}" if @sent_command}")
+      @info.puts("#{session.id}  started#{continued_words(session)}#{with_images}#{"; #{SENT_COMMAND}" if @sent_command}")
       true
     end
 

@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   folder. `last:<id>` names a chain's latest link. See [docs/sessions.md](docs/sessions.md#session-chains).
 - `POST /api/sessions` takes `continues: <id>` (with `idle: true` or a `prompt`): the next link of that session's
   chain. A link continued already answers 409 `continued` with `next_id`, an open delegate 409 `open_children`.
+- `chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT]` starts the next link of a session's chain from a
+  terminal or a script (idle without a message); `last:ID` follows the chain to its latest link.
 
 ## [0.46.1] - 2026-10-09
 

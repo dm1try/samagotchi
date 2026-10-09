@@ -82,6 +82,71 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     expect(spawned).to be_empty
   end
 
+  # --continues: the next link of a chain (SessionManager.continue_session;
+  # spec/session_continue_spec.rb has its rules).
+  describe "--continues" do
+    let(:folder) { Dir.mktmpdir("send-continues") }
+    let(:previous) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: folder).tap do |s|
+        s.first_preview = "you are coordinator again"
+        s.messages = [{ role: "user", content: "you are coordinator again" }, { role: "assistant", content: "ok" }]
+        s.save(state_dir: tmpdir)
+      end
+    end
+
+    before do
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_call_original
+      allow(Process).to receive(:spawn).and_return(12_345)
+      allow(Process).to receive(:detach)
+    end
+
+    after { FileUtils.rm_rf(folder) }
+
+    def links = Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).select(&:continues)
+
+    it "starts the next link with the message, in the previous one's folder and model, and archives the previous one" do
+      expect(run("--new", "--continues", previous.id[0, 8], "-m", "start the day")).to eq(0), err.string
+
+      link = links.first
+      expect(out.string).to eq("#{link.id}  started (continues #{previous.id[0, 8]})\n")
+      expect(link).to have_attributes(continues: previous.id, working_directory: folder, model_name: "gemma4",
+                                      last_prompt: "start the day")
+      expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(previous.id, state_dir: tmpdir))).to be(true)
+    end
+
+    it "starts it idle with no message, and takes last:ID for the chain's latest link" do
+      expect(run("--new", "--continues", previous.id)).to eq(0), err.string
+      second = links.first
+      expect(second).to have_attributes(status: "idle", first_preview: "you are coordinator again")
+
+      expect(run("--new", "--continues", "last:#{previous.id}", "-m", "day three")).to eq(0), err.string
+      third = links.find { |s| s.continues == second.id }
+      expect(third.last_prompt).to eq("day three")
+    end
+
+    it "refuses a link continued already, naming the next one, and an unknown session" do
+      run("--new", "--continues", previous.id)
+      following = links.first
+
+      expect(run("--new", "--continues", previous.id, "-m", "again")).to eq(1)
+      expect(err.string).to include("chi send: refused: #{previous.id[0, 8]} is continued already, by #{following.id[0, 8]}")
+      expect(run("--new", "--continues", "feedbeef", "-m", "x")).to eq(1)
+      expect(err.string).to include("chi send: no session feedbeef")
+      expect(links.size).to eq(1)
+    end
+
+    it "is a usage error without --new, beside --dir, --model or --llm-context, or with --wait and no message" do
+      expect(run("--continues", previous.id, "-m", "x", "3fa2")).to eq(2)
+      expect(err.string).to include("--continues needs --new")
+      expect(run("--new", "--continues", previous.id, "--model", "M", "--llm-context", "stale", "-m", "x")).to eq(2)
+      expect(err.string).to include("--continues takes the previous session's folder, model and LLM context; " \
+                                    "leave out --model, --llm-context")
+      expect(run("--new", "--continues", previous.id, "--wait")).to eq(2)
+      expect(err.string).to include("--wait needs a message to wait for")
+      expect(links).to be_empty
+    end
+  end
+
   # The model id is checked against the host's saved list (ModelListStore)
   # in spawn_session: a typo is named on stderr, and the session starts
   # anyway (some hosts serve ids they don't list).
