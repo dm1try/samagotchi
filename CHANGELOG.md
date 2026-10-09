@@ -26,6 +26,11 @@ and commands may change between minor versions. How releases are made:
   chain. A link continued already answers 409 `continued` with `next_id`, an open delegate 409 `open_children`.
 - `chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT]` starts the next link of a session's chain from a
   terminal or a script (idle without a message); `last:ID` follows the chain to its latest link.
+### Fixed
+
+- A web message that ended (or began) with whitespace stayed in the composer after it was sent: one sent right
+  after Annotate (its quote ends in a blank line), or with a trailing newline or space. The sent text is trimmed,
+  and the composer was cleared only when it held exactly that text; it is now compared trimmed too.
 
 ## [0.46.1] - 2026-10-09
 

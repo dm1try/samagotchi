@@ -189,6 +189,8 @@ test("restoreAction never refills a prompt this page didn't send (a replay after
 });
 
 import { keepEarlyRestore, restoreOnAck, dropEarlyRestores, restoreInto, composerAfterAck } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { appendQuote, quoteBlock } from "../../../lib/samagotchi/web/public/annotations.js";
+import { turnText } from "../../../lib/samagotchi/web/public/images.js";
 
 test("a prompt_restored before its /turn ack is kept, and the ack gets the prompt back", () => {
   const event = { type: "prompt_restored", prompt: "boom", origin: { client_id: ME, enqueued_id: "e1" } };
@@ -260,6 +262,24 @@ test("composerAfterAck clears the text just sent and keeps what was typed since"
   assert.equal(composerAfterAck({ sent: "Say ping", current: "why not", refill: "Say ping" }), "why not\nSay ping");
   assert.equal(composerAfterAck({ sent: "Say ping", current: " why not " }), " why not ");
   assert.equal(composerAfterAck(), "");
+});
+
+test("composerAfterAck clears a sent message the composer held with surrounding whitespace", () => {
+  // turnText trims what is sent; the composer kept the newline or space.
+  assert.equal(composerAfterAck({ sent: "hello", current: "hello\n" }), "");
+  assert.equal(composerAfterAck({ sent: "hello", current: "hello " }), "");
+  assert.equal(composerAfterAck({ sent: "hello", current: "\n  hello\n\n" }), "");
+  assert.equal(composerAfterAck({ sent: "hello", current: "hello\n", refill: "earlier" }), "earlier");
+  // An image-only send: placeholders went, the composer held only whitespace.
+  assert.equal(composerAfterAck({ sent: "[image: a.png]", current: "\n" }), "");
+  // Text typed since the send still stays.
+  assert.equal(composerAfterAck({ sent: "hello", current: "hello\nand more" }), "hello\nand more");
+  // A message sent right after Annotate: the quote block ends in a blank line.
+  const quoted = appendQuote("", quoteBlock("PONG from the fake model."));
+  assert.match(quoted, /\n\n$/);
+  assert.equal(composerAfterAck({ sent: turnText(quoted, []), current: quoted }), "");
+  const noted = appendQuote("about this:", quoteBlock("PONG"));
+  assert.equal(composerAfterAck({ sent: turnText(noted, []), current: noted }), "");
 });
 
 

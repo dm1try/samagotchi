@@ -444,6 +444,25 @@ test("an annotate preset fills the composer with the quote and never sends", asy
   await expect(page.locator("#prompt")).toBeFocused();
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);
   expect(turnPosts).toEqual([]);
+
+  // The plain Annotate quote ends in a blank line, and sent as it is the
+  // message (trimmed) still clears the composer.
+  await page.locator("#prompt").fill("");
+  await page.evaluate(() => {
+    const text = [...document.querySelectorAll("#history .bubble.output")].pop().querySelector("p").firstChild;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "PONG from the fake model.".length);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  await bar.getByRole("button", { name: "Annotate" }).click();
+  await expect(page.locator("#prompt")).toHaveValue("> PONG from the fake model.\n\n");
+  await page.locator("#actionBtn").click();
+  await expect(page.locator(`${H()} .bubble.user`).last()).toHaveAttribute("data-user-content", "> PONG from the fake model.");
+  await turnEnded(page, 2);
+  await expect(page.locator("#prompt")).toHaveValue("");
 });
 
 test("the model picker lists the fake model", { tag: "@turn" }, async ({ page }) => {
