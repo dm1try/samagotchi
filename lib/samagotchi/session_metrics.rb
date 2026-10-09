@@ -379,6 +379,16 @@ module Samagotchi
       @mutex.synchronize { build_snapshot(:recent) }
     end
 
+    # The snapshot of a session no worker runs, read from disk (`chi
+    # sessions stats`): #snapshot's, but its records are the newest saved
+    # turn's (and its tool calls), as a live worker's snapshot carries its
+    # newest finished turn; #snapshot would list none, this collector having
+    # finished no turn of its own.
+    # @return [Hash]
+    def saved_snapshot
+      @mutex.synchronize { build_snapshot(:last) }
+    end
+
     # Close the open generation now, ahead of its :generation_completed
     # (which then finds it closed), and report its speed with the session's
     # running token totals: what the event carries to the UIs.
@@ -486,14 +496,16 @@ module Samagotchi
 
     # The records a snapshot carries, copied. :all is every record; :recent
     # the newest turn this collector finished (live before its save lands)
-    # and the unsaved ones (capped), and the tool records of those turns and
-    # of the running one. Records are appended in turn order, so both come
-    # from the tails. Caller holds the mutex.
+    # and the unsaved ones (capped); :last the newest turn, loaded or not;
+    # and the tool records of those turns and of the running one. Records
+    # are appended in turn order, so both come from the tails. Caller holds
+    # the mutex.
     def records_view(mode)
       return { turn_records: @turn_records.map(&:dup), tool_records: @tool_records.map(&:dup) } if mode == :all
 
       unsaved = @turn_records.size - @persisted_turns
-      count = unsaved.clamp(@turn_records.size > @loaded_turns ? 1 : 0, LIVE_RECORDS_CAP)
+      fresh = @turn_records.size > @loaded_turns ? 1 : 0
+      count = mode == :last ? 1 : unsaved.clamp(fresh, LIVE_RECORDS_CAP)
       turns = @turn_records.last(count)
       ids = turns.to_set { |record| record[:id] }
       ids << @turn.id if @turn

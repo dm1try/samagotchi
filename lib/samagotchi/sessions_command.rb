@@ -339,7 +339,7 @@ module Samagotchi
       end
       return [nil, false, nil] unless File.file?(File.join(dir, "analytics.json"))
 
-      snapshot = Samagotchi::SessionMetrics.new.tap { |m| m.session_id = session.id }.snapshot
+      snapshot = Samagotchi::SessionMetrics.new.tap { |m| m.session_id = session.id }.saved_snapshot
       note = live_worker?(session.id) ? "(no live worker answered; from the saved analytics.json)" : nil
       [snapshot, false, note]
     end

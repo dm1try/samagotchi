@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - A bare model id, or an alias with a bare target (`splash: incoai/Qwen3.8-27B-Splash`), in a process that hasn't
   listed the hosts yet (`chi --model splash`, `chi send --new --model splash`, a delegate's worker) goes to the host
   whose saved list (`model_lists.json`, at most a week old) has it, instead of always the default host.
+- `chi sessions stats ID --format json` for a session no worker runs lists its newest saved turn (and that turn's
+  tool calls) in `turn_records` / `tool_records`, as a live worker's snapshot does, instead of empty lists.
 
 ## [0.50.0] - 2026-10-09
 

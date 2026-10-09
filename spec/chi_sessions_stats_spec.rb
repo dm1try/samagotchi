@@ -152,6 +152,11 @@ RSpec.describe "chi sessions stats" do
       expect(metrics["tokens"]).to include("prompt_sum" => 3040, "completion_sum" => 480, "source" => "server")
       expect(metrics["context"]).to include("used_tokens" => 1760, "window_tokens" => 8192)
       expect(metrics["retries"]).to eq(2)
+      # The newest saved turn and its tool calls, as a live worker's
+      # snapshot carries its newest finished turn (never an empty list
+      # while turns happened); the full history is analytics.json.
+      expect(metrics["turn_records"].map { |record| record["id"] }).to eq(%w[turn-1])
+      expect(metrics["tool_records"].map { |record| record["id"] }).to eq(%w[call-1])
     end
 
     it "without an analytics.json prints what is known and (no metrics yet), exit 0" do
