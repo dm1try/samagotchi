@@ -151,3 +151,19 @@ test("continueRefusal: anything else is the server's words", () => {
 test("the opener is the same neutral line for every chain", () => {
   assert.equal(CONTINUE_OPENER, "Continue where we left off.");
 });
+
+// The page folds on every hub event: one pass over the list, not one per
+// family (a user has ~600 sessions; this was ~0.9 s at 4000).
+test("foldChains over 4000 sessions in chains of ten stays well under a frame budget's worth of work", () => {
+  const list = [];
+  for (let i = 0; i < 4000; i++) {
+    const t = new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString();
+    list.push({ id: `s${i}`, created_at: t, updated_at: t, continues: i % 10 ? `s${i - 1}` : null, archived: i % 10 !== 9 });
+  }
+  const fams = families(list);
+  const start = performance.now();
+  const folded = foldChains(fams, list);
+  const ms = performance.now() - start;
+  assert.equal(folded.length, 400);
+  assert.ok(ms < 250, `foldChains took ${Math.round(ms)} ms`);
+});
