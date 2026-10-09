@@ -200,9 +200,11 @@ module Samagotchi
     # id it is sent as (ModelRef: one alias pass). A ref that names a host
     # goes there. A bare id goes to the hosts whose cached list has it or
     # that declare it (hosts.<name>.models, known before any /models): the
-    # default host when it is one of them, else the first in hosts: order,
-    # else the default host (before /models nothing is listed: no
-    # discovery here, the latency budget). Never by a substring.
+    # default host when it is one of them, else the first in hosts: order.
+    # When none does, the hosts whose saved list (ModelListStore, another
+    # process's listing: a worker spawned with --model never lists) has
+    # it, the same way; else the default host (no discovery here, the
+    # latency budget). Never by a substring.
     def host_for_model(raw_model)
       ref = model_ref(raw_model)
       # ModelRef names a host only when it is one of ours
@@ -211,6 +213,7 @@ module Samagotchi
       down = ref.id.to_s.strip.downcase
       listed = @mutex.synchronize { @model_index }&.fetch(down, nil) || []
       candidates = @entries.values.select { |e| listed.include?(e.name) || e.models&.key?(down) }.map(&:name)
+      candidates = saved_hosts_for(down) if candidates.empty?
       default = default_entry
       name = candidates.include?(default.name) ? default.name : candidates.first
       [(name && find_entry(name)) || default, ref.id]
@@ -384,6 +387,16 @@ module Samagotchi
     # ModelListStore is what they check an id against.
     def save_model_list(name, models)
       ModelListStore.save(name, Array(models).map(&:id), env: @env)
+    end
+
+    # The configured hosts, in hosts: order, whose fresh saved list
+    # (ModelListStore) has +down+ (a downcased id). The store never raises.
+    def saved_hosts_for(down)
+      saved = ModelListStore.read(env: @env)
+      @entries.each_key.select do |name|
+        list = saved[name]
+        list && !list.stale? && list.known?(down)
+      end
     end
 
     def fresh_list(name, entry)

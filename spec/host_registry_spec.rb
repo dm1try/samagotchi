@@ -270,7 +270,9 @@ RSpec.describe Samagotchi::HostRegistry do
 
       expect(results["slow"][:error]).to eq("no answer in 0.05 s")
       expect(registry.cached_results).to be_nil
-      expect(registry.resolve("late-model").entry.name).to eq("default")
+      # Not from a model index (none is stored) but from the list the late
+      # thread saved (ModelListStore): the slow host's id isn't missed.
+      expect(registry.resolve("late-model").entry.name).to eq("slow")
     end
 
     it "waits for every host and stores the listing when all answer in time" do
@@ -280,6 +282,66 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(results["slow"][:models].map(&:id)).to eq(["late-model"])
       expect(registry.cached_results).to eq(results)
       expect(registry.resolve("late-model").entry.name).to eq("slow")
+    end
+  end
+
+  # A process that never listed a host (a worker spawned by
+  # `chi send --new --model splash`) routes a bare id, or an alias's bare
+  # target, by the hosts' saved lists (ModelListStore) before falling back
+  # to the default host.
+  describe "a bare id another process saw a host list (ModelListStore)" do
+    let(:registry) do
+      described_class.new(hosts_config: {
+        "main" => { host: "localhost", port: 8081 },
+        "splash" => { host: "localhost", port: 8082 },
+        "other" => { host: "localhost", port: 8083 }
+      })
+    end
+    let(:state_home) { Dir.mktmpdir("saved-lists-registry") }
+
+    around do |example|
+      with_env("XDG_STATE_HOME" => state_home) { example.run }
+    ensure
+      FileUtils.rm_rf(state_home)
+    end
+
+    before do
+      allow(Samagotchi::ConfigFile).to receive(:model_aliases)
+        .and_return({ "splash" => "incoai/Qwen3.8-27B-Splash" })
+    end
+
+    it "goes to the host whose saved list has the alias's target, the alias named as a host too" do
+      Samagotchi::ModelListStore.save("splash", %w[incoai/Qwen3.8-27B-Splash])
+      target = registry.resolve("splash")
+
+      expect(target.entry.name).to eq("splash")
+      expect(target.bare_model).to eq("incoai/Qwen3.8-27B-Splash")
+    end
+
+    it "prefers the default host when its saved list has the id too" do
+      Samagotchi::ModelListStore.save("splash", %w[incoai/Qwen3.8-27B-Splash])
+      Samagotchi::ModelListStore.save("main", %w[incoai/Qwen3.8-27B-Splash])
+
+      expect(registry.resolve("splash").entry.name).to eq("main")
+    end
+
+    it "ignores a stale saved list and an unconfigured host's, going to the default host" do
+      old = Time.now.to_i - Samagotchi::ModelListStore::TTL_SECONDS - 60
+      Samagotchi::ModelListStore.save("splash", %w[incoai/Qwen3.8-27B-Splash], at: old)
+      Samagotchi::ModelListStore.save("gone", %w[incoai/Qwen3.8-27B-Splash])
+
+      expect(registry.resolve("splash").entry.name).to eq("main")
+    end
+
+    it "goes by this process's own listing over the saved lists" do
+      Samagotchi::ModelListStore.save("splash", %w[incoai/Qwen3.8-27B-Splash])
+      allow(registry).to receive(:list_models_for) do |entry|
+        ids = entry.name == "other" ? %w[incoai/Qwen3.8-27B-Splash] : []
+        ids.map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) }
+      end
+      registry.list_all_models
+
+      expect(registry.resolve("splash").entry.name).to eq("other")
     end
   end
 
