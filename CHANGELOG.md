@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi sessions stats ID [--format text|json]`: a session's cost, tokens and progress without running a model turn:
+  a live worker's `GET stats` (waiting up to 3 s), else the snapshot its saved `analytics.json` rebuilds (never
+  starting a worker); text prints the `/stats` report headed by `<id8>  <status>  <model>`, json one
+  `{session_id, status, live, metrics}` object.
+
 ### Changed
 
 - A turn record in `analytics.json` says whether the turn was a step-limit Continue (`continue: true`, else `false`),
@@ -34,6 +41,9 @@ and commands may change between minor versions. How releases are made:
   command when it has one, else its whole truncated text.
 - Web: a `!cmd`'s output shows once, as a command bubble: the history renders the saved `!(<command>)` message as
   one (not a user bubble), and a live `command_ran` no longer adds a second bubble after the redraw.
+- `chi send` refuses a UI-only command (`/stats`, `/exit`, `/recap`, …) instead of passing it to the worker, which
+  doesn't run it, so the line reached the model as a prompt and cost a whole turn; the refusal names
+  `chi sessions stats` for `/stats` and sends nothing (exit 1, also with `--new` before a session is created).
 
 ## [0.49.0] - 2026-10-09
 
