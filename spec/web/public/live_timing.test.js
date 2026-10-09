@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createLiveTiming, lineRecord, liveLineText } from "../../../lib/samagotchi/web/public/live_timing.js";
+import { createLiveTiming, lineRecord, liveLineText, liveTickMs } from "../../../lib/samagotchi/web/public/live_timing.js";
 
 const T0 = "2026-10-06T10:00:00.000Z";
 const at = (ms) => Date.parse(T0) + ms;
@@ -25,10 +25,11 @@ function setup({ inStage = false, records = [] } = {}) {
     makeLine: fakeLine,
     onTick: () => { page.ticks += 1; },
     now: () => page.now,
-    every: (fn) => { const id = page.nextTimer++; page.timers.set(id, fn); return id; },
+    every: (fn, ms) => { const id = page.nextTimer++; page.timers.set(id, { fn, ms }); return id; },
     cancel: (id) => page.timers.delete(id),
   });
-  page.advance = (ms) => { page.now += ms; [...page.timers.values()].forEach((fn) => fn()); };
+  page.advance = (ms) => { page.now += ms; [...page.timers.values()].forEach(({ fn }) => fn()); };
+  page.intervals = () => [...page.timers.values()].map((t) => t.ms);
   return { timing, page };
 }
 
@@ -47,26 +48,50 @@ test("lineRecord: by the turn's id, else the last record", () => {
   assert.equal(lineRecord(records, "zzz"), undefined);
 });
 
-test("start: a live line numbered after the turns seen to end, ticking every second, the active turn set", () => {
+test("start: a live line numbered after the turns seen to end, ticking fast then every second, the active turn set", () => {
   const { timing, page } = setup();
   timing.ended = 2;
   timing.start(T0, "T3");
   assert.equal(page.placed.length, 1);
   assert.equal(timing.el, page.placed[0]);
   assert.equal(timing.el.className, "turn-timing live");
-  assert.equal(timing.el.textContent, "turn 3 running · 0ms");
+  assert.equal(timing.el.textContent, "turn 3 running · 0.0s");
   assert.deepEqual(page.timing.activeTurn, { id: "T3", started_at: T0 });
   assert.equal(timing.turnId, "T3");
+  // The live line counts up from the first second: tenths while under 10 s.
+  page.advance(300);
+  assert.equal(timing.el.textContent, "turn 3 running · 0.3s");
+  page.now = at(1500);
+  page.timers.forEach(({ fn }) => fn());
+  assert.equal(timing.el.textContent, "turn 3 running · 1.5s");
   page.advance(2000);
-  assert.equal(timing.el.textContent, "turn 3 running · 2.0s");
+  assert.equal(timing.el.textContent, "turn 3 running · 3.5s");
+  // Ticking 200 ms during the first ten seconds.
+  assert.deepEqual(page.intervals(), [200]);
+  page.now = at(10000);
+  page.timers.forEach(({ fn }) => fn());
+  assert.equal(timing.el.textContent, "turn 3 running · 10s");
+  // From ten seconds on the ticker runs at one a second.
+  assert.deepEqual(page.intervals(), [1000]);
+  page.advance(1000);
+  assert.equal(timing.el.textContent, "turn 3 running · 11s");
+  page.advance(1000);
+  assert.equal(timing.el.textContent, "turn 3 running · 12s");
   assert.equal(page.timers.size, 1);
 });
 
 test("start in the stage: the line drops its own 'running'", () => {
   const { timing } = setup({ inStage: true });
   timing.start(T0);
-  assert.equal(timing.el.textContent, "turn 1 · 0ms");
+  assert.equal(timing.el.textContent, "turn 1 · 0.0s");
   assert.equal(timing.turnId, null);
+});
+
+test("liveTickMs: 200 ms during the first ten seconds, then one a second", () => {
+  assert.equal(liveTickMs(0), 200);
+  assert.equal(liveTickMs(9999), 200);
+  assert.equal(liveTickMs(10000), 1000);
+  assert.equal(liveTickMs(60000), 1000);
 });
 
 test("setNote: shown after the line until cleared; the same note again is no redraw", () => {

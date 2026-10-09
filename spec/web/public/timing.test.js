@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   elapsedSince,
   formatDuration,
+  liveDurationText,
   mergeTiming,
   normalizeTiming,
   turnRecordAt,
@@ -26,6 +27,19 @@ test("formatDuration renders compact elapsed values", () => {
   for (const { ms, expected } of matrix.cases) {
     assert.equal(formatDuration(ms), expected, `timing for ${ms}ms`);
   }
+});
+
+test("liveDurationText: the live line's duration — tenths under a second, formatDuration from 1 s on", () => {
+  assert.equal(liveDurationText(0), "0.0s");
+  assert.equal(liveDurationText(200), "0.2s");
+  assert.equal(liveDurationText(849), "0.8s");
+  assert.equal(liveDurationText(1000), "1.0s");
+  assert.equal(liveDurationText(1500), "1.5s");
+  assert.equal(liveDurationText(9999), "10.0s");
+  assert.equal(liveDurationText(10000), "10s");
+  assert.equal(liveDurationText(61000), "1m 01s");
+  assert.equal(liveDurationText(-1), "");
+  assert.equal(liveDurationText("nope"), "");
 });
 
 test("elapsedSince uses supplied time and rejects invalid dates", () => {
