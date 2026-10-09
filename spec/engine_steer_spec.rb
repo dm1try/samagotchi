@@ -214,7 +214,7 @@ RSpec.describe Samagotchi::Engine, "#steer" do
     it "cuts a generation thinking only for steer.cut_after seconds, for the user, chi send and a parent agent" do
       [nil, "chi_send", "parent_agent"].each do |source|
         answer, detail = cut_during(source)
-        expect(answer).to be(true)
+        expect(answer).to eq(:now)
         expect(detail).to eq(by: "steer", steer: true, source: source.to_s, reason: "a new message")
       end
     end
@@ -225,36 +225,36 @@ RSpec.describe Samagotchi::Engine, "#steer" do
       expect(Samagotchi::Log).to have_received(:info).with(:turn, "steer_cut", source: "chi_send", age: 25.0)
     end
 
-    it "does not cut a younger generation" do
-      expect(cut_during(nil, thinking_for: 5)).to eq([false, nil])
+    it "does not cut a younger generation: the message waits for the thinking to pass cut_after" do
+      expect(cut_during(nil, thinking_for: 5)).to eq([:waits, nil])
     end
 
     it "does not cut after visible text or a tool call" do
-      expect(cut_during(nil, lanes: { text: "Answer" })).to eq([false, nil])
-      expect(cut_during(nil, lanes: { tool_call: true })).to eq([false, nil])
+      expect(cut_during(nil, lanes: { text: "Answer" })).to eq([:waits, nil])
+      expect(cut_during(nil, lanes: { tool_call: true })).to eq([:waits, nil])
     end
 
     it "never cuts for a plugin" do
-      expect(cut_during("plugin_send")).to eq([false, nil])
-      expect(cut_during("check-in")).to eq([false, nil])
+      expect(cut_during("plugin_send")).to eq([:off, nil])
+      expect(cut_during("check-in")).to eq([:off, nil])
     end
 
     it "never cuts with steer.cut_after 0" do
       with_env("SAMAGOTCHI_STEER_CUT_AFTER" => "0") do
-        expect(cut_during(nil, thinking_for: 600)).to eq([false, nil])
+        expect(cut_during(nil, thinking_for: 600)).to eq([:off, nil])
       end
     end
 
     it "honours steer.cut_after" do
       with_env("SAMAGOTCHI_STEER_CUT_AFTER" => "60") do
-        expect(cut_during(nil, thinking_for: 30)).to eq([false, nil])
-        expect(cut_during(nil, thinking_for: 61).first).to be(true)
+        expect(cut_during(nil, thinking_for: 30)).to eq([:waits, nil])
+        expect(cut_during(nil, thinking_for: 61).first).to eq(:now)
       end
     end
 
-    it "is false with no turn running, and between generations" do
-      expect(engine.cut_for_steer(nil)).to be(false)
-      expect(cut_during(nil, between: true)).to eq([false, nil])
+    it "is off with no turn running, and waits between generations (it cuts in the next one)" do
+      expect(engine.cut_for_steer(nil)).to eq(:off)
+      expect(cut_during(nil, between: true)).to eq([:waits, nil])
     end
   end
 
@@ -307,7 +307,7 @@ RSpec.describe Samagotchi::Engine, "#steer" do
 
     it "cuts once the thinking passes steer.cut_after, with the message's source, and only once" do
       result = play([:gen], [:think, 0], [:think, 5], [:steer, "chi_send"], [:think, 5], [:think, 9], [:think, 2], [:think, 2])
-      expect(result).to eq(answers: [false], cuts: [steer_cut.call("chi_send")])
+      expect(result).to eq(answers: [:waits], cuts: [steer_cut.call("chi_send")])
     end
 
     it "logs the deferred cut as one that waited" do

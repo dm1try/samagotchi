@@ -44,21 +44,25 @@ module Samagotchi
     # Call it after the message is queued, with the #input_epoch read
     # before queueing it. Outside any lock; a cut that lands just after the
     # generation ended is harmless (the loop re-asks).
-    # @return [Boolean] whether a generation was cut now
+    # @return [Symbol] :now (a generation was cut now), :waits (the message
+    #   waits for the thinking to pass steer.cut_after), or :off (cutting
+    #   off for this source: a plugin, no turn, cut_after 0, a generation
+    #   that isn't thinking-only, or a drain already took the message)
     def cut_for_steer(source, epoch: nil)
-      return false unless Steer.cuts?(source)
+      return :off unless Steer.cuts?(source)
 
       after = Config.get("steer.cut_after").to_i
-      return false unless after.positive?
+      return :off unless after.positive?
 
       ctrl = @controller.call
-      return false unless ctrl
-      return cut!(ctrl, source.to_s) if @phase.cuttable?(after)
+      return :off unless ctrl
+      return cut!(ctrl, source.to_s) ? :now : :off if @phase.cuttable?(after)
 
-      Log.info(:turn, "steer_cut_waits", source: source.to_s) if @waiting.wait!(source, epoch: epoch)
-      false
+      waited = @waiting.wait!(source, epoch: epoch)
+      Log.info(:turn, "steer_cut_waits", source: source.to_s) if waited
+      waited ? :waits : :off
     rescue StandardError
-      false
+      :off
     end
 
     # The drains that took input so far (WaitingSteer#epoch): read it before
