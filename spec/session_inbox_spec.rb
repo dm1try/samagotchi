@@ -56,7 +56,6 @@ RSpec.describe Samagotchi::SessionInbox do
       File.write(old, JSON.generate({ "prompt" => "hi", "client_id" => "web:1" }))
 
       expect(described_class.read_input(old)).to eq(["hi", { client_id: "web:1" }, false, [], nil])
-      expect(described_class.input_delivery(old)).to be_nil
     end
 
     describe ".waits_for_turn_end?" do

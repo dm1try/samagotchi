@@ -199,15 +199,6 @@ module Samagotchi
       [nil, nil, false, [], nil]
     end
 
-    # An unclaimed input file's delivery value, or nil (no key: an older
-    # chi's file, read as the default next_step).
-    def self.input_delivery(input_file)
-      data = JSON.parse(File.read(input_file))
-      data.is_a?(Hash) ? data["delivery"] : nil
-    rescue JSON::ParserError, SystemCallError
-      nil
-    end
-
     # Whether an unclaimed input file carries images (a mid-turn drain
     # leaves it for its own turn).
     def self.input_has_images?(input_file)
