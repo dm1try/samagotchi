@@ -510,15 +510,18 @@ module Samagotchi
           generation_controller = nil
           response = with_generation do |controller|
             generation_controller = controller
+            # One count for the step: the ask-again without thinking fields
+            # doesn't get drops of its own.
+            drops = DropCount.new(0, 0)
             begin
-              request_with_drops(iteration, retry_generation, streamed, thought, 0, controller)
+              request_with_drops(iteration, retry_generation, streamed, thought, drops, controller)
             rescue BadRequest => e
               raise unless thinking_refused?(e)
 
               # Once per model: asked again without the thinking fields.
               @loop.thinking_refused!(@model_name)
               emit(type: :thinking_refused, iteration: iteration, model: @model_name, level: @loop.thinking, detail: e.detail)
-              request_with_drops(iteration, retry_generation, streamed, thought, 0, controller)
+              request_with_drops(iteration, retry_generation, streamed, thought, drops, controller)
             end
           rescue RequestCancelled
             raise unless generation_controller&.cancelled? && !@cancel_controller.cancelled?
@@ -596,12 +599,14 @@ module Samagotchi
         # retries.
         MAX_STREAM_DROPS = 2
 
-        # Runs one request, asking again on a mid-stream drop. +attempt+
-        # counts the drops already retried this step; +requests+ the HTTP
-        # requests they made (each drop's own transport attempts), so the
+        # A step's drops asked again (+drops+) and the HTTP requests made so
+        # far (+requests+: each failed request's transport attempts), so the
         # error that ends the step counts every request, not the last one's.
-        def request_with_drops(iteration, retry_generation, streamed, thought, attempt, generation_controller,
-                               requests: 0)
+        DropCount = Struct.new(:drops, :requests)
+
+        # Runs one request, asking again on a mid-stream drop; +count+ (a
+        # DropCount) carries on across calls for one step.
+        def request_with_drops(iteration, retry_generation, streamed, thought, count, generation_controller)
           streamed_any = false
           request(iteration, retry_generation, streamed, thought, generation_controller, -> { streamed_any = true })
         rescue RetryExhausted => e
@@ -610,15 +615,16 @@ module Samagotchi
           cancelled = [@cancel_controller, generation_controller].compact.find(&:cancelled?)
           raise RequestCancelled, cancelled.reason if cancelled
 
-          requests += e.attempts.to_i
+          count.requests += e.attempts.to_i
           limit = @loop.stream_drop_limit(MAX_STREAM_DROPS)
-          if attempt >= limit || !streamed_any
-            raise if requests == e.attempts.to_i
+          if count.drops >= limit || !streamed_any
+            raise if count.requests == e.attempts.to_i
 
-            raise RetryExhausted.new(attempts: requests, last_error: e.last_error, label: e.host)
+            raise RetryExhausted.new(attempts: count.requests, last_error: e.last_error, label: e.host)
           end
 
-          attempt += 1
+          count.drops += 1
+          attempt = count.drops
           streamed.clear
           thought.clear
           delay = @loop.generation_retry_delay(attempt)
@@ -628,6 +634,12 @@ module Samagotchi
                next_delay: delay, error_class: e.class.name, error_message: e.message, status: nil, restarted: true)
           @loop.wait_retry(delay, @cancel_controller, generation_controller)
           retry
+        rescue ProviderError => e
+          # Another failure (a 503, a refusal) after earlier requests this
+          # step: its count takes theirs in.
+          count.requests += e.attempts.to_i
+          e.attempts = count.requests
+          raise
         end
 
         # A 400 about reasoning, for a request that carried thinking fields

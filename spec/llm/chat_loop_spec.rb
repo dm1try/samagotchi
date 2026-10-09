@@ -143,8 +143,22 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     it "fails the turn when the request without them is refused too" do
       backend.adapter = FakeChatAdapter.new(refused)
 
-      expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
+      expect { run }.to raise_error(Samagotchi::LLM::BadRequest) { |error| expect(error.attempts).to eq(2) }
       expect(backend.adapter.requests.size).to eq(2)
+    end
+
+    it "keeps counting the step's stream drops when it asks again without them" do
+      dropping = lambda do |on_delta:, **|
+        on_delta.call(content: "half", reasoning: "", payload: {})
+        raise Samagotchi::LLM::RetryExhausted.new(attempts: 1, last_error: Net::ReadTimeout.new, label: "openrouter")
+      end
+      backend.adapter = FakeChatAdapter.new(dropping, refused, dropping)
+
+      expect { run }.to raise_error(Samagotchi::LLM::RetryExhausted) { |error| expect(error.attempts).to eq(4) }
+      # A drop, the refusal, then the one drop left of the step's two, and
+      # the drop that ends it.
+      expect(backend.adapter.requests.size).to eq(4)
+      expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:attempt] }).to eq([1, 2])
     end
 
     it "doesn't ask again for a 400 about something else, or with no thinking fields sent" do
@@ -532,6 +546,18 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         expect(error.summary).to include("after 3 attempts")
         expect(error.message).to start_with("openrouter request failed after 3 attempts: Net::ReadTimeout")
         expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:attempt] }).to eq([1, 2])
+      end
+
+      it "counts the drops' requests in a different error that ends the step (a 503)" do
+        server_error = lambda do |on_delta:, **|
+          on_delta.call(content: "x", reasoning: "", payload: {})
+          raise Samagotchi::LLM::ServerError.new("openrouter: HTTP 503: boom", host: "openrouter", status: 503,
+                                                                               retryable: true)
+        end
+        backend.adapter = FakeChatAdapter.new(dropping, server_error)
+
+        expect { run }.to raise_error(Samagotchi::LLM::ServerError) { |error| expect(error.attempts).to eq(2) }
+        expect(backend.adapter.requests.size).to eq(2)
       end
 
       it "does not ask again when nothing was streamed yet, nor after a first-token timeout or a refusal" do

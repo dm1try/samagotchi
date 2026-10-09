@@ -24,6 +24,9 @@ and commands may change between minor versions. How releases are made:
   be a worktree's root (a directory with `.git`), or no directory on this machine.
 - A step whose stream kept dropping now fails saying how many requests it made ("after 3 attempts"), not
   "after 1 attempts"; one attempt is said in the singular.
+- A step that ends on another error after its stream dropped (a 503) counts the dropped requests in that
+  error's attempts too, and a step asked again without thinking fields (a host refused them) keeps its count of
+  stream drops: it no longer gets two more ask-agains of its own.
 - A host that is down is named once in the models list's warning and in `/models` (`gw: connection refused`, not
   `gw: gw: connection refused`).
 - `/stats`' estimated cost names the host whose prices it used (`from hosts.gw.models prices`), not a literal
