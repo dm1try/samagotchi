@@ -213,7 +213,7 @@ module Samagotchi
         return record unless record["status"] == "running"
 
         pid = record["pid"]
-        return record if chis_group?(record)
+        return record if chis_group?(record, started: record["pid_started"])
         # Gone: its exit code says how it ended.
         return mark_finished_without_exit_code(record) if ProcessGroup.signalable?(pid) && !ProcessGroup.alive?(pid)
 
@@ -222,8 +222,9 @@ module Samagotchi
 
       # Whether the record's pid still leads its own group. With +started+
       # (the start time recorded at task_create), also the same process: a
-      # ps per call, so only task_stop asks it, just before the signal;
-      # a refresh (each task_wait poll, task_list) checks the group only.
+      # ps per call on macOS (~5 ms), asked by each refresh (task_list,
+      # task_get, each task_wait poll) so a reused pid reads as exited, and
+      # by task_stop again just before the signal.
       def chis_group?(record, started: nil) = ProcessGroup.leader?(record["pid"], started: started)
 
       # A running record whose pid isn't a group chi started (NOT_CHIS_PROCESS)

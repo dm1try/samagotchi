@@ -368,18 +368,16 @@ RSpec.describe "task tools" do
       end
     end
 
-    it "keeps a running task running when its start time can't be read, and reads it only to stop" do
+    it "keeps a running task running when its start time can't be read" do
       record, = described_class.create_task("sleep 30")
       allow(Samagotchi::ProcessGroup).to receive(:start_time).and_return(nil)
 
       3.times { expect(described_class.get_record(record["id"]).first).to include("status" => "running") }
       expect(described_class.list_records.first).to include("status" => "running")
-      expect(Samagotchi::ProcessGroup).not_to have_received(:start_time)
 
       stopped, error = described_class.stop_task(record["id"], by: "model")
       expect(error).to be_nil
       expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_model")
-      expect(Samagotchi::ProcessGroup).to have_received(:start_time).with(record["pid"])
     end
 
     it "records the task's start time, and signals nothing for a group leader whose pid was reused since" do
@@ -400,6 +398,26 @@ RSpec.describe "task tools" do
       expect(error).to be_nil
       expect(stopped).to include("status" => "failed", "stop_reason" => described_class::NOT_CHIS_PROCESS)
       expect(Process).not_to have_received(:kill).with(satisfy { |sig| sig.to_s != "0" }, anything)
+      expect(Process.wait2(other, Process::WNOHANG)).to be_nil
+    ensure
+      if other
+        Process.kill("KILL", other)
+        Process.wait(other)
+      end
+      Process.kill("KILL", -record["pid"]) if record && Samagotchi::ProcessGroup.leader?(record["pid"])
+    end
+
+    it "lists and reads a task whose pid a later group leader reused as exited, before any task_stop" do
+      record, = described_class.create_task("sleep 30")
+      other = Samagotchi::ProcessGroup.spawn({}, "sleep", "31.81", in: File::NULL, out: File::NULL, err: File::NULL)
+      described_class.write_record(described_class.load_record(record["id"]).merge("pid" => other))
+      allow(Samagotchi::ProcessGroup).to receive(:start_time).and_wrap_original do |original, pid|
+        pid == other ? "a later start" : original.call(pid)
+      end
+
+      expect(described_class.list_records.find { |r| r["id"] == record["id"] }).to include("status" => "failed")
+      expect(described_class.get_record(record["id"]).first)
+        .to include("status" => "failed", "stop_reason" => described_class::NOT_CHIS_PROCESS)
       expect(Process.wait2(other, Process::WNOHANG)).to be_nil
     ensure
       if other
