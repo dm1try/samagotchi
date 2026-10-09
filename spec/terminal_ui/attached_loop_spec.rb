@@ -1502,6 +1502,68 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
   end
 end
 
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn runs" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234", host: "127.0.0.1", port: 1) }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
+  let(:running_turn) do
+    { "prompt" => "go", "origin" => { "client_id" => "web:1" }, "parts" => [] }
+  end
+  let(:snapshot) do
+    { "type" => "snapshot",
+      "snapshot" => { "messages" => [], "current_turn" => running_turn, "queued" => [], "event_seq" => 1 },
+      "session_state_snapshot" => { "status" => "running" } }
+  end
+
+  before { allow(client).to receive(:follow) { |&block| block.call(snapshot); double("stream", close: nil) } }
+
+  def reply(body, status: 202) = Samagotchi::BridgeClient::Response.new(status: status, body: JSON.generate(body))
+
+  # Runs one attached session reading +lines+ in order (then Ctrl-D), with
+  # the worker's 202 for each prompt.
+  def run_inputs(*lines, ack: { "enqueued_id" => "e1", "delivery" => "next_step" })
+    allow(client).to receive(:post_turn).and_return(reply(ack))
+    attached.run(input: ->(_prompt, _prefill) { lines.shift })
+  end
+
+  it "sends a plain line as the default delivery (no delivery field) and says it goes in at the next step" do
+    run_inputs("hello")
+
+    expect(client).to have_received(:post_turn).once.with(prompt: "hello", client_id: "tui:1")
+    expect(screen.lines).to include("(goes in at the next step)")
+  end
+
+  it "posts /cut TEXT as delivery cut, and prints the ack's outcome" do
+    run_inputs("/cut drop the tests", ack: { "enqueued_id" => "e1", "delivery" => "cut", "cut" => "now" })
+
+    expect(client).to have_received(:post_turn).once.with(prompt: "drop the tests", client_id: "tui:1", delivery: "cut")
+    expect(screen.lines).to include("(cut in now)")
+  end
+
+  it "says cutting is off when the worker's ack says so, and waits when it queues the cut" do
+    run_inputs("hello")
+    run_inputs("/cut one", ack: { "enqueued_id" => "e1", "delivery" => "cut", "cut" => "waits" })
+    run_inputs("/cut two", ack: { "enqueued_id" => "e1", "delivery" => "cut", "cut" => "off" })
+
+    expect(screen.lines).to include("(goes in at the next step)", "(cuts in once the thinking passes 20 s)",
+                                    "(cutting is off; goes in at the next step)")
+  end
+
+  it "refuses /queue with a line and sends nothing" do
+    run_inputs("/queue later please")
+
+    expect(client).not_to have_received(:post_turn)
+    expect(screen.lines).to include("(/queue isn't available in an attached session yet)")
+  end
+
+  it "says a /cut with no text is a usage error, and sends nothing" do
+    run_inputs("/cut", "/queue")
+
+    expect(client).not_to have_received(:post_turn)
+    expect(screen.lines.grep(/need a message/).size).to eq(2)
+  end
+end
+
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
   let(:screen) { RecordingSurface.new(columns: 80) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }

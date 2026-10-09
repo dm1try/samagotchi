@@ -14,6 +14,7 @@ require_relative "reline_seam"
 require_relative "version_lines"
 require_relative "../bridge/turn_accumulator"
 require_relative "../bridge_client"
+require_relative "../delivery"
 require_relative "../log"
 require_relative "../context_note"
 require_relative "../steer"
@@ -380,6 +381,14 @@ module Samagotchi
           return answer_question(text)
         end
 
+        # /cut TEXT and /queue TEXT are this UI's own deliveries, read before
+        # every command check (SessionCommands registers them for Tab and
+        # /help only). A plain line sends no delivery: it goes in at the
+        # running turn's next step, and never cuts.
+        if (choice = steer_choice(text))
+          return submit_delivery(*choice)
+        end
+
         # The terminal's own commands (SessionCommands registers them, the
         # REPL reads the same words). Before the continue offer: the
         # leaving ones are no answer to it.
@@ -411,6 +420,20 @@ module Samagotchi
         else
           send_prompt(text)
         end
+        nil
+      end
+
+      # /cut TEXT and /queue TEXT while a turn runs. Only /cut goes in P1:
+      # the worker's drain doesn't skip queued files yet, so a queued
+      # message would steer the running turn; /queue says so and sends
+      # nothing. At the prompt both run the text as a normal turn.
+      # @return [nil]
+      def submit_delivery(choice, text)
+        return @screen.commit(STEER_CHOICE_USAGE) if text.empty?
+        return @screen.commit(QUEUE_UNAVAILABLE) if choice == :queue
+
+        # To an idle session it is an ordinary prompt: no delivery to send.
+        send_prompt(text, delivery: @running ? Delivery::CUT : nil)
         nil
       end
 
@@ -573,6 +596,9 @@ module Samagotchi
       end
 
       QUEUED_NOTE = "(queued: runs after this turn)"
+      # /queue needs a worker whose drain skips queued input files (P3):
+      # until then a queued message would steer the running turn.
+      QUEUE_UNAVAILABLE = "(/queue isn't available in an attached session yet)"
 
       # A command queued for after the running turn (command_queued with
       # waits): its line now (another client's) and a note; its command_ran
@@ -661,19 +687,40 @@ module Samagotchi
         end
       end
 
-      def send_prompt(text)
+      # What a prompt's 202 says became of it, or nil when there is nothing
+      # to say: the dim line both TUIs print for a delivery. A plain line
+      # for a running turn goes in at its next step; a cut's outcome comes
+      # from the ack (the worker knows whether cutting is on for its model).
+      # An idle session's prompt simply runs, and a prompt with images runs
+      # as its own next turn (never merging mid-turn), so nothing is said.
+      # @param ack [Hash, nil] the Bridge's 202 body
+      # @param delivery [String, nil] what was asked for
+      # @return [String, nil]
+      def sent_note(ack, delivery: nil, images: [], running: false)
+        return nil unless running && images.empty? && ack.is_a?(Hash)
+
+        return NEXT_STEP_NOTE unless delivery == Delivery::CUT
+
+        steer_cut_note(ack["cut"].to_s.to_sym)
+      end
+
+      def send_prompt(text, delivery: nil)
         persist_recent_history(text)
         images = attach_images(text)
         return own_prompt_failed if images.nil?
 
+        running = @running
         options = { prompt: text, client_id: @client_id }
         options[:no_interrupt] = true if @no_interrupt
         options[:images] = images unless images.empty?
+        options[:delivery] = delivery if delivery
         reply = @client.post_turn(**options)
         if reply.status == 202
           enqueued_id = reply.json&.fetch("enqueued_id", nil)
           @sent_ids << enqueued_id if enqueued_id
           @open_ids << enqueued_id if enqueued_id && @wait_at_eof
+          note = sent_note(reply.json, delivery: delivery, images: images, running: running)
+          @screen.commit(note) if note
           return
         end
 
