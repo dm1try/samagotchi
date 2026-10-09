@@ -56,7 +56,7 @@ RSpec.describe "Images in transport" do
       expect(Samagotchi::SessionInbox.input_has_images?(path)).to be(true)
 
       claimed = Samagotchi::SessionInbox.claim_input_file(path)
-      expect(Samagotchi::SessionInbox.read_input(claimed)).to eq(["look", nil, false, [wire_ref]])
+      expect(Samagotchi::SessionInbox.read_input(claimed)).to eq(["look", nil, false, [wire_ref], nil])
     end
 
     it "writes the refs whatever input format the sidecar advertises" do

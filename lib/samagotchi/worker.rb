@@ -953,7 +953,7 @@ module Samagotchi
         # A line with images runs as its own next turn (steering merges text
         # only), and so does anything queued after it, to keep the order.
         files = SessionInbox.find_new_input_files(@session_dir).sort
-                            .take_while { |input_file| !SessionInbox.input_has_images?(input_file) }
+                            .take_while { |input_file| !SessionInbox.waits_for_turn_end?(input_file) }
         merged = files.filter_map do |input_file|
           claimed_file = SessionInbox.claim_input_file(input_file)
           next unless claimed_file

@@ -5,6 +5,7 @@ require "json"
 require "time"
 require "securerandom"
 require_relative "atomic_file"
+require_relative "delivery"
 require_relative "session"
 
 module Samagotchi
@@ -34,12 +35,18 @@ module Samagotchi
     class NoteRejected < ArgumentError; end
 
     # Queue a turn's input file: JSON with the prompt and the sender's ids.
+    # +delivery+ is only written when it is "queue": a step-boundary
+    # message is the default an older worker assumes, and a cut is done by
+    # the sender (the Bridge) at once, not by the file.
     # @param client_id [String, nil] the sending UI
     # @param enqueued_id [String, nil] the id its ACK / :turn_enqueued carry
+    # @param delivery [String, nil] the wire value: "next_step" (default),
+    #   "cut" or "queue"
     # @param images [Array<Hash>] image refs ({file:, name:}) in the
     #   session's images/
     # @return [String, false] the input file's path, or false
-    def self.write_input(session_dir, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
+    def self.write_input(session_dir, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [],
+                         delivery: nil)
       images = Array(images)
       input_dir = File.join(session_dir, INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
@@ -47,6 +54,7 @@ module Samagotchi
       path = File.join(input_dir, "#{Time.now.strftime("%Y%m%d%H%M%S%9N")}.json")
       record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id,
                  "no_interrupt" => (no_interrupt ? true : nil),
+                 "delivery" => (Delivery.queue?(delivery) ? Delivery::QUEUE : nil),
                  "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }) }.compact
       AtomicFile.write(path, JSON.generate(record))
       path
@@ -175,17 +183,29 @@ module Samagotchi
       Dir.glob(File.join(input_dir, "*.json"))
     end
 
-    # @return [Array(String, Hash|nil, Boolean, Array<Hash>)] a claimed input
-    #   file's prompt, origin ({client_id:, enqueued_id:}, nil when it names
-    #   no sender), whether its turn runs with the raised iteration limit
-    #   (--no-interrupt), and its image refs ({file:, name:})
+    # @return [Array(String, Hash|nil, Boolean, Array<Hash>, String|nil)] a
+    #   claimed input file's prompt, origin ({client_id:, enqueued_id:},
+    #   nil when it names no sender), whether its turn runs with the raised
+    #   iteration limit (--no-interrupt), its image refs ({file:, name:}),
+    #   and its delivery ("queue" or nil; a file without the key is one an
+    #   older chi wrote, so nil)
     def self.read_input(claimed_file)
       data = JSON.parse(File.read(claimed_file).to_s)
       origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"] }.compact
       images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
-      [data["prompt"].to_s, origin.empty? ? nil : origin, data["no_interrupt"] == true, images]
+      [data["prompt"].to_s, origin.empty? ? nil : origin, data["no_interrupt"] == true, images,
+       Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil]
     rescue JSON::ParserError
-      [nil, nil, false, []]
+      [nil, nil, false, [], nil]
+    end
+
+    # An unclaimed input file's delivery value, or nil (no key: an older
+    # chi's file, read as the default next_step).
+    def self.input_delivery(input_file)
+      data = JSON.parse(File.read(input_file))
+      data.is_a?(Hash) ? data["delivery"] : nil
+    rescue JSON::ParserError, SystemCallError
+      nil
     end
 
     # Whether an unclaimed input file carries images (a mid-turn drain
@@ -195,6 +215,15 @@ module Samagotchi
       data.is_a?(Hash) && Array(data["images"]).any?
     rescue JSON::ParserError, SystemCallError
       false
+    end
+
+    # Whether a mid-turn drain leaves this unclaimed input file for a turn
+    # of its own instead of merging it at a step boundary. Today that is an
+    # image message (steering merges text only); the drain's file filter
+    # reads this one predicate, so what a boundary refuses changes in one
+    # place.
+    def self.waits_for_turn_end?(input_file)
+      input_has_images?(input_file)
     end
 
     def self.claim_input_file(input_file)

@@ -35,7 +35,7 @@ RSpec.describe "Cross-version worker contract" do
       expect(JSON.parse(File.read(path)).keys).to contain_exactly("prompt", "client_id", "enqueued_id", "no_interrupt",
                                                                   "images")
       expect(Samagotchi::SessionInbox.read_input(path))
-        .to eq(["hi", { client_id: "cli:send", enqueued_id: "e1" }, true, [{ file: "a.png", name: "a" }]])
+        .to eq(["hi", { client_id: "cli:send", enqueued_id: "e1" }, true, [{ file: "a.png", name: "a" }], nil])
     end
   end
 

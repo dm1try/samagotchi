@@ -33,6 +33,49 @@ RSpec.describe Samagotchi::SessionInbox do
 
       expect(described_class.find_new_input_files(session_dir)).to eq([])
     end
+
+    it "writes delivery only for queue: a step-boundary or cut message adds no key" do
+      plain = described_class.write_input(session_dir, prompt: "hi")
+      cut = described_class.write_input(session_dir, prompt: "hi", delivery: "cut")
+
+      expect(JSON.parse(File.read(plain))).not_to have_key("delivery")
+      expect(JSON.parse(File.read(cut))).not_to have_key("delivery")
+    end
+
+    it "round-trips a queued message" do
+      path = described_class.write_input(session_dir, prompt: "later", client_id: "cli:send", delivery: "queue")
+
+      expect(JSON.parse(File.read(path))["delivery"]).to eq("queue")
+      expect(described_class.read_input(path))
+        .to eq(["later", { client_id: "cli:send" }, false, [], "queue"])
+    end
+
+    it "reads an old file that carries no delivery as a step-boundary message" do
+      FileUtils.mkdir_p(input_dir)
+      old = File.join(input_dir, "20260101000000000000000.json")
+      File.write(old, JSON.generate({ "prompt" => "hi", "client_id" => "web:1" }))
+
+      expect(described_class.read_input(old)).to eq(["hi", { client_id: "web:1" }, false, [], nil])
+      expect(described_class.input_delivery(old)).to be_nil
+    end
+
+    describe ".waits_for_turn_end?" do
+      it "answers true for an image message, the one thing a drain leaves today" do
+        with_images = described_class.write_input(session_dir, prompt: "look", images: [{ file: "a.png", name: "a" }])
+        text = described_class.write_input(session_dir, prompt: "hi")
+
+        expect(described_class.waits_for_turn_end?(with_images)).to be(true)
+        expect(described_class.waits_for_turn_end?(text)).to be(false)
+      end
+
+      it "answers false for a file it cannot read" do
+        FileUtils.mkdir_p(input_dir)
+        broken = File.join(input_dir, "20260101000000000000001.json")
+        File.write(broken, "not json")
+
+        expect(described_class.waits_for_turn_end?(broken)).to be(false)
+      end
+    end
   end
 
   describe "context notes" do

@@ -135,6 +135,15 @@ RSpec.describe Samagotchi::WorkerInbound do
       expect(File.exist?("#{file}.processing")).to be(false)
     end
 
+    it "carries the file's delivery, nil for a step-boundary one" do
+      seen = []
+      inbound.take_input(write("queued up", delivery: "queue")) { |p| seen << p.delivery }
+      inbound.take_input(write("goes in at the next step")) { |p| seen << p.delivery }
+      inbound.take_input(write("cut it", delivery: "cut")) { |p| seen << p.delivery }
+
+      expect(seen).to eq(["queue", nil, nil])
+    end
+
     it "queues a command without images, and yields nothing for it or an empty line" do
       yielded = []
       inbound.take_input(write("/model x", client_id: "web:1")) { |p| yielded << p }

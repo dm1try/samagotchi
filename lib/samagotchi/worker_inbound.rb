@@ -31,9 +31,11 @@ module Samagotchi
 
     # A prompt to run a turn for: an input file's, or the first prompt.
     # +no_interrupt+: an offer its turn makes keeps it for its continue
-    # turn; +images+: its image refs ({file:, name:}).
-    Prompt = Data.define(:text, :origin, :no_interrupt, :images) do
-      def initialize(text:, origin: nil, no_interrupt: false, images: []) = super
+    # turn; +images+: its image refs ({file:, name:}); +delivery+: the wire
+    # value the sender asked for ("queue", or nil for the default
+    # next_step).
+    Prompt = Data.define(:text, :origin, :no_interrupt, :images, :delivery) do
+      def initialize(text:, origin: nil, no_interrupt: false, images: [], delivery: nil) = super
     end
 
     # A context wake turn to run: the ContextAbsorber::Delivery that woke
@@ -181,11 +183,12 @@ module Samagotchi
       return unless claimed_file
 
       begin
-        message, origin, no_interrupt, images = SessionInbox.read_input(claimed_file)
+        message, origin, no_interrupt, images, delivery = SessionInbox.read_input(claimed_file)
         return if message.to_s.strip.empty?
         return if Array(images).empty? && queue_as_command(message, origin, File.basename(input_file))
 
-        yield Prompt.new(text: message, origin: origin, no_interrupt: !!no_interrupt, images: images || [])
+        yield Prompt.new(text: message, origin: origin, no_interrupt: !!no_interrupt, images: images || [],
+                         delivery: delivery)
       ensure
         FileUtils.rm_f(claimed_file)
       end
