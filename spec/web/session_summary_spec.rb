@@ -200,6 +200,13 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(parent_id: "parent-1234")
     end
 
+    it "carries the link to the session it continues (a chain's previous link)" do
+      s = session
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(continues: nil)
+      s.continues = "prev-1234"
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(continues: "prev-1234")
+    end
+
     it "tells a delegate child from a fork: both carry the parent, only the delegate tool's is a delegate" do
       s = session
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(delegate: false)

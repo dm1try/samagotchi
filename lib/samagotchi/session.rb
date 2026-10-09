@@ -72,6 +72,11 @@ module Samagotchi
     # Started by the `delegate` tool (a fork has a parent_id too, but isn't
     # one): see #delegate?.
     attr_writer :delegate
+    # The session this one continues (SessionManager.continue_session): the
+    # previous link of a chain, "the next day of the same routine", else
+    # nil. Not a parent: archiving one link leaves the next alone. The chain
+    # itself is derived (SessionChain), never stored.
+    attr_accessor :continues
     # A `chi scratch` session: deleted when its REPL ends, and by the next
     # sweep (or `chi sessions clean`) when the process died first.
     attr_accessor :scratch
@@ -130,7 +135,8 @@ module Samagotchi
                    first_preview: "", test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
-                   last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [])
+                   last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
+                   continues: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -154,6 +160,7 @@ module Samagotchi
       @scratch = !!scratch
       @last_turn = last_turn
       @delegate = !!delegate
+      @continues = continues&.to_s
       self.llm_context = llm_context
       @archived = false
     end
@@ -205,7 +212,7 @@ module Samagotchi
     #   seed); [] by default
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
-                         scratch: false, model_typed: nil, delegate: false, llm_context: nil)
+                         scratch: false, model_typed: nil, delegate: false, llm_context: nil, continues: nil)
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -230,7 +237,8 @@ module Samagotchi
         parent_id: parent_id,
         scratch: scratch,
         delegate: delegate,
-        llm_context: llm_context
+        llm_context: llm_context,
+        continues: continues
       )
     end
 
@@ -287,7 +295,8 @@ module Samagotchi
       "scratch" => false,
       "last_turn" => nil,
       "delegate" => false,
-      "llm_context" => nil
+      "llm_context" => nil,
+      "continues" => nil
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the

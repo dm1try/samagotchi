@@ -63,6 +63,9 @@ module Samagotchi
           # parent_id too but isn't one. The parent's children chip counts
           # delegates only, as the TUI's segment and /children do.
           delegate: session.delegate?,
+          # The session this one continues (the previous link of its
+          # chain), else nil: the lists draw chains from it.
+          continues: session.continues,
           first_preview: first_preview_for(session),
           owner: owner&.kind,
           # The saved recap's first sentence, for the session card.

@@ -279,9 +279,11 @@ module Samagotchi
     # @param include_archived [Boolean] archived sessions too
     # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:, project:,
     #   updated_at:, status:, live:, busy:, owner:, recap:, parent_id:,
-    #   parent_short_id:, delegate:, archived:, scratch:, test_run:, waiting:, waiting_id:, stopped_by:}; busy =
+    #   parent_short_id:, continues:, continues_short_id:, delegate:, archived:, scratch:, test_run:, waiting:,
+    #   waiting_id:, stopped_by:}; busy =
     #   live with a turn running, delegate = started by the delegate tool
-    #   (Session#delegate?; a fork has a parent_id but isn't one), recap = the saved recap's first sentence, project =
+    #   (Session#delegate?; a fork has a parent_id but isn't one), continues = the session it continues (the
+    #   previous link of its chain, Session#continues), recap = the saved recap's first sentence, project =
     #   Session#project_root, waiting = the kind of question it waits on
     #   ("question", "approval", "hook"; Session#waiting_question) or nil,
     #   waiting_id = that question's id or nil, relayed_to = the parent
@@ -310,7 +312,8 @@ module Samagotchi
           owner: owner&.kind, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
           ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd),
                                                     budget_tokens: -> { budgets.call(s) })&.round(1),
-          parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), delegate: s.delegate?, archived: s.archived,
+          parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), continues: s.continues,
+          continues_short_id: s.continues&.[](0, 8), delegate: s.delegate?, archived: s.archived,
           scratch: s.scratch, test_run: s.test_run, stopped_by: s.stopped_by }.merge(waiting_fields(s.waiting_question(live: owned)))
       end
       (limit ? summaries.first(limit) : summaries.to_a)

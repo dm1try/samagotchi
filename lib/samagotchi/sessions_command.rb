@@ -170,6 +170,7 @@ module Samagotchi
         # its git project's root, or nil
         # parent_id: the session that delegated it (the delegate tool), or nil
         # delegate: started by the delegate tool (a fork has a parent_id too)
+        # continues: the session it continues (its chain's previous link), or nil
         # archived: hidden from the lists (only with --archived can it be true)
         # scratch: a `chi scratch` session (deleted when its REPL ends, a
         # leftover one at the next sweep)
@@ -178,7 +179,7 @@ module Samagotchi
         # hook: chi answer or the web answers it), or nil; waiting_id: its
         # id, for chi answer --question; relayed_to: the parent session (short
         # id) whose card it also waits in (the approval relay), or nil
-        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id delegate archived scratch ctx_pct
+        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id continues delegate archived scratch ctx_pct
                   waiting waiting_id relayed_to stopped_by]
         @stdout.puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
@@ -199,6 +200,8 @@ module Samagotchi
           end
           # A delegated session points at its parent.
           child = summary[:parent_short_id] ? "  ↳ #{summary[:parent_short_id]}" : ""
+          # A chain's link points at the one it continues.
+          child += "  ↪ #{summary[:continues_short_id]}" if summary[:continues_short_id]
           flag = session_flag(scratch: summary[:scratch], test_run: summary[:test_run], archived: summary[:archived],
                               stopped_by: summary[:stopped_by])
           ctx = Samagotchi::SessionMetrics.context_label(summary[:ctx_pct])
@@ -244,6 +247,7 @@ module Samagotchi
       row = lambda do |s|
         flag = session_flag(scratch: s.scratch, test_run: s.test_run, archived: s.archived, stopped_by: s.stopped_by)
         child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
+        child += "  ↪ #{s.continues[0, 8]}" if s.continues
         # A question waits for an answer (chi answer, the web, chi --attach).
         live = s.pending_question && Samagotchi::SessionManager.worker_live?(s.id, state_dir: state_dir)
         waiting = s.waiting_question(live: !!live)

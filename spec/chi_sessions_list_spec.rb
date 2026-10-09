@@ -194,6 +194,26 @@ RSpec.describe "chi sessions list" do
     expect(by_id).to eq(parent.id => [nil, false], child.id => [parent.id, false])
   end
 
+  it "marks a chain's link with the session it continues, in the plain and the --live listings; json has continues" do
+    previous = make("monday")
+    today = make("tuesday", live: true).tap do |s|
+      s.continues = previous.id
+      s.save(state_dir: state_dir)
+    end
+    saved = Samagotchi::Session.load(today.id, state_dir: state_dir).updated_at
+
+    out, err, status = run_chi
+    expect(status).to eq(0), err
+    expect(out).to include("#{today.id}  idle      #{" " * 8}  #{saved}  tuesday  ↪ #{previous.id[0, 8]}\n")
+    expect(out).to match(/#{previous.id}  idle .* monday\n/)
+
+    out, _err, _status = run_chi("--live")
+    expect(out).to include("#{today.id}  live      #{" " * 8}  #{saved}  app · tuesday  ↪ #{previous.id[0, 8]}\n")
+
+    out, _err, _status = run_chi("--format=json")
+    expect(JSON.parse(out).to_h { |row| [row["id"], row["continues"]] }).to eq(previous.id => nil, today.id => previous.id)
+  end
+
   it "marks a session waiting for an answer, in the plain and the --live listings; json has waiting" do
     asking = make("which file?", live: true)
     approving = make("run it", live: true)
@@ -328,7 +348,7 @@ RSpec.describe "chi sessions list" do
     expect(status).to eq(0), err
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
-                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil, "delegate" => false,
+                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil, "continues" => nil, "delegate" => false,
                                      "archived" => false, "scratch" => false, "ctx_pct" => nil, "waiting" => nil,
                                      "waiting_id" => nil, "relayed_to" => nil, "stopped_by" => nil }])
   end

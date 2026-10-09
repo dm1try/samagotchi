@@ -202,6 +202,22 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(File.join(tmpdir, "#{plain.id}.json")))).to include("parent_id" => nil)
     end
 
+    it "round-trips continues, the session this one continues, and reads nil where there is none" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                            continues: "prev-1234")
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+
+      expect(JSON.parse(File.read(path))["continues"]).to eq("prev-1234")
+      expect(described_class.load(session.id, state_dir: tmpdir).continues).to eq("prev-1234")
+      expect(described_class.summary_from_file(path).continues).to eq("prev-1234")
+
+      raw = JSON.parse(File.read(path))
+      raw.delete("continues")
+      File.write(path, JSON.generate(raw))
+      expect(described_class.load(session.id, state_dir: tmpdir).continues).to be_nil
+    end
+
     it "round-trips its own llm_context values (none and off are kept, unset fields left out), and nil without any" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
       session.llm_context = Samagotchi::LLMContextOverride.new(strategy: [], budget_tokens: 0)

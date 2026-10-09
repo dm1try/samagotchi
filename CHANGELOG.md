@@ -14,6 +14,9 @@ and commands may change between minor versions. How releases are made:
   branch, decisions, verdicts, follow-ups, each open child's id, branch and worktree), keeps it OPEN unless everything
   is done, and gives a short end-of-day report that names the children still running and says
   `/coordinate resume <slug>` for next time. It starts, merges and stops nothing. Run `chi update`.
+- A session can continue an earlier one: its `continues` field names the previous link of a chain (`null`
+  otherwise), separate from `parent_id`. `chi sessions list` ends such a row with `↪ <previous short id>`, and its
+  `--format json` and the web's session summaries carry `continues`.
 
 ## [0.46.1] - 2026-10-09
 

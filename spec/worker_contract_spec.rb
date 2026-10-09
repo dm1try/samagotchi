@@ -39,9 +39,11 @@ RSpec.describe "Cross-version worker contract" do
     end
   end
 
-  it "keeps the session.json fields ReplyWait and DelegateWait read, and the stop marker" do
+  # continues: an older chi's worker keeps only the FIELDS it knows when it
+  # saves, so a field once written must stay one.
+  it "keeps the session.json fields ReplyWait, DelegateWait and session chains read, and the stop marker" do
     expect(Samagotchi::Session::FIELDS.keys)
-      .to include("status", "last_prompt", "pending_question", "last_turn", "messages", "parent_id")
+      .to include("status", "last_prompt", "pending_question", "last_turn", "messages", "parent_id", "continues")
     expect(Samagotchi::Session::STOPPED_FILE).to eq("stopped")
   end
 

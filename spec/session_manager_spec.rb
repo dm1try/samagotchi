@@ -1840,6 +1840,18 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class.children_of(older.id, state_dir: tmpdir)).to eq([])
     end
 
+    it "carries the link to the session it continues" do
+      previous = make(prompt: "monday")
+      today = make(prompt: "tuesday").tap do |s|
+        s.continues = previous.id
+        s.save(state_dir: tmpdir)
+      end
+
+      rows = described_class.session_summaries(state_dir: tmpdir).to_h { |s| [s[:id], s] }
+      expect(rows[previous.id]).to include(continues: nil, continues_short_id: nil)
+      expect(rows[today.id]).to include(continues: previous.id, continues_short_id: previous.id[0, 8])
+    end
+
     it "cuts a long description to 60 characters and falls back to the first preview" do
       long = make(prompt: "x" * 100)
       preview = make(prompt: "", preview: "from the preview", updated: "2026-09-23T10:00:00Z")
