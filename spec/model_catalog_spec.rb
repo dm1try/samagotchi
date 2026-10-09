@@ -57,14 +57,6 @@ RSpec.describe Samagotchi::ModelCatalog do
       expect(listing.rows.map(&:ref)).to eq(["a"])
       expect(listing.warnings).to eq(["box: connection refused"])
     end
-
-    it "names the host once when the error already starts with it" do
-      refused = Samagotchi::LLM::ConnectionRefused.new(host: "box")
-      listing = described_class.listing({ "default" => { models: [info("a")], error: nil },
-                                          "box" => { models: [], error: refused.message } }, registry: registry)
-
-      expect(listing.warnings).to eq(["box: connection refused"])
-    end
   end
 
   context "with ids declared under hosts.<name>.models" do

@@ -322,7 +322,7 @@ module Samagotchi
             save_model_list(name, models)
           rescue StandardError => e
             Log.warn(:model, "list_failed", host: name, error: e.class.name, msg: e.message.to_s[0, 500])
-            data = { host: entry.host, port: entry.port, transport: entry.transport, models: [], error: e.message }
+            data = { host: entry.host, port: entry.port, transport: entry.transport, models: [], error: list_error(e) }
           end
           results_mutex.synchronize { results[name] = data }
         end
@@ -373,6 +373,11 @@ module Samagotchi
     end
 
     private
+
+    # A listing error as text without the host's name (a provider error's
+    # #detail: "connection refused", "request failed after …"): every line
+    # that shows it names the host itself.
+    def list_error(error) = error.is_a?(LLM::ProviderError) ? error.detail : error.message
 
     # Save a host's just-listed models on disk, for the processes that spawn
     # a worker without listing (`chi send --new --model`, delegate):

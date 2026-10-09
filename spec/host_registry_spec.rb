@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/host_registry"
+require "samagotchi/model_catalog"
 
 RSpec.describe Samagotchi::HostRegistry do
   let(:registry) do
@@ -165,6 +166,20 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(results["box"][:models].map(&:id)).to eq(["gemma-4-26b"])
       expect(Samagotchi::Log).to have_received(:warn)
         .with(:model, "list_failed", hash_including(host: "oai", error: "Errno::ECONNREFUSED"))
+    end
+
+    it "keeps a failed host's error without its name, so the listing's warnings name each host once" do
+      reset = Errno::ECONNRESET.new
+      allow(registry.adapter_for(registry.entries["oai"])).to receive(:list_models)
+        .and_raise(Samagotchi::LLM::RetryExhausted.new(attempts: 3, last_error: reset, label: "oai"))
+      allow(registry.adapter_for(registry.entries["fw"])).to receive(:list_models)
+        .and_raise(Samagotchi::LLM::ConnectionRefused.new(host: "fw"))
+
+      results = registry.list_all_models
+
+      expect(results["oai"][:error]).to eq("request failed after 3 attempts: Errno::ECONNRESET: #{reset.message}")
+      expect(Samagotchi::ModelCatalog.listing(results, registry: registry).warnings)
+        .to eq(["fw: connection refused", "oai: request failed after 3 attempts: Errno::ECONNRESET: #{reset.message}"])
     end
 
     it "calls a host remote when it has an API key variable or an https url" do

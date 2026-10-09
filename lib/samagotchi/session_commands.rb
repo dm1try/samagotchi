@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "config"
-require_relative "model_catalog"
 require_relative "model_profile"
 require_relative "served_model"
 require_relative "prompt_note"
@@ -579,7 +578,7 @@ module Samagotchi
         # "(config, host down)" under its unreachable line.
         rows = host_rows.fetch(hname, [])
         if data[:error]
-          lines << "#{host_label} — unreachable: #{ModelCatalog.error_detail(hname, data[:error])}"
+          lines << "#{host_label} — unreachable: #{data[:error]}"
           next if rows.empty?
         elsif rows.empty?
           lines << "#{host_label} — no models discovered"

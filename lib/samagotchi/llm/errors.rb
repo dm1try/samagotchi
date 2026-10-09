@@ -229,6 +229,9 @@ module Samagotchi
 
       def summary = "network error after #{self.class.count(attempts)} (host #{host}: #{last_error.class})"
 
+      # The message without its leading "host ": "request failed after …".
+      def detail = host ? message.delete_prefix("#{host} ") : message
+
       # "1 attempt", "3 attempts".
       def self.count(attempts) = "#{attempts} attempt#{"s" unless attempts == 1}"
     end

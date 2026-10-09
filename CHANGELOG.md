@@ -29,6 +29,8 @@ and commands may change between minor versions. How releases are made:
   stream drops: it no longer gets two more ask-agains of its own.
 - A host that is down is named once in the models list's warning and in `/models` (`gw: connection refused`, not
   `gw: gw: connection refused`).
+- A host whose model listing kept failing on network errors is named once too, in the models list's warning, the
+  web's and `/models` (`gw: request failed after 3 attempts: …`, not `gw: gw request failed after …`).
 - `/stats`' estimated cost names the host whose prices it used (`from hosts.gw.models prices`), not a literal
   `hosts.<name>.models`.
 - The config warning for a model price's old `cached` key suggests `cache_read`, its new name.
