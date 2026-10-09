@@ -26,17 +26,18 @@ and commands may change between minor versions. How releases are made:
   chain. A link continued already answers 409 `continued` with `next_id`, an open delegate 409 `open_children`.
 - `chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT]` starts the next link of a session's chain from a
   terminal or a script (idle without a message); `last:ID` follows the chain to its latest link.
-### Fixed
-
-- A web message that ended (or began) with whitespace stayed in the composer after it was sent: one sent right
-  after Annotate (its quote ends in a blank line), or with a trailing newline or space. The sent text is trimmed,
-  and the composer was cleared only when it held exactly that text; it is now compared trimmed too.
 - The web continues a session: `continue →` in the info bar starts the next link of its chain and opens it with
   `Continue where we left off.` in the composer, not sent; the previous link is archived. A link continued already
   links to its next one instead (`← date` / `date →` in the info bar), and a continue refused for open delegates
   names them, each a link. A chain is one card in the lists, the latest link's, whose `↩ day N` chip lists the
   earlier links (their day, date and recap) in a popover. A link titled with the opener shows its chain's first link's
   title.
+
+### Fixed
+
+- A web message that ended (or began) with whitespace stayed in the composer after it was sent: one sent right
+  after Annotate (its quote ends in a blank line), or with a trailing newline or space. The sent text is trimmed,
+  and the composer was cleared only when it held exactly that text; it is now compared trimmed too.
 
 ## [0.46.1] - 2026-10-09
 
