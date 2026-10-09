@@ -253,6 +253,32 @@ RSpec.describe "The coordinator plugin" do
     end
   end
 
+  describe "/coordinate end" do
+    it "asks the model in this session to follow the skill's End of day, reading no memories itself" do
+      expect(Samagotchi::MemoryPaths).not_to receive(:scope_dir)
+
+      expect(run("/coordinate", "end")).to eq("asked chi to end the day; a running turn gets it at its next step")
+      expect(ctx.sent).to eq([[ctx.session_id, "Read the skill_coordinator memory and follow its End of day now: " \
+                                               "bring your handoff up to date and give me the end-of-day report."]])
+    end
+
+    it "shows the request to send yourself where the session takes no messages (a REPL)" do
+      ctx.send_error = "session aaaabbbb is open in a chi REPL, which takes no messages from others"
+
+      expect(run("/coordinate", "end")).to start_with("/coordinate: session aaaabbbb is open in a chi REPL")
+        .and end_with("Send this yourself:\n\nRead the skill_coordinator memory and follow its End of day now: " \
+                      "bring your handoff up to date and give me the end-of-day report.")
+    end
+
+    it "takes \"end\" with more words as a goal, and names end in the usage" do
+      run("/coordinate", "end the flaky specs")
+      expect(ctx.sent.last.last).to eq("Read the skill_coordinator memory and follow it for this goal:\n\nend the flaky specs")
+      run("/coordinate", "end today")
+      expect(ctx.sent.last.last).to eq("Read the skill_coordinator memory and follow it for this goal:\n\nend today")
+      expect(run("/coordinate")).to include("/coordinate end")
+    end
+  end
+
   describe "the bundle" do
     let(:manifest) { Samagotchi::MemoryBundle::Manifest.read(dir: dir) }
 
@@ -277,6 +303,14 @@ RSpec.describe "The coordinator plugin" do
                                "save the answer in the handoff before you act on it",
                                "git merge-base --is-ancestor <default> <branch>", "status --short --ignored", "never\n   `rm -rf`",
                                "\"DONE: …\"", "remove: true", "don't write or edit any handoff_* memory")
+    end
+
+    it "keeps the end of day: the handoff up to date and still OPEN, a short report, nothing started or merged" do
+      skill = File.read(File.join(dir, "skill_coordinator.md"))
+      expect(skill).to include("## End of day", "`/coordinate end`", "still \"OPEN …\" unless every task is done",
+                               "step 8", "next time: `/coordinate resume <epic-slug>`",
+                               "each child still open", "session id, branch and worktree path",
+                               "Don't start, merge, stop or clean up anything here")
     end
   end
 end

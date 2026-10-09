@@ -1291,6 +1291,12 @@ by themselves there.
   the model to the skill. **`/coordinate resume`** asks it to resume this
   project's open handoff; with several open it shows a card with a Resume
   action each (`/coordinate resume <name>` picks one), with none it says so.
+  **`/coordinate end`** ends the day: the model checks each branch, brings
+  its handoff up to date (state per branch, decisions, verdicts,
+  follow-ups, each open child's id, branch and worktree), keeps it OPEN unless everything is done, and gives a short
+  report ending with the `/coordinate resume <slug>` to pick it up next
+  time. It starts, merges and stops nothing: running children stay running
+  and are named in the report.
 - **`/children [all]`** shows the session's children as a card, newest first,
   one line each: `` `ab12cd34` · running · fix/flaky · "fix the flaky spec" ``,
   `` `9a8b7c6d` · done · feat/x · reported · "All 12 specs pass" `` (`not

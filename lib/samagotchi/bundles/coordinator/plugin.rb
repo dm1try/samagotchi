@@ -25,6 +25,10 @@
 # (/coordinate resume <name>); none: says so. It reads the project's
 # memories folder, nothing else.
 #
+# /coordinate end ends the day: the model is asked to follow the skill's End
+# of day (bring its handoff up to date, keep it OPEN unless all is done, give
+# a short report). It reads nothing itself; "end" with more words is a goal.
+#
 # A child is asked before it changes anything outside its worktree by chi
 # itself (the core child-boundary guardrail), in every mode: nothing to set up.
 class Plugin
@@ -35,7 +39,7 @@ class Plugin
   TEXT_CHARS = 80
   USAGE = "usage: /children [all] | /children stop <id>"
   COORDINATE_USAGE = "usage: /coordinate <goal> — chi splits it into tasks, one child session and worktree each; " \
-                     "/coordinate resume [name] — pick up an open handoff"
+                     "/coordinate resume [name] — pick up an open handoff; /coordinate end — save the handoff, end-of-day report"
   RESUME_CARD_ID = "coordinate-resume"
   # A card takes 6 actions.
   MAX_RESUMES = 6
@@ -49,7 +53,7 @@ class Plugin
       children_command(args.to_s.strip, ctx)
     end
     chi.command "/coordinate", "run work in parallel: chi splits <goal> into tasks, each in a child session and worktree; " \
-                               "resume: pick up an open handoff",
+                               "resume: pick up an open handoff; end: save the handoff, end-of-day report",
                 anytime: true do |args, ctx|
       coordinate(args.to_s.strip, ctx)
     end
@@ -113,6 +117,8 @@ class Plugin
     verb, rest = goal.split(/\s+/, 2)
     # "resume" and at most a name; "resume the old work" is a goal.
     return resume(rest.to_s.strip, ctx) if verb == "resume" && !rest.to_s.strip.match?(/\s/)
+    # A bare "end" only; "end the flaky specs" is a goal.
+    return end_of_day(ctx) if verb == "end" && rest.to_s.strip.empty?
 
     ask(ctx, "Read the skill_coordinator memory and follow it for this goal:\n\n#{goal}",
         "asked chi to coordinate it; a running turn gets it at its next step")
@@ -135,6 +141,13 @@ class Plugin
     ask(ctx, "Read the skill_coordinator memory and resume the coordinator handoff #{name}: follow the skill's " \
              "Resume (step 0) before anything else.",
         "asked chi to resume #{name}; a running turn gets it at its next step")
+  end
+
+  # /coordinate end
+  def end_of_day(ctx)
+    ask(ctx, "Read the skill_coordinator memory and follow its End of day now: bring your handoff up to date and " \
+             "give me the end-of-day report.",
+        "asked chi to end the day; a running turn gets it at its next step")
   end
 
   def resume_card(open, ctx)

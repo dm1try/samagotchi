@@ -88,6 +88,25 @@ If the request is a new goal, say which handoffs are open (one line each) and go
    description to "DONE: …" and ask the user whether to remove it (memory_write name, scope and
    remove: true).
 
+## End of day
+When the user ends the day (`/coordinate end`, "that's all for today"), before you answer:
+1. Check where things stand: for each branch in your handoff `git log --oneline <default>..<branch>` and
+   `git merge-base --is-ancestor <branch> <default>` (merged only if that exits 0; a commit listed by the
+   log means not merged), and the list_sessions tool for its child.
+2. Bring your handoff (the one whose description names your session) up to date: per branch its state
+   now (merged, ready to merge, waiting for a report, waiting for the user), the decisions and verdicts,
+   the follow-ups found but not fixed, and each child still open (not stopped, its branch not merged or
+   dropped): its session id, branch and worktree path, so the next session can pick them up. If you
+   own none and work is still open (a child running, a branch you made not merged), create one (Handoff
+   memory above); if nothing is open, skip to the report. Never write another epic's handoff. Write it
+   now (edit, then memory_write description only), before the report: a report is no update.
+3. Set its description to the status: still "OPEN …" unless every task is done (then follow step 8
+   instead: the DONE status is set there).
+4. Give the user a short end-of-day report: per branch its state and who it waits on, the children still
+   running, the follow-ups, and last "next time: `/coordinate resume <epic-slug>`" (when a handoff is
+   open). Report only what the commands showed.
+Don't start, merge, stop or clean up anything here: a child still running stays running; say so.
+
 ## Gotchas
 - Children are asked before changing anything outside their worktree (your checkout, a sibling's):
   the user approves it on the child's card. Still check where commits landed (step 4).
@@ -106,3 +125,4 @@ If the request is a new goal, say which handoffs are open (one line each) and go
 - 2026-10-06 clean up only merged or dropped branches; report only what commands showed (0.1.2)
 - 2026-10-07 handoff memory with its status in the description, resume (step 0, /coordinate resume),
   save decisions first, fast-forward and worktree-remove checks, remove the handoff when done (0.2.0)
+- 2026-10-09 End of day (/coordinate end): handoff up to date, still OPEN, a short report (0.3.0)

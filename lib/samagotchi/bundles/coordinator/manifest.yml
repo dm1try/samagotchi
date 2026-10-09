@@ -1,15 +1,15 @@
 ---
 name: coordinator
-version: 0.2.0
+version: 0.3.0
 scope: system
-description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, ask before each merge, a handoff memory to resume from), /coordinate <goal>, /coordinate resume and /children"
+description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, ask before each merge, a handoff memory to resume from), /coordinate <goal>, /coordinate resume, /coordinate end and /children"
 trust_level: reviewed
 files:
   skill_coordinator.md:
-    sha256: sha256:a24b91ae27737027125cc0d627bf31edbacdd1be842f4daf82ddf062c9160413
+    sha256: sha256:2ef3faefa89cbb23ce89c76bd5d913e29dde9817edf08cd29a063aeafa698643
     description: "Coordinate parallel work: split it, delegate each task wait:false in its own worktree (cwd:), check each report, ask the user before each merge; resume from a handoff_* memory"
 plugin:
   file: plugin.rb
-  sha256: sha256:2b11a24f22398f4d00132c2342f7c02eacfc6cec0e517e8241a17241affc8ca7
+  sha256: sha256:cc2986da0e734d2a5d6da2def682cc558c63c16e47b3605d55c597414027497d
 # the handoff memory needs memory_write's description-only form and remove: (0.36.0)
 requires_chi: ">= 0.36.0"
