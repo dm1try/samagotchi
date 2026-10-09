@@ -383,7 +383,7 @@ module Samagotchi
     # a worker without listing (`chi send --new --model`, delegate):
     # ModelListStore is what they check an id against.
     def save_model_list(name, models)
-      ModelListStore.save(name, Array(models).map(&:id))
+      ModelListStore.save(name, Array(models).map(&:id), env: @env)
     end
 
     def fresh_list(name, entry)

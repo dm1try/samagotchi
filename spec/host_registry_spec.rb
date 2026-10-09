@@ -292,6 +292,9 @@ RSpec.describe Samagotchi::HostRegistry do
     end
     let(:state_home) { Dir.mktmpdir("model-check-registry") }
     let(:config_home) { Dir.mktmpdir("model-check-registry-config") }
+    # A registry built with its own env (model_profile.rb, self_report.rb):
+    # its saved list belongs under that env's state dir, not ENV's.
+    let(:custom_home) { Dir.mktmpdir("model-check-registry-custom") }
 
     around do |example|
       with_env("XDG_STATE_HOME" => state_home, "XDG_CONFIG_HOME" => config_home) do
@@ -310,7 +313,7 @@ RSpec.describe Samagotchi::HostRegistry do
         .and_return([Samagotchi::LLM::ModelInfo.new(id: "qwen-local", context_window: 32_768, supports_tools: nil, raw: {})])
     end
 
-    after { FileUtils.rm_rf([state_home, config_home]) }
+    after { FileUtils.rm_rf([state_home, config_home, custom_home]) }
 
     it "lists only the named host (the adapter for a chat host, the client for a raw one) and saves it to the store" do
       expect(registry.list_models("box")).to eq(["gemma-4-26b"])
@@ -327,6 +330,20 @@ RSpec.describe Samagotchi::HostRegistry do
 
       allow(registry.entries["box"].client).to receive(:list_models).and_raise("connection refused")
       expect(registry.list_models("box")).to be_nil
+      expect(Samagotchi::ModelListStore.find("box")).to be_nil
+    end
+
+    it "saves into the registry's own env, not ENV's" do
+      own = described_class.new(hosts_config: { "box" => { host: "box.test", port: 8081 } },
+                                env: { "XDG_STATE_HOME" => custom_home })
+      allow(own.entries["box"].client).to receive(:list_models)
+        .and_return([{ "id" => "gemma-4-26b", "status" => "loaded" }])
+
+      own.list_models("box")
+
+      saved = File.join(custom_home, "samagotchi", "model_lists.json")
+      expect(File.file?(saved)).to be(true)
+      expect(Samagotchi::ModelListStore.find("box", env: { "XDG_STATE_HOME" => custom_home }).ids).to eq(%w[gemma-4-26b])
       expect(Samagotchi::ModelListStore.find("box")).to be_nil
     end
   end
