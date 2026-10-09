@@ -2,6 +2,7 @@
 
 require_relative "client_id"
 require_relative "session"
+require_relative "session_commands"
 require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "session_chain"
@@ -174,6 +175,14 @@ module Samagotchi
       rescue SessionInbox::NoteRejected => e
         @stderr.puts("chi send: #{e.message}")
         return 1
+      end
+      # A UI-only command (/stats, /exit, …) runs in the terminal and the web,
+      # not in the worker: sent through, the worker doesn't run it and the
+      # line reaches the model as a prompt, costing a whole turn. Refused
+      # before anything is sent (before a --new session is created too); the
+      # session's plugin commands are never local.
+      if prompt && (local = local_command(prompt))
+        return refuse_local_command(local, options)
       end
       # A file that is not there or not an image: a run-time failure (1),
       # reported in the --format json line too; --image itself was fine.
@@ -439,6 +448,59 @@ module Samagotchi
     # Whether +text+ may be a session command, which only its worker knows
     # (a bundle's too).
     def command_like?(text) = text.to_s.lstrip.start_with?("/", "!")
+
+    # The UI-only built-in command +text+ (stripped) is a line of (/stats,
+    # /exit, …), or nil: the worker never runs it, so chi send must not pass
+    # it on. What the UIs run: the line as the entry's match takes it — bare
+    # "exit" too (/exit's match), but not with arguments ("/exit --delete" is
+    # a UI line; "/stats please" is a prompt), as in a terminal.
+    # @return [Commands::Registry::Entry, nil]
+    def local_command(text)
+      line = text.to_s.strip
+      return nil unless command_like?(line) || line.match?(/\Aexit\z/i)
+
+      entry = SessionCommands.builtin_registry.lookup_local(line)
+      # Only the exact line the UI runs: "/stats please" is a prompt, and
+      # "/exit --delete" is left to the worker (the TUI runs it as /exit, the
+      # worker answers its unknown-command way). Bare "exit" is /exit's line
+      # as its match takes it; the reply names the command, /exit.
+      return nil unless entry
+      return entry if line == entry.name
+
+      line.match?(/\Aexit\z/i) ? entry : nil
+    end
+
+    # A UI-only command: nothing is sent (with --new, no session is created
+    # either). /stats points at its model-free reader and names the session;
+    # the others just say the worker doesn't run them. Exit 1, as other
+    # refusals; with --wait --format json the line is the usual error object
+    # (ParentWait's end-of-run line when the reply never comes).
+    # @return [Integer] 1
+    def refuse_local_command(entry, options)
+      name = entry.name
+      detail = if name == "/stats"
+                 "#{name} is a terminal and web command; use chi sessions stats"
+               else
+                 "#{name} is a terminal and web command; chi send doesn't run it"
+               end
+      if options[:new]
+        error_line("chi send: refused: #{detail}")
+      elsif options[:wait]
+        # --wait: @info is stderr and the JSON line goes to stdout; the check
+        # runs before any id resolves, so name the one it was for.
+        id = Session.resolve_id(options[:ids].first, state_dir: @state_dir)
+        @session_id = id
+        @stderr.puts("#{id[0, 8]}  refused: #{detail}")
+      else
+        options[:ids].uniq.each do |given|
+          id = Session.resolve_id(given, state_dir: @state_dir)
+          @info.puts("#{id[0, 8]}  refused: #{detail}#{name == "/stats" ? " #{id[0, 8]}" : ""}")
+        rescue ArgumentError => e
+          error_line("#{command_name}: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
+        end
+      end
+      CLI::Exit::FAILED
+    end
 
     # --wait after a message that ran as a session command: no reply comes
     # for it. Its output shows where the session is open.

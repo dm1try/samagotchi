@@ -87,6 +87,87 @@ RSpec.describe Samagotchi::SendCommand do
       .to eq([{ type: :turn_enqueued, client_id: "cli:send", prompt: "is this the same bug?" }])
   end
 
+  # /stats, /exit and the other UI-only commands run in the terminal and the
+  # web, not in the worker: sending one used to pass it to the model as a
+  # prompt, costing a whole turn. chi send refuses it instead.
+  describe "a UI-only command" do
+    it "refuses /stats with a pointer to chi sessions stats, and sends nothing" do
+      a = make(owner: "worker")
+      events = serve(a)
+
+      expect(run("-m", "/stats", short(a))).to eq(1)
+      expect(out.string).to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}\n")
+      expect(inputs_of(a)).to be_empty
+      expect(events).to be_empty
+    end
+
+    it "refuses the other local commands too (/exit, /recap, /archive, bare exit)" do
+      a = make(owner: "worker")
+      serve(a)
+
+      %w[/recap /archive /detach].each do |line|
+        expect(run("-m", line, short(a))).to eq(1), line
+        expect(out.string.lines.last)
+          .to eq("#{short(a)}  refused: #{line} is a terminal and web command; chi send doesn't run it\n"), line
+      end
+      expect(run("-m", "exit", short(a))).to eq(1)
+      expect(out.string.lines.last)
+        .to eq("#{short(a)}  refused: /exit is a terminal and web command; chi send doesn't run it\n")
+      expect(inputs_of(a)).to be_empty
+    end
+
+    it "refuses the others even with whitespace around the line, and still sends a prompt with text after the word" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("-m", "  /stats  ", short(a))).to eq(1)
+      expect(out.string.lines.last)
+        .to eq("#{short(a)}  refused: /stats is a terminal and web command; use chi sessions stats #{short(a)}\n")
+      expect(inputs_of(a)).to be_empty
+    end
+
+    it "sends a prompt whose text merely starts with a local command's word" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("-m", "/stats please", short(a))).to eq(0), err.string
+      expect(inputs_of(a)).to contain_exactly(include("prompt" => "/stats please"))
+    end
+
+    it "reports the refusal as a --format json error line with --wait" do
+      a = make(owner: "worker")
+      serve(a)
+
+      # --timeout bounds the red run: without the refusal the line is sent
+      # and the wait would block for the answer.
+      expect(run("--wait", "--timeout", "1", "--format", "json", "-m", "/stats", a.id)).to eq(1)
+      line = JSON.parse(out.string)
+      expect(line).to include("status" => "error", "session_id" => a.id)
+      expect(line["detail"]).to include("refused: /stats is a terminal and web command")
+      expect(inputs_of(a)).to be_empty
+    end
+
+    it "with --new refuses it before a session is created" do
+      allow(Process).to receive(:spawn)
+
+      expect(run("--new", "-m", "/stats")).to eq(1)
+      expect(err.string).to include("refused: /stats is a terminal and web command; use chi sessions stats")
+      expect(Samagotchi::Session.list(state_dir: tmpdir)).to be_empty
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "sends a worker-run command (/model) and an unknown /word as before" do
+      a = make(owner: "worker")
+      queued = []
+      serve(a, on_command: ->(command) { queued << command })
+
+      expect(run("-m", "/model qwen", short(a))).to eq(0), err.string
+      expect(run("-m", "/usr/bin/env is missing", short(a))).to eq(0), err.string
+      expect(queued.map { |c| c[:line] }).to eq(["/model qwen"])
+      expect(inputs_of(a)).to contain_exactly(include("prompt" => "/usr/bin/env is missing"))
+    end
+  end
+
   # As typed in the TUI: /model switches the model, the model never sees it.
   it "sends a session command as the command, and an unknown /word as a message" do
     a = make(owner: "worker")
