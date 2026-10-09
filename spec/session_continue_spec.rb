@@ -190,6 +190,18 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       expect_nothing_started(previous)
     end
 
+    it "refuses what the archive would refuse before asking for the recap (a queued prompt)" do
+      previous = make
+      Samagotchi::SessionInbox.write_input(dir_of(previous.id), prompt: "queued", client_id: "cli:send")
+      allow(described_class).to receive(:recap_before_archive)
+
+      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ArchiveRefused) { |e|
+        expect(e.reason).to eq(:queued)
+      }
+      expect(described_class).not_to have_received(:recap_before_archive)
+      expect_nothing_started(previous)
+    end
+
     it "refuses while the previous link runs a turn (archive_session's rule)" do
       previous = make(status: Samagotchi::Session::STATUS_RUNNING)
       own(previous.id)
@@ -232,6 +244,35 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       expect { continue(previous.id) }.to raise_error(Samagotchi::ModelProfile::MissingModel)
       expect(archived?(previous.id)).to be(false)
     end
+  end
+
+  it "locks per session: a continue of another chain doesn't wait for one still waiting on its recap" do
+    slow = make
+    other = make
+    started = Queue.new
+    allow(described_class).to receive(:recap_before_archive).and_call_original
+    allow(described_class).to receive(:recap_before_archive).with(slow.id, tmpdir, wait: 0) do
+      started << true
+      sleep 2
+    end
+    waiting = Thread.new { continue(slow.id) }
+    started.pop
+
+    at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    link = continue(other.id)
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - at).to be < 1.5
+    expect(load(link.id).continues).to eq(other.id)
+    waiting.join
+  end
+
+  it "follows last:<id> to the chain's new end when another continue moved it meanwhile" do
+    first = make
+    second = continue(first.id)
+    allow(Samagotchi::SessionChain).to receive(:resolve).and_call_original
+    allow(Samagotchi::SessionChain).to receive(:resolve).with("last:#{first.id}", state_dir: tmpdir).and_return(first.id, second.id)
+
+    third = continue("last:#{first.id}")
+    expect(load(third.id).continues).to eq(second.id)
   end
 
   it "continues the chain's latest link for last:<any link>" do

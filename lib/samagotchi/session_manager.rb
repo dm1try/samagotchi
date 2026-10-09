@@ -217,7 +217,11 @@ module Samagotchi
     # How long #continue_session waits for the previous link's worker to
     # write its recap (IdleRecap's own request timeout).
     CONTINUE_RECAP_WAIT = 30.0
-    CONTINUE_LOCK = ".continue.lock"
+    # In the previous link's folder: one continue of a session at a time.
+    CONTINUE_LOCK = "continue.lock"
+    # How often a last:<id> continue looks again when another continue
+    # moved the chain's end while it waited for the lock.
+    CONTINUE_TRIES = 3
 
     # Start the next link of a chain: a new session that continues
     # +id_or_ref+ (Session#continues) in its folder, on its model (the name
@@ -228,8 +232,9 @@ module Samagotchi
     # a prompt queued or the step-limit question refuse; an idle worker is
     # stopped), so a refusal starts nothing. Before that its live worker is
     # asked for a recap and given up to +recap_wait+ seconds to write it.
-    # One continue at a time (a lock in the state dir): a double click
-    # finds the first one's link and is refused.
+    # One continue of a session at a time (a lock in its folder): a double
+    # click finds the first one's link and is refused; a last:<id> one
+    # follows the chain to its new end instead.
     # @param id_or_ref [String] an id, a prefix, or last:<id> (SessionChain.resolve)
     # @param prompt [String, nil] its first message (nil: it starts idle)
     # @param title [String, nil] what the lists show before the first turn;
@@ -241,27 +246,49 @@ module Samagotchi
     def self.continue_session(id_or_ref, prompt: nil, title: nil, state_dir: nil, recap_wait: CONTINUE_RECAP_WAIT,
                               archive_wait: 5)
       sd = state_dir || Session.default_state_dir
-      FileUtils.mkdir_p(sd)
-      File.open(File.join(sd, CONTINUE_LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
-        lock.flock(File::LOCK_EX)
+      CONTINUE_TRIES.times do |try|
         id = SessionChain.resolve(id_or_ref, state_dir: sd)
-        previous = Session.load(id, state_dir: sd)
-        check_continue!(previous, sd)
-        recap_before_archive(id, sd, wait: recap_wait)
-        # Again: a turn sent to it during the wait may have delegated.
-        check_open_children!(id, sd)
-        already = [id, *descendant_ids(id, sd)].select { |sid| ArchiveStore.archived?(Session.session_dir(sid, state_dir: sd)) }
-        archived = archive_session(id, state_dir: sd, wait: archive_wait)[:archived] - already
-        begin
-          spawn_continuation(previous, prompt: prompt, title: title, state_dir: sd)
-        rescue StandardError
-          # Nothing started: what this archived goes back to the lists, and
-          # a new link saved before its worker failed to spawn goes (left,
-          # it would hold the chain: "continued already", last: to it).
-          discard_failed_link(id, sd)
-          archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: sd) }
-          raise
+        result = with_continue_lock(id, sd) do
+          follow = id_or_ref.to_s.strip.start_with?(SessionChain::LAST_PREFIX) && try < CONTINUE_TRIES - 1
+          next :moved if follow && SessionChain.next_of(id, state_dir: sd)
+
+          continue_locked(id, prompt: prompt, title: title, state_dir: sd, recap_wait: recap_wait,
+                              archive_wait: archive_wait)
         end
+        return result unless result == :moved
+      end
+    end
+
+    private_class_method def self.with_continue_lock(id, state_dir, &)
+      dir = Session.session_dir(id, state_dir: state_dir)
+      FileUtils.mkdir_p(dir)
+      File.open(File.join(dir, CONTINUE_LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
+        lock.flock(File::LOCK_EX)
+        yield
+      end
+    end
+
+    private_class_method def self.continue_locked(id, prompt:, title:, state_dir:, recap_wait:, archive_wait:)
+      previous = Session.load(id, state_dir: state_dir)
+      check_continue!(previous, state_dir)
+      # archive_session's refusals that can be known now, before the wait.
+      archivable!(id, state_dir)
+      recap_before_archive(id, state_dir, wait: recap_wait)
+      # Again: a turn sent to it during the wait may have delegated.
+      check_open_children!(id, state_dir)
+      already = [id, *descendant_ids(id, state_dir)].select do |sid|
+        ArchiveStore.archived?(Session.session_dir(sid, state_dir: state_dir))
+      end
+      archived = archive_session(id, state_dir: state_dir, wait: archive_wait)[:archived] - already
+      begin
+        spawn_continuation(previous, prompt: prompt, title: title, state_dir: state_dir)
+      rescue StandardError
+        # Nothing started: what this archived goes back to the lists, and
+        # a new link saved before its worker failed to spawn goes (left,
+        # it would hold the chain: "continued already", last: to it).
+        discard_failed_link(id, state_dir)
+        archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: state_dir) }
+        raise
       end
     end
 
@@ -529,19 +556,27 @@ module Samagotchi
     def self.archive_session(id_or_prefix, state_dir: nil, wait: 5)
       sd = state_dir || Session.default_state_dir
       id = archive_target(id_or_prefix, sd)
-      raise ArchiveRefused.new(id, :scratch) if Session.load(id, state_dir: sd).scratch
-
-      tree = [id, *descendant_ids(id, sd)]
-      owners = tree.to_h { |sid| [sid, session_owner(sid, state_dir: sd)] }
-      tree.each do |sid|
-        refusal = archive_refusal(sid, owners[sid], sd)
-        raise ArchiveRefused.new(id, sid == id ? refusal : :"#{refusal}_child", busy_id: sid) if refusal
-      end
-
+      tree, owners = archivable!(id, sd)
       stopped = tree.select { |sid| owners[sid] }
       stopped.each { |sid| stop_session(sid, state_dir: sd, wait: wait) }
       archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
       { id: id, archived: archived, stopped: stopped, discarded: discarded }
+    end
+
+    # The session and its descendants, with their owners, when they can be
+    # archived now (#archive_refusal for each), else the refusal.
+    # @return [Array(Array<String>, Hash)] the ids, and id => OwnerLock::Owner or nil
+    # @raise [ArchiveRefused, OwnedByTUI]
+    private_class_method def self.archivable!(id, state_dir)
+      raise ArchiveRefused.new(id, :scratch) if Session.load(id, state_dir: state_dir).scratch
+
+      tree = [id, *descendant_ids(id, state_dir)]
+      owners = tree.to_h { |sid| [sid, session_owner(sid, state_dir: state_dir)] }
+      tree.each do |sid|
+        refusal = archive_refusal(sid, owners[sid], state_dir)
+        raise ArchiveRefused.new(id, sid == id ? refusal : :"#{refusal}_child", busy_id: sid) if refusal
+      end
+      [tree, owners]
     end
 
     # What keeps +sid+ (in an archive's tree) from being archived: :busy (a
