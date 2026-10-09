@@ -105,6 +105,9 @@ module Samagotchi
       # (a local: entry, so no command or bundle may use the names).
       CUT_COMMAND = "/cut"
       QUEUE_COMMAND = "/queue"
+      # The word, then any whitespace and the text (as the registry's
+      # entries match them, so a line Tab or /help knows is never a prompt).
+      STEER_CHOICE = /\A(#{CUT_COMMAND}|#{QUEUE_COMMAND})(?:\s+(.*))?\z/m
 
       # @param outcome [Symbol] SteerCut#cut_for_steer's answer: :now, :waits or :off
       # @return [String] the dim line to show for a /cut
@@ -122,14 +125,9 @@ module Samagotchi
       # @param line [String, nil]
       # @return [Array(Symbol, String), nil]
       def steer_choice(line)
-        text = line.to_s.strip
-        return [:cut, ""] if text == CUT_COMMAND
-        return [:queue, ""] if text == QUEUE_COMMAND
+        match = STEER_CHOICE.match(line.to_s.strip) or return nil
 
-        [[:cut, CUT_COMMAND], [:queue, QUEUE_COMMAND]].each do |choice, name|
-          return [choice, text.delete_prefix("#{name} ").strip] if text.start_with?("#{name} ")
-        end
-        nil
+        [match[1] == CUT_COMMAND ? :cut : :queue, match[2].to_s.strip]
       end
 
       # "✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k tokens (paid
