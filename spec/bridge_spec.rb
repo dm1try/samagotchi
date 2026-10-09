@@ -552,35 +552,62 @@ RSpec.describe Samagotchi::Bridge do
     end
 
     describe "a message for a running turn (Engine#cut_for_steer)" do
-      def post(prompt, client_id)
-        post_turn(JSON.generate(session_id: @session.id, prompt: prompt, client_id: client_id))
+      def post(prompt, client_id, delivery: nil)
+        body = { session_id: @session.id, prompt: prompt, client_id: client_id }
+        body[:delivery] = delivery
+        post_turn(JSON.generate(body))
       end
 
-      it "asks the engine to cut, with the sender's source, once the input is queued" do
+      it "asks the engine to cut only when the message asks for it (delivery cut), with the sender's source" do
         start_bridge(input_format: 2, on_command: ->(_) {})
-        allow(@engine).to receive(:cut_for_steer).and_return(false)
+        allow(@engine).to receive(:cut_for_steer).and_return(:now)
 
         post("from the web", "web:tab-1")
-        post("from chi send", "cli:send")
+        post("from chi send", "cli:send", delivery: "cut")
         post("from the parent", "delegate:abcd1234")
-        post("from a plugin", "plugin")
+        post("from a plugin", "plugin", delivery: "cut")
 
-        expect(@engine).to have_received(:cut_for_steer).with(nil, epoch: 0).ordered
         expect(@engine).to have_received(:cut_for_steer).with("chi_send", epoch: 0).ordered
-        expect(@engine).to have_received(:cut_for_steer).with("parent_agent", epoch: 0).ordered
         expect(@engine).to have_received(:cut_for_steer).with("plugin_send", epoch: 0).ordered
+        expect(@engine).to have_received(:cut_for_steer).twice
+      end
+
+      it "acks the delivery it applied, and the cut's outcome" do
+        start_bridge(input_format: 2, on_command: ->(_) {})
+        allow(@engine).to receive(:cut_for_steer).and_return(:now, :waits, :off)
+
+        _, plain = post("from the web", "web:tab-1")
+        _, cut_now = post("cut it", "web:tab-1", delivery: "cut")
+        _, cut_waits = post("cut later", "web:tab-1", delivery: "cut")
+        _, cut_off = post("can't cut", "web:tab-1", delivery: "cut")
+
+        expect(plain).to include("delivery" => "next_step")
+        expect(plain).not_to have_key("cut")
+        expect(cut_now).to include("delivery" => "cut", "cut" => "now")
+        expect(cut_waits).to include("delivery" => "cut", "cut" => "waits")
+        expect(cut_off).to include("delivery" => "cut", "cut" => "off")
+      end
+
+      it "takes an unknown delivery as the default, which never cuts" do
+        start_bridge(input_format: 2, on_command: ->(_) {})
+        allow(@engine).to receive(:cut_for_steer).and_return(:now)
+
+        _, resp = post("from the web", "web:tab-1", delivery: "whenever")
+
+        expect(resp).to include("delivery" => "next_step")
+        expect(@engine).not_to have_received(:cut_for_steer)
       end
 
       it "does not for a command, an input with images, or an input it could not queue" do
         start_bridge(input_format: 2, on_command: ->(_) {})
-        allow(@engine).to receive(:cut_for_steer).and_return(false)
+        allow(@engine).to receive(:cut_for_steer).and_return(:now)
 
-        post("/model x", "cli:send")
+        post("/model x", "cli:send", delivery: "cut")
         allow(Samagotchi::ImageStore).to receive(:check_refs).and_return([{ "id" => "a" * 32 }])
-        post("look", "web:tab-1")
+        post("look", "web:tab-1", delivery: "cut")
         allow(Samagotchi::ImageStore).to receive(:check_refs).and_return([])
         allow(@bridge).to receive(:enqueue_turn).and_return(false)
-        expect(post("lost", "web:tab-1").first).to eq(500)
+        expect(post("lost", "web:tab-1", delivery: "cut").first).to eq(500)
 
         expect(@engine).not_to have_received(:cut_for_steer)
       end
@@ -1215,7 +1242,7 @@ RSpec.describe Samagotchi::Bridge do
 
       it "accepts cut, which the file does not carry (the Bridge cuts itself)" do
         start_bridge
-        allow(@engine).to receive(:cut_for_steer).and_return(false)
+        allow(@engine).to receive(:cut_for_steer).and_return(:now)
         expect(post_turn(JSON.generate(session_id: @session.id, prompt: "cut it", delivery: "cut")).first)
           .to be_between(200, 299)
 
@@ -1664,7 +1691,7 @@ RSpec.describe Samagotchi::Bridge do
 
         ["/usr/bin is slow", "/foo bar", "/modelx"].each do |prompt|
           status, body = post_turn(JSON.generate(session_id: @session.id, prompt: prompt))
-          expect([status, body.keys]).to eq([202, %w[status enqueued_id session_id]])
+          expect([status, body.keys]).to eq([202, %w[status enqueued_id session_id delivery]])
         end
       end
 
