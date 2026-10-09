@@ -25,11 +25,15 @@ module ModelNotesReport
   # - bare_amp: execute calls with a bare `&` (a background operator; not
   #   &&, 2>&1, >&, &> or one in quotes).
   # - continues: turns that ran without a prompt of their own, from the
-  #   session's analytics.json (<dir>/<id>/analytics.json): its turn records
-  #   whose id is no turn prompt's turn_id. A step-limit Continue is such a
-  #   turn (so is a due reminder's turn, and a turn whose prompt !rollback
-  #   erased). A file whose prompts carry no turn_id (before 2026-10-02)
-  #   counts records minus prompts. nil without analytics.json.
+  #   session's analytics.json (<dir>/<id>/analytics.json). A file written
+  #   after 2026-10-09 has continue: on every turn record, true on a
+  #   Continue's, and that mark is the count (a reminder's turn and a turn
+  #   whose prompt !rollback erased aren't continues). An older file has no
+  #   mark: its
+  #   turn records whose id is no turn prompt's turn_id are counted instead
+  #   (a step-limit Continue is such a turn, so is a due reminder's turn).
+  #   A file whose prompts carry no turn_id (before 2026-10-02) counts
+  #   records minus prompts. nil without analytics.json.
   # - steers: user lines that reached a running turn: input messages (kind
   #   "input": the user's, chi send's or a parent's; not a wake turn's
   #   turn_start one) and steers a person sent (kind "steer" from user or
@@ -186,6 +190,9 @@ module ModelNotesReport
 
     def continues(messages, records)
       return nil unless records
+
+      marked = records.count { |record| record["continue"] == true }
+      return marked if records.any? { |record| record.key?("continue") }
 
       prompts = messages.select { |message| Samagotchi::Steer.turn_prompt?(message) }
       ids = prompts.map { |message| message[:turn_id] }

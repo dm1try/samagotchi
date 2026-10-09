@@ -94,6 +94,38 @@ RSpec.describe ModelNotesReport::SessionReader do
     expect(stats(messages, turn_records: records).continues).to eq(2)
   end
 
+  it "counts records marked continue: true when the records carry the mark" do
+    messages = [ReportFixtures.prompt("Build it.", turn_id: "t1"), *ReportFixtures.read("c1"),
+                ReportFixtures.model("Done.")]
+    records = [
+      { "id" => "t1", "status" => "completed" },
+      { "id" => "k1", "status" => "completed", "continue" => true },
+      { "id" => "k2", "status" => "completed", "continue" => true }
+    ]
+
+    expect(stats(messages, turn_records: records).continues).to eq(2)
+  end
+
+  it "doesn't count a reminder-only turn as a continue when the records carry marks" do
+    messages = [ReportFixtures.prompt("Build it.", turn_id: "t1"), *ReportFixtures.read("c1"),
+                ReportFixtures.model("Done.")]
+    records = [
+      { "id" => "t1", "status" => "completed" },
+      { "id" => "r1", "status" => "completed" },
+      { "id" => "k1", "status" => "completed", "continue" => true }
+    ]
+
+    expect(stats(messages, turn_records: records).continues).to eq(1)
+  end
+
+  it "counts no continue in a marked file whose only prompt-less turn is a reminder's" do
+    messages = [ReportFixtures.prompt("Build it.", turn_id: "t1"), ReportFixtures.model("Done.")]
+    records = [{ "id" => "t1", "status" => "completed", "continue" => false },
+               { "id" => "r1", "status" => "completed", "continue" => false }]
+
+    expect(stats(messages, turn_records: records).continues).to eq(0)
+  end
+
   it "counts records over prompts for prompts without a turn id, and has no continues without analytics.json" do
     messages = [ReportFixtures.prompt("Build it."), *ReportFixtures.read("c1"), ReportFixtures.model("Done.")]
 
