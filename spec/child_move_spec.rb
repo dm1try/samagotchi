@@ -79,6 +79,22 @@ RSpec.describe Samagotchi::ChildMove do
       expect(described_class.adopt(to.id, state_dir: tmpdir)).to eq([])
     end
 
+    it "notes each child once: a worker finishing a move that died after its notes writes none again" do
+      noted = make(parent_id: from.id)
+      later = make(parent_id: from.id)
+      allow(Samagotchi::SessionInbox).to receive(:write_note).and_call_original
+      allow(Samagotchi::SessionInbox).to receive(:write_note).with(later.id, any_args).and_raise(IOError, "died")
+      expect { described_class.apply([noted.id, later.id], from: from.id, to: to.id, state_dir: tmpdir) }
+        .to raise_error(IOError)
+      allow(Samagotchi::SessionInbox).to receive(:write_note).and_call_original
+
+      expect(described_class.adopt(to.id, state_dir: tmpdir)).to eq([noted.id, later.id])
+
+      notes = ->(id) { Dir.glob(File.join(dir_of(id), Samagotchi::SessionInbox::NOTES_DIR, "*")).size }
+      expect([notes.call(noted.id), notes.call(later.id)]).to eq([1, 1])
+      expect(described_class.read_intent(to.id, state_dir: tmpdir)).to be_nil
+    end
+
     it "is run by a starting worker before it loads its session, which clears the starting marker first" do
       moving = make(parent_id: from.id)
       described_class.mark_starting(to.id, state_dir: tmpdir)

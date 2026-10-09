@@ -30,7 +30,7 @@ module Samagotchi
   # until it is done: a worker that starts and finds one finishes the move
   # (#adopt), and a failed continue moves the same children back.
   module ChildMove
-    # <new link dir>/move.json: {from, ids}, while a move is under way.
+    # <new link dir>/move.json: {from, ids, noted}, while a move is under way.
     INTENT_FILE = "move.json"
     # <new link dir>/starting: {pid, at}, from the move to the worker's spawn.
     STARTING_FILE = "starting"
@@ -47,8 +47,11 @@ module Samagotchi
     # link, their subtrees with them), +refuse+ the open ones it can't move
     # (SessionManager::OpenChild, why: an older chi worker or a chi REPL).
     Plan = Data.define(:move, :refuse)
-    # A move under way: from the session, the children moved.
-    Intent = Data.define(:from, :ids)
+    # A move under way: from the session, the children moved, and those
+    # already sent their note (so a move finished again notes no one twice).
+    Intent = Data.define(:from, :ids, :noted) do
+      def initialize(from:, ids:, noted: []) = super
+    end
 
     module_function
 
@@ -100,16 +103,26 @@ module Samagotchi
     # Move +ids+ (direct children of +from+) to +to+: the intent, the
     # cursors +to+ lacks (delegates.json), the overrides, the rings waiting
     # in +from+'s children/, a note to each child, then the intent goes.
-    # Safe to run again on the same move.
+    # Safe to run again on the same move: the intent records each child
+    # noted, and a run finishing it (#adopt) notes only the rest. A crash
+    # between a note and its record notes that child twice (better than
+    # none).
     # @param undo [Boolean] a failed continue moving them back: its note says so
     def apply(ids, from:, to:, state_dir:, undo: false)
       return if ids.empty?
 
-      write_intent(to, Intent.new(from: from, ids: ids), state_dir: state_dir)
+      intent = Intent.new(from: from, ids: ids)
+      left = read_intent(to, state_dir: state_dir)
+      intent = intent.with(noted: left.noted & ids) if left && left.from == from && left.ids.sort == ids.sort
+      write_intent(to, intent, state_dir: state_dir)
       copy_cursors(ids, from: from, to: to, state_dir: state_dir)
       ids.each { |id| Session.reparent(id, to: to, from: from, state_dir: state_dir) }
       move_rings(ids, from: from, to: to, state_dir: state_dir)
-      ids.each { |id| note_child(id, to: to, undo: undo, state_dir: state_dir) }
+      (ids - intent.noted).each do |id|
+        note_child(id, to: to, undo: undo, state_dir: state_dir)
+        intent = intent.with(noted: intent.noted + [id])
+        write_intent(to, intent, state_dir: state_dir)
+      end
       clear_intent(to, state_dir: state_dir)
       Log.info(:worker, undo ? "delegates_moved_back" : "delegates_moved", from: from[0, 8], to: to[0, 8], count: ids.size)
     end
@@ -143,7 +156,8 @@ module Samagotchi
       data = JSON.parse(File.read(File.join(Session.session_dir(session_id, state_dir: state_dir), INTENT_FILE)))
       return nil unless data.is_a?(Hash) && Session.valid_id?(data["from"]) && data["ids"].is_a?(Array)
 
-      Intent.new(from: data["from"], ids: data["ids"].select { |id| Session.valid_id?(id) })
+      noted = data["noted"].is_a?(Array) ? data["noted"].select { |id| Session.valid_id?(id) } : []
+      Intent.new(from: data["from"], ids: data["ids"].select { |id| Session.valid_id?(id) }, noted: noted)
     rescue JSON::ParserError, SystemCallError
       nil
     end
@@ -151,7 +165,7 @@ module Samagotchi
     def write_intent(session_id, intent, state_dir:)
       dir = Session.session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)
-      AtomicFile.write(File.join(dir, INTENT_FILE), JSON.generate({ "from" => intent.from, "ids" => intent.ids }))
+      AtomicFile.write(File.join(dir, INTENT_FILE), JSON.generate({ "from" => intent.from, "ids" => intent.ids, "noted" => intent.noted }))
     end
 
     def clear_intent(session_id, state_dir:)

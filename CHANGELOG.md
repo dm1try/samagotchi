@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A continue that died after noting its moved delegates no longer notes them again when the new link's worker
+  finishes the move: `move.json` records who was told.
 - An attached chi watching a `-p --non-interactive` run says a question there was dismissed because no one could
   answer it (`(dismissed: no one to answer in a non-interactive run)`), as the run itself does, not
   `(question cancelled)`.
