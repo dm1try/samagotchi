@@ -190,6 +190,18 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       expect { continue("../etc") }.to raise_error(ArgumentError, "no session ../etc")
     end
 
+    it "deletes a new link saved before its worker failed to spawn, so the chain stays continuable" do
+      previous = make
+      allow(Process).to receive(:spawn).and_raise(Errno::EAGAIN)
+
+      expect { continue(previous.id) }.to raise_error(Errno::EAGAIN)
+      expect(archived?(previous.id)).to be(false)
+      expect(Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id)).to eq([previous.id])
+
+      allow(Process).to receive(:spawn).and_return(12_345)
+      expect(load(continue(previous.id).id).continues).to eq(previous.id)
+    end
+
     it "puts what it archived back when the new link fails to start" do
       previous = make
       allow(described_class).to receive(:spawn_session).and_raise(Samagotchi::ModelProfile::MissingModel, "no model")

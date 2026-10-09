@@ -253,11 +253,23 @@ module Samagotchi
         begin
           spawn_continuation(previous, prompt: prompt, title: title, state_dir: sd)
         rescue StandardError
-          # Nothing started: what this archived goes back to the lists.
+          # Nothing started: what this archived goes back to the lists, and
+          # a new link saved before its worker failed to spawn goes (left,
+          # it would hold the chain: "continued already", last: to it).
+          discard_failed_link(id, sd)
           archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: sd) }
           raise
         end
       end
+    end
+
+    # The link a failed #continue_session saved (no other continues +id+:
+    # check_continue! made sure under the lock).
+    private_class_method def self.discard_failed_link(id, state_dir)
+      orphan = SessionChain.next_of(id, state_dir: state_dir) or return
+      delete_session(orphan, state_dir: state_dir)
+    rescue StandardError => e
+      Log.warn(:worker, "continue_cleanup_failed", sid: id, error: e.class.name, msg: e.message)
     end
 
     private_class_method def self.spawn_continuation(previous, prompt:, title:, state_dir:)
