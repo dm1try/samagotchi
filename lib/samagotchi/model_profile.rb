@@ -232,10 +232,11 @@ module Samagotchi
       return unknown_model_message(parsed.id, host, list.ids) if list.age < RELIST_AFTER_SECONDS
 
       fresh_ids = relist_or_nil(relist || default_relist(hosts), host, env)
-      # A re-list that answered: the saved list catches up (the default
-      # re-list, HostRegistry#list_models, saved it already).
+      # A re-list that answered: the saved list catches up. The default
+      # re-list, HostRegistry#list_models, saved it already; a given one
+      # is saved here.
       if fresh_ids
-        Samagotchi::ModelListStore.save(host, fresh_ids, env: env)
+        Samagotchi::ModelListStore.save(host, fresh_ids, env: env) if relist
         return nil if fresh_ids.any? { |id| id.to_s.casecmp?(parsed.id.to_s.strip) }
 
         return unknown_model_message(parsed.id, host, fresh_ids)

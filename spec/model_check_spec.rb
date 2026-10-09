@@ -4,6 +4,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/model_profile"
 require "samagotchi/model_list_store"
+require "samagotchi/host_registry"
 
 # Warning about a model id the host's last saved list doesn't have, at
 # spawn time: the session still starts (some hosts serve ids they don't
@@ -203,6 +204,17 @@ RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
 
     expect(check("box:incoai/Qwen3.8-27B-Splash", relist: relist(%w[incoai/Qwen3.8-27B-Splash gemma-small]))).to be_nil
     expect(Samagotchi::ModelListStore.find("box").ids).to eq(%w[incoai/Qwen3.8-27B-Splash gemma-small])
+  end
+
+  it "saves the default re-list's ids once (HostRegistry#list_models saves them)" do
+    save("box", %w[gemma-small], at: saved_a_while_ago)
+    listed = %w[qwen3 gemma-small].map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) }
+    allow_any_instance_of(Samagotchi::HostRegistry).to receive(:list_models_for).and_return(listed)
+    allow(Samagotchi::ModelListStore).to receive(:save).and_call_original
+
+    expect(described_class.model_warning("box:qwen3")).to be_nil
+    expect(Samagotchi::ModelListStore).to have_received(:save).once
+    expect(Samagotchi::ModelListStore.find("box").ids).to eq(%w[qwen3 gemma-small])
   end
 
   it "warns from the re-list's ids (with its did-you-mean) when the re-list still lacks the id" do
