@@ -10,6 +10,8 @@ module LLMContextLive
   class Workspace
     STEP_LIMIT = 150
     BUNDLES = %w[loop-guard].freeze
+    # Host keys never copied into a run's config (#write_config).
+    SECRET_KEYS = %w[api_key].freeze
 
     attr_reader :dir
 
@@ -47,12 +49,14 @@ module LLMContextLive
     end
 
     # chi's config: the model's host copied from the user's config (its
-    # api_key_env names a variable, never a key), the step limit, no recap
+    # api_key_env names a variable; a literal api_key, which chi ignores, is
+    # left out, so runs/ never holds a key), the step limit, no recap
     # (no model calls besides the turns), payoff and no stale_edits (the
     # defaults, written down).
     def write_config(model:, hosts:)
       host = model[/\A([\w.-]+):/, 1] or raise ArgumentError, "#{model}: a host-qualified model ref (host:model)"
       entry = hosts[host] or raise ArgumentError, "no host #{host} in the hosts config"
+      entry = entry.reject { |key, _| SECRET_KEYS.include?(key.to_s) }
       config = { "default" => { "model" => model }, "hosts" => { host => entry },
                  "turn" => { "max_iterations" => STEP_LIMIT }, "recap" => false,
                  "llm_context" => { "apply" => "payoff", "stale_edits" => false } }

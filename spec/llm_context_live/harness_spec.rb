@@ -127,6 +127,22 @@ RSpec.describe "the llm_context live harness" do
     end
   end
 
+  describe LLMContextLive::Workspace do
+    # runs/ is kept and shared: the host copy must carry no key itself.
+    it "copies the model's host without a literal api_key, keeping api_key_env" do
+      hosts = { "or" => { "url" => "https://example.test/v1", "api" => "openai", "api_key_env" => "OR_KEY",
+                          "api_key" => "sk-secret" },
+                "other" => { "host" => "10.0.0.1" } }
+
+      path = described_class.new(dir).write_config(model: "or:m", hosts: hosts)
+
+      written = File.read(path)
+      expect(written).not_to include("sk-secret")
+      expect(YAML.safe_load(written)["hosts"]).to eq("or" => { "url" => "https://example.test/v1", "api" => "openai",
+                                                               "api_key_env" => "OR_KEY" })
+    end
+  end
+
   describe LLMContextLive::Grader do
     let(:workspace) { LLMContextLive::Workspace.new(dir) }
 
