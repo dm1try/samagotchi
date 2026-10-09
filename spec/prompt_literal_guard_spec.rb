@@ -16,6 +16,14 @@ RSpec.describe Samagotchi::PromptLiteralGuard do
     expect(described_class.restore(escaped, profile: gemma)).to eq(text)
   end
 
+  it "escapes Gemma's image tokens in a user or tool text and restores them" do
+    text = "a <|image>x<image|> and <|image|>"
+    escaped = described_class.escape(text, profile: gemma, role: "user")
+
+    expect(escaped).not_to include("<|image>", "<image|>", "<|image|>")
+    expect(described_class.restore(escaped, profile: gemma)).to eq(text)
+  end
+
   it "leaves the Gemma channel alone for Qwen and for a model's own text" do
     text = "<|channel>thought x<channel|> <think>"
     expect(described_class.escape(text, profile: qwen, role: "user")).to eq("<|channel>thought x<channel|> [[SAMAGOTCHI_LITERAL_THINK_OPEN]]")
