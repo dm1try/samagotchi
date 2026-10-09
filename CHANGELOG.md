@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-10-09
+
 ### Added
 
 - `hosts.<name>.models:` declares the model ids a host serves whatever its `/v1/models` lists (a gateway's
@@ -2141,7 +2143,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.45.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.46.0...HEAD
+[0.46.0]: https://github.com/dm1try/samagotchi/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/dm1try/samagotchi/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/dm1try/samagotchi/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/dm1try/samagotchi/compare/v0.42.0...v0.43.0
