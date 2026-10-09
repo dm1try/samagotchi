@@ -30,6 +30,7 @@ require_relative "continue_offer"
 require_relative "image_store"
 require_relative "plugin_session_state"
 require_relative "context_sources"
+require_relative "session_chain"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -115,6 +116,33 @@ module Samagotchi
       end
     end
 
+    # A continue that can't happen (#continue_session). reason: :continued
+    # (another session continues it already: +ids+ names it), :open_children
+    # (children still running, waiting, live or with a reply it wasn't given:
+    # +ids+ names them) or :folder_gone (its folder isn't there).
+    class ContinueRefused < StandardError
+      attr_reader :session_id, :reason, :ids
+
+      def initialize(session_id, reason, ids: [], detail: nil)
+        @session_id = session_id
+        @reason = reason
+        @ids = ids
+        super(continue_refused_message(detail))
+      end
+
+      private
+
+      def continue_refused_message(detail)
+        short = @session_id[0, 8]
+        case @reason
+        when :continued then "#{short} is continued already, by #{@ids.first[0, 8]}; continue that one (or last:#{short})"
+        when :open_children
+          "#{short} has delegates still open: #{detail}; wait for them, stop them or archive them, then continue"
+        else "#{short}'s folder #{detail} is gone"
+        end
+      end
+    end
+
     # Spawn a new background session that processes the given prompt (or,
     # with none, waits idle for input).
     #
@@ -133,11 +161,17 @@ module Samagotchi
     #   (the prompt's preview by default, else the seed's first user message)
     # @param llm_context [LLMContextOverride, nil] the session's own
     #   llm_context values (chi --llm-context; a fork copies its parent's)
+    # @param continues [String, nil] the session this one continues (a
+    #   session field; #continue_session)
+    # @param note [String, nil] a context note the session starts with,
+    #   from +note_source+: queued before its worker spawns, so its first
+    #   turn sees it
     # @return [Session] with #seed_images_dropped: refs whose file was gone,
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
-                           title: nil, delegate: false, llm_context: nil)
+                           title: nil, delegate: false, llm_context: nil, continues: nil, note: nil,
+                           note_source: "chi")
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -158,7 +192,8 @@ module Samagotchi
         parent_id: parent_id,
         messages: messages,
         delegate: delegate,
-        llm_context: llm_context
+        llm_context: llm_context,
+        continues: continues
       )
       session.model_warning = model_warning
       # With no prompt there is no first turn to run (an attaching UI sends
@@ -174,8 +209,122 @@ module Samagotchi
         session.seed_images_dropped = dropped
       end
       setup_session_directory(session_dir, session, state_dir: sd)
+      SessionInbox.write_note(session.id, text: note, source: note_source, state_dir: sd) if note
       spawn_worker_for_session(session, state_dir: sd)
       session
+    end
+
+    # How long #continue_session waits for the previous link's worker to
+    # write its recap (IdleRecap's own request timeout).
+    CONTINUE_RECAP_WAIT = 30.0
+    CONTINUE_LOCK = ".continue.lock"
+
+    # Start the next link of a chain: a new session that continues
+    # +id_or_ref+ (Session#continues) in its folder, on its model (the name
+    # it was typed as, so an alias holds) and with its own llm_context,
+    # starting with a context note from chi: the link and the previous
+    # link's recap (SessionChain.note_text). The previous link is archived
+    # first, with its delegates (archive_session's rules: a turn running,
+    # a prompt queued or the step-limit question refuse; an idle worker is
+    # stopped), so a refusal starts nothing. Before that its live worker is
+    # asked for a recap and given up to +recap_wait+ seconds to write it.
+    # One continue at a time (a lock in the state dir): a double click
+    # finds the first one's link and is refused.
+    # @param id_or_ref [String] an id, a prefix, or last:<id> (SessionChain.resolve)
+    # @param prompt [String, nil] its first message (nil: it starts idle)
+    # @param title [String, nil] what the lists show before the first turn;
+    #   by default the prompt, else the previous link's preview
+    # @return [Session] the new link (#model_warning as spawn_session's)
+    # @raise [ArgumentError] no such session (Session::AmbiguousId for a prefix of several)
+    # @raise [ContinueRefused] continued already, delegates still open, or its folder is gone
+    # @raise [ArchiveRefused, OwnedByTUI] as archive_session
+    def self.continue_session(id_or_ref, prompt: nil, title: nil, state_dir: nil, recap_wait: CONTINUE_RECAP_WAIT,
+                              archive_wait: 5)
+      sd = state_dir || Session.default_state_dir
+      FileUtils.mkdir_p(sd)
+      File.open(File.join(sd, CONTINUE_LOCK), File::RDWR | File::CREAT, 0o600) do |lock|
+        lock.flock(File::LOCK_EX)
+        id = SessionChain.resolve(id_or_ref, state_dir: sd)
+        previous = Session.load(id, state_dir: sd)
+        check_continue!(previous, sd)
+        recap_before_archive(id, sd, wait: recap_wait)
+        already = [id, *descendant_ids(id, sd)].select { |sid| ArchiveStore.archived?(Session.session_dir(sid, state_dir: sd)) }
+        archived = archive_session(id, state_dir: sd, wait: archive_wait)[:archived] - already
+        begin
+          spawn_continuation(previous, prompt: prompt, title: title, state_dir: sd)
+        rescue StandardError
+          # Nothing started: what this archived goes back to the lists.
+          archived.each { |sid| ArchiveStore.unarchive(sid, state_dir: sd) }
+          raise
+        end
+      end
+    end
+
+    private_class_method def self.spawn_continuation(previous, prompt:, title:, state_dir:)
+      recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
+      start = prompt.to_s.strip.empty? ? nil : prompt
+      title = previous.first_preview if title.to_s.strip.empty? && start.nil?
+      spawn_session(prompt: start, title: title, working_directory: previous.working_directory,
+                    model_name: previous.model_typed || previous.model_name, llm_context: previous.llm_context,
+                    continues: previous.id, note: SessionChain.note_text(previous, recap: recap),
+                    note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir)
+    end
+
+    # The refusals that come before anything changes: continued already (no
+    # forks in a chain), a delegate still open (its report would go to the
+    # archived link), the folder gone (the worker would run elsewhere).
+    # @raise [ContinueRefused]
+    private_class_method def self.check_continue!(previous, state_dir)
+      if (following = SessionChain.next_of(previous.id, state_dir: state_dir))
+        raise ContinueRefused.new(previous.id, :continued, ids: [following])
+      end
+
+      open = open_children(previous.id, state_dir)
+      unless open.empty?
+        raise ContinueRefused.new(previous.id, :open_children, ids: open.map(&:id),
+                                                               detail: open.map { |c| "#{c.short_id} (#{c.why})" }.join(", "))
+      end
+      dir = previous.working_directory.to_s
+      raise ContinueRefused.new(previous.id, :folder_gone, detail: dir) unless File.directory?(dir)
+    end
+
+    # A child the next link couldn't follow once its parent is archived.
+    OpenChild = Data.define(:id, :short_id, :why)
+
+    # The session's unarchived children still running, waiting for an
+    # answer, with a live worker, or (a delegate) with a reply the parent
+    # wasn't given (ChildrenStatus).
+    # @return [Array<OpenChild>]
+    private_class_method def self.open_children(id, state_dir)
+      require_relative "children_status"
+      ChildrenStatus.of(id, state_dir: state_dir).filter_map do |child|
+        why = if %w[waiting running].include?(child.state) then child.state
+              elsif child.live then "live"
+              elsif child.delegate && child.last_reply && !child.reported then "unreported reply"
+              end
+        why && OpenChild.new(id: child.id, short_id: child.short_id, why: why)
+      end
+    end
+
+    # Ask the session's live worker for a recap now (Bridge POST /recap:
+    # IdleRecap#request_now) and wait, up to +wait+ seconds, for recap.json
+    # to change. A worker that is gone wrote its recap when it left; one
+    # that has nothing new to say, too short a conversation, or recaps off
+    # answers at once. Best effort: the continue goes on without.
+    private_class_method def self.recap_before_archive(id, state_dir, wait:)
+      return unless worker_live?(id, state_dir: state_dir)
+
+      dir = Session.session_dir(id, state_dir: state_dir)
+      client = BridgeClient.discover(id, session_dir: dir) or return
+      before = RecapStore.read(dir)
+      reply = client.request_recap
+      asked = reply.status == 200 && reply.json.is_a?(Hash) ? reply.json["request"] : nil
+      return unless %w[started in_flight].include?(asked)
+
+      BridgeClient.poll(wait, interval: 0.2) { RecapStore.read(dir) != before }
+    rescue StandardError => e
+      Log.info(:worker, "continue_recap_failed", sid: id, error: e.class.name, msg: e.message)
+      nil
     end
 
     # Build the opts hash passed to Process.spawn for a forked worker. The

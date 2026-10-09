@@ -17,6 +17,11 @@ and commands may change between minor versions. How releases are made:
 - A session can continue an earlier one: its `continues` field names the previous link of a chain (`null`
   otherwise), separate from `parent_id`. `chi sessions list` ends such a row with `↪ <previous short id>`, and its
   `--format json` and the web's session summaries carry `continues`.
+- `SessionManager.continue_session` starts the next link of a chain: in the previous link's folder, on its model and
+  with its own LLM context, starting with a visible context note (`note from session chain`) that names the previous
+  link and carries its recap, asked for first from a live worker. The previous link is archived with its delegates;
+  a continue is refused while one of them is still open, for a link continued already (no forks), and for a gone
+  folder. `last:<id>` names a chain's latest link. See [docs/sessions.md](docs/sessions.md#session-chains).
 
 ## [0.46.1] - 2026-10-09
 
