@@ -319,11 +319,18 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       $stdin = reader
       $stdout = StringIO.new
       $stderr = StringIO.new
+      events = []
+      engine.subscribe(observer: ->(e) { events << e if e[:type] == :question_cancelled })
       result = Timeout.timeout(5) do
         engine.request_question(question: "Which one?", options: %w[Apple Banana], header: "Fruit")
       end
 
-      expect(JSON.parse(result)).to include("dismissed" => true, "note" => Samagotchi::QuestionDesk::DISMISSED_NOTE)
+      # No one could answer: the model isn't told the user dismissed it.
+      note = JSON.parse(result)["note"]
+      expect(JSON.parse(result)).to include("dismissed" => true, "note" => Samagotchi::QuestionDesk::UNANSWERABLE_NOTE)
+      expect(note).to include("non-interactive")
+      expect(note).not_to include("user dismissed")
+      expect(events.map { |e| e[:reason] }).to eq(["non_interactive"])
       expect(engine.pending_question).to be_nil
       # stdout keeps the answer alone; the question's line goes to stderr.
       expect($stdout.string).to eq("")

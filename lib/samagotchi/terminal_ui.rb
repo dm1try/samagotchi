@@ -1351,9 +1351,11 @@ module Samagotchi
     # question there): the question is dismissed at once, as an empty answer
     # would be, and the model finishes its reply. Never a read of stdin: a
     # pipe its writer keeps open would block it forever. Its one line goes to
-    # stderr (#banner): stdout is the answer's alone.
+    # stderr (#banner): stdout is the answer's alone. The model is told no
+    # one could answer (QuestionDesk::UNANSWERABLE_NOTE), not that the user
+    # dismissed it.
     def dismiss_unaskable_question(prompt)
-      @engine.cancel_question("user") rescue nil
+      @engine.cancel_question(QuestionDesk::UNANSWERABLE_REASON) rescue nil
       banner(prompt.summary("(dismissed: no one to answer in a non-interactive run)", paint: method(:paint)))
       false
     end

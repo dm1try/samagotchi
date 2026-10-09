@@ -64,6 +64,13 @@ module Samagotchi
                      "or anything else that changes files or state. Finish your reply with what you found " \
                      "and what you would do, and wait."
 
+    # The cancel reason of a question no one could answer: a
+    # --non-interactive run has no one to ask (TerminalUI).
+    UNANSWERABLE_REASON = "non_interactive"
+    UNANSWERABLE_NOTE = "No one could answer the question: this is a non-interactive run. Don't do what you " \
+                        "asked about, or anything else that changes files or state. Finish your reply with " \
+                        "what you found and what you would do."
+
     # @param session           [#call] → Session, nil
     # @param state_dir         [#call] → String, the session's state dir
     # @param emit              [#call] (event) → emits an event to the turn sink + observers
@@ -82,6 +89,8 @@ module Samagotchi
       @cv = @lock.new_cond
       @pending = nil
       @answer = nil
+      # Why the open question was cancelled (#cancel), for the sync path.
+      @cancel_reason = nil
       @sync_handler = nil
       # The standing question while it is @pending: {id:, fields:,
       # on_answer:, on_superseded_close:}; @shelved, one superseded by (or
@@ -106,7 +115,10 @@ module Samagotchi
                                     .merge(multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform]))
       # Dismissed (the card's dismiss, Esc): an answer of its own, not a
       # tool failure the model learns to avoid the tool from.
-      result = { dismissed: true, id: result[:id], note: DISMISSED_NOTE } if result.is_a?(Hash) && result[:error] == "no answer"
+      if result.is_a?(Hash) && result[:error] == "no answer"
+        note = result[:reason] == UNANSWERABLE_REASON ? UNANSWERABLE_NOTE : DISMISSED_NOTE
+        result = { dismissed: true, id: result[:id], note: note }
+      end
       # Who answered is for the relay, not the model's tool result.
       result = result.except(:by) if result.is_a?(Hash)
       result.is_a?(String) ? result : JSON.generate(result)
@@ -221,9 +233,12 @@ module Samagotchi
         # CV (no cross-thread answerer exists for synchronous UIs). Clear pending
         # and return an error so the model can fallback to plain text. Generic
         # observers will discard the stale question_requested via staleness check.
-        @lock.synchronize { @pending = nil }
+        reason = @lock.synchronize do
+          @pending = nil
+          @cancel_reason
+        end
         clear_saved_question
-        return { error: "no answer", detail: "handler failed to capture selection", id: id }
+        return { error: "no answer", detail: "handler failed to capture selection", id: id, reason: reason }.compact
       end
 
       # Block until answered/cancelled (cross-thread path: WEB/Bridge/background worker)
@@ -356,6 +371,7 @@ module Samagotchi
         next if @standing
 
         pending[:status] = "cancelled"
+        @cancel_reason = reason.to_s
         @cv.broadcast
         pending[:id]
       end
@@ -403,6 +419,7 @@ module Samagotchi
       @lock.synchronize do
         @pending = pending
         @answer = nil
+        @cancel_reason = nil
         @standing = standing&.merge(id: pending[:id])
       end
       if session

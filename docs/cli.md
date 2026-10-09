@@ -250,7 +250,8 @@ Notes:
   cancel note and exits 130.
   Nobody can answer there: an approval is denied, and a question the model
   asks (`ask_user_question`) is dismissed at once (one line on stderr), never
-  read from stdin, so the model finishes its reply.
+  read from stdin. The model is told no one could answer (a non-interactive
+  run), not that you dismissed it, and finishes its reply.
 
 ### Scratch sessions
 

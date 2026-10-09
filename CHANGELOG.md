@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A question the model asks in a `chi -p --non-interactive` run no longer tells the model the user dismissed it:
+  it is told no one could answer (a non-interactive run). The question closes with reason `non_interactive`.
+
 ## [0.46.0] - 2026-10-09
 
 ### Added
