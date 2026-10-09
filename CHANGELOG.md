@@ -15,6 +15,13 @@ and commands may change between minor versions. How releases are made:
 - Plugins: `ctx.frontend` says what runs the session: `:repl` (the REPL, `-p` without `--non-interactive`),
   `:one_shot` (`-p --non-interactive`) or `:worker` (a session worker: the web, an attached TUI).
 
+### Changed
+
+- github-pr 0.4.0: line links read the PR's files (`gh api`) only in a session worker (the web, an attached chi), not
+  in the REPL, `chi -p` or a scratch session, whose answers no web page shows while they run. `bundles: github-pr:
+  line_links: always` reads in the REPL and `-p` too; `false` still turns it off. The PR lookup and attach are
+  unchanged. See [Line links](docs/context.md#line-links).
+
 ### Fixed
 
 - Web: a command queued mid-turn (`/model X`) shows its bubble after the turn's answer once it runs, not among the

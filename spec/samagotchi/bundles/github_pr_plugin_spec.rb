@@ -24,11 +24,13 @@ RSpec.describe "The github-pr bundle" do
                        .tap { |s| s.save(state_dir: state_dir) }
   end
   let(:scratch) { false }
+  # The Engine's interface ctx.frontend names (nil: a worker).
+  let(:interface) { nil }
   let(:settings) { {} }
   let(:cards) { [] }
   let(:ctx) do
     host = Samagotchi::Plugin::Host.new(session_id: -> { session.id }, cwd: -> { tmpdir }, state_dir: -> { state_dir },
-                                        scratch: -> { scratch }, model_name: -> { "host:gemma4" },
+                                        scratch: -> { scratch }, frontend: -> { interface }, model_name: -> { "host:gemma4" },
                                         card: ->(**card) { cards << card and card[:id] })
     Samagotchi::Plugin::Context.new(bundle: "github-pr", label: "plugin.rb (bundle github-pr)", settings: settings, host: host,
                                     env: { "XDG_STATE_HOME" => File.join(tmpdir, "state") })
@@ -660,6 +662,102 @@ RSpec.describe "The github-pr bundle" do
           sleep 0.1
           expect(gh_calls).to eq([])
         end
+      end
+    end
+
+    # The line-link prefetch (gh api) runs only where a page shows the
+    # links while the session runs: a worker. The PR lookup (gh pr view)
+    # and its attach run everywhere.
+    describe "by frontend" do
+      def fake_gh_with_view
+        fake_gh
+        fake("git", 'echo "feat/x"')
+        script = File.read(File.join(bin, "gh"))
+        view = JSON.generate("number" => 42, "url" => pr_url, "state" => "OPEN", "title" => "T")
+        File.write(File.join(bin, "gh"), script.sub("case \"$*\" in\n", "case \"$*\" in\n  \"pr view\"*) echo '#{view}' ;;\n"))
+      end
+
+      # The init task, a turn naming the PR and a generation check.
+      def run_hooks(context = ctx)
+        plugin.register(fake_chi)
+        summary = fake_chi.inits.first.call(context)
+        fake_chi.hooks[:before_turn][1].call({ type: :before_turn, messages: [], prompt: "review #{pr_url}" }, context)
+        fake_chi.hooks[:before_generation][1].call({ type: :before_generation, iteration: 1 }, context)
+        sleep 0.1
+        summary
+      end
+
+      def api_calls = gh_calls.select { |call| call.start_with?("api ") }
+
+      it "reads line_links: a worker's by default, YAML's true/false, always in any case, an unknown value as a worker's (warned once)" do
+        mode = ->(value) { plugin.send(:line_links_mode, ctx_with(value.nil? ? {} : { "line_links" => value })) }
+        expect([nil, true, false, "Always", " ALWAYS "].map(&mode)).to eq(%i[worker worker off always always])
+
+        expect(Samagotchi::Log).to receive(:warn).with(:plugins, "pr_line_links_unknown", bundle: "github-pr", value: "false").once
+        expect(mode.call("false")).to eq(:worker)
+        expect(mode.call("never")).to eq(:worker)
+      end
+
+      def ctx_with(new_settings)
+        Samagotchi::Plugin::Context.new(bundle: "github-pr", label: "l", settings: new_settings, host: ctx.instance_variable_get(:@host),
+                                        env: { "XDG_STATE_HOME" => File.join(tmpdir, "state") })
+      end
+
+      %i[repl non_interactive].each do |name|
+        context "in #{name == :repl ? "the REPL" : "-p --non-interactive"}" do
+          let(:interface) { name }
+
+          it "attaches the branch's PR (gh pr view) but fetches no line-link data (no gh api)" do
+            fake_gh_with_view
+            expect(run_hooks).to eq("attached pr-42")
+            expect(gh_calls).to include(a_string_starting_with("pr view"))
+            expect(api_calls).to eq([])
+            expect(answer("see lib/foo.rb:28")).to eq("see lib/foo.rb:28")
+          end
+
+          context "with line_links: always" do
+            let(:settings) { { "line_links" => "always" } }
+
+            it "fetches and links as a worker does" do
+              fake_gh_with_view
+              run_hooks
+              expect(wait_for { api_calls.any? { |call| call.include?("/files") } }).to be(true)
+              expect(answer("see lib/foo.rb:28")).to eq("see [lib/foo.rb:28](#{anchor("lib/foo.rb", "R28")})")
+            end
+          end
+        end
+      end
+
+      context "in a worker" do
+        let(:interface) { :worker }
+
+        it "attaches the PR and fetches its line-link data" do
+          fake_gh_with_view
+          expect(run_hooks).to eq("attached pr-42")
+          expect(api_calls).to include(a_string_including("pulls/42/files"))
+        end
+      end
+
+      context "in a scratch session" do
+        let(:scratch) { true }
+        let(:interface) { :worker }
+        let(:settings) { { "line_links" => "always" } }
+
+        it "fetches nothing, even with line_links: always" do
+          fake_gh_with_view
+          ctx.context.attach(url: pr_url)
+          FileUtils.rm_f(gh_log)
+          expect(run_hooks).to eq("skipped: a scratch session")
+          expect(gh_calls).to eq([])
+        end
+      end
+
+      it "on a chi without ctx.frontend, prefetches as before (a worker)" do
+        old = ctx.clone
+        old.singleton_class.send(:undef_method, :frontend)
+        fake_gh_with_view
+        run_hooks(old)
+        expect(api_calls).to include(a_string_including("pulls/42/files"))
       end
     end
 

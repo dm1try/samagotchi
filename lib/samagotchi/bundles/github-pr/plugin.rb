@@ -23,8 +23,11 @@ require "tmpdir"
 # model's text stays as it was. The after_turn hook links from a per-PR
 # cache and never runs gh (the web holds the answer until the hooks are
 # done); before_turn, before_generation and the init task fill the cache
-# off the turn's thread. `bundles: github-pr: line_links: false` turns it
-# off.
+# off the turn's thread (`gh api`), in a session worker only: the REPL and
+# -p --non-interactive show no web page while they run (ctx.frontend; a chi
+# without it counts as a worker), and a scratch session never fetches.
+# `bundles: github-pr: line_links:` false turns it off, "always" fetches in
+# the REPL and -p too (still not for a scratch session).
 #
 # `bundles: github-pr: auto_attach:` says what the init task does with the
 # branch's open PR: `attach` (the default), `offer` (a card with Attach and
@@ -37,6 +40,8 @@ class Plugin
   COMMAND_SECONDS = 20
   # before_generation looks for a newly attached PR at most this often.
   GENERATION_CHECK_SECONDS = 30
+  # line_links' values: off, a worker's only (the default), every frontend.
+  LINE_LINKS_MODES = { false => :off, true => :worker, "always" => :always }.freeze
   # auto_attach's values (YAML's bare true/false: attach/off).
   AUTO_ATTACH_MODES = { "attach" => :attach, "offer" => :offer, "off" => :off, true => :attach, false => :off }.freeze
   # /pr-attach and /pr-decline take a PR number (`42` or `#42`).
@@ -50,6 +55,7 @@ class Plugin
     @cache = PrCache.new
     @generation_checked_at = nil
     @warned_mode = false
+    @warned_line_links = false
   end
 
   def register(chi)
@@ -58,13 +64,13 @@ class Plugin
       # Inline (an init task has its own thread), whatever the attach
       # returned (attached already, a child, a scratch session), and after
       # it, so a PR it just attached is warm for the first answer.
-      refresh(ctx, attached_prs(ctx)) if line_links?(ctx)
+      refresh(ctx, attached_prs(ctx)) if prefetch?(ctx)
       summary
     end
     chi.on(:before_turn) do |event, ctx|
       # The prompt too: messages is the history before this turn, and a
       # delegate child's task is its first prompt.
-      kick(ctx, attached_prs(ctx) + PrRef.from_messages(event[:messages], prompt: event[:prompt])) if line_links?(ctx)
+      kick(ctx, attached_prs(ctx) + PrRef.from_messages(event[:messages], prompt: event[:prompt])) if prefetch?(ctx)
       log_first_prompt(event, ctx)
     end
     chi.command("/pr-attach", "Attach the PR this session was offered: /pr-attach 42", anytime: true) do |args, ctx|
@@ -150,7 +156,34 @@ class Plugin
 
   private
 
-  def line_links?(ctx) = ctx.settings["line_links"] != false
+  # `bundles: github-pr: line_links:`: :off, :worker (true or unset) or
+  # :always; an unknown value (a quoted "false") is :worker, logged once.
+  def line_links_mode(ctx)
+    value = ctx.settings["line_links"]
+    return :worker if value.nil?
+
+    LINE_LINKS_MODES.fetch(value.is_a?(String) ? value.strip.downcase : value) do
+      ctx.log.warn(:pr_line_links_unknown, value: value.to_s[0, 40]) unless @warned_line_links
+      @warned_line_links = true
+      :worker
+    end
+  end
+
+  def line_links?(ctx) = line_links_mode(ctx) != :off
+
+  # Whether to fetch PR data for line links (gh api): not for a scratch
+  # session (gone at exit), and by default only in a session worker, the
+  # one frontend whose answers the web shows while it runs. A chi before
+  # ctx.frontend (0.49.0) counts as a worker.
+  def prefetch?(ctx)
+    return false if ctx.scratch?
+
+    case line_links_mode(ctx)
+    when :off then false
+    when :always then true
+    else (ctx.respond_to?(:frontend) ? ctx.frontend : :worker) == :worker
+    end
+  end
 
   def offer_card_id(number) = "github-pr-offer-#{number}"
 
@@ -275,7 +308,7 @@ class Plugin
   # A PR attached while the turn runs (a parent attaching it right after
   # `delegate wait: false`), checked at most every GENERATION_CHECK_SECONDS.
   def check_attached(ctx)
-    return unless line_links?(ctx)
+    return unless prefetch?(ctx)
     return if @generation_checked_at && now - @generation_checked_at < GENERATION_CHECK_SECONDS
 
     @generation_checked_at = now

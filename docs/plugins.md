@@ -1241,8 +1241,9 @@ nothing without `gh`, a repository or an open PR), and resolves PR URLs for
 `chi context add` and the web's "+ URL". Its script prints the PR as text
 and a summary of what changed in counts, authors and states only; it wakes
 the session for a review requesting changes, checks turning red, or the PR
-merged or closed. In the web, a `path:line` in an answer links to that line
-of the session's PR ([Line links](context.md#line-links)). `auto_attach:
+merged or closed. In the web, a `path:line` in a worker's answer links to
+that line of the session's PR ([Line links](context.md#line-links); `line_links:
+always` for the REPL and `chi -p` too). `auto_attach:
 offer` asks with a card first (`/pr-attach N`, `/pr-decline N`), `off`
 attaches nothing ([Attach, offer or off](context.md#attach-offer-or-off)).
 See [Attached context](context.md#github-prs-the-github-pr-bundle).
