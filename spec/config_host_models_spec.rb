@@ -92,7 +92,7 @@ RSpec.describe "hosts.<name>.models" do
 
     it "takes models: on a host and checks each entry's keys and its price's" do
       expected = ["config: unknown key 'hosts.work.models.rr/b.prise' (did you mean 'hosts.work.models.rr/b.price'?)",
-                  "config: unknown key 'hosts.work.models.rr/d.price.cached'"]
+                  "config: unknown key 'hosts.work.models.rr/d.price.cached' (did you mean 'hosts.work.models.rr/d.price.cache_read'?)"]
       expect(problems(<<~YAML)).to eq(expected)
         hosts:
           work:

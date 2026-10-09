@@ -28,6 +28,7 @@ and commands may change between minor versions. How releases are made:
   `gw: gw: connection refused`).
 - `/stats`' estimated cost names the host whose prices it used (`from hosts.gw.models prices`), not a literal
   `hosts.<name>.models`.
+- The config warning for a model price's old `cached` key suggests `cache_read`, its new name.
 - The web's ⚠ for a model the server served instead of the one asked now shows on a session opened with no
   worker running too (from its saved analytics), not only while its worker runs.
 - A host whose `/v1/models` fails no longer drops the ids declared under `hosts.<name>.models` from `chi models`,

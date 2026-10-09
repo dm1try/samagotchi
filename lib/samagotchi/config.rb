@@ -636,11 +636,15 @@ module Samagotchi
         end
       end
 
+      # A price key's old name: the warning suggests the new one.
+      RENAMED_PRICE_KEYS = { "cached" => "cache_read" }.freeze
+
       def price_key_problems(prefix, price)
         return [] unless price.is_a?(Hash)
 
         (price.keys.map(&:to_s) - ModelPrice::KEYS).map do |k|
-          unknown_key_message("#{prefix}#{k}", k, ModelPrice::KEYS, prefix: prefix)
+          # A renamed key is compared by its new name, so that name is the hint.
+          unknown_key_message("#{prefix}#{k}", RENAMED_PRICE_KEYS.fetch(k, k), ModelPrice::KEYS, prefix: prefix)
         end
       end
 
