@@ -21,6 +21,20 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(metrics.snapshot[:turn_records].map { |r| r[:id] }).to eq(["turn-abc"])
   end
 
+  it "marks a Continue turn's record with continue: true, and a normal one with continue: false" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi", turn_id: "turn-a" },
+      { type: :turn_failed },
+      { type: :turn_started, session_id: "sess-1", prompt: nil, turn_id: "turn-b", continue: true },
+      { type: :turn_failed }
+    ])
+
+    records = metrics.snapshot[:turn_records]
+    expect(records.map { |r| r[:id] }).to eq(%w[turn-a turn-b])
+    expect(records.first).to include(continue: false)
+    expect(records.last).to include(continue: true)
+  end
+
   it "starts empty" do
     snap = metrics.snapshot
     expect(snap[:turns]).to eq(0)

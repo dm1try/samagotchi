@@ -141,6 +141,9 @@ module Samagotchi
       :cuts,
       :capped,
       :model,
+      # The turn the user started by answering the step-limit question with
+      # Continue (:turn_started's +continue+); its record carries it.
+      :continue,
       :id,
       :started_at,
       :started_monotonic,
@@ -539,6 +542,7 @@ module Samagotchi
           cuts: 0,
           capped: 0,
           model: nil,
+          continue: event[:continue] ? true : false,
           id: event[:turn_id] || SecureRandom.uuid,
           started_at: now.iso8601(3),
           started_monotonic: monotonic_time,
@@ -575,6 +579,9 @@ module Samagotchi
           record[:cancellation_reason] = reason.to_s unless reason.nil? || reason.to_s.empty?
           record[:cancelled_by] = by.to_s unless by.nil? || by.to_s.empty?
           record[:failure] = failure if failure
+          # Every record says, so the report can tell a file with no Continue
+          # from one written before the mark.
+          record[:continue] = @turn.continue
           record.merge!(turn_token_fields(@turn))
           @turn_records << record
           count_turn(record)
