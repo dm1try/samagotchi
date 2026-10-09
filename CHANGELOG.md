@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
   counted cards, so a folded family made the two disagree).
 - Web: the composer's "Cancel" reads "Stop turn" and the footer's "stop" reads "stop session", each saying what it
   ends.
+- Web: a toast (the update notice, an archive's Undo) sits above the open session's composer card instead of over
+  its footer, so it never covers the footer's controls (a worker badge's Restart); it follows the card as it grows.
 
 ### Fixed
 
