@@ -249,6 +249,13 @@ RSpec.describe Samagotchi::SessionCommands do
     expect(commands.run("/models").output).to eq("alpha (alpha.test:1111) — unreachable: refused")
   end
 
+  it "names a down host once in /models when its error already starts with the name" do
+    allow(registry).to receive(:list_all_models)
+      .and_return("alpha" => { host: "alpha.test", port: 1111, error: "alpha: connection refused" })
+
+    expect(commands.run("/models").output).to eq("alpha (alpha.test:1111) — unreachable: connection refused")
+  end
+
   describe "/models on a big catalog" do
     # A remote provider's catalog (OpenRouter ~380 ids) must not flood the terminal.
     let(:catalog) do

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "model_catalog"
 require_relative "model_profile"
 require_relative "served_model"
 require_relative "prompt_note"
@@ -574,7 +575,7 @@ module Samagotchi
         data = results[hname]
         host_label = "#{hname} (#{data[:host]}:#{data[:port]})"
         if data[:error]
-          lines << "#{host_label} — unreachable: #{data[:error]}"
+          lines << "#{host_label} — unreachable: #{ModelCatalog.error_detail(hname, data[:error])}"
           next
         end
         # Declared ids (hosts.<name>.models) first, as "(config)", never cut

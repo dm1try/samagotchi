@@ -20,6 +20,13 @@ module Samagotchi
 
     module_function
 
+    # A host's listing error without the "host: " its message may already
+    # start with (ConnectionRefused's "gw: connection refused", a provider
+    # error's "gw: HTTP 503: …"), so a line that names the host names it once.
+    def error_detail(host, error)
+      error.to_s.delete_prefix("#{host}: ")
+    end
+
     # @param results [Hash] list_all_models' answer
     # @param registry [#default_entry, #entries]
     # @return [Listing]
@@ -30,7 +37,7 @@ module Samagotchi
       host_rows = HostModel.rows(results, registry.entries)
       results.keys.sort_by { |name| [name == default_host ? 0 : 1, name] }.each do |host|
         if results[host][:error]
-          warnings << "#{host}: #{results[host][:error]}"
+          warnings << "#{host}: #{error_detail(host, results[host][:error])}"
           next
         end
         host_rows[host].each do |row|

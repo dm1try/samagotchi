@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
   subdir (`../lib/foo.rb`), still is.
 - A step whose stream kept dropping now fails saying how many requests it made ("after 3 attempts"), not
   "after 1 attempts"; one attempt is said in the singular.
+- A host that is down is named once in the models list's warning and in `/models` (`gw: connection refused`, not
+  `gw: gw: connection refused`).
 
 ## [0.46.0] - 2026-10-09
 
