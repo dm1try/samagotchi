@@ -560,7 +560,7 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripShow").click();
   await expect(title).toBeHidden();
 
-  await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop", "delete"]);
+  await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
   await page.locator("#infoArchiveBtn").click();
   await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
   await expect(page.locator("#toast")).toContainText(`Archived ${id.slice(0, 8)}`);

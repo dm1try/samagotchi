@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 - Web: the browser tab names the open session (`<first message> · Chi · <project>`), so several chi tabs read apart.
 - Web: the hidden strip's "▾ N sessions" pill counts sessions, the number the "All sessions →" tile shows (it
   counted cards, so a folded family made the two disagree).
+- Web: the composer's "Cancel" reads "Stop turn" and the footer's "stop" reads "stop session", each saying what it
+  ends.
 
 ### Fixed
 
