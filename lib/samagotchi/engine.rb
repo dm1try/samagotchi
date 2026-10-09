@@ -1448,8 +1448,6 @@ module Samagotchi
       @question_desk.request(payload)
     end
 
-    QUESTION_DISMISSED_NOTE = QuestionDesk::DISMISSED_NOTE
-
     # Open a question for the UIs and wait for its answer
     # (QuestionDesk#open_question: BLOCKS until answered or cancelled).
     # @param fields [Hash] question:, options:, header:, multi_select:, allow_freeform:, …
