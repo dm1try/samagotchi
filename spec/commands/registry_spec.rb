@@ -155,10 +155,11 @@ RSpec.describe Samagotchi::Commands::Registry do
       expect(builtins.listing.find { |item| item[:name] == "/models" }).to include(anytime: true, mid_turn: "anytime")
     end
 
-    it "offers the same Tab lists in the REPL and the attached TUI, but /detach (the REPL owns its session)" do
-      expect(builtins.completions(:repl)).to eq(%w[/archive /context /continue /exit /guardrails /help /llm-context /model /models /quit /recap /stats])
+    it "offers the same Tab lists in the REPL and the attached TUI, but /detach and /queue (the REPL owns its session, and only it has an after-the-turn list)" do
+      expect(builtins.completions(:repl))
+        .to eq(%w[/archive /context /continue /cut /exit /guardrails /help /llm-context /model /models /queue /quit /recap /stats])
       expect(builtins.completions(:attached))
-        .to eq(%w[/archive /context /continue /detach /exit /guardrails /help /llm-context /model /models /quit /recap /stats])
+        .to eq(%w[/archive /context /continue /cut /detach /exit /guardrails /help /llm-context /model /models /quit /recap /stats])
     end
 
     # Both terminal UIs dispatch their own commands on these ids.

@@ -39,17 +39,59 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(repl_input.pop(timeout: 0)).to be_nil
   end
 
-  it "asks the engine to cut a generation that is only thinking for a steered line (the user's)" do
-    allow(engine).to receive(:cut_for_steer).and_return(false)
+  it "pushes a plain line during the turn and does not cut; /cut cuts, /queue waits for the end" do
+    allow(engine).to receive(:cut_for_steer).and_return(:now)
+    drained = nil
+    leftover = nil
     allow(engine).to receive(:run_turn) do |*, pending_input:, **|
       repl_input << [:line, "skip the tests"]
-      pending_input.call
+      repl_input << [:line, "/cut drop the tests"]
+      repl_input << [:line, "/queue and then this"]
+      leftover = pending_input.call
       result
     end
 
     agent.run_engine_turn(session, "go")
 
+    # The line and /cut's text steer; /queue's waited for the turn's end.
+    expect(leftover).to eq(["skip the tests", "drop the tests"])
     expect(engine).to have_received(:cut_for_steer).with(nil, epoch: 0).once
+    expect(surface.lines.join("\n")).to include("(goes in at the next step)", "(cut in now)", "(queued: runs after this turn)")
+  end
+
+  it "says what became of each line from the cut's outcome" do
+    allow(engine).to receive(:cut_for_steer).and_return(:waits)
+    allow(engine).to receive(:run_turn) do |*, **|
+      repl_input << [:line, "/cut now please"]
+      result
+    end
+    agent.run_engine_turn(session, "go")
+    expect(surface.lines.join("\n")).to include("(cuts in once the thinking passes 20 s)")
+
+    allow(engine).to receive(:cut_for_steer).and_return(:off)
+    agent.run_engine_turn(session, "go")
+    expect(surface.lines.join("\n")).to include("(cutting is off; goes in at the next step)")
+  end
+
+  it "runs /cut TEXT and /queue TEXT as a normal prompt when no turn is running" do
+    run = nil
+    allow(agent).to receive(:save_session)
+    allow(agent).to receive(:run_engine_turn) { |_s, prompt, **| run = prompt; result }
+    agent.send(:run_input_line, used_session, "/cut hello")
+    expect(run).to eq("hello")
+    agent.send(:run_input_line, used_session, "/queue hello")
+    expect(run).to eq("hello")
+  end
+
+  it "says a /cut or /queue with no text is a usage error, and doesn't send it" do
+    run = nil
+    allow(agent).to receive(:save_session)
+    allow(agent).to receive(:run_engine_turn) { |_s, prompt, **| run = prompt; result }
+    agent.send(:run_input_line, used_session, "/cut")
+    agent.send(:run_input_line, used_session, "/queue")
+
+    expect(run).to be_nil
+    expect(surface.lines.last(2)).to eq([described_class::Formatting::STEER_CHOICE_USAGE] * 2)
   end
 
   # The turn-end warm-up prefills the next turn's prompt head; a line typed

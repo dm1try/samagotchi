@@ -752,6 +752,14 @@ module Samagotchi
     def run_input_line(session, input)
       return if input.empty?
 
+      # /cut TEXT and /queue TEXT are deliveries only while a turn runs; at
+      # the prompt both run the text as a normal turn, as their usage says.
+      if (choice = steer_choice(input))
+        return @surface.commit(STEER_CHOICE_USAGE) if choice.last.empty?
+
+        input = choice.last
+      end
+
       # /model, /models, !rollback, !cmd, /continue (shared with workers);
       # an anytime command's cards print as it shows them (btw's
       # "thinking…" before the answer).
@@ -1083,6 +1091,10 @@ module Samagotchi
     # plugin's /btw, /model alone) starts now on its own thread; one that
     # runs after the turn (/model X, !cmd) waits in the queue, in arrival
     # order with the other lines that wait; others go back in the prompt.
+    #
+    # A plain line goes in at the running turn's next step boundary and
+    # never cuts; /cut TEXT asks for a cut, /queue TEXT waits for the turn
+    # to end and runs as a turn of its own.
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
       local = local_command(line) unless line.nil?
@@ -1090,6 +1102,12 @@ module Samagotchi
       return archive_after_turn if local == :archive
       return detach_note if local == :detach
       return false if @active_cancel_controller&.cancelled?
+
+      # Before every command check: /cut and /queue are the UIs' own words
+      # for a delivery (they are listed for Tab and /help, never run).
+      if (choice = steer_choice(line))
+        return submit_steer_choice(*choice)
+      end
 
       policy = command_registry.mid_turn(line)
       return start_anytime_command(line) if policy == :anytime
@@ -1108,12 +1126,37 @@ module Samagotchi
       # Behind a command that waits for the turn's end, a line waits too.
       return wait_for_turn_end(line) if @command_waits
 
-      epoch = @engine.input_epoch
       @pending_input_queue.push(line.strip)
-      # The user's line cuts a generation that has streamed only thinking
-      # for long (steer.cut_after), now or once it has: the model starts the
-      # step again with it.
-      @engine.cut_for_steer(nil, epoch: epoch)
+      @surface.commit(NEXT_STEP_NOTE)
+      true
+    end
+
+    # /cut TEXT and /queue TEXT during a turn, which the REPL would
+    # otherwise read as prompts (SessionCommands registers them for Tab and
+    # help only). A cut asks the engine to cut the generation only thinking
+    # too long; a queue waits for the turn's end (the REPL's own after-turn
+    # list). Empty text gets the usage line. A line with images never steers
+    # (as a plain one doesn't).
+    # @return [Boolean] whether the turn took it
+    def submit_steer_choice(choice, text)
+      if text.empty?
+        @surface.commit(STEER_CHOICE_USAGE)
+        return true
+      end
+      return image_line_waits(text) if ImageInput.extract(text).any?
+
+      # A /queue waits for the turn's end; a /cut behind a command that
+      # already waits there goes after it too.
+      if choice == :queue || @command_waits
+        @surface.commit(COMMAND_QUEUED)
+        return wait_for_turn_end(text)
+      end
+
+      epoch = @engine.input_epoch
+      @pending_input_queue.push(text)
+      # With no session running the cut is :off; the text still waits for
+      # the running turn's next step.
+      @surface.commit(steer_cut_note(@engine.cut_for_steer(nil, epoch: epoch)))
       true
     end
 

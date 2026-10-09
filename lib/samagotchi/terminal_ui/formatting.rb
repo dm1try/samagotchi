@@ -91,6 +91,47 @@ module Samagotchi
         paint("↪ cut in for #{STEER_CUT_FOR.fetch(event[:source].to_s, "your message")}", 90)
       end
 
+      # What a line submitted at the open prompt says became of it: a plain
+      # line goes in at the running turn's next step boundary (nothing cuts
+      # unless the message asked for it), /cut's cutting now or once the
+      # thinking passes steer.cut_after, and /queue's waiting for the end.
+      # Both TUIs print the same words (SteerCut#cut_for_steer's answer).
+      NEXT_STEP_NOTE = "(goes in at the next step)"
+      CUT_NOW_NOTE = "(cut in now)"
+      CUT_WAITS_NOTE = "(cuts in once the thinking passes %d s)"
+      CUT_OFF_NOTE = "(cutting is off; goes in at the next step)"
+      STEER_CHOICE_USAGE = "(/cut and /queue need a message: /cut TEXT, /queue TEXT)"
+      # The UIs' own words for a delivery, listed for Tab and /help only
+      # (a local: entry, so no command or bundle may use the names).
+      CUT_COMMAND = "/cut"
+      QUEUE_COMMAND = "/queue"
+
+      # @param outcome [Symbol] SteerCut#cut_for_steer's answer: :now, :waits or :off
+      # @return [String] the dim line to show for a /cut
+      def steer_cut_note(outcome)
+        case outcome
+        when :now then CUT_NOW_NOTE
+        when :waits then format(CUT_WAITS_NOTE, Config.get("steer.cut_after").to_i)
+        else CUT_OFF_NOTE
+        end
+      end
+
+      # The choice a mid-turn line carries, as [:cut, "TEXT"] or
+      # [:queue, "TEXT"]; nil for any other line. The text is "" when the
+      # line named the choice without one.
+      # @param line [String, nil]
+      # @return [Array(Symbol, String), nil]
+      def steer_choice(line)
+        text = line.to_s.strip
+        return [:cut, ""] if text == CUT_COMMAND
+        return [:queue, ""] if text == QUEUE_COMMAND
+
+        [[:cut, CUT_COMMAND], [:queue, QUEUE_COMMAND]].each do |choice, name|
+          return [choice, text.delete_prefix("#{name} ").strip] if text.start_with?("#{name} ")
+        end
+        nil
+      end
+
       # "✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k tokens (paid
       # off)": a batch of LLM context edits went in (LLMContextNotice builds
       # the line; the web prints the same), dim like the retry row.

@@ -100,6 +100,15 @@ module Samagotchi
       # The REPL owns its session: it answers /detach with a note, and doesn't offer it.
       registry.register("/detach", "leave and keep the worker running", local: true, uis: [:attached],
                                                                         match: ->(text) { text.casecmp?("/detach") })
+      # /cut TEXT and /queue TEXT while a turn runs: a delivery the UIs parse
+      # themselves (Formatting#steer_choice) before any command check; the
+      # entries exist for Tab completion and /help. /queue is a real
+      # after-the-turn list only in the local REPL (the attached TUI's
+      # worker doesn't skip queued files yet), so it is offered there.
+      registry.register("/cut", "cut the running generation and go in now (/cut TEXT)",
+                        local: true, match: ->(text) { text.casecmp?("/cut") || text.match?(%r{\A/cut\s+\S}) })
+      registry.register("/queue", "run as the next turn after this one (/queue TEXT)",
+                        local: true, uis: [:repl], match: ->(text) { text.casecmp?("/queue") || text.match?(%r{\A/queue\s+\S}) })
       registry
     end
 
