@@ -24,6 +24,10 @@ and commands may change between minor versions. How releases are made:
   is rebuilt when `hosts:` changes, as the model picker's already was.
 - A host listing saved to the state dir when the registry was built with its own env (the spawn-time model check, the
   self report) writes under that env's state dir, not `ENV`'s.
+- loop-guard: a dropped stream's step asked again (it streams from the start) no longer reads the dropped attempt's
+  thinking as part of the new one — the model re-thinking the same opening after a restart could be cut or stopped
+  as "thinking repeats itself". The first `:generation_progress` fire after such a restart carries `restarted: true`,
+  and the loop-guard thinking watch starts over on it (loop-guard 0.3.7).
 
 ## [0.49.0] - 2026-10-09
 
