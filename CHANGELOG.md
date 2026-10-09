@@ -31,6 +31,11 @@ and commands may change between minor versions. How releases are made:
 - A web message that ended (or began) with whitespace stayed in the composer after it was sent: one sent right
   after Annotate (its quote ends in a blank line), or with a trailing newline or space. The sent text is trimmed,
   and the composer was cleared only when it held exactly that text; it is now compared trimmed too.
+- The web continues a session: `continue →` in the info bar starts the next link of its chain and opens it with
+  `Continue where we left off.` in the composer, not sent; the previous link is archived. A link continued already
+  links to its next one instead (`← date` / `date →` in the info bar), and a continue refused for open delegates
+  names them, each a link. A chain is one card in the lists, the latest link's, whose `↩ day N` chip lists the
+  earlier links (their day, date and recap) in a popover.
 
 ## [0.46.1] - 2026-10-09
 
