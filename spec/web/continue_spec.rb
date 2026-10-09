@@ -77,6 +77,35 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
     expect(Process).not_to have_received(:spawn)
   end
 
+  it "answers 400 ambiguous_id for a prefix of several sessions" do
+    %w[aaaa1111-0000-4000-8000-000000000001 aaaa2222-0000-4000-8000-000000000002].each do |id|
+      previous_link.tap { |s| FileUtils.mv(Samagotchi::Session.session_file(s.id, state_dir: state_dir), Samagotchi::Session.session_file(id, state_dir: state_dir)) }
+      data = JSON.parse(File.read(Samagotchi::Session.session_file(id, state_dir: state_dir)))
+      File.write(Samagotchi::Session.session_file(id, state_dir: state_dir), JSON.generate(data.merge("id" => id)))
+    end
+
+    status, body = create(continues: "aaaa", idle: true)
+    expect(status).to eq(400)
+    expect(body).to include("error" => "ambiguous_id")
+    expect(body["detail"]).to include("session id aaaa matches 2 sessions")
+  end
+
+  it "doesn't answer 404 for an error after the new link started (it did start)" do
+    previous = previous_link
+    hub = double("hub")
+    allow(hub).to receive(:touch).and_raise(ArgumentError, "hub hiccup")
+    app = described_class.new(manager: Samagotchi::SessionManager, state_dir: state_dir, bridge_wait_timeout: 0, hub: hub)
+
+    status = begin
+      app.call(Rack::MockRequest.env_for("/api/sessions", "HTTP_HOST" => "127.0.0.1", method: "POST",
+                                                          input: JSON.generate(continues: previous.id, idle: true))).first
+    rescue ArgumentError
+      :raised
+    end
+    expect(status).not_to eq(404)
+    expect(Samagotchi::Session.list(state_dir: state_dir).map(&:continues)).to include(previous.id)
+  end
+
   it "answers 409 open_children naming a delegate still open" do
     previous = previous_link
     child = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: folder,

@@ -651,23 +651,33 @@ module Samagotchi
         end
 
         preview = idle ? body["preview"].to_s.strip : ""
-        session = @manager.continue_session(given, prompt: idle ? nil : prompt.to_s, title: preview.empty? ? nil : preview,
-                                                   state_dir: @state_dir)
+        session, error = continue_from(given, prompt: idle ? nil : prompt.to_s, title: preview.empty? ? nil : preview)
+        return error if error
+
         port = await_bridge_port(session.id)
         [session.continues, session.id].each { |sid| @hub&.touch(sid) }
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
         json_response(201, session_to_json(session).merge(bridge_port: port))
+      end
+
+      # SessionManager.continue_session, its refusals as responses: [session,
+      # nil] or [nil, the response]. Only its own errors: what fails after
+      # the new link started is not a refusal of it.
+      def continue_from(given, prompt:, title:)
+        [@manager.continue_session(given, prompt: prompt, title: title, state_dir: @state_dir), nil]
       rescue SessionManager::ContinueRefused => e
         extra = e.reason == :continued ? { next_id: e.ids.first } : { ids: e.ids }
-        json_response(409, { error: e.reason.to_s, detail: e.message, **extra })
+        [nil, json_response(409, { error: e.reason.to_s, detail: e.message, **extra })]
       rescue SessionManager::ArchiveRefused => e
-        error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)
+        [nil, error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)]
       rescue SessionManager::OwnedByTUI
-        error_response(409, "owned_by_tui", "session #{given} is open in a chi REPL; close it there first")
+        [nil, error_response(409, "owned_by_tui", "session #{given} is open in a chi REPL; close it there first")]
       rescue ModelProfile::MissingModel => e
-        error_response(400, "invalid_model", e.message)
+        [nil, error_response(400, "invalid_model", e.message)]
+      rescue Session::AmbiguousId => e
+        [nil, error_response(400, "ambiguous_id", e.message)]
       rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
+        [nil, error_response(404, "not_found", e.message)]
       end
 
       # The create request's "llm_context" ({strategy:, apply:, budget:},
