@@ -220,6 +220,18 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       expect_nothing_started(previous)
     end
 
+    it "refuses a model whose host config.yml no longer has before the archive stops anything" do
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+      previous = make
+      previous.model_name = "gone:org/model"
+      previous.save(state_dir: tmpdir)
+      allow(described_class).to receive(:archive_session).and_call_original
+
+      expect { continue(previous.id) }.to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'gone'/)
+      expect(described_class).not_to have_received(:archive_session)
+      expect_nothing_started(previous)
+    end
+
     it "refuses an unknown session" do
       expect { continue("feedbeef") }.to raise_error(ArgumentError, "no session feedbeef")
       expect { continue("../etc") }.to raise_error(ArgumentError, "no session ../etc")

@@ -313,14 +313,18 @@ module Samagotchi
 
     # The refusals that come before anything changes: continued already (no
     # forks in a chain), a delegate still open (its report would go to the
-    # archived link), the folder gone (the worker would run elsewhere).
-    # @raise [ContinueRefused]
+    # archived link), the folder gone (the worker would run elsewhere), a
+    # model whose host config.yml no longer has.
+    # @raise [ContinueRefused, ModelProfile::MissingModel]
     private_class_method def self.check_continue!(previous, state_dir)
       if (following = SessionChain.next_of(previous.id, state_dir: state_dir))
         raise ContinueRefused.new(previous.id, :continued, ids: [following])
       end
 
       check_open_children!(previous.id, state_dir)
+      # Its model's host, as spawn_session checks it: before the archive
+      # stops the previous link's worker.
+      ModelProfile.check_host!(ModelProfile.required_model_name(previous.model_typed || previous.model_name))
       dir = previous.working_directory.to_s
       raise ContinueRefused.new(previous.id, :folder_gone, detail: dir) unless File.directory?(dir)
     end
