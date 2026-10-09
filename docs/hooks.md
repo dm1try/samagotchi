@@ -54,7 +54,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | `:after_turn` | After a turn completed or was stopped once the model was asked (not after one that failed, was cut short by an interrupt signal (SIGINT), or was stopped before its `:before_turn` hooks) | `{ type: :after_turn, status: "completed" \| "canceled", present: (see [Presenting the answer](#presenting-the-answer-display-only)), messages: [...] (the conversation the turn stored; a cancelled or empty turn ends it with a `kind: turn_note` system message, and a context line is `kind: context`, see [sessions.md](sessions.md#notes-a-turn-leaves-for-the-model)) }` |
 | `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
 | `:after_generation` | After LLM returns (both loops); not after a generation a hook cut (`stop_generation`) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
-| `:generation_progress` | While the response streams, in batches (see [Watching the stream](#watching-the-stream)) | `{ type: :generation_progress, iteration: N, thinking: "..." (new since the last fire), text: "..." (new visible text), thinking_chars: N, text_chars: N (this generation so far), elapsed_ms: N }` |
+| `:generation_progress` | While the response streams, in batches (see [Watching the stream](#watching-the-stream)) | `{ type: :generation_progress, iteration: N, thinking: "..." (new since the last fire), text: "..." (new visible text), thinking_chars: N, text_chars: N (this generation so far), elapsed_ms: N, restarted: true (only on the first fire after a dropped stream was asked again) }` |
 | `:before_tool_call` | Before tool dispatch (and before `tool_call_started`) | `{ type: :before_tool_call, iteration: N, call: {...}, params: "...", guardrail: Verdict, context: {...}, targets: {...}, blocked: false, block_reason: nil }` |
 | `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." (the text the model gets: capped at max_tool_output_chars, a cut one ending in a [cut: N of M chars …] line), status: "ok" \| "error" \| "blocked" \| "stopped" }`; `stopped` is a `task_wait` the turn's Stop ended (the task runs on) or whose task was stopped |
 | `:session_end` | After each turn `:after_turn` fires for, after it (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
@@ -172,6 +172,14 @@ on the chat path, a Qwen `<think>` block or a Gemma 4
 thinking arrives as `text` instead: a chat provider's that puts `<think>`
 inside the answer's content. Tool-call bodies are left out of `text`. With streaming off
 (`stream: false` on a chat host) there are no chunks, so no fires.
+
+When a stream drops mid-generation, the step is asked again and streams
+from the start (a `:generation_retrying` event with `restarted: true`);
+what the dropped attempt streamed is void. The first `:generation_progress`
+fire after that carries `restarted: true`; later fires, and fires after a
+normal start, carry no `restarted` key. A watcher of the stream starts
+over on it: the thinking a dropped attempt streamed is no part of this
+generation's, and counting it would read a re-thought opening as a repeat.
 
 **Keep it fast.** The hook runs on the turn's thread, inside the HTTP read:
 while it runs, tokens wait in the socket (nothing is lost). A hook over
