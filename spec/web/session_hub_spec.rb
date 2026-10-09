@@ -517,4 +517,29 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(hub.installed).to be_nil
     end
   end
+
+  describe "#hub_registry" do
+    it "follows a hosts: edit made while chi web runs, and keeps the registry while hosts: stay" do
+      a = { "box" => { name: "box", host: "a", port: 1 } }
+      b = a.merge("new" => { name: "new", host: "b", port: 2 })
+      hosts = a
+      allow(Samagotchi::ConfigFile).to receive(:hosts_config) { hosts }
+      built = []
+      allow(Samagotchi::HostRegistry).to receive(:new) do |hosts_config:|
+        built << hosts_config.keys
+        Object.new
+      end
+
+      first = hub.send(:hub_registry)
+      expect(hub.send(:hub_registry)).to be(first)
+      expect(built).to eq([%w[box]])
+
+      hosts = b
+      second = hub.send(:hub_registry)
+      expect(second).not_to be(first)
+      expect(built).to eq([%w[box], %w[box new]])
+      expect(hub.send(:hub_registry)).to be(second)
+      expect(built).to eq([%w[box], %w[box new]])
+    end
+  end
 end
