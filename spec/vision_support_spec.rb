@@ -56,7 +56,19 @@ RSpec.describe Samagotchi::VisionSupport do
       expect(answer(native_target(props(chatml)))).to have_attributes(value: false, reason: /doesn't use <\|vision_start\|>/)
     end
 
-    it "says no for gemma4 (no image template yet)" do
+    it "says yes for gemma4: its template is the bare marker, so no chat template token to check" do
+      gemma_props = ornith.merge("chat_template" => "{{- '<|turn>user\\n' -}}{{- '<|image|>' -}}")
+      expect(answer(native_target(props(gemma_props)), profile: gemma)).to have_attributes(value: true, reason: nil)
+    end
+
+    it "says no for gemma4 when the server's template isn't Gemma 4's (e.g. Gemma 3's <start_of_image>)" do
+      gemma3 = ornith.merge("chat_template" => "{{- '<start_of_turn>user\\n' -}}{{- '<start_of_image>' -}}")
+      expect(answer(native_target(props(gemma3)), profile: gemma))
+        .to have_attributes(value: false, reason: "the server's chat template doesn't use <|image|> (profile gemma4)")
+    end
+
+    it "says no for a profile with no image template" do
+      allow(gemma).to receive(:image_template).and_return(nil)
       expect(answer(native_target(props(ornith)), profile: gemma).reason).to eq("profile gemma4 has no image template yet")
     end
 

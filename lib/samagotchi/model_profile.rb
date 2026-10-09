@@ -40,7 +40,7 @@ module Samagotchi
                 :system_prefix, :user_prefix, :assistant_prefix,
                 :model_prefix,
                 :stop_sequences, :tool_decl_format,
-                :image_template
+                :image_template, :image_check_token
 
     def initialize(config)
       @name = config[:name]
@@ -65,10 +65,12 @@ module Samagotchi
       # How the chat template wraps an image's media marker ("%{marker}"),
       # or nil when chi doesn't know it yet (native images are refused).
       @image_template = config[:image_template]
+      # A token the server's chat template must contain for images to be
+      # sent (VisionSupport); defaults to the template's opening token.
+      @image_check_token = config[:image_check_token] || image_open_token
     end
 
-    # The token the image template opens with, e.g. "<|vision_start|>": the
-    # server's chat template must use it too (VisionSupport).
+    # The token the image template opens with, e.g. "<|vision_start|>".
     def image_open_token
       image_template&.split("%{marker}")&.first.to_s
     end
@@ -92,7 +94,12 @@ module Samagotchi
         assistant_prefix: "",
         model_prefix: "",
         stop_sequences: ["<turn|>", "<|tool_response>"],
-        tool_decl_format: :gemma4
+        tool_decl_format: :gemma4,
+        # The bare marker: llama.cpp's mtmd wraps Gemma 4 images in
+        # <|image>…<image|> itself, as its chat path does (V13 spike). The
+        # template writes <|image|> for an image part; Gemma 3's doesn't.
+        image_template: "%{marker}",
+        image_check_token: "<|image|>"
       )
     end
 

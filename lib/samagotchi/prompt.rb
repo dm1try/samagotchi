@@ -59,30 +59,45 @@ module Samagotchi
       [text + prefill_for(messages, profile, prefill), images]
     end
 
-    def self.image_lines(items, profile, images)
-      return "" if items.empty?
+    # A message's image lines: +text+ holds them all in order (what goes
+    # inside the message); +placeholders+ and +markers+ split the lines of
+    # images not sent from the sent ones' media markers, for Gemma's tool
+    # response, whose markers go after the block.
+    ImageLines = Data.define(:lines) do
+      def text = join(lines)
+      def placeholders = join(lines.reject(&:last))
+      def markers = join(lines.select(&:last))
 
+      private
+
+      def join(subset) = subset.empty? ? "" : "\n#{subset.map(&:first).join("\n")}"
+    end
+
+    def self.image_lines(items, profile, images)
       lines = items.each_with_index.map do |item, index|
-        next item.placeholder unless item.sent?
-        next ImageRef.placeholder(item.ref, ImagePlan::CANT_SEE) unless profile.image_template
+        next [item.placeholder, false] unless item.sent?
+        next [ImageRef.placeholder(item.ref, ImagePlan::CANT_SEE), false] unless profile.image_template
 
         images << item.data
-        "[image #{index + 1}: #{ImageRef.name(item.ref)}] " \
-          "#{Kernel.format(profile.image_template, marker: ImagePlan::NATIVE_PLACEHOLDER)}"
+        ["[image #{index + 1}: #{ImageRef.name(item.ref)}] " \
+         "#{Kernel.format(profile.image_template, marker: ImagePlan::NATIVE_PLACEHOLDER)}", true]
       end
-      "\n#{lines.join("\n")}"
+      ImageLines.new(lines: lines)
     end
 
     def self.format_with_turn_markers(messages, profile, suffixes)
       last_user = messages.rindex { |m| m[:role] == "user" } || -1
       parts = messages.each_with_index.map do |m, index|
-        content = prompt_content_for(m, profile) + suffixes[index]
+        lines = suffixes[index]
+        content = prompt_content_for(m, profile) + (m[:role] == "tool_response" ? lines.placeholders : lines.text)
         previous = index.positive? ? messages[index - 1][:role] : nil
         following = messages[index + 1]&.dig(:role)
         case m[:role]
         when "tool_response"
-          # Inside the model's turn; closed when another role follows.
-          tool_response_blocks(content, profile) +
+          # Inside the model's turn; closed when another role follows. Its
+          # sent images go after the blocks, outside the quoted value, as
+          # Gemma's chat template puts them; placeholder lines stay inside.
+          tool_response_blocks(content, profile) + lines.markers +
             (following && following != "tool_response" && following != "model" ? "#{profile.turn_end}\n" : "")
         when "model"
           content = strip_gemma_thought(content) if index < last_user && !content.include?(profile.tool_call_open)
@@ -136,7 +151,7 @@ module Samagotchi
       parts = []
 
       messages.each_with_index do |m, index|
-        content = prompt_content_for(m, profile) + suffixes[index]
+        content = prompt_content_for(m, profile) + suffixes[index].text
         case m[:role]
         when "system"
           parts << "#{profile.system_prefix}#{content}<|im_end|>\n"

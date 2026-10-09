@@ -43,9 +43,51 @@ RSpec.describe "Native images" do
       expect(images).to eq([gif64, png64])
     end
 
-    it "writes placeholders for a profile with no image template" do
+    it "puts Gemma's bare marker after the text: mtmd adds <|image>…<image|> itself" do
       text, images = Samagotchi::Prompt.format_with_images([{ role: "user", content: "look", images: [png] }],
                                                            profile: Samagotchi::ModelProfile.gemma4, vision: vision)
+      expect(text).to eq("<|turn>user\nlook\n[image 1: tiny.png] #{marker}<turn|>\n<|turn>model\n")
+      expect(images).to eq([png64])
+    end
+
+    it "puts a Gemma tool_response's image after its block, as Gemma's chat template does" do
+      text, images = Samagotchi::Prompt.format_with_images(
+        [{ role: "tool_response", content: "[read]\nImage tiny.png attached.", images: [png] }],
+        profile: Samagotchi::ModelProfile.gemma4, vision: vision
+      )
+      expect(text).to end_with("Image tiny.png attached.<|\"|>}<tool_response|>\n[image 1: tiny.png] #{marker}")
+      expect(images).to eq([png64])
+    end
+
+    it "keeps a Gemma tool_response's placeholder lines inside the quoted value when images aren't sent" do
+      blind = vision.with(capability: Samagotchi::VisionSupport::Answer.new(value: false, reason: "x"))
+      text, images = Samagotchi::Prompt.format_with_images(
+        [{ role: "tool_response", content: "[read]\nImage tiny.png attached.", images: [png] }],
+        profile: Samagotchi::ModelProfile.gemma4, vision: blind
+      )
+      expect(text).to end_with("Image tiny.png attached.\n[image tiny.png 3×2 not sent: this model can't see images]" \
+                               "<|\"|>}<tool_response|>")
+      expect(images).to eq([])
+    end
+
+    it "sends a Gemma conversation's user and tool images in prompt order, one marker each" do
+      text, images = Samagotchi::Prompt.format_with_images(
+        [{ role: "user", content: "compare", images: [png] },
+         { role: "model", content: "<|tool_call>call:read{path:<|\"|>a.gif<|\"|>}<tool_call|>" },
+         { role: "tool_response", content: "[read]\nImage tiny.gif attached.", images: [gif] }],
+        profile: Samagotchi::ModelProfile.gemma4, vision: vision
+      )
+      expect(text.scan(marker).size).to eq(2)
+      expect(text.index("[image 1: tiny.png] #{marker}")).to be < text.index("<|tool_call>")
+      expect(text).to end_with("<tool_response|>\n[image 1: tiny.gif] #{marker}")
+      expect(images).to eq([png64, gif64])
+    end
+
+    it "writes placeholders for a profile with no image template" do
+      blind = Samagotchi::ModelProfile.gemma4
+      allow(blind).to receive(:image_template).and_return(nil)
+      text, images = Samagotchi::Prompt.format_with_images([{ role: "user", content: "look", images: [png] }],
+                                                           profile: blind, vision: vision)
       expect(text).to include("look\n[image tiny.png 3×2 not sent: this model can't see images]")
       expect(images).to eq([])
     end

@@ -73,9 +73,9 @@ module Samagotchi
       return no("the server gives no media marker (update llama.cpp)") unless media_marker(props)
       return no("profile #{profile&.name || "?"} has no image template yet") unless profile&.image_template
 
-      open = profile.image_open_token
-      unless open.empty? || body["chat_template"].to_s.include?(open)
-        return no("the server's chat template doesn't use #{open} (profile #{profile.name})")
+      check = profile.image_check_token
+      unless check.empty? || body["chat_template"].to_s.include?(check)
+        return no("the server's chat template doesn't use #{check} (profile #{profile.name})")
       end
 
       Answer.new(value: true, reason: nil)

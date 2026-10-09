@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Native Gemma 4 on llama.cpp (with `--mmproj`) sees images: `@path`, `read` on an image and the web's pasted images
+  reach it, as they do Qwen 3.6. Before, chi refused with "profile gemma4 has no image template yet".
+
 ### Fixed
 
 - Web: a command queued mid-turn (`/model X`) shows its bubble after the turn's answer once it runs, not among the
