@@ -131,6 +131,18 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
   end
 
+  # The REPL answers on the turn thread: a handler may return the tool
+  # result's text itself.
+  describe "a sync handler that returns text" do
+    it "returns the text and leaves no question pending, in memory or the session file" do
+      desk.sync_handler = ->(_pending) { "answered inline" }
+
+      expect(desk.open_question(fields)).to eq("answered inline")
+      expect(desk.pending).to be_nil
+      expect(saved).to be_nil
+    end
+  end
+
   describe "#annotate" do
     it "sets and clears the pending question's relay marker, saved and announced" do
       thread, _box, id = open_in_background

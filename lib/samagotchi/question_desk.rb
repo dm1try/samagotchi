@@ -225,7 +225,12 @@ module Samagotchi
             emit({ type: :question_answered, id: id, answer: ans })
             return ans
           end
-          return sync_res if sync_res.is_a?(String) && !sync_res.strip.empty?
+          if sync_res.is_a?(String) && !sync_res.strip.empty?
+            # The handler's text is the answer: nothing stays pending.
+            @lock.synchronize { @pending = nil }
+            clear_saved_question
+            return sync_res
+          end
         rescue StandardError => e
           Log.warn(:turn, "question_handler_failed", echo: "[ask_user_question] sync handler failed: #{e.message}", error: e.class.name)
         end
