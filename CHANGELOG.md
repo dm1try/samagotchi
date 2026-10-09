@@ -8,36 +8,37 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-10-09
+
 ### Added
 
+- Session chains: a session can be continued as the next link of its chain (a day's work after yesterday's, say).
+  The next link starts in the same folder, on the same model and LLM context, with a visible note that carries the
+  previous link's recap (asked for fresh from a live worker), and the previous link is archived with its delegates.
+  A continue is refused while one of those delegates is still open, for a link continued already (no forks), and for
+  a folder that's gone. See [docs/sessions.md](docs/sessions.md#session-chains).
+  - Web: `continue →` in the info bar starts the next link and opens it with `Continue where we left off.` in the
+    composer, not sent. A link continued already links to its neighbours (`← date` / `date →`), and a continue
+    refused for open delegates names them, each a link. A chain is one card in the lists, the latest link's, whose
+    `↩ day N` chip lists the earlier links (day, date, recap) in a popover; a link titled with the opener shows its
+    chain's first title.
+  - CLI: `chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT]` (idle without a message); `last:ID` follows the
+    chain to its latest link, for a script or a scheduled job.
+  - API: `POST /api/sessions` takes `continues: <id>` (with `idle: true` or a `prompt`); a link continued already
+    answers 409 `continued` with `next_id`, an open delegate 409 `open_children`. Sessions carry `continues`
+    (`chi sessions list` ends such a row with `↪ <previous short id>`; `--format json` and the web summaries too).
 - coordinator 0.3.0: `/coordinate end` ends the day. The model brings its `handoff_*` memory up to date (state per
   branch, decisions, verdicts, follow-ups, each open child's id, branch and worktree), keeps it OPEN unless everything
   is done, and gives a short end-of-day report that names the children still running and says
-  `/coordinate resume <slug>` for next time. It starts, merges and stops nothing. Run `chi update`.
-- A session can continue an earlier one: its `continues` field names the previous link of a chain (`null`
-  otherwise), separate from `parent_id`. `chi sessions list` ends such a row with `↪ <previous short id>`, and its
-  `--format json` and the web's session summaries carry `continues`.
-- `SessionManager.continue_session` starts the next link of a chain: in the previous link's folder, on its model and
-  with its own LLM context, starting with a visible context note (`note from session chain`) that names the previous
-  link and carries its recap, asked for first from a live worker. The previous link is archived with its delegates;
-  a continue is refused while one of them is still open, for a link continued already (no forks), and for a gone
-  folder. `last:<id>` names a chain's latest link. See [docs/sessions.md](docs/sessions.md#session-chains).
-- `POST /api/sessions` takes `continues: <id>` (with `idle: true` or a `prompt`): the next link of that session's
-  chain. A link continued already answers 409 `continued` with `next_id`, an open delegate 409 `open_children`.
-- `chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT]` starts the next link of a session's chain from a
-  terminal or a script (idle without a message); `last:ID` follows the chain to its latest link.
-- The web continues a session: `continue →` in the info bar starts the next link of its chain and opens it with
-  `Continue where we left off.` in the composer, not sent; the previous link is archived. A link continued already
-  links to its next one instead (`← date` / `date →` in the info bar), and a continue refused for open delegates
-  names them, each a link. A chain is one card in the lists, the latest link's, whose `↩ day N` chip lists the
-  earlier links (their day, date and recap) in a popover. A link titled with the opener shows its chain's first link's
-  title.
+  `/coordinate resume <slug>` for next time. It starts, merges and stops nothing.
 
 ### Fixed
 
 - A web message that ended (or began) with whitespace stayed in the composer after it was sent: one sent right
   after Annotate (its quote ends in a blank line), or with a trailing newline or space. The sent text is trimmed,
   and the composer was cleared only when it held exactly that text; it is now compared trimmed too.
+
+Update with `chi update`: it updates coordinator (0.3.0: `/coordinate end`).
 
 ## [0.46.1] - 2026-10-09
 
@@ -2214,7 +2215,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.46.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.47.0...HEAD
+[0.47.0]: https://github.com/dm1try/samagotchi/compare/v0.46.1...v0.47.0
 [0.46.1]: https://github.com/dm1try/samagotchi/compare/v0.46.0...v0.46.1
 [0.46.0]: https://github.com/dm1try/samagotchi/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/dm1try/samagotchi/compare/v0.44.0...v0.45.0
