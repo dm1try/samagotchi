@@ -527,6 +527,10 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
         expect(error.summary).to include("Net::ReadTimeout")
         expect(backend.adapter.requests.size).to eq(3)
+        # Every request counts, not only the last one's transport attempts.
+        expect(error.attempts).to eq(3)
+        expect(error.summary).to include("after 3 attempts")
+        expect(error.message).to start_with("openrouter request failed after 3 attempts: Net::ReadTimeout")
         expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:attempt] }).to eq([1, 2])
       end
 

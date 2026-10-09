@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 - github-pr 0.3.2: a relative `path:line` that only ends with a PR file's path (`vendor/lib/foo.rb:21` for the PR's
   `lib/foo.rb`) is no longer linked to that file in the web; an absolute path into a worktree, or one up from a
   subdir (`../lib/foo.rb`), still is.
+- A step whose stream kept dropping now fails saying how many requests it made ("after 3 attempts"), not
+  "after 1 attempts"; one attempt is said in the singular.
 
 ## [0.46.0] - 2026-10-09
 

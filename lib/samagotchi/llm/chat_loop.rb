@@ -597,8 +597,11 @@ module Samagotchi
         MAX_STREAM_DROPS = 2
 
         # Runs one request, asking again on a mid-stream drop. +attempt+
-        # counts the drops already retried this step.
-        def request_with_drops(iteration, retry_generation, streamed, thought, attempt, generation_controller)
+        # counts the drops already retried this step; +requests+ the HTTP
+        # requests they made (each drop's own transport attempts), so the
+        # error that ends the step counts every request, not the last one's.
+        def request_with_drops(iteration, retry_generation, streamed, thought, attempt, generation_controller,
+                               requests: 0)
           streamed_any = false
           request(iteration, retry_generation, streamed, thought, generation_controller, -> { streamed_any = true })
         rescue RetryExhausted => e
@@ -607,8 +610,13 @@ module Samagotchi
           cancelled = [@cancel_controller, generation_controller].compact.find(&:cancelled?)
           raise RequestCancelled, cancelled.reason if cancelled
 
+          requests += e.attempts.to_i
           limit = @loop.stream_drop_limit(MAX_STREAM_DROPS)
-          raise if attempt >= limit || !streamed_any
+          if attempt >= limit || !streamed_any
+            raise if requests == e.attempts.to_i
+
+            raise RetryExhausted.new(attempts: requests, last_error: e.last_error, label: e.host)
+          end
 
           attempt += 1
           streamed.clear

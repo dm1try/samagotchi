@@ -223,11 +223,14 @@ module Samagotchi
 
       def initialize(attempts:, last_error:, label: "llama.cpp")
         @last_error = last_error
-        super("#{label} request failed after #{attempts} attempts: #{last_error.class}: #{last_error.message}",
+        super("#{label} request failed after #{self.class.count(attempts)}: #{last_error.class}: #{last_error.message}",
               host: label, retryable: false, attempts: attempts)
       end
 
-      def summary = "network error after #{attempts} attempts (host #{host}: #{last_error.class})"
+      def summary = "network error after #{self.class.count(attempts)} (host #{host}: #{last_error.class})"
+
+      # "1 attempt", "3 attempts".
+      def self.count(attempts) = "#{attempts} attempt#{"s" unless attempts == 1}"
     end
 
     # A refused connection: nothing listens at the host's address. Not

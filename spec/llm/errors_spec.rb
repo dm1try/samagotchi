@@ -154,6 +154,13 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(error.summary).to eq("network error after 4 attempts (host main: Errno::ECONNREFUSED)")
     end
 
+    it "says one attempt, not one attempts" do
+      error = Samagotchi::LLM::RetryExhausted.new(attempts: 1, last_error: Errno::ECONNRESET.new, label: "main")
+
+      expect(error.message).to start_with("main request failed after 1 attempt: ")
+      expect(error.summary).to eq("network error after 1 attempt (host main: Errno::ECONNRESET)")
+    end
+
     it "tells a context overflow from other bad requests" do
       overflow = Samagotchi::LLM::ProviderErrors.from_response(
         status: 400, body: File.read(File.expand_path("../fixtures/providers/openai/error_400.json", __dir__)), host: "main"
