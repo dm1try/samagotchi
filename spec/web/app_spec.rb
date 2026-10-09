@@ -48,7 +48,7 @@ class FakeResponsesManager
     nil
   end
 
-  def write_turn_input(_id, prompt:, client_id: nil, enqueued_id: nil, state_dir: nil) = true
+  def write_turn_input(_id, prompt:, client_id: nil, enqueued_id: nil, state_dir: nil, delivery: nil) = true
   def stop_session(_id, state_dir: nil, wait: nil) = nil
 end
 
@@ -2210,6 +2210,40 @@ RSpec.describe Samagotchi::Web::App do
       ack = JSON.parse(body.first)
       expect(ack).to include("status" => "accepted", "enqueued_id" => kind_of(String))
       expect(queued).to match(["s1", { prompt: "hi", client_id: "web:tab-1", enqueued_id: ack["enqueued_id"], state_dir: anything }])
+    end
+
+    it "forwards the body's delivery to the bridge, and writes it into the fallback file" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+      allow(bridge).to receive(:post_turn)
+        .with(prompt: "later", client_id: "web:tab-1", delivery: "queue")
+        .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+
+      status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                 body: '{"prompt":"later","client_id":"web:tab-1","delivery":"queue"}'))
+      expect(status).to eq(202)
+
+      queued = nil
+      expect(manager).to receive(:write_turn_input) { |id, **kw| queued = [id, kw]; true }
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+      status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                 body: '{"prompt":"now","client_id":"web:tab-1","delivery":"cut"}'))
+      expect(status).to eq(202)
+      expect(queued).to match(["s1", hash_including(prompt: "now", delivery: "cut")])
+    end
+
+    it "refuses a delivery that is not a string" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      expect(manager).not_to receive(:write_turn_input)
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                                body: '{"prompt":"hi","delivery":5}'))
+
+      expect(status).to eq(400)
+      expect(JSON.parse(body.first)).to include("error" => "bad_delivery")
     end
   end
 

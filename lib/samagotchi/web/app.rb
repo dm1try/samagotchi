@@ -1065,8 +1065,12 @@ module Samagotchi
         images = turn_images(id, body["images"])
         return error_response(400, "bad_images", images) if images.is_a?(String)
 
-        result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images, state_dir: @state_dir,
-                                             manager: @manager, bridge: -> { live_bridge_client(id) })
+        delivery = body["delivery"] || body[:delivery]
+        return error_response(400, "bad_delivery", "delivery must be a string") unless delivery.nil? || delivery.is_a?(String)
+
+        result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
+                                                 delivery: delivery, state_dir: @state_dir, manager: @manager,
+                                                 bridge: -> { live_bridge_client(id) })
         case result[:status]
         when :accepted
           record_history(body, prompt)

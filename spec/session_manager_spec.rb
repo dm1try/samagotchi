@@ -1562,6 +1562,37 @@ RSpec.describe Samagotchi::SessionManager do
       expect(input_files).to be_empty
     end
 
+    it "posts the delivery the message carries, and only when it is not the default" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn)
+        .with(prompt: "later", client_id: "cli:send", delivery: "queue")
+        .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+      allow(bridge).to receive(:post_turn)
+        .with(prompt: "now", client_id: "cli:send")
+        .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+
+      expect(described_class.deliver_turn(session.id, prompt: "later", client_id: "cli:send", delivery: "queue",
+                                                      state_dir: tmpdir, bridge: -> { bridge })[:status])
+        .to eq(:accepted)
+      expect(described_class.deliver_turn(session.id, prompt: "now", client_id: "cli:send", state_dir: tmpdir,
+                                                      bridge: -> { bridge })[:status])
+        .to eq(:accepted)
+    end
+
+    it "writes the delivery into the fallback file (queue only)" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+
+      described_class.deliver_turn(session.id, prompt: "later", client_id: "cli:send", delivery: "queue",
+                                               state_dir: tmpdir, bridge: -> { bridge })
+      described_class.deliver_turn(session.id, prompt: "now", client_id: "cli:send", delivery: "cut",
+                                               state_dir: tmpdir, bridge: -> { bridge })
+
+      expect(input_files.sort.map { |path| JSON.parse(File.read(path))["delivery"] }).to eq(["queue", nil])
+    end
+
     it "falls back to the input file when the Bridge refuses the connection" do
       own("worker")
       bridge = instance_double(Samagotchi::BridgeClient)

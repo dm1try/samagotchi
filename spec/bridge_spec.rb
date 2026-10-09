@@ -1179,6 +1179,51 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp).to have_key("enqueued_id")
     end
 
+    describe "a turn's delivery" do
+      def input_dir
+        File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+      end
+
+      def queued_inputs
+        Dir.glob(File.join(input_dir, "*.json")).sort.map { |f| JSON.parse(File.read(f)) }
+      end
+
+      it "refuses a delivery that is not a string, before anything is queued" do
+        start_bridge
+        status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "hi", delivery: 5))
+
+        expect(status).to eq(400)
+        expect(resp).to include("error" => "bad_delivery")
+        expect(queued_inputs).to be_empty
+      end
+
+      it "writes the delivery the body asked for" do
+        start_bridge
+        expect(post_turn(JSON.generate(session_id: @session.id, prompt: "later", delivery: "queue")).first)
+          .to be_between(200, 299)
+
+        expect(queued_inputs.map { |q| q["delivery"] }).to eq(["queue"])
+      end
+
+      it "takes a missing or unknown delivery as the default, without writing the key" do
+        start_bridge
+        post_turn(JSON.generate(session_id: @session.id, prompt: "hello"))
+        post_turn(JSON.generate(session_id: @session.id, prompt: "hello", delivery: "now"))
+
+        expect(queued_inputs.map { |q| q["delivery"] }).to eq([nil, nil])
+      end
+
+      it "accepts cut, which the file does not carry (the Bridge cuts itself)" do
+        start_bridge
+        allow(@engine).to receive(:cut_for_steer).and_return(false)
+        expect(post_turn(JSON.generate(session_id: @session.id, prompt: "cut it", delivery: "cut")).first)
+          .to be_between(200, 299)
+
+        expect(queued_inputs.map { |q| q["delivery"] }).to eq([nil])
+        expect(@engine).to have_received(:cut_for_steer)
+      end
+    end
+
     describe "a turn's deadline" do
       def input_dir
         File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")

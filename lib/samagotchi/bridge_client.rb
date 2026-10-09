@@ -4,6 +4,7 @@ require "json"
 require "socket"
 
 require_relative "worker_sidecar"
+require_relative "delivery"
 require_relative "bridge_client/sse_parser"
 require_relative "bridge_client/event_stream"
 
@@ -139,10 +140,11 @@ module Samagotchi
     # @param no_interrupt [Boolean] run the turn with the raised iteration limit
     # @param images [Array<Hash>] refs ({file:, name:}) to images already in
     #   the session's images/
-    def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil)
+    def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil)
       body = { session_id: @session_id, prompt: prompt, client_id: client_id }
       body[:no_interrupt] = true if no_interrupt
       body[:images] = images if images && !images.empty?
+      body[:delivery] = delivery unless delivery.nil? || Delivery.next_step?(delivery)
       body[:deadline] = deadline
       post("turn", body, read_body: true)
     end

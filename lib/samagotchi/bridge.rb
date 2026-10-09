@@ -7,6 +7,7 @@ require "fileutils"
 require "securerandom"
 require "time"
 require_relative "atomic_file"
+require_relative "delivery"
 require_relative "session_inbox"
 
 require_relative "bridge/bounded_queue"
@@ -61,6 +62,10 @@ module Samagotchi
     MAX_BODY_BYTES = 1_000_000
     # A request's deadline (see #handle_post_turn) that isn't epoch seconds.
     BAD_DEADLINE = [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }].freeze
+    # A request's delivery (see #handle_post_turn) that isn't a string. An
+    # unknown string is not an error: it is the default, as a missing one is.
+    BAD_DELIVERY = [{ "Allow" => "POST" }, 400,
+                    { error: "bad_delivery", detail: "delivery must be a string" }].freeze
 
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
@@ -826,6 +831,11 @@ module Samagotchi
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
+      raw_delivery = fetched(parsed, "delivery")
+      return BAD_DELIVERY unless raw_delivery.nil? || raw_delivery.is_a?(String)
+
+      delivery = Delivery.parse(raw_delivery)
+
       # A session command sent as a message (chi send -m "/model x", chi -p,
       # a UI whose command list lags) runs as the command, as typed in a
       # TUI; an unknown /word stays a prompt. Not with images: those are
@@ -844,7 +854,7 @@ module Samagotchi
         next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
 
         enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                     no_interrupt: no_interrupt, images: images).tap do |ok|
+                     no_interrupt: no_interrupt, images: images, delivery: delivery).tap do |ok|
           next unless ok
 
           enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
@@ -933,9 +943,9 @@ module Samagotchi
 
     # Write a turn into this session's input dir, reusing the file IPC the
     # worker polls. Never calls run_turn across the boundary.
-    def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
+    def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [], delivery: nil)
       SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                                            no_interrupt: no_interrupt, images: images)
+                                            no_interrupt: no_interrupt, images: images, delivery: delivery)
     end
 
     # ── HTTP plumbing ────────────────────────────────────────────────────────

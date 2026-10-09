@@ -8,6 +8,7 @@ require "rbconfig"
 require_relative "client_id"
 require_relative "atomic_file"
 require_relative "config"
+require_relative "delivery"
 
 require_relative "session"
 require_relative "session_inbox"
@@ -1288,14 +1289,16 @@ module Samagotchi
     # boundary. The file is JSON carrying the sender's ids.
     # @param client_id [String, nil] the sending UI
     # @param enqueued_id [String, nil] the id its ACK / :turn_enqueued carry
+    # @param delivery [String, nil] the wire value: "next_step" (default),
+    #   "cut" or "queue"
     # @param images [Array<Hash>] image refs ({file:, name:}) in the
     #   session's images/
     # @return [String, false] the input file's path, or false.
     def self.write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, state_dir: nil,
-                              images: [])
+                              images: [], delivery: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
       SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                                            no_interrupt: no_interrupt, images: images)
+                                            no_interrupt: no_interrupt, images: images, delivery: delivery)
     end
 
     # How long a turn waits for the Bridge of a worker a resume just spawned.
@@ -1308,6 +1311,8 @@ module Samagotchi
     # exit). Race-safe against a TUI taking the session, or the worker
     # exiting, between the resume and the write.
     # @param images [Array<Hash>] refs ({file:, name:}) already in images/
+    # @param delivery [String, nil] what the message asks the running turn
+    #   for: "next_step" (default), "cut" or "queue"
     # @param manager [#resume_session, #write_turn_input] this class, or a
     #   stand-in (the web's specs); #session_owner is optional
     # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
@@ -1319,7 +1324,8 @@ module Samagotchi
     #   {status: :failed} when the input file couldn't be written
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [ArgumentError] no such session
-    def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], state_dir: nil, manager: self, bridge: nil)
+    def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, state_dir: nil, manager: self,
+                          bridge: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
       bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
       manager.resume_session(session_id, state_dir: state_dir)
@@ -1327,6 +1333,9 @@ module Samagotchi
         begin
           options = { prompt: prompt, client_id: client_id }
           options[:images] = images unless images.empty?
+          # An old worker ignores the field: it cuts anyway (its own default)
+          # and its file never carries a queue, so a queue would steer there.
+          options[:delivery] = delivery unless Delivery.next_step?(delivery)
           reply = client.post_turn(**options)
           ack = reply.json
           return { status: :accepted, ack: ack } if reply.status == 202 && ack.is_a?(Hash)
@@ -1347,6 +1356,7 @@ module Samagotchi
       enqueued_id = SecureRandom.uuid
       input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
       input[:images] = images unless images.empty?
+      input[:delivery] = delivery unless Delivery.next_step?(delivery)
       path = manager.write_turn_input(session_id, **input)
       return { status: :failed } unless path
 
