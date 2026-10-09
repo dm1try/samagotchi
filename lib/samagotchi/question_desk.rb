@@ -226,9 +226,12 @@ module Samagotchi
             return ans
           end
           if sync_res.is_a?(String) && !sync_res.strip.empty?
-            # The handler's text is the answer: nothing stays pending.
+            # The handler's text is the answer: nothing stays pending, and
+            # every UI hears it was answered (the text as its freeform).
             @lock.synchronize { @pending = nil }
             clear_saved_question
+            emit({ type: :question_answered, id: id,
+                   answer: { id: id.to_s, selected: [], freeform: sync_res.strip, selected_indices: [] } })
             return sync_res
           end
         rescue StandardError => e

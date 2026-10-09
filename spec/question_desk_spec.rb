@@ -141,6 +141,15 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(desk.pending).to be_nil
       expect(saved).to be_nil
     end
+
+    it "announces the question answered, the text as its freeform" do
+      desk.sync_handler = ->(_pending) { "answered inline" }
+      desk.open_question(fields)
+
+      id = events.first[:pending_question][:id]
+      expect(events.last).to eq(type: :question_answered, id: id,
+                                answer: { id: id, selected: [], freeform: "answered inline", selected_indices: [] })
+    end
   end
 
   describe "#annotate" do
