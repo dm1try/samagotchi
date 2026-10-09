@@ -262,7 +262,9 @@ end
 
 ### GenerationPhase
 
-What the running generation streams, fed by the Engine's stream handler: whether a user's steer may cut it.
+What the running generation streams, fed by the Engine's stream handler: whether a steer sent as a cut (delivery
+`cut`: `/cut TEXT`, `chi send --cut`) may cut it. `SteerCut#cut_for_steer` answers `:now`, `:waits` or `:off`; the
+Bridge acks it as `cut`.
 A generation is cuttable while it has streamed only thinking, is still thinking, and has thought for at least
 `steer.cut_after` seconds (`cuttable?(min_age)`). It has `started!`, `chunk!`, `retrying!` and `finished!`.
 

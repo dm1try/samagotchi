@@ -35,13 +35,14 @@ module Samagotchi
     MAX_IMAGES = ImageStore::MAX_TURN_REFS
 
     USAGE = <<~TEXT
-      Usage: chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...
+      Usage: chi send [-m TEXT] [--image PATH]... [--cut] (ID|PREFIX)...
              chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --wait [--timeout S] [--format json] ID
         Sends a message to each session, as if typed in it: a turn starts,
-        or a running one picks it up. A stopped session's worker starts.
+        or a running one takes it at its next step. A stopped session's
+        worker starts.
         A session command (/model x, !cmd) runs as the command; --wait
         then has no reply to wait for (exit 0, status command).
         -m TEXT     the message; stdin, when piped too, goes above it as a

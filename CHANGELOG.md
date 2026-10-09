@@ -8,8 +8,20 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `/cut TEXT` in a terminal (plain REPL and attached) and `chi send --cut` ask the running turn for a cut: a
+  generation that has streamed only thinking for `steer.cut_after` seconds is cut (now, or once its thinking passes
+  that) and the step starts again with the message. The terminal's dim line and `chi send`'s line say what happened
+  (`cut in now`, `cuts in once the thinking passes 20 s`, `cutting is off; goes in at the next step`); `--format json`
+  adds `delivery` and `cut`. The Bridge's 202 for a turn names its `delivery` and, for a cut, the `cut` outcome.
+- `/queue TEXT` in the plain REPL runs TEXT as a turn of its own after the running one.
+
 ### Changed
 
+- A message sent during a running turn (typed in a terminal, from the web, `chi send`, a parent agent) goes in at the
+  turn's next step and no longer cuts the model's thinking; only a message sent as a cut does. A line typed mid-turn
+  says `(goes in at the next step)`, and `chi send` says `sent (goes in at the running turn's next step)`.
 - A call for a tool that doesn't exist no longer gets its own wrong name quoted back (seeing it again made the
   model call it again): shell-like names (`bash`, `shell`, …) get `Error: no such tool. Shell commands run with
   execute (same arguments).` when `execute` is offered this turn, every other name the available-tools list; the

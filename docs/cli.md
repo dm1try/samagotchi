@@ -18,7 +18,7 @@
 - `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean|stats` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)). `stats ID` prints a session's cost, tokens and progress (a live worker's `GET stats`, else its saved `analytics.json`; `--format json` one object) without running a model turn. A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, a bad `list --format` or `--scope`) exits 2; an unknown or refused session exits 1
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi context <add|push|ls|show|refresh|rm|mute|unmute> …` — attach live external text to sessions (a command chi runs every so often, or text pushed in); the model gets a short note when it changes and reads it with `context_read`; `chi context add <URL>` attaches a GitHub PR with the github-pr bundle (see [Attached context](context.md))
-- `chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead (`--new --continues ID|last:ID` the next link of that session's chain, see [Session chains](sessions.md#session-chains)), and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; `--format json` prints one JSON object instead; exit 3 a question waits, its options on stderr; exit 4 `--timeout` passed with the turn still running; see [Starting a session](sessions.md#starting-a-session))
+- `chi send [-m TEXT] [--image PATH]... [--cut] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one takes it at its next step; `--cut` asks it to cut long thinking for it); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead (`--new --continues ID|last:ID` the next link of that session's chain, see [Session chains](sessions.md#session-chains)), and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; `--format json` prints one JSON object instead; exit 3 a question waits, its options on stderr; exit 4 `--timeout` passed with the turn still running; see [Starting a session](sessions.md#starting-a-session))
 - `chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]` (or `--dismiss`) — answer the question a session waits on (the one `chi send --wait` exited 3 with), then wait and print what comes next as `chi send --wait` does: the reply (0), the next question (3), still running after `--timeout` (4). `--option` is 1-based or the label, repeated on a multi-select question; `--text` is free text, or a Deny's reason; `--dismiss` leaves it unanswered and the model finishes its reply. A question no longer open (the web answered first) isn't answered again: it waits for that turn's reply. An option the question doesn't offer exits 2; a worker that is gone exits 1 (`send the task again: chi send --wait -m "…" ID`). An approval can be denied, not allowed, unless `guardrails.parent_approvals: once` (a convention, not a security boundary; see [Guardrails](guardrails.md#approvals-from-a-parent-agent))
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text or images to a session (live, stopped or new) as a message (⏎, a turn runs) or a context note (⌘⏎) (see [Desktop helper](desktop.md))
 - `chi models [--format text|json] [--timeout S] [TEXT]` — list the models every configured host offers, as the names `--model` takes (see [Listing the models](#listing-the-models))
@@ -289,11 +289,13 @@ to it (`session.shared`, default `true`). A worker's session can have any number
 of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 `--attach`). They all see the same turns as they happen, and any of them can send
 a prompt, also while a turn runs (it merges into that turn as steering: the model
-is told it is a steer and who sent it). Steering waits for the model's next step,
-unless the model has streamed only thinking for `steer.cut_after` seconds (default
-20), now or while your message waits: then that generation is cut and the step starts again with your message, marked
+is told it is a steer and who sent it). Steering waits for the model's next step
+and cuts nothing. `/cut TEXT` in a terminal (or `chi send --cut`) asks for a cut:
+once the model has streamed only thinking for `steer.cut_after` seconds (default
+20), now or while your message waits, that generation is cut and the step starts again with your message, marked
 `↪ cut in for your message` (see
-[configuration.md](configuration.md#llama-network-retry-behavior)). The
+[configuration.md](configuration.md#llama-network-retry-behavior)). The web
+composer doesn't cut yet. The
 first answer to an `ask_user_question` wins; the other UIs close their widget.
 An empty answer dismisses the question in every UI. The model is then told
 not to go ahead with what it asked about, or change anything else, and to wait.
@@ -487,11 +489,23 @@ The prompt stays open while a turn runs, in an attached terminal and in the plai
 REPL alike:
 
 - A line you submit merges into the running turn at its next step (after the
-  current tool call or answer), and `(1 message merged into the running turn)`
-  says so. An answer the model finished just before the merge is printed first.
+  current tool call or answer): `(goes in at the next step)` at once, then
+  `(1 message merged into the running turn)` when it does. It never cuts the
+  model's thinking. An answer the model finished just before the merge is printed first.
   A line that comes after the turn's last step runs as the next turn, and so
   does one sent after Ctrl-C: it doesn't merge into the turn being cancelled.
   Reminder turns take merged lines too.
+- `/cut TEXT` asks for a cut: a generation that has streamed only thinking for
+  `steer.cut_after` seconds is cut and the step starts again with TEXT. The dim
+  line says what happened: `(cut in now)`, `(cuts in once the thinking passes
+  20 s)` (it waits for the thinking; the step may end first) or `(cutting is
+  off; goes in at the next step)` (`steer.cut_after: 0`, or no generation to
+  cut).
+- `/queue TEXT` (plain REPL only) runs TEXT as a turn of its own after this
+  one: `(queued: runs after this turn)`. An attached terminal says
+  `(/queue isn't available in an attached session yet)` and sends nothing.
+  At the open prompt (no turn running) `/cut TEXT` and `/queue TEXT` run TEXT
+  as a normal prompt.
 - Commands answer, wait or are refused, by what they do:
   - At once, beside the turn: `/stats`, `/recap`, `/help`, `/context`, a
     plugin's anytime command (`/btw`), and the commands that only show

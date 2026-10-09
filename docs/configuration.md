@@ -765,12 +765,12 @@ no made-up answer is saved.
 A generation a plugin cuts while it streams (loop-guard's thinking watch, or any `stop_generation`,
 [hooks.md](hooks.md#watching-the-stream)) uses the same budget: `↻ cut by loop-guard, asking again (1/1)`, and with
 none left the turn ends as cancelled (hook).
-A message for a running turn waits for the next step, unless the model's generation has streamed only thinking for
-`steer.cut_after` seconds (default `20`, env `SAMAGOTCHI_STEER_CUT_AFTER`, `0` = never; counted from its first
-thinking token, so the wait for a busy server doesn't count) and still does: then a message from you (the terminal,
-the web), `chi send` or a parent agent cuts that generation, and the model starts the step again with the message
-(`↪ cut in for your message`). A message that comes earlier cuts once the thinking passes `steer.cut_after`, unless
-the step ends first and the message goes in there. Such a cut spends no `retry.empty_answer` attempt and sends no
+A message for a running turn goes in at its next step and cuts nothing. A message sent as a cut (`/cut TEXT` in a
+terminal, `chi send --cut`) cuts the model's generation once it has streamed only thinking for `steer.cut_after`
+seconds (default `20`, env `SAMAGOTCHI_STEER_CUT_AFTER`, `0` = never; counted from its first thinking token, so the
+wait for a busy server doesn't count) and still does, and the model starts the step again with the message
+(`↪ cut in for your message`). One that comes earlier cuts once the thinking passes `steer.cut_after`, unless the
+step ends first and the message goes in there. The web composer and a parent agent never ask for a cut. Such a cut spends no `retry.empty_answer` attempt and sends no
 hidden note; only the cut thinking is lost. A generation that has streamed visible text or a tool call is never cut,
 and a plugin's steer (`ctx.steer`, `ctx.sessions.send`) never cuts.
 
@@ -1146,7 +1146,7 @@ described in their own sections.
 | `retry.base_delay` | `0.5` | yes | |
 | `retry.max_delay` | `8.0` | yes | |
 | `retry.empty_answer` | `1` | | Times a turn asks again after an empty answer (at most 3, `0` = off). See "Llama Network Retry Behavior". |
-| `steer.cut_after` | `20` | | Seconds a generation must have streamed only thinking before a message for the running turn (yours, `chi send`'s, a parent agent's) cuts it; `0` = never. See "Llama Network Retry Behavior". |
+| `steer.cut_after` | `20` | | Seconds a generation must have streamed only thinking before a message sent as a cut (`/cut TEXT`, `chi send --cut`) cuts it; other messages go in at the next step; `0` = never. See "Llama Network Retry Behavior". |
 | `turn.max_iterations` | `100` | | A turn's step limit: model ↔ tool rounds before it stops and asks to continue (an integer ≥ 1). `--no-interrupt` turns get the larger of 1000 and this. See [CLI: Iteration Limit Behavior](cli.md#iteration-limit-behavior). |
 | `turn.parent_continue` | `true` | | Whether a parent agent (`chi answer`) may answer Continue to a session's step-limit question; `false`: Stop only. config.yml only: no environment variable. See [Sub-agent](sub-agent.md) and [Guardrails](guardrails.md#approvals-from-a-parent-agent). |
 | `update.gem` | `true` | | `false`: `chi update` never installs a newer gem (`--no-gem` for one run). See [CLI: Updating](cli.md#updating). |
