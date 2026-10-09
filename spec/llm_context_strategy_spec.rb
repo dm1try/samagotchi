@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "open3"
 require "tmpdir"
 require "yaml"
 require "samagotchi/config"
@@ -233,6 +234,27 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       expect(Samagotchi::Config.resolve(described_class::STALE_EDITS_SETTING, file_data: {}, env: {})).to be(false)
       expect(Samagotchi::Config.resolve(described_class::STALE_EDITS_SETTING,
                                         file_data: { "llm_context" => { "stale_edits" => true } }, env: {})).to be(true)
+    end
+  end
+
+  describe ".for_session" do
+    # Loaded on its own (a session list's ctx %, before anything loaded
+    # ModelProfile): a session with no model takes the configured default.
+    it "resolves a session without a model to the default model when loaded alone" do
+      script = <<~RUBY
+        require "samagotchi/session"
+        require "samagotchi/llm_context_strategy"
+        registry = Object.new
+        def registry.resolve(name) = (puts "resolve \#{name}"; nil)
+        def registry.lookup_names(*, **) = []
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: nil, working_directory: "/w")
+        p Samagotchi::LLMContextStrategy.for_session(session, registry: registry)&.fetch(:strategy)
+      RUBY
+      lib = File.expand_path("../lib", __dir__)
+      out, err, status = Open3.capture3(RbConfig.ruby, "-I", lib, "-e", script, stdin_data: "")
+
+      expect(status).to be_success, err
+      expect(out.lines.map(&:chomp)).to eq(["resolve spec-model", '"none"'])
     end
   end
 end

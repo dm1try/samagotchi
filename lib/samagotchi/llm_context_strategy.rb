@@ -181,6 +181,7 @@ module Samagotchi
       return nil if session.nil?
 
       require_relative "config"
+      require_relative "model_profile"
       registry ||= begin
         require_relative "host_registry"
         HostRegistry.new
