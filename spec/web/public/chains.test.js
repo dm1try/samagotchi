@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, allViewChains, chainChipHtml, chainDate, chainLinks, chainNeighbours, chainRowsHtml, continueRefusal, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, allViewChains, chainChipHtml, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsHtml, continueRefusal, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
 import { families, familyWaits, filterFamilies, waitingFirst } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // A chain of three days: d1 ← d2 ← d3 (d3 continues d2, which continues d1).
@@ -201,4 +201,39 @@ test("foldChains over 4000 sessions in chains of ten stays well under a frame bu
   const ms = performance.now() - start;
   assert.equal(folded.length, 400);
   assert.ok(ms < 250, `foldChains took ${Math.round(ms)} ms`);
+});
+
+// The user's choice (b): a link titled with the opener shows its chain's
+// first link's title, display only.
+test("chainTitle: a link titled with the opener reads its chain's first link's title; anything else keeps its own", () => {
+  const first = link("c1", 5, { first_preview: "/coordinate the daily review" });
+  const mid = link("c2", 6, { continues: "c1", first_preview: "  Continue where we left off. " });
+  const last = link("c3", 7, { continues: "c2", first_preview: null, last_prompt: "Continue where we left off." });
+  const own = link("c4", 8, { continues: "c3", first_preview: "Continue where we left off. Then fix the lexer" });
+  const byId = new Map([first, mid, last, own].map((s) => [s.id, s]));
+  assert.equal(chainTitle(mid, byId), "/coordinate the daily review");
+  assert.equal(chainTitle(last, byId), "/coordinate the daily review");
+  // Only the whole message: one that starts with those words is a title of its own.
+  assert.equal(chainTitle(own, byId), "Continue where we left off. Then fix the lexer");
+  // The first link isn't listed (deleted, or a gap): its own.
+  assert.equal(chainTitle(last, new Map([[last.id, last], [mid.id, mid]])), "Continue where we left off.");
+  // In no chain, or the first link titled with the opener too: its own.
+  assert.equal(chainTitle(link("solo", 5, { first_preview: "Continue where we left off." }), byId), "Continue where we left off.");
+  const openerFirst = link("o1", 5, { first_preview: "Continue where we left off." });
+  const openerNext = link("o2", 6, { continues: "o1", first_preview: "Continue where we left off." });
+  assert.equal(chainTitle(openerNext, new Map([[openerFirst.id, openerFirst], [openerNext.id, openerNext]])), "Continue where we left off.");
+  // A loop a hand-edited file makes: its own.
+  const x = link("x", 1, { continues: "y", first_preview: "Continue where we left off." });
+  const y = link("y", 2, { continues: "x", first_preview: "Continue where we left off." });
+  assert.equal(chainTitle(x, new Map([[x.id, x], [y.id, y]])), "Continue where we left off.");
+});
+
+test("the chain popover's rows without a recap read the chain's title, not the opener", () => {
+  const first = link("c1", 5, { first_preview: "/coordinate the daily review", archived: true });
+  const mid = link("c2", 6, { continues: "c1", first_preview: "Continue where we left off.", archived: true });
+  const last = link("c3", 7, { continues: "c2", first_preview: "Continue where we left off." });
+  const [f] = foldChains(families([last]), [last, mid, first]);
+  const html = chainRowsHtml(f);
+  assert.equal((html.match(/<span class="fr-preview">\/coordinate the daily review<\/span>/g) || []).length, 2);
+  assert.doesNotMatch(html, /Continue where we left off/);
 });

@@ -35,7 +35,8 @@ and commands may change between minor versions. How releases are made:
   `Continue where we left off.` in the composer, not sent; the previous link is archived. A link continued already
   links to its next one instead (`← date` / `date →` in the info bar), and a continue refused for open delegates
   names them, each a link. A chain is one card in the lists, the latest link's, whose `↩ day N` chip lists the
-  earlier links (their day, date and recap) in a popover.
+  earlier links (their day, date and recap) in a popover. A link titled with the opener shows its chain's first link's
+  title.
 
 ## [0.46.1] - 2026-10-09
 
