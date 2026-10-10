@@ -502,8 +502,10 @@ body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 #composer .actions-col .llmctx-new:hover{filter:none;color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
 #composer .actions-col .llmctx-new.own{color:var(--accent);border-color:var(--accent-border)}
 #composer .actions-col .llmctx-new[hidden],body.has-session #composer .actions-col .llmctx-new{display:none}
+/* The new chat's thinking chip, after it: shorter text, so a smaller share of the row. */
+#composer .actions-col .think-new{max-width:min(25%,140px)}
 /* Phones: picker · chip · Start on one row (the key hint is gone there); names cut short rather than wrapping, the chip first. */
-@media(max-width:600px){#composer .actions-col:has(.llmctx-new:not([hidden])){flex-wrap:nowrap}#composer .actions-col .model-pick{flex:0 1 auto;min-width:0}#composer .actions-col .llmctx-new{max-width:45%;flex-shrink:4}}
+@media(max-width:600px){#composer .actions-col:has(.llmctx-new:not([hidden])){flex-wrap:nowrap}#composer .actions-col .model-pick{flex:0 1 auto;min-width:0}#composer .actions-col .llmctx-new{max-width:45%;flex-shrink:4}#composer .actions-col .think-new{max-width:30%}}
 /* The model search: opaque like #commandList (a list over the conversation
    must stay readable), above the composer, or below it (.down) when the
    start page leaves no room above, or over the composer (.over) when
@@ -694,10 +696,10 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
-/* The LLM context chip (llm_context_chip.js): a model-like chip that opens the strategy popover; accent when the session set its own. */
-#infoBar .meta .llmctx-chip{padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
-#infoBar .meta .llmctx-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
-#infoBar .meta .llmctx-chip.own{color:var(--accent);border-color:var(--accent-border)}
+/* The LLM context and thinking chips (llm_context_chip.js, thinking_chip.js): model-like chips that open their popovers; accent when the session set its own. */
+#infoBar .meta .llmctx-chip,#infoBar .meta .think-chip{padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
+#infoBar .meta .llmctx-chip:hover,#infoBar .meta .think-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .meta .llmctx-chip.own,#infoBar .meta .think-chip.own{color:var(--accent);border-color:var(--accent-border)}
 .llmctx-form{display:flex;flex-direction:column;gap:8px;margin:0}
 .llmctx-form .ctx-pop-head strong{font-family:inherit}
 .llmctx-field{display:flex;align-items:center;gap:8px}
@@ -1046,6 +1048,7 @@ a{color:var(--accent)}
         <div class="actions-col">
           <button type="button" id="modelPick" class="model-pick" title="The model the new chat starts on" aria-label="Model for the new chat" aria-haspopup="listbox" aria-expanded="false" hidden><span class="model-pick-name"></span></button>
           <button type="button" id="llmContextNew" class="llmctx-new" aria-haspopup="dialog" hidden></button>
+          <button type="button" id="thinkingNew" class="llmctx-new think-new" aria-haspopup="dialog" hidden></button>
           <div id="composeHint">Enter to start · Shift+Enter for a newline</div>
           <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
           <div class="split">

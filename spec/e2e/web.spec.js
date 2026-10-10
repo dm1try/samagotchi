@@ -852,11 +852,22 @@ test("the start page's llm ctx chip starts the new chat under the strategy picke
   await expect(pop).toBeHidden();
   await expect(chip).toHaveText("llm ctx stale · new chat");
   await expect(chip).toHaveClass(/\bown\b/);
+  // The think chip beside it: the same mechanism, a level for the new chat.
+  const think = page.locator("#thinkingNew");
+  await expect(think).toHaveText("think default");
+  await think.click();
+  await page.locator("#thinkingNewPopover select[name=\"level\"]").selectOption("low");
+  await page.locator("#thinkingNewPopover .llmctx-set").click();
+  await expect(think).toHaveText("think low · new chat");
+  const created = page.waitForRequest((r) => r.url().endsWith("/api/sessions") && r.method() === "POST");
 
   await send(page, "Say pong");
+  expect((await created).postDataJSON()).toMatchObject({ thinking: "low", llm_context: { strategy: "stale" } });
   await turnEnded(page, 1);
   await expect(chip).toBeHidden();
+  await expect(think).toBeHidden();
   await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx stale · session");
+  await expect(page.locator("#infoBar .think-chip")).toHaveText("think low · session");
 
   await page.locator("#newBtn").click();
   await expect(chip).toHaveText("llm ctx none");

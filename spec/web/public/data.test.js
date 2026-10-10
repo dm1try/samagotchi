@@ -133,6 +133,17 @@ test("createIdleSession sends llm_context only when the start page's chip set on
   assert.deepEqual(bodies, [{ idle: true, llm_context: { strategy: "stale", budget: "off" } }, { idle: true }]);
 });
 
+test("createIdleSession sends thinking only when the start page's think chip set one", async () => {
+  const bodies = [];
+  const fetchImpl = (_path, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return Promise.resolve(okResponse({ id: "new" }));
+  };
+  await createIdleSession({ thinking: "low", fetchImpl });
+  await createIdleSession({ thinking: undefined, fetchImpl });
+  assert.deepEqual(bodies, [{ idle: true, thinking: "low" }, { idle: true }]);
+});
+
 test("createIdleSession sends the model and the preview in the body when given, not when blank", async () => {
   const bodies = [];
   const fetchImpl = (_path, opts) => {

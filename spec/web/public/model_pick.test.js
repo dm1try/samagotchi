@@ -75,6 +75,13 @@ test("modelRows keeps a model's LLM context summary, and none that isn't one", (
   assert.equal("llm_context" in r[1], false);
 });
 
+test("modelRows keeps a model's thinking summary, and none that isn't one", () => {
+  const summary = { level: "off", source: "models: q", own: null };
+  const r = modelRows({ models: [{ name: "q", id: "q", thinking: summary }, { name: "p", id: "p", thinking: "off" }] });
+  assert.deepEqual(r[0].thinking, summary);
+  assert.equal("thinking" in r[1], false);
+});
+
 test("modelRows puts the server's unshifted default (host nil) in the default group, shown by its name", () => {
   const r = modelRows({ default: "openrouter:x", models: [
     { name: "openrouter:x", host: null, id: "openrouter:x" },
