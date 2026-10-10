@@ -1299,7 +1299,8 @@ RSpec.describe Samagotchi::Web::App do
         expect(steps.map { |m| m["parts"] }).to eq([
           { "thinking" => "look", "tools" => [{ "tool" => "execute", "params" => 'command="ls"', "title" => "ls", "view" => { "command" => "ls", "steps" => [{ "text" => "ls" }] },
                                                 "output" => "[execute]\na.txt" }] },
-          { "tools" => [{ "tool" => "read", "params" => 'path="a.txt"', "title" => "a.txt", "output" => "[read]\nhello" }] },
+          { "tools" => [{ "tool" => "read", "params" => 'path="a.txt"', "title" => "a.txt",
+                          "ref" => { "kind" => "file", "path" => File.join(Dir.pwd, "a.txt") }, "output" => "[read]\nhello" }] },
           { "thinking" => "done" }
         ])
         # Nothing to render for the text-less step.

@@ -2,6 +2,7 @@
 
 require_relative "tool_activity"
 require_relative "tool_view"
+require_relative "file_ref"
 
 module Samagotchi
   # The fields a tool row shows beyond its params, built from the call in
@@ -21,7 +22,7 @@ module Samagotchi
   # (the registry's preview, a plugin's label, the saved shown params).
   module ToolRowFields
     ACTIVITY_KEYS = %i[title called_as].freeze
-    EVENT_KEYS = %i[view].freeze
+    EVENT_KEYS = %i[view ref].freeze
     KEYS = (ACTIVITY_KEYS + EVENT_KEYS).freeze
 
     module_function
@@ -30,13 +31,15 @@ module Samagotchi
     #   relative to it when inside it)
     # @return [Hash] title (a few words: a project-relative path, a command
     #   without its "cd … &&"), called_as (the name the model called it by
-    #   when that was an alias's: bash) and view (ToolView: the full
-    #   command), each only when there is one
+    #   when that was an alias's: bash), view (ToolView: the full command)
+    #   and ref (FileRef: the file a file tool touched), each only when
+    #   there is one
     def for(tool_name, call, cwd:)
       {
         title: ToolActivity.tool_title(tool_name, call, cwd: cwd),
         called_as: call[:called_as],
-        view: ToolView.for(tool_name, call)&.to_h
+        view: ToolView.for(tool_name, call)&.to_h,
+        ref: FileRef.for(tool_name, call, cwd: cwd)&.to_h
       }.compact
     end
   end

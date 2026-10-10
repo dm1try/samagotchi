@@ -318,6 +318,16 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(events.map { |e| e[:view] }).to eq([{ command: "pwd", steps: [{ text: "pwd" }] }] * 2)
     end
 
+    it "carries a file tool's ref (the process's cwd) on both events, none for other tools" do
+      run({ name: "read", content: "lib/a.rb", start_line: 4 })
+      ref = { kind: "file", path: File.join(Dir.pwd, "lib/a.rb"), line: 4 }
+      expect(events.map { |e| e[:ref] }).to eq([ref, ref])
+      expect(events.last[:activity]).not_to have_key(:ref)
+      events.clear
+      run({ name: "execute", content: "true" })
+      expect(events).to all(satisfy { |e| !e.key?(:ref) })
+    end
+
     it "carries no view for a tool without one" do
       run({ name: "read", content: "lib/a.rb" })
       expect(events).to all(satisfy { |e| !e.key?(:view) })

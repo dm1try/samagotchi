@@ -206,11 +206,13 @@ One iteration with tool calls:
 - Runs the gate first, so `:tool_call_started` shows the call that will run (a before_tool_call hook may
   replace it; known-names corrects a misspelled name this way, and the model gets one line saying what ran).
 - Emits `:tool_call_started` {iteration, call_count, call_index, tool, call, params, label (plugin tools),
-  title, called_as, view}. The row fields (title, called_as, view) come from `ToolRowFields.for`, which the
+  title, called_as, view, ref}. The row fields (title, called_as, view, ref) come from `ToolRowFields.for`, which the
   reload (`Web::MessageParts#tool_part`) calls too. `ToolRowFields::ACTIVITY_KEYS` (title, called_as) travel
-  inside `activity` on the completed event; `EVENT_KEYS` (view) go top-level on both events.
+  inside `activity` on the completed event; `EVENT_KEYS` (view, ref) go top-level on both events.
   `Bridge::TurnAccumulator` (snapshot and replay) and the web (`activity.js` `ACTIVITY_FIELDS` /
-  `EVENT_FIELDS`) copy them by these lists, so a new row field is added there.
+  `EVENT_FIELDS`) copy them by these lists, so a new row field is added there. `ref` is `FileRef.for` (a
+  read/write/edit's file against the cwd, `{kind: "file", path, line?, end_line?}`); the web opens it in the editor
+  that `Web::Editor` (web.editor) names, for a local viewer only (`App#viewer_capabilities`).
 - Settles an ask verdict after `:tool_call_started`, so a UI shows the tool line and then the approval.
 - Dispatches through `KernelLoop#dispatch_tool_call`, or writes the denial text. Unknown tools are answered in
   `KernelLoop#dispatch` ("Error: no such tool ...", never repeating the wrong name).
@@ -221,7 +223,7 @@ One iteration with tool calls:
   with `[cut: N of M chars; read it in parts]` (N kept of M, the whole within the cap unless the cap is shorter
   than that line). The model (both loops), the event and the after_tool_call hook get that text.
 - Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, activity,
-  images, diff, waited_ms, view}, then fires `:after_tool_call` {iteration, tool, output, status}.
+  images, diff, waited_ms, view, ref}, then fires `:after_tool_call` {iteration, tool, output, status}.
 - The activity's status (`ToolActivity#tool_activity_status`): `error` for an `Error:` result and for an
   execute that exited non-zero, except a grep-family search that found nothing (`ToolActivity.no_match?`:
   exit 1, no stderr block, the last step is grep/egrep/fgrep/rg/ag/pgrep, no `&&` after a step that can fail

@@ -54,7 +54,7 @@ module Samagotchi
       started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
                   tool: call[:name], call: call.dup, params: params }
       started[:label] = label if label
-      # Its title, called_as and view (ToolRowFields); the worker runs in
+      # Its row fields (ToolRowFields: title, called_as, view, ref); the worker runs in
       # its session's working directory.
       fields = ToolRowFields.for(call[:name], call, cwd: Dir.pwd)
       started.merge!(fields)

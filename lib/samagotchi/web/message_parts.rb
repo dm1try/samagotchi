@@ -231,7 +231,7 @@ module Samagotchi
         name = call[:name].to_s
         params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
         part = { tool: name, params: params.to_s }
-        # Its title, called_as and view (ToolRowFields), built from the saved
+        # Its row fields (ToolRowFields: title, called_as, view, ref), built from the saved
         # call (never saved themselves), so older sessions get them too. The
         # saved call is rebuilt by BuiltinCalls, which sets called_as again.
         part.merge!(ToolRowFields.for(name, call, cwd: cwd))
