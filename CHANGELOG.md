@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-10-10
+
 ### Added
 
 - `/thinking` shows the thinking level the next turn runs at and where it came from; `/thinking off|low|medium|high`
@@ -47,6 +49,8 @@ and commands may change between minor versions. How releases are made:
   docs say, instead of refusing it; it is refused only while a turn runs.
 - A `hosts:` entry that fails while it is read is ignored on its own with a warning naming it, instead of every host
   silently dropping (in the process and in its workers); a failure outside the entries is logged.
+- A `/thinking`, `/model` or `/llm-context` queued during a turn no longer lets the turn-end warm-up prefill a prompt
+  the change then throws away.
 
 ## [0.51.0] - 2026-10-10
 
@@ -2383,7 +2387,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.51.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.52.0...HEAD
+[0.52.0]: https://github.com/dm1try/samagotchi/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/dm1try/samagotchi/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/dm1try/samagotchi/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/dm1try/samagotchi/compare/v0.48.0...v0.49.0
