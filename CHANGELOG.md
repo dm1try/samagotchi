@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
 - Web: `/cut TEXT` in the composer sends TEXT as a cut, as in a terminal and `chi send --cut` (it was refused as "not a
   session command"); with no turn running it is TEXT as a normal turn. `/queue TEXT` during a turn says it isn't
   available in the web yet, instead of that error.
+- Web: command bubbles (`/help`, `/model`, `/llm-context` …) stay in place when a `!cmd` or `!rollback` redraws the
+  conversation; a reload still drops them (only a `!cmd`'s output is saved).
 
 ## [0.51.0] - 2026-10-10
 
