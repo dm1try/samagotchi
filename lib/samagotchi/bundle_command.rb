@@ -453,7 +453,7 @@ module Samagotchi
       unless record
         @stderr.puts "Bundle '#{bname}' not installed"; return 1
       end
-      scope = record.scope || "system"
+      scope = record.effective_scope
       begin
         target_dir = Samagotchi::MemoryPaths.scope_dir!(scope)
       rescue ArgumentError => e

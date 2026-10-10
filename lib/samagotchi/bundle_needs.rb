@@ -66,7 +66,7 @@ module Samagotchi
     # missing need. A manifest.json or needs: that doesn't parse is skipped.
     def self.entry_markers(scope, path:, bundles_dir:)
       MemoryBundle::Provenance.each_installed(dir: bundles_dir).each_with_object({}) do |(_name, bundle), acc|
-        next if bundle.error? || bundle.scope.to_s != scope.to_s || !bundle.needs?
+        next if bundle.error? || bundle.effective_scope != scope.to_s || !bundle.needs?
 
         needs = begin
           MemoryBundle::Manifest.parse_needs(bundle.needs)

@@ -93,6 +93,12 @@ RSpec.describe Samagotchi::BundleNeeds do
       )
     end
 
+    it "counts a bundle with no recorded scope as a system one" do
+      install("needs", scope: nil, files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
+      expect(annotate).to include("gh_helper** · system · 2026-09-26 · 120 — GitHub via gh [needs chi-nope: not found on PATH]")
+      expect(annotate(scope: "project")).to equal(index)
+    end
+
     it "ignores a bundle of the other scope" do
       install("needs", scope: "project", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
       expect(annotate).to equal(index)
