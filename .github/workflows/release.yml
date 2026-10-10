@@ -39,7 +39,11 @@ jobs:
           runs="repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&branch=main&per_page=1"
           waited=0
           while :; do
-            run=$(gh api "$runs" --jq '.workflow_runs[0] // empty | [.id, .status, (.conclusion // ""), .html_url] | @tsv')
+            # The nullable field (conclusion) is last so its empty value sits after
+            # the URL instead of between status and URL; tab is an IFS whitespace
+            # char, so a middle empty field would collapse and shift the URL into
+            # the conclusion slot, leaving the waiting line's URL blank.
+            run=$(gh api "$runs" --jq '.workflow_runs[0] // empty | [.id, .status, .html_url, (.conclusion // "")] | @tsv')
             if [ -z "$run" ]; then
               # The push to main may have just landed: give its run a few minutes to appear.
               if [ "$waited" -ge 300 ]; then
@@ -47,7 +51,7 @@ jobs:
                 exit 1
               fi
             else
-              IFS=$'\t' read -r id status conclusion url <<< "$run"
+              IFS=$'\t' read -r id status url conclusion <<< "$run"
               if [ "$status" = completed ]; then
                 if [ "$conclusion" = success ]; then
                   echo "CI run $id succeeded on $SHA: $url"

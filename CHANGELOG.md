@@ -18,6 +18,9 @@ and commands may change between minor versions. How releases are made:
 - `chi -p "/cut TEXT" --non-interactive` (and `/queue TEXT`) runs `TEXT` as the turn's prompt, the same as the idle
   REPL does, instead of feeding the model the literal `/cut` / `/queue` words; a bare `/cut` / `/queue` is still
   refused, as before.
+- release.yml's `checks` job shows the CI run's URL in its "waiting" line while the run is still in progress (it used
+  to log `waiting ()`, since a tab is an IFS whitespace char that collapsed the run's empty conclusion between status
+  and URL); the success and failure conclusions are unchanged.
 
 ## [0.53.0] - 2026-10-10
 
