@@ -7,8 +7,7 @@ RSpec.describe Samagotchi::ContextStatus do
   let(:window) { Samagotchi::ContextWindow::Resolved.new(tokens: 1_000, source: :config) }
 
   around do |example|
-    keys = %w[SAMAGOTCHI_CONTEXT_STATUS SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS
-              SAMAGOTCHI_CONTEXT_STATUS_CADENCE]
+    keys = %w[SAMAGOTCHI_CONTEXT_STATUS SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS]
     saved = keys.to_h { |key| [key, ENV[key]] }
     example.run
   ensure
@@ -44,8 +43,29 @@ RSpec.describe Samagotchi::ContextStatus do
 
     tracker = described_class.new(conversation: conversation)
 
-    expect(tracker.observe(1_800, iteration_index: 0, window: window)).to be_nil
+    # The estimate comes back on every request, even unchanged from the
+    # resumed line's bucket — so no guidance line is left for it either.
+    expect(tracker.observe(1_800, iteration_index: 0, window: window)).to include(bucket: "40plus")
     expect(tracker.display).to eq(est_pct: 45.0, bucket: "40plus")
+    expect(tracker.take_guidance).to be_nil
+  end
+
+  it "returns the event every request but the model's line only on a bucket rise" do
+    tracker = described_class.new
+
+    # Two unchanged requests both return the event (a fresh estimate each).
+    first = tracker.observe(300, iteration_index: 0, window: window)
+    second = tracker.observe(360, iteration_index: 1, window: window)
+    expect(first).to include(bucket: "under20")
+    expect(second).to include(bucket: "under20")
+    expect(tracker.take_guidance).to be_nil
+
+    # A rise into a guidance bucket (40plus) leaves a line; a later unchanged
+    # request leaves none.
+    tracker.observe(1_800, iteration_index: 2, window: window)
+    expect(tracker.take_guidance[:content]).to include("[CONTEXT: about 45%")
+    tracker.observe(1_860, iteration_index: 3, window: window)
+    expect(tracker.take_guidance).to be_nil
   end
 
   it "adds an estimate for what the prompt grew by since the server's count" do

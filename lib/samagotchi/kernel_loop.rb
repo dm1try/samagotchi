@@ -726,9 +726,11 @@ module Samagotchi
     end
 
     # Estimate context usage for this iteration's prompt (ContextStatus#observe)
-    # and, when the emit gate fires, surface it to stream consumers as a
-    # :context_status event. The telemetry is not for the model (it used to
-    # be injected as a synthetic system message).
+    # and surface it to stream consumers as a :context_status event, on every
+    # request (observe returns the estimate each time it is enabled), so the
+    # web and the attached TUI get a fresh number per request. The telemetry
+    # is not for the model (it used to be injected as a synthetic system
+    # message); the model's own line is still left only on a rise.
     def emit_context_status_event(on_stream_event, context, prompt, iteration_index:, window:, image_tokens: 0)
       event = context.observe(prompt.length, iteration_index: iteration_index, window: window, image_tokens: image_tokens)
       return unless event

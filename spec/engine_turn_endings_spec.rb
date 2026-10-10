@@ -169,10 +169,10 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     result = run
 
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected
-                              generation_started generation_chunk generation_completed empty_answer_retry
-                              generation_started generation_chunk generation_completed
-                              used_memories_updated replace! turn_completed persist hook:after_turn=completed answer_display
-                              hook:session_end])
+                              context_status generation_started generation_chunk generation_completed
+                              empty_answer_retry context_status generation_started generation_chunk
+                              generation_completed used_memories_updated replace! turn_completed persist
+                              hook:after_turn=completed answer_display hook:session_end])
     expect(tail(2)).to eq(["user:hi", "system:[SYSTEM: the previous turn ended with no vis"])
     expect(summary).to include(output: "", empty_answer: { retries: 1 })
     expect(result.output).to eq("")

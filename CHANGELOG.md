@@ -10,6 +10,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- The context-usage `:context_status` event now streams on every request (both loops) instead of only on a bucket
+  change or a `context.status_cadence` tick, so the web's ctx chip and the attached TUI's status line get a fresh
+  number each time and never fall between rounds; the model's own `[CONTEXT: …]` guidance line is still left only on a
+  rise into a guidance bucket.
+- Removed the `context.status_cadence` setting (config entry, `--status-cadence` flag, `SAMAGOTCHI_CONTEXT_STATUS_CADENCE`): the event streams on every request, so nothing reads it. A config.yml that still lists it gets a startup warning (`config: unknown key 'context.status_cadence'`) but otherwise loads.
 - Web: a denied approval's summary line reads `<tool>: <command> → Denied`; the typed reason shows in full in the
   card body (expand the card) instead of being cut off in the summary.
 

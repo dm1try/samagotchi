@@ -693,8 +693,12 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         run([{ role: "user", content: "go" }])
 
         statuses = events.select { |event| event[:type] == :context_status }
-        expect(statuses.map { |event| event[:usage][:source] }).to eq(["server"])
-        expect(statuses.first[:usage][:estimated_used_tokens]).to be > 100
+        # The estimate on the tool request, then real server usage on the
+        # answer once the first generation reported it.
+        expect(statuses.map { |event| event[:usage][:source] }).to eq(%w[estimate server])
+        # The turn appended 800 chars of tool arguments since the server's
+        # count, so the second request's estimate is above the server's 100.
+        expect(statuses.last[:usage][:estimated_used_tokens]).to be > 100
       ensure
         ENV.delete("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS")
       end
@@ -858,7 +862,11 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(adapter.requests.last[:messages].last).to eq(role: "system", content: nudge[:content])
       retry_event = events.find { |e| e[:type] == :empty_answer_retry }
       expect(retry_event).to include(iteration: 1, attempt: 1, of: 1, finish_reason: "stop", thinking_chars: 480)
-      expect(events.map { |e| e[:type] }.each_cons(2)).to include(%i[empty_answer_retry generation_started])
+      # The retry's request streams its own :context_status before the next
+      # generation starts: empty_answer_retry, context_status, generation_started
+      # in that order.
+      types = events.map { |e| e[:type] }
+      expect(types.each_cons(3).to_a).to include(%i[empty_answer_retry context_status generation_started])
     end
 
     it "keeps a configured temperature for the retry, and goes back to the turn's sampling after it" do

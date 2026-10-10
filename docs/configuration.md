@@ -1167,8 +1167,7 @@ described in their own sections.
 | `llm_context.policy` | the subtask-boundaries line | | The sentence `forget_outputs`' description carries (the `forget` layer): "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note what it established; keep anything you'll still edit against." Blank: none. Read when a session starts. |
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |
 | `memory.index_warn_tokens` | `2500` | yes | The tokens one scope's memory index (project or system; sent with every prompt) may hold before a `memory_write`, `write` or `edit` that takes it over gets a note asking the model to tighten long index descriptions; `0`: no note. Estimated as characters / `context.chars_per_token`. `memory:` is its own section, not the `memories:` preload list. See [Memory](memory.md). |
-| `context.status_thresholds` | `20,40,60,80` | yes | Percentages that trigger a status. |
-| `context.status_cadence` | `0` | yes | Also every N rounds; `0` = thresholds only. |
+| `context.status_thresholds` | `20,40,60,80` | yes | Percentages that put the estimate into a bucket; the rise into a guidance bucket (from the second up) leaves the model its own `[CONTEXT: …]` line, and the bucket decides the guidance. |
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |
 | `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, within `session.max_wakes`); `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |

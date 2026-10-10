@@ -410,9 +410,10 @@ its own). An empty answer with a `length` stop and the context 90 % full or
 more is not asked again (a full window, not a thinking loop); with no finish
 reason it is. Both also keep one `ContextStatus` per turn: before each request
 it estimates how full the window is (the server's last count plus what the turn
-appended since), emits `:context_status` on a bucket change, and on a rise past
-the second threshold puts the model's own `[CONTEXT: …]` line on the tail as a
-system message (docs/internals/context-telemetry.md).
+appended since), emits `:context_status` on every request (so the web and the
+attached TUI get a fresh number each time), and on a rise past the second
+threshold puts the model's own `[CONTEXT: …]` line on the tail as a system
+message (docs/internals/context-telemetry.md).
 
 **Adapters.** `Client` (raw-prompt servers) and `LLM::OpenAIChat` (one per host,
 `HostRegistry#adapter_for`) share `LLM::HTTP`: timeouts, TLS for https, a line

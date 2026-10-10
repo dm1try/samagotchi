@@ -651,10 +651,11 @@ module Samagotchi
 
         # Before a request, as the native loop: estimate how full the window
         # is (the server's last count plus what the turn appended since),
-        # emit :context_status on a bucket change, and put the model's own
-        # line on the tail on a rise that asks it for a change. The estimate
-        # counts the conversation's text and tool calls, not the tool
-        # schemas (the server's count does).
+        # emit :context_status on every request (observe returns the estimate
+        # each time it is enabled), and put the model's own line on the tail
+        # on a rise that asks it for a change. The estimate counts the
+        # conversation's text and tool calls, not the tool schemas (the
+        # server's count does).
         def observe_context(iteration, window)
           return unless window
 

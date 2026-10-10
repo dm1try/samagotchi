@@ -292,7 +292,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 |---|---|---|
 | `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, images?}` |
 | `:reminder_injected` | due reminders went into the turn | `{reminders}` |
-| `:context_status` | the window's fill crossed a bucket | `{iteration, ...}` |
+| `:context_status` | every request, the current estimate before it | `{iteration, ...}` |
 | `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source}` (native adds `profile`, `profile_source`) |
 | `:generation_chunk` | each streamed chunk | `{iteration, content, text, thinking, payload, tool_call?}` |
 | `:generation_retrying` | the transport retries the request, or the chat loop asks again for a step whose stream dropped mid-answer (`restarted: true`: what the step streamed is void, and the web's live step, the TUI's activity line, the Bridge's TurnAccumulator and the stream hooks' watch start it over) | `{iteration, attempt, max_retries, next_delay, error_class, error_message, status, restarted?}` |
@@ -430,8 +430,9 @@ Both loops:
   with its own nudge; when it is used up, the turn ends cancelled (`:hook`). A steer's cut asks again with the
   steer and spends nothing.
 - **Steering**: queued input goes in at iteration boundaries (`Steer.inject!`, `:pending_input_merged`).
-- **Context status**: an estimate of the window's fill before each request (`:context_status`), with a guidance
-  line on the tail when it rises far enough.
+- **Context status**: an estimate of the window's fill before each request,
+  emitted on every request (`:context_status`) so the UI always has a current
+  number, with a guidance line on the tail only when it rises far enough.
 - **Cancel**: text streamed before a cancel stays, marked `[interrupted]`.
 - **The same events**: generation events, tool dispatch and tool call events, and the before/after generation
   and tool call hooks.

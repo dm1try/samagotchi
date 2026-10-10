@@ -12,8 +12,9 @@ module Samagotchi
   #
   # - the status line's value (#display), every request and again from the
   #   server's final counts after each generation;
-  # - a :context_status stream event (#observe's return), on a bucket change
-  #   or every context.status_cadence requests;
+  # - a :context_status stream event (#observe's return), on every request,
+  #   so the web and the attached TUI get a fresh estimate each time (the
+  #   context.status_cadence setting no longer throttles this event);
   # - the model's own short line (#take_guidance), once per rise into a
   #   bucket whose guidance asks for a change (the second threshold up).
   #
@@ -125,7 +126,6 @@ module Samagotchi
       parsed = Config.get("context.status_thresholds").to_s.split(",").map { |value| value.strip.to_i }
                      .select { |value| value.between?(1, 99) }.uniq.sort
       @thresholds = parsed.empty? ? DEFAULT_THRESHOLDS : parsed
-      @cadence = [Config.get("context.status_cadence").to_i, 0].max
       @last_bucket = self.class.last_bucket(conversation)
       @server_usage = nil
       @counted = nil
@@ -153,16 +153,19 @@ module Samagotchi
     # +image_tokens+: the images' estimate (their base64 is not in the chars).
     #
     # @return [Hash, nil] the :context_status event's fields (without
-    #   :type/:iteration) when the emit gate fires, else nil
+    #   :type/:iteration) for every request when enabled, else nil (the
+    #   context.status off). The estimate is returned every request, so the
+    #   web and the attached TUI get a fresh number on each; the model's own
+    #   line is still only left on a rise into a guidance bucket (below).
     def observe(prompt_chars, iteration_index:, window:, image_tokens: 0)
       return nil unless @enabled
 
       usage = estimate(prompt_chars, server_usage: @server_usage, window: window, image_tokens: image_tokens, counted: @counted)
       bucket = bucket_for(usage[:estimated_pct])
-      # The status line's value, every iteration; the gate below decides
-      # only the event and the model's guidance line.
+      # The status line's value, every iteration; the event below too, so the
+      # consumers get a fresh estimate on every request. Only the model's line
+      # is still gated: it is left only on a rise (below).
       @display = { est_pct: usage[:estimated_pct], bucket: bucket }
-      emit = emit?(bucket: bucket, iteration_index: iteration_index)
       previous_bucket = @last_bucket
       @last_bucket = bucket
       line = if @forget
@@ -171,7 +174,6 @@ module Samagotchi
                guidance_message(usage: usage, bucket: bucket)
              end
       @guidance = line if line
-      return nil unless emit
 
       { status: status_message(usage: usage, bucket: bucket), usage: usage, bucket: bucket, source: usage[:source] }
     end
@@ -291,16 +293,6 @@ module Samagotchi
     def guidance_due?(previous, bucket)
       rank = bucket_rank(bucket)
       rank >= GUIDANCE_FROM_RANK && rank > bucket_rank(previous)
-    end
-
-    def emit?(bucket:, iteration_index:)
-      bucket_changed = bucket != if @last_bucket.nil?
-                                   "under#{@thresholds.first}"
-                                 else
-                                   @last_bucket
-                                 end
-      cadence_due = @cadence.positive? && ((iteration_index + 1) % @cadence).zero?
-      bucket_changed || cadence_due
     end
 
     # The forget layer's line for this request, or nil (the tiers and when

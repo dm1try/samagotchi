@@ -19,7 +19,6 @@ RSpec.describe Samagotchi::KernelLoop do
       "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"],
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
       "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS" => ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"],
-      "SAMAGOTCHI_CONTEXT_STATUS_CADENCE" => ENV["SAMAGOTCHI_CONTEXT_STATUS_CADENCE"],
       "SAMAGOTCHI_DEFAULT_MAX_TOKENS" => ENV["SAMAGOTCHI_DEFAULT_MAX_TOKENS"]
     }
 
@@ -318,7 +317,7 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(result.context_status).to include(est_pct: 35.2, bucket: "20plus")
     end
 
-    it "emits :context_status only on threshold transitions" do
+    it "emits :context_status on every request" do
       prompts = []
       events = []
       responses = [
@@ -347,11 +346,16 @@ RSpec.describe Samagotchi::KernelLoop do
       kernel.run([{ role: "user", content: "check" }], on_stream_event: ->(e) { events << e })
       status_events = events.select { |e| e[:type] == :context_status }
 
-      expect(status_events.size).to eq(1)
-      expect(status_events.first[:status]).to include("CONTEXT_STATUS")
-      expect(status_events.first[:status]).to include("bucket=40plus")
-      expect(prompts[0]).not_to include("CONTEXT_STATUS")
-      expect(prompts[1]).not_to include("CONTEXT_STATUS")
+      # Every request streams the estimate now (the web/TUI never miss it),
+      # so both iterations emit. The model's own line still rides the rise:
+      # only the second (40plus) request carries it, so the first prompt is
+      # clean of it.
+      expect(status_events.size).to eq(2)
+      expect(status_events.map { |e| e[:status] }).to all(include("CONTEXT_STATUS"))
+      expect(status_events.first[:status]).to include("bucket=under20")
+      expect(status_events.last[:status]).to include("bucket=40plus")
+      expect(prompts[0]).not_to include("[CONTEXT:")
+      expect(prompts[1]).to include("[CONTEXT:")
     end
 
     describe "the status line's context value (Result#context_status)" do
@@ -359,7 +363,7 @@ RSpec.describe Samagotchi::KernelLoop do
         { window_tokens: 10_000, estimated_used_tokens: 500, estimated_remaining_tokens: 9_500, estimated_pct: 5.0 }
       end
 
-      it "is there under the first threshold, with no event and no line for the model" do
+      it "is there under the first threshold, with an event but no line for the model" do
         events = []
         prompts = []
         allow(client).to receive(:complete) do |prompt|
@@ -371,7 +375,10 @@ RSpec.describe Samagotchi::KernelLoop do
         result = kernel.run([{ role: "user", content: "hello" }], on_stream_event: ->(e) { events << e })
 
         expect(result.context_status).to eq(est_pct: 5.0, bucket: "under20")
-        expect(events.none? { |e| e[:type] == :context_status }).to be(true)
+        # The estimate now streams on every request (so the chip is never
+        # missing), but the model gets no [CONTEXT: line under the first
+        # threshold (there is no rise into a guidance bucket).
+        expect(events.any? { |e| e[:type] == :context_status }).to be(true)
         expect(prompts.first).not_to include("[CONTEXT:")
       end
 
@@ -521,13 +528,18 @@ RSpec.describe Samagotchi::KernelLoop do
       kernel.run([{ role: "user", content: "check" }], on_stream_event: ->(e) { events << e })
       status_events = events.select { |e| e[:type] == :context_status }
 
-      expect(status_events.size).to eq(1)
-      expect(status_events.first[:status]).to include("CONTEXT_STATUS")
-      expect(status_events.first[:status]).to include("src=server")
-      # The server's count plus the tool call and result appended since.
-      expect(status_events.first[:status][/est_used_tokens=(\d+)/, 1].to_i).to be_between(120_001, 120_100)
-      expect(status_events.first[:status]).to include("bucket=40plus")
-      expect(prompts.first).not_to include("CONTEXT_STATUS")
+      expect(status_events.size).to eq(2)
+      # The estimate streams on the first request (no server count yet),
+      # then real server usage on the second request, once the first
+      # generation reported it — that is the "prefers real server usage"
+      # payoff.
+      expect(status_events.map { |e| e[:usage][:source] }).to eq(%w[estimate server])
+      # The server count plus the tool call and result appended since.
+      expect(status_events.last[:status][/est_used_tokens=(\d+)/, 1].to_i).to be_between(120_001, 120_100)
+      expect(status_events.last[:status]).to include("bucket=40plus")
+      # The events stream on every request; the model's own line rides only
+      # the rise into 40plus (the second request).
+      expect(prompts.last).to include("[CONTEXT:")
     end
 
     it "adds what the turn appended since the server's last count to the line the model gets (a big tool result)" do
@@ -673,25 +685,37 @@ RSpec.describe Samagotchi::KernelLoop do
         expect(line[:content]).to include("bucket=50plus", "context critical")
       end
 
-      it "re-emits an unchanged bucket every context.status_cadence iterations" do
-        ENV["SAMAGOTCHI_CONTEXT_STATUS_CADENCE"] = "2"
+      it "streams an event on every request, but the model's own line only on a rise" do
         ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
         responses = Array.new(3) { %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>) } + ["done"]
 
-        lines = status_lines([{ role: "user", content: "x" * 2_500 }], responses)
+        events = []
+        allow(client).to receive(:complete) { responses.shift }
+        result = kernel.run([{ role: "user", content: "x" * 4_000 }], on_stream_event: ->(e) { events << e })
 
-        # Iteration 1: the rise into 20plus; 2 and 4: the cadence.
-        expect(lines.size).to eq(3)
-        expect(lines).to all(include("bucket=20plus"))
+        # Every request streams :context_status (four tool-loop iterations,
+        # four events). The prompt lands in a guidance bucket (40plus): the
+        # single rise into it on the first request leaves the model exactly one
+        # of its own lines; the unchanged buckets after it leave none.
+        status_events = events.select { |e| e[:type] == :context_status }
+        expect(status_events.size).to eq(4)
+        expect(result.conversation.count { |m| m[:kind] == "context" }).to eq(1)
       end
 
-      it "resumes from a legacy session's CONTEXT_STATUS line: no event for the bucket it already names" do
+      it "resumes from a legacy session's CONTEXT_STATUS line: a stream but no model line for its bucket" do
         ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
         legacy = { role: "system", content: "CONTEXT_STATUS window_tokens=10000 est_pct=25.0 bucket=20plus" }
 
-        lines = status_lines([{ role: "user", content: "x" * 2_500 }, legacy, { role: "user", content: "more" }], ["ok"])
+        events = []
+        allow(client).to receive(:complete).and_return("ok")
+        result = kernel.run([{ role: "user", content: "x" * 2_500 }, legacy, { role: "user", content: "more" }],
+                            on_stream_event: ->(e) { events << e })
 
-        expect(lines).to be_empty
+        # The estimate streams on every request (so the chip is never
+        # missing), but the resumed bucket is not a rise: no [CONTEXT: line
+        # for the model.
+        expect(events.any? { |e| e[:type] == :context_status }).to be(true)
+        expect(result.conversation.none? { |m| m[:kind] == "context" }).to be(true)
       end
     end
 

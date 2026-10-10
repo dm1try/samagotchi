@@ -491,7 +491,15 @@ RSpec.describe "Turn policy characterization" do
         label = "#{row[:name]} [#{loop_name}]"
         label += " (drift #{row[:drift]})" if row[:drift] && (row[:native] || row[:chat])
         it(label) do
-          expect(run_row(row, loop_name)).to eq(expected)
+          result = run_row(row, loop_name)
+          # Both loops emit :context_status before every request. Rows that
+          # don't pin a ctx bucket (all but "usage crossing 40%") care about
+          # cut/steer/generation, not telemetry: drop the ctx events so the
+          # pinned timeline stays readable. That row does pin one.
+          unless expected[:events]&.any? { |event| event.to_s.start_with?("ctx(") }
+            result = result.merge(events: result[:events].reject { |event| event.to_s.start_with?("ctx(") })
+          end
+          expect(result).to eq(expected)
         end
       end
     end
