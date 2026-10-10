@@ -34,7 +34,15 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
-      - run: bundle exec rspec --format progress
+      # As ci.yml: parallel_rspec, grouped by the runtimes main's last run
+      # logged (restored from its cache; without one, by file size).
+      - name: Restore the spec runtime log
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tmp/parallel_runtime_rspec.log
+          key: parallel-runtime-${{ runner.os }}-ruby-3.4-${{ github.run_id }}
+          restore-keys: parallel-runtime-${{ runner.os }}-ruby-3.4-
+      - run: bundle exec parallel_rspec -n 4
       - run: npm test
       - run: bundle exec rake bundles:check
 
