@@ -105,6 +105,21 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(metrics.snapshot).to include(tool_calls_total: 2, tool_errors: 1)
   end
 
+  it "marks a grep's no-match on its tool record, not as a tool error" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+      { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute" },
+      { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute",
+        activity: { tool: "execute", status: "ok", no_match: true } },
+      { type: :tool_call_started, iteration: 1, call_index: 2, tool: "execute" },
+      { type: :tool_call_completed, iteration: 1, call_index: 2, tool: "execute",
+        activity: { tool: "execute", status: "ok" } }
+    ])
+    snap = metrics.snapshot
+    expect(snap[:tool_errors]).to eq(0)
+    expect(snap[:tool_records].map { |record| record[:no_match] }).to eq([true, nil])
+  end
+
   it "counts the calls a model made under an alias's name, by its spelling, only when there are any" do
     feed([
       { type: :turn_started, session_id: "sess-1", prompt: "hi" },

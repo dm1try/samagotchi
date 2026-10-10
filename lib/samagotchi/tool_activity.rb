@@ -43,8 +43,10 @@ module Samagotchi
         action: tool_activity_action(tool_name, registry: registry, call: call),
         tool: tool_name,
         params: tool_activity_params(tool_name, call, registry: registry),
-        status: tool_activity_status(result, tool_name)
+        status: tool_activity_status(result, tool_name, command: call.is_a?(Hash) ? call[:content] : nil)
       }
+      # A grep that found nothing: ok, and the web row says "no match".
+      event[:no_match] = true if event[:status] == "ok" && tool_name == Tools::Execute::NAME && execute_failed?(result.to_s)
       title = tool_title(tool_name, call, cwd: cwd)
       event[:title] = title if title
       # The name the model used when an alias ran a built-in (called_as: "bash"
@@ -181,13 +183,6 @@ module Samagotchi
       end
     end
 
-    # "error" for an "Error:" result, and for an execute whose command
-    # exited non-zero (its last "exit: N" line; no number: killed by a
-    # signal), so the turn tally's "(N failed)" counts it. "stopped" for a
-    # task_wait the user's Stop ended (the task itself runs on), for one
-    # whose task was stopped (the stop-task button, or the model's task_stop),
-    # and for a command the user's Stop killed or kept from starting: a
-    # cancel, not a failure (its text still starts "Error:" for the model).
     # memory_write's label: a call with only a description changes the index line.
     def memory_write_action(call)
       return "saving memory" unless call.is_a?(Hash)
@@ -205,23 +200,98 @@ module Samagotchi
       request.ids.empty? && request.restore? ? "restoring outputs" : "forgetting outputs"
     end
 
-    def tool_activity_status(result, tool_name = nil)
+    # "error" for an "Error:" result, and for an execute whose command
+    # exited non-zero (its last "exit: N" line; no number: killed by a
+    # signal), so the turn tally's "(N failed)" counts it; but not a grep
+    # that found nothing (no_match?, given the +command+): that stays "ok".
+    # "stopped" for a
+    # task_wait the user's Stop ended (the task itself runs on), for one
+    # whose task was stopped (the stop-task button, or the model's task_stop),
+    # and for a command the user's Stop killed or kept from starting: a
+    # cancel, not a failure (its text still starts "Error:" for the model).
+    def tool_activity_status(result, tool_name = nil, command: nil)
       text = result.to_s
       return "stopped" if text == Tools::Execute::NOT_RUN_ON_STOP
       return "stopped" if tool_name == Tools::Execute::NAME && text.start_with?(Tools::Execute::STOPPED_BY_USER)
       return "error" if text.start_with?("Error:")
-      return "error" if tool_name == Tools::Execute::NAME && execute_failed?(text)
+      if tool_name == Tools::Execute::NAME && execute_failed?(text)
+        return no_match?(text, command) ? "ok" : "error"
+      end
       return "stopped" if tool_name == Tools::TaskWait::NAME && text.match?(/^(wait_result: canceled|status: stopped)$/)
 
       "ok"
     end
 
     def execute_failed?(text)
-      exit_line = text.lines.reverse_each.find { |line| line.start_with?("exit: ") }
-      return false unless exit_line
+      code = execute_exit_code(text)
+      !code.nil? && code != "0"
+    end
 
-      code = exit_line[/\Aexit: (\d*)/, 1]
-      code != "0"
+    # The code on an execute result's last "exit: N" line ("" when killed
+    # by a signal); nil with no exit line.
+    def execute_exit_code(text)
+      exit_line = text.to_s.lines.reverse_each.find { |line| line.start_with?("exit: ") }
+      exit_line && exit_line[/\Aexit: (\d*)/, 1]
+    end
+
+    # The grep family: exit 1 means "searched, found nothing".
+    NO_MATCH_COMMANDS = %w[grep egrep fgrep rg ag pgrep].freeze
+    # Commands that can fail without a message, so an "&&" after them may
+    # hide which step exited 1.
+    SILENT_FAILERS = ["test", "[", "[[", "false", "diff", "cmp", "which", "type", "hash"].freeze
+    QUIET_FLAGS = %w[-q --quiet -s].freeze
+    # Any output sent to /dev/null (">", "1>", "2>", ">>"): its message may be gone.
+    TO_DEV_NULL = %r{>\s*/dev/null}
+    # Commands that end the script with their own code: the exit 1 may be theirs.
+    EXITS = %w[exit return].freeze
+
+    # An execute that exited 1 with no stderr block, whose last step is a
+    # grep-family command, and where no "&&" follows a step that could have
+    # failed silently: a search that found nothing, not a failure. Also
+    # false with a background "&" step (CommandSteps splits "&>" there too),
+    # an earlier exit/return, or set -e (any earlier step's failure ends the
+    # script). When unsure (no command, a command CommandSteps can't read),
+    # false.
+    def no_match?(text, command)
+      return false if command.nil? || execute_exit_code(text) != "1"
+      return false if text.to_s.each_line.any? { |line| line.chomp == "stderr:" }
+
+      steps = CommandSteps.parse(command)&.steps
+      return false unless steps && NO_MATCH_COMMANDS.include?(step_words(steps.last).first)
+      return false if steps.any? { |step| step.op == "&" }
+      return false if steps[0...-1].any? { |step| ends_script?(step) }
+
+      steps.each_cons(2).none? { |step, after| after.op == "&&" && silent_failer?(step) }
+    end
+
+    # A step's words from its command word on: no NAME=value prefixes, the
+    # command word without its path.
+    def step_words(step)
+      words = Guardrails::ShellLex.lex(step.text).filter_map { |kind, value| value if kind == :word }
+      words = words.drop_while { |word| word.match?(/\A[A-Za-z_][A-Za-z0-9_]*=/) }
+      return [] if words.empty?
+
+      [File.basename(words.first), *words.drop(1)]
+    end
+
+    # exit / return, or set -e (-e alone or in a flag group, -o errexit).
+    def ends_script?(step)
+      name, *args = step_words(step)
+      return true if EXITS.include?(name)
+      return false unless name == "set"
+
+      args.any? { |arg| arg.match?(/\A-[a-z]*e/) } || args.each_cons(2).include?(%w[-o errexit])
+    end
+
+    def silent_failer?(step)
+      return true if step.text.match?(TO_DEV_NULL) || step.text.lstrip.start_with?("((")
+
+      name, *args = step_words(step)
+      return true if SILENT_FAILERS.include?(name)
+      return true if name == "command" && args.intersect?(%w[-v -V])
+      return true if NO_MATCH_COMMANDS.include?(name) && args.intersect?(QUIET_FLAGS)
+
+      name == "git" && args.first == "diff" && args.intersect?(%w[--quiet --exit-code])
     end
 
     def tool_activity_params(tool_name, call, registry: nil)

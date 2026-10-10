@@ -1268,7 +1268,8 @@ module Samagotchi
       # (it ended first).
       def join_tool_line(part, duration_ms: nil)
         output = part[:output]
-        status = output.nil? ? "no result" : ToolActivity.tool_activity_status(output, part[:tool])
+        command = part.dig(:view, :truncated) ? nil : part.dig(:view, :command)
+        status = output.nil? ? "no result" : ToolActivity.tool_activity_status(output, part[:tool], command: command)
         activity = { action: part[:label] || ToolActivity.tool_activity_action(part[:tool]), tool: part[:tool],
                      params: part[:params], status: status,
                      description: ToolView.description_title(part[:view] || {}) }

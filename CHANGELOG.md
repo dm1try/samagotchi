@@ -17,6 +17,10 @@ and commands may change between minor versions. How releases are made:
 - Removed the `context.status_cadence` setting (config entry, `--status-cadence` flag, `SAMAGOTCHI_CONTEXT_STATUS_CADENCE`): the event streams on every request, so nothing reads it. A config.yml that still lists it gets a startup warning (`config: unknown key 'context.status_cadence'`) but otherwise loads.
 - Web: a denied approval's summary line reads `<tool>: <command> → Denied`; the typed reason shows in full in the
   card body (expand the card) instead of being cut off in the summary.
+- A grep-family search that found nothing (`grep`/`rg`/`ag`/`pgrep` exiting 1 with no stderr) is no longer a
+  failed tool call: it doesn't count in the turn's "(N failed)", the session's tool errors or the skills bundle's
+  "fix the skill" nudge, and the web row shows a done mark with a muted "no match". The model still sees
+  `exit: 1 (no output)`. Turns saved before keep their "error".
 
 ### Fixed
 

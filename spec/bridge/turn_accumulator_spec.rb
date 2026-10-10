@@ -122,6 +122,15 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts].last).to include(tool: "execute", title: "ls")
   end
 
+  it "keeps a grep's no-match on its part, and replays it in the activity" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "rg zzz" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: "exit: 1 (no output)",
+           activity: { tool: "execute", status: "ok", no_match: true } })
+    expect(acc.current_turn[:parts].last).to include(status: "ok", no_match: true)
+    expect(described_class.replay_events(acc.current_turn).last[:activity]).to include(status: "ok", no_match: true)
+  end
+
   it "keeps the name the model called an aliased tool by on its part, and replays it" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "ls", called_as: "bash" },

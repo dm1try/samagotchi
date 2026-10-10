@@ -184,6 +184,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                   'tool> reading file (read path="NOPE.md"): error', "Done."])
     end
 
+    it "shows a saved grep that found nothing as done, a real exit 1 as an error" do
+      feed(snapshot(messages: [{ role: "user", content: "find it" },
+                               { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "rg zzz lib/" } }] },
+                               { role: "tool_response", tool_call_id: "c1", content: "exit: 1 (no output)" },
+                               { role: "model", content: "", tool_calls: [{ id: "c2", name: "execute", arguments: { command: "sed -n 1p f" } }] },
+                               { role: "tool_response", tool_call_id: "c2", content: "exit: 1 (no output)" },
+                               { role: "model", content: "Done." }]))
+
+      expect(screen.lines).to eq(["user> find it", 'tool> running command (execute command="rg zzz lib/"): ok',
+                                  'tool> running command (execute command="sed -n 1p f"): error', "Done."])
+    end
+
     it "shows a saved command's description in its tool row, as the live row did" do
       feed(snapshot(messages: [{ role: "user", content: "go" },
                                { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute",

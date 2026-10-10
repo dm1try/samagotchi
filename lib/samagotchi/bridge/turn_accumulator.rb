@@ -169,6 +169,7 @@ module Samagotchi
 
         activity = { tool: part[:tool], status: part[:status], params: part[:params], **title }
         activity[:action] = part[:action] if part[:action]
+        activity[:no_match] = true if part[:no_match]
         completed = { type: :tool_call_completed, **call, output: part[:output], output_truncated: !!part[:output_truncated],
                       activity: activity }
         completed[:duration_ms] = part[:duration_ms] unless part[:duration_ms].nil?
@@ -288,6 +289,7 @@ module Samagotchi
           output = event[:output].to_s
           capped = output.length > @max_output_chars
           tool[:status] = (event.dig(:activity, :status) || "ok").to_s
+          tool[:no_match] = true if event.dig(:activity, :no_match)
           tool[:output] = capped ? output[0, @max_output_chars] : output.dup
           tool[:output_truncated] = capped || !!event[:output_truncated]
           tool[:images] = event[:images] if event[:images]

@@ -212,6 +212,13 @@ One iteration with tool calls:
   than that line). The model (both loops), the event and the after_tool_call hook get that text.
 - Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, activity,
   images, diff, waited_ms, view}, then fires `:after_tool_call` {iteration, tool, output, status}.
+- The activity's status (`ToolActivity#tool_activity_status`): `error` for an `Error:` result and for an
+  execute that exited non-zero, except a grep-family search that found nothing (`ToolActivity.no_match?`:
+  exit 1, no stderr block, the last step is grep/egrep/fgrep/rg/ag/pgrep, no `&&` after a step that can fail
+  silently or sends output to /dev/null, no background `&`, no earlier exit/return or `set -e`; when unsure,
+  not a no-match). That one stays `ok` with `no_match: true` on the activity, which SessionMetrics keeps on the tool
+  record and the Bridge's TurnAccumulator on the part, for the web row's "no match" word. The model's text is
+  unchanged.
 
 A denied call gets denial text in place of its output; the rest of the batch still runs. After a hook's
 `stop_turn`, the gate denies every remaining call of the batch.

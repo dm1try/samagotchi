@@ -8,6 +8,7 @@ require "samagotchi/tool_activity"
 require "samagotchi/tools/builtins"
 require "samagotchi/kernel_loop"
 require "samagotchi/tool_runner"
+require "samagotchi/turn_tally"
 
 RSpec.describe Samagotchi::ToolActivity do
   let(:schema) { { name: "jira_search", description: "d", parameters: { type: "object", properties: {}, required: [] } } }
@@ -146,6 +147,75 @@ RSpec.describe Samagotchi::ToolActivity do
     it "carries it into the activity event" do
       expect(described_class.tool_activity_event("execute", { name: "execute", content: "false" }, "exit: 1 (no output)")[:status])
         .to eq("error")
+    end
+  end
+
+  describe ".no_match?" do
+    none = "exit: 1 (no output)"
+    {
+      "grep -rn x spec/ 2>/dev/null | grep -i y" => [none, true],
+      "rg -n foo lib/" => [none, true],
+      "cd lib && rg foo" => [none, true],
+      "LC_ALL=C /usr/bin/grep foo f" => [none, true],
+      "pgrep -f nothing" => [none, true],
+      "rg -c foo f" => ["stdout:\n0\nexit: 1", true],
+      "rg -n a f | head -20 && rg -n b g" => [none, true],
+      "ls missing && rg foo" => ["stderr:\nls: missing: No such file or directory\nexit: 1", false],
+      "rg foo missing.rb" => ["stderr:\nrg: missing.rb: No such file\nexit: 2", false],
+      "test -f x && grep foo x" => [none, false],
+      "ls x 2>/dev/null && grep foo x" => [none, false],
+      "grep -q foo a && grep bar b" => [none, false],
+      "(cd x && grep a b)" => [none, false],
+      "sed -n 1,5p f" => [none, false],
+      "grep 'open quote f" => [none, false],
+      "command -v rg >/dev/null 2>&1 && rg foo" => [none, false],
+      "ls x >/dev/null 2>&1 && grep foo x" => [none, false],
+      "ls x > /dev/null && grep foo x" => [none, false],
+      "ls x &>/dev/null && grep f x" => [none, false],
+      "sleep 1 & grep foo x" => [none, false],
+      "test -f x || exit 1; grep x f" => [none, false],
+      "[ -f x ] || return 1; grep x f" => [none, false],
+      "set -e; [ -f x ]; grep x f" => [none, false],
+      "set -euo pipefail; [ -f x ]; grep x f" => [none, false],
+      "set -o errexit; [ -f x ]; grep x f" => [none, false],
+      "type rg && rg foo" => [none, false],
+      "hash rg && rg foo" => [none, false],
+      "(( n > 0 )) && grep x f" => [none, false],
+      "set -x; grep x f" => [none, true]
+    }.each do |command, (result, expected)|
+      it "says #{expected ? "no match" : "not a no-match"} for #{command}" do
+        expect(described_class.no_match?(result, command)).to be(expected)
+      end
+    end
+
+    it "is not a no-match without a command, or with exit 0" do
+      expect(described_class.no_match?("exit: 1 (no output)", nil)).to be(false)
+      expect(described_class.no_match?("exit: 0 (no output)", "rg foo")).to be(false)
+    end
+
+    it "keeps a no-match ok and flags it on the activity event" do
+      event = described_class.tool_activity_event("execute", { name: "execute", content: "rg -n zzz lib/" }, "exit: 1 (no output)")
+      expect(event).to include(status: "ok", no_match: true)
+      expect(described_class.tool_activity_status("exit: 1 (no output)", "execute", command: "rg zzz")).to eq("ok")
+    end
+
+    it "keeps a real failure an error with no flag, and a grep with no command an error" do
+      event = described_class.tool_activity_event("execute", { name: "execute", content: "sed -n 1p f" }, "exit: 1 (no output)")
+      expect(event[:status]).to eq("error")
+      expect(event).not_to have_key(:no_match)
+      expect(described_class.tool_activity_status("exit: 1 (no output)", "execute")).to eq("error")
+    end
+
+    it "lets the server tally count only the real failure" do
+      tally = Samagotchi::TurnTally.new
+      [["rg zzz lib/", "exit: 1 (no output)"], ["sed -n 1p f", "stderr:\nsed: f: No such file\nexit: 1"],
+       ["ls", "stdout:\na\nexit: 0"]]
+        .each_with_index do |(command, result), i|
+          tally.started(key: [1, i], tool: "execute", params: "command=x")
+          tally.completed(key: [1, i], tool: "execute", params: "command=x",
+                          status: described_class.tool_activity_status(result, "execute", command: command))
+        end
+      expect(tally.text).to include("(1 failed)")
     end
   end
 
