@@ -176,7 +176,7 @@ test("snapshotEvents with no turn in progress is just the queue", () => {
   assert.deepEqual(snapshotEvents({}), []);
 });
 
-import { restoreAction } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { restoreAction } from "../../../lib/samagotchi/web/public/restore.js";
 
 test("restoreAction refills an empty composer with this tab's own failed prompt", () => {
   const event = { type: "prompt_restored", prompt: "boom", origin: { client_id: ME, enqueued_id: "e1" } };
@@ -198,7 +198,7 @@ test("restoreAction never refills a prompt this page didn't send (a replay after
   assert.deepEqual(restoreAction(initial, opts), { refill: null, own: false, label: null });
 });
 
-import { keepEarlyRestore, restoreOnAck, dropEarlyRestores, restoreInto, composerAfterAck } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { keepEarlyRestore, restoreOnAck, dropEarlyRestores, restoreInto, composerAfterAck } from "../../../lib/samagotchi/web/public/restore.js";
 import { appendQuote, quoteBlock } from "../../../lib/samagotchi/web/public/annotations.js";
 import { turnText } from "../../../lib/samagotchi/web/public/images.js";
 
@@ -293,7 +293,7 @@ test("composerAfterAck clears a sent message the composer held with surrounding 
 });
 
 
-import { commandView, continueLine, historyHasCommandBubble, sessionCommandLine, startPageReply, startPageReplyOrHint, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { commandView, continueLine, historyHasCommandBubble, sessionCommandLine, startPageReply, startPageReplyOrHint, unknownCommandHint, webLocalReply } from "../../../lib/samagotchi/web/public/commands.js";
 
 test("sessionCommandLine: the session's commands go to the command route, an unknown /word to the model", () => {
   const commands = [{ name: "/model" }, { name: "/models" }, { name: "!rollback" }, { name: "/hello", source: "b" }];
@@ -632,7 +632,7 @@ test("snapshotEvents passes the name the model called a tool by on, so a reload 
   assert.equal(events.find((e) => e.type === "tool_call_completed").activity.called_as, "bash");
 });
 
-import { steerChoiceRoute, STEER_CHOICE_USAGE, QUEUE_UNAVAILABLE_WEB } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { steerChoiceRoute, STEER_CHOICE_USAGE, QUEUE_UNAVAILABLE_WEB } from "../../../lib/samagotchi/web/public/commands.js";
 
 test("steerChoiceRoute: /cut TEXT during a turn is a message sent as a cut", () => {
   assert.deepEqual(steerChoiceRoute("/cut stop and use rg", { running: true }), { send: "stop and use rg", delivery: "cut" });

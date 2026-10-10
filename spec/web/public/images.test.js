@@ -4,7 +4,8 @@ import {
   chipName, chipsHtml, imageFiles, imageUrl, restoredChips, thumbsHtml, turnRefs, turnText,
 } from "../../../lib/samagotchi/web/public/images.js";
 import { createIdleSession, sendTurn, uploadImage } from "../../../lib/samagotchi/web/public/data.js";
-import { promptOps, restoreAction, snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { promptOps, snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { restoreAction } from "../../../lib/samagotchi/web/public/restore.js";
 import { addCompleted, newActivity } from "../../../lib/samagotchi/web/public/activity.js";
 
 const ME = "web:me";
