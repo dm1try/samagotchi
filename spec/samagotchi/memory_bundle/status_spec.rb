@@ -5,6 +5,7 @@ require "tmpdir"
 require "json"
 require "fileutils"
 require "yaml"
+require "digest"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/status"
 
@@ -51,6 +52,25 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
   it "has no scope_error for a scope it knows" do
     Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
     expect(described_class.bundle_status("sample-needs")).to include(scope: "system", scope_error: nil, target_dir: system_dir)
+  end
+
+  it "reads a legacy record (no scope, hooks, plugin or needs; a file entry that isn't an object) as a system bundle" do
+    FileUtils.mkdir_p(system_dir)
+    File.write(File.join(system_dir, "old.md"), "old\n")
+    dir = File.join(system_dir, ".bundles", "legacy")
+    FileUtils.mkdir_p(File.join(dir, "bases"))
+    File.write(File.join(dir, "bases", "old.md"), "old\n")
+    File.write(File.join(dir, "manifest.json"), JSON.generate(
+      "name" => "legacy", "version" => "0.1.0",
+      "files" => { "old.md" => { "checksum" => Digest::SHA256.hexdigest("old\n") }, "odd.md" => "x" }
+    ))
+
+    st = described_class.bundle_status("legacy")
+
+    expect(st).to include(scope: "system", scope_error: nil, target_dir: system_dir, plugin: nil,
+                          hooks_requires_failure: nil, needs: [])
+    expect(st[:files]["old.md"]).to include(modified: false, missing: false, conflict: false)
+    expect(st[:files]["odd.md"]).to include(stored_checksum: nil, missing: true)
   end
 
   it "has no needs for a bundle that declares none" do
