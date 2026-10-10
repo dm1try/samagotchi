@@ -440,6 +440,10 @@ RSpec.describe "task tools" do
   end
 
   describe Samagotchi::Tools::TaskWait do
+    # It looks at the task every POLL_INTERVAL (0.5 s): every 0.05 s here,
+    # so a wait ends soon after the task's change, as it would at 0.5 s.
+    before { stub_const("Samagotchi::Tools::TaskWait::POLL_INTERVAL", 0.05) }
+
     it "uses a multi-minute default timeout" do
       expect(described_class::TIMEOUT_DEFAULT).to eq(600)
     end
