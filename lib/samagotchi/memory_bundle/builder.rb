@@ -23,6 +23,16 @@ module Samagotchi
       DEFAULT_VERSION = "1.0.0"
       DEFAULT_SYSTEM_NAME = "chi_system_memories"
 
+      # What a build takes from the installed bundle of the same name (its
+      # record and its dir), else from the scope dir:
+      #   record      the InstalledBundle, nil when none is installed (or
+      #               it doesn't read)
+      #   hooks       basename => BundleHook; hook_files basename => path
+      #   rules       guardrails/*.yml paths
+      #   plugin      the installed plugin file, nil without one
+      #   scripts     file name => path; context_providers the parsed list
+      InstalledParts = Data.define(:record, :hooks, :hook_files, :rules, :plugin, :scripts, :context_providers)
+
       attr_reader :built_files, :warnings, :placeholder_warnings, :out_path, :staging_dir
 
       def initialize(scope: nil, name: nil, version: nil, description: "", out: nil, files: nil, trust_level: nil)
@@ -56,55 +66,10 @@ module Samagotchi
         candidates = select_memories(target_dir, resolved_name)
         files_map = checksum_memories(candidates)
 
-        # ── Hooks: collect hooks for the bundle ──────────────────────
-        hooks_map = {}
-        hooks_to_copy = [] # Array of [src_path, basename]
-        # Try provenance first (if bundle with this name is installed)
-        prov = nil
-        record = nil
-        begin
-          require_relative "provenance"
-          prov = Provenance.new(name: resolved_name)
-          record = prov.record
-        rescue StandardError
-          record = nil
-        end
-        if record&.hooks&.any?
-          record.hooks.each do |basename, hook|
-            src = File.join(prov.hooks_dir, basename)
-            # Skip if hook file missing on disk
-            next unless File.exist?(src)
+        parts = installed_parts(resolved_name, target_dir)
+        record = parts.record
 
-            hook = hook.with(sha256: BundleHook.of_file(src).sha256) if hook.sha256.empty?
-            hooks_map[basename] = hook
-            hooks_to_copy << [src, basename]
-          end
-        else
-          # Fallback: scan target_dir/hooks if present (e.g. building from a raw bundle dir that is also the mem dir)
-          local_hooks_dir = File.join(target_dir, "hooks")
-          if Dir.exist?(local_hooks_dir)
-            Dir.glob(File.join(local_hooks_dir, "*.rb")).sort.each do |src|
-              basename = File.basename(src)
-              hooks_map[basename] = BundleHook.of_file(src)
-              hooks_to_copy << [src, basename]
-            end
-          end
-        end
-        # ── Guardrail rules: the installed bundle's, else target_dir's ──
-        rules_dir = record&.guardrails&.any? ? prov.guardrails_dir : File.join(target_dir, "guardrails")
-        rules_to_copy = Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : []
-
-        # ── Plugin: the installed bundle's, with its requires_chi ──
-        plugin_src = record ? prov.plugin_path(record) : nil
-        plugin_src = nil unless plugin_src && File.file?(plugin_src)
-        requires_chi = record&.requires_chi
-        needs = record&.needs
-
-        # ── Scripts and context providers: the installed bundle's ──
-        scripts_to_copy = installed_scripts(prov, record)
-        context_providers = record ? ContextProviders.parse_list(record.context_providers) : []
-
-        # Determine trust_level for the built bundle
+        # The CLI's trust_level, else the installed bundle's.
         build_trust_level = @trust_level
         build_trust_level = record.trust_level if (build_trust_level.nil? || build_trust_level.empty?) && record&.trust_level
 
@@ -119,25 +84,23 @@ module Samagotchi
             FileUtils.cp(src, File.join(staging, File.basename(src)))
           end
           # Copy hooks into staging/hooks/
-          unless hooks_to_copy.empty?
+          unless parts.hook_files.empty?
             hooks_staging = File.join(staging, "hooks")
             FileUtils.mkdir_p(hooks_staging)
-            hooks_to_copy.each do |src, basename|
-              FileUtils.cp(src, File.join(hooks_staging, basename))
-            end
+            parts.hook_files.each { |basename, src| FileUtils.cp(src, File.join(hooks_staging, basename)) }
           end
 
-          unless rules_to_copy.empty?
+          unless parts.rules.empty?
             rules_staging = File.join(staging, "guardrails")
             FileUtils.mkdir_p(rules_staging)
-            rules_to_copy.each { |src| FileUtils.cp(src, File.join(rules_staging, File.basename(src))) }
+            parts.rules.each { |src| FileUtils.cp(src, File.join(rules_staging, File.basename(src))) }
           end
 
-          FileUtils.cp(plugin_src, File.join(staging, File.basename(plugin_src))) if plugin_src
+          FileUtils.cp(parts.plugin, File.join(staging, File.basename(parts.plugin))) if parts.plugin
 
-          unless scripts_to_copy.empty?
+          unless parts.scripts.empty?
             FileUtils.mkdir_p(File.join(staging, "scripts"))
-            scripts_to_copy.each_value { |src| FileUtils.cp(src, File.join(staging, "scripts", File.basename(src))) }
+            parts.scripts.each_value { |src| FileUtils.cp(src, File.join(staging, "scripts", File.basename(src))) }
           end
 
           Manifest.write(
@@ -147,13 +110,13 @@ module Samagotchi
             scope: @scope,
             description: @description,
             files: files_map,
-            hooks: hooks_map.empty? ? nil : hooks_map,
+            hooks: parts.hooks.empty? ? nil : parts.hooks,
             trust_level: build_trust_level,
-            plugin: plugin_src && { file: File.basename(plugin_src), sha256: Digest::SHA256.hexdigest(File.binread(plugin_src)) },
-            requires_chi: requires_chi,
-            needs: needs,
-            scripts: scripts_to_copy.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
-            context_providers: context_providers,
+            plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: Digest::SHA256.hexdigest(File.binread(parts.plugin)) },
+            requires_chi: record&.requires_chi,
+            needs: record&.needs,
+            scripts: parts.scripts.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
+            context_providers: parts.context_providers,
             file_descriptions: file_descriptions(record, files_map)
           )
 
@@ -212,6 +175,51 @@ module Samagotchi
       end
 
       private
+
+      # The installed bundle's hooks (a recorded one missing on disk left
+      # out; one with no recorded sha gets its file's), guardrail rules,
+      # plugin, scripts and context providers. Without hooks or rules in a
+      # record, the scope dir's hooks/*.rb and guardrails/*.yml (building
+      # from a raw bundle dir that is also the memories dir).
+      # @return [InstalledParts]
+      def installed_parts(name, target_dir)
+        prov = nil
+        record = nil
+        begin
+          require_relative "provenance"
+          prov = Provenance.new(name: name)
+          record = prov.record
+        rescue StandardError
+          record = nil
+        end
+
+        hooks = {}
+        hook_files = {}
+        if record&.hooks&.any?
+          record.hooks.each do |basename, hook|
+            src = File.join(prov.hooks_dir, basename)
+            next unless File.exist?(src)
+
+            hooks[basename] = hook.sha256.empty? ? hook.with(sha256: BundleHook.of_file(src).sha256) : hook
+            hook_files[basename] = src
+          end
+        else
+          Dir.glob(File.join(target_dir, "hooks", "*.rb")).sort.each do |src|
+            hooks[File.basename(src)] = BundleHook.of_file(src)
+            hook_files[File.basename(src)] = src
+          end
+        end
+
+        rules_dir = record&.guardrails&.any? ? prov.guardrails_dir : File.join(target_dir, "guardrails")
+        plugin = record ? prov.plugin_path(record) : nil
+        InstalledParts.new(
+          record: record, hooks: hooks, hook_files: hook_files,
+          rules: Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : [],
+          plugin: plugin && File.file?(plugin) ? plugin : nil,
+          scripts: installed_scripts(prov, record),
+          context_providers: record ? ContextProviders.parse_list(record.context_providers) : []
+        )
+      end
 
       # The scope's memories to build: every *.md but index.md and hidden
       # ones; with an allowlist the named ones (each must exist) with their
