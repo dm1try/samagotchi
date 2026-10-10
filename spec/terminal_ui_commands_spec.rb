@@ -34,6 +34,14 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to include("10/5")
     end
 
+    it "lists the calls made under an alias's name under by tool, only when there are any" do
+      base = agent.engine.metrics.snapshot.merge(tool_calls_total: 3, tool_calls_by_tool: { "execute" => 3 })
+      lines = agent.send(:format_session_metrics, base.merge(tool_calls_aliased: { "bash" => 2 })).lines.map(&:chomp)
+      by_tool = lines.index("  by tool:        execute=3")
+      expect(lines[by_tool + 1]).to eq("  called as:      bash=2")
+      expect(agent.send(:format_session_metrics, base)).not_to include("called as")
+    end
+
     describe "the token breakdown, speed and cost" do
       def stats(tokens, snapshot = {})
         base = agent.engine.metrics.snapshot
@@ -435,6 +443,17 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to include("tool>")
       expect(output).to include("ok")
       expect(output).to include("(125ms)")
+    end
+
+    it "says, dim, when the model called the tool by an alias's name" do
+      allow(agent).to receive(:paint) { |text, code| "<#{code}>#{text}" }
+      line = lambda do |extra|
+        agent.send(:format_tool_activity_line,
+                   { action: "running command", tool: "execute", description: "List the specs", status: "ok" }.merge(extra))
+      end
+
+      expect(line.call(called_as: "bash")).to include("(execute: List the specs<90> (called as bash)): ")
+      expect(line.call({})).not_to include("called as")
     end
 
     it "shows a wait the user's Stop ended as stopped, in yellow" do

@@ -57,6 +57,8 @@ module Samagotchi
       # The worker runs in its session's working directory.
       title = ToolActivity.tool_title(call[:name], call, cwd: Dir.pwd)
       started[:title] = title if title
+      # The name the model called it by when that was an alias's (bash).
+      started[:called_as] = call[:called_as] if call[:called_as]
       # The full command for a richer UI (params stays cut at 80).
       view = ToolView.for(call[:name], call)&.to_h
       started[:view] = view if view

@@ -105,6 +105,32 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(metrics.snapshot).to include(tool_calls_total: 2, tool_errors: 1)
   end
 
+  it "counts the calls a model made under an alias's name, by its spelling, only when there are any" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+      { type: :generation_started, iteration: 1 },
+      { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute" },
+      { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", status: "ok",
+        activity: { tool: "execute", status: "ok" } }
+    ])
+    expect(metrics.snapshot).not_to have_key(:tool_calls_aliased)
+
+    feed([
+      { type: :tool_call_started, iteration: 1, call_index: 2, tool: "execute" },
+      { type: :tool_call_completed, iteration: 1, call_index: 2, tool: "execute", status: "ok",
+        activity: { tool: "execute", status: "ok", called_as: "bash" } },
+      { type: :tool_call_started, iteration: 1, call_index: 3, tool: "execute" },
+      { type: :tool_call_completed, iteration: 1, call_index: 3, tool: "execute", status: "ok",
+        activity: { tool: "execute", status: "ok", called_as: "BASH" } },
+      { type: :turn_completed, result: double(respond_to?: false) }
+    ])
+
+    snap = metrics.snapshot
+    expect(snap[:tool_calls_by_tool]).to eq("execute" => 3)
+    expect(snap[:tool_calls_aliased]).to eq("bash" => 1, "BASH" => 1)
+    expect(snap[:tool_records].map { |record| record[:called_as] }).to eq([nil, "bash", "BASH"])
+  end
+
   it "counts the running turn's iterations and generation latency in the totals, once" do
     monotonic = 10.0
     metrics = described_class.new(clock: -> { monotonic })
@@ -977,6 +1003,33 @@ RSpec.describe Samagotchi::SessionMetrics do
 
   # A worker that stops (idle exit, `chi sessions stop`) and wakes again is
   # a new collector for the same session: its totals must cover both.
+  it "keeps the aliased-call count across a save and a fresh collector's load" do
+    state_dir = Dir.mktmpdir
+    first = described_class.new.tap { |m| m.state_dir = state_dir }
+    first.session_id = "aliased"
+    [
+      { type: :turn_started, session_id: "aliased", prompt: "p" },
+      { type: :generation_started, iteration: 1 },
+      { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute" },
+      { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", status: "ok",
+        activity: { tool: "execute", status: "ok", called_as: "bash" } },
+      { type: :generation_completed, iteration: 1 },
+      { type: :turn_completed }
+    ].each { |event| first.call(event) }
+    first.persist
+
+    written = JSON.parse(File.read(File.join(Samagotchi::Session.session_dir("aliased", state_dir: state_dir),
+                                             "analytics.json")))
+    expect(written["tool_calls_aliased"]).to eq("bash" => 1)
+    expect(written["tool_records"].first["called_as"]).to eq("bash")
+
+    second = described_class.new.tap { |m| m.state_dir = state_dir }
+    second.session_id = "aliased"
+    expect(second.snapshot[:tool_calls_aliased]).to eq("bash" => 1)
+  ensure
+    FileUtils.rm_rf(state_dir) if state_dir
+  end
+
   it "totals every process's turns when two collectors persist to one dir in turn" do
     xdg = Dir.mktmpdir
     original = ENV["XDG_STATE_HOME"]

@@ -20,7 +20,6 @@ module Samagotchi
     #
     # A tool that is not built in keeps its arguments whole on args: (typed
     # by its schema at dispatch, Tools::Args) with their JSON as its content.
-    #
     module BuiltinCalls
       # Per tool, what the schema alone doesn't say:
       #   content:  the property (or ordered list of keys to try) that fills

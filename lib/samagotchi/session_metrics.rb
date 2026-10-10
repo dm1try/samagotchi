@@ -451,6 +451,9 @@ module Samagotchi
         served_model_for: @served_model_for,
         tool_calls_total: @tool_records.size + in_flight.size,
         tool_calls_by_tool: tally_into(totals[:by_tool].dup, in_flight),
+        # The calls the model made under an alias's name (bash run as
+        # execute), by its own spelling; only when there are any.
+        **(totals[:aliased].empty? ? {} : { tool_calls_aliased: totals[:aliased].dup }),
         tool_errors: totals[:tool_errors],
         iterations_total: totals[:iterations] + (turn&.iteration_count || 0),
         gen_latency_ms: (totals[:gen_ms] + (turn&.gen_latency_accum || 0)).round,
@@ -819,6 +822,8 @@ module Samagotchi
         active = @turn.tool_calls_by_id.delete(key)
         return unless active
 
+        called_as = event.dig(:activity, :called_as)
+        active[:called_as] = called_as.to_s if called_as
         finish_tool_record(active, status.empty? ? "ok" : status, waited_ms: event[:waited_ms].to_i)
       end
     end
@@ -826,7 +831,7 @@ module Samagotchi
     # Caller holds the mutex.
     def finish_tool_record(active, status, waited_ms: 0)
       record = active.slice(
-        :id, :turn_id, :iteration, :call_index, :tool, :started_at
+        :id, :turn_id, :iteration, :call_index, :tool, :called_as, :started_at
       ).merge(
         status: status,
         completed_at: now.iso8601(3),
@@ -1032,7 +1037,7 @@ module Samagotchi
     # (#snapshot adds the running turn). Caller holds the mutex.
     def reset_totals
       @totals = { cancellations: 0, prompt_sum: 0, completion_sum: 0, token_sources: [], iterations: 0,
-                  gen_ms: 0, retries: 0, cuts: 0, capped: 0, by_tool: {}, tool_errors: 0, cached_sum: 0, cache_write_sum: 0,
+                  gen_ms: 0, retries: 0, cuts: 0, capped: 0, by_tool: {}, aliased: {}, tool_errors: 0, cached_sum: 0, cache_write_sum: 0,
                   reprefill_sum: 0, reasoning_sum: 0,
                   cost_sum: 0, cost_estimate_sum: 0, decode_ms_sum: 0, decode_tokens_sum: 0, last_decode_tps: nil,
                   last_prefill_tps: nil, tps_source: nil }
@@ -1069,6 +1074,8 @@ module Samagotchi
     def count_tool(record)
       @totals[:tool_errors] += 1 if record[:status] == "error"
       tally_into(@totals[:by_tool], [record])
+      called_as = record[:called_as].to_s
+      @totals[:aliased][called_as] = @totals[:aliased].fetch(called_as, 0) + 1 unless called_as.empty?
     end
 
     def tally_into(counts, tools)

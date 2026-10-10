@@ -286,6 +286,14 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(events.first).not_to have_key(:title)
     end
 
+    it "carries the name the model called an aliased tool by on tool_call_started" do
+      run({ name: "execute", content: "true", called_as: "bash" })
+      expect(events.first).to include(type: :tool_call_started, tool: "execute", called_as: "bash")
+      events.clear
+      run({ name: "execute", content: "true" })
+      expect(events.first).not_to have_key(:called_as)
+    end
+
     # The call is whole by tool_call_started (a UI never sees one being
     # written), so its title is the description from the first event on.
     it "titles a described command by its description on both events, the params unchanged" do

@@ -48,7 +48,8 @@ RSpec.describe "chi sessions stats" do
   # A saved analytics.json with one finished turn: 1520 prompt / 240
   # completion server tokens over a 8192-token window, one tool call, one
   # retry — the record shapes SessionMetrics#load_persisted reads back.
-  def save_analytics(session, turns: 1)
+  # +called_as+: the model's spelling on every tool record (an aliased call).
+  def save_analytics(session, turns: 1, called_as: nil)
     dir = dir_of(session)
     FileUtils.mkdir_p(dir)
     started = Time.now - 60
@@ -67,7 +68,8 @@ RSpec.describe "chi sessions stats" do
     end
     tool_records = Array.new(turns) do |i|
       { "id" => "call-#{i}", "turn_id" => "turn-#{i}", "iteration" => 1, "call_index" => 1, "tool" => "read",
-        "status" => "ok", "started_at" => (started + (i * 10)).iso8601(3), "duration_ms" => 12 }
+        "status" => "ok", "started_at" => (started + (i * 10)).iso8601(3), "duration_ms" => 12,
+        **(called_as ? { "called_as" => called_as } : {}) }
     end
     File.write(File.join(dir, "analytics.json"), JSON.pretty_generate({
       "session_id" => session.id,
@@ -157,6 +159,16 @@ RSpec.describe "chi sessions stats" do
       # while turns happened); the full history is analytics.json.
       expect(metrics["turn_records"].map { |record| record["id"] }).to eq(%w[turn-1])
       expect(metrics["tool_records"].map { |record| record["id"] }).to eq(%w[call-1])
+    end
+
+    it "--format json counts the calls a model made under an alias's name (bash run as execute)" do
+      session = make
+      save_analytics(session, turns: 2, called_as: "bash")
+
+      out, _err, code = run_stats("--format", "json", session.id)
+
+      expect(code).to eq(0)
+      expect(JSON.parse(out)["metrics"]["tool_calls_aliased"]).to eq("bash" => 2)
     end
 
     it "without an analytics.json prints what is known and (no metrics yet), exit 0" do

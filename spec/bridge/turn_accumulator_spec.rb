@@ -122,6 +122,17 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts].last).to include(tool: "execute", title: "ls")
   end
 
+  it "keeps the name the model called an aliased tool by on its part, and replays it" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "ls", called_as: "bash" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: "",
+           activity: { tool: "execute", status: "ok", called_as: "bash" } })
+    expect(acc.current_turn[:parts].last).to include(tool: "execute", called_as: "bash")
+    started, completed = described_class.replay_events(acc.current_turn).last(2)
+    expect(started).to include(type: :tool_call_started, called_as: "bash")
+    expect(completed[:activity]).to include(called_as: "bash")
+  end
+
   it "keeps a tool call's view (its full command) on its part" do
     view = { command: "cd /x && ls\n  -la", cwd: "lib" }
     feed({ type: :turn_started, prompt: "hi" },

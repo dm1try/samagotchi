@@ -233,6 +233,9 @@ module Samagotchi
         part = { tool: name, params: params.to_s }
         title = ToolActivity.tool_title(name, call, cwd: cwd)
         part[:title] = title if title
+        # The name the model called it by when that was an alias's (the
+        # saved call is rebuilt by BuiltinCalls, which sets it again).
+        part[:called_as] = call[:called_as] if call[:called_as]
         # Built from the saved call (never saved itself), so older sessions
         # get it too.
         view = ToolView.for(name, call)&.to_h

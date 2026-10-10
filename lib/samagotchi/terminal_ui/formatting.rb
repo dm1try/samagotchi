@@ -31,13 +31,17 @@ module Samagotchi
 
       # What a tool line says the call did: the model's description of a
       # command (": List the specs") in place of its cut params, else the
-      # params, dim.
+      # params, dim; then, dim, the name the model called it by when that was
+      # an alias's (" (called as bash)").
       def tool_params_suffix(activity)
         description = activity[:description].to_s.strip
-        return ": #{description}" unless description.empty?
-
         params = activity[:params].to_s.strip
-        params.empty? ? "" : " #{paint(params, 90)}"
+        suffix = if !description.empty? then ": #{description}"
+                 elsif !params.empty? then " #{paint(params, 90)}"
+                 else ""
+                 end
+        called_as = activity[:called_as].to_s
+        called_as.empty? ? suffix : "#{suffix}#{paint(" (called as #{called_as})", 90)}"
       end
 
       # Green ok, yellow stopped (a wait the user's Stop ended), red the rest.
@@ -554,6 +558,10 @@ module Samagotchi
         unless snapshot[:tool_calls_by_tool].to_a.empty?
           by_tool = snapshot[:tool_calls_by_tool].sort_by { |_k, v| -v }
           lines << "  by tool:        #{by_tool.map { |k, v| "#{k}=#{v}" }.join(", ")}"
+        end
+        unless snapshot[:tool_calls_aliased].to_a.empty?
+          aliased = snapshot[:tool_calls_aliased].sort_by { |_k, v| -v }
+          lines << "  called as:      #{aliased.map { |k, v| "#{k}=#{v}" }.join(", ")}"
         end
         lines << "iterations:       #{snapshot[:iterations_total]}"
         # Summed over every request: each prompt is sent in full again.

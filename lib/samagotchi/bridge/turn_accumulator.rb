@@ -158,7 +158,8 @@ module Samagotchi
       def self.tool_replay_events(part)
         call = { iteration: part[:iteration], call_index: part[:call_index], tool: part[:tool] }
         call[:label] = part[:label] if part[:label]
-        title = part[:title] ? { title: part[:title] } : {}
+        # Its title and, for an alias's call, the name the model used.
+        title = part.slice(:title, :called_as).compact
         view = part[:view] ? { view: part[:view] } : {}
         events = [{ type: :tool_call_started, **call, params: part[:params], **title, **view }]
         if part[:status] == "running"
@@ -274,6 +275,7 @@ module Samagotchi
                    tool: event[:tool], params: event[:params], status: "running" }
           part[:label] = event[:label] if event[:label]
           part[:title] = event[:title] if event[:title]
+          part[:called_as] = event[:called_as] if event[:called_as]
           part[:view] = event[:view] if event[:view]
           parts << part
           @tool_started_at[[event[:iteration], event[:call_index]]] = @clock.call

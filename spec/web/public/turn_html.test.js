@@ -85,6 +85,12 @@ test("toolRowHtml: a running row is its mark, tool and title, the command block,
   assert.doesNotMatch(html, /activity-output|activity-duration|activity-state/);
 });
 
+test("toolRowHtml: a call the model made under an alias's name says so, dim, after its title", () => {
+  const html = toolRowHtml({ key: "1:1", tool: "execute", status: "ok", params: 'command="ls"', title: "List", called_as: "bash" });
+  assert.match(html, /<span class="activity-params" title="command=&quot;ls&quot;">List<\/span><span class="activity-alias">\(called as bash\)<\/span>/);
+  assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "List" }), /called as/);
+});
+
 test("toolRowHtml: a done row has its duration, its output without the tool tag, cut at 300 with the rest on hover", () => {
   const out = `[read] ${"y".repeat(310)}`;
   const html = toolRowHtml({ key: "2:1", tool: "read", status: "ok", params: 'path="a"', output: out, duration_ms: 1200 });

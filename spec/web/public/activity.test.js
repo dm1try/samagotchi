@@ -175,3 +175,14 @@ test("a call's duration: from the start the page saw, less its approval wait; a 
   addStarted(m, { iteration: 3, call_index: 1, tool: "x" });
   assert.equal("duration_ms" in addCompleted(m, { iteration: 3, call_index: 1 }), false);
 });
+
+test("a row keeps the name the model called the tool by (an alias's), from the start or the completion", () => {
+  const m = newActivity();
+  const { row } = addStarted(m, { iteration: 1, call_index: 1, tool: "execute", called_as: "bash" });
+  assert.equal(row.called_as, "bash");
+  addCompleted(m, { iteration: 1, call_index: 2, tool: "execute", activity: { status: "ok", called_as: "BASH" } });
+  assert.equal(m.rows[1].called_as, "BASH");
+  addCompleted(m, { iteration: 1, call_index: 1, tool: "execute", activity: { status: "ok" } });
+  assert.equal(m.rows[0].called_as, "bash");
+  assert.equal(addStarted(m, { iteration: 2, call_index: 1, tool: "read" }).row.called_as, null);
+});

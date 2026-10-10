@@ -614,3 +614,10 @@ test("snapshotEvents: a joined turn's ✂ row comes back as its live event", () 
   const events = snapshotEvents({ current_turn: { prompt: "p", parts: [part] } });
   assert.deepEqual(events.at(-1), { type: "llm_context_edited", text: "✂ x", groups: [] });
 });
+
+test("snapshotEvents passes the name the model called a tool by on, so a reload shows it", () => {
+  const turn = { prompt: "p", parts: [{ kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "x", title: "List", status: "ok", output: "", called_as: "bash" }] };
+  const events = snapshotEvents({ current_turn: turn, queued: [] });
+  assert.equal(events.find((e) => e.type === "tool_call_started").called_as, "bash");
+  assert.equal(events.find((e) => e.type === "tool_call_completed").activity.called_as, "bash");
+});

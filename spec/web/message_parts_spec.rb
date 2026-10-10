@@ -75,6 +75,16 @@ RSpec.describe Samagotchi::Web::MessageParts do
       expect(chat[:tools].first[:view]).to eq(native[:tools].first[:view].except(:cwd))
     end
 
+    it "keeps the name the model called an aliased tool by (bash run as execute), both storage shapes" do
+      native = described_class.for_message({ content: qwen_call("bash", command: "ls") }, [])
+      chat = described_class.for_message({ content: "", tool_calls: [{ id: "c1", name: "bash",
+                                                                       arguments: { "command" => "ls" } }] }, [])
+
+      [native, chat].each { |parts| expect(parts[:tools].first).to include(tool: "execute", called_as: "bash") }
+      plain = described_class.for_message({ content: qwen_call("execute", command: "ls") }, [])
+      expect(plain[:tools].first).not_to have_key(:called_as)
+    end
+
     it "titles a reloaded command by its description as the live row did, both storage shapes" do
       args = { command: "cd /p && ls | head -3 && pwd", description: "List the project" }
       native = described_class.for_message({ content: qwen_call("execute", **args) }, [])
