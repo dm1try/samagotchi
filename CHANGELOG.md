@@ -8,6 +8,15 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: refs. A file tool's row (read, edit, write) and the lines of its diff open the file in your editor: they look
+  like text until hovered (a dotted underline and `↗`, a diff line's `↗ N`), and a click opens the current file at the
+  line read or edited, the diff line's line or the hunk's start. Only a viewer on this machine gets them (a loopback
+  request, or this machine on its LAN address); the phone sees plain text. `web.editor` picks the editor: `vscode`
+  (the default), `vscode-insiders`, `cursor`, `zed`, `none`, or a URL template with `{path}` and `{line}`. The
+  browser and VS Code each ask once to allow it.
+
 ## [0.54.0] - 2026-10-10
 
 ### Changed
