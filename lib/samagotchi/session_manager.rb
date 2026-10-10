@@ -1060,14 +1060,45 @@ module Samagotchi
         if EMPTY_SKELETON_DIRS.include?(name)
           File.directory?(path) && (!EMPTY_DIRS.include?(name) || Dir.empty?(path))
         elsif name == AnalyticsFile::NAME
-          Array(JSON.parse(File.read(path))["turn_records"]).empty?
+          analytics_empty?(path)
         # Cards and notices from before any turn (Bridge::CardStore).
         elsif name == "cards.json"
-          JSON.parse(File.read(path))["turns"].to_i.zero?
+          cards_empty?(path)
         else
           EMPTY_SKELETON_FILES.include?(name)
         end
       end
+    end
+
+    # A folder's analytics.json is empty only when it is a JSON object with
+    # an empty turn_records array. Anything unreadable, not JSON, not an
+    # object, the wrong type, or turn_records the wrong shape reads as
+    # "not empty": a broken analytics keeps the folder instead of crashing
+    # the retention sweep (or of a wrong-shape one reading as empty).
+    def self.analytics_empty?(path)
+      data = read_json(path)
+      turns = data.is_a?(Hash) ? data["turn_records"] : nil
+      turns.is_a?(Array) && turns.empty?
+    end
+
+    # A folder's cards.json is empty only when it is a JSON object whose
+    # turns is an integer zero. Anything unreadable, not JSON, not an
+    # object, the wrong type, or turns not an integer reads as "not empty":
+    # a broken or wrong-shape cards file keeps the folder instead of
+    # raising (Array#/Hash#to_i) or reading as empty.
+    def self.cards_empty?(path)
+      data = read_json(path)
+      turns = data.is_a?(Hash) ? data["turns"] : nil
+      turns.is_a?(Integer) && turns.zero?
+    end
+
+    # A session-dir JSON file's contents, or nil when it is missing,
+    # unreadable, not JSON or not an object (mirrors AnalyticsFile#read): a
+    # broken file reads as none, so its folder is kept, not deleted.
+    def self.read_json(path)
+      JSON.parse(File.read(path))
+    rescue JSON::ParserError, SystemCallError
+      nil
     end
 
     # Delete one session: its <id>.json, the whole <id>/ directory

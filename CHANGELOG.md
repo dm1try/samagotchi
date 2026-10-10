@@ -27,6 +27,9 @@ and commands may change between minor versions. How releases are made:
   on stderr, as `chi send` refuses them, instead of going to the model as a prompt; it exits 1 and makes no session.
 - A turn that fails on its host under a model alias says what the alias became: `--model splash` (an alias with no
   host) failing on host `main` adds `(splash is an alias: gemma-x on host main)` to the error line.
+- `chi sessions prune`, the lazy sweep and the TUI's discard-on-exit no longer crash on a session folder whose
+  `analytics.json` or `cards.json` is broken (not JSON or the wrong shape): every caller now keeps that folder like any
+  other not-empty one, so one corrupt file no longer stops the whole retention sweep.
 
 ## [0.52.0] - 2026-10-10
 

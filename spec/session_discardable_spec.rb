@@ -103,6 +103,25 @@ RSpec.describe "discarding an empty session" do
     { name: "a turn's saved cards",
       change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => 1, "entries" => [{ "type" => "card" }])) },
       worker: false, repl: false, sweep: false },
+    # A broken analytics.json or cards.json is "not empty" everywhere: the
+    # worker, the REPL and the sweep all keep the folder, none crashes.
+    { name: "corrupt analytics.json (not JSON)",
+      change: ->(_, d) { File.write(File.join(d, "analytics.json"), "{not json") },
+      worker: false, repl: false, sweep: false },
+    { name: "corrupt cards.json (not JSON)",
+      change: ->(_, d) { File.write(File.join(d, "cards.json"), "{not json") },
+      worker: false, repl: false, sweep: false },
+    # A JSON file of the wrong shape (turns not a number) is "not empty"
+    # everywhere too: it reads as kept, not as a raise.
+    { name: "a cards.json whose turns is an array (wrong shape)",
+      change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => [])) },
+      worker: false, repl: false, sweep: false },
+    { name: "a cards.json whose turns is a hash (wrong shape)",
+      change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => {})) },
+      worker: false, repl: false, sweep: false },
+    { name: "an analytics.json whose turn_records is a hash (wrong shape)",
+      change: ->(_, d) { File.write(File.join(d, "analytics.json"), JSON.generate("turn_records" => {})) },
+      worker: false, repl: false, sweep: false },
     { name: "archived", change: ->(_, d) { File.write(File.join(d, Samagotchi::ArchiveStore::FILE), "{}") },
       worker: false, repl: false, sweep: false },
     # The REPL deletes a scratch session before it asks; the sweep takes

@@ -257,6 +257,16 @@ RSpec.describe Samagotchi::SessionManager do
       expect(empty?).to be false
       expect(described_class.empty_session?("nope", state_dir: tmpdir, default_model: "gemma4")).to be false
     end
+
+    # A wrong-shape (not a number) reads as "not empty": no raise, kept.
+    it "is false for a wrong-shape cards.json (turns an array, a hash) or analytics.json (turn_records a hash)" do
+      File.write(File.join(session_dir, "cards.json"), JSON.generate("turns" => []))
+      expect(described_class.empty_session_dir?(session_dir)).to be false
+      File.write(File.join(session_dir, "cards.json"), JSON.generate("turns" => {}))
+      expect(described_class.empty_session_dir?(session_dir)).to be false
+      File.write(File.join(session_dir, "analytics.json"), JSON.generate("turn_records" => {}))
+      expect(described_class.empty_session_dir?(session_dir)).to be false
+    end
   end
 
   describe ".discard_empty?" do

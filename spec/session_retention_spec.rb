@@ -245,6 +245,32 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(Dir.exist?(fresh)).to be(true)
     end
 
+    # A single broken file must not stop the whole sweep: an orphan dir whose
+    # analytics.json (or cards.json) can't be read is kept like any other
+    # not-empty folder, and prune goes on with the rest.
+    it "keeps (and doesn't crash on) an orphan dir whose analytics.json is corrupt" do
+      corrupt = orphan("0000-corrupt-analytics", files: %w[owner.lock pid])
+      File.write(File.join(corrupt, "analytics.json"), "{not json")
+      # writing a file updates the dir mtime; age it again so the sweep reaches it
+      File.utime(hour_ago, hour_ago, corrupt)
+
+      result = described_class.prune(state_dir: tmpdir, dry_run: true)
+
+      expect(result[:deleted]).not_to include("0000-corrupt-analytics")
+      expect(Dir.exist?(corrupt)).to be(true)
+    end
+
+    it "keeps (and doesn't crash on) an orphan dir whose cards.json is corrupt" do
+      corrupt = orphan("0000-corrupt-cards", files: %w[owner.lock pid])
+      File.write(File.join(corrupt, "cards.json"), "{not json")
+      File.utime(hour_ago, hour_ago, corrupt)
+
+      result = described_class.prune(state_dir: tmpdir, dry_run: true)
+
+      expect(result[:deleted]).not_to include("0000-corrupt-cards")
+      expect(Dir.exist?(corrupt)).to be(true)
+    end
+
     it "deletes a leftover scratch session at once, keeping one its REPL still owns" do
       scratch = lambda do |s|
         s.messages << { role: "user", content: "hi" }
