@@ -250,6 +250,8 @@ module Samagotchi
       Entry.new(key: "web.view",                 yaml_path: %w[web view],                 type: :enum,    default: "stage",        expose: %i[env config cli], enum_values: %w[stage turn]),
       # Quick replies next to Annotate in the page's selection bubble, "|"-separated (a YAML list works too); "" leaves only Annotate.
       Entry.new(key: "web.annotate_presets",     yaml_path: %w[web annotate_presets],     type: :string, default: "Agreed|Could you please elaborate?", expose: %i[env config cli]),
+      # What a file ref (a tool row's file, a diff line) opens on this machine: a preset (vscode, vscode-insiders, cursor, zed, none) or a URL template with {path} and an optional {line} (Web::Editor).
+      Entry.new(key: "web.editor",               yaml_path: %w[web editor],               type: :string, default: "vscode",        expose: %i[env config cli]),
 
       Entry.new(key: "no_interrupt",             yaml_path: %w[no_interrupt],             type: :bool,   default: false,            expose: %i[env config cli]),
       Entry.new(key: "no_default_input",         yaml_path: %w[no_default_input],         type: :bool,   default: false,            expose: %i[env config cli]),

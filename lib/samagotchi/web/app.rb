@@ -40,6 +40,7 @@ require_relative "../context_providers"
 require_relative "../recap_store"
 require_relative "markdown_renderer"
 require_relative "capabilities"
+require_relative "editor"
 require_relative "message_parts"
 require_relative "session_summary"
 require_relative "../log"
@@ -88,6 +89,9 @@ module Samagotchi
       # @param annotate_presets [String, Array] the quick replies next to
       #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
       #   page parses them (annotate_presets.js).
+      # @param editor [String] what a ref opens on this machine (web.editor:
+      #   a preset or a URL template, Web::Editor); only a local viewer gets
+      #   it (#viewer_editor)
       # @param hub [SessionHub, nil] the session projection GET /api/sessions
       #   lists and GET /api/events streams from (Server always builds one);
       #   without one both routes answer 503
@@ -102,6 +106,7 @@ module Samagotchi
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: Config::BY_KEY["web.view"].default, hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
+                     editor: Config::BY_KEY["web.editor"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil)
         @manager = manager || SessionManager
@@ -117,6 +122,7 @@ module Samagotchi
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
         @view = view
         @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
+        @editor_url = Editor.template(editor)
         @hub = hub
         @events_heartbeat = events_heartbeat
         @events_queue = events_queue
@@ -210,6 +216,23 @@ module Samagotchi
         Log.debug(:web, "request", sid: path[%r{\A/api/sessions/([^/]+)}, 1], method: env["REQUEST_METHOD"], path: path,
                                    status: response[0], **marks,
                                    ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
+      end
+
+      # The payload's capabilities (Capabilities, per request) and, next to
+      # them, editor_url: the URL template a ref opens (web.editor), nil
+      # when this viewer can't open one.
+      def viewer_capabilities(req)
+        editor_url = @editor_url && local_viewer?(req) ? @editor_url : nil
+        { capabilities: Capabilities.for(@markdown_renderer, editor: !editor_url.nil?).to_h, editor_url: editor_url }
+      end
+
+      # A viewer on this machine, whose editor can open the session's
+      # paths: a loopback peer, or this Mac on its own LAN address (the LAN
+      # URL or its QR code opened here). The phone isn't. An SSH tunnel or
+      # a local reverse proxy looks like loopback too (a known gap).
+      def local_viewer?(req)
+        peer = req.get_header("REMOTE_ADDR").to_s
+        LOOPBACK_PEERS.include?(peer) || (!@lan.nil? && peer == @lan[:ip])
       end
 
       LOOPBACK_NAMES = %w[127.0.0.1 [::1] localhost].freeze
@@ -821,7 +844,7 @@ module Samagotchi
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
           markdown_warning: @markdown_renderer.warning,
-          capabilities: Capabilities.for(@markdown_renderer).to_h,
+          **viewer_capabilities(req),
           pending_question: pending,
           last_event_seq: last_event_seq,
           # The stream cursor `<seq>-<epoch>`: a later worker resets it
@@ -881,7 +904,7 @@ module Samagotchi
           session: session_json,
           messages: messages,
           markdown_warning: @markdown_renderer.warning,
-          capabilities: Capabilities.for(@markdown_renderer).to_h,
+          **viewer_capabilities(req),
           timing: timing
         })
       rescue ArgumentError => e

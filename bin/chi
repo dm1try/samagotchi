@@ -137,7 +137,7 @@ parser = OptionParser.new do |opts|
           "every session outside a repo) or all") { |v| options[:scope] = v }
   # Accepted values of string entries that the registry doesn't type as enums.
   value_hints = { "status.line" => "on|off", "web.host" => "127.0.0.1|::1|localhost|lan|IP", "recap.sentences" => "N|N-M",
-                  "web.annotate_presets" => "text|text" }
+                  "web.annotate_presets" => "text|text", "web.editor" => "vscode|vscode-insiders|cursor|zed|none|URL" }
   # Universal config flags (implicit convention: ENV SAMAGOTCHI_* ↔ YAML dotted ↔ CLI --kebab)
   # Generated from Samagotchi::Config registry — Option A: snake leaf in YAML, kebab in CLI.
   Samagotchi::Config.cli_entries.each do |entry|
@@ -235,7 +235,8 @@ if options[:web]
   view = Samagotchi::Config.get("web.view")
   exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
                                       markdown: markdown, view: view, new_token: options[:new_token],
-                                      annotate_presets: Samagotchi::Config.get("web.annotate_presets"))
+                                      annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
+                                      editor: Samagotchi::Config.get("web.editor"))
 end
 
 # --resume and --attach take a unique id prefix too, like git.

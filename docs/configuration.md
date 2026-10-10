@@ -1208,6 +1208,7 @@ described in their own sections.
 | `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |
 | `web.view` | `stage` | yes | How `chi web` draws a turn: `stage` (the running turn pinned above the composer) or `turn` (one block per turn in the history). See [CLI](cli.md#web-views). |
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
+| `web.editor` | `vscode` | yes | What a file ref in `chi web` (a file tool row's title, a diff line) opens, for a viewer on this machine: a preset (`vscode`, `vscode-insiders`, `cursor`, `zed`) or a URL template with `{path}` and an optional `{line}`; `none` turns refs off. See [Opening files from chi web](#opening-files-from-chi-web). |
 | `history.file` | state dir | | Prompt history path, shared by the TUI and the web composer. |
 | `no_interrupt` | `false` | `--no-interrupt` | Raise the step limit of a turn to 1000 (or `turn.max_iterations`, when larger); a top-level key. |
 | `no_default_input` | `false` | `--no-default-input` | Don't pre-fill `default.input`; a top-level key. |

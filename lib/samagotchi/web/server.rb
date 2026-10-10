@@ -66,7 +66,7 @@ module Samagotchi
       # @return [Integer] the exit status
       def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false,
                       view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
-                      new_token: false)
+                      editor: Config::BY_KEY["web.editor"].default, new_token: false)
         rotate_token if new_token
         setting = host_setting(host)
         lan = Lan.wanted?(setting) ? Lan.choose(setting) : nil
@@ -95,7 +95,7 @@ module Samagotchi
             return 0
           end
           if start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
-                   annotate_presets: annotate_presets, lan: lan)
+                   annotate_presets: annotate_presets, editor: editor, lan: lan)
             0
           else
             1
@@ -119,7 +119,7 @@ module Samagotchi
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
-                     token_path: Token.path)
+                     editor: Config::BY_KEY["web.editor"].default, token_path: Token.path)
         port = resolve_port(port)
         host = resolve_host(host)
         url ||= "http://#{url_host(host)}:#{port}/"
@@ -130,7 +130,7 @@ module Samagotchi
           lan_option = { ip: lan.ip, token: Token::Source.new(token_path) }
         end
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, view: view,
-                      annotate_presets: annotate_presets, hub: hub, lan: lan_option)
+                      annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         Samagotchi::Log.info(:web, "lan", ip: lan.ip, interface: lan.interface) if lan
         # Subscribed before the first scan, which makes the first check.
