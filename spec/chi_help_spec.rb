@@ -8,8 +8,13 @@ require_relative "support/bounded_capture"
 RSpec.describe "chi --help" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
 
+  # `chi --help` once for the examples that read it (a chi boot each).
+  before(:context) do
+    @help = Open3.capture3(RbConfig.ruby, File.expand_path("../bin/chi", __dir__), "--help", stdin_data: "")
+  end
+
   it "says -p runs the prompt and stays in the REPL, and --non-interactive exits" do
-    out, _err, status = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
+    out, _err, status = @help
 
     expect(status.exitstatus).to eq(0)
     prompt_line = out.lines.find { |l| l.include?("--prompt") }
@@ -19,7 +24,7 @@ RSpec.describe "chi --help" do
   end
 
   it "says plain chi runs attached by default and --no-shared opts out" do
-    out, _err, _status = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
+    out, _err, _status = @help
 
     shared_line = out.lines.find { |l| l.include?("--[no-]shared") }
     expect(shared_line).to include("the default")
@@ -27,7 +32,7 @@ RSpec.describe "chi --help" do
   end
 
   it "lists --mute next to --memory, neither tied to the plain REPL" do
-    out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
+    out, = @help
 
     memory_line = out.lines.find { |l| l.include?("--memory NAME") }
     expect(memory_line).to include("repeatable")
@@ -36,7 +41,7 @@ RSpec.describe "chi --help" do
   end
 
   it "names the subcommands" do
-    out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
+    out, = @help
 
     %w[web sessions note broadcast context send answer bundle self].each { |sub| expect(out).to include("chi #{sub} ") }
     expect(out).not_to include("bin/chi") # what an installed gem's user types
