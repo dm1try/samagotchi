@@ -85,104 +85,11 @@ module Samagotchi
         all_files_in_bundle = @bundle_md
         owned = @owned
 
-        # ── Hooks: copy hooks/*.rb into <bundle_dir>/hooks/ ───────────────
-        hooks_target = File.join(provenance.bundle_dir, "hooks")
-        all_hooks_in_bundle = []
-        hooks_files_for_provenance = {}
-        if manifest
-          hook_entries = manifest.hooks
-          # Fallback: if manifest has no hooks but source has hooks/*.rb, discover them
-          if hook_entries.empty?
-            discovered = Dir.glob(File.join(normalized_dir, "hooks", "*.rb")).map { |p| File.basename(p) }
-            discovered.each do |bn|
-              # Build minimal metadata so copy still happens (event unknown -> skipped by loader but copied for integrity)
-              hook_entries[bn] = BundleHook.new
-            end
-          end
-
-          hook_entries.each do |basename, _meta|
-            next unless basename.is_a?(String) && !basename.empty?
-
-            all_hooks_in_bundle << basename
-            src = File.join(normalized_dir, "hooks", basename)
-            next unless File.exist?(src)
-
-            dest = File.join(hooks_target, basename)
-
-            if @dry_run
-              @results[basename] = if File.exist?(dest) && !@force
-                                     { status: "would_skip" }
-                                   else
-                                     { status: "would_install" }
-                                   end
-              next
-            end
-
-            # Local-edit detection for upgrade path (overwrite + warn)
-            prev_sha = existing_provenance&.hooks&.dig(basename)&.sha256
-            if @upgrade && File.exist?(dest) && !@force && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
-              @warnings << "Hook #{basename} was locally modified; overwriting"
-            end
-
-            FileUtils.mkdir_p(hooks_target)
-            unchanged = File.exist?(dest) && FileUtils.identical?(src, dest)
-            FileUtils.cp(src, dest)
-            @results[basename] = if unchanged
-                                   { status: "skipped", reason: "already up to date" }
-                                 elsif @upgrade && existing_provenance
-                                   { status: "updated" }
-                                 else
-                                   { status: "installed" }
-                                 end
-            hooks_files_for_provenance[basename] = dest
-          end
-        else
-          # No manifest (non-strict): still copy any hooks/*.rb if present
-          Dir.glob(File.join(normalized_dir, "hooks", "*.rb")).each do |src|
-            basename = File.basename(src)
-            all_hooks_in_bundle << basename
-            dest = File.join(hooks_target, basename)
-            if @dry_run
-              @results[basename] = { status: "would_install" }
-            else
-              FileUtils.mkdir_p(hooks_target)
-              FileUtils.cp(src, dest)
-              @results[basename] = { status: "installed" }
-              hooks_files_for_provenance[basename] = dest
-            end
-          end
-        end
-
-        # Prune stale hooks (removed from bundle) — reuse bases pruning via provenance but also remove files
-        if @upgrade && existing_provenance && !@dry_run
-          existing_provenance.hooks.each_key do |old_key_str|
-            next if all_hooks_in_bundle.include?(old_key_str)
-
-            old_dest = File.join(hooks_target, old_key_str)
-            if File.exist?(old_dest) && !@force
-              @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
-            end
-            FileUtils.rm_f(old_dest)
-          end
-        end
-
-        # Verify hook checksums in strict mode (mirror .md block)
-        if manifest && @strict
-          all_hooks_in_bundle.each do |basename|
-            next if @conflicts.key?(basename)
-
-            expected = manifest.checksum_for_hook(basename)
-            next unless expected
-
-            dest = File.join(hooks_target, basename)
-            next unless File.exist?(dest)
-
-            actual = Digest::SHA256.hexdigest(File.read(dest))
-            if actual != expected
-              @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-            end
-          end
-        end
+        install_hooks
+        prune_dropped_hooks if @upgrade && existing_provenance && !@dry_run
+        verify_hook_checksums if manifest && @strict
+        all_hooks_in_bundle = @bundle_hooks
+        hooks_files_for_provenance = @hook_files
 
         # ── Guardrail rules: guardrails/*.yml into <bundle_dir>/guardrails/ ─
         # The bundle's set replaces what an earlier version installed.
@@ -495,6 +402,106 @@ module Samagotchi
           @results[file_key] = { status: "skipped", reason: "already up to date" }
         else
           @results[file_key] = { status: "would_skip" }
+        end
+      end
+
+      # Copies the bundle's hooks/*.rb into <bundle_dir>/hooks/: the ones
+      # its manifest lists, else (no hooks: in it) every hooks/*.rb, which is
+      # then added to manifest.hooks with no event (the loader skips it, the
+      # record keeps it). Without a manifest every hooks/*.rb is copied.
+      # Sets @bundle_hooks (every hook the bundle ships) and @hook_files
+      # (basename => installed path, for the record).
+      def install_hooks
+        @bundle_hooks = []
+        @hook_files = {}
+        return install_unlisted_hooks unless @manifest
+
+        hook_entries = @manifest.hooks
+        if hook_entries.empty?
+          Dir.glob(File.join(@bundle_dir, "hooks", "*.rb")).each { |p| hook_entries[File.basename(p)] = BundleHook.new }
+        end
+        hook_entries.each_key do |basename|
+          next unless basename.is_a?(String) && !basename.empty?
+
+          @bundle_hooks << basename
+          src = File.join(@bundle_dir, "hooks", basename)
+          install_hook(basename, src) if File.exist?(src)
+        end
+      end
+
+      # One listed hook; an upgrade overwrites a local edit with a warning.
+      def install_hook(basename, src)
+        dest = File.join(@provenance.hooks_dir, basename)
+        if @dry_run
+          @results[basename] = { status: File.exist?(dest) && !@force ? "would_skip" : "would_install" }
+          return
+        end
+
+        prev_sha = @existing&.hooks&.dig(basename)&.sha256
+        if @upgrade && File.exist?(dest) && !@force && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
+          @warnings << "Hook #{basename} was locally modified; overwriting"
+        end
+
+        FileUtils.mkdir_p(@provenance.hooks_dir)
+        unchanged = File.exist?(dest) && FileUtils.identical?(src, dest)
+        FileUtils.cp(src, dest)
+        @results[basename] = if unchanged
+                               { status: "skipped", reason: "already up to date" }
+                             elsif @upgrade && @existing
+                               { status: "updated" }
+                             else
+                               { status: "installed" }
+                             end
+        @hook_files[basename] = dest
+      end
+
+      # No manifest (a non-strict install): every hooks/*.rb is copied.
+      def install_unlisted_hooks
+        Dir.glob(File.join(@bundle_dir, "hooks", "*.rb")).each do |src|
+          basename = File.basename(src)
+          @bundle_hooks << basename
+          if @dry_run
+            @results[basename] = { status: "would_install" }
+          else
+            FileUtils.mkdir_p(@provenance.hooks_dir)
+            dest = File.join(@provenance.hooks_dir, basename)
+            FileUtils.cp(src, dest)
+            @results[basename] = { status: "installed" }
+            @hook_files[basename] = dest
+          end
+        end
+      end
+
+      # An upgrade removes the hooks the previous version shipped and this
+      # one doesn't (a local file too, with a warning).
+      def prune_dropped_hooks
+        @existing.hooks.each_key do |old_key_str|
+          next if @bundle_hooks.include?(old_key_str)
+
+          old_dest = File.join(@provenance.hooks_dir, old_key_str)
+          if File.exist?(old_dest) && !@force
+            @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
+          end
+          FileUtils.rm_f(old_dest)
+        end
+      end
+
+      # Strict mode: an installed hook whose sha256 differs from the one its
+      # manifest declares warns (as verify_memory_checksums does).
+      def verify_hook_checksums
+        @bundle_hooks.each do |basename|
+          next if @conflicts.key?(basename)
+
+          expected = @manifest.checksum_for_hook(basename)
+          next unless expected
+
+          dest = File.join(@provenance.hooks_dir, basename)
+          next unless File.exist?(dest)
+
+          actual = Digest::SHA256.hexdigest(File.read(dest))
+          if actual != expected
+            @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
+          end
         end
       end
 
