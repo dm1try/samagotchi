@@ -70,134 +70,35 @@ module Samagotchi
 
       def run
         load_source
-        manifest = @manifest
-        normalized_dir = @bundle_dir
-        source_commit = @source_commit
         @target_scope, @target_dir = resolve_target
-        target_scope = @target_scope
-        target_dir = @target_dir
-        @file_descriptions = manifest&.file_descriptions || {}
-        @provenance = provenance = Provenance.new(name: @name)
-        @existing = existing_provenance = provenance.record
+        @file_descriptions = @manifest&.file_descriptions || {}
+        @provenance = Provenance.new(name: @name)
+        @existing = @provenance.record
         # A plain install over an installed bundle: summary points at upgrade.
-        @reinstall = existing_provenance && !@upgrade && !@force && !@dry_run
+        @reinstall = @existing && !@upgrade && !@force && !@dry_run
         install_memories
-        all_files_in_bundle = @bundle_md
-        owned = @owned
 
         install_hooks
-        prune_dropped_hooks if @upgrade && existing_provenance && !@dry_run
-        verify_hook_checksums if manifest && @strict
-        all_hooks_in_bundle = @bundle_hooks
-        hooks_files_for_provenance = @hook_files
-
-        incoming_rules = Dir.glob(File.join(normalized_dir, "guardrails", "*.yml")).sort
-        guardrail_files_for_provenance = install_guardrails(incoming_rules, provenance)
-        # ── Plugin: <file> into <bundle_dir>/plugin/ (docs/plugins.md) ────
+        prune_dropped_hooks if @upgrade && @existing && !@dry_run
+        verify_hook_checksums if @manifest && @strict
+        incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
+        guardrail_files = install_guardrails(incoming_rules, @provenance)
         # Like the rules, the bundle's plugin replaces an earlier one.
-        plugin_file_for_provenance = install_plugin(manifest, normalized_dir, provenance)
-        # ── Scripts: scripts/<file> into <bundle_dir>/scripts/ ────────────
-        scripts_for_provenance = install_scripts(manifest, normalized_dir, provenance)
-        warn_hooks_requires_chi(manifest, all_hooks_in_bundle)
-        warn_rules_requires_chi(manifest, incoming_rules)
+        plugin_file = install_plugin(@manifest, @bundle_dir, @provenance)
+        script_files = install_scripts(@manifest, @bundle_dir, @provenance)
+        warn_hooks_requires_chi(@manifest, @bundle_hooks)
+        warn_rules_requires_chi(@manifest, incoming_rules)
 
         # Files the previous version shipped and this one doesn't.
-        if @upgrade && existing_provenance
-          prune_dropped_files(existing_provenance.files, all_files_in_bundle, target_dir, target_scope, provenance)
+        prune_dropped_files(@existing.files, @bundle_md, @target_dir, @target_scope, @provenance) if @upgrade && @existing
+        verify_memory_checksums if @manifest && @strict
+        warn_missing_needs(@manifest) if @manifest
+        if @manifest && !@dry_run
+          write_provenance(guardrail_files: guardrail_files, plugin_file: plugin_file, script_files: script_files)
         end
-
-        verify_memory_checksums if manifest && @strict
-
-        warn_missing_needs(manifest) if manifest
-
-        # Write provenance (only if we had a manifest and not dry_run). An
-        # upgrade with conflicts writes it too: the new version, the plugin's
-        # and hooks' new shas, and the old base for each conflicted file,
-        # marked conflict (chi bundle status shows it). Skipping it left the
-        # replaced plugin failing its sha check.
-        if manifest && !@dry_run
-          provenance_files = {}
-          if @upgrade && existing_provenance
-            owned.each do |file_key|
-              target_path = File.join(target_dir, file_key)
-              next unless File.exist?(target_path)
-
-              status = @results[file_key] ? @results[file_key][:status].to_s : nil
-              if %w[kept noop conflict kept_pruned].include?(status)
-                # Keep old base snapshot — do not overwrite with edited current
-                # Use base snapshot as source if it exists to preserve old checksum
-                base_path = provenance.base_path(file_key)
-                provenance_files[file_key] = if File.exist?(base_path)
-                                               # Keep existing provenance entry by re-using base content
-                                               # We still need to include it to prevent pruning, but with base content
-                                               base_path
-                                             else
-                                               target_path
-                                             end
-              else
-                # installed, updated, skipped — use current target (which is incoming for updated)
-                provenance_files[file_key] = target_path
-              end
-            end
-            # Handle pruned but kept files (bundle removed file but local kept)
-            existing_provenance.files.each_key do |old_key_str|
-              next if all_files_in_bundle.include?(old_key_str)
-
-              # If it was kept_pruned, include it with base content to prevent pruning
-              next unless @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
-
-              base_path = provenance.base_path(old_key_str)
-              target_path = File.join(target_dir, old_key_str)
-              # Use base if exists to keep old checksum, else target
-              src = File.exist?(base_path) ? base_path : target_path
-              provenance_files[old_key_str] = src if File.exist?(src)
-            end
-          else
-            owned.each do |file_key|
-              target_path = File.join(target_dir, file_key)
-              next unless File.exist?(target_path)
-
-              # Skipped for a local edit: keep the installed base, so the
-              # next upgrade still sees the edit (not a fast-forward over it).
-              base_path = provenance.base_path(file_key)
-              kept = existing_provenance && @results.dig(file_key, :reason) == "already exists" && File.exist?(base_path)
-              provenance_files[file_key] = kept ? base_path : target_path
-            end
-          end
-          # Build hooks metadata for provenance
-          hooks_for_provenance = {}
-          if manifest && manifest.hooks && !manifest.hooks.empty?
-            hooks_for_provenance = manifest.hooks
-          elsif hooks_files_for_provenance.any?
-            hooks_files_for_provenance.each do |basename, path|
-              next unless File.exist?(path)
-
-              hooks_for_provenance[basename] = BundleHook.of_file(path)
-            end
-          end
-          Provenance.new(name: @name).write(
-            files: provenance_files,
-            scope: target_scope,
-            version: manifest.version,
-            source_path: @source,
-            hooks: hooks_for_provenance,
-            trust_level: manifest.trust_level,
-            source_commit: source_commit,
-            hooks_files: hooks_files_for_provenance,
-            guardrails_files: guardrail_files_for_provenance,
-            plugin_file: plugin_file_for_provenance,
-            requires_chi: manifest.requires_chi,
-            needs: manifest.needs,
-            conflicts: @conflicts.keys,
-            scripts_files: scripts_for_provenance,
-            context_providers: manifest.context_providers,
-            file_descriptions: manifest.file_descriptions
-          )
-        end
-
         detect_placeholders
 
-        [normalized_dir, manifest]
+        [@bundle_dir, @manifest]
       ensure
         # An owned source (git/zip/tar) is cleaned up here, unless an upgrade
         # kept conflicts: the agent step still needs the incoming files, so
@@ -482,6 +383,73 @@ module Samagotchi
 
           names = Placeholder.detect_in_file(file_path)
           @placeholder_warnings << "#{file_key}: {{#{names.join("}}, {{")}}}" if names.any?
+        end
+      end
+
+      # The install's record (Provenance#write), only with a manifest and
+      # not on a dry run. An upgrade with conflicts writes it too: the new
+      # version, the plugin's and hooks' new shas, and the old base for each
+      # conflicted file, marked conflict (chi bundle status shows it).
+      # Skipping it left the replaced plugin failing its sha check.
+      def write_provenance(guardrail_files:, plugin_file:, script_files:)
+        @provenance.write(
+          files: @upgrade && @existing ? upgrade_provenance_files : install_provenance_files,
+          scope: @target_scope,
+          version: @manifest.version,
+          source_path: @source,
+          # install_hooks added the discovered hooks/*.rb to manifest.hooks.
+          hooks: @manifest.hooks,
+          trust_level: @manifest.trust_level,
+          source_commit: @source_commit,
+          hooks_files: @hook_files,
+          guardrails_files: guardrail_files,
+          plugin_file: plugin_file,
+          requires_chi: @manifest.requires_chi,
+          needs: @manifest.needs,
+          conflicts: @conflicts.keys,
+          scripts_files: script_files,
+          context_providers: @manifest.context_providers,
+          file_descriptions: @manifest.file_descriptions
+        )
+      end
+
+      # file key => the file whose content becomes its base. A file the
+      # upgrade left as the user has it (kept, noop, conflict, kept_pruned)
+      # keeps its old base, so the next upgrade still sees the local edit;
+      # the rest (installed, updated, skipped) take what is on disk now. A
+      # file the bundle dropped but the user kept stays recorded too.
+      def upgrade_provenance_files
+        files = {}
+        @owned.each do |file_key|
+          target_path = File.join(@target_dir, file_key)
+          next unless File.exist?(target_path)
+
+          status = @results[file_key] ? @results[file_key][:status].to_s : nil
+          base_path = @provenance.base_path(file_key)
+          files[file_key] = %w[kept noop conflict kept_pruned].include?(status) && File.exist?(base_path) ? base_path : target_path
+        end
+        @existing.files.each_key do |old_key_str|
+          next if @bundle_md.include?(old_key_str)
+          next unless @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
+
+          base_path = @provenance.base_path(old_key_str)
+          src = File.exist?(base_path) ? base_path : File.join(@target_dir, old_key_str)
+          files[old_key_str] = src if File.exist?(src)
+        end
+        files
+      end
+
+      # file key => its base's content source for a plain install. Skipped
+      # for a local edit: keep the installed base, so the next upgrade still
+      # sees the edit (not a fast-forward over it).
+      def install_provenance_files
+        @owned.each_with_object({}) do |file_key, files|
+          target_path = File.join(@target_dir, file_key)
+          next unless File.exist?(target_path)
+
+          base_path = @provenance.base_path(file_key)
+          kept = @existing && @results.dig(file_key, :reason) == "already exists" && File.exist?(base_path)
+          files[file_key] = kept ? base_path : target_path
         end
       end
 
