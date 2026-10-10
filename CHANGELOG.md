@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
   turn's next step. No chi client sends it.
 - An attached terminal runs `/queue TEXT` at the open prompt (no turn running) as a turn, as the plain REPL and the
   docs say, instead of refusing it; it is refused only while a turn runs.
+- A `hosts:` entry that fails while it is read is ignored on its own with a warning naming it, instead of every host
+  silently dropping (in the process and in its workers); a failure outside the entries is logged.
 
 ## [0.51.0] - 2026-10-10
 

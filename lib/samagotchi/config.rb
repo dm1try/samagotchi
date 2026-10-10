@@ -952,6 +952,10 @@ module Samagotchi
                                   window_tokens: window, llm_context_strategy: llm_context,
                                   llm_context_apply: llm_context_apply, llm_context_budget_tokens: llm_context_budget,
                                   models: models }
+        rescue StandardError => e
+          # One entry that trips a reader is dropped on its own, and said
+          # so; the other hosts stay (the worker's copy too).
+          warn_once "Warning: ignoring hosts entry '#{name || raw_name}': #{e.class}: #{e.message}"
         end
         warn_duplicate_host_models(normalized)
       end
@@ -969,7 +973,8 @@ module Samagotchi
         normalized["default"] = { name: "default", host: default_host, port: default_port, transport: transport_sym, original_name: "default" }
       end
       normalized
-    rescue StandardError
+    rescue StandardError => e
+      Log.error(:config, "hosts_config_failed", error: e.class.name, message: e.message)
       {}
     end
 
@@ -1133,7 +1138,8 @@ module Samagotchi
       # the way its parent does instead of sending it to the default host.
       disabled_host_names(env: env, path: path).grep(HOST_NAME_RE).each { |name| simple[name] ||= { "enabled" => false } }
       JSON.generate(simple)
-    rescue StandardError
+    rescue StandardError => e
+      Log.error(:config, "hosts_json_failed", error: e.class.name, message: e.message)
       nil
     end
 

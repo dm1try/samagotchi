@@ -94,6 +94,53 @@ RSpec.describe "hosts: api" do
     end
   end
 
+  describe "an entry that raises while it is read" do
+    before do
+      allow(Samagotchi::HostModel).to receive(:parse_map).and_call_original
+      allow(Samagotchi::HostModel).to receive(:parse_map).with(anything, "broken").and_raise(NoMethodError, "boom")
+    end
+
+    it "drops only that entry, and says why (stderr and the log)" do
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      result = nil
+      expect { result = hosts("broken" => { "host" => "x" }, "fine" => { "host" => "h" }) }
+        .to output(/ignoring hosts entry 'broken': NoMethodError: boom/).to_stderr
+      expect(result.keys).to eq(["fine"])
+      expect(Samagotchi::Log).to have_received(:warn)
+        .with(:config, "config_warning", echo: a_string_including("hosts entry 'broken'"))
+    end
+
+    it "keeps the other hosts in the workers' SAMAGOTCHI_HOSTS_JSON" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "config.yml")
+        File.write(path, { "hosts" => { "broken" => { "host" => "x" }, "fine" => { "host" => "h" } } }.to_yaml)
+        json = nil
+        expect { json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path) }.to output.to_stderr
+        expect(JSON.parse(json).keys).to eq(["fine"])
+      end
+    end
+  end
+
+  describe "a failure outside the entries" do
+    it "logs hosts_config_failed instead of answering {} silently" do
+      allow(Samagotchi::ConfigFile).to receive(:hosts_source).and_raise(TypeError, "bad section")
+      allow(Samagotchi::Log).to receive(:error)
+
+      expect(hosts("fine" => { "host" => "h" })).to eq({})
+      expect(Samagotchi::Log).to have_received(:error)
+        .with(:config, "hosts_config_failed", error: "TypeError", message: "bad section")
+    end
+
+    it "logs hosts_json_failed when the workers' copy can't be built" do
+      allow(Samagotchi::ConfigFile).to receive(:hosts_config).and_return({ "a" => nil })
+      allow(Samagotchi::Log).to receive(:error)
+
+      expect(Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: "/nonexistent.yml")).to be_nil
+      expect(Samagotchi::Log).to have_received(:error)
+        .with(:config, "hosts_json_failed", error: "NoMethodError", message: kind_of(String))
+    end
+  end
+
   describe Samagotchi::HostRegistry do
     it "marks openai hosts as chat hosts, everything else (and entries without api) as raw" do
       registry = described_class.new(hosts_config: {
