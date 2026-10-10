@@ -6,6 +6,7 @@
     "e2e": "playwright test -c spec/e2e"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0"
+    "@playwright/test": "^1.63.0",
+    "happy-dom": "^20.14.6"
   }
 }
