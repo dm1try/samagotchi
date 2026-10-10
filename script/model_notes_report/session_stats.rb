@@ -85,7 +85,7 @@ module ModelNotesReport
       raise TypeError, "not a session" unless data.is_a?(Hash)
 
       session = Samagotchi::Session.from_h(data)
-      stats(session, records: turn_records(File.join(File.dirname(path), session.id.to_s, "analytics.json")))
+      stats(session, records: turn_records(File.join(File.dirname(path), session.id.to_s)))
     end
 
     # @param session [Samagotchi::Session]
@@ -213,14 +213,11 @@ module ModelNotesReport
       { steers: inputs + steers.size, nudges: others.size, follow_ups: [prompts - 1, 0].max }
     end
 
-    # analytics.json's turn records, nil without a readable file.
-    def turn_records(path)
-      return nil unless File.file?(path)
-
-      records = JSON.parse(File.read(path))["turn_records"]
+    # The turn records of the analytics.json in +session_dir+, nil without
+    # a readable file.
+    def turn_records(session_dir)
+      records = Samagotchi::AnalyticsFile.read(session_dir)&.dig("turn_records")
       records.is_a?(Array) ? records.select { |record| record.is_a?(Hash) } : nil
-    rescue JSON::ParserError, TypeError, NoMethodError, SystemCallError
-      nil
     end
   end
 end

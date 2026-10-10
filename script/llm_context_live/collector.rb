@@ -31,7 +31,7 @@ module LLMContextLive
 
       replay = LLMContextBench::Replay.load(path)
       stats = ModelNotesReport::SessionReader.read(path)
-      records = ModelNotesReport::SessionReader.turn_records(File.join(workspace.sessions_dir, session_id, "analytics.json")) || []
+      records = ModelNotesReport::SessionReader.turn_records(File.join(workspace.sessions_dir, session_id)) || []
       { steps: stats.steps, tool_calls: stats.calls, edits: stats.edits, commits: stats.commits,
         **reads(replay), **stubs(replay), **tokens(records), **scope(task, workspace, replay) }
     end
