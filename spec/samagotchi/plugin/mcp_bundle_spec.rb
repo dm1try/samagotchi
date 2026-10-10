@@ -54,7 +54,7 @@ RSpec.describe "The mcp bundle" do
 
   describe "find_mcp_tools" do
     let(:tools_file) { File.join(tmpdir, "tools") }
-    let(:fake) { { "command" => [RbConfig.ruby, MCP_FAKE], "env" => { "FAKE_MCP_TOOLS" => tools_file } } }
+    let(:fake) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_TOOLS" => tools_file } } }
 
     before do
       File.write(tools_file, %w[echo navigate_page new_page list_pages handle_dialog take_screenshot bad].join("\n"))
@@ -179,7 +179,7 @@ RSpec.describe "The mcp bundle" do
     end
 
     context "while a first-run server is starting" do
-      let(:fake) { { "command" => [RbConfig.ruby, MCP_FAKE], "env" => { "FAKE_MCP_MODE" => "slow", "FAKE_MCP_DELAY" => "1" } } }
+      let(:fake) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_MODE" => "slow", "FAKE_MCP_DELAY" => "1" } } }
 
       it "searches say to try again, and a call waits for it" do
         settings["startup_timeout"] = 10
@@ -193,7 +193,7 @@ RSpec.describe "The mcp bundle" do
       end
 
       context "beside one that started" do
-        let(:servers) { { "fake" => fake, "quick" => { "command" => [RbConfig.ruby, MCP_FAKE] } } }
+        let(:servers) { { "fake" => fake, "quick" => { "command" => MCP_FAKE_COMMAND } } }
 
         it "a miss named <server>/ waits only for that server, a miss of a starting one's tool for it" do
           settings["startup_timeout"] = 10
@@ -354,7 +354,7 @@ RSpec.describe "The mcp bundle" do
 
   describe "a server that exits" do
     let(:pids_file) { File.join(tmpdir, "pids") }
-    let(:fake) { { "command" => [RbConfig.ruby, MCP_FAKE], "env" => { "FAKE_MCP_PIDS" => pids_file } } }
+    let(:fake) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_PIDS" => pids_file } } }
     let(:notices) { [] }
 
     def pids = File.readlines(pids_file).map(&:to_i)
@@ -457,7 +457,7 @@ RSpec.describe "The mcp bundle" do
 
   context "with a property schema that isn't an object" do
     let(:tools_file) { File.join(tmpdir, "tools") }
-    let(:fake) { { "command" => [RbConfig.ruby, MCP_FAKE], "env" => { "FAKE_MCP_TOOLS" => tools_file } } }
+    let(:fake) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_TOOLS" => tools_file } } }
 
     before { File.write(tools_file, "echo\nodd_prop\n") }
 

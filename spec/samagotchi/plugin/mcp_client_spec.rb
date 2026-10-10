@@ -14,7 +14,7 @@ RSpec.describe "The mcp bundle's client" do
   let(:exits) { Queue.new }
   let(:env) { {} }
   let(:client) do
-    client_class.new([RbConfig.ruby, MCP_FAKE], env: env, log: ->(event, **fields) { logged << [event, fields] },
+    client_class.new(MCP_FAKE_COMMAND, env: env, log: ->(event, **fields) { logged << [event, fields] },
                                                 on_exit: ->(reason) { exits << reason })
   end
 

@@ -13,7 +13,7 @@ RSpec.describe "The mcp bundle" do
     let(:tools_file) { File.join(tmpdir, "tools").tap { |f| File.write(f, "echo\nadd\nslow\n") } }
     let(:mode_file) { File.join(tmpdir, "mode") }
     let(:fake) do
-      { "command" => [RbConfig.ruby, MCP_FAKE],
+      { "command" => MCP_FAKE_COMMAND,
         "env" => { "FAKE_MCP_PIDS" => pids_file, "FAKE_MCP_TOOLS" => tools_file, "FAKE_MCP_MODE_FILE" => mode_file } }
     end
 

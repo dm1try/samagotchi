@@ -15,6 +15,10 @@ require "samagotchi/memory_bundle/installer"
 # (mcp_client_spec, mcp_bundle_spec, mcp_bundle_cache_spec).
 MCP_SHIPPED = File.expand_path("../../lib/samagotchi/bundles/mcp", __dir__)
 MCP_FAKE = File.expand_path("../fixtures/mcp/fake_server.rb", __dir__)
+# How a spec starts it: without RubyGems and without the RUBYOPT that
+# `bundle exec` sets (-rbundler/setup). It needs only the default json, and
+# boots in ~0.02 s instead of ~0.25 s; most examples start a server or more.
+MCP_FAKE_COMMAND = ["/usr/bin/env", "-u", "RUBYOPT", RbConfig.ruby, "--disable-gems", MCP_FAKE].freeze
 
 def alive?(pid)
   Process.kill(0, pid)
@@ -29,7 +33,7 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   let(:tmpdir) { Dir.mktmpdir("mcp-") }
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
-  let(:fake) { { "command" => [RbConfig.ruby, MCP_FAKE] } }
+  let(:fake) { { "command" => MCP_FAKE_COMMAND } }
   let(:servers) { { "fake" => fake } }
   let(:settings) { { "servers" => servers, "startup_timeout" => 2, "timeout" => 5 } }
   let(:session_dir) { File.join(tmpdir, "session").tap { |dir| FileUtils.mkdir_p(dir) } }
