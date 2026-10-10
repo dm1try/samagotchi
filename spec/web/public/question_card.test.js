@@ -130,8 +130,17 @@ test("summaryText resolved: answered, denied, cancelled with reason", () => {
   assert.equal(summaryText(q, { cancelled: true }), "Which lane? → Cancelled");
   assert.equal(summaryText(q, { cancelled: true, reason: "turn ended" }), "Which lane? → Cancelled (turn ended)");
   assert.equal(summaryText(approval, { answer: { selected: ["Allow once"] } }), "execute: git push → Allowed: Allow once");
-  assert.equal(summaryText(approval, { answer: { selected: ["Deny"], freeform: "use a PR" } }), "execute: git push → Denied: use a PR");
+  assert.equal(summaryText(approval, { answer: { selected: ["Deny"], freeform: "use a PR" } }), "execute: git push → Denied");
   assert.equal(summaryText(approval, { cancelled: true, reason: "dismissed" }), "execute: git push → Denied (dismissed)");
+});
+
+// A deny's typed reason goes in the card body, not the summary line: a long
+// one cut at 120 chars crowded out the command.
+test("summaryText resolved: a denied approval's summary drops the typed reason", () => {
+  const reason = "Denied (coordinator): checkout drops the CHANGELOG edits; ".repeat(4);
+  assert.equal(summaryText(approval, { answer: { selected: ["Deny"], freeform: reason } }), "execute: git push → Denied");
+  assert.equal(summaryText(approval, { answer: { selected: [], freeform: "not now" } }), "execute: git push → Denied");
+  assert.equal(summaryText(approval, { answer: { selected: ["Deny"] } }), "execute: git push → Denied");
 });
 
 test("summaryText resolved: a long question is cut so the result stays", () => {

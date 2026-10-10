@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: a denied approval's summary line reads `<tool>: <command> → Denied`; the typed reason shows in full in the
+  card body (expand the card) instead of being cut off in the summary.
+
 ## [0.53.0] - 2026-10-10
 
 ### Changed

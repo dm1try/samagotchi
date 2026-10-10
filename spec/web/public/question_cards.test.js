@@ -427,6 +427,28 @@ test("a reopened answered card shows the result once: the body line hides", () =
   assert.equal(line.textContent, "Allowed: Allow once");
 });
 
+test("a denied approval with a reason: the summary says Denied, the body line keeps the full reason shown", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ ...APPROVAL, id: "a3" });
+  const card = cards.questionCard();
+  const reason = "checkout drops the CHANGELOG edits; ".repeat(5).trim();
+  cards.resolveQuestion("a3", { answer: { selected: ["Deny"], freeform: reason } });
+  assert.equal(card.querySelector("summary").textContent, "execute: git push → Denied");
+  const line = card.querySelector(".question-result");
+  assert.equal(line.textContent, `Denied: ${reason}`);
+  assert.equal(line.classList.contains("hidden"), false);
+  assert.equal(card.open, false);
+});
+
+test("a denied approval without a reason hides the body line like other results", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ ...APPROVAL, id: "a4" });
+  const card = cards.questionCard();
+  cards.resolveQuestion("a4", { answer: { selected: ["Deny"] } });
+  assert.equal(card.querySelector("summary").textContent, "execute: git push → Denied");
+  assert.equal(card.querySelector(".question-result").classList.contains("hidden"), true);
+});
+
 test("a relayed approval on the parent links its delegate's session", () => {
   const { cards } = setup();
   cards.renderQuestion({ ...APPROVAL, relay: { id: "r1", child_id: "cccc2222-0000", chain: ["cccc2222"], task: "push it" } });
