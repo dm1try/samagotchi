@@ -15,9 +15,11 @@ bug) or a broken spec: fix it, or disable that line with the reason (`# rubocop:
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
 
-The web specs run in plain node. One that renders with lit-html (`turn_view.js`, `vendor/lit-html.js`) needs a DOM:
-`import "./dom_shim.js";` as its first import (happy-dom, a devDependency only, never shipped; about 0.3 s per spec
-file that loads it). The shim's `htmlOf(nodes)` and `canon(html)` compare markup without lit's marker comments.
+The web specs run in plain node. One that renders with lit-html (`turn_view.js`, `thinking_chip.js`,
+`vendor/lit-html.js`) needs a DOM: `import "./dom_shim.js";` as its first import (happy-dom, a devDependency only,
+never shipped; about 0.3 s per spec file that loads it). The shim's `htmlOf(nodes)` and `canon(html)` compare markup
+without lit's marker comments. happy-dom 20 picks the wrong option of a `<select>` whose options lit inserted with
+`?selected`: read the option marked `selected` (`option[selected]`), not `select.value`; the browser follows the mark.
 
 ## Worktrees
 

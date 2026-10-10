@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: the `think` chip's level popover is a lit-html template (it was built as an HTML string); it looks and works
+  as before.
+
 ### Fixed
 
 - `/model X` (and `/model X --default`, `/model clear`, and a successful `/model X --alias NAME`) now carry the
