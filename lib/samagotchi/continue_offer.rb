@@ -85,7 +85,7 @@ module Samagotchi
     # Stop runs no turn: last_turn says so (not_continued), so a wait on
     # it ends (chi answer --option Stop).
     def announce_resolved(result, command)
-      @engine.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command[:client_id])
+      @engine.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command.client_id)
       return if result.resume
 
       session = @engine.session
@@ -128,7 +128,7 @@ module Samagotchi
           Log.warn(:worker, "turn_not_begun", continue: true, error: e.class.name, msg: e.message)
           return announce_offer(offer)
         end
-        @run_turn.call(nil, continue: true, origin: { client_id: command[:client_id] }.compact,
+        @run_turn.call(nil, continue: true, origin: { client_id: command.client_id }.compact,
                             max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
           if error
             announce_offer(offer)

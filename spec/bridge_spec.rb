@@ -1645,7 +1645,7 @@ RSpec.describe Samagotchi::Bridge do
         status, body = post_command(JSON.generate(line: " /model x ", client_id: "tui:1"))
 
         expect(status).to eq(202)
-        expect(queued).to eq([{ command_id: body["command_id"], client_id: "tui:1", line: "/model x" }])
+        expect(queued).to eq([Samagotchi::QueuedCommand.new(command_id: body["command_id"], client_id: "tui:1", line: "/model x")])
         expect(seen).to eq([{ type: :command_queued, command_id: body["command_id"], client_id: "tui:1", line: "/model x",
                               event_seq: 1 }])
       end
@@ -1678,7 +1678,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(status).to eq(202)
         expect(body).to include("status" => "accepted", "command_id" => be_a(String))
         expect(body).not_to have_key("enqueued_id")
-        expect(queued.map { |c| c.slice(:command_id, :client_id, :line) })
+        expect(queued.map { |c| c.to_h.slice(:command_id, :client_id, :line) })
           .to eq([{ command_id: body["command_id"], client_id: "cli:send", line: "/model x" },
                   { command_id: plugin["command_id"], client_id: "cli:send", line: "/hello there" }])
         expect(seen.map { |e| e[:type] }).to eq(%i[command_queued command_queued])
@@ -1702,7 +1702,7 @@ RSpec.describe Samagotchi::Bridge do
         @engine.command_registry.register("/hello", "greet", source: "sample-plugin") { |_args| "hi" }
 
         expect(post_command(JSON.generate(line: "/hello again")).first).to eq(202)
-        expect(queued.map { |c| c[:line] }).to eq(["/hello again"])
+        expect(queued.map(&:line)).to eq(["/hello again"])
       end
 
       it "names the Engine's commands in its snapshot, plugins' too" do

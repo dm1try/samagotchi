@@ -21,6 +21,7 @@ require_relative "session"
 require_relative "engine"
 require_relative "guardrails/parent_approvals"
 require_relative "session_commands"
+require_relative "queued_command"
 require_relative "steer"
 require_relative "image_store"
 require_relative "log"
@@ -286,12 +287,11 @@ module Samagotchi
     #   basename): it runs once that file is taken (Worker#on_command)
     # @return [String] its command_id
     def queue_command(line, client_id: nil, card: false, after_file: nil)
-      command = { command_id: SecureRandom.uuid, client_id: client_id, line: line.to_s.strip }
       # A card's action (the step-limit question's answer): the UIs leave
       # its line out.
-      command[:card] = true if card
+      command = QueuedCommand.mint(line.to_s.strip, client_id: client_id, card: card)
       @engine.synchronize_events { queue_command_locked(command, after_file: after_file) }
-      command[:command_id]
+      command.command_id
     end
 
     private
@@ -722,18 +722,17 @@ module Samagotchi
     # :command_queued, unless +deadline+ has passed. Returns [headers,
     # status, body]: 202 with its command_id, or 408.
     def queue_command_request(session_id, line, client_id:, deadline: nil, card: false)
-      command = { command_id: SecureRandom.uuid, client_id: client_id, line: line }
       # A card's action: the UIs leave its line out (the card is the echo).
-      command[:card] = true if card
+      command = QueuedCommand.mint(line, client_id: client_id, card: card)
       queued = @engine.synchronize_events do
-        next false if expired?("command_expired", deadline, sid: session_id, client_id: command[:client_id])
+        next false if expired?("command_expired", deadline, sid: session_id, client_id: command.client_id)
 
         queue_command_locked(command)
         true
       end
       return deadline_passed("command") unless queued
 
-      [{}, 202, { status: "accepted", command_id: command[:command_id], session_id: @session_id }]
+      [{}, 202, { status: "accepted", command_id: command.command_id, session_id: @session_id }]
     end
 
     # With the event log held. +on_command+ answers what it did with the
@@ -748,7 +747,7 @@ module Samagotchi
               when :queue then { waits: "turn_end" }
               else {}
               end
-      @engine.announce(type: :command_queued, **command, **marks)
+      @engine.announce(type: :command_queued, **command.event_fields, **marks)
     end
 
     # A client asks the worker to exit now (`/exit` in the attached TUI), or

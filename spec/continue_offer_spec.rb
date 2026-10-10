@@ -3,6 +3,7 @@
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/continue_offer"
+require "samagotchi/queued_command"
 require "samagotchi/session_commands"
 require "support/test_kernel"
 
@@ -62,12 +63,14 @@ RSpec.describe Samagotchi::ContinueOffer do
     Samagotchi::SessionCommands::Result.new(status: :ok, changed: [], resume: resume, decision: decision)
   end
 
+  def command_from(client_id) = Samagotchi::QueuedCommand.new(command_id: "c1", client_id: client_id, line: "/continue")
+
   it "keeps the text's line breaks in the continue turn's steer; a Stop's line is one line" do
     drains
     answer(["Continue"], freeform: "line one\n  line two\n")
     expect(queued).to eq([["/continue yes", "web:2"]])
 
-    continue_offer.run_continue_turn(client_id: "web:2")
+    continue_offer.run_continue_turn(command_from("web:2"))
 
     expect(drains).to eq([[{ text: "line one\n  line two", source: "user" }]])
     answer(["Stop"], freeform: "no more\nthanks")
@@ -79,7 +82,7 @@ RSpec.describe Samagotchi::ContinueOffer do
     answer(["Continue"], freeform: "also X")
     @fail_before_begin = IOError.new("save failed")
 
-    continue_offer.run_continue_turn(client_id: "web:2")
+    continue_offer.run_continue_turn(command_from("web:2"))
     expect(engine.pending_question).to include(kind: "continue")
     @fail_before_begin = nil
     engine.run_turn(session, "something else")
@@ -92,7 +95,7 @@ RSpec.describe Samagotchi::ContinueOffer do
     answer(["Continue"], freeform: "also X")
     allow(turn_flow).to receive(:before_continue_turn).and_raise(IOError, "checkpoint")
 
-    expect { continue_offer.run_continue_turn(client_id: "web:2") }.not_to raise_error
+    expect { continue_offer.run_continue_turn(command_from("web:2")) }.not_to raise_error
     expect(engine.pending_question).to include(kind: "continue")
     engine.run_turn(session, "something else")
 
@@ -107,7 +110,7 @@ RSpec.describe Samagotchi::ContinueOffer do
     continue_offer.after_command(resolved(resume: false, decision: :abort), resolved: true)
     continue_offer.after_command(resolved(resume: false, decision: nil), resolved: false)
     # A later offer, answered with a typed /continue yes.
-    continue_offer.run_continue_turn(client_id: "tui:1")
+    continue_offer.run_continue_turn(command_from("tui:1"))
 
     expect(drains).to eq([[]])
   end
@@ -116,7 +119,7 @@ RSpec.describe Samagotchi::ContinueOffer do
     drains
     answer(["Continue"], freeform: "also X")
     continue_offer.after_command(resolved(resume: false, decision: nil), resolved: false)
-    continue_offer.run_continue_turn(client_id: "web:2")
+    continue_offer.run_continue_turn(command_from("web:2"))
 
     expect(drains).to eq([[{ text: "also X", source: "user" }]])
   end

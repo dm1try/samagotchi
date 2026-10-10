@@ -177,7 +177,7 @@ RSpec.describe Samagotchi::SendCommand do
 
       expect(run("-m", "/model qwen", short(a))).to eq(0), err.string
       expect(run("-m", "/usr/bin/env is missing", short(a))).to eq(0), err.string
-      expect(queued.map { |c| c[:line] }).to eq(["/model qwen"])
+      expect(queued.map(&:line)).to eq(["/model qwen"])
       expect(inputs_of(a)).to contain_exactly(include("prompt" => "/usr/bin/env is missing"))
     end
   end
@@ -192,7 +192,7 @@ RSpec.describe Samagotchi::SendCommand do
     expect(run("-m", "/usr/bin/env is missing", short(a))).to eq(0), err.string
 
     expect(out.string).to eq("#{short(a)}  sent as a session command\n#{short(a)}  sent\n")
-    expect(queued.map { |c| c.slice(:client_id, :line) }).to eq([{ client_id: "cli:send", line: "/model qwen" }])
+    expect(queued.map { |c| c.to_h.slice(:client_id, :line) }).to eq([{ client_id: "cli:send", line: "/model qwen" }])
     expect(inputs_of(a)).to contain_exactly(include("prompt" => "/usr/bin/env is missing"))
     expect(events.map { |e| e[:type] }).to eq(%i[command_queued turn_enqueued])
   end

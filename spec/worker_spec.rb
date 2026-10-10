@@ -13,6 +13,8 @@ require "samagotchi/bridge_client"
 require "samagotchi/worker"
 
 RSpec.describe Samagotchi::Worker do
+  def cmd(**fields) = Samagotchi::QueuedCommand.new(**fields)
+
   describe Samagotchi::Worker::Waker do
     let(:waker) { described_class.new }
 
@@ -1212,24 +1214,24 @@ RSpec.describe Samagotchi::Worker do
         it "runs in arrival order: a ready command waits behind one still waiting for its prompt file" do
           worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir)
           queue = Thread::Queue.new
-          waiting = { command_id: "x", line: "/model X", mid_turn: :queue, after_file: "20261008000000000000001.json" }
-          queue << waiting << { command_id: "y", line: "/model Y", mid_turn: :loop }
-          File.write(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, waiting[:after_file]), "{}")
+          waiting = cmd(command_id: "x", line: "/model X", mid_turn: :queue, after_file: "20261008000000000000001.json")
+          queue << waiting << cmd(command_id: "y", line: "/model Y", mid_turn: :loop)
+          File.write(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, waiting.after_file), "{}")
           worker.instance_variable_set(:@command_queue, queue)
           worker.instance_variable_set(:@engine, engine)
 
           expect(worker.send(:next_ready_command)).to be_nil
           expect(queue.size).to eq(2)
-          File.delete(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, waiting[:after_file]))
-          expect([worker.send(:next_ready_command), worker.send(:next_ready_command)].map { |c| c[:command_id] }).to eq(%w[x y])
+          File.delete(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, waiting.after_file))
+          expect([worker.send(:next_ready_command), worker.send(:next_ready_command)].map(&:command_id)).to eq(%w[x y])
         end
 
         # Queued idle just as the turn began (on_command saw no turn running).
         it "marks one queued idle just before the turn began as waiting, and drops its !cmd after a canceled turn" do
           worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir)
           queue = Thread::Queue.new
-          queue << { command_id: "a", client_id: "web:1", line: "!ls", mid_turn: :loop, after_seq: 0 }
-          queue << { command_id: "b", client_id: "web:1", line: "/model X", mid_turn: :loop, after_seq: 0 }
+          queue << cmd(command_id: "a", client_id: "web:1", line: "!ls", mid_turn: :loop, after_seq: 0)
+          queue << cmd(command_id: "b", client_id: "web:1", line: "/model X", mid_turn: :loop, after_seq: 0)
           worker.instance_variable_set(:@command_queue, queue)
           worker.instance_variable_set(:@engine, engine)
           worker.instance_variable_set(:@turn_end_seq, 0)
@@ -1245,7 +1247,7 @@ RSpec.describe Samagotchi::Worker do
           expect(events_seen.find { |e| e[:type] == :command_ran })
             .to include(command_id: "a", status: "dropped", queued: true, output: "turn canceled: !ls not run; send it again")
           expect(queue.size).to eq(1)
-          expect(queue.pop).to include(command_id: "b", mid_turn: :queue)
+          expect(queue.pop).to have_attributes(command_id: "b", mid_turn: :queue)
         end
 
         # P0: the filter holds the event log, so a command the Bridge queues
@@ -1253,9 +1255,9 @@ RSpec.describe Samagotchi::Worker do
         it "keeps arrival order when refusing: a command queued during the filter goes behind the kept ones" do
           worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir)
           queue = Thread::Queue.new
-          queue << { command_id: "k1", client_id: "web:1", line: "/model X", mid_turn: :queue, after_seq: 0 }
-          queue << { command_id: "r", client_id: "web:1", line: "!rollback", mid_turn: :refuse, after_seq: 0 }
-          queue << { command_id: "k2", client_id: "web:1", line: "/model Y", mid_turn: :queue, after_seq: 0 }
+          queue << cmd(command_id: "k1", client_id: "web:1", line: "/model X", mid_turn: :queue, after_seq: 0)
+          queue << cmd(command_id: "r", client_id: "web:1", line: "!rollback", mid_turn: :refuse, after_seq: 0)
+          queue << cmd(command_id: "k2", client_id: "web:1", line: "/model Y", mid_turn: :queue, after_seq: 0)
           worker.instance_variable_set(:@command_queue, queue)
           worker.instance_variable_set(:@engine, engine)
           worker.instance_variable_set(:@turn_end_seq, 0)
@@ -1263,7 +1265,7 @@ RSpec.describe Samagotchi::Worker do
           allow(engine).to receive(:announce).and_wrap_original do |original, event, *rest|
             if event[:command_id] == "r" && arrival.nil?
               # The Bridge queues a command as the busy one is answered.
-              arrival = Thread.new { engine.synchronize_events { queue << { command_id: "n", line: "/model Z", mid_turn: :queue } } }
+              arrival = Thread.new { engine.synchronize_events { queue << cmd(command_id: "n", line: "/model Z", mid_turn: :queue) } }
               arrival.join(0.2)
             end
             original.call(event, *rest)
@@ -1273,7 +1275,7 @@ RSpec.describe Samagotchi::Worker do
           arrival.join(2)
 
           expect(events_seen.find { |e| e[:type] == :command_ran }).to include(command_id: "r", status: "busy")
-          expect(Array.new(queue.size) { queue.pop[:command_id] }).to eq(%w[k1 k2 n])
+          expect(Array.new(queue.size) { queue.pop.command_id }).to eq(%w[k1 k2 n])
         end
 
         it "is in the snapshot until it ran" do

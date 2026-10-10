@@ -20,6 +20,7 @@ require_relative "llm/errors"
 require_relative "continue_offer"
 require_relative "iteration_limit"
 require_relative "session_commands"
+require_relative "queued_command"
 require_relative "model_profile"
 require_relative "child_reports"
 require_relative "child_move"
@@ -592,9 +593,9 @@ module Samagotchi
     end
 
     def ready_command?(command)
-      return true if command[:after_file].nil?
+      return true if command.after_file.nil?
 
-      SessionInbox.find_new_input_files(@session_dir).none? { |path| File.basename(path) <= command[:after_file] }
+      SessionInbox.find_new_input_files(@session_dir).none? { |path| File.basename(path) <= command.after_file }
     end
 
     def drain_commands
@@ -619,11 +620,11 @@ module Samagotchi
 
       @engine.synchronize_events do
         drain_commands.each do |command|
-          during = mid_turn || command[:after_seq].to_i < @turn_end_seq
+          during = mid_turn || command.after_seq.to_i < @turn_end_seq
           case (during ? turn_answer(command, ended: !mid_turn) : :keep)
           when :refuse then announce_command(command, status: "busy", output: busy_output(command), changed: [])
           when :drop then drop_command(waiting_for_turn_end(command), "turn #{@turn_end_type == :turn_failed ? "failed" : "canceled"}: " \
-                                                                      "#{command[:line]} not run; send it again")
+                                                                      "#{command.line} not run; send it again")
           else @command_queue << (during ? waiting_for_turn_end(command) : command)
           end
         end
@@ -634,8 +635,8 @@ module Samagotchi
     # (D4, once it +ended+) or :keep. One queued idle just as the turn
     # began (:loop) goes by its line's policy (a show form waits too).
     def turn_answer(command, ended:)
-      policy = command[:mid_turn]
-      policy = @engine.command_registry.mid_turn(command[:line]) if policy == :loop
+      policy = command.mid_turn
+      policy = @engine.command_registry.mid_turn(command.line) if policy == :loop
       return :refuse if policy == :refuse
       return :drop if ended && policy == :queue && shell_command?(command) &&
                       %i[turn_canceled turn_failed].include?(@turn_end_type)
@@ -648,18 +649,16 @@ module Samagotchi
     # marked as one queued mid-turn: its command_queued (waits) tells the
     # UIs now, and its command_ran says queued.
     def waiting_for_turn_end(command)
-      return command unless command[:mid_turn] == :loop && @engine.command_registry.mid_turn(command[:line]) == :queue
+      return command unless command.mid_turn == :loop && @engine.command_registry.mid_turn(command.line) == :queue
 
-      event = { type: :command_queued, **command.slice(:command_id, :client_id, :line), waits: "turn_end" }
-      event[:card] = true if command[:card]
-      @engine.announce(event)
-      command.merge(mid_turn: :queue)
+      @engine.announce(type: :command_queued, **command.event_fields, waits: "turn_end")
+      command.with(mid_turn: :queue)
     end
 
-    def shell_command?(command) = @engine.command_registry.lookup(command[:line])&.id == :shell
+    def shell_command?(command) = @engine.command_registry.lookup(command.line)&.id == :shell
 
     def busy_output(command)
-      @engine.command_registry.lookup(command[:line])&.id == :rollback ? ROLLBACK_BUSY_OUTPUT : BUSY_OUTPUT
+      @engine.command_registry.lookup(command.line)&.id == :rollback ? ROLLBACK_BUSY_OUTPUT : BUSY_OUTPUT
     end
 
     # +command+ won't run: its sender (a UI's queued bubble) is told.
@@ -695,7 +694,7 @@ module Samagotchi
         shown.each { |event| @engine.announce(event) }
       end
       save_or_log(:command) { save_session } unless Array(result.changed).empty?
-      user_input(command[:client_id]) if resolved
+      user_input(command.client_id) if resolved
       @continue_offer.after_command(result, resolved: resolved)
       @continue_offer.run_continue_turn(command) if result.resume
     end
@@ -705,9 +704,9 @@ module Samagotchi
     #   as its output
     def run_command_line(command)
       result, shown = @engine.holding_announcements do
-        @commands.run(command[:line])
+        @commands.run(command.line)
       rescue StandardError => e
-        SessionCommands::Result.new(status: :error, output: "#{command[:line].split.first}: #{e.message}", changed: [])
+        SessionCommands::Result.new(status: :error, output: "#{command.line.split.first}: #{e.message}", changed: [])
       end
       [result || SessionCommands::Result.new(status: :error, output: "not a session command", changed: []), shown]
     end
@@ -731,8 +730,8 @@ module Samagotchi
     #   :refuse while a turn runs, :loop idle
     def on_command(command, after_file: nil)
       registry = @engine.command_registry
-      policy = if @engine.turn_running? then registry.mid_turn(command[:line])
-               else registry.anytime?(command[:line]) ? :anytime : :loop
+      policy = if @engine.turn_running? then registry.mid_turn(command.line)
+               else registry.anytime?(command.line) ? :anytime : :loop
                end
       if policy == :anytime
         start_anytime_command(command)
@@ -741,7 +740,7 @@ module Samagotchi
 
       after_file ||= newest_input_file if policy == :queue
       # The count says which turn ends came before it.
-      @command_queue << command.merge(after_seq: @engine.event_count, mid_turn: policy, after_file: after_file).compact
+      @command_queue << command.with(after_seq: @engine.event_count, mid_turn: policy, after_file: after_file)
       @waker.wake
       policy
     end
@@ -762,15 +761,15 @@ module Samagotchi
     def start_anytime_command(command)
       @engine.spawn_anytime do
         result = begin
-          @engine.running_anytime { @commands.run(command[:line]) }
+          @engine.running_anytime { @commands.run(command.line) }
         rescue StandardError => e
-          SessionCommands::Result.new(status: :error, output: "#{command[:line].split.first}: #{e.message}", changed: [])
+          SessionCommands::Result.new(status: :error, output: "#{command.line.split.first}: #{e.message}", changed: [])
         end
         result ||= SessionCommands::Result.new(status: :error, output: "not a session command", changed: [])
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
                                   anytime: true)
       rescue StandardError => e
-        Log.warn(:worker, "anytime_command_failed", line: command[:line], error: e.class.name, msg: e.message)
+        Log.warn(:worker, "anytime_command_failed", line: command.line, error: e.class.name, msg: e.message)
       end
     end
 
@@ -778,13 +777,11 @@ module Samagotchi
     #   its command_queued already
     def announce_command(command, status:, output:, changed:, anytime: false)
       text = output.to_s
-      event = { type: :command_ran, command_id: command[:command_id], client_id: command[:client_id], line: command[:line],
-                status: status, output: text[0, COMMAND_OUTPUT_LIMIT], changed: changed.map(&:to_s),
-                model_name: @engine.effective_model_name }
+      event = { type: :command_ran, **command.event_fields, status: status, output: text[0, COMMAND_OUTPUT_LIMIT],
+                changed: changed.map(&:to_s), model_name: @engine.effective_model_name }
       event[:anytime] = true if anytime
       # Its line was shown at its command_queued (waits: turn_end).
-      event[:queued] = true if command[:mid_turn] == :queue
-      event[:card] = true if command[:card]
+      event[:queued] = true if command.waits_for_turn_end?
       # /llm-context or /model: what the next turn runs under now (the web's chip).
       event[:llm_context] = @engine.llm_context_summary if changed.intersect?(%i[llm_context model])
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
