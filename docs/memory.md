@@ -250,6 +250,17 @@ for a file another bundle installed.
   installed bundle owns is left out with a line (`Left out identity.md:
   installed by bundle samagotchi-system (name it to include it)`); naming it
   in `FILES...` includes it.
+  `--name NAME`, `--version VER` and `--description DESC` go into the
+  bundle's manifest, and `--out PATH` picks where it goes (`.zip`, `.tar.gz`,
+  `.tgz` or `.tar` gives that archive, any other path a directory; default
+  `<name>.zip`).
+- **An upgrade that meets your edits.** `chi bundle upgrade` updates a file
+  you didn't edit and keeps one you did (a conflict), then asks on a
+  terminal whether to launch a chi session that merges the two (`/exit`
+  when done). `--agent` launches it without asking, `--no-agent` never does;
+  with neither and no terminal it keeps your edits and says so. Kept edits
+  exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
+  the bundle's version.
 
 ## Bundle profiles: core and dev
 
