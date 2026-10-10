@@ -8,6 +8,7 @@ require "samagotchi/tools/delegate"
 require "samagotchi/tools/delegate_result"
 require "samagotchi/owner_lock"
 require "samagotchi/session_manager"
+require "samagotchi/reply_wait"
 
 # delegate / delegate_result: a child session as a visible peer; only its
 # final reply (an output/ file) comes back to the parent.
@@ -25,8 +26,12 @@ RSpec.describe "delegate tools" do
   # delegate reports (DelegateWait.reports_mode).
   let(:worker_peers) { peers.dup.tap { |p| p.relay = Object.new } }
 
-  before do
+  before do |example|
     stub_const("Samagotchi::Tools::DelegateWait::POLL_INTERVAL", 0.05)
+    # A reply's session left running in the fixture never gets the worker's
+    # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for: 0.1 s
+    # here, but in an example about that wait (:real_settle).
+    stub_const("Samagotchi::ReplyWait::SETTLE_SECONDS", 0.1) unless example.metadata[:real_settle]
     allow(Process).to receive(:spawn).and_return(12_345)
     allow(Process).to receive(:detach)
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -533,7 +538,7 @@ RSpec.describe "delegate tools" do
                                      "delegate_result #{child.id} waits again; chi --attach #{child.id} shows it.")
     end
 
-    it "keeps waiting on an idle child it never saw running (a follow-up not picked up yet)" do
+    it "keeps waiting on an idle child it never saw running (a follow-up not picked up yet)", :real_settle do
       set_status(child, "idle")
       later do
         set_status(child, "running")

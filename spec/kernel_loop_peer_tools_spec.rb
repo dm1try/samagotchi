@@ -4,8 +4,14 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/engine"
 require "samagotchi/kernel_loop"
+require "samagotchi/reply_wait"
 
 RSpec.describe "list_sessions and send_note in the loops" do
+  # A reply's session left running in the fixture never gets the worker's
+  # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for: 0.1 s
+  # here, but in an example about that wait (:real_settle).
+  before { |example| stub_const("Samagotchi::ReplyWait::SETTLE_SECONDS", 0.1) unless example.metadata[:real_settle] }
+
   let(:tmpdir) { Dir.mktmpdir("kernel-peers") }
   let(:me) { Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/me").tap { |s| s.save(state_dir: tmpdir) } }
   # test_run: false, or CI=1 marks it a test run, which list_sessions leaves out.

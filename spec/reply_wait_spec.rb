@@ -8,6 +8,11 @@ require "samagotchi/session_manager"
 # A session's next reply: an output/ file past the caller's cursor, or the
 # reason none will come.
 RSpec.describe Samagotchi::ReplyWait do
+  # A reply's session left running in the fixture never gets the worker's
+  # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for: 0.1 s
+  # here, but in an example about that wait (:real_settle).
+  before { |example| stub_const("Samagotchi::ReplyWait::SETTLE_SECONDS", 0.1) unless example.metadata[:real_settle] }
+
   let(:tmpdir) { Dir.mktmpdir("reply-wait") }
   let(:session) { make(status: "running") }
   let(:threads) { [] }
@@ -62,7 +67,7 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(wait.session.status).to eq("error")
     end
 
-    it "for a reply found before the worker's save, is the session after that save" do
+    it "for a reply found before the worker's save, is the session after that save", :real_settle do
       write_reply("hi") # the worker writes the reply, then saves idle with the turn's last_turn
       later(0.1) do
         s = Samagotchi::Session.load(session.id, state_dir: tmpdir)

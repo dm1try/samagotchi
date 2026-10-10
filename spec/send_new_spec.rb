@@ -5,6 +5,7 @@ require "stringio"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/send_command"
+require "samagotchi/reply_wait"
 
 # chi send --new: a worker session started headlessly, the way the web start
 # page does, so it shows in the web at once.
@@ -248,6 +249,9 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
 
   before do
     stub_const("Samagotchi::SendCommand::POLL_INTERVAL", 0.02)
+    # A reply's session left running in the fixture never gets the worker's
+    # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for.
+    stub_const("Samagotchi::ReplyWait::SETTLE_SECONDS", 0.1)
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
     allow(Samagotchi::SessionManager).to receive(:spawn_session) do |prompt:, **|
       make(status: "running", prompt: prompt).tap { |s| @started = s }
