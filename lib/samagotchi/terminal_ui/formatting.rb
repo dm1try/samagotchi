@@ -20,7 +20,7 @@ module Samagotchi
       # (no UI: the same text from the CLI).
       # @return [String] "(no metrics yet)" without a snapshot
       def self.format_session_metrics(snapshot)
-        (@formatter ||= Object.new.extend(Formatting)).send(:format_session_metrics, snapshot)
+        (@formatter ||= Object.new.extend(Formatting)).format_session_metrics(snapshot)
       end
 
       def format_tool_activity_line(activity, duration_ms: nil)
@@ -543,6 +543,8 @@ module Samagotchi
         value.length > width ? value[0, width] : value
       end
 
+      public
+
       # Render the analytics snapshot as a compact, user-facing report. Raw event
       # logs (debug-only) are intentionally excluded; this surface is for the REPL
       # and `chi sessions stats` (the module function above).
@@ -606,6 +608,8 @@ module Samagotchi
         end
         lines.join("\n")
       end
+
+      private
 
       # " (25.0% of the 64000 budget)" when the session's llm_context budget
       # is set and smaller than the window, else " (12.5%)": the live meter

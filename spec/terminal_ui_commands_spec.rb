@@ -34,6 +34,22 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to include("10/5")
     end
 
+    it "returns the same /stats text for the CLI through the module-level method (no private send)" do
+      metrics = agent.engine.metrics
+      metrics.call(type: :turn_started, session_id: "s", prompt: "x")
+      metrics.call(type: :generation_started)
+      metrics.call(type: :generation_chunk, payload: { "timings" => { "prompt_n" => 10, "predicted_n" => 5 } })
+      metrics.call(type: :generation_completed)
+      metrics.call(type: :turn_completed, result: double(respond_to?: false))
+
+      module_output = Samagotchi::TerminalUI::Formatting.format_session_metrics(metrics.snapshot)
+      instance_output = agent.send(:format_session_metrics, metrics.snapshot)
+      expect(module_output).to eq(instance_output)
+      expect(module_output).to include("turns:")
+      expect(module_output).to include("tokens in/out:")
+      expect(module_output).to include("10/5")
+    end
+
     it "lists the calls made under an alias's name under by tool, only when there are any" do
       base = agent.engine.metrics.snapshot.merge(tool_calls_total: 3, tool_calls_by_tool: { "execute" => 3 })
       lines = agent.send(:format_session_metrics, base.merge(tool_calls_aliased: { "bash" => 2 })).lines.map(&:chomp)
