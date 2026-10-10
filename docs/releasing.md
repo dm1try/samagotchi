@@ -79,9 +79,12 @@ The agent does each step and stops where the user has to say yes.
 8. **The user approves the `release` environment** in the Actions run
    (Review deployments → Approve).
 9. **Watch the run.** `gh run watch` (or `gh run list --workflow release.yml`).
-   It checks that the tag is `v` + VERSION and on main, builds the gem, pushes
-   it with a trusted-publishing token and creates the GitHub release with the
-   notes and the .gem attached.
+   It doesn't run the suites again: it checks that the CI workflow succeeded
+   on the tagged commit as a push to main (waiting while that run is still
+   going, stopping if it failed or never ran) and runs the full
+   `bundles:check`. Then it checks that the tag is `v` + VERSION and on main,
+   builds the gem, pushes it with a trusted-publishing token and creates the
+   GitHub release with the notes and the .gem attached.
 10. **Verify the published gem** in a clean GEM_HOME:
     ```sh
     tmp=$(mktemp -d)

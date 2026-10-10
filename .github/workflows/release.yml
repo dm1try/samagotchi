@@ -17,13 +17,55 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
-    name: specs
+  checks:
+    name: CI green on the tag, bundles
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read # the CI workflow's runs
     steps:
-      # The full history and tags: bundles:check diffs each bundle against
-      # the previous v* tag (ReleaseTools.last_tag skips the one being
-      # released, on HEAD).
+      # The suites already ran in ci.yml on this commit when it was pushed to
+      # main (runbook step 6), so this job asks for that run's result instead
+      # of running them again. A run still going is waited for; one that
+      # failed, or none at all, stops the release.
+      - name: CI result for ${{ github.sha }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          runs="repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&branch=main&per_page=1"
+          waited=0
+          while :; do
+            run=$(gh api "$runs" --jq '.workflow_runs[0] // empty | [.id, .status, (.conclusion // ""), .html_url] | @tsv')
+            if [ -z "$run" ]; then
+              # The push to main may have just landed: give its run a few minutes to appear.
+              if [ "$waited" -ge 300 ]; then
+                echo "::error::CI never ran on $TAG ($SHA) as a push to main. Push main, wait for CI to go green, then tag again (docs/releasing.md)."
+                exit 1
+              fi
+            else
+              IFS=$'\t' read -r id status conclusion url <<< "$run"
+              if [ "$status" = completed ]; then
+                if [ "$conclusion" = success ]; then
+                  echo "CI run $id succeeded on $SHA: $url"
+                  exit 0
+                fi
+                echo "::error::CI run $id on $TAG ($SHA) ended '$conclusion': $url. Fix main and tag the fixed commit, or re-run the CI jobs and then this workflow."
+                exit 1
+              fi
+              echo "CI run $id is $status; waiting ($url)"
+            fi
+            sleep 30
+            waited=$((waited + 30))
+          done
+
+      # The full check, system bundle included: ci.yml runs bundles:check[ci],
+      # which leaves the system bundle's version out. The full history and
+      # tags: it diffs each bundle against the previous v* tag
+      # (ReleaseTools.last_tag skips the one being released, on HEAD).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -31,25 +73,11 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-      # As ci.yml: parallel_rspec, grouped by the runtimes main's last run
-      # logged (restored from its cache; without one, by file size).
-      - name: Restore the spec runtime log
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: tmp/parallel_runtime_rspec.log
-          key: parallel-runtime-${{ runner.os }}-ruby-3.4-${{ github.run_id }}
-          restore-keys: parallel-runtime-${{ runner.os }}-ruby-3.4-
-      - run: bundle exec parallel_rspec -n 4
-      - run: npm ci
-      - run: npm test
       - run: bundle exec rake bundles:check
 
   publish:
     name: publish to rubygems.org
-    needs: test
+    needs: checks
     runs-on: ubuntu-latest
     environment: release
     permissions:
