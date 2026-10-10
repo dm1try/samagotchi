@@ -69,28 +69,11 @@ module Samagotchi
       end
 
       def run
-        normalized_dir = nil
-        source_owned = false
-        source_commit = nil
-        manifest = nil
-        begin
-          normalized_dir, source_owned, source_commit = SourceNormalizer.normalize(@source)
-          @bundle_dir = normalized_dir
-          @normalized_dir = normalized_dir
-          manifest = Manifest.read(dir: normalized_dir)
-        rescue SourceNormalizer::UnknownSourceError => e
-          raise InstallError, "Source normalization failed: #{e.message}"
-        rescue Manifest::ValidationError => e
-          raise InstallError, e.message if @strict
-
-          @warnings << "No manifest found — proceeding without strict manifest validation"
-        end
-
-        # Determine target scope (CLI wins over manifest).
-        cli_scope = @scope.to_s.strip.empty? ? nil : @scope
-        target_scope = cli_scope || manifest&.scope || "system"
-        target_dir = MemoryPaths.scope_dir(target_scope) or raise InstallError, "invalid scope: #{target_scope}"
-        FileUtils.mkdir_p(target_dir)
+        load_source
+        manifest = @manifest
+        normalized_dir = @bundle_dir
+        source_commit = @source_commit
+        target_scope, target_dir = resolve_target
 
         # Copy .md files and update index for each.
         @file_descriptions = manifest&.file_descriptions || {}
@@ -434,11 +417,11 @@ module Samagotchi
         # An owned source (git/zip/tar) is cleaned up here, unless an upgrade
         # kept conflicts: the agent step still needs the incoming files, so
         # the caller runs #cleanup_source! when it is done.
-        if source_owned
+        if @source_owned
           if @conflicts.any? && !@dry_run
             @defer_cleanup = true
           else
-            SourceNormalizer.cleanup(normalized_dir)
+            SourceNormalizer.cleanup(@normalized_dir)
             @normalized_dir = nil
           end
         end
@@ -473,6 +456,32 @@ module Samagotchi
       end
 
       private
+
+      # The source normalized to a dir (@bundle_dir; an owned one, extracted
+      # from git/zip/tar, is cleaned up after #run) and its manifest.yml
+      # (@manifest, nil when it has none and the install isn't strict).
+      def load_source
+        @bundle_dir, @source_owned, @source_commit = SourceNormalizer.normalize(@source)
+        @normalized_dir = @bundle_dir
+        @manifest = Manifest.read(dir: @bundle_dir)
+      rescue SourceNormalizer::UnknownSourceError => e
+        raise InstallError, "Source normalization failed: #{e.message}"
+      rescue Manifest::ValidationError => e
+        raise InstallError, e.message if @strict
+
+        @warnings << "No manifest found — proceeding without strict manifest validation"
+      end
+
+      # The scope the files go to (the CLI's wins over the manifest's) and
+      # its dir, created.
+      # @return [Array(String, String)] scope, dir
+      def resolve_target
+        cli_scope = @scope.to_s.strip.empty? ? nil : @scope
+        scope = cli_scope || @manifest&.scope || "system"
+        dir = MemoryPaths.scope_dir(scope) or raise InstallError, "invalid scope: #{scope}"
+        FileUtils.mkdir_p(dir)
+        [scope, dir]
+      end
 
       # A file already in the target dir that the install doesn't write: the
       # same bytes are "already up to date", others are skipped with a
