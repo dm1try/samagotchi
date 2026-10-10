@@ -67,89 +67,16 @@ module Samagotchi
         files_map = checksum_memories(candidates)
 
         parts = installed_parts(resolved_name, target_dir)
-        record = parts.record
-
-        # The CLI's trust_level, else the installed bundle's.
-        build_trust_level = @trust_level
-        build_trust_level = record.trust_level if (build_trust_level.nil? || build_trust_level.empty?) && record&.trust_level
-
-        # Resolve output path and format
         resolved_out, format = resolve_out_path(@out, resolved_name)
 
-        # Prepare staging dir (temp)
         staging = Dir.mktmpdir("samagotchi-build-")
         @staging_dir = staging
         begin
-          candidates.each do |src|
-            FileUtils.cp(src, File.join(staging, File.basename(src)))
-          end
-          # Copy hooks into staging/hooks/
-          unless parts.hook_files.empty?
-            hooks_staging = File.join(staging, "hooks")
-            FileUtils.mkdir_p(hooks_staging)
-            parts.hook_files.each { |basename, src| FileUtils.cp(src, File.join(hooks_staging, basename)) }
-          end
-
-          unless parts.rules.empty?
-            rules_staging = File.join(staging, "guardrails")
-            FileUtils.mkdir_p(rules_staging)
-            parts.rules.each { |src| FileUtils.cp(src, File.join(rules_staging, File.basename(src))) }
-          end
-
-          FileUtils.cp(parts.plugin, File.join(staging, File.basename(parts.plugin))) if parts.plugin
-
-          unless parts.scripts.empty?
-            FileUtils.mkdir_p(File.join(staging, "scripts"))
-            parts.scripts.each_value { |src| FileUtils.cp(src, File.join(staging, "scripts", File.basename(src))) }
-          end
-
-          Manifest.write(
-            dir: staging,
-            name: resolved_name,
-            version: resolved_version,
-            scope: @scope,
-            description: @description,
-            files: files_map,
-            hooks: parts.hooks.empty? ? nil : parts.hooks,
-            trust_level: build_trust_level,
-            plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: Digest::SHA256.hexdigest(File.binread(parts.plugin)) },
-            requires_chi: record&.requires_chi,
-            needs: record&.needs,
-            scripts: parts.scripts.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
-            context_providers: parts.context_providers,
-            file_descriptions: file_descriptions(record, files_map)
-          )
-
-          case format
-          when :zip
-            zip_staging(staging, resolved_out)
-            @out_path = resolved_out
-          when :tar_gz, :tar, :tgz
-            tar_staging(staging, resolved_out, format)
-            @out_path = resolved_out
-          when :dir
-            # Copy staging contents to out dir
-            FileUtils.mkdir_p(resolved_out)
-            # Guard: refuse to overwrite non-empty dir without force (error)
-            existing = Dir.entries(resolved_out).reject { |e| e.start_with?(".") }
-            unless existing.empty?
-              # Allow if out is the staging itself? no, staging is temp
-              # Check if out dir already has manifest.yml — treat as existing bundle
-              if File.exist?(File.join(resolved_out, "manifest.yml"))
-                raise BuildError, "Output directory already contains a bundle (#{resolved_out}/manifest.yml) — choose different --out or remove it"
-              end
-              # If dir has any files, still require explicit handling — error
-              unless existing.empty?
-                raise BuildError, "Output directory already exists and is not empty: #{resolved_out}"
-              end
-            end
-            FileUtils.cp_r("#{staging}/.", resolved_out)
-            @out_path = resolved_out
-          else
-            raise BuildError, "unknown format: #{format}"
-          end
+          stage_files(staging, candidates, parts)
+          write_manifest(staging, resolved_name, resolved_version, files_map, parts)
+          write_out(staging, resolved_out, format)
+          @out_path = resolved_out
         ensure
-          # Clean up staging temp dir unless out_path == staging (not possible for dir)
           FileUtils.rm_rf(staging) if staging && File.directory?(staging)
           @staging_dir = nil
         end
@@ -175,6 +102,39 @@ module Samagotchi
       end
 
       private
+
+      # The scope's memories to build: every *.md but index.md and hidden
+      # ones; with an allowlist the named ones (each must exist) with their
+      # model overlays, else all but those another installed bundle owns.
+      # @return [Array<String>] paths
+      def select_memories(target_dir, name)
+        candidates = Dir.glob(File.join(target_dir, "*.md")).sort
+                        .reject { |p| File.basename(p) == "index.md" || File.basename(p).start_with?(".") }
+        if candidates.empty?
+          raise BuildError, "No memories to build in #{@scope} scope (#{target_dir}): no .md files found"
+        end
+        return leave_out_owned(candidates, name) unless @filter_files && !@filter_files.empty?
+
+        allow = @filter_files.map { |f| normalize_filter_entry(f) }
+        candidates_by_basename = candidates.to_h { |p| [File.basename(p), p] }
+        missing = allow.reject { |k| candidates_by_basename.key?(k) }
+        raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(", ")}" unless missing.empty?
+
+        with_overlays(allow, candidates_by_basename).map { |k| candidates_by_basename[k] }
+      end
+
+      # file key => "sha256:<hex>" for the manifest; fills @built_files and
+      # a placeholder warning per memory with {{placeholders}}.
+      def checksum_memories(paths)
+        paths.to_h do |path|
+          key = File.basename(path)
+          content = File.read(path)
+          @built_files << key
+          names = Placeholder.new(content: content).placeholders
+          @placeholder_warnings << "#{key}: {{#{names.map(&:strip).uniq.sort.join("}}, {{")}}}" unless names.empty?
+          [key, "sha256:#{Digest::SHA256.hexdigest(content)}"]
+        end
+      end
 
       # The installed bundle's hooks (a recorded one missing on disk left
       # out; one with no recorded sha gets its file's), guardrail rules,
@@ -221,36 +181,68 @@ module Samagotchi
         )
       end
 
-      # The scope's memories to build: every *.md but index.md and hidden
-      # ones; with an allowlist the named ones (each must exist) with their
-      # model overlays, else all but those another installed bundle owns.
-      # @return [Array<String>] paths
-      def select_memories(target_dir, name)
-        candidates = Dir.glob(File.join(target_dir, "*.md")).sort
-                        .reject { |p| File.basename(p) == "index.md" || File.basename(p).start_with?(".") }
-        if candidates.empty?
-          raise BuildError, "No memories to build in #{@scope} scope (#{target_dir}): no .md files found"
+      # The memories, hooks/, guardrails/, the plugin and scripts/ into the
+      # staging dir, laid out as Installer reads a bundle.
+      def stage_files(staging, candidates, parts)
+        candidates.each { |src| FileUtils.cp(src, File.join(staging, File.basename(src))) }
+        unless parts.hook_files.empty?
+          FileUtils.mkdir_p(File.join(staging, "hooks"))
+          parts.hook_files.each { |basename, src| FileUtils.cp(src, File.join(staging, "hooks", basename)) }
         end
-        return leave_out_owned(candidates, name) unless @filter_files && !@filter_files.empty?
+        unless parts.rules.empty?
+          FileUtils.mkdir_p(File.join(staging, "guardrails"))
+          parts.rules.each { |src| FileUtils.cp(src, File.join(staging, "guardrails", File.basename(src))) }
+        end
+        FileUtils.cp(parts.plugin, File.join(staging, File.basename(parts.plugin))) if parts.plugin
+        return if parts.scripts.empty?
 
-        allow = @filter_files.map { |f| normalize_filter_entry(f) }
-        candidates_by_basename = candidates.to_h { |p| [File.basename(p), p] }
-        missing = allow.reject { |k| candidates_by_basename.key?(k) }
-        raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(", ")}" unless missing.empty?
-
-        with_overlays(allow, candidates_by_basename).map { |k| candidates_by_basename[k] }
+        FileUtils.mkdir_p(File.join(staging, "scripts"))
+        parts.scripts.each_value { |src| FileUtils.cp(src, File.join(staging, "scripts", File.basename(src))) }
       end
 
-      # file key => "sha256:<hex>" for the manifest; fills @built_files and
-      # a placeholder warning per memory with {{placeholders}}.
-      def checksum_memories(paths)
-        paths.to_h do |path|
-          key = File.basename(path)
-          content = File.read(path)
-          @built_files << key
-          names = Placeholder.new(content: content).placeholders
-          @placeholder_warnings << "#{key}: {{#{names.map(&:strip).uniq.sort.join("}}, {{")}}}" unless names.empty?
-          [key, "sha256:#{Digest::SHA256.hexdigest(content)}"]
+      # manifest.yml for the staged bundle: requires_chi, needs and the
+      # file descriptions come from the installed bundle's record, the
+      # trust_level from the CLI else the record.
+      def write_manifest(staging, name, version, files_map, parts)
+        record = parts.record
+        trust_level = @trust_level
+        trust_level = record.trust_level if (trust_level.nil? || trust_level.empty?) && record&.trust_level
+        Manifest.write(
+          dir: staging,
+          name: name,
+          version: version,
+          scope: @scope,
+          description: @description,
+          files: files_map,
+          hooks: parts.hooks.empty? ? nil : parts.hooks,
+          trust_level: trust_level,
+          plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: Digest::SHA256.hexdigest(File.binread(parts.plugin)) },
+          requires_chi: record&.requires_chi,
+          needs: record&.needs,
+          scripts: parts.scripts.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
+          context_providers: parts.context_providers,
+          file_descriptions: file_descriptions(record, files_map)
+        )
+      end
+
+      # The staged bundle to +out+: a zip or tar archive, or a directory,
+      # which must be new or empty (one holding a bundle says so).
+      def write_out(staging, out, format)
+        case format
+        when :zip then zip_staging(staging, out)
+        when :tar_gz, :tar, :tgz then tar_staging(staging, out, format)
+        when :dir
+          FileUtils.mkdir_p(out)
+          unless Dir.entries(out).reject { |e| e.start_with?(".") }.empty?
+            if File.exist?(File.join(out, "manifest.yml"))
+              raise BuildError, "Output directory already contains a bundle (#{out}/manifest.yml) — choose different --out or remove it"
+            end
+
+            raise BuildError, "Output directory already exists and is not empty: #{out}"
+          end
+          FileUtils.cp_r("#{staging}/.", out)
+        else
+          raise BuildError, "unknown format: #{format}"
         end
       end
 
