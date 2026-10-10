@@ -1,7 +1,7 @@
 # AGENT.md
 
 ## Project Overview: Samagotchi
-Samagotchi is an agent harness which heavily relies on memory. It runs via Engine + TerminalUI, using project/system memories for long-term state.
+Samagotchi is an agent harness which heavily relies on memory. It runs each session's Engine in a background Worker that terminals (TerminalUI) and the browser (`chi web`) reach through the worker's Bridge, using project/system memories for long-term state.
 
 Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the friendly shorthand used in conversational and CLI contexts.
 
@@ -11,26 +11,39 @@ Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
 **TerminalUI** (`lib/samagotchi/terminal_ui.rb`); see `docs/architecture.md`.
 - `Engine` owns all agent logic: system prompt, memory injection, tool declarations,
   session lifecycle, and the model↔tool loop (`Engine#run_turn`). No terminal coupling.
-- `TerminalUI` owns the REPL (Reline), rendering, and REPL commands; it delegates all core
-  work to an internal `Engine`.
-- Background workers (`SessionManager`) and `--prompt`/`--non-interactive` build `Engine`
-  directly. `bin/chi` interactive mode still builds `TerminalUI`.
+- A session's **Worker** (`lib/samagotchi/worker.rb`) builds its `Engine` and runs it with
+  the session's **Bridge** (`lib/samagotchi/bridge.rb`, a localhost SSE + HTTP surface);
+  `SessionManager` forks/spawns the workers. `chi web` (`Web::App`) is the browser's control
+  plane over the workers' Bridges and the session files.
+- Interactive `bin/chi` runs **attached** by default (`session.shared: true`;
+  `LaunchMode.resolve`): `TerminalUI::AttachLauncher` finds or starts the worker and
+  `TerminalUI::AttachedLoop` is a client of its Bridge, with no `Engine` in the terminal.
+  `--no-shared`, `--non-interactive` and `--verbose` run the in-process REPL instead:
+  `TerminalUI` owns the REPL (Reline), rendering and REPL commands, and delegates all core
+  work to its own `Engine`.
 - The `on_event:` seam on `run_turn` exposes raw `KernelLoop` events plus higher-level
   `:turn_started` / `:turn_completed` / `:turn_canceled` events, so any new UI can render
   without terminal coupling.
 
 ## CLI Usage (`bin/chi`)
-`TerminalUI#run` is the single dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`,
-and `--resume`. Flag semantics (also in `docs/cli.md`):
+In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--prompt`,
+`--non-interactive` and `--resume`; attached (the default), `-p` and `--resume` go to
+`TerminalUI::AttachLauncher`. Flag semantics (also in `docs/cli.md`):
 - `-p`, `--prompt TEXT`: feed `TEXT` as the first turn — feeds **and** runs it.
 - `--non-interactive`: run one turn then exit (high iteration cap; implies `--no-interrupt`).
   A harmless no-op when given without `-p` (no session created).
 - `--resume SESSION_ID`: load a prior session's history instead of creating a fresh one;
   composes with `-p` (prompt runs on the resumed session, prior history preserved as context).
-- `-p "..."` alone (no `--non-interactive`) runs one turn and **stays in the REPL**
-  (breaking change vs the old one-shot-then-exit behavior).
-- `--memory` (repeatable), `--no-interrupt`, `--no-default-input`,
-  `-v`/`--verbose`, `--help` also available; `SAMAGOTCHI_DEFAULT_INPUT` prefill (edit, not run).
+- `-p "..."` alone (no `--non-interactive`) runs one turn and **stays in the session**: the
+  attached TUI by default, the REPL with `--no-shared`.
+- `--attach ID`: attach to a session's worker (waking one if it has exited);
+  `--shared`/`--no-shared` override `session.shared` for this run.
+- `--model NAME` (this run, not saved), `--thinking LEVEL` and `--llm-context`
+  (`--llm-context-apply`, `--llm-context-budget`): the session's own thinking level and
+  LLM context strategy, saved in the session.
+- `--memory` / `--mute NAME` (both repeatable): preload a memory into the prompt / hide one
+  from the session. `--no-interrupt`, `--no-default-input`, `-v`/`--verbose`, `--help` also
+  available; `SAMAGOTCHI_DEFAULT_INPUT` prefill (edit, not run).
   The config.yml `memories:` list is the persistent baseline of preloaded memory
   entries (same name shape as `--memory`); `--memory` values are appended after
   it, deduped.

@@ -6,48 +6,51 @@ A compact visual overview of the current architecture, then the core API in pros
 ## System map
 
 ```
-                          ┌─────────────────────────────────────────┐
-                          │               bin/chi                    │
-                          │           (CLI entry point)             │
-                          └───────────────────┬─────────────────────┘
-                                              │
-                     ┌──────────────────────────┴──────────────┐
-                     │           TerminalUI                     │  ← REPL (Reline),
-                     │   render · status line · REPL commands   │    rendering, commands
-                     └──────────────────────────┬──────────────┘
-                                                  │ delegates
-                      ┌───────────────────────────┴───────────────────────┐
-                      │                    Engine (core logic)             │
-                      │   system prompt · memory injection                  │
-                      │   tool declarations · session lifecycle           │
-                      │   model↔tool loop — `run_turn`                    │
-                      └───────────────────────────┬───────────────────────┘
-                                                  │ delegates
-                     ┌────────────────────────────┴──────────────┐
-                     │             Web::App (Rack)                │ ← browser UI
-                     │   session hub · /api/events · /api/*        │   via SessionManager file IPC
-                     └───────────────────────────┬───────────────┘
-                                                   │
-        ┌───────────────────────────────┬──────────┴───────────────┬──────────────────┐
-        │                                 │                          │                  │
-  ┌─────┴─────┐                   ┌───────┴───────────┐    ┌────────┴───────┐  ┌───────┴────────┐
-  │ KernelLoop │◀── drives────────▶│     Model API      │    │    Session      │  │ SessionManager │
-  │  (the loop)│                   │   (LLM HTTP call)   │    │  (state,       │  │  (bg workers)  │
-  └─────┬──────┘                   └─────────────────────┘    │  history)      │  └────────────────┘
-      │                                                          └──────────────────┘  └────────────────┘
-      │ run_turn events (turn_started, turn_completed,
-      │ turn_canceled, raw KernelLoop events)
-      ▼
+            bin/chi (CLI entry point)                        bin/chi web
+                       │                                          │
+  ┌────────────────────┴────────────────────┐    ┌───────────────┴────────────────┐
+  │                TerminalUI               │    │        Web::App (Rack)         │  ← browser UI
+  │  attached (default): AttachLauncher +   │    │  session hub · /api/events     │
+  │    AttachedLoop, no Engine              │    │  /api/* · reads session files  │
+  │  REPL (--no-shared …): its own Engine   │    └───────────────┬────────────────┘
+  └────────────────────┬────────────────────┘                    │ App#relay, bridge_get,
+                       │ BridgeClient (SSE + HTTP)               │ /stream proxy
+                       └────────────────────┬────────────────────┘
+                                            ▼
+                      ┌─────────────────────┴─────────────────────┐
+                      │ Worker (one process per session) + Bridge │ ← forked/spawned by
+                      │ input queue · idle exit · owner.lock      │   SessionManager
+                      └─────────────────────┬─────────────────────┘
+                                            │ builds, runs turns
+                      ┌─────────────────────┴─────────────────────┐
+                      │            Engine (core logic)            │
+                      │  system prompt · memory injection         │
+                      │  tool declarations · session lifecycle    │
+                      │  model↔tool loop — `run_turn`             │
+                      └─────────────────────┬─────────────────────┘
+                                            │
+        ┌───────────────────────────────────┴──────────────────────────┐
+        │                                   │                          │
+  ┌─────┴──────┐                  ┌─────────┴──────────┐      ┌────────┴─────────┐
+  │ KernelLoop │◀──── drives ────▶│     Model API      │      │     Session      │
+  │ / ChatLoop │                  │  (LLM HTTP call)   │      │ (state, history) │
+  └─────┬──────┘                  └────────────────────┘      └──────────────────┘
+        │
+        │ run_turn events (turn_started, turn_completed,
+        │ turn_canceled, raw KernelLoop events)
+        ▼
   ┌──────────────────────────────────────────────────────────────────────────────────┐
-  │                                       Tools                                         │
-  │  execute · read · edit · write · memory · web_fetch · task_create/get/list/          │
-  │  task_stop/wait                                                                    │
-  │  declared via tool_declarations.rb                                                 │
+  │                                      Tools                                       │
+  │  execute · read · edit · write · memory_read/write · web_fetch ·                 │
+  │  task_create/get/list/stop/wait · delegate · delegate_result · ask_user_question │
+  │  register_reminder/cancel_reminder/list_reminders · send_note · list_sessions ·  │
+  │  context_read · forget_outputs (+ bundle plugin tools)                           │
+  │  declared via tool_declarations.rb                                               │
   └──────────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
   ┌──────────────────────────────────────────────────────────────────────────────────┐
-  │                                   Persistence                                      │
+  │                                   Persistence                                    │
   │   Project:  ~/.config/samagotchi/memories/projects/<repo>_<hash>/ (per git repo) │
   │   System:   ~/.config/samagotchi/memories/                                       │
   └──────────────────────────────────────────────────────────────────────────────────┘
@@ -81,6 +84,9 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
                                     (turn started / completed / canceled)
 ```
 
+That is the REPL; attached (the default) the session's `Worker` calls `Engine#run_turn` and the
+terminal renders the events it gets over the Bridge.
+
 ## Layers at a glance
 
 | Layer | Class(es) | Responsibility |
@@ -89,8 +95,8 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 | UI | `Samagotchi::TerminalUI` | REPL (Reline), rendering, REPL commands. Delegates all core work to an `Engine`. |
 | Model loops | `KernelLoop` (via `LLM::NativeBackend`), `LLM::ChatLoop` | The model↔tool loop: raw prompt or OpenAI chat API, chosen per host (see below). |
 | Adapters | `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::HTTP` | Raw-prompt servers, the OpenAI chat API, and the HTTP both share. |
-| Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, plus runtime/output-guardrails. |
-| Background | `Samagotchi::SessionManager` | Builds `Engine` directly (no terminal rendering) for workers. |
+| Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, delegate/delegate_result, ask_user_question, reminders, send_note, list_sessions, context_read, forget_outputs, plus runtime/output-guardrails. |
+| Background | `Samagotchi::Worker`, `Samagotchi::SessionManager` | `SessionManager` forks/spawns one worker process per session; its `Worker` builds the `Engine` and `Bridge` (no terminal rendering) and runs queued turns. |
 | Web | `Samagotchi::Web::App`, `Samagotchi::Web::Server`, `Samagotchi::Web::SessionHub` | Rack+WEBrick single-port `127.0.0.1:4567` (index.html + `/api/*` + SSE). The hub is chi web's projection of the session list, pushed to every tab over `GET /api/events`. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File `sessions/<uuid>.json` + sidecar `input/`/`output/`; retention 14d/500, `updated_at desc`, lazy sweep. |
 
@@ -110,15 +116,16 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
   `dismiss_question`). The worker runs in the session's `working_directory`, so `!cmd` and
   the tools don't depend on where the terminal attached from.
 - `bin/chi web` → builds `Web::Server` (Rack+WEBrick on `127.0.0.1:4567`, `--port`/`SAMAGOTCHI_WEB_PORT`, `--open`).
-- `bin/chi sessions {list,stop,delete,prune,clean}` (`SessionsCommand`; not the REPL's `SessionCommands`) → retention & ordering (`SessionRetention`, `updated_at desc`, dry-run, test-only); `stop` is `SessionManager.stop_session(wait:)`, which waits for the worker to release `owner.lock`; `delete` (`SessionDeleteCommand`) is `SessionManager.delete_session(stop:)`, which the TUI's `/exit --delete` and the web's `DELETE /api/sessions/:id` use too.
-- `--prompt`, `--non-interactive`, and `SessionManager` workers build `Engine` directly.
+- `bin/chi sessions {list,stop,restart,archive,unarchive,delete,prune,clean,stats}` (`SessionsCommand`; not the REPL's `SessionCommands`) → retention & ordering (`SessionRetention`, `updated_at desc`, dry-run, test-only); `stop` is `SessionManager.stop_session(wait:)`, which waits for the worker to release `owner.lock`; `delete` (`SessionDeleteCommand`) is `SessionManager.delete_session(stop:)`, which the TUI's `/exit --delete` and the web's `DELETE /api/sessions/:id` use too.
+- In REPL mode `TerminalUI` builds the `Engine` in process (`-p` and `--non-interactive` too);
+  otherwise the session's `Worker` (`lib/samagotchi/worker.rb`, spawned by `SessionManager`) builds it.
 
 ## Session retention & ordering
 
 - **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|owner.lock|bridge.json` (XDG-aware), and the `<uuid>/stopped` and `<uuid>/archived` marker files.
 - **Single owner:** the process running a session's Engine (worker or in-process TUI) holds a flock on `owner.lock` (`OwnerLock`); a second owner backs off, and the web answers 409 for a TUI-owned session.
 - **Status:** `status` is turn state (`idle`/`running`); liveness is the lock. A stop is the `<uuid>/stopped` marker (`Session.mark_stopped`; a resume removes it), which `Session.load` and `.summary_from_file` read as status `stopped`, so no other process rewrites a worker's session file.
-- **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, optional `KEEP_STATUS`), live-owner guard, only when `*.json` present; lazy sweep ≤1/24h from the session hub's full-probe tick (and on `GET /api/sessions`, which the page no longer calls) & `Dashboard#render_list`, manual via `bin/chi sessions prune --dry-run`.
+- **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, optional `KEEP_STATUS`), live-owner guard, only when `*.json` present; lazy sweep ≤1/24h from the session hub's full-probe tick (and on `GET /api/sessions`, which the page no longer calls), manual via `bin/chi sessions prune --dry-run`.
 - **Ordering:** `Session.list(sort:,order:,limit:,offset:)` and `GET /api/sessions?sort=&order=&limit=&offset=` default `updated_at desc`; Web UI sort/filter/pagination.
 - **Test hygiene:** `test_run` flag when `SAMAGOTCHI_ENV=test`/`RACK_ENV=test`/`CI`, targetable via `prune --test-only` / `clean`.
 
@@ -133,7 +140,7 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
 | UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
 | Model loops and adapters | `KernelLoop`, `LLM::ChatLoop`, `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::HTTP` | The model↔tool loops and the HTTP adapters they talk through (see "Model loops and adapters"). |
 | Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | The **single live client transport**: an SSE read stream + HTTP POST turn/cancel/answer surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Every session worker starts it (bound `127.0.0.1`, no auth, localhost-only). |
-| Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane via `rack`+`webrick` (serve `index.html` + `/api/*`; `/stream` proxies each session's Bridge). `bin/chi web` entrypoint. |
+| Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane via `rack`+`webrick` (serve `index.html` + `/api/*`). It talks to each worker's Bridge (`App#relay`, `bridge_get`; `/stream` proxies it) and reads the session files; no `Engine` of its own. `bin/chi web` entrypoint. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File-based `~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar `input/`/`output/`; retention (14d/500) + ordering (`updated_at desc`). |
 
 - `bin/chi` in REPL mode (see `LaunchMode` above) builds `TerminalUI`. `TerminalUI#run` is the single
@@ -141,7 +148,7 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
   builds the working session once, runs a single prompt turn when `-p` is given,
   then either exits (`--non-interactive`) or drops into the REPL carrying the
   post-turn conversation.
-- `SessionManager` background workers build `Engine` directly (no terminal rendering).
+- A session's `Worker` (spawned by `SessionManager`) builds its `Engine` (no terminal rendering).
 - `bin/chi` in attached mode (the default, `--attach`, `--shared`) builds no `Engine`: `TerminalUI::AttachLauncher` finds
   or starts the worker, and `TerminalUI::AttachedLoop` is a client of its Bridge
   (`BridgeClient#follow` for events, `post_turn`/`cancel`/`answer` for input). It
@@ -168,18 +175,23 @@ engine.run_turn(session, "hello", on_event: nil)   # => LLM::ModelResult (`.outp
 forwards the raw `KernelLoop` events unchanged (the low-level contract) and adds a few
 higher-level events so UIs get clean turn boundaries without inferring them:
 
-- `:turn_started` — `{ session_id:, prompt: }`
-- `:turn_completed` — `{ result: }` (the final `LLM::ModelResult`)
-- `:turn_canceled` — `{ cancellation_reason:, cancelled_by: }` (`cancelled_by`: the bundle or hook label that
+- `:turn_started` — `{ session_id:, prompt:, turn_id: }` (plus `continue: true` for a continue
+  turn, `images:` with the prompt's image refs)
+- `:turn_completed` — `{ result:, turn_summary:, display_pending: }` (`result`: the final
+  `LLM::ModelResult`; `display_pending`: `after_turn` hooks may still present the answer)
+- `:turn_canceled` — `{ cancellation_reason:, cancelled_by:, duration_ms: }` (`cancelled_by`: the bundle or hook label that
   stopped it, for `cancellation_reason: :hook`; else nil)
+
+A turn started with `origin:` carries it on each of these (and `:turn_failed`).
 
 Every event is a `Hash` with a `:type` symbol key; the sink must not raise (the Engine
 rescues sink errors). A new UI (web, API) supplies its own `on_event` and
 renders whatever it needs from the stream + final `Result`. The public Engine API:
 
 ```ruby
-engine.run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil) # nil: turn.max_iterations
-engine.run(session: nil, prompt: "...", on_event: nil)   # create/resume session + run
+engine.run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, # nil: turn.max_iterations
+                max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil,
+                images: [], id: nil)
 engine.system_prompt     # fully built system prompt string
 engine.session           # current session (Engine owns create/resume)
 ```
@@ -240,6 +252,9 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   `501 not_supported` with the restart hint; a Bridge `404 unknown_session`, no bridge or a
   refused connection is `503 not_live`.
 - `POST /session/:id/cancel` — cancel the running turn; `202`, or `409` when none runs.
+- `POST /session/:id/recap` — `/recap` in an attached TUI: `200 {enabled, saved, request,
+  min_user_turns}` (`{enabled: false}` without recaps); a new recap is asked for at once and
+  arrives as `:recap_ready`. Answers mid-turn too.
 - `POST /session/:id/answer` — answer the pending question; `200`, `409` when another client
   answered first or it is gone, `400` for an invalid selection. With `client_id: "cli:answer"`
   (`chi answer`, a parent agent) an allow on an approval beyond the worker's
@@ -318,8 +333,8 @@ Every route goes through `Bridge#dispatch`: an id other than the bridge's own se
 The per-session port is OS-assigned (bound to `0`) and published to a `bridge.json` sidecar
 for client discovery. `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` when the worker is not running; full history of any session is served by
-`GET /api/sessions/:id/output`). Resume/ring-buffer state is **in-memory** (v1) — durable
-cross-process resume is a staged next step, not part of v1.
+`GET /api/sessions/:id/output`). Resume/ring-buffer state is **in-memory**, per worker: a cursor from
+an earlier worker gets the `reset` snapshot, not a replay.
 
 **Session hub.** The cross-session layer (which sessions exist, who owns them, what changed)
 never pulls from the page: `chi web` runs one `Samagotchi::Web::SessionHub` (a thread inside
@@ -421,3 +436,26 @@ server (`/props`), then the host's model list, then config.
 **Keys.** A host's API key comes only from the environment variable its
 `api_key_env:` names; it never reaches config.yml, `HOSTS_JSON`, `chi self`,
 logs or events.
+
+## Other components
+
+A map of the parts the overview above doesn't name (paths under `lib/samagotchi/`):
+
+| Component | Main file(s) | What it is |
+|---|---|---|
+| Worker | `worker.rb` (`worker_idle_exit.rb`, `worker_inbound.rb`) | A session's background process: builds the `Engine` and `Bridge`, runs queued turns, exits when idle. |
+| Config | `config.rb` | Every setting as an `Entry`: env, config.yml and CLI layers ([configuration.md](configuration.md)). |
+| MemoryBundle | `memory_bundle.rb`, `memory_bundle/{installer,builder,installed_bundle,plugin_ref,bundle_hook}.rb` (`Installer`, `Builder`, `InstalledBundle`, `PluginRef`, `BundleHook`) | Installing, building and reading bundles of memories, hooks and plugins. |
+| Plugin API | `plugin/api.rb` (`Plugin::Api`), `plugin/loader.rb` | What a bundle's plugin registers: tools, commands, hooks, services ([plugins.md](plugins.md)). |
+| Shipped bundles | `bundles/` (`mcp`, `github-pr`, `loop-guard`, `skills`, `source-links`, …) | Bundles that ship with chi. |
+| Hooks | `hooks/registry.rb` (`Hooks::Registry`), `hooks/loader.rb` | Hook registration and dispatch ([hooks.md](hooks.md)). |
+| Guardrails | `guardrails.rb`, `guardrails/shell_lex.rb`, `guardrails/rules.rb`, `guardrail_wiring.rb` | The gate before every tool call: shell lexing, YAML rules, approvals ([guardrails.md](guardrails.md)). |
+| Delegation | `tools/delegate.rb`, `tools/delegate_result.rb`, `tools/delegate_wait.rb`, `child_reports.rb`, `relay_desk.rb` | Child sessions a session starts and waits on, and their approval relay ([sessions.md](sessions.md#delegating)). |
+| send / broadcast | `send_command.rb` (`SendCommand`), `broadcast_command.rb` (`BroadcastCommand`), `broadcast/` | `chi send` and `chi broadcast` ([broadcast.md](broadcast.md), [sub-agent.md](sub-agent.md)). |
+| Idle work | `idle_scheduler.rb` (`IdleScheduler`), `idle_recap.rb` (`IdleRecap`), `idle_reminders.rb` | One poller for an idle session's recap and reminders. |
+| Attached context | `context_sources.rb` (`ContextSources`), `context_poller.rb`, `context_absorber.rb` | External sources a session keeps fresh ([context.md](context.md)). |
+| LLM context strategies | `llm_context_strategy.rb`, `llm_context_view.rb`, `llm_context_stale.rb`, `llm_context_forget.rb` | What a request sends of the history (none, stale, forget) ([internals/llm-context-forget.md](internals/llm-context-forget.md)). |
+| Session chains | `session_continue.rb` (`SessionContinue`), `session_chain.rb` (`SessionChain`) | A session that continues an earlier one. |
+| Analytics | `analytics_file.rb` (`AnalyticsFile`) | A session's `analytics.json` (`SessionMetrics#persist`). |
+| Images / vision | `image_store.rb` (`ImageStore`), `vision_support.rb`, `vision_context.rb` | Stored prompt images and whether a model takes them. |
+| Desktop | `desktop.rb`, `desktop/macos.rb`, `desktop_command.rb` | `chi desktop`, the macOS "Send to chi" helper ([desktop.md](desktop.md)). |
