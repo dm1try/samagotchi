@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "tool_activity"
-require_relative "tool_view"
+require_relative "tool_row_fields"
 require_relative "guardrails"
 require_relative "vision_context"
 require_relative "log"
@@ -54,14 +54,10 @@ module Samagotchi
       started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
                   tool: call[:name], call: call.dup, params: params }
       started[:label] = label if label
-      # The worker runs in its session's working directory.
-      title = ToolActivity.tool_title(call[:name], call, cwd: Dir.pwd)
-      started[:title] = title if title
-      # The name the model called it by when that was an alias's (bash).
-      started[:called_as] = call[:called_as] if call[:called_as]
-      # The full command for a richer UI (params stays cut at 80).
-      view = ToolView.for(call[:name], call)&.to_h
-      started[:view] = view if view
+      # Its title, called_as and view (ToolRowFields); the worker runs in
+      # its session's working directory.
+      fields = ToolRowFields.for(call[:name], call, cwd: Dir.pwd)
+      started.merge!(fields)
       emit(on_stream_event, started)
 
       # The ask comes after tool_call_started: the UI shows the tool line,
@@ -102,8 +98,8 @@ module Samagotchi
       completed[:diff] = diff if diff
       completed[:waited_ms] = waited_ms if waited_ms
       # Also here: a UI that missed the start (a replay gap) builds its row
-      # from this event.
-      completed[:view] = view if view
+      # from this event (its title is in the activity).
+      completed.merge!(fields.slice(*ToolRowFields::EVENT_KEYS))
       emit(on_stream_event, completed)
       # After the completed event: a hook's card (check-in, skills) prints
       # under the call's tool row, not before it.

@@ -116,6 +116,24 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts].last).to include(tool: "mcp_chrome_screenshot", label: "chrome: screenshot")
   end
 
+  it "carries every ToolRowFields key live -> snapshot -> replay, each in its place" do
+    fields = Samagotchi::ToolRowFields::KEYS.to_h { |key| [key, { "value" => key.to_s }] }
+    activity_fields = fields.slice(*Samagotchi::ToolRowFields::ACTIVITY_KEYS)
+    event_fields = fields.slice(*Samagotchi::ToolRowFields::EVENT_KEYS)
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "edit", params: "p", **fields },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "edit", output: "ok",
+           activity: { tool: "edit", status: "ok", **activity_fields }, **event_fields })
+
+    expect(acc.current_turn[:parts].last).to include(fields)
+    started, completed = described_class.replay_events(acc.current_turn).last(2)
+    expect(started).to include(type: :tool_call_started, **fields)
+    expect(completed).to include(type: :tool_call_completed, **event_fields)
+    expect(completed[:activity]).to include(activity_fields)
+    expect(completed.keys & Samagotchi::ToolRowFields::ACTIVITY_KEYS).to be_empty
+    expect(completed[:activity].keys & Samagotchi::ToolRowFields::EVENT_KEYS).to be_empty
+  end
+
   it "keeps a tool call's title on its part" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: 'command="cd /x && ls"', title: "ls" })

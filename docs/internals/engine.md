@@ -206,7 +206,11 @@ One iteration with tool calls:
 - Runs the gate first, so `:tool_call_started` shows the call that will run (a before_tool_call hook may
   replace it; known-names corrects a misspelled name this way, and the model gets one line saying what ran).
 - Emits `:tool_call_started` {iteration, call_count, call_index, tool, call, params, label (plugin tools),
-  title, view}.
+  title, called_as, view}. The row fields (title, called_as, view) come from `ToolRowFields.for`, which the
+  reload (`Web::MessageParts#tool_part`) calls too. `ToolRowFields::ACTIVITY_KEYS` (title, called_as) travel
+  inside `activity` on the completed event; `EVENT_KEYS` (view) go top-level on both events.
+  `Bridge::TurnAccumulator` (snapshot and replay) and the web (`activity.js` `ACTIVITY_FIELDS` /
+  `EVENT_FIELDS`) copy them by these lists, so a new row field is added there.
 - Settles an ask verdict after `:tool_call_started`, so a UI shows the tool line and then the approval.
 - Dispatches through `KernelLoop#dispatch_tool_call`, or writes the denial text. Unknown tools are answered in
   `KernelLoop#dispatch` ("Error: no such tool ...", never repeating the wrong name).

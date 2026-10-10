@@ -3,7 +3,7 @@
 require_relative "../model_profile"
 require_relative "../tool_call_parser"
 require_relative "../tool_activity"
-require_relative "../tool_view"
+require_relative "../tool_row_fields"
 require_relative "../llm/native_tool_normalizer"
 require_relative "../tools/builtins"
 require_relative "../image_store"
@@ -231,15 +231,10 @@ module Samagotchi
         name = call[:name].to_s
         params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
         part = { tool: name, params: params.to_s }
-        title = ToolActivity.tool_title(name, call, cwd: cwd)
-        part[:title] = title if title
-        # The name the model called it by when that was an alias's (the
-        # saved call is rebuilt by BuiltinCalls, which sets it again).
-        part[:called_as] = call[:called_as] if call[:called_as]
-        # Built from the saved call (never saved itself), so older sessions
-        # get it too.
-        view = ToolView.for(name, call)&.to_h
-        part[:view] = view if view
+        # Its title, called_as and view (ToolRowFields), built from the saved
+        # call (never saved themselves), so older sessions get them too. The
+        # saved call is rebuilt by BuiltinCalls, which sets called_as again.
+        part.merge!(ToolRowFields.for(name, call, cwd: cwd))
         part[:label] = label if label.is_a?(String) && !label.empty?
         unless output.nil?
           part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output

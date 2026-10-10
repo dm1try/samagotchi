@@ -3,6 +3,7 @@
 require_relative "../events"
 require_relative "../kernel_loop"
 require_relative "../steer"
+require_relative "../tool_row_fields"
 require_relative "turn_notice"
 
 module Samagotchi
@@ -158,9 +159,10 @@ module Samagotchi
       def self.tool_replay_events(part)
         call = { iteration: part[:iteration], call_index: part[:call_index], tool: part[:tool] }
         call[:label] = part[:label] if part[:label]
-        # Its title and, for an alias's call, the name the model used.
-        title = part.slice(:title, :called_as).compact
-        view = part[:view] ? { view: part[:view] } : {}
+        # Its row fields (ToolRowFields), each in its place: title and, for
+        # an alias's call, the name the model used, also in the activity.
+        title = part.slice(*ToolRowFields::ACTIVITY_KEYS).compact
+        view = part.slice(*ToolRowFields::EVENT_KEYS).compact
         events = [{ type: :tool_call_started, **call, params: part[:params], **title, **view }]
         if part[:status] == "running"
           events.first[:elapsed_ms] = part[:elapsed_ms] unless part[:elapsed_ms].nil?
@@ -275,9 +277,7 @@ module Samagotchi
           part = { kind: "tool", iteration: event[:iteration], call_index: event[:call_index],
                    tool: event[:tool], params: event[:params], status: "running" }
           part[:label] = event[:label] if event[:label]
-          part[:title] = event[:title] if event[:title]
-          part[:called_as] = event[:called_as] if event[:called_as]
-          part[:view] = event[:view] if event[:view]
+          ToolRowFields::KEYS.each { |key| part[key] = event[key] if event[key] }
           parts << part
           @tool_started_at[[event[:iteration], event[:call_index]]] = @clock.call
         when :tool_call_completed
