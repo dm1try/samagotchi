@@ -481,26 +481,8 @@ module Samagotchi
     # (a bundle's too).
     def command_like?(text) = text.to_s.lstrip.start_with?("/", "!")
 
-    # The UI-only built-in command +text+ (stripped) is a line of (/stats,
-    # /exit, …), or nil: the worker never runs it, so chi send must not pass
-    # it on. What the UIs run: the line as the entry's match takes it — bare
-    # "exit" too (/exit's match), but not with arguments ("/exit --delete" is
-    # a UI line; "/stats please" is a prompt), as in a terminal.
-    # @return [Commands::Registry::Entry, nil]
-    def local_command(text)
-      line = text.to_s.strip
-      return nil unless command_like?(line) || line.match?(/\Aexit\z/i)
-
-      entry = SessionCommands.builtin_registry.lookup_local(line)
-      # Only the exact line the UI runs: "/stats please" is a prompt, and
-      # "/exit --delete" is left to the worker (the TUI runs it as /exit, the
-      # worker answers its unknown-command way). Bare "exit" is /exit's line
-      # as its match takes it; the reply names the command, /exit.
-      return nil unless entry
-      return entry if line == entry.name
-
-      line.match?(/\Aexit\z/i) ? entry : nil
-    end
+    # @return [Commands::Registry::Entry, nil] SessionCommands.ui_only_entry
+    def local_command(text) = SessionCommands.ui_only_entry(text)
 
     # A UI-only command: nothing is sent (with --new, no session is created
     # either). /stats points at its model-free reader and names the session;
@@ -525,13 +507,7 @@ module Samagotchi
       CLI::Exit::FAILED
     end
 
-    # Why a UI-only command isn't sent: /stats points at its model-free
-    # reader (naming the session when there is one).
-    def local_refusal(name, id)
-      return "#{name} is a terminal and web command; chi send doesn't run it" unless name == "/stats"
-
-      "#{name} is a terminal and web command; use chi sessions stats #{id ? id[0, 8] : "ID"}"
-    end
+    def local_refusal(name, id) = SessionCommands.ui_only_refusal(name, id, runner: "chi send")
 
     # --wait after a message that ran as a session command: no reply comes
     # for it. Its output shows where the session is open.

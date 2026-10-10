@@ -551,6 +551,34 @@ file2.rb")
       expect(ended).to eq(:turn_failed)
     end
 
+    # A UI's own command (/stats, /exit …) is no prompt either: refused as
+    # chi send refuses it, before any session is made (bin/chi exits 1).
+    it "refuses a -p UI-only command with --non-interactive: a line on stderr, no turn, no session" do
+      expect(client).not_to receive(:complete)
+      agent = described_class.new(prompt: "/stats", client: client, non_interactive: true)
+      before = Samagotchi::SessionManager.list_sessions.map(&:id)
+
+      ended = nil
+      expect do
+        expect { ended = agent.run }.not_to output.to_stdout
+      end.to output("chi: refused: /stats is a terminal and web command; use chi sessions stats ID\n").to_stderr
+      expect(ended).to eq(:turn_failed)
+      expect(Samagotchi::SessionManager.list_sessions.map(&:id)).to eq(before)
+    end
+
+    it "names the resumed session in a refused -p /stats, and refuses /exit the plain way" do
+      resumed = repl_session
+      resumed.messages = [{ role: "system", content: "system" }]
+      resumed.save
+      expect(client).not_to receive(:complete)
+      agent = described_class.new(prompt: "/stats", client: client, non_interactive: true, session_id: resumed.id)
+      expect { agent.run }.to output(/use chi sessions stats #{resumed.id[0, 8]}\n/).to_stderr
+
+      agent = described_class.new(prompt: "/exit", client: client, non_interactive: true)
+      expect { agent.run }
+        .to output("chi: refused: /exit is a terminal and web command; --non-interactive doesn't run it\n").to_stderr
+    end
+
     # stdout is the answer's alone: the session line goes to stderr.
     it "exits normally when the -p --non-interactive turn answers: the answer on stdout, the session on stderr" do
       allow(client).to receive(:complete).and_return("done")

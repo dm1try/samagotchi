@@ -238,6 +238,10 @@ module Samagotchi
       # --non-interactive with no --prompt is a harmless no-op exit: build
       # nothing and return (no transient session, no banner).
       return if @non_interactive && @prompt.nil?
+      # A UI-only command (/stats, /exit …) isn't run without the REPL, and
+      # isn't a prompt either: refused as chi send refuses it, before any
+      # session is made (bin/chi exits 1).
+      return refuse_one_shot_ui_command if @non_interactive && SessionCommands.ui_only_entry(@prompt)
 
       session = @resume_session || @engine.store_model!(Session.new_session(
         mode: "assist",
@@ -369,6 +373,14 @@ module Samagotchi
       @surface.commit(result.output) unless result.output.to_s.empty?
       session.save unless Array(result.changed).empty?
       :turn_failed if result.status == :error
+    end
+
+    # `chi -p /stats --non-interactive`: why it doesn't run, on stderr.
+    # @return [Symbol] :turn_failed
+    def refuse_one_shot_ui_command
+      name = SessionCommands.ui_only_entry(@prompt).name
+      warn "chi: refused: #{SessionCommands.ui_only_refusal(name, @resume_session&.id, runner: "--non-interactive")}"
+      :turn_failed
     end
 
     # Ctrl-C in a -p --non-interactive turn: the Engine kept the prompt and

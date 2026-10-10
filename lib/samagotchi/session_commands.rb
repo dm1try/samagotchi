@@ -141,6 +141,34 @@ module Samagotchi
       @builtin_registry ||= register_builtins(Commands::Registry.new).freeze
     end
 
+    # The UI-only built-in command +text+ is a line of (/stats, /exit, …), or
+    # nil: neither a worker nor a one-shot run (chi send, chi -p
+    # --non-interactive) runs it, so they refuse it rather than send it to
+    # the model as a prompt. What the UIs run: the line as the entry's match
+    # takes it — bare "exit" too (/exit's match), but not with arguments
+    # ("/exit --delete" is a UI line; "/stats please" is a prompt), as in a
+    # terminal.
+    # @return [Commands::Registry::Entry, nil]
+    def self.ui_only_entry(text)
+      line = text.to_s.strip
+      return nil unless line.start_with?("/", "!") || line.match?(/\Aexit\z/i)
+
+      entry = builtin_registry.lookup_local(line)
+      return nil unless entry
+      return entry if line == entry.name
+
+      line.match?(/\Aexit\z/i) ? entry : nil
+    end
+
+    # Why a UI-only command isn't run by +runner+ ("chi send"): /stats points
+    # at its model-free reader (naming the session +id+ when there is one).
+    # @return [String]
+    def self.ui_only_refusal(name, id, runner:)
+      return "#{name} is a terminal and web command; #{runner} doesn't run it" unless name == "/stats"
+
+      "#{name} is a terminal and web command; use chi sessions stats #{id ? id[0, 8] : "ID"}"
+    end
+
     # The name of this chi's own session command +line+ is (one a worker
     # runs), or nil. A worker that answers such a line unknown_command runs
     # an older chi that doesn't have it yet (/llm-context against 0.39.0):

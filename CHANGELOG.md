@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
   its trust level, which reinstalled over the profile would lose its members.
 - Web: Tab completion in the composer offers `/cut` (`/cu` + Tab); the terminals' own commands (`/stats`,
   `/exit` …) stay out of it.
+- `chi -p /stats --non-interactive` (and `/exit`, `/recap` … — the terminals' own commands) is refused with a line
+  on stderr, as `chi send` refuses them, instead of going to the model as a prompt; it exits 1 and makes no session.
 
 ## [0.52.0] - 2026-10-10
 
