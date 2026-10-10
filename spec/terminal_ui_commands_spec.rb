@@ -142,6 +142,14 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, {})).not_to include("llm context")
     end
 
+    it "shows the thinking level with where it came from in /stats, string keys or symbol ones" do
+      expect(agent.send(:format_session_metrics, { thinking: { level: "low", source: "session", own: "low" } }))
+        .to include("thinking:         low (session)")
+      expect(agent.send(:format_session_metrics, { thinking: { "level" => "default", "source" => nil } }))
+        .to include("thinking:         default")
+      expect(agent.send(:format_session_metrics, {})).not_to include("thinking:  ")
+    end
+
     it "names a set budget with its tokens and where it came from, string keys or symbol ones" do
       stringy = { "strategy" => "stale", "strategy_where" => "the session", "apply" => "turn_end",
                   "apply_where" => "llm_context.apply", "budget_tokens" => 64_000, "budget_where" => "the session" }

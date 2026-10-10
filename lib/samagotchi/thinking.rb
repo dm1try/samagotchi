@@ -132,6 +132,22 @@ module Samagotchi
       nil
     end
 
+    # What a level change costs the prompt cache on +target+ (/thinking's
+    # note; a confirm step may ask before the costly ones):
+    #   :full      the native Gemma 4 prompt starts with <|think|>, so the
+    #              whole prompt is read again;
+    #   :provider  a chat host gets other request fields: a local llama.cpp
+    #              or Splash server keeps its cache, a hosted API may not;
+    #   :tail      native Qwen and the rest: only the tail changes.
+    # @param target [HostRegistry::ModelTarget]
+    # @param profile [String, nil] the native prompt profile's name
+    # @return [Symbol]
+    def cache_cost(target, profile: nil)
+      return :provider if target.entry&.chat?
+
+      profile == "gemma4" ? :full : :tail
+    end
+
     # Request fields for an OpenAI-style chat host. off sends both switches
     # (the template's enable_thinking and the OpenAI-style reasoning_effort
     # "none"): llama.cpp, Splash and OpenRouter each honour one of them.

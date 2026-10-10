@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `/thinking` shows the thinking level the next turn runs at and where it came from; `/thinking off|low|medium|high`
+  sets the session's own level (saved with the session, first in the order), `/thinking default` unsets it. A change
+  waits for the turn's end, and the reply says what it costs the prompt cache. `/model` and `/stats` show
+  `low (session)`; a continue and a plugin's fork keep the level, a delegate starts without it.
+
 ### Changed
 
 - `llm_context.budget_tokens` (and a model's or host's `llm_context_budget_tokens`) takes `64k` and `off` like

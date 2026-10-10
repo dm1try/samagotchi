@@ -483,6 +483,20 @@ the same values on its `llm context:` line. The web's info bar shows them as the
 through `/llm-context`. See "LLM context: a session's own strategy" in
 [configuration.md](configuration.md).
 
+`/thinking` shows the thinking level the next turn runs at and where it came
+from (`session`, `--thinking` / `SAMAGOTCHI_THINKING_LEVEL`, `models: <key>`,
+`hosts.<name>`, `thinking.level`). `/thinking off|low|medium|high` sets the
+session's own level, which comes first; `/thinking default` unsets it. It is
+saved with the session (a `--resume`, a continue and `/model` keep it) and
+applies from the next turn's start; the reply says what the change costs the
+prompt cache: the whole prompt on native Gemma 4 (its `<|think|>` starts the
+prompt), only the tail on native Qwen, and other request fields on a chat host
+(a local llama.cpp or Splash server keeps its cache; a hosted API such as
+OpenRouter → Claude or OpenAI may restart its own). `/thinking` alone answers
+mid-turn too; a change sent while a turn runs waits for the turn's end, and
+skips that turn's warm-up. `/stats` shows the level on its `thinking:` line.
+See "Thinking" in [configuration.md](configuration.md).
+
 ### Typing during a turn
 
 The prompt stays open while a turn runs, in an attached terminal and in the plain
@@ -510,10 +524,10 @@ REPL alike:
 - Commands answer, wait or are refused, by what they do:
   - At once, beside the turn: `/stats`, `/recap`, `/help`, `/context`, a
     plugin's anytime command (`/btw`), and the commands that only show
-    something: `/models` (with a filter too), and `/model`, `/llm-context` and
-    `/guardrails` alone.
+    something: `/models` (with a filter too), and `/model`, `/llm-context`,
+    `/thinking` and `/guardrails` alone.
   - After the turn: the ones that change something (`/model X`, `/model clear`,
-    `/llm-context strategy …`, `/guardrails revoke N`) and `!cmd`, whose output
+    `/llm-context strategy …`, `/thinking LEVEL`, `/guardrails revoke N`) and `!cmd`, whose output
     joins the conversation. `(queued: runs after this turn)` says so at once (the
     web draws the command's bubble dashed, with the same words, until it ran);
     when the turn ends they run in the order sent, a prompt sent before one

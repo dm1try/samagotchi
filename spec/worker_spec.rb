@@ -961,6 +961,22 @@ RSpec.describe Samagotchi::Worker do
         expect(shown[:output]).to start_with("llm context: stale (the session)")
       end
 
+      it "runs /thinking: the session keeps its own level, and the command_ran carries the level the next turn runs at" do
+        start_worker(poll_interval: 5)
+
+        done = ran(JSON.parse(post_command("/thinking low").body)["command_id"])
+
+        expect(done).to include(status: "ok", changed: ["thinking"])
+        expect(done[:thinking]).to eq(level: "low", source: "session", own: "low")
+        expect(done[:output]).to start_with("thinking: low (session)\nFrom the next turn's start")
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).thinking).to eq(:low)
+        shown = ran(JSON.parse(post_command("/thinking").body)["command_id"])
+        expect(shown).not_to have_key(:thinking)
+        expect(shown[:output]).to eq("thinking: low (session)")
+        switched = ran(JSON.parse(post_command("/model clear").body)["command_id"])
+        expect(switched[:thinking]).to include(level: "low", source: "session")
+      end
+
       it "runs a plugin command, and the cards it shows follow its command_ran (as its output)" do
         engine.command_registry.register("/hi", "greet", source: "b") do |_args|
           engine.show_card(source: "b", title: "Hi card")

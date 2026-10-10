@@ -11,6 +11,7 @@ require_relative "tools/context_read"
 require_relative "tools/peers"
 require_relative "commands/registry"
 require_relative "llm_context_command"
+require_relative "thinking_command"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
@@ -29,6 +30,7 @@ module Samagotchi
     CONTEXT_COMMAND = "/context"
     HELP_COMMAND = "/help"
     LLM_CONTEXT_COMMAND = LLMContextCommand::NAME
+    THINKING_COMMAND = ThinkingCommand::NAME
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
     MODELS_PER_HOST = 20
@@ -88,6 +90,8 @@ module Samagotchi
       # Setting it saves the session; it takes effect at the next turn's start.
       registry.register(LLM_CONTEXT_COMMAND, "show or set this session's LLM context strategy, apply rule and budget",
                         id: :llm_context, mid_turn: show_mid_turn(LLM_CONTEXT_COMMAND), match: ->(text) { text.match?(%r{\A/llm-context(?:\s+.*)?\z}) }) { |text| llm_context(text) }
+      registry.register(THINKING_COMMAND, "show or set this session's thinking level (off|low|medium|high|default)",
+                        id: :thinking, mid_turn: show_mid_turn(THINKING_COMMAND), match: ->(text) { text.match?(%r{\A/thinking(?:\s+.*)?\z}) }) { |text| thinking(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
@@ -386,14 +390,25 @@ module Samagotchi
     # /llm-context (LLMContextCommand); :llm_context in changed when it set
     # the session's values.
     def llm_context(text)
-      output, changed = LLMContextCommand.new(engine: @engine, save: ->(session) { save_llm_context(session) })
+      output, changed = LLMContextCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
                                          .run(text.delete_prefix(LLM_CONTEXT_COMMAND))
       reply(output, changed: changed ? [:llm_context] : [])
     rescue ArgumentError => e
       reply(e.message, status: :error)
     end
 
-    def save_llm_context(session)
+    # /thinking (ThinkingCommand); :thinking in changed when it set the
+    # session's level.
+    def thinking(text)
+      output, changed = ThinkingCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                       .run(text.delete_prefix(THINKING_COMMAND))
+      reply(output, changed: changed ? [:thinking] : [])
+    rescue ArgumentError => e
+      reply(e.message, status: :error)
+    end
+
+    # A session setting changed (/llm-context, /thinking): saved with its model.
+    def save_setup(session)
       @engine.store_model!(session)
       @save.call(session)
     end

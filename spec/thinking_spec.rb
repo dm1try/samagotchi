@@ -192,6 +192,17 @@ RSpec.describe Samagotchi::Thinking do
     end
   end
 
+  describe ".cache_cost" do
+    let(:native) { Struct.new(:entry).new(Struct.new(:chat?).new(false)) }
+    let(:chat) { Struct.new(:entry).new(Struct.new(:chat?).new(true)) }
+
+    it "is the whole prompt on native Gemma, the provider's call on a chat host, the tail otherwise" do
+      expect(described_class.cache_cost(native, profile: "gemma4")).to eq(:full)
+      expect(described_class.cache_cost(native, profile: "qwen36")).to eq(:tail)
+      expect(described_class.cache_cost(chat, profile: "gemma4")).to eq(:provider)
+    end
+  end
+
   describe ".chat_fields" do
     it "sends both switches for off, reasoning_effort for an effort, nothing for default" do
       expect(described_class.chat_fields(:off)).to eq(chat_template_kwargs: { enable_thinking: false }, reasoning_effort: "none")

@@ -49,6 +49,20 @@ RSpec.describe Samagotchi::Engine, "session thinking level" do
     expect(engine.thinking_summary).to eq("medium (session)")
   end
 
+  it "carries the level and its source in both snapshots: /stats's and the web's" do
+    engine.session = session
+    engine.thinking_override = :low
+
+    expect(engine.stats_snapshot[:thinking]).to eq(level: "low", source: "session", own: "low")
+    expect(engine.session_state_snapshot[:thinking]).to eq(level: "low", source: "session", own: "low")
+  end
+
+  it "names what a level change costs the prompt cache: the tail on native Qwen, the provider's call on a chat host" do
+    expect(engine.thinking_cache_cost).to eq(:tail)
+    engine.switch_model!("oai:gpt-x")
+    expect(engine.thinking_cache_cost).to eq(:provider)
+  end
+
   it "has no level of its own to set without a session" do
     expect(engine.thinking_override).to be_nil
     expect { engine.thinking_override = :low }.to raise_error(ArgumentError, "no session yet")

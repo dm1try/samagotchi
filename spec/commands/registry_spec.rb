@@ -140,15 +140,15 @@ RSpec.describe Samagotchi::Commands::Registry do
 
     it "runs the show forms mid-turn, queues the setting forms and !cmd, refuses !rollback and /continue" do
       lines = ["/models", "/models qwen", "/model", " /model ", "/model x", "/model clear", "/llm-context",
-               "/llm-context strategy stale", "/guardrails", "/guardrails revoke 1", "/help", "/context", "!ls",
+               "/llm-context strategy stale", "/thinking", "/thinking low", "/guardrails", "/guardrails revoke 1", "/help", "/context", "!ls",
                "!rollback", "/continue"]
       expect(lines.to_h { |line| [line, builtins.mid_turn(line)] }).to eq(
         "/models" => :anytime, "/models qwen" => :anytime, "/model" => :anytime, " /model " => :anytime,
         "/model x" => :queue, "/model clear" => :queue, "/llm-context" => :anytime,
-        "/llm-context strategy stale" => :queue, "/guardrails" => :anytime, "/guardrails revoke 1" => :queue,
+        "/llm-context strategy stale" => :queue, "/thinking" => :anytime, "/thinking low" => :queue, "/guardrails" => :anytime, "/guardrails revoke 1" => :queue,
         "/help" => :anytime, "/context" => :anytime, "!ls" => :queue, "!rollback" => :refuse, "/continue" => :refuse
       )
-      expect(%w[/model /llm-context /guardrails].map { |line| builtins.anytime?(line) }).to all(be(false))
+      expect(%w[/model /llm-context /thinking /guardrails].map { |line| builtins.anytime?(line) }).to all(be(false))
       expect(builtins.anytime?("/help")).to be(true)
       expect(builtins.listing.find { |item| item[:name] == "/model" }).to include(anytime: false, mid_turn: "depends")
       # It always runs mid-turn: not a line's own policy ("depends").
@@ -157,9 +157,9 @@ RSpec.describe Samagotchi::Commands::Registry do
 
     it "offers the same Tab lists in the REPL and the attached TUI, but /detach and /queue (the REPL owns its session, and only it has an after-the-turn list)" do
       expect(builtins.completions(:repl))
-        .to eq(%w[/archive /context /continue /cut /exit /guardrails /help /llm-context /model /models /queue /quit /recap /stats])
+        .to eq(%w[/archive /context /continue /cut /exit /guardrails /help /llm-context /model /models /queue /quit /recap /stats /thinking])
       expect(builtins.completions(:attached))
-        .to eq(%w[/archive /context /continue /cut /detach /exit /guardrails /help /llm-context /model /models /quit /recap /stats])
+        .to eq(%w[/archive /context /continue /cut /detach /exit /guardrails /help /llm-context /model /models /quit /recap /stats /thinking])
     end
 
     # Both terminal UIs dispatch their own commands on these ids.
@@ -177,7 +177,7 @@ RSpec.describe Samagotchi::Commands::Registry do
     it "is frozen, and each command #run runs has a handler" do
       expect(builtins).to be_frozen
       runnable = builtins.entries.reject(&:local)
-      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model llm_context help])
+      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model llm_context thinking help])
       expect(runnable.map(&:handler)).to all(be_a(Proc))
     end
   end

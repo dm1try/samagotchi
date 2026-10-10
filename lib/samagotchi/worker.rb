@@ -783,6 +783,8 @@ module Samagotchi
       event[:queued] = true if command.waits_for_turn_end?
       # /llm-context or /model: what the next turn runs under now (the web's chip).
       event[:llm_context] = @engine.llm_context_summary if changed.intersect?(%i[llm_context model])
+      # /thinking or /model: the level the next turn runs at (the web's chip).
+      event[:thinking] = @engine.thinking_explained&.summary if changed.intersect?(%i[thinking model])
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)
     end

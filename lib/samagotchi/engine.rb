@@ -954,7 +954,7 @@ module Samagotchi
       served, served_for = served_model_for(snapshot, target: target)
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for,
                                 served_expected_by: served_expected_by(served, target: target), llm_context: llm_context_summary,
-                                prompt_notes: prompt_notes.map(&:to_h), price_host: target.entry.name)
+                                thinking: thinking_explained&.summary, prompt_notes: prompt_notes.map(&:to_h), price_host: target.entry.name)
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(target)
         if window
@@ -1051,6 +1051,14 @@ module Samagotchi
     # @return [Symbol, nil]
     def thinking_override = @session&.thinking
 
+    # What a thinking level change costs the effective model's prompt
+    # cache (Thinking.cache_cost): :full, :provider or :tail.
+    # @return [Symbol]
+    def thinking_cache_cost
+      target = @host_registry.resolve(@effective_model_name)
+      Thinking.cache_cost(target, profile: target.entry&.chat? ? nil : profile&.name)
+    end
+
     # Set the session's own thinking level (nil unsets it); the next turn's
     # start resolves it, never a running one (its TurnSettings are fixed).
     # The caller saves the session.
@@ -1127,6 +1135,7 @@ module Samagotchi
         served_expected_by: served_expected_by(served_pair[0]),
         context_status: @last_context_status&.dup || saved_context_status(metrics[:context]),
         llm_context: llm_context_summary,
+        thinking: thinking_explained&.summary,
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
         recap_inactivity_seconds: @recap&.inactivity&.to_i
