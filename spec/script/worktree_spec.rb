@@ -3,6 +3,7 @@
 require "fileutils"
 require "open3"
 require "tmpdir"
+require_relative "../support/fake_executables"
 
 # script/worktree NAME [-b BRANCH]: a worktree next to the main checkout,
 # off main, with `npm ci --prefer-offline` run in it (a fake npm here).
@@ -25,12 +26,11 @@ RSpec.describe "script/worktree" do
   before do
     FileUtils.mkdir_p(File.join(main_checkout, "script"))
     git("init", "-q", "-b", "main")
-    FileUtils.cp(script, File.join(main_checkout, "script", "worktree"))
+    FakeExecutables.copy_executable(script, File.join(main_checkout, "script", "worktree"))
     git("add", ".")
     git("commit", "-q", "-m", "init")
     FileUtils.mkdir_p(bin)
-    File.write(File.join(bin, "npm"), "#!/bin/sh\necho \"$PWD $*\" >> #{npm_log}\n")
-    FileUtils.chmod(0o755, File.join(bin, "npm"))
+    FakeExecutables.fake_executable(bin, "npm", "echo \"$PWD $*\" >> #{npm_log}")
   end
 
   def run_script(*args, from: main_checkout)

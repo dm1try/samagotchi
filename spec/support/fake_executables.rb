@@ -29,15 +29,34 @@ module FakeExecutables
   # The body a fake runs (what #fake_executable wrote).
   def fake_executable_body(dir, name) = File.read(File.join(dir, "#{name}.sh"))
 
+  # +dest+ as a copy of the executable +source+ (a script a spec runs from
+  # a temp checkout): a hard link to one copy per process, so a run of it
+  # costs no first-exec check after the first. Never write through +dest+.
+  # @return [String] dest
+  def copy_executable(source, dest)
+    @copies ||= {}
+    copy = @copies[source] ||= File.join(scratch_dir, "copy-#{@copies.size}-#{File.basename(source)}").tap do |path|
+      FileUtils.cp(source, path)
+      File.chmod(File.stat(source).mode & 0o777, path)
+    end
+    FileUtils.ln(copy, dest)
+    dest
+  rescue Errno::EXDEV
+    FileUtils.cp(source, dest)
+    dest
+  end
+
   def launcher
-    @launcher ||= begin
-      dir = Dir.mktmpdir("spec-fake-exec")
+    @launcher ||= File.join(scratch_dir, "launcher").tap do |path|
+      File.write(path, LAUNCHER)
+      File.chmod(0o755, path)
+    end
+  end
+
+  def scratch_dir
+    @scratch_dir ||= Dir.mktmpdir("spec-fake-exec").tap do |dir|
       owner = Process.pid
       at_exit { FileUtils.rm_rf(dir) if Process.pid == owner }
-      File.join(dir, "launcher").tap do |path|
-        File.write(path, LAUNCHER)
-        File.chmod(0o755, path)
-      end
     end
   end
 end

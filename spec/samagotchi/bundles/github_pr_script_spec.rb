@@ -5,6 +5,7 @@ require "tmpdir"
 require "json"
 require "open3"
 require "rbconfig"
+require_relative "../../support/fake_executables"
 
 SCRIPT = File.expand_path("../../../lib/samagotchi/bundles/github-pr/scripts/pr_context.rb", __dir__)
 load SCRIPT unless defined?(PrContext)
@@ -106,8 +107,7 @@ RSpec.describe PrContext do
 
     def fake_gh(script)
       bin = File.join(tmpdir, "bin").tap { |d| FileUtils.mkdir_p(d) }
-      File.write(File.join(bin, "gh"), "#!/bin/sh\n#{script}\n")
-      File.chmod(0o755, File.join(bin, "gh"))
+      FakeExecutables.fake_executable(bin, "gh", script)
       bin
     end
 
