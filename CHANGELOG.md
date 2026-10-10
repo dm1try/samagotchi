@@ -18,6 +18,9 @@ and commands may change between minor versions. How releases are made:
 - `/model X` (and `/model X --default`, `/model clear`, and a successful `/model X --alias NAME`) now carry the
   model's thinking level in the same place the plain `/model` reply does; a switch that fails to persist its alias
   is unchanged.
+- `chi bundle build --name <profile>` (an installed profile such as `core`) is refused with a line saying why: it used
+  to build a plain bundle of the scope's other memories under the profile's name, without its `includes:` and with
+  its trust level, which reinstalled over the profile would lose its members.
 
 ## [0.52.0] - 2026-10-10
 

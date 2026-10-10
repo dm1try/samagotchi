@@ -50,6 +50,8 @@ module Samagotchi
         validate_version!(resolved_version)
         raise BuildError, "invalid scope: #{@scope}" unless %w[system project].include?(@scope)
 
+        refuse_profile!(resolved_name)
+
         # Collect *.md files, excluding index.md and hidden files
         all_md = Dir.glob(File.join(target_dir, "*.md")).sort
         candidates = all_md.reject { |p| File.basename(p) == "index.md" }
@@ -267,6 +269,22 @@ module Samagotchi
       end
 
       private
+
+      # An installed profile (meta bundle) ships only its includes: a build
+      # under its name would make a plain bundle of the scope's memories,
+      # without the includes, carrying the profile's trust_level.
+      def refuse_profile!(name)
+        require_relative "profile"
+        data = Provenance.new(name: name).read
+        return unless Profile.installed_meta?(name, data)
+
+        shipped = File.join(SourceNormalizer::SHIPPED_DIR, name)
+        members = Profile.recorded(data, File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil)
+        raise BuildError, "#{name} is an installed profile (includes: #{members.join(", ")}): it ships only its includes, " \
+                          "so a build can't remake it; pick another --name for these memories"
+      rescue JSON::ParserError, SystemCallError, Manifest::ValidationError
+        nil
+      end
 
       # The installed bundle's scripts its record lists, file name => path
       # in its scripts/ (a missing one is left out); {} without a record.

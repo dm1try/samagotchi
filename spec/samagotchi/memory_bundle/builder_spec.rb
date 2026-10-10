@@ -79,6 +79,21 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     end
   end
 
+  it "refuses to rebuild an installed profile, which would turn it into a plain bundle without its includes" do
+    Samagotchi::MemoryBundle::Provenance.new(name: "core").write(
+      files: {}, scope: "system", version: "0.1.0", source_path: "/somewhere/core", trust_level: "reviewed",
+      includes: %w[loop-guard check-in]
+    )
+    File.write(File.join(system_dir, "work.md"), "# work\n")
+    out = File.join(tmpdir, "out-profile")
+
+    expect { described_class.new(scope: "system", name: "core", out: out).run }
+      .to raise_error(described_class::BuildError,
+                      "core is an installed profile (includes: loop-guard, check-in): it ships only its includes, " \
+                      "so a build can't remake it; pick another --name for these memories")
+    expect(File.exist?(out)).to be false
+  end
+
   it "builds hooks/*.rb and hooks: manifest round-trip" do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, name: "build-hook", trust_level: "reviewed")
     inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: "build-hook", scope: "system", force: false, strict: true)
