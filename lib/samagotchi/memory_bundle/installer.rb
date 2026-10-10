@@ -91,32 +91,8 @@ module Samagotchi
         all_hooks_in_bundle = @bundle_hooks
         hooks_files_for_provenance = @hook_files
 
-        # ── Guardrail rules: guardrails/*.yml into <bundle_dir>/guardrails/ ─
-        # The bundle's set replaces what an earlier version installed.
-        guardrails_target = provenance.guardrails_dir
-        guardrail_files_for_provenance = {}
         incoming_rules = Dir.glob(File.join(normalized_dir, "guardrails", "*.yml")).sort
-        if @dry_run
-          incoming_rules.each { |src| @results["guardrails/#{File.basename(src)}"] = { status: "would_install" } }
-        else
-          # Same bytes as installed: reported as up to date, not "Installed".
-          unchanged = incoming_rules.select do |src|
-            dest = File.join(guardrails_target, File.basename(src))
-            File.file?(dest) && FileUtils.identical?(src, dest)
-          end
-          FileUtils.rm_rf(guardrails_target)
-          unless incoming_rules.empty?
-            FileUtils.mkdir_p(guardrails_target)
-            incoming_rules.each do |src|
-              dest = File.join(guardrails_target, File.basename(src))
-              FileUtils.cp(src, dest)
-              @results["guardrails/#{File.basename(src)}"] =
-                unchanged.include?(src) ? { status: "skipped", reason: "already up to date" } : { status: "installed" }
-              guardrail_files_for_provenance[File.basename(src)] = dest
-            end
-          end
-        end
-
+        guardrail_files_for_provenance = install_guardrails(incoming_rules, provenance)
         # ── Plugin: <file> into <bundle_dir>/plugin/ (docs/plugins.md) ────
         # Like the rules, the bundle's plugin replaces an earlier one.
         plugin_file_for_provenance = install_plugin(manifest, normalized_dir, provenance)
@@ -597,6 +573,34 @@ module Samagotchi
         if (failure = Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION))
           @warnings << "Bundle #{@name}: its guardrail rules won't load: #{failure}; until chi is updated " \
                        "(chi update), guarded tool calls are refused"
+        end
+      end
+
+      # The bundle's guardrails/*.yml into <bundle_dir>/guardrails/: the
+      # set replaces what an earlier version installed. Same bytes as
+      # installed are reported up to date, not "Installed".
+      # @return [Hash{String => String}] basename => installed path ({} on a dry run)
+      def install_guardrails(incoming_rules, provenance)
+        if @dry_run
+          incoming_rules.each { |src| @results["guardrails/#{File.basename(src)}"] = { status: "would_install" } }
+          return {}
+        end
+
+        target = provenance.guardrails_dir
+        unchanged = incoming_rules.select do |src|
+          dest = File.join(target, File.basename(src))
+          File.file?(dest) && FileUtils.identical?(src, dest)
+        end
+        FileUtils.rm_rf(target)
+        return {} if incoming_rules.empty?
+
+        FileUtils.mkdir_p(target)
+        incoming_rules.to_h do |src|
+          dest = File.join(target, File.basename(src))
+          FileUtils.cp(src, dest)
+          @results["guardrails/#{File.basename(src)}"] =
+            unchanged.include?(src) ? { status: "skipped", reason: "already up to date" } : { status: "installed" }
+          [File.basename(src), dest]
         end
       end
 
