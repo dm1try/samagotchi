@@ -48,7 +48,6 @@ module Samagotchi
     FIELDS = %i[strategy apply budget_tokens].freeze
     # A field's word for "unset: follow the model" (/llm-context strategy default).
     DEFAULT_WORD = "default"
-    OFF_WORDS = %w[off 0].freeze
     # The start flags (chi, chi send --new), by field.
     FLAGS = { strategy: "--llm-context", apply: "--llm-context-apply", budget_tokens: "--llm-context-budget" }.freeze
     # The session command, and its words by field.
@@ -111,7 +110,7 @@ module Samagotchi
     end
 
     def self.file_budget(raw)
-      raw.is_a?(Integer) ? check_budget(raw) : nil
+      raw.is_a?(Integer) ? LLMContextStrategy.check_budget(raw) : nil
     end
 
     # +current+ with +words+ (field => what the user typed) applied: each
@@ -153,27 +152,9 @@ module Samagotchi
       rule || raise(ArgumentError, "unknown llm_context apply #{text} (#{LLMContextStrategy::APPLIES.join(", ")})")
     end
 
-    # The smallest and largest budget a session may set.
-    MIN_BUDGET = 4_000
-    MAX_BUDGET = 10_000_000
-
-    # "64000", "64k" or "off" (0).
+    # "64000", "64k" or "off" (0): LLMContextStrategy.budget_tokens.
     # @return [Integer] 0 for off
-    def self.parse_budget_tokens(text)
-      return 0 if OFF_WORDS.include?(text.downcase)
-
-      match = /\A(\d[\d_]*)(k)?\z/i.match(text)
-      raise ArgumentError, "a budget is a number of tokens (64000 or 64k) or off" unless match
-
-      check_budget(match[1].delete("_").to_i * (match[2] ? 1000 : 1))
-    end
-
-    # +tokens+, when 0 (off) or between MIN_BUDGET and MAX_BUDGET.
-    def self.check_budget(tokens)
-      return tokens if tokens.zero? || tokens.between?(MIN_BUDGET, MAX_BUDGET)
-
-      raise ArgumentError, "a budget of #{tokens} tokens is out of range: #{MIN_BUDGET} (4k) to #{MAX_BUDGET} (10000k), or off"
-    end
+    def self.parse_budget_tokens(text) = LLMContextStrategy.budget_tokens(text)
 
     private_class_method :file_value, :file_strategy, :file_budget
   end

@@ -961,7 +961,7 @@ without it: no ids, no tool, the same prompt.
 
 ```yaml
 llm_context:
-  budget_tokens: 64000        # optional: the [CONTEXT: …] lines count against 64k, not the window
+  budget_tokens: 64k          # optional (64000, 64k; 4k to 10M): the [CONTEXT: …] lines count against 64k, not the window
 models:
   deepseek-v4.1-flash:
     llm_context_strategy: [stale, forget]
@@ -1122,7 +1122,7 @@ described in their own sections.
 | `models.<key>.llm_context_apply`, `hosts.<name>.llm_context_apply` | none | | A model's or host's `llm_context.apply`. |
 | `llm_context.stale_edits` | `false` | | Opt-in, experimental: `stale` also stubs a read that a later successful edit or write of the file superseded. |
 | `llm_context.protect_steps` | `3` | | `stale` never stubs a read of a file edited or written in the last N steps (tool batches; counted across the whole conversation, not only the turn). `0` turns the protection off. Under `forget`, `forget_outputs` refuses an output from the last N steps, and a read of a file edited or written in them unless the forget keeps some of its lines. |
-| `llm_context.budget_tokens` | none | | A soft context budget in tokens (e.g. `64000`); off when unset or `0`. When set, the context status buckets (`context.status_thresholds`) count against it instead of the window (the smaller of the two), so the `[CONTEXT: …]` lines, `payoff`'s top bucket and, under `forget`, the `forget_outputs` offers come under it. A session's own (`--llm-context-budget`, `/llm-context budget`; `off` there wins over the model's), then `models.<key>.llm_context_budget_tokens` and `hosts.<name>.llm_context_budget_tokens` come first. |
+| `llm_context.budget_tokens` | none | | A soft context budget in tokens (`64000` or `64k`, 4k to 10M, as `/llm-context budget` takes it); off when unset, `0` or `off`; a value out of range warns and is ignored. When set, the context status buckets (`context.status_thresholds`) count against it instead of the window (the smaller of the two), so the `[CONTEXT: …]` lines, `payoff`'s top bucket and, under `forget`, the `forget_outputs` offers come under it. A session's own (`--llm-context-budget`, `/llm-context budget`; `off` there wins over the model's), then `models.<key>.llm_context_budget_tokens` and `hosts.<name>.llm_context_budget_tokens` come first. |
 | `models.<key>.llm_context_budget_tokens`, `hosts.<name>.llm_context_budget_tokens` | none | | A model's or host's `llm_context.budget_tokens`. |
 | `llm_context.policy` | the subtask-boundaries line | | The sentence `forget_outputs`' description carries (the `forget` layer): "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note what it established; keep anything you'll still edit against." Blank: none. Read when a session starts. |
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |

@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `llm_context.budget_tokens` (and a model's or host's `llm_context_budget_tokens`) takes `64k` and `off` like
+  `/llm-context budget`, with the same range (4k to 10M); a budget out of range warns and is ignored.
+
 ### Fixed
 
 - Web: the info bar's session clock ticks during a session's first turn (a session started from the start page

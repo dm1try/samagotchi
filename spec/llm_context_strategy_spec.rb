@@ -163,12 +163,39 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       expect(described_class.resolve(target, names: %w[m], models: models, session_budget: 1000).budget_tokens).to eq(1000)
     end
 
-    it "reads a positive number of tokens; anything else warns and is unset" do
+    it "reads tokens or k as /llm-context budget does (4k to 10M); off and 0 are unset; anything else warns" do
       expect(described_class.parse_budget(nil, "x")).to be_nil
       expect(described_class.parse_budget("64000", "x")).to eq(64_000)
+      expect(described_class.parse_budget(64_000, "x")).to eq(64_000)
+      expect(described_class.parse_budget("64k", "x")).to eq(64_000)
+      expect(described_class.parse_budget("48_000", "x")).to eq(48_000)
       expect { expect(described_class.parse_budget(0, "x")).to be_nil }.not_to output.to_stderr
+      expect { expect(described_class.parse_budget("off", "x")).to be_nil }.not_to output.to_stderr
       expect { expect(described_class.parse_budget("-5", "models: m")).to be_nil }
-        .to output(/models: m: llm_context budget_tokens must be a positive number of tokens; ignored/).to_stderr
+        .to output(/models: m: a budget is a number of tokens \(64000 or 64k\) or off; ignored/).to_stderr
+      expect { expect(described_class.parse_budget(1000, "hosts entry 'b'")).to be_nil }
+        .to output(/hosts entry 'b': a budget of 1000 tokens is out of range: 4000 \(4k\) to 10000000 \(10000k\), or off; ignored/)
+        .to_stderr
+    end
+
+    it "takes 64k and off in llm_context.budget_tokens, models: and hosts: (config.yml and the environment)" do
+      data = { "llm_context" => { "budget_tokens" => "64k" },
+               "models" => { "deepseek" => { "llm_context_budget_tokens" => "48k" } },
+               "hosts" => { "box" => { "host" => "h", "llm_context_budget_tokens" => "off" } } }
+      with_config(data) do |path|
+        models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
+        hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
+
+        expect(models["deepseek"][:llm_context_budget_tokens]).to eq(48_000)
+        expect(hosts["box"][:llm_context_budget_tokens]).to be_nil
+      end
+      expect { Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {}) }.not_to output.to_stderr
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with(described_class::BUDGET_SETTING)
+        .and_return(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {}))
+      expect(described_class.resolve(target, names: %w[x], models: {}).budget_tokens).to eq(64_000)
+      expect(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: {},
+                                        env: { "SAMAGOTCHI_LLM_CONTEXT_BUDGET_TOKENS" => "32k" })).to eq("32k")
     end
 
     it "is read on models: and hosts: entries, and llm_context.budget_tokens is a known setting" do
@@ -183,7 +210,8 @@ RSpec.describe Samagotchi::LLMContextStrategy do
         expect(Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).entries["box"].llm_context_budget_tokens).to eq(32_000)
       end
       expect(Samagotchi::Config.validate_yaml_sections(data)).to eq([])
-      expect(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {})).to eq(64_000)
+      expect(described_class.parse_budget(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {}),
+                                          "x")).to eq(64_000)
       expect(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: {}, env: {})).to be_nil
     end
   end

@@ -170,10 +170,10 @@ module Samagotchi
       Entry.new(key: "llm_context.stale_edits",  yaml_path: %w[llm_context stale_edits],  type: :bool,   default: false,            expose: %i[env config]),
       # The steps (tool batches) back whose edited files' reads stale never stubs.
       Entry.new(key: "llm_context.protect_steps", yaml_path: %w[llm_context protect_steps], type: :integer, default: 3,             expose: %i[env config]),
-      # A soft context budget in tokens: the context status bands (and the forget layer's offers) count against it
-      # instead of the window; unset or 0: off. models.<key>.llm_context_budget_tokens and
-      # hosts.<name>.llm_context_budget_tokens come first.
-      Entry.new(key: "llm_context.budget_tokens", yaml_path: %w[llm_context budget_tokens], type: :integer, default: nil,          expose: %i[env config]),
+      # A soft context budget in tokens (64000, 64k; 4k to 10M): the context status bands (and the forget layer's
+      # offers) count against it instead of the window; unset, 0 or off: off. models.<key>.llm_context_budget_tokens
+      # and hosts.<name>.llm_context_budget_tokens come first. Kept as written: LLMContextStrategy.parse_budget reads it.
+      Entry.new(key: "llm_context.budget_tokens", yaml_path: %w[llm_context budget_tokens], type: :string, default: nil,           expose: %i[env config]),
       # The policy sentence forget_outputs' description carries (the forget layer); blank: none.
       Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: LLMContextStrategy::DEFAULT_POLICY, expose: %i[env config]),
 

@@ -23,7 +23,7 @@ module Samagotchi
   # (false: edit-driven stale stubs are opt-in, experimental) are global only.
   #
   # A soft context budget, llm_context.budget_tokens, and per model or host
-  # the flat key llm_context_budget_tokens (a positive number of tokens),
+  # the flat key llm_context_budget_tokens (tokens or k, 4k to 10M, or off),
   # resolved as the apply rule is, each on its own: off (nil) by default.
   # When set, ContextStatus counts its bands against it instead of the
   # window (the smaller of the two), so the forget layer's offers come
@@ -103,19 +103,50 @@ module Samagotchi
       DEFAULT_APPLY
     end
 
-    # +raw+ as written, a context budget in tokens; nil for unset or 0
-    # (off). Anything but a number of tokens warns, naming +where+, and is
-    # unset.
+    # +raw+ as written in config (llm_context.budget_tokens, a models: or
+    # hosts: entry's llm_context_budget_tokens), read as /llm-context
+    # budget reads it (.budget_tokens); nil for unset, 0 or off. Anything
+    # else warns, naming +where+, and is unset.
     # @return [Integer, nil]
     def parse_budget(raw, where)
       return nil if raw.nil? || raw.to_s.strip.empty?
 
-      tokens = Integer(raw.to_s.strip, exception: false)
-      return nil if tokens&.zero?
-      return tokens if tokens&.positive?
-
-      warn_once "Warning: #{where}: llm_context budget_tokens must be a positive number of tokens; ignored"
+      tokens = budget_tokens(raw)
+      tokens.zero? ? nil : tokens
+    rescue ArgumentError => e
+      warn_once "Warning: #{where}: #{e.message}; ignored"
       nil
+    end
+
+    # The smallest and largest budget a session or the config may set.
+    MIN_BUDGET = 4_000
+    MAX_BUDGET = 10_000_000
+    BUDGET_OFF_WORDS = %w[off 0].freeze
+
+    # A budget in tokens: an Integer, "64000", "64_000", "64k", or "off"
+    # (0); the one grammar for /llm-context budget, chi
+    # --llm-context-budget and the config.
+    # @return [Integer] 0 for off
+    # @raise [ArgumentError] not a budget, or one out of MIN_BUDGET..MAX_BUDGET
+    def budget_tokens(raw)
+      return check_budget(raw) if raw.is_a?(Integer)
+
+      text = raw.to_s.strip
+      return 0 if BUDGET_OFF_WORDS.include?(text.downcase)
+
+      match = /\A(\d[\d_]*)(k)?\z/i.match(text)
+      raise ArgumentError, "a budget is a number of tokens (64000 or 64k) or off" unless match
+
+      check_budget(match[1].delete("_").to_i * (match[2] ? 1000 : 1))
+    end
+
+    # +tokens+, when 0 (off) or between MIN_BUDGET and MAX_BUDGET.
+    # @return [Integer]
+    # @raise [ArgumentError]
+    def check_budget(tokens)
+      return tokens if tokens.zero? || tokens.between?(MIN_BUDGET, MAX_BUDGET)
+
+      raise ArgumentError, "a budget of #{tokens} tokens is out of range: #{MIN_BUDGET} (4k) to #{MAX_BUDGET} (10000k), or off"
     end
 
     # Where one value came from: :session, :model_setting, :host_setting
