@@ -125,3 +125,13 @@ test("toolRowInnerHtml: the ✂ mark goes above the output, its hover naming the
   assert.match(html, /<div class="activity-edit" title="t1: ✂ forgotten: a &lt;b&gt;\nThe model is sent this instead of the output; the session keeps it.">✂ forgotten: a &lt;b&gt;<\/div><div class="activity-output"/);
   assert.doesNotMatch(toolRowInnerHtml({ key: "1:1", tool: "read", status: "ok" }), /activity-edit/);
 });
+
+test("statusParts / toolRowHtml: a grep's no-match is done, with a muted 'no match' word of its own class", () => {
+  assert.deepEqual(statusParts("ok", { noMatch: true }), { cls: "ok", label: "done", word: "no match", wordCls: "no-match" });
+  assert.deepEqual(statusParts("error", { noMatch: true }), { cls: "error", label: "error", word: "error" });
+  const html = toolRowHtml({ key: "1:1", tool: "execute", status: "ok", no_match: true, title: "rg zzz", output: "[execute]\nexit: 1 (no output)" });
+  assert.match(html, /<span class="activity-status ok" role="img" aria-label="done" title="done"><\/span>/);
+  assert.match(html, /<span class="activity-state no-match">no match<\/span>/);
+  assert.match(html, /exit: 1 \(no output\)/);
+  assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "ls" }), /no match/);
+});

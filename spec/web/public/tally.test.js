@@ -42,3 +42,14 @@ test("tallyText takes no rows", () => {
   assert.equal(tallyText(undefined), null);
   assert.equal(tallyText([]), null);
 });
+
+test("tallyText: a grep's no-match (ok, no_match) isn't a failed call; a real failure is", () => {
+  const model = newActivity();
+  const calls = [["ok", true], ["error", false], ["ok", false]];
+  calls.forEach(([status, noMatch], i) => {
+    addStarted(model, { iteration: 1, call_index: i + 1, tool: "execute", params: "command=x" });
+    addCompleted(model, { iteration: 1, call_index: i + 1, tool: "execute",
+      activity: { status, params: "command=x", ...(noMatch ? { no_match: true } : {}) } });
+  });
+  assert.match(tallyText(model.rows), /\(1 failed\)/);
+});

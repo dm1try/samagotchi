@@ -136,7 +136,8 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* A row's status is a mark in a 14 px slot, drawn from its class (no text: a copy or an annotate quote gets
    no glyph; the word is its aria-label and title). The glyphs the stage already uses: done ✓, error and
    blocked ✕, stopped ■, running its border spinner (still once the turn is over: a dead worker's row).
-   An exception also shows its word after the title (.activity-state). */
+   An exception also shows its word after the title (.activity-state); a done grep that found nothing a muted
+   "no match" (.no-match). */
 .activity-status{width:14px;text-align:center;font-size:12px;font-weight:700}
 .activity-status.ok::before{content:"\2713";opacity:.85}
 .activity-status.error::before,.activity-status.blocked::before{content:"\2715"}
@@ -149,6 +150,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 :is(.activity-status,.activity-state).error{color:var(--danger)}
 :is(.activity-status,.activity-state).stopped{color:var(--warn-text);opacity:.8}
 :is(.activity-status,.activity-state).blocked{color:var(--danger-text)}
+.activity-state.no-match{color:var(--text-muted);font-weight:500}
 .activity-tool{color:var(--accent);font-weight:600}
 /* The stop-task button on a running task_wait (task_stop.js): a small ghost
    button in the danger colours, at the row's end and in the stage's now slot. */

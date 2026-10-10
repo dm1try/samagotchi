@@ -186,3 +186,16 @@ test("a row keeps the name the model called the tool by (an alias's), from the s
   assert.equal(m.rows[0].called_as, "bash");
   assert.equal(addStarted(m, { iteration: 2, call_index: 1, tool: "read" }).row.called_as, null);
 });
+
+test("addCompleted keeps a grep's no_match on an ok row, and none on a plain one", () => {
+  const m = newActivity();
+  addStarted(m, { iteration: 1, call_index: 1, tool: "execute", params: 'command="rg zzz"' });
+  addStarted(m, { iteration: 1, call_index: 2, tool: "execute", params: 'command="ls"' });
+  const row = addCompleted(m, { iteration: 1, call_index: 1, tool: "execute", output: "[execute]\nexit: 1 (no output)",
+    activity: { status: "ok", no_match: true, tool: "execute" } });
+  const plain = addCompleted(m, { iteration: 1, call_index: 2, tool: "execute", output: "[execute]\nexit: 0",
+    activity: { status: "ok", tool: "execute" } });
+  assert.equal(row.status, "ok");
+  assert.equal(row.no_match, true);
+  assert.equal(plain.no_match, undefined);
+});
