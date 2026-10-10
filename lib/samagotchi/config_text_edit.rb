@@ -3,6 +3,7 @@
 require "json"
 require "yaml"
 require "psych"
+require_relative "yaml_lines"
 
 module Samagotchi
   # Sets one section.key in config.yml text, line by line, so the user's
@@ -15,7 +16,9 @@ module Samagotchi
   # section, anchors, a duplicate section), the whole file is dumped from
   # +expected+ instead.
   module ConfigTextEdit
-    DEFAULT_INDENT = 2
+    extend YAMLLines
+
+    DEFAULT_INDENT = YAMLLines::DEFAULT_INDENT
 
     module_function
 
@@ -42,9 +45,7 @@ module Samagotchi
       section_data = original[section]
       has_key = section_data.is_a?(Hash) && section_data.keys.any? { |k| k.to_s.downcase == key.downcase }
 
-      eol = text.include?("\r\n") ? "\r\n" : "\n"
-      lines = text.split(/(?<=\n)/)
-      lines[-1] = "#{lines[-1]}#{eol}" if lines.any? && !lines[-1].end_with?("\n")
+      lines, eol = lines_of(text)
       header = /\A#{Regexp.escape(section)}:[ \t]*(#.*)?\z/
       starts = lines.each_index.select { |i| lines[i].chomp.match?(header) }
       return nil if starts.length > 1
@@ -57,9 +58,8 @@ module Samagotchi
       end
 
       at = starts.first
-      stop = at + 1
-      stop += 1 while stop < lines.length && inside_block?(lines[stop])
-      children = lines[(at + 1)...stop].reject { |line| line.strip.empty? || comment?(line) }
+      stop = block_stop(lines, at)
+      children = lines[(at + 1)...stop].reject { |line| blank_or_comment?(line) }
       child = children.first ? indent(children.first) : DEFAULT_INDENT
       new_line = "#{" " * child}#{key}: #{scalar(value)}#{eol}"
       found = ((at + 1)...stop).find { |i| indent(lines[i]) == child && key_of(lines[i])&.downcase == key.downcase }
@@ -68,8 +68,7 @@ module Samagotchi
       else
         return nil if has_key
 
-        stop -= 1 while stop > at + 1 && (lines[stop - 1].strip.empty? || (comment?(lines[stop - 1]) && indent(lines[stop - 1]) < child))
-        lines.insert(stop, new_line)
+        lines.insert(insert_at(lines, at, stop, child), new_line)
       end
       lines.join
     end
@@ -78,30 +77,7 @@ module Samagotchi
       line[/\A\s*(["']?)([^"':#\s][^"':#]*?)\1:(?:\s|\z)/, 2]
     end
 
-    def inside_block?(line)
-      return true if line.strip.empty?
-      return false if line.start_with?("---", "...")
-
-      line.start_with?(" ", "\t") || comment?(line)
-    end
-
-    def comment?(line) = line.lstrip.start_with?("#")
-    def indent(line) = line[/\A */].length
-
     # JSON's quoting is valid YAML: model ids hold "/" and ":".
     def scalar(value) = JSON.generate(value.to_s)
-
-    def parse(text) = YAML.safe_load(text, permitted_classes: [], aliases: false)
-
-    def anchors?(text)
-      stack = [Psych.parse_stream(text)]
-      until stack.empty?
-        node = stack.pop
-        return true if node.is_a?(Psych::Nodes::Alias) || (node.respond_to?(:anchor) && node.anchor)
-
-        stack.concat(Array(node.children)) if node.respond_to?(:children)
-      end
-      false
-    end
   end
 end

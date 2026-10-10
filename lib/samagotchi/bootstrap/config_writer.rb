@@ -6,6 +6,7 @@ require "fileutils"
 require "ipaddr"
 require_relative "../atomic_file"
 require_relative "../config"
+require_relative "../yaml_lines"
 
 module Samagotchi
   module Bootstrap
@@ -15,6 +16,8 @@ module Samagotchi
     # comments), after a backup, and is checked by parsing it again: every
     # other key must be unchanged, or the backup goes back.
     class ConfigWriter
+      include YAMLLines
+
       class Error < StandardError
       end
 
@@ -33,7 +36,6 @@ module Samagotchi
       end
 
       HOSTS_LINE_RE = /\Ahosts:[ \t]*(#.*)?\z/
-      DEFAULT_INDENT = 2
       SERVER_TRANSPORTS = ConfigFile::VALID_TRANSPORTS_FOR_CONFIG
 
       # The host part of a name: localhost/127.x → local, another IP → lan,
@@ -157,9 +159,7 @@ module Samagotchi
         original = File.binread(@path).force_encoding(Encoding::UTF_8)
         return snippet(name, fields) unless data.is_a?(Hash) && !anchors?(original)
 
-        eol = original.include?("\r\n") ? "\r\n" : "\n"
-        lines = original.split(/(?<=\n)/)
-        lines[-1] = "#{lines[-1]}#{eol}" if lines.any? && !lines[-1].end_with?("\n")
+        lines, eol = lines_of(original)
         hosts_at = lines.index { |line| line.chomp.match?(HOSTS_LINE_RE) }
         return snippet(name, fields) if hosts_at.nil? && data.key?("hosts")
 
@@ -207,27 +207,13 @@ module Samagotchi
       # before trailing blank lines and comments shallower than an entry.
       # @return [index, entry indent, field indent step]
       def block_end(lines, hosts_at)
-        stop = hosts_at + 1
-        stop += 1 while stop < lines.length && inside_block?(lines[stop])
+        stop = block_stop(lines, hosts_at)
         children = lines[(hosts_at + 1)...stop].reject { |line| blank_or_comment?(line) }
         child = children.first ? indent(children.first) : DEFAULT_INDENT
         field = children.find { |line| indent(line) > child }
         step = field ? indent(field) - child : child
-        at = stop
-        at -= 1 while at > hosts_at + 1 && (lines[at - 1].strip.empty? || (comment?(lines[at - 1]) && indent(lines[at - 1]) < child))
-        [at, child, step]
+        [insert_at(lines, hosts_at, stop, child), child, step]
       end
-
-      def inside_block?(line)
-        return true if line.strip.empty?
-        return false if line.start_with?("---", "...")
-
-        line.start_with?(" ", "\t") || comment?(line)
-      end
-
-      def blank_or_comment?(line) = line.strip.empty? || comment?(line)
-      def comment?(line) = line.lstrip.start_with?("#")
-      def indent(line) = line[/\A */].length
 
       def entry_lines(name, fields, child, step)
         ["#{" " * child}#{name}:\n", *fields.map { |key, value| "#{" " * (child + step)}#{key}: #{scalar(value)}\n" }]
@@ -314,23 +300,6 @@ module Samagotchi
           ConfigFile.hosts_config(env: @env, path: real).key?(name.downcase)
       rescue StandardError
         false
-      end
-
-      def parse(text) = YAML.safe_load(text, permitted_classes: [], aliases: false)
-
-      # Anchors and aliases: chi's reader refuses aliases, and an insert
-      # can't know what an anchor shares.
-      def anchors?(text)
-        stack = [Psych.parse_stream(text)]
-        until stack.empty?
-          node = stack.pop
-          return true if node.is_a?(Psych::Nodes::Alias) || (node.respond_to?(:anchor) && node.anchor)
-
-          stack.concat(Array(node.children)) if node.respond_to?(:children)
-        end
-        false
-      rescue Psych::Exception
-        true
       end
 
       def backup_path(real)
