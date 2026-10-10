@@ -546,6 +546,18 @@ RSpec.describe "The skills bundle, installed" do
     expect(notices).to eq(["skill release was followed, a step failed, the skill wasn't updated"])
   end
 
+  it "doesn't nudge when a step of a skill it read is a grep that found nothing" do
+    File.write(File.join(system_dir, "skill_release.md"), "# Skill: release\n1. Check `grep zzz /dev/null` finds nothing.\n")
+    replies = [tool_call("memory_read", name: "skill_release"), tool_call("execute", command: "grep zzz_nothing /dev/null"),
+               "nothing there"]
+    allow(client).to receive(:complete) { replies.shift || "done" }
+
+    engine.run_turn(session, "release please")
+
+    expect(session.messages).not_to include(a_hash_including(kind: "steer", source: "skills"))
+    expect(notices).to eq([])
+  end
+
   it "installs cleanly, with no memory, as an anytime command" do
     expect(@installer.warnings).to be_empty
     entry = engine.command_registry.lookup("/skill list")

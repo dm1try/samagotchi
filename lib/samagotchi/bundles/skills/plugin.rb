@@ -25,7 +25,8 @@
 # fixing the skill: in a turn that read a skill (memory_read of a skill_*
 # name, or a read of its file), the first failing tool call after it (an
 # execute with "exit: N", N ≠ 0, or with no exit line an Error: line near
-# the top; any tool's "[tool] Error: …") steers the model once to find out
+# the top; any tool's "[tool] Error: …"; not a grep that found nothing,
+# which core counts ok) steers the model once to find out
 # why and fix the skill, unless a skill read was changed already (by any
 # tool, see above). A call a guardrail or the user denied (its first line
 # "[tool] Error: blocked by guardrail: …", "… denied by guardrail (…): …" or
