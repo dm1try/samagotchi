@@ -1,0 +1,100 @@
+import { canon, htmlOf } from "./dom_shim.js";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { chainLinkTemplate, infoBarHtml, memoriesTooltip, NEXT, PREV, renderInfoBar } from "../../../lib/samagotchi/web/public/info_bar.js";
+import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+
+const ID = "0123456789abcdef";
+
+// A bar with only what every open session has.
+const bare = {
+  id: ID, copied: false, status: "idle", model: { text: "qwen", title: "qwen", mismatch: false },
+  chain: { prev: null, next: null }, parent: null, kids: null, llmContext: null, thinking: null, notes: null,
+  memories: [], dir: "/p", ctx: { text: "ctx ?", tip: "no request yet" }, speed: null, clock: "", worker: null,
+};
+
+const markupOf = (template) => {
+  const frag = document.createDocumentFragment();
+  render(template, frag);
+  return htmlOf(frag);
+};
+
+test("infoBarHtml: a bare session's line, as the string builder wrote it", () => {
+  assert.equal(markupOf(infoBarHtml(bare)), canon(
+    `<div class="meta"><span class="id" title="${ID}">01234567</span>` +
+    `<button type="button" class="copy-attach" title="Copy &quot;chi --attach ${ID}&quot; to attach a terminal">copy chi --attach</button>` +
+    `<span class="status idle">idle</span><span class="model" title="qwen">qwen</span>` +
+    `<span class="dir" title="/p"><bdi>/p</bdi></span><span class="model ctx" title="no request yet">ctx ?</span></div>`,
+  ));
+});
+
+test("infoBarHtml: every part, in the bar's order", () => {
+  const full = {
+    ...bare, copied: true, status: "running", model: { text: "qwen", title: "served other", mismatch: true },
+    chain: { prev: { id: "aaaaaaaa1", date: "10-09", preview: "first", archived: true }, next: { id: "bbbbbbbb2", date: "", preview: "" } },
+    parent: { id: "pppppppp9", title: "Delegated by pppppppp" },
+    kids: { text: "2 delegates", title: "2 delegates", waitingText: "1 waiting" },
+    llmContext: { strategy: "stale", strategy_source: "session", strategy_where: "the session", apply: "payoff",
+                  apply_where: "llm_context.apply", budget_where: "llm_context.budget_tokens" },
+    thinking: { level: "low", source: "session", own: "low" },
+    notes: { text: "notes 1", title: "deepseek" },
+    memories: ["a", "b"],
+    speed: { text: "30 t/s", tip: "Decode speed of the last generation" },
+    clock: "session 5s",
+    worker: { badge: { text: "chi 0.53", title: "older", restart: true }, busy: true },
+  };
+  const div = document.createElement("div");
+  render(infoBarHtml(full), div);
+  const classes = [...div.querySelector(".meta").children].map((el) => el.className);
+  assert.deepEqual(classes, [
+    "id", "copy-attach", "status running", "model served-mismatch", "model chain-link", "model chain-link", "model parent",
+    "model children-chip waiting", "model llmctx-chip own", "model think-chip own", "model notes-chip", "model mem-chip",
+    "dir", "model ctx", "model speed", "model session-time", "worker-badge",
+  ]);
+  assert.equal(div.querySelector(".copy-attach").textContent, "copied ✓");
+  const [prev, next] = div.querySelectorAll(".chain-link");
+  assert.equal(prev.textContent, "← 10-09");
+  assert.equal(prev.title, "The previous link of this chain: aaaaaaaa · first (archived)");
+  assert.equal(prev.getAttribute("href"), "#/s/aaaaaaaa1");
+  assert.equal(next.textContent, "bbbbbbbb →");
+  assert.equal(div.querySelector(".parent").textContent, "delegated by pppppppp");
+  assert.equal(div.querySelector(".children-chip").textContent, "2 delegates · 1 waiting");
+  assert.equal(div.querySelector(".children-chip").title, "2 delegates (all sessions)");
+  assert.ok(div.querySelector(".think-chip").hasAttribute("data-think-chip"));
+  assert.equal(div.querySelector(".mem-chip").textContent, "mem 2");
+  assert.equal(div.querySelector(".session-time").textContent, "session 5s");
+  const restart = div.querySelector(".worker-restart");
+  assert.equal(restart.textContent, "restarting…");
+  assert.equal(restart.disabled, true);
+});
+
+test("renderInfoBar: a clock tick rewrites the clock's text alone; the bar's nodes stay", () => {
+  const el = document.createElement("div");
+  renderInfoBar(el, { ...bare, clock: "session 1s" });
+  const copy = el.querySelector(".copy-attach");
+  const clock = el.querySelector(".session-time");
+  renderInfoBar(el, { ...bare, clock: "session 2s" });
+  assert.equal(el.querySelector(".copy-attach"), copy);
+  assert.equal(el.querySelector(".session-time"), clock);
+  assert.equal(clock.textContent, "session 2s");
+});
+
+test("renderInfoBar: the memories in the tooltip; no session, no bar", () => {
+  const el = document.createElement("div");
+  renderInfoBar(el, { ...bare, memories: ["a"], preloaded: ["b"] });
+  assert.equal(el.title, "memories: a · preloaded: b");
+  renderInfoBar(el, null);
+  assert.equal(el.title, "");
+  assert.equal(el.querySelector(".meta"), null);
+});
+
+test("memoriesTooltip: the used memories always, preloaded and muted when there are any", () => {
+  assert.equal(memoriesTooltip([], [], []), "memories: —");
+  assert.equal(memoriesTooltip(["a", "b"], null, ["c"]), "memories: a, b · muted: c");
+});
+
+test("chainLinkTemplate: the short id when the link has no date", () => {
+  assert.equal(markupOf(chainLinkTemplate({ id: "cccccccc3" }, PREV, "Prev")),
+               canon('<a class="model chain-link" href="#/s/cccccccc3" title="Prev: cccccccc">← cccccccc</a>'));
+  assert.match(markupOf(chainLinkTemplate({ id: "cccccccc3", date: "10-10" }, NEXT, "Next")), />10-10 →</);
+});

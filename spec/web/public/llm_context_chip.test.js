@@ -1,9 +1,18 @@
+import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipModel, chipHtml, choiceWords, commandLine, formHtml, mergeChoice, NEW_CHAT, ownValues, parseBudget, popoverPlace,
+  chipModel, chipTemplate, choiceWords, commandLine, formHtml, mergeChoice, NEW_CHAT, ownValues, parseBudget, popoverPlace,
   strategyValue, withChoice,
 } from "../../../lib/samagotchi/web/public/llm_context_chip.js";
+import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+
+// A template's markup (lit's marker comments dropped).
+const markupOf = (template) => {
+  const frag = document.createDocumentFragment();
+  render(template, frag);
+  return htmlOf(frag);
+};
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
@@ -24,8 +33,8 @@ test("the chip names the strategy, and the session when it set its own", () => {
   assert.match(chipModel(fromModel).title, /stale \(models: qwen\); apply payoff \(llm_context.apply\); budget off/);
   assert.equal(chipModel(own).text, "llm ctx stale,forget · session");
   assert.equal(chipModel(null), null);
-  assert.equal(chipHtml(null, esc), "");
-  assert.match(chipHtml(own, esc), /class="model llmctx-chip own"/);
+  assert.equal(markupOf(chipTemplate(null)), "");
+  assert.match(markupOf(chipTemplate(own)), /class="model llmctx-chip own"/);
 });
 
 test("the form starts from the session's own values, default for the unset ones", () => {

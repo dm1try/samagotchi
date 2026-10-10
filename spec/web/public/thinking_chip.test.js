@@ -3,9 +3,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 import {
-  chipHtml, chipModel, commandLine, createThinkingControl, formTemplate, LEVELS, nowText, withChoice,
+  chipModel, chipTemplate, commandLine, createThinkingControl, formTemplate, LEVELS, nowText, withChoice,
 } from "../../../lib/samagotchi/web/public/thinking_chip.js";
 import { NEW_CHAT } from "../../../lib/samagotchi/web/public/llm_context_chip.js";
+
+// A template's markup (lit's marker comments dropped).
+const markupOf = (template) => {
+  const frag = document.createDocumentFragment();
+  render(template, frag);
+  return htmlOf(frag);
+};
 
 // The form's markup as the popover shows it (lit's marker comments dropped).
 const formHtml = (summary, opts) => {
@@ -13,8 +20,6 @@ const formHtml = (summary, opts) => {
   render(formTemplate(summary, opts), div);
   return htmlOf(div.firstElementChild);
 };
-
-const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
 const fromModel = { level: "off", source: "models: qwen", own: null };
 const own = { level: "low", source: "session", own: "low" };
@@ -26,13 +31,15 @@ test("the chip names the level, and the session when it set its own", () => {
   assert.equal(chipModel(fromModel).title, "Thinking: off (models: qwen). Click to change it for this session.");
   assert.equal(chipModel(own).text, "think low · session");
   assert.equal(chipModel(own).title, "Thinking: low (this session). Click to change it for this session.");
-  assert.match(chipHtml(own, esc), /class="model think-chip own"[^>]*data-think-chip/);
+  const chip = markupOf(chipTemplate(own));
+  assert.match(chip, /class="model think-chip own"/);
+  assert.match(chip, /data-think-chip/);
 });
 
 test("the chip hides without a summary; the default with nothing set shows, as the place to set it", () => {
   assert.equal(chipModel(null), null);
   assert.equal(chipModel({}), null);
-  assert.equal(chipHtml(null, esc), "");
+  assert.equal(markupOf(chipTemplate(null)), "");
   assert.equal(chipModel(bare).text, "think default");
   assert.equal(chipModel(bare).title, "Thinking: default (the model's own). Click to change it for this session.");
 });
