@@ -8,6 +8,7 @@ require "samagotchi/memory_bundle/installer"
 require "samagotchi/context_providers"
 require "samagotchi/answer_display"
 require "digest"
+require_relative "../../support/fake_executables"
 
 # The github-pr bundle as installed: its provider resolves PR URLs, and its
 # plugin's init task attaches the branch's open PR to the session (not to a
@@ -77,10 +78,7 @@ RSpec.describe "The github-pr bundle" do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def fake(name, script)
-    File.write(File.join(bin, name), "#!/bin/sh\n#{script}\n")
-    File.chmod(0o755, File.join(bin, name))
-  end
+  def fake(name, script) = FakeExecutables.fake_executable(bin, name, script)
 
   def on_branch_with(pr)
     fake("git", 'echo "feat/x"')
@@ -672,9 +670,9 @@ RSpec.describe "The github-pr bundle" do
       def fake_gh_with_view
         fake_gh
         fake("git", 'echo "feat/x"')
-        script = File.read(File.join(bin, "gh"))
+        script = FakeExecutables.fake_executable_body(bin, "gh")
         view = JSON.generate("number" => 42, "url" => pr_url, "state" => "OPEN", "title" => "T")
-        File.write(File.join(bin, "gh"), script.sub("case \"$*\" in\n", "case \"$*\" in\n  \"pr view\"*) echo '#{view}' ;;\n"))
+        fake("gh", script.sub("case \"$*\" in\n", "case \"$*\" in\n  \"pr view\"*) echo '#{view}' ;;\n"))
       end
 
       # The init task, a turn naming the PR and a generation check.
