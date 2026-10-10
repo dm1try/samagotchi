@@ -66,12 +66,13 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
     expect(body["detail"]).to include("continued already, by #{first["id"][0, 8]}")
   end
 
-  it "refuses dir, model or llm_context beside continues, a continues that is no id, and an unknown session" do
+  it "refuses dir, model, llm_context or thinking beside continues, a continues that is no id, and an unknown session" do
     previous = previous_link
 
     expect(create(continues: previous.id, idle: true, model: "x", dir: folder))
       .to eq([400, { "error" => "invalid_continues",
-                     "detail" => "continues takes the previous session's folder, model and llm_context; leave out dir, model" }])
+                     "detail" => "continues takes the previous session's folder, model, llm_context and thinking; leave out dir, model" }])
+    expect(create(continues: previous.id, idle: true, thinking: "low").last["detail"]).to end_with("leave out thinking")
     expect(create(continues: 7, idle: true).first).to eq(400)
     expect(create(continues: "feedbeef", idle: true)).to eq([404, { "error" => "not_found", "detail" => "no session feedbeef" }])
     expect(archived?(previous.id)).to be(false)

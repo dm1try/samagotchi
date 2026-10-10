@@ -24,6 +24,7 @@ require_relative "../host_registry"
 require_relative "../llm_context_override"
 require_relative "../model_catalog"
 require_relative "../model_profile"
+require_relative "../thinking"
 require_relative "../sampling_settings"
 require_relative "../served_model"
 require_relative "../project_scope"
@@ -477,6 +478,7 @@ module Samagotchi
           summary = SamplingSettings.summary(target, names: names, models: settings)
           model[:sampling] = summary if summary
           add_llm_context(model, target, names, settings)
+          add_thinking(model, target, names, settings)
         end
       rescue StandardError
         nil
@@ -486,6 +488,14 @@ module Samagotchi
       # one that can't be read leaves this model without, not the others.
       def add_llm_context(model, target, names, settings)
         model[:llm_context] = LLMContextStrategy.explain(target, names: names, models: settings).summary(nil)
+      rescue StandardError
+        nil
+      end
+
+      # The thinking level +model+ starts at, with where it came from (the
+      # start page's think chip; Thinking::Explained#summary, no session).
+      def add_thinking(model, target, names, settings)
+        model[:thinking] = Thinking.explain(target, names: names, models: settings).summary
       rescue StandardError
         nil
       end
@@ -524,6 +534,19 @@ module Samagotchi
       # lists count.)
       def llm_context_for(session)
         LLMContextStrategy.for_session(session, registry: host_registry)
+      end
+
+      # A session's thinking level with where it came from and its own
+      # (Thinking::Explained#summary), as its worker would resolve it; nil
+      # when it can't be. Config and the registry only: no network.
+      def thinking_for(session)
+        registry = host_registry
+        name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
+        target = registry.resolve(name)
+        names = registry.lookup_names(session.model_typed || name, resolved: name, target: target)
+        Thinking.explain(target, names: names, session: session.thinking).summary
+      rescue StandardError
+        nil
       end
 
       # Built again when config.yml's hosts: changed (compared as read: the
@@ -608,6 +631,11 @@ module Samagotchi
         llm_context, error = request_llm_context(body["llm_context"])
         return error if error
 
+        # thinking: the session's own thinking level (the start page's think
+        # chip; chi --thinking), checked the same way.
+        thinking, error = request_thinking(body["thinking"])
+        return error if error
+
         folder = dir ? { working_directory: dir } : {}
         # model: the model the session starts on (the start page's picker,
         # spelled as GET /api/models lists it); blank means the default.
@@ -618,7 +646,7 @@ module Samagotchi
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
         folder[:title] = preview unless preview.empty?
-        setup = SessionSetup.new(llm_context: llm_context)
+        setup = SessionSetup.new(llm_context: llm_context, thinking: thinking)
         folder[:setup] = setup unless setup.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
@@ -637,8 +665,8 @@ module Samagotchi
 
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
       # link of that session's chain (SessionManager.continue_session), in its
-      # folder, on its model and with its llm_context, so dir, model and
-      # llm_context are refused beside it. 409 continued (with next_id, the
+      # folder, on its model and with its llm_context and thinking level, so
+      # dir, model, llm_context and thinking are refused beside it. 409 continued (with next_id, the
       # link that continues it already: the page opens that one),
       # open_children (ids), folder_gone, busy, scratch or owned_by_tui.
       def handle_continue(body, prompt, idle)
@@ -646,9 +674,9 @@ module Samagotchi
         unless given.is_a?(String) && !given.strip.empty?
           return error_response(400, "invalid_continues", "continues is a session id")
         end
-        if (fields = %w[dir model model_name llm_context].select { |key| body.key?(key) }).any?
+        if (fields = %w[dir model model_name llm_context thinking].select { |key| body.key?(key) }).any?
           return error_response(400, "invalid_continues",
-                                "continues takes the previous session's folder, model and llm_context; " \
+                                "continues takes the previous session's folder, model, llm_context and thinking; " \
                                 "leave out #{fields.join(", ")}")
         end
 
@@ -703,6 +731,20 @@ module Samagotchi
         [nil, error_response(400, "invalid_llm_context", e.message)]
       end
 
+      # The create request's "thinking" (a level word as /thinking takes it,
+      # "default" for none) as the session's own level: [level, nil] (nil
+      # when absent or default), or [nil, a 400 response] for anything else.
+      def request_thinking(raw)
+        return [nil, nil] if raw.nil?
+
+        word = raw.is_a?(String) ? raw.strip.downcase : nil
+        unless word && Thinking::LEVELS.map(&:to_s).include?(word)
+          return [nil, error_response(400, "invalid_thinking", "thinking is one of #{Thinking::LEVELS.join(", ")}")]
+        end
+
+        [Thinking.session_level(word), nil]
+      end
+
       def handle_show(req, id)
         # The page's light re-reads: never the whole conversation.
         return handle_cards_read(id) if req.params["cards"] == "1"
@@ -752,6 +794,8 @@ module Samagotchi
         # The LLM context strategy the next turn runs under (the info bar's
         # chip): the worker's, else worked out here from the session file.
         session_json = session_json.merge(llm_context: (snapshot && snapshot["llm_context"]) || llm_context_for(session))
+        # The thinking level the next turn runs at (the think chip), the same way.
+        session_json = session_json.merge(thinking: (snapshot && snapshot["thinking"]) || thinking_for(session))
         raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
         json_response(200, {

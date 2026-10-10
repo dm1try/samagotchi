@@ -896,6 +896,23 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload.dig("session", "llm_context")).to eq("strategy" => "none")
     end
 
+    it "names the thinking level the next turn runs at: the live worker's, else read from the session file" do
+      state_dir = Dir.mktmpdir
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "Qwen3-14B", working_directory: "/tmp")
+      session.thinking = :low
+      session.save(state_dir: state_dir)
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, session_class: Samagotchi::Session)
+
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload.dig("session", "thinking")).to eq("level" => "low", "source" => "session", "own" => "low")
+
+      live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
+               "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "thinking" => { "level" => "high" } } }
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload.dig("session", "thinking")).to eq("level" => "high")
+    end
+
     it "uses the bridge event_seq when a live bridge reports it" do
       app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
       allow(app).to receive(:bridge_event_seq).and_return(12)
@@ -1645,6 +1662,33 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions with thinking" do
+    def create(manager, thinking)
+      body = JSON.generate({ "idle" => true, "thinking" => thinking })
+      status, _headers, resp = build_app(manager: manager).call(env_for("/api/sessions", method: "POST", body: body))
+      [status, JSON.parse(resp.first)]
+    end
+
+    it "starts the session with its own level, none for default" do
+      manager = FakeResponsesManager.new
+      expect(create(manager, "low").first).to eq(201)
+      expect(create(manager, " High ").first).to eq(201)
+      expect(create(manager, "default").first).to eq(201)
+
+      expect(manager.spawn_calls.map { |c| c[:extra][:setup] })
+        .to eq([Samagotchi::SessionSetup.new(thinking: :low), Samagotchi::SessionSetup.new(thinking: :high), nil])
+    end
+
+    it "answers 400 invalid_thinking for a word that isn't a level, and spawns nothing" do
+      manager = FakeResponsesManager.new
+      ["turbo", "", 3, ["low"], { "level" => "low" }].each do |bad|
+        expect(create(manager, bad)).to eq([400, { "error" => "invalid_thinking",
+                                                   "detail" => "thinking is one of off, low, medium, high, default" }]), bad.inspect
+      end
+      expect(manager.spawn_calls).to be_empty
+    end
+  end
+
   describe "POST /api/sessions idle with a preview" do
     it "names the idle session by the first message it is about to get; a prompted session takes none" do
       manager = FakeResponsesManager.new
@@ -1756,7 +1800,7 @@ RSpec.describe Samagotchi::Web::App do
 
       payload = models_payload(registry)
 
-      expect(payload["models"].map { |m| m.except("llm_context") }).to eq(
+      expect(payload["models"].map { |m| m.except("llm_context", "thinking") }).to eq(
         [{ "name" => "Gemma-4B-it", "host" => "default", "id" => "Gemma-4B-it" },
          { "name" => "work:qwen", "host" => "work", "id" => "qwen", "sampling" => "temperature=0.6 (hosts.work)" }]
       )
@@ -1778,6 +1822,21 @@ RSpec.describe Samagotchi::Web::App do
       expect(models["Gemma-4B-it"]).to include("strategy_source" => "config", "apply" => a_kind_of(String),
                                                "budget_where" => a_kind_of(String))
       expect(models["Gemma-4B-it"]["strategy"]).not_to eq("stale")
+    end
+
+    it "adds each model's thinking level with where it comes from, no session's own" do
+      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it"), model_info("qwen")], error: nil } })
+      entry = Samagotchi::HostRegistry::HostEntry.new(name: "default", host: "h", port: 1)
+      registry.define_singleton_method(:resolve) do |name|
+        Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
+      end
+      registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({ "qwen" => Samagotchi::ModelSettings.new(thinking: :off) })
+
+      models = models_payload(registry)["models"].to_h { |m| [m["name"], m["thinking"]] }
+
+      expect(models).to eq("qwen" => { "level" => "off", "source" => "models: qwen", "own" => nil },
+                           "Gemma-4B-it" => { "level" => "default", "source" => nil, "own" => nil })
     end
 
     it "leaves a model whose LLM context can't be read without one, and the later models' sampling as it is" do
