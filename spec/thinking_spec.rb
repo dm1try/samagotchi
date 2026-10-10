@@ -117,12 +117,38 @@ RSpec.describe Samagotchi::Thinking do
       YAML
     end
 
-    def resolve(path, dir, model, env: {}, cli: {})
+    def resolve(path, dir, model, env: {}, cli: {}, session: nil, how: :resolve)
       with_env({ "XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_THINKING_LEVEL" => nil }.merge(env)) do
         Samagotchi::Config.reload!(cli_overrides: cli)
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
         target = target_for(path, model)
-        described_class.resolve(target, names: [target.model, target.bare_model], models: models)
+        described_class.public_send(how, target, names: [target.model, target.bare_model], models: models, session: session)
+      end
+    end
+
+    it "takes the session's own level first, over --thinking, the env and the model entry" do
+      with_config(yaml) do |path, dir|
+        expect(resolve(path, dir, "work:qwen", session: :low)).to eq([:low, "session"])
+        expect(resolve(path, dir, "work:qwen", session: :high, cli: { "thinking.level" => "off" })).to eq([:high, "session"])
+        expect(resolve(path, dir, "work:qwen", session: :medium, env: { "SAMAGOTCHI_THINKING_LEVEL" => "off" }))
+          .to eq([:medium, "session"])
+        expect(resolve(path, dir, "work:qwen", env: { "SAMAGOTCHI_THINKING_LEVEL" => "low" }))
+          .to eq([:low, "SAMAGOTCHI_THINKING_LEVEL"])
+      end
+    end
+
+    it "explains the level with its source and the session's own beside it" do
+      with_config(yaml) do |path, dir|
+        own = resolve(path, dir, "work:qwen", session: :low, how: :explain)
+        expect(own.summary).to eq(level: "low", source: "session", own: "low")
+        expect(own.label).to eq("low (session)")
+
+        model = resolve(path, dir, "work:qwen", how: :explain)
+        expect(model.summary).to eq(level: "off", source: "models: qwen", own: nil)
+        expect(model.label).to eq("off (models: qwen)")
+      end
+      with_config("hosts:\n  other:\n    host: o\n") do |path, dir|
+        expect(resolve(path, dir, "other:m", how: :explain).label).to eq("default")
       end
     end
 
@@ -155,6 +181,14 @@ RSpec.describe Samagotchi::Thinking do
           .to output(/SAMAGOTCHI_THINKING_LEVEL: thinking must be one of/).to_stderr
         expect(result).to eq([:off, "models: qwen"])
       end
+    end
+  end
+
+  describe ".session_level" do
+    it "takes off, low, medium and high as symbols or words; default and anything else are none, without a warning" do
+      expect([:off, "Low", " medium ", :high].map { |v| described_class.session_level(v) }).to eq(%i[off low medium high])
+      expect { expect([:default, "default", "turbo", nil, 3].map { |v| described_class.session_level(v) }).to all(be_nil) }
+        .not_to output.to_stderr
     end
   end
 

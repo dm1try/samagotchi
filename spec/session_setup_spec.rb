@@ -8,6 +8,7 @@ RSpec.describe Samagotchi::SessionSetup do
   it "is empty with no setting of its own" do
     expect(described_class.new).to be_empty
     expect(described_class.new(llm_context: Samagotchi::LLMContextOverride.new(apply: :turn_end))).not_to be_empty
+    expect(described_class.new(thinking: :low)).not_to be_empty
   end
 
   it "takes a session's own settings, and none from no session" do
@@ -16,14 +17,16 @@ RSpec.describe Samagotchi::SessionSetup do
 
     session.llm_context = Samagotchi::LLMContextOverride.new(strategy: [:stale])
     expect(described_class.of(session).llm_context).to eq(Samagotchi::LLMContextOverride.new(strategy: [:stale]))
+    session.thinking = :off
+    expect(described_class.of(session).thinking).to eq(:off)
     expect(described_class.of(nil)).to be_empty
   end
 
   it "starts a new session with its settings" do
     override = Samagotchi::LLMContextOverride.new(budget_tokens: 0)
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd,
-                                              setup: described_class.new(llm_context: override))
+                                              setup: described_class.new(llm_context: override, thinking: :medium))
 
-    expect(session.llm_context).to eq(override)
+    expect(session).to have_attributes(llm_context: override, thinking: :medium)
   end
 end

@@ -105,7 +105,8 @@ RSpec.describe "delegate tools" do
     end
 
     it "starts a child in the parent's folder, on its model, with the delegated memory and the task as its first message" do
-      parent
+      parent.thinking = :low
+      parent.save(state_dir: tmpdir)
       out = described_class.call("count the specs", wait: false, peers: worker_peers)
 
       ids = session_files - [parent.id]
@@ -116,6 +117,8 @@ RSpec.describe "delegate tools" do
       expect(child.model_name).to eq("big-model")
       expect(child.preloaded_memory_names).to eq(["system/delegated"])
       expect(child.delegate?).to be(true)
+      # Not the parent's own thinking level: a delegate runs at its model's.
+      expect(child.thinking).to be_nil
       expect(child.status).to eq("running")
       expect(child.last_prompt).to eq("count the specs")
       expect(out).to eq("session: #{child.id}\nstatus: running\nStarted a delegate session; chi brings its reply to you by itself " \

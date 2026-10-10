@@ -119,6 +119,24 @@ module Samagotchi
       saved.empty? ? nil : saved
     end
 
+    # The session's own thinking level (:off, :low, :medium, :high), before
+    # the process default and the model's (Thinking.resolve); nil when it
+    # has none. Saved, so a --resume, a respawned worker and a continue keep
+    # it; a plugin's fork copies it, a delegate child starts without.
+    attr_reader :thinking
+
+    # @param value [Symbol, String, nil] a value that isn't a level reads
+    #   as nil and is saved back as written, until the session sets its own
+    def thinking=(value)
+      @thinking = Thinking.session_level(value)
+      unread = @thinking.nil? && value.is_a?(String) && !value.strip.casecmp?(Thinking::DEFAULT.to_s)
+      @thinking_unread = unread ? value : nil
+    end
+
+    # The session file's "thinking": the level, else a value it couldn't
+    # read; nil when there is neither.
+    def thinking_file = @thinking&.to_s || @thinking_unread
+
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise.
     def stopped_by
@@ -147,7 +165,7 @@ module Samagotchi
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
-                   continues: nil)
+                   continues: nil, thinking: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -173,6 +191,7 @@ module Samagotchi
       @delegate = !!delegate
       @continues = continues&.to_s
       self.llm_context = llm_context
+      self.thinking = thinking
       @archived = false
     end
 
@@ -250,6 +269,7 @@ module Samagotchi
         scratch: scratch,
         delegate: delegate,
         llm_context: setup.llm_context,
+        thinking: setup.thinking,
         continues: continues
       )
     end
@@ -310,7 +330,8 @@ module Samagotchi
       "last_turn" => nil,
       "delegate" => false,
       "llm_context" => nil,
-      "continues" => nil
+      "continues" => nil,
+      "thinking" => nil
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the
@@ -431,6 +452,7 @@ module Samagotchi
                 when "test_run" then !!@test_run
                 when "delegate" then @delegate
                 when "llm_context" then llm_context_file
+                when "thinking" then thinking_file
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names"

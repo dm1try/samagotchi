@@ -261,6 +261,40 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.load(session.id, state_dir: tmpdir).llm_context).to be_nil
     end
 
+    it "round-trips its own thinking level, and loads a file saved before the field as none" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      session.thinking = :low
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+
+      expect(JSON.parse(File.read(path))["thinking"]).to eq("low")
+      expect(described_class.load(session.id, state_dir: tmpdir).thinking).to eq(:low)
+
+      session.thinking = "default"
+      session.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))).to include("thinking" => nil)
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("thinking")))
+      expect(described_class.load(session.id, state_dir: tmpdir).thinking).to be_nil
+    end
+
+    it "reads a thinking value it can't read as none, without a warning, and saves it back as written until the session sets its own" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("thinking" => "turbo")))
+
+      loaded = nil
+      expect { loaded = described_class.load(session.id, state_dir: tmpdir) }.not_to output.to_stderr
+      expect(loaded.thinking).to be_nil
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["thinking"]).to eq("turbo")
+
+      loaded.thinking = :high
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["thinking"]).to eq("high")
+    end
+
     it "follows the model for an llm_context field it can't read, and saves it back as written until the session sets its own" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
