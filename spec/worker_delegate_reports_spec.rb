@@ -378,7 +378,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         expect(wait_until { drain.any? { |e| %i[turn_failed turn_completed turn_canceled].include?(e[:type]) } }).to be(true)
         # Saved as the turn ended (the Engine's failed save, or the worker's after the turn).
         saved = -> { Samagotchi::Session.load(parent.id, state_dir: tmpdir) }
-        expect(wait_until { saved.call.last_turn&.dig("outcome") == outcome }).to be(true)
+        expect(wait_until { saved.call.last_turn&.outcome == outcome }).to be(true)
         kept = saved.call.messages.any? { |m| m[:content].to_s.include?("found it") }
 
         send_turn(parent, "again", "web:tab1")

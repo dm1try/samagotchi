@@ -95,7 +95,7 @@ module Samagotchi
       return "running" if Tools::Delegate.running?(row)
       return "stopped" if session.status == Session::STATUS_STOPPED
 
-      outcome = session.last_turn.is_a?(Hash) ? session.last_turn["outcome"] : nil
+      outcome = session.last_turn&.outcome
       return "failed" if session.status == Session::STATUS_ERROR || outcome == "failed"
       return "done" if outcome == "completed" && reply
 

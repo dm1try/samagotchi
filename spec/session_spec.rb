@@ -304,9 +304,10 @@ RSpec.describe Samagotchi::Session do
       session.save(state_dir: tmpdir)
       path = File.join(tmpdir, "#{session.id}.json")
 
-      expect(described_class.load(session.id, state_dir: tmpdir).last_turn).to eq(last)
+      expect(JSON.parse(File.read(path))["last_turn"]).to eq(last)
+      expect(described_class.load(session.id, state_dir: tmpdir).last_turn.to_file).to eq(last)
       summary = described_class.summary_from_file(path)
-      expect(summary.last_turn).to eq(last)
+      expect(summary.last_turn.to_file).to eq(last)
       expect(summary.pending_question).to include(id: "q1", kind: "approval")
 
       plain = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").save(state_dir: tmpdir)
@@ -330,6 +331,32 @@ RSpec.describe Samagotchi::Session do
 
       expect(described_class.load(session.id, state_dir: tmpdir).stopped_by).to eq("loop-guard")
       expect(described_class.summary_from_file(File.join(tmpdir, "#{session.id}.json")).stopped_by).to eq("loop-guard")
+    end
+
+    it "loads a session file saved while last_turn was a Hash, and saves its last_turn back the same" do
+      fixture = File.expand_path("fixtures/sessions/f9e1e9c4-b489-4c55-bb40-19a8b28dd615.json", __dir__)
+      FileUtils.cp(fixture, tmpdir)
+      saved = JSON.parse(File.read(fixture))["last_turn"]
+
+      session = described_class.load("f9e1e9c4-b489-4c55-bb40-19a8b28dd615", state_dir: tmpdir)
+      expect(session.last_turn).to have_attributes(outcome: "canceled", origin: "delegate", seconds: 41.3, exhausted: true,
+                                                   limit: 30, error_kind: nil, stopped_by: "loop-guard")
+      expect(session.stopped_by).to eq("loop-guard")
+
+      session.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(File.join(tmpdir, File.basename(fixture))))["last_turn"].to_a).to eq(saved.to_a)
+    end
+
+    it "reads a last_turn with keys missing, or symbol keys, and drops a key it doesn't know" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.last_turn = { "outcome" => "not_continued", "ended_at" => "2026-10-03T12:00:00.000+00:00", "later" => 1 }
+      expect(session.to_h["last_turn"]).to eq("outcome" => "not_continued", "ended_at" => "2026-10-03T12:00:00.000+00:00")
+
+      session.last_turn = { outcome: "failed", retryable: false }
+      expect(session.to_h["last_turn"]).to eq("outcome" => "failed", "retryable" => false)
+
+      session.last_turn = "garbage"
+      expect(session.to_h["last_turn"]).to be_nil
     end
 
     it "reads a session file written before the memory-name fields as empty lists" do

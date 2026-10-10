@@ -1,0 +1,41 @@
+{
+  "metadata_version": 3,
+  "id": "f9e1e9c4-b489-4c55-bb40-19a8b28dd615",
+  "mode": "assist",
+  "model_name": "qwen3-14b",
+  "model_typed": null,
+  "working_directory": "/tmp/project",
+  "messages": [
+    {
+      "role": "user",
+      "content": "run the checks"
+    }
+  ],
+  "created_at": "2026-10-10T12:31:02.028+02:00",
+  "updated_at": "2026-10-10T12:31:02.028+02:00",
+  "status": "idle",
+  "last_prompt": "",
+  "first_preview": "run the checks",
+  "test_run": true,
+  "pending_question": null,
+  "used_memory_names": [],
+  "project_root": null,
+  "preloaded_memory_names": [],
+  "muted_memory_names": [],
+  "prompt_notes": [],
+  "parent_id": null,
+  "scratch": false,
+  "last_turn": {
+    "outcome": "canceled",
+    "ended_at": "2026-10-09T18:42:07.512+02:00",
+    "seconds": 41.3,
+    "origin": "delegate",
+    "exhausted": true,
+    "limit": 30,
+    "cancel_reason": "hook",
+    "stopped_by": "loop-guard"
+  },
+  "delegate": false,
+  "llm_context": null,
+  "continues": null
+}

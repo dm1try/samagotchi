@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::ReplyWait do
 
       result = wait
       expect(result.status).to eq(:done)
-      expect(result.session.last_turn["ended_at"]).to eq("2026-10-05T10:00:00.000Z")
+      expect(result.session.last_turn.ended_at).to eq("2026-10-05T10:00:00.000Z")
     end
   end
 

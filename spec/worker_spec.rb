@@ -280,7 +280,7 @@ RSpec.describe Samagotchi::Worker do
       end).to be_truthy
 
       saved = Samagotchi::Session.load(session.id, state_dir: tmpdir)
-      expect(saved.last_turn).to include("outcome" => "failed", "origin" => "client")
+      expect(saved.last_turn.to_file).to include("outcome" => "failed", "origin" => "client")
       result = Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 1, poll_interval: 0.02,
                                                       baseline: baseline)
       expect(result.to_h).to include(status: :no_reply, outcome: "failed")
@@ -693,7 +693,7 @@ RSpec.describe Samagotchi::Worker do
                                           "HTTP 402: Insufficient credits; add credits, then send again. Its work so far " \
                                           "(tool calls, file changes) stays; the user's last message is not answered yet.]")
         expect(conversation.length).to eq(9)
-        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_turn).to include("outcome" => "failed", "kept_steps" => 2)
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_turn.to_file).to include("outcome" => "failed", "kept_steps" => 2)
         expect(@thread).to be_alive
 
         # The next prompt continues from the kept steps.
@@ -1543,7 +1543,7 @@ RSpec.describe Samagotchi::Worker do
           # Every save from the turn's end on has it: no idle write without it.
           expect(wait_until { saved_session.status == "idle" }).to be(true)
           expect(saved_session.pending_question).to include(id: question[:id], kind: "continue")
-          expect(saved_session.last_turn).to include("exhausted" => true, "limit" => 100)
+          expect(saved_session.last_turn.to_file).to include("exhausted" => true, "limit" => 100)
           expect(Samagotchi::ReplyWait.newest_reply(session.id, state_dir: tmpdir)).to be_nil
         end
 

@@ -61,7 +61,7 @@ module Samagotchi
     #   idle again ends the wait even if it was never seen running, and a
     #   question already pending then is not the answer's. A nil
     #   messages: skips the count. last_turn: (the session's
-    #   last_turn["ended_at"] then, maybe nil) ends the wait on any turn
+    #   last_turn.ended_at then, maybe nil) ends the wait on any turn
     #   that ended since, idle again, however fast it ran (a failure after
     #   a failure replaces the note and leaves the count as it was), and
     #   with it the count isn't used: a note between turns grows it too.
@@ -141,8 +141,7 @@ module Samagotchi
     # ended, so a turn that ends before the first look still ends the wait.
     # @return [Hash]
     def baseline_of(session, question_id: session.pending_question&.dig(:id))
-      last = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
-      { messages: session.messages.size, question_id: question_id, last_turn: last }
+      { messages: session.messages.size, question_id: question_id, last_turn: session.last_turn&.ended_at }
     end
 
     # An idle session whose turn ended after the baseline was taken: its
@@ -155,7 +154,7 @@ module Samagotchi
       return false unless baseline
 
       if baseline.key?(:last_turn)
-        ended = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
+        ended = session.last_turn&.ended_at
         return !ended.nil? && ended != baseline[:last_turn]
       end
       !!(baseline[:messages] && session.messages.size > baseline[:messages])
@@ -164,15 +163,14 @@ module Samagotchi
     # @return [Result] :no_reply with the outcome the session's last_turn
     #   records, when it is the turn waited for
     def no_reply(session, baseline)
-      last = session.last_turn.is_a?(Hash) ? session.last_turn : {}
-      fresh = baseline.nil? || !baseline.key?(:last_turn) || (last["ended_at"] && last["ended_at"] != baseline[:last_turn])
-      outcome = fresh ? last["outcome"] : nil
-      if fresh && last["exhausted"]
-        return Result.new(status: :no_reply, outcome: "exhausted", limit: last["limit"], session: session)
-      end
+      last = session.last_turn || LastTurn.new
+      fresh = baseline.nil? || !baseline.key?(:last_turn) || (last.ended_at && last.ended_at != baseline[:last_turn])
+      outcome = fresh ? last.outcome : nil
+      return Result.new(status: :no_reply, outcome: "exhausted", limit: last.limit, session: session) if fresh && last.exhausted
 
       text = outcome == "failed" ? TurnNote.failure_summary(session.messages) : nil
-      why = fresh ? last.slice("error_kind", "retryable", "cancel_reason", "stopped_by", "kept_steps").transform_keys(&:to_sym) : {}
+      # Every stop fact the turn has: Result takes them by name.
+      why = fresh ? last.stop_facts : {}
       Result.new(status: :no_reply, outcome: outcome, text: text, session: session, **why)
     end
 
@@ -188,12 +186,12 @@ module Samagotchi
     def settled(session, id, state_dir:)
       return session unless session.status == Session::STATUS_RUNNING
 
-      before = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
+      before = session.last_turn&.ended_at
       deadline = monotonic + SETTLE_SECONDS
       loop do
         sleep(0.02)
         fresh = Session.load(id, state_dir: state_dir)
-        ended = fresh.last_turn.is_a?(Hash) ? fresh.last_turn["ended_at"] : nil
+        ended = fresh.last_turn&.ended_at
         return fresh if fresh.status != Session::STATUS_RUNNING || ended != before || monotonic > deadline
       end
     rescue ArgumentError

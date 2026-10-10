@@ -6,6 +6,7 @@ require "securerandom"
 require "time"
 require_relative "atomic_file"
 require_relative "context_note"
+require_relative "last_turn"
 require_relative "llm_context_override"
 require_relative "prompt_note"
 
@@ -86,14 +87,16 @@ module Samagotchi
     # A `chi scratch` session: deleted when its REPL ends, and by the next
     # sweep (or `chi sessions clean`) when the process died first.
     attr_accessor :scratch
-    # How the last turn ended, for the web's notifications (the hub sends
-    # it in the summary): {"outcome" => "completed"|"failed"|"canceled",
-    # "ended_at" => iso8601, "seconds" => Float, "origin" =>
-    # "client"|"reminder"|"delegate"|"delegate_report"|"context"}; nil
-    # before the first turn. delegate_report: a turn a parent ran for its
-    # delegate children's reports (ChildReports); context: one an attached
-    # context source's change started (Worker).
-    attr_accessor :last_turn
+    # How the last turn ended (LastTurn), for a parent's wait (ReplyWait)
+    # and the web's notifications (the hub sends it in the summary); nil
+    # before the first turn.
+    attr_reader :last_turn
+
+    # @param value [LastTurn, Hash, nil] a file's Hash is read
+    #   (LastTurn.from_file)
+    def last_turn=(value)
+      @last_turn = LastTurn.from_file(value)
+    end
     # The session's own llm_context values (LLMContextOverride: strategy,
     # apply rule, budget), before the model's; nil when it has none.
     # Saved, so a --resume and a respawned worker keep them; a plugin's
@@ -116,12 +119,9 @@ module Samagotchi
     end
 
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
-    # left), e.g. "loop-guard"; nil when it ended otherwise. Both strings
-    # and symbols are read (the file's keys are strings).
+    # left), e.g. "loop-guard"; nil when it ended otherwise.
     def stopped_by
-      return nil unless @last_turn.is_a?(Hash)
-
-      (@last_turn["stopped_by"] || @last_turn[:stopped_by])&.to_s
+      @last_turn&.stopped_by&.to_s
     end
     # Archived (ArchiveStore): hidden from the lists. Set by .list (with
     # include_archived); not saved in session.json.
@@ -168,7 +168,7 @@ module Samagotchi
       @project_root = project_root
       @parent_id = parent_id&.to_s
       @scratch = !!scratch
-      @last_turn = last_turn
+      self.last_turn = last_turn
       @delegate = !!delegate
       @continues = continues&.to_s
       self.llm_context = llm_context
@@ -281,7 +281,8 @@ module Samagotchi
     # value for a file without it (REQUIRED for the ones it must have).
     # .from_h and #to_h both go by this table; messages and
     # pending_question change key type on the way (symbols in memory,
-    # strings on disk).
+    # strings on disk); last_turn and prompt_notes are value objects in
+    # memory (LastTurn, PromptNote).
     FIELDS = {
       "metadata_version" => 1,
       "id" => REQUIRED,
@@ -429,6 +430,7 @@ module Samagotchi
                 when "delegate" then @delegate
                 when "llm_context" then llm_context_file
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
+                when "last_turn" then @last_turn&.to_file
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names"
                   Array(instance_variable_get(:"@#{key}"))
                 else instance_variable_get(:"@#{key}")

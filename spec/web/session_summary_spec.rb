@@ -92,7 +92,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       json = described_class.build(s, owner: owner, session_dir: session_dir(s))
 
       expect(json[:pending_question]).to eq(id: "q1", kind: "question")
-      expect(json[:last_turn]).to eq(s.last_turn)
+      expect(json[:last_turn]).to eq("outcome" => "completed", "ended_at" => "t", "seconds" => 11.0, "origin" => "client")
       s.pending_question = { id: "q2", kind: "approval" }
       expect(described_class.build(s, owner: owner, session_dir: session_dir(s))[:pending_question]).to eq(id: "q2", kind: "approval")
 

@@ -46,8 +46,7 @@ module Samagotchi
         return false unless (time(row[:updated_at]) || Time.at(0)) >= cutoff
 
         session = Session.summary_from_file(Session.session_file(row[:id], state_dir: state_dir))
-        last_turn = session&.last_turn
-        ended = last_turn.is_a?(Hash) ? time(last_turn["ended_at"] || last_turn[:ended_at]) : nil
+        ended = time(session&.last_turn&.ended_at)
         (ended || time(row[:updated_at])) >= cutoff
       end
       private_class_method :active_since?

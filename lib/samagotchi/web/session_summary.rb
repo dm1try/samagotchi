@@ -93,7 +93,7 @@ module Samagotchi
           # chi REPL's (SessionManager.worker_live?'s rule: only a worker shares it).
           pending_question: session.waiting_question(live: !!owner&.worker?),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
-          last_turn: session.last_turn
+          last_turn: session.last_turn&.to_file
         }
       end
 

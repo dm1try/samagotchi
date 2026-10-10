@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
+require_relative "last_turn"
 require_relative "log"
 
 module Samagotchi
@@ -89,7 +90,7 @@ module Samagotchi
       return if result.resume
 
       session = @engine.session
-      session.last_turn = { "outcome" => NOT_CONTINUED, "ended_at" => Time.now.iso8601(3) } if session
+      session.last_turn = LastTurn.new(outcome: NOT_CONTINUED, ended_at: Time.now.iso8601(3)) if session
     end
 
     # After a command's command_ran and save: a /continue that answered the
@@ -183,7 +184,7 @@ module Samagotchi
     # The limit the offer's turn ran out at (Engine's last_turn marker).
     def limit_of_last_turn
       last = @engine.session&.last_turn
-      last.is_a?(Hash) && last["exhausted"] ? last["limit"] : nil
+      last&.exhausted ? last.limit : nil
     end
 
     # The question's answer as the /continue line a typed answer would be:

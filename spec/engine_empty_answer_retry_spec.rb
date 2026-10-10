@@ -41,7 +41,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
 
     expect(result.output).to eq("PONG")
     expect(session.messages.last(3)).to match([a_hash_including(role: "user", content: "hi"), nudge, { role: "model", content: "PONG" }])
-    expect(session.last_turn).to include("outcome" => "completed")
+    expect(session.last_turn.to_file).to include("outcome" => "completed")
     expect(events.map { |e| e[:type] }).to include(:empty_answer_retry, :turn_completed)
     expect(events.count { |e| e[:type] == :generation_started }).to eq(2)
   end
@@ -92,7 +92,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
 
     expect(session.messages.last(3).map { |m| m[:content].to_s[0, 40] })
       .to eq(["hi", nudge[:content][0, 40], "[SYSTEM: the previous turn was cancelled"])
-    expect(session.last_turn).to include("outcome" => "canceled")
+    expect(session.last_turn.to_file).to include("outcome" => "canceled")
     expect(events.map { |e| e[:type] }).to include(:empty_answer_retry, :turn_canceled)
   end
 

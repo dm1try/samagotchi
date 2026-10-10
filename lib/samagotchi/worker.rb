@@ -863,7 +863,7 @@ module Samagotchi
     def merges_lost?(error)
       return false if error.nil? || error.is_a?(LLM::FailedTurn)
 
-      !KEPT_TURN_OUTCOMES.include?(@session.last_turn&.dig("outcome"))
+      !KEPT_TURN_OUTCOMES.include?(@session.last_turn&.outcome)
     end
 
     # The Engine's turn endings that keep the turn's conversation (#merges_lost?).
