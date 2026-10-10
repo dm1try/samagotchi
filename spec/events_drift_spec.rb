@@ -3,7 +3,7 @@
 require "samagotchi/events"
 
 # The event type sets in Samagotchi::Events against the places that spell
-# them out on their own: the web's stream handlers (app.js) and snapshot
+# them out on their own: the web's stream handlers (stream_handlers.js) and snapshot
 # replay (turn_events.js), the TUI's handle_event, the Bridge's
 # TurnAccumulator. Reads the sources; a rename on one side fails here.
 RSpec.describe "Events drift" do
@@ -18,8 +18,8 @@ RSpec.describe "Events drift" do
   end
 
   let(:web_handlers) do
-    body = section(read.call("lib/samagotchi/web/public/app.js"), "const streamHandlers = {", /^};$/)
-    body.scan(/^  ([a-z_]+):/).flatten.map(&:to_sym)
+    body = section(read.call("lib/samagotchi/web/public/stream_handlers.js"), "export function createStreamHandlers", /^  };$/)
+    body.scan(/^    ([a-z_]+):/).flatten.map(&:to_sym)
   end
 
   let(:attached_cases) do
