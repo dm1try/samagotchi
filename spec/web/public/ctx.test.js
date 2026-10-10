@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  extractCtxPct, savedCtxPct, cardCtxText, ctxBarText, ctxWindowText, speedText, costText, tokensTipText, lastSpeedText, generationTokens,
+  extractCtxPct, savedCtxPct, cardCtxText, ctxBarText, ctxBarTip, ctxWindowText, speedText, costText, tokensTipText, lastSpeedText, generationTokens,
 } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
@@ -66,11 +66,11 @@ test("extractCtxPct: a fill computed here counts against a smaller budget; a pre
   assert.equal(extractCtxPct({ usage: { estimated_pct: 40 } }, 1000, 500), 40);
 });
 
-test("cardCtxText: a rounded percentage, empty when unknown", () => {
+test("cardCtxText: a rounded percentage; 'ctx ?' when unknown", () => {
   assert.equal(cardCtxText(12.4), "12%");
   assert.equal(cardCtxText(0.2), "0%");
-  assert.equal(cardCtxText(null), "");
-  assert.equal(cardCtxText(undefined), "");
+  assert.equal(cardCtxText(null), "ctx ?");
+  assert.equal(cardCtxText(undefined), "ctx ?");
 });
 
 test("speedText: the server's speed as is, an estimate with ~, thousands as k, nothing without one", () => {
@@ -146,11 +146,35 @@ test("generationTokens: the event's totals with its speed; an event without them
   assert.equal(generationTokens(undefined, {}), null);
 });
 
-test("ctxBarText: the percent; ~ when the window is chi's default guess", () => {
+test("ctxBarText: the percent; ~ when the window is chi's default guess; ? when none", () => {
   assert.equal(ctxBarText(12.4, "server"), "ctx 12%");
   assert.equal(ctxBarText(12.4, null), "ctx 12%");
   assert.equal(ctxBarText(12.4, "default"), "ctx ~12%");
-  assert.equal(ctxBarText(null, "default"), "");
+  // No percent yet (no request in this session): "?" — the chip is always
+  // shown; "?" never means 0, and the window source is irrelevant then.
+  assert.equal(ctxBarText(null, "server"), "ctx ?");
+  assert.equal(ctxBarText(null, "default"), "ctx ?");
+  assert.equal(ctxBarText(null, null), "ctx ?");
+});
+
+test("ctxBarTip: the window line when there's a number, why there's none when there's not", () => {
+  assert.equal(ctxBarTip({ prompt_sum: 500, completion_sum: 100 }, null, { tokens: 1000, source: "server", pct: 60 }),
+    tokensTipText({ prompt_sum: 500, completion_sum: 100 }, undefined, null,
+                  { tokens: 1000, source: "server", pct: 60 }));
+  assert.equal(ctxBarTip({ prompt_sum: 500, completion_sum: 100 }, null, { tokens: 1000, source: "server", pct: null }),
+    "No request in this session yet");
+  assert.equal(ctxBarTip(null, null, null), "No request in this session yet");
+});
+
+// The card calls ctxBarTip with {pct} as its window (no tokens/source).
+// A card with a number shows the old tooltip (token sums + memory index,
+// no window line); only a card without one says "No request yet".
+test("ctxBarTip: the card's tooltip with just a pct — old tooltip for a number, why-none for none", () => {
+  const tokens = { prompt_sum: 500, completion_sum: 100 };
+  const memoryIndex = { system: { tokens: 1000, lines: 10 }, project: { tokens: 500, lines: 5 } };
+  assert.equal(ctxBarTip(tokens, memoryIndex, { pct: 60 }),
+    tokensTipText(tokens, undefined, memoryIndex, { pct: 60 }));
+  assert.equal(ctxBarTip(tokens, memoryIndex, { pct: null }), "No request in this session yet");
 });
 
 test("ctxWindowText: used of window with its source; the default says it's a guess", () => {

@@ -234,6 +234,24 @@ test("a reload after the turn shows the context meter and the card's ctx", async
   await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
 });
 
+// No turn in a session yet: the chip is always shown, "ctx ?" in the info
+// bar and the card (not "0", not blank), the tooltip says why.
+test("the ctx chip before any request: 'ctx ?' in the info bar and the card, 'no request yet' in the tooltip", async ({ page, chi }) => {
+  const seed = seedDelegate(chi, null, { tag: "Seed" });
+  try {
+    // Open the seed directly, no worker and no turn: the info bar is the
+    // session, its chip is "ctx ?" (never 0), and its tooltip says why.
+    await page.locator(`#topStrip .card[data-id="${seed.id}"]`).click();
+    await expect(page.locator("#infoBar .meta .ctx")).toHaveText("ctx ?");
+    await expect(page.locator("#infoBar .meta .ctx")).toHaveAttribute("title", /No request in this session yet/);
+    // The card in the all-sessions list shows "ctx ?" too.
+    await page.locator("#allTile").click();
+    await expect(page.locator(`#allList .card[data-id="${seed.id}"] .ctx`)).toHaveText("ctx ?");
+  } finally {
+    seed.remove();
+  }
+});
+
 // A price under hosts.<name>.models: the fake reports usage without
 // usage.cost, so the info bar's ctx tooltip shows the estimate with "~".
 test("a configured price estimates the cost the provider doesn't report: ~$ in the info bar's ctx tooltip", async ({ page, script, hostModels }) => {
