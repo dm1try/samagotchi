@@ -102,11 +102,12 @@ module Samagotchi
                                                                         match: ->(text) { text.casecmp?("/detach") })
       # /cut TEXT and /queue TEXT while a turn runs: a delivery the UIs parse
       # themselves (Formatting#steer_choice) before any command check; the
-      # entries exist for Tab completion and /help. /queue is a real
-      # after-the-turn list only in the local REPL (the attached TUI's
-      # worker doesn't skip queued files yet), so it is offered there.
+      # entries exist for Tab completion and /help. The web composer sends
+      # /cut too. /queue is a real after-the-turn list only in the local
+      # REPL (the attached TUI's worker doesn't skip queued files yet), so
+      # it is offered there.
       registry.register("/cut", "cut the running generation and go in now (/cut TEXT)",
-                        local: true, match: ->(text) { text.casecmp?("/cut") || text.match?(%r{\A/cut\s+\S}) })
+                        local: true, uis: %i[repl attached web], match: ->(text) { text.casecmp?("/cut") || text.match?(%r{\A/cut\s+\S}) })
       registry.register("/queue", "run as the next turn after this one (/queue TEXT)",
                         local: true, uis: [:repl], match: ->(text) { text.casecmp?("/queue") || text.match?(%r{\A/queue\s+\S}) })
       registry
@@ -175,11 +176,24 @@ module Samagotchi
         notes = []
         notes << entry.source unless entry.source == "core"
         notes << MID_TURN_NOTES[entry.mid_turn_label] if MID_TURN_NOTES[entry.mid_turn_label]
-        notes << (entry.uis ? "#{entry.uis.join(" and ")} only" : "terminal only") if entry.local
+        notes << "#{ui_words(entry.uis)} only" if entry.local
         line = "  #{self.class.display_name(entry).ljust(width)}  #{entry.description}"
         notes.empty? ? line : "#{line}  (#{notes.join("; ")})"
       end
       "commands:\n#{lines.join("\n")}"
+    end
+
+    # Where a UI's own entry runs, for /help: both terminals are
+    # "terminal" (also for no uis: every terminal), then "web".
+    # @param uis [Array<Symbol>, nil]
+    # @return [String] "terminal", "repl", "terminal and web" …
+    def ui_words(uis)
+      return "terminal" if uis.nil?
+
+      terminals = uis & %i[repl attached]
+      words = terminals.size == 2 ? ["terminal"] : terminals.map(&:to_s)
+      words << "web" if uis.include?(:web)
+      words.join(" and ")
     end
 
     # How help and errors name an entry (the shell's "!" is "!<cmd>").

@@ -87,7 +87,7 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(lines).to include("  /hello        greet  (sample-plugin)", "  /side         ask aside  (btw; mid-turn too)",
                                start_with("  /model        show or switch the model  (show: mid-turn too)"),
                                "  /detach       leave and keep the worker running  (attached only)",
-                               "  /cut          cut the running generation and go in now (/cut TEXT)  (terminal only)",
+                               "  /cut          cut the running generation and go in now (/cut TEXT)  (terminal and web only)",
                                "  /queue        run as the next turn after this one (/queue TEXT)  (repl only)",
                                "  /stats        show the session's stats  (terminal only)")
       expect(result.status).to eq(:ok)

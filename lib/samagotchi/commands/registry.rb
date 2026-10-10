@@ -21,7 +21,8 @@ module Samagotchi
       #   turn runs (MID_TURN): a symbol, or a lambda line (stripped) → one
       # @!attribute local [Boolean] the UI runs it; completion and help only
       # @!attribute uis [Array<Symbol>, nil] a local entry's UIs (:repl,
-      #   :attached) for completion; nil means every UI
+      #   :attached, :web) for completion and /help; nil means every UI
+      #   (for a local entry, every terminal)
       # @!attribute match [#call] line (stripped) → whether it is this command
       # @!attribute handler [Proc, nil] runs it; SessionCommands instance_execs
       #   a built-in's with the line, and calls a bundle's with the text

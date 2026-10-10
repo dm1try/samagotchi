@@ -140,7 +140,8 @@ end
 
 `/help` (itself an anytime command) lists every command the session knows:
 chi's own, each bundle's with the bundle's name, and the terminal UIs' own
-(`/stats`, `/exit`, `/detach` …), marked `terminal only` or `attached only`.
+(`/stats`, `/exit`, `/detach` …), marked where they run: `terminal only`,
+`attached only`, `repl only`, or `terminal and web only` (`/cut`).
 It works in all three UIs.
 
 ### `chi.tool(name, description, params:, schema:, label:, preview:, targets:) { |args, ctx| … }`
