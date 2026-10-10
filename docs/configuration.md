@@ -1094,6 +1094,34 @@ its own). The first target is a long session such as a day-long coordinator, whe
   turn that runs a layer or whose session set its strategy) and the web's chip. A woken worker's status line counts
   its saved context against the session's budget.
 
+## Opening files from chi web
+
+In `chi web`, a file tool's row (read, edit, write) and the lines of its diff are refs to that file. They look like
+text until hovered (the title gets a dotted underline and `↗`, a diff line an accent bar and `↗ N`); a click opens the
+file in your editor: a row's title at the lines it read or edited (an edit without a range at its first changed
+line, a write at line 1), a diff line at its line, a hunk header at the hunk's start. A drag that selects text isn't
+a click. `web.editor` picks what opens:
+
+```yaml
+web:
+  editor: vscode     # or vscode-insiders, cursor, zed, none
+  # editor: "idea://open?file={path}&line={line}"   # a template of your own
+```
+
+- A preset, or a URL template with `{path}` (the absolute path, each segment URL-encoded, the slashes kept) and an
+  optional `{line}` (1 when there is none). A value that is neither a preset nor has `{path}` logs a warning and
+  counts as `none`. A change needs a `chi web` restart.
+- A template that puts `{path}` in a query (`?file={path}`) gets the path's slashes unencoded; editors accept that.
+- The first click asks twice, once each: the browser asks to open the editor's links (choose "always allow"; Safari
+  and Chrome ask per origin, so another `chi web` port asks again), and VS Code asks to allow opening local files.
+- It opens the file as it is now, not the agent's copy: after later edits a diff line's number can point elsewhere,
+  and a file in a worktree that was removed won't open. The row's diff and output are what the agent saw.
+- Only a viewer on this machine gets refs: a loopback request, or this machine on its own LAN address
+  (`web.host: lan`, the LAN URL or its QR code opened here). A phone sees plain text. An SSH tunnel or a local
+  reverse proxy (`tailscale serve`) looks like loopback, so a remote viewer behind one gets refs that can't open.
+- `GET /api/sessions/:id` (and its `?tail=1`) carries `capabilities.editor` (true for such a viewer) and
+  `editor_url`, the template (null otherwise).
+
 ## All settings
 
 Every setting below takes the three forms described in
