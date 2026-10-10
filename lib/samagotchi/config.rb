@@ -17,6 +17,9 @@ module Samagotchi
   autoload :Thinking, File.expand_path("thinking", __dir__)
   # One hosts: entry; it needs ConfigFile's readers.
   autoload :HostConfig, File.expand_path("host_config", __dir__)
+  # One models: entry, and one field found in them; they need ConfigFile's readers.
+  autoload :ModelSettings, File.expand_path("model_settings", __dir__)
+  autoload :ModelSetting, File.expand_path("model_settings", __dir__)
 
   # Unified configuration registry implementing the implicit convention:
   #   ENV    SAMAGOTCHI_ATTR            (UPPER + prefix + _ = nesting)
