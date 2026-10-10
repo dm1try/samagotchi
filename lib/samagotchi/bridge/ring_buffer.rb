@@ -40,11 +40,6 @@ module Samagotchi
         end
       end
 
-      # Whether any buffered event could satisfy a reconnect from +from_seq+.
-      def has_any_after?(from_seq:)
-        @mutex.synchronize { @events.any? { |e| e[:seq] > from_seq } }
-      end
-
       # @return [Integer, nil] the highest seq buffered so far.
       def last_seq
         @mutex.synchronize { @events.last&.[](:seq) }

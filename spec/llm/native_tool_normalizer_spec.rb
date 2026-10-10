@@ -187,15 +187,4 @@ RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
       expect(mapped[:content]).to eq("echo hi")
     end
   end
-
-  describe ".normalize_all" do
-    it "maps an array and drops nils" do
-      mapped = described_class.normalize_all([
-        tool_call(name: "execute", arguments: { "command" => "a" }),
-        nil,
-        tool_call(name: "web_fetch", arguments: { "url" => "https://x" })
-      ])
-      expect(mapped.map { |m| m[:name] }).to eq(%w[execute web_fetch])
-    end
-  end
 end

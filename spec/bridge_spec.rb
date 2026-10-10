@@ -247,7 +247,6 @@ RSpec.describe Samagotchi::Bridge do
     it "returns an empty window when replaying from beyond the served window" do
       ring = Samagotchi::Bridge::RingBuffer.new(capacity: 3)
       3.times { |i| ring.push(seq: i, data: { n: i }) }
-      expect(ring.has_any_after?(from_seq: 100)).to be(false)
       expect(ring.events_in_range(after_seq: 100, to_seq: 10)).to eq([])
     end
   end

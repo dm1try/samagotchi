@@ -104,21 +104,6 @@ module Samagotchi
       end
     end
 
-    # Mark a reminder as fired — resets its next_fire_at to now + interval.
-    # Called by Engine after a due reminder has been delivered.
-    # @param name [String] the reminder name
-    def mark_fired(name)
-      name = name.to_s.strip
-      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      @mutex.synchronize do
-        r = @reminders[name]
-        if r
-          r[:last_fire_at] = now
-          r[:next_fire_at] = now + (r[:interval_minutes] * 60)
-        end
-      end
-    end
-
     # Mark multiple reminders as fired — resets each next_fire_at to now + interval.
     # Called by Engine after injecting multiple due reminders (batch operation).
     # Thread-safe, single lock acquisition.
@@ -134,18 +119,6 @@ module Samagotchi
             r[:next_fire_at] = now + (r[:interval_minutes] * 60)
           end
         end
-      end
-    end
-
-    # Get the description of a due reminder (for injection into the system prompt).
-    # Called by Engine during run_turn. Thread-safe.
-    # @param name [String] the reminder name
-    # @return [String, nil] the description, or nil if not found
-    def get_description(name)
-      name = name.to_s.strip
-      @mutex.synchronize do
-        r = @reminders[name]
-        r[:description] if r
       end
     end
 

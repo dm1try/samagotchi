@@ -22,7 +22,6 @@ module Samagotchi
     Outcome = Data.define(:kind) do
       def stopped? = kind == :stopped
       def again? = kind == :again
-      def hook? = kind == :hook
     end
 
     STOPPED = Outcome.new(kind: :stopped)

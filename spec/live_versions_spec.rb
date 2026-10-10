@@ -52,7 +52,7 @@ RSpec.describe Samagotchi::LiveVersions do
     expect(described_class.workers(state_dir: state_dir).map(&:session_id)).to eq(["a"])
   end
 
-  describe ".web_version" do
+  describe ".web_info" do
     def serve(body, status: "200 OK")
       server = listener
       Thread.new do
@@ -66,16 +66,16 @@ RSpec.describe Samagotchi::LiveVersions do
       server.addr[1]
     end
 
-    it "reads a chi web's version from /api/info" do
+    it "reads a chi web's /api/info" do
       port = serve(JSON.generate(app: "chi-web", version: "0.2.0"))
-      expect(described_class.web_version("127.0.0.1", port)).to eq("0.2.0")
+      expect(described_class.web_info("127.0.0.1", port)).to include("version" => "0.2.0")
     end
 
     it "is nil for something else on the port, or nothing" do
-      expect(described_class.web_version("127.0.0.1", serve("{}"))).to be_nil
+      expect(described_class.web_info("127.0.0.1", serve("{}"))).to be_nil
       port = listener.addr[1]
       servers.pop.close
-      expect(described_class.web_version("127.0.0.1", port)).to be_nil
+      expect(described_class.web_info("127.0.0.1", port)).to be_nil
     end
   end
 end

@@ -23,11 +23,6 @@ RSpec.describe Samagotchi::MemoryBundle::Placeholder do
       expect(p.placeholders).to eq(%w[name name])
     end
 
-    it "extracts unique sorted names" do
-      p = described_class.new(content: "{{zebra}}, {{alpha}}, {{middle}}")
-      expect(p.unique_names).to eq(%w[alpha middle zebra])
-    end
-
     it "detects any?" do
       expect(described_class.new(content: "has {{placeholder}}").any?).to be true
       expect(described_class.new(content: "clean file").any?).to be false

@@ -220,13 +220,6 @@ module Samagotchi
         data ? Snapshot.from_h(data) : Snapshot.empty
       end
 
-      # @return [Time, nil] the snapshot file's mtime: the worker's cheap "anything new?"
-      def snapshot_mtime(name)
-        File.mtime(snapshot_path(name))
-      rescue SystemCallError
-        nil
-      end
-
       def write_snapshot(name, snapshot)
         FileUtils.mkdir_p(dir)
         AtomicFile.write(snapshot_path(name), JSON.generate(snapshot.to_h))

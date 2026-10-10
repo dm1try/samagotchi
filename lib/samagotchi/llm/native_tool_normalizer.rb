@@ -26,11 +26,6 @@ module Samagotchi
           Tools::BuiltinCalls.build(call.name.to_s, args_for(call))
         end
 
-        # Map an Array of tool calls to internal call hashes (nils dropped).
-        def normalize_all(calls)
-          Array(calls).map { |call| normalize(call) }.compact
-        end
-
         private
 
         # args_for: arguments is normally a Hash. Defensively handle nil /

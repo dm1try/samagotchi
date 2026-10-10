@@ -36,12 +36,6 @@ module Samagotchi
       workers(state_dir: state_dir).reject { |w| w.version == version }
     end
 
-    # The version a chi web on host:port runs, or nil when nothing (or not
-    # chi web) answers.
-    def web_version(host, port, timeout: WEB_TIMEOUT)
-      web_info(host, port, timeout: timeout)&.fetch("version", nil).to_s.then { |v| v.empty? ? nil : v }
-    end
-
     # The /api/info of a chi web on host:port, or nil when nothing (or not
     # chi web) answers.
     def web_info(host, port, timeout: WEB_TIMEOUT)

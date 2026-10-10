@@ -130,17 +130,6 @@ RSpec.describe Samagotchi::ReminderStore do
     end
   end
 
-  describe "#mark_fired" do
-    it "resets next_fire_at" do
-      store.register({ name: "health", description: "test", interval_minutes: 5 })
-      old_next = store.reminders["health"][:next_fire_at]
-      store.mark_fired("health")
-      new_next = store.reminders["health"][:next_fire_at]
-      expect(new_next).to be > old_next
-      expect(store.reminders["health"][:last_fire_at]).not_to be_nil
-    end
-  end
-
   describe "#mark_fired_batch" do
     it "marks multiple reminders as fired" do
       store.register({ name: "health", description: "test", interval_minutes: 5 })
@@ -150,17 +139,6 @@ RSpec.describe Samagotchi::ReminderStore do
       store.mark_fired_batch(%w[health cleanup])
       expect(store.reminders["health"][:next_fire_at]).to be > old_health
       expect(store.reminders["cleanup"][:next_fire_at]).to be > old_cleanup
-    end
-  end
-
-  describe "#get_description" do
-    it "returns the description for an existing reminder" do
-      store.register({ name: "health", description: "Check API", interval_minutes: 5 })
-      expect(store.get_description("health")).to eq("Check API")
-    end
-
-    it "returns nil for non-existent reminder" do
-      expect(store.get_description("nonexistent")).to be_nil
     end
   end
 
@@ -179,7 +157,7 @@ RSpec.describe Samagotchi::ReminderStore do
       threads = Array.new(10) do |i|
         Thread.new do
           store.due_reminders
-          store.mark_fired("health") if i.even?
+          store.mark_fired_batch(["health"]) if i.even?
         end
       end
       expect { threads.each(&:join) }.not_to raise_error

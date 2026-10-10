@@ -18,11 +18,6 @@ module Samagotchi
         new(content: content).placeholders
       end
 
-      # Returns a sorted list of unique placeholder names found.
-      def unique_names
-        @placeholders.map(&:strip).uniq.sort
-      end
-
       def any?
         !@placeholders.empty?
       end

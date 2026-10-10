@@ -61,7 +61,7 @@ RSpec.describe Samagotchi::CutPolicy do
 
     outcome = decide(budget: retry_budget)
 
-    expect(outcome).to be_hook
+    expect(outcome).to eq(described_class::HOOK)
     expect(events).to eq([])
     expect(conversation).to eq([{ role: "user", content: "hi" }])
     expect([controller.reason, controller.stopped_by]).to eq([:hook, "loop-guard"])

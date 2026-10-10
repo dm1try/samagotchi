@@ -79,9 +79,10 @@ RSpec.describe Samagotchi::WorkerWakes do
     expect(wakes.notice_budget!).to be(true)
     expect(wakes.notice_budget!).to be(false)
 
+    expect(wakes.delegate_state(awaiting_continue: false) { true }).to be_nil
     wakes.human_input!
     expect(wakes.in_a_row).to eq(0)
-    expect(wakes.paused?).to be(false)
+    expect(wakes.delegate_state(awaiting_continue: false) { true }).to eq(:due)
     expect(wakes.notice_budget!).to be(true)
   end
 

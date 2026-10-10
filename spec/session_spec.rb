@@ -710,14 +710,10 @@ RSpec.describe Samagotchi::Session do
     end
   end
 
-  describe ".session_dir and .default_sessions_dir" do
+  describe ".session_dir" do
     it "returns a directory path for a session" do
       dir = described_class.session_dir("abc-123", state_dir: tmpdir)
       expect(dir).to eq(File.join(tmpdir, "abc-123"))
-    end
-
-    it ".default_sessions_dir equals .default_state_dir" do
-      expect(described_class.default_sessions_dir).to eq(described_class.default_state_dir)
     end
   end
 

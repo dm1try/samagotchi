@@ -31,8 +31,6 @@ module Samagotchi
     # Wake turns run since the last human input.
     attr_reader :in_a_row
 
-    def paused? = @paused
-
     def grace_left = @grace - (@clock.call - @started_at)
 
     def in_grace? = grace_left.positive?

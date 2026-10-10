@@ -522,11 +522,6 @@ module Samagotchi
       File.join(state_dir, "#{check_id!(session_id)}#{FILE_EXT}")
     end
 
-    # Default sessions directory path.
-    def self.default_sessions_dir
-      default_state_dir
-    end
-
     # XDG-aware sessions directory.
     def self.default_state_dir(env: ENV)
       File.join(Paths.state_home(env: env), STATE_SUBDIR)
