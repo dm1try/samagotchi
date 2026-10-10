@@ -343,3 +343,13 @@ test("promptNotesChip: the names without model_notes_, the full line its tooltip
   assert.equal(promptNotesChip(undefined), null);
   assert.equal(promptNotesChip([{ scope: "system" }]), null);
 });
+
+import { firstPreview } from "../../../lib/samagotchi/web/public/format.js";
+
+test("firstPreview: the first message, whitespace collapsed, cut at 80 with an ellipsis", () => {
+  assert.equal(firstPreview("  fix\n the   bug "), "fix the bug");
+  assert.equal(firstPreview("x".repeat(80)), "x".repeat(80));
+  assert.equal(firstPreview("x".repeat(81)), `${"x".repeat(80)}…`);
+  assert.equal(firstPreview(""), "");
+  assert.equal(firstPreview(null), "");
+});
