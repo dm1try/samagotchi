@@ -127,7 +127,7 @@ module Samagotchi
                   else
                     SessionManager.spawn_session(prompt: nil, model_name: model && model_ref(model), state_dir: sd,
                                                  memories: memories, muted_memories: muted_memories,
-                                                 llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context))
+                                                 setup: SessionSetup.new(llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context)))
                   end
         client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
         client || raise(Error, "the worker for session #{session.id} did not start its Bridge in time")

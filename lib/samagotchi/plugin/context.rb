@@ -20,15 +20,15 @@ module Samagotchi
     # the answer text.
     # +messages_partial+ says whether +messages+ leaves out a running turn;
     # +model_name+ (the session's resolved model ref, live after /model) and
-    # +state_dir+ are what ctx.sessions forks with, and +llm_context+ (the
-    # session's own LLMContextOverride, nil without one), which a fork copies; +model_key+ is the
+    # +state_dir+ are what ctx.sessions forks with, and +setup+ (the
+    # session's own SessionSetup), which a fork copies; +model_key+ is the
     # model's memory overlay key (ctx.model, ctx.model_key).
     # +steer+ takes (text, label), +stop_turn+ and +stop_generation+
     # (reason, label), each true when it acted on a running turn.
     # +frontend+ returns the Engine's interface (:repl, :worker,
     # :non_interactive), which ctx.frontend names for plugins.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
-                      :ask_model, :model_name, :model_key, :state_dir, :scratch, :llm_context, :steer, :stop_turn, :stop_generation,
+                      :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :steer, :stop_turn, :stop_generation,
                       :frontend, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or

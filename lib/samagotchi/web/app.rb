@@ -618,7 +618,8 @@ module Samagotchi
         # until that turn is saved.
         preview = idle ? body["preview"].to_s.strip : ""
         folder[:title] = preview unless preview.empty?
-        folder[:llm_context] = llm_context if llm_context
+        setup = SessionSetup.new(llm_context: llm_context)
+        folder[:setup] = setup unless setup.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
         rescue ModelProfile::MissingModel => e

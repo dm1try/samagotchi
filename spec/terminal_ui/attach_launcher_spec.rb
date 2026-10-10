@@ -63,7 +63,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(connect(shared: true)).to be(client)
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: [], muted_memories: [], llm_context: nil)
+        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: [], muted_memories: [], setup: Samagotchi::SessionSetup.new)
       expect(Samagotchi::BridgeClient).to have_received(:wait_for)
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir), timeout: 0.2)
     end
@@ -76,7 +76,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(prompt: nil, model_name: "fast", state_dir: state_dir,
-              memories: [], muted_memories: [], llm_context: nil)
+              memories: [], muted_memories: [], setup: Samagotchi::SessionSetup.new)
     end
 
     it "starts a new session with its own --llm-context values" do
@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       connect(shared: true, llm_context: { strategy: "none", budget_tokens: "off" })
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(hash_including(llm_context: Samagotchi::LLMContextOverride.new(strategy: [], budget_tokens: 0)))
+        .with(hash_including(setup: Samagotchi::SessionSetup.new(llm_context: Samagotchi::LLMContextOverride.new(strategy: [], budget_tokens: 0))))
     end
 
     it "starts a new session with its --memory and --mute lists" do
@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       expect { connect(shared: true, memories: ["cli_usage"], muted_memories: ["gh-helper"]) }.not_to output.to_stderr
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: ["cli_usage"], muted_memories: ["gh-helper"],
-              llm_context: nil)
+              setup: Samagotchi::SessionSetup.new)
     end
 
     it "ignores --memory/--mute for an existing session, saying so, and goes on" do

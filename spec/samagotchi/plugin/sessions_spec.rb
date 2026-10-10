@@ -42,7 +42,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
     it "copies this session's own llm_context values to the child" do
       override = Samagotchi::LLMContextOverride.new(strategy: [:stale], apply: :turn_end)
-      host.llm_context = -> { override }
+      host.setup = -> { Samagotchi::SessionSetup.new(llm_context: override) }
 
       child = Samagotchi::Session.load(sessions.fork(messages: []), state_dir: tmpdir)
 

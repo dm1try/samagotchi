@@ -8,6 +8,7 @@ require_relative "atomic_file"
 require_relative "context_note"
 require_relative "last_turn"
 require_relative "llm_context_override"
+require_relative "session_setup"
 require_relative "prompt_note"
 
 require_relative "paths"
@@ -220,9 +221,10 @@ module Samagotchi
     # Build a new, unsaved session.
     # @param messages [Array<Hash>] a conversation to start from (a fork's
     #   seed); [] by default
+    # @param setup [SessionSetup] the session's own settings (none by default)
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
-                         scratch: false, model_typed: nil, delegate: false, llm_context: nil, continues: nil)
+                         scratch: false, model_typed: nil, delegate: false, setup: SessionSetup.new, continues: nil)
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -247,7 +249,7 @@ module Samagotchi
         parent_id: parent_id,
         scratch: scratch,
         delegate: delegate,
-        llm_context: llm_context,
+        llm_context: setup.llm_context,
         continues: continues
       )
     end

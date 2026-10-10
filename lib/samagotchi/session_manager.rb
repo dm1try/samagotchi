@@ -14,6 +14,7 @@ require_relative "session"
 require_relative "session_inbox"
 require_relative "session_metrics"
 require_relative "llm_context_strategy"
+require_relative "session_setup"
 require_relative "host_registry"
 require_relative "utf8_default"
 require_relative "turn_note"
@@ -163,8 +164,8 @@ module Samagotchi
     # @param images_from [String, nil] the session dir the seed's images are in
     # @param title [String, nil] what the lists show before the first turn
     #   (the prompt's preview by default, else the seed's first user message)
-    # @param llm_context [LLMContextOverride, nil] the session's own
-    #   llm_context values (chi --llm-context; a fork copies its parent's)
+    # @param setup [SessionSetup] the session's own settings (chi
+    #   --llm-context; a fork and a continue copy their session's)
     # @param continues [String, nil] the session this one continues (a
     #   session field; #continue_session)
     # @param note [String, nil] a context note the session starts with,
@@ -176,7 +177,7 @@ module Samagotchi
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
-                           title: nil, delegate: false, llm_context: nil, continues: nil, note: nil,
+                           title: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
                            note_source: "chi", before_spawn: nil)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
@@ -198,7 +199,7 @@ module Samagotchi
         parent_id: parent_id,
         messages: messages,
         delegate: delegate,
-        llm_context: llm_context,
+        setup: setup,
         continues: continues
       )
       session.model_warning = model_warning
@@ -232,7 +233,7 @@ module Samagotchi
 
     # Start the next link of a chain: a new session that continues
     # +id_or_ref+ (Session#continues) in its folder, on its model (the name
-    # it was typed as, so an alias holds) and with its own llm_context,
+    # it was typed as, so an alias holds) and with its own setup (SessionSetup),
     # starting with a context note from chi: the link and the previous
     # link's recap (SessionChain.note_text). The previous link is archived
     # first, with its finished delegates (archive_session's rules: a turn
@@ -363,7 +364,7 @@ module Samagotchi
         ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
       end
       link = spawn_session(prompt: start, title: title, working_directory: previous.working_directory,
-                           model_name: previous.model_typed || previous.model_name, llm_context: previous.llm_context,
+                           model_name: previous.model_typed || previous.model_name, setup: SessionSetup.of(previous),
                            continues: previous.id, note: SessionChain.note_text(previous, recap: recap),
                            note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn)
       link.moved_children = move

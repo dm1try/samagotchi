@@ -1618,7 +1618,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(create(manager, { "strategy" => "stale,forget", "apply" => "turn_end", "budget" => "64k" }).first).to eq(201)
       expect(create(manager, { "strategy" => "none", "budget" => "off" }).first).to eq(201)
 
-      expect(manager.spawn_calls.map { |c| c[:extra][:llm_context] }).to eq(
+      expect(manager.spawn_calls.map { |c| c[:extra][:setup].llm_context }).to eq(
         [Samagotchi::LLMContextOverride.new(strategy: %i[stale forget], apply: :turn_end, budget_tokens: 64_000),
          Samagotchi::LLMContextOverride.new(strategy: [], budget_tokens: 0)]
       )

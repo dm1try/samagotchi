@@ -320,7 +320,8 @@ module Samagotchi
                     SessionManager.continue_session(options[:continues], **start, state_dir: @state_dir)
                   else
                     SessionManager.spawn_session(**start, working_directory: options[:dir],
-                                                          model_name: options[:model], llm_context: options[:llm_context],
+                                                          model_name: options[:model],
+                                                          setup: SessionSetup.new(llm_context: options[:llm_context]),
                                                           state_dir: @state_dir)
                   end
       rescue SessionManager::ContinueRefused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e

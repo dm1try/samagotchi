@@ -2470,7 +2470,7 @@ module Samagotchi
         model_key: -> { @model_key },
         state_dir: -> { session_state_dir },
         scratch: -> { @scratch },
-        llm_context: -> { @session&.llm_context },
+        setup: -> { SessionSetup.of(@session) },
         frontend: -> { interface }
       )
     end
