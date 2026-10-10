@@ -21,6 +21,26 @@ devDependency only, never shipped; about 0.3 s per spec file that loads it). The
 without lit's marker comments. happy-dom 20 picks the wrong option of a `<select>` whose options lit inserted with
 `?selected`: read the option marked `selected` (`option[selected]`), not `select.value`; the browser follows the mark.
 
+## While you work: affected specs
+
+```sh
+script/affected-specs                 # the specs for this branch's change, best first, at most 10
+bundle exec rspec $(script/affected-specs)
+script/affected-specs --why           # with the reason for each pick; --all: no cap; --run: runs them
+script/affected-specs A..B            # another range (A...B: from their merge-base); a single REV: vs the working tree
+```
+
+A builder runs these while working, not the full suite: the specs the change touched, the specs named after the
+files it changed (`lib/samagotchi/foo/bar.rb` → `spec/foo/bar_spec.rb`, `bar_*_spec.rb`…), the specs that read
+docs or source as text (its `RULES`: add one when a full run catches what the names missed), then the specs that
+name a changed file's class. The default range is the merge-base with main (or origin/main) plus uncommitted and untracked files.
+The Ruby specs go to stdout; the node tests to run (`npm test` targets), "web changed: also run npm run e2e" and a
+hint for a hub class (named in too many specs to list) go to stderr. Nothing printed means nothing matched.
+
+It finds a change's own specs, not the regressions it causes elsewhere. So before committing, run the full suite
+(`bundle exec parallel_rspec -n 8`), unless your task says the coordinator runs it; the coordinator runs it at merge
+either way.
+
 ## Worktrees
 
 Each fix or feature gets its own worktree next to the main checkout:
