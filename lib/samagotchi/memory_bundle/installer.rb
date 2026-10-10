@@ -53,8 +53,10 @@ module Samagotchi
       # none moved).
       def trash_dir = @trash.dir
 
-      # The normalized source dir, kept alive past #run when an upgrade has
-      # conflicts (the agent step reads the incoming files); nil once cleaned.
+      # The normalized source dir. An owned one (a git/zip/tar extract) is
+      # removed after #run, or kept until #cleanup_source! when an upgrade
+      # has conflicts (the agent step reads the incoming files); nil once
+      # cleaned.
       attr_reader :source_dir
 
       # Removes the normalized source dir an owned source (git/zip/tar) was
@@ -62,10 +64,10 @@ module Samagotchi
       # conflict prompt and resolve_conflicts can still read the incoming
       # files; the caller runs it once the agent step is done. Idempotent.
       def cleanup_source!
-        return unless @defer_cleanup && @normalized_dir
+        return unless @defer_cleanup && @source_dir
 
-        SourceNormalizer.cleanup(@normalized_dir)
-        @normalized_dir = nil
+        SourceNormalizer.cleanup(@source_dir)
+        @source_dir = nil
         @defer_cleanup = false
       end
 
@@ -103,8 +105,8 @@ module Samagotchi
           if @conflicts.any? && !@dry_run
             @defer_cleanup = true
           else
-            SourceNormalizer.cleanup(@normalized_dir)
-            @normalized_dir = nil
+            SourceNormalizer.cleanup(@source_dir)
+            @source_dir = nil
           end
         end
       end
@@ -144,7 +146,7 @@ module Samagotchi
       # (@manifest, nil when it has none and the install isn't strict).
       def load_source
         @bundle_dir, @source_owned, @source_commit = SourceNormalizer.normalize(@source)
-        @normalized_dir = @bundle_dir
+        @source_dir = @bundle_dir
         @manifest = Manifest.read(dir: @bundle_dir)
       rescue SourceNormalizer::UnknownSourceError => e
         raise InstallError, "Source normalization failed: #{e.message}"
