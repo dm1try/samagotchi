@@ -880,12 +880,6 @@ module Samagotchi
     end
     private_class_method :default_host_config
 
-    # hosts.<name>.models as written back (HostModel#to_config), nil when none.
-    def host_models_config(models)
-      models.values.to_h { |m| [m.id, m.to_config] } unless models.nil? || models.empty?
-    end
-    private_class_method :host_models_config
-
     # Two hosts declaring one id under hosts.<name>.models: a bare id goes
     # where HostRegistry#host_for_model sends it (the default host when it
     # declares the id, else the first in hosts: order); say so once.
@@ -1011,20 +1005,8 @@ module Samagotchi
       # include when hosts file exists with hosts: section or when workers need propagation
       return nil if hosts.nil? || hosts.empty?
 
-      # Serialize to JSON with string keys
-      simple = hosts.transform_values do |v|
-        # A url entry travels as its url (host/port come from it); the API
-        # key stays in the environment, which workers inherit.
-        location = v.url ? { "url" => v.url } : { "host" => v.host, "port" => v.port }
-        location.merge("transport" => v.transport&.to_s, "api" => v.api&.to_s, "api_key_env" => v.api_key_env,
-                       "profile" => v.profile, "first_token_timeout" => v.first_token_timeout,
-                       "vision" => v.vision, "sampling" => v.sampling, "thinking" => v.thinking&.to_s,
-                       "remote" => v.remote, "window_tokens" => v.window_tokens,
-                       "llm_context_strategy" => v.llm_context_strategy&.map(&:to_s),
-                       "llm_context_apply" => v.llm_context_apply&.to_s,
-                       "llm_context_budget_tokens" => v.llm_context_budget_tokens,
-                       "models" => host_models_config(v.models)).compact
-      end
+      # Every field travels (HostConfig#to_env_h); the worker parses it back.
+      simple = hosts.transform_values(&:to_env_h)
       # Disabled hosts travel as just that, so a worker refuses "box:x"
       # the way its parent does instead of sending it to the default host.
       disabled_host_names(env: env, path: path).grep(HOST_NAME_RE).each { |name| simple[name] ||= { "enabled" => false } }
