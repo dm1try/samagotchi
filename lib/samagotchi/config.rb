@@ -15,6 +15,8 @@ require_relative "host_model"
 module Samagotchi
   # Parses the thinking: levels of host and model entries (it needs Config).
   autoload :Thinking, File.expand_path("thinking", __dir__)
+  # One hosts: entry; it needs ConfigFile's readers.
+  autoload :HostConfig, File.expand_path("host_config", __dir__)
 
   # Unified configuration registry implementing the implicit convention:
   #   ENV    SAMAGOTCHI_ATTR            (UPPER + prefix + _ = nesting)
@@ -841,6 +843,10 @@ module Samagotchi
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
     ENV_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
+    # config.yml's hosts: (or a worker's SAMAGOTCHI_HOSTS_JSON) by lowercased
+    # name; an entry that is disabled or invalid (warned) is left out. No
+    # entry left: "default", from server.host/port/transport.
+    # @return [Hash{String => HostConfig}]
     def hosts_config(env: ENV, path: global_path(env: env))
       data = read_yaml(env: env, path: path)
       raw_hosts = hosts_source(data, env)
@@ -848,135 +854,31 @@ module Samagotchi
       normalized = {}
       if raw_hosts.is_a?(Hash)
         raw_hosts.each do |raw_name, raw_cfg|
-          name = raw_name.to_s.strip
-          next if name.empty?
-
-          unless name.match?(HOST_NAME_RE)
-            warn_once "Warning: ignoring hosts entry '#{name}': must match /[a-z0-9][a-z0-9._-]*/i"
-            next
-          end
-          lowered = name.downcase
-          unless raw_cfg.is_a?(Hash)
-            warn_once "Warning: ignoring hosts entry '#{name}': expected mapping"
-            next
-          end
-          host = raw_cfg["host"] || raw_cfg[:host]
-          port = raw_cfg["port"] || raw_cfg[:port]
-          transport = raw_cfg["transport"] || raw_cfg[:transport]
-          api = raw_cfg["api"] || raw_cfg[:api]
-          next if host_disabled?(raw_cfg)
-
-          url = (raw_cfg["url"] || raw_cfg[:url]).to_s.strip
-          api_key_env = (raw_cfg["api_key_env"] || raw_cfg[:api_key_env]).to_s.strip
-          # Kept as written; ModelProfile.resolve warns about an unknown one.
-          profile = (raw_cfg["profile"] || raw_cfg[:profile]).to_s.strip.downcase
-          first_token_timeout = raw_cfg.key?("first_token_timeout") ? raw_cfg["first_token_timeout"] : raw_cfg[:first_token_timeout]
-          vision = ConfigFile.vision_flag(raw_cfg.key?("vision") ? raw_cfg["vision"] : raw_cfg[:vision], "hosts entry '#{name}'")
-          remote = ConfigFile.bool_flag(raw_cfg.key?("remote") ? raw_cfg["remote"] : raw_cfg[:remote], "hosts entry '#{name}'",
-                                        "remote")
-          window = ConfigFile.window_tokens(raw_cfg.key?("window_tokens") ? raw_cfg["window_tokens"] : raw_cfg[:window_tokens],
-                                            "hosts entry '#{name}'")
-          sampling = ConfigFile.sampling_map(raw_cfg.key?("sampling") ? raw_cfg["sampling"] : raw_cfg[:sampling], "hosts entry '#{name}'")
-          thinking = Thinking.level(raw_cfg.key?("thinking") ? raw_cfg["thinking"] : raw_cfg[:thinking], "hosts entry '#{name}'")
-          llm_context = LLMContextStrategy.parse(raw_cfg.key?(LLMContextStrategy::KEY) ? raw_cfg[LLMContextStrategy::KEY] : raw_cfg[:llm_context_strategy],
-                                                 "hosts entry '#{name}'")
-          llm_context_apply = LLMContextStrategy.parse_apply(raw_cfg.key?(LLMContextStrategy::APPLY_KEY) ? raw_cfg[LLMContextStrategy::APPLY_KEY] : raw_cfg[:llm_context_apply],
-                                                             "hosts entry '#{name}'")
-          models = HostModel.parse_map(raw_cfg.key?("models") ? raw_cfg["models"] : raw_cfg[:models], name)
-          llm_context_budget = LLMContextStrategy.parse_budget(raw_cfg.key?(LLMContextStrategy::BUDGET_KEY) ? raw_cfg[LLMContextStrategy::BUDGET_KEY] : raw_cfg[:llm_context_budget_tokens],
-                                                               "hosts entry '#{name}'")
-          unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
-            warn_once "Warning: hosts entry '#{name}': first_token_timeout must be seconds (0 = off); using the default"
-            first_token_timeout = nil
-          end
-          unless api_key_env.empty? || api_key_env.match?(ENV_NAME_RE)
-            warn_once "Warning: ignoring hosts entry '#{name}': api_key_env must be an environment variable name"
-            next
-          end
-          scheme = "http"
-          unless url.empty?
-            unless host.to_s.strip.empty? && port.to_s.strip.empty?
-              warn_once "Warning: ignoring hosts entry '#{name}': give url or host/port, not both"
-              next
-            end
-            uri = begin
-              URI.parse(url)
-            rescue URI::InvalidURIError
-              nil
-            end
-            unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty?
-              warn_once "Warning: ignoring hosts entry '#{name}': url must be an http(s) URL"
-              next
-            end
-            host = uri.host
-            port = uri.port
-            scheme = uri.scheme
-            url = url.chomp("/")
-          end
-          host = host.to_s.strip
-          if host.empty?
-            warn_once "Warning: ignoring hosts entry '#{name}': host is required"
-            next
-          end
-          port_val = port.to_s.strip.empty? ? 8080 : port.to_i
-          if port_val <= 0 || port_val > 65_535
-            warn_once "Warning: ignoring hosts entry '#{name}': invalid port"
-            next
-          end
-          transport_val = transport.to_s.strip.downcase
-          if transport_val.empty?
-            transport_val = nil
-          elsif !VALID_TRANSPORTS_FOR_CONFIG.include?(transport_val)
-            warn_once "Warning: ignoring hosts entry '#{name}': unknown transport '#{transport_val}'"
-            next
-          end
-          api_val = api.to_s.strip.downcase
-          if api_val.empty?
-            api_val = nil
-          elsif !VALID_APIS_FOR_CONFIG.include?(api_val)
-            warn_once "Warning: ignoring hosts entry '#{name}': unknown api '#{api_val}'"
-            next
-          elsif VALID_TRANSPORTS_FOR_CONFIG.include?(api_val)
-            # A raw-prompt api is the transport; a different transport contradicts it.
-            if transport_val && transport_val != api_val
-              warn_once "Warning: ignoring hosts entry '#{name}': api '#{api_val}' conflicts with transport '#{transport_val}'"
-              next
-            end
-            transport_val = api_val
-          end
-          normalized[lowered] = { name: lowered, host: host, port: port_val, transport: transport_val ? transport_val.to_sym : nil,
-                                  api: api_val&.to_sym, original_name: name, scheme: scheme,
-                                  url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env,
-                                  profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout,
-                                  vision: vision, sampling: sampling, thinking: thinking, remote: remote,
-                                  window_tokens: window, llm_context_strategy: llm_context,
-                                  llm_context_apply: llm_context_apply, llm_context_budget_tokens: llm_context_budget,
-                                  models: models }
-        rescue StandardError => e
-          # One entry that trips a reader is dropped on its own, and said
-          # so; the other hosts stay (the worker's copy too).
-          warn_once "Warning: ignoring hosts entry '#{name || raw_name}': #{e.class}: #{e.message}"
+          host = HostConfig.parse(raw_name, raw_cfg)
+          normalized[host.name] = host if host
         end
         warn_duplicate_host_models(normalized)
       end
-
-      # If no hosts defined, synthesize "default" from server.host/port/transport.
-      if normalized.empty?
-        opts = { file_data: data, env: env, cli_overrides: Samagotchi::Config.cli_overrides }
-        default_host = Samagotchi::Config.resolve("server.host", **opts).to_s.strip
-        default_host = "localhost" if default_host.empty?
-        default_port = Samagotchi::Config.resolve("server.port", **opts).to_i
-        default_port = 8080 if default_port <= 0 || default_port > 65_535
-        transport_sym = Samagotchi::Config.resolve_with_origin("server.transport", **opts).then do |value, origin|
-          origin == :default ? nil : value.to_sym
-        end
-        normalized["default"] = { name: "default", host: default_host, port: default_port, transport: transport_sym, original_name: "default" }
-      end
+      normalized["default"] = default_host_config(data, env) if normalized.empty?
       normalized
     rescue StandardError => e
       Log.error(:config, "hosts_config_failed", error: e.class.name, message: e.message)
       {}
     end
+
+    # The host chi uses when hosts: names none: server.host/port/transport.
+    def default_host_config(data, env)
+      opts = { file_data: data, env: env, cli_overrides: Samagotchi::Config.cli_overrides }
+      host = Samagotchi::Config.resolve("server.host", **opts).to_s.strip
+      host = "localhost" if host.empty?
+      port = Samagotchi::Config.resolve("server.port", **opts).to_i
+      port = 8080 if port <= 0 || port > 65_535
+      transport = Samagotchi::Config.resolve_with_origin("server.transport", **opts).then do |value, origin|
+        origin == :default ? nil : value.to_sym
+      end
+      HostConfig.new(name: "default", host: host, port: port, transport: transport)
+    end
+    private_class_method :default_host_config
 
     # hosts.<name>.models as written back (HostModel#to_config), nil when none.
     def host_models_config(models)
@@ -989,7 +891,7 @@ module Samagotchi
     # declares the id, else the first in hosts: order); say so once.
     def warn_duplicate_host_models(hosts)
       declared = Hash.new { |h, k| h[k] = [] }
-      hosts.each { |name, cfg| cfg[:models].each { |down, model| declared[down] << [name, model.id] } }
+      hosts.each { |name, cfg| cfg.models.each { |down, model| declared[down] << [name, model.id] } }
       declared.each_value do |owners|
         next if owners.size < 2
 
@@ -1010,7 +912,7 @@ module Samagotchi
       raw = hosts_source(read_yaml(env: env, path: path), env)
       return [] unless raw.is_a?(Hash)
 
-      raw.filter_map { |name, cfg| name.to_s.strip.downcase if cfg.is_a?(Hash) && host_disabled?(cfg) }
+      raw.filter_map { |name, cfg| name.to_s.strip.downcase if cfg.is_a?(Hash) && HostConfig.disabled?(cfg) }
     rescue StandardError
       []
     end
@@ -1030,17 +932,6 @@ module Samagotchi
       parsed.is_a?(Hash) ? parsed : raw
     end
     private_class_method :hosts_source
-
-    # enabled: false (or "false", any case) in a hosts entry.
-    def host_disabled?(cfg)
-      enabled = if cfg.key?("enabled")
-                  cfg["enabled"]
-                else
-                  (cfg.key?(:enabled) ? cfg[:enabled] : true)
-                end
-      enabled == false || enabled.to_s.strip.downcase == "false"
-    end
-    private_class_method :host_disabled?
 
     # Resolve the `recap:` section through the Config registry so scalar
     # recap settings share the single precedence path (CLI > ENV > file >
@@ -1124,15 +1015,15 @@ module Samagotchi
       simple = hosts.transform_values do |v|
         # A url entry travels as its url (host/port come from it); the API
         # key stays in the environment, which workers inherit.
-        location = v[:url] ? { "url" => v[:url] } : { "host" => v[:host], "port" => v[:port] }
-        location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env],
-                       "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout],
-                       "vision" => v[:vision], "sampling" => v[:sampling], "thinking" => v[:thinking]&.to_s,
-                       "remote" => v[:remote], "window_tokens" => v[:window_tokens],
-                       "llm_context_strategy" => v[:llm_context_strategy]&.map(&:to_s),
-                       "llm_context_apply" => v[:llm_context_apply]&.to_s,
-                       "llm_context_budget_tokens" => v[:llm_context_budget_tokens],
-                       "models" => host_models_config(v[:models])).compact
+        location = v.url ? { "url" => v.url } : { "host" => v.host, "port" => v.port }
+        location.merge("transport" => v.transport&.to_s, "api" => v.api&.to_s, "api_key_env" => v.api_key_env,
+                       "profile" => v.profile, "first_token_timeout" => v.first_token_timeout,
+                       "vision" => v.vision, "sampling" => v.sampling, "thinking" => v.thinking&.to_s,
+                       "remote" => v.remote, "window_tokens" => v.window_tokens,
+                       "llm_context_strategy" => v.llm_context_strategy&.map(&:to_s),
+                       "llm_context_apply" => v.llm_context_apply&.to_s,
+                       "llm_context_budget_tokens" => v.llm_context_budget_tokens,
+                       "models" => host_models_config(v.models)).compact
       end
       # Disabled hosts travel as just that, so a worker refuses "box:x"
       # the way its parent does instead of sending it to the default host.

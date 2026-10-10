@@ -137,8 +137,8 @@ RSpec.describe Samagotchi::VisionSupport do
 
     it "reads vision: for hosts and models" do
       hosts = Samagotchi::ConfigFile.hosts_config(env: @env)
-      expect(hosts["main"][:vision]).to be(false)
-      expect(hosts["box"][:vision]).to be_nil
+      expect(hosts["main"].vision).to be(false)
+      expect(hosts["box"].vision).to be_nil
       expect(Samagotchi::ConfigFile.model_settings(env: @env)["ornith"]).to eq(profile: nil, vision: true)
       expect(JSON.parse(Samagotchi::ConfigFile.hosts_json_for_env(env: @env))["main"]).to include("vision" => false)
     end

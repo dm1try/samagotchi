@@ -12,7 +12,7 @@ require "samagotchi/host_registry"
 RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
   let(:state_home) { Dir.mktmpdir("model-check") }
   let(:config_home) { Dir.mktmpdir("model-check-config") }
-  let(:hosts) { { "main" => {}, "box" => {} } }
+  let(:hosts) { %w[main box].to_h { |name| [name, Samagotchi::HostConfig.new(name: name)] } }
   let(:config) do
     <<~YAML
       default:
@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::ModelProfile, ".model_warning" do
 
   it "says nothing and never re-lists for an id the host declares under hosts.<name>.models" do
     save("box", %w[gemma-small], at: saved_a_while_ago)
-    hosts["box"] = { models: Samagotchi::HostModel.parse_map(%w[rr/X], "box") }
+    hosts["box"] = Samagotchi::HostConfig.new(name: "box", models: Samagotchi::HostModel.parse_map(%w[rr/X], "box"))
     relist = ->(*_args) { raise "re-listed" }
 
     expect(check("box:rr/x", relist: relist)).to be_nil

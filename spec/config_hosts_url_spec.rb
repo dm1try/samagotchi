@@ -21,14 +21,14 @@ RSpec.describe "hosts: url and api_key_env" do
     result = hosts("fw" => { "url" => "https://api.fireworks.ai/inference/v1/", "api" => "openai",
                              "api_key_env" => "FIREWORKS_API_KEY" })
 
-    expect(result["fw"]).to include(host: "api.fireworks.ai", port: 443, scheme: "https",
-                                    url: "https://api.fireworks.ai/inference/v1", api: :openai,
-                                    api_key_env: "FIREWORKS_API_KEY")
+    expect(result["fw"]).to have_attributes(host: "api.fireworks.ai", port: 443, scheme: "https",
+                                            url: "https://api.fireworks.ai/inference/v1", api: :openai,
+                                            api_key_env: "FIREWORKS_API_KEY")
   end
 
   it "reads a plain http url with a port" do
     expect(hosts("box" => { "url" => "http://10.0.0.5:8081" })["box"])
-      .to include(host: "10.0.0.5", port: 8081, scheme: "http", url: "http://10.0.0.5:8081")
+      .to have_attributes(host: "10.0.0.5", port: 8081, scheme: "http", url: "http://10.0.0.5:8081")
   end
 
   it "ignores an entry with both url and host/port, a bad url, or a bad variable name" do
@@ -50,9 +50,9 @@ RSpec.describe "hosts: url and api_key_env" do
                      "off" => { "host" => "h", "first_token_timeout" => 0 },
                      "bad" => { "host" => "h", "first_token_timeout" => "soon" })
     end.to output(/'bad'.*first_token_timeout/).to_stderr
-    expect(result["or"][:first_token_timeout]).to eq(90)
-    expect(result["off"][:first_token_timeout]).to eq(0)
-    expect(result["bad"][:first_token_timeout]).to be_nil
+    expect(result["or"].first_token_timeout).to eq(90)
+    expect(result["off"].first_token_timeout).to eq(0)
+    expect(result["bad"].first_token_timeout).to be_nil
   end
 
   it "reads remote: true/false, ignores anything else with a warning, and passes it to workers" do
@@ -62,13 +62,13 @@ RSpec.describe "hosts: url and api_key_env" do
                      "far" => { "host" => "box", "remote" => true },
                      "bad" => { "host" => "h", "remote" => "maybe" })
     end.to output(/'bad'.*remote must be true or false/).to_stderr
-    expect(result.transform_values { |v| v[:remote] }).to eq("lan" => false, "far" => true, "bad" => nil)
+    expect(result.transform_values(&:remote)).to eq("lan" => false, "far" => true, "bad" => nil)
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
       File.write(path, { "hosts" => { "lan" => { "url" => "https://lan.example/v1", "remote" => false } } }.to_yaml)
       json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
-      expect(worker["lan"][:remote]).to be(false)
+      expect(worker["lan"].remote).to be(false)
     end
   end
 
@@ -81,8 +81,8 @@ RSpec.describe "hosts: url and api_key_env" do
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
 
       expect(json).not_to include("sk-secret")
-      expect(worker["fw"]).to include(url: "https://api.example.test/v1", host: "api.example.test", port: 443,
-                                      api_key_env: "EXAMPLE_KEY", api: :openai, first_token_timeout: 45)
+      expect(worker["fw"]).to have_attributes(url: "https://api.example.test/v1", host: "api.example.test", port: 443,
+                                              api_key_env: "EXAMPLE_KEY", api: :openai, first_token_timeout: 45)
     end
   end
 
@@ -161,14 +161,14 @@ RSpec.describe "window_tokens on hosts: and models: entries" do
         hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
       end.to output(/'bad'.*window_tokens must be a positive number of tokens.*\n.*odd.*window_tokens/m).to_stderr
-      expect(hosts.transform_values { |v| v[:window_tokens] }).to eq("box" => 65_536, "bad" => nil)
+      expect(hosts.transform_values(&:window_tokens)).to eq("box" => 65_536, "bad" => nil)
       expect(models["qwen3"][:window_tokens]).to eq(32_768)
       expect(models["odd"]).not_to have_key(:window_tokens)
       expect(Samagotchi::HostRegistry.new(hosts_config: hosts).entries["box"].window_tokens).to eq(65_536)
 
       json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
-      expect(worker["box"][:window_tokens]).to eq(65_536)
+      expect(worker["box"].window_tokens).to eq(65_536)
     end
   end
 end
@@ -185,10 +185,10 @@ RSpec.describe "llm_context_strategy on hosts: entries" do
       json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
 
-      expect(worker.transform_values { |v| v[:llm_context_strategy] }).to eq("box" => %i[stale forget], "off" => [],
-                                                                             "plain" => nil)
-      expect(worker.transform_values { |v| v[:llm_context_apply] }).to eq("box" => :turn_end, "off" => nil, "plain" => nil)
-      expect(worker.transform_values { |v| v[:llm_context_budget_tokens] }).to eq("box" => 64_000, "off" => nil, "plain" => nil)
+      expect(worker.transform_values(&:llm_context_strategy)).to eq("box" => %i[stale forget], "off" => [],
+                                                                    "plain" => nil)
+      expect(worker.transform_values(&:llm_context_apply)).to eq("box" => :turn_end, "off" => nil, "plain" => nil)
+      expect(worker.transform_values(&:llm_context_budget_tokens)).to eq("box" => 64_000, "off" => nil, "plain" => nil)
     end
   end
 end

@@ -19,20 +19,20 @@ RSpec.describe "hosts: api" do
 
   it "reads api: openai and keeps the transport as given" do
     result = hosts("oai" => { "host" => "h", "port" => 8000, "api" => "openai" })
-    expect(result["oai"]).to include(api: :openai, transport: nil)
+    expect(result["oai"]).to have_attributes(api: :openai, transport: nil)
   end
 
   it "uses an explicit raw api as the transport when none is set" do
-    expect(hosts("m" => { "host" => "h", "api" => "mlx" })["m"]).to include(api: :mlx, transport: :mlx)
+    expect(hosts("m" => { "host" => "h", "api" => "mlx" })["m"]).to have_attributes(api: :mlx, transport: :mlx)
   end
 
   it "leaves api and transport nil when neither is set (the global transport still applies)" do
-    expect(hosts("box" => { "host" => "h" })["box"]).to include(api: nil, transport: nil)
+    expect(hosts("box" => { "host" => "h" })["box"]).to have_attributes(api: nil, transport: nil)
   end
 
   it "allows api: openai with a transport (the transport only affects listing/probing)" do
     expect(hosts("oai" => { "host" => "h", "api" => "openai", "transport" => "omlx" })["oai"])
-      .to include(api: :openai, transport: :omlx)
+      .to have_attributes(api: :openai, transport: :omlx)
   end
 
   it "ignores an entry whose raw api and transport disagree, and an unknown api" do
@@ -60,8 +60,8 @@ RSpec.describe "hosts: api" do
       json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
 
-      expect(worker["oai"]).to include(host: "h", port: 8000, api: :openai)
-      expect(worker["box"]).to include(host: "b", api: nil, transport: nil)
+      expect(worker["oai"]).to have_attributes(host: "h", port: 8000, api: :openai)
+      expect(worker["box"]).to have_attributes(host: "b", api: nil, transport: nil)
     end
   end
 

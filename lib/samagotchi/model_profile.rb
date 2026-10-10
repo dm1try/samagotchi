@@ -227,7 +227,7 @@ module Samagotchi
       host = parsed.host_name
       return nil unless host
       # Declared under hosts.<name>.models: served whatever the host lists.
-      return nil if hosts[host.to_s.strip.downcase]&.dig(:models)&.key?(parsed.id.to_s.strip.downcase)
+      return nil if hosts[host.to_s.strip.downcase]&.models&.key?(parsed.id.to_s.strip.downcase)
 
       list = lists.read(env: env)[host.to_s.strip.downcase]
       return nil if list.nil? || list.stale? || list.known?(parsed.id)

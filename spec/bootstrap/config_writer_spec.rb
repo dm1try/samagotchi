@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
         # More settings: docs/configuration.md#all-settings
       YAML
       expect(parsed.dig("default", "model")).to eq("lan:ornith-ai/Ornith-1.5:Q4_K_M")
-      expect(hosts["lan"]).to include(host: "192.168.1.29", port: 8081, api: nil)
+      expect(hosts["lan"]).to have_attributes(host: "192.168.1.29", port: 8081, api: nil)
     end
 
     it "writes nothing on a dry run" do

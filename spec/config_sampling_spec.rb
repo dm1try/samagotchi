@@ -26,9 +26,9 @@ RSpec.describe "sampling config" do
                              "plain" => { "host" => "h" } }) do |path|
       hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
-      expect(hosts["work"][:sampling]).to eq(temperature: 0.6, presence_penalty: 1.5,
-                                             chat_template_kwargs: { enable_thinking: false })
-      expect(hosts["plain"][:sampling]).to be_nil
+      expect(hosts["work"].sampling).to eq(temperature: 0.6, presence_penalty: 1.5,
+                                           chat_template_kwargs: { enable_thinking: false })
+      expect(hosts["plain"].sampling).to be_nil
     end
   end
 
@@ -44,7 +44,7 @@ RSpec.describe "sampling config" do
 
   it "keeps a null value (don't send the key)" do
     with_config("hosts" => { "work" => { "host" => "h", "sampling" => { "temperature" => nil } } }) do |path|
-      expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path)["work"][:sampling]).to eq(temperature: nil)
+      expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path)["work"].sampling).to eq(temperature: nil)
     end
   end
 
@@ -53,7 +53,7 @@ RSpec.describe "sampling config" do
       hosts = nil
       expect { hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path) }
         .to output(/hosts entry 'work': sampling.max_tokens is set by chi; ignored.*sampling.stream is set by chi/m).to_stderr
-      expect(hosts["work"][:sampling]).to eq(temperature: 0.6)
+      expect(hosts["work"].sampling).to eq(temperature: 0.6)
       expect { Samagotchi::ConfigFile.hosts_config(env: {}, path: path) }.not_to output.to_stderr
     end
   end
@@ -63,7 +63,7 @@ RSpec.describe "sampling config" do
       hosts = nil
       expect { hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path) }
         .to output(/sampling.id_slot is set by chi; ignored/).to_stderr
-      expect(hosts["work"][:sampling]).to eq(temperature: 0.6)
+      expect(hosts["work"].sampling).to eq(temperature: 0.6)
     end
   end
 

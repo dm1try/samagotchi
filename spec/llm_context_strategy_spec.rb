@@ -187,7 +187,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
         hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
         expect(models["deepseek"][:llm_context_budget_tokens]).to eq(48_000)
-        expect(hosts["box"][:llm_context_budget_tokens]).to be_nil
+        expect(hosts["box"].llm_context_budget_tokens).to be_nil
       end
       expect { Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {}) }.not_to output.to_stderr
       allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -241,8 +241,8 @@ RSpec.describe Samagotchi::LLMContextStrategy do
         expect(models["qwen3.6-35b"][:llm_context_strategy]).to eq([:stale])
         expect(models["deepseek"][:llm_context_strategy]).to eq(%i[stale forget])
         expect(models["other"]).not_to have_key(:llm_context_strategy)
-        expect(hosts["box"][:llm_context_strategy]).to eq([])
-        expect(hosts["plain"][:llm_context_strategy]).to be_nil
+        expect(hosts["box"].llm_context_strategy).to eq([])
+        expect(hosts["plain"].llm_context_strategy).to be_nil
         expect(Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).entries["box"].llm_context_strategy).to eq([])
       end
     end

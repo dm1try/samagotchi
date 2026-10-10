@@ -47,8 +47,8 @@ RSpec.describe "prompt profile config" do
                                "plain" => { "host" => "h" } }) do |path|
         hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
-        expect(hosts["mlx"][:profile]).to eq("qwen36")
-        expect(hosts["plain"][:profile]).to be_nil
+        expect(hosts["mlx"].profile).to eq("qwen36")
+        expect(hosts["plain"].profile).to be_nil
       end
     end
 

@@ -98,16 +98,11 @@ module Samagotchi
       raw = hosts_config || ConfigFile.hosts_config(env: env)
       @entries = {}
       raw.each do |key, cfg|
-        # cfg: {name:, host:, port:, transport:, original_name:}
-        transport = cfg[:transport]
-        entry = HostEntry.new(name: key.to_s.downcase, host: cfg[:host], port: cfg[:port].to_i, transport: transport,
-                              api: cfg[:api]&.to_sym, scheme: cfg[:scheme], url: cfg[:url], api_key_env: cfg[:api_key_env],
-                              profile: cfg[:profile], first_token_timeout: cfg[:first_token_timeout],
-                              vision: cfg[:vision], sampling: cfg[:sampling], thinking: cfg[:thinking],
-                              remote: cfg[:remote], window_tokens: cfg[:window_tokens],
-                              llm_context_strategy: cfg[:llm_context_strategy], llm_context_apply: cfg[:llm_context_apply],
-                              llm_context_budget_tokens: cfg[:llm_context_budget_tokens], models: cfg[:models] || {})
-        entry.client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme],
+        cfg = HostConfig.coerce(key, cfg)
+        # Every HostConfig field is a HostEntry member (a new one must be added there too).
+        fields = cfg.to_h.merge(name: key.to_s.downcase, port: cfg.port.to_i, api: cfg.api&.to_sym, models: cfg.models || {})
+        entry = HostEntry.new(**fields)
+        entry.client = Client.new(host: cfg.host, port: cfg.port, transport: cfg.transport, scheme: cfg.scheme,
                                   first_token_timeout: entry.first_token_limit, name: entry.name,
                                   api_key_env: entry.api_key_env, env: env)
         @entries[entry.name] = entry

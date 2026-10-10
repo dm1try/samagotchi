@@ -68,7 +68,7 @@ RSpec.describe Samagotchi::Thinking do
           qwen:
             thinking: off
       YAML
-        expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path)["work"][:thinking]).to eq(:off)
+        expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path)["work"].thinking).to eq(:off)
         expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)["qwen"][:thinking]).to eq(:off)
         with_env("XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_THINKING_LEVEL" => nil) do
           expect(described_class.global_level).to eq(%i[off file])
@@ -95,7 +95,7 @@ RSpec.describe Samagotchi::Thinking do
       with_config("hosts:\n  work:\n    host: h\n    thinking: off\n") do |path|
         json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
         hosts = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(Dir.tmpdir, "none.yml"))
-        expect(hosts["work"][:thinking]).to eq(:off)
+        expect(hosts["work"].thinking).to eq(:off)
       end
     end
   end

@@ -25,8 +25,8 @@ RSpec.describe "hosts.<name>.models" do
     result = hosts("work" => { "url" => "https://gateway.example/v1", "models" => { "rr/DeepSeek" => nil } },
                    "box" => { "host" => "box.test" })
 
-    expect(result["work"][:models].transform_values(&:id)).to eq("rr/deepseek" => "rr/DeepSeek")
-    expect(result["box"][:models]).to eq({})
+    expect(result["work"].models.transform_values(&:id)).to eq("rr/deepseek" => "rr/DeepSeek")
+    expect(result["box"].models).to eq({})
   end
 
   it "drops a disabled host's models with it" do
@@ -41,7 +41,7 @@ RSpec.describe "hosts.<name>.models" do
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json },
                                                    path: File.join(dir, "none.yml"))
 
-      expect(worker["work"][:models].transform_values(&:id)).to eq("rr/a" => "rr/A", "rr/b" => "rr/b")
+      expect(worker["work"].models.transform_values(&:id)).to eq("rr/a" => "rr/A", "rr/b" => "rr/b")
     end
   end
 
@@ -52,7 +52,7 @@ RSpec.describe "hosts.<name>.models" do
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json },
                                                    path: File.join(dir, "none.yml"))
 
-      expect(worker["work"][:models]["rr/x"].price).to eq(Samagotchi::ModelPrice.new(input: 0.27, cache_read: 0.07, cache_write: 0.27, output: 1.1))
+      expect(worker["work"].models["rr/x"].price).to eq(Samagotchi::ModelPrice.new(input: 0.27, cache_read: 0.07, cache_write: 0.27, output: 1.1))
     end
   end
 
@@ -66,8 +66,8 @@ RSpec.describe "hosts.<name>.models" do
       json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
 
-      expect(worker["work"][:models].keys).to eq(%w[rr/inf rr/nan])
-      expect(worker["work"][:models].values.map(&:price)).to eq([nil, nil])
+      expect(worker["work"].models.keys).to eq(%w[rr/inf rr/nan])
+      expect(worker["work"].models.values.map(&:price)).to eq([nil, nil])
     end
     expect(Samagotchi::ConfigFile).to have_received(:warn_once).with(%r{rr/inf\.price needs input and output})
     expect(Samagotchi::ConfigFile).to have_received(:warn_once).with(%r{rr/nan\.price needs input and output})
