@@ -470,13 +470,38 @@ models:
 - `default` sends nothing: the provider's or the chat template's own default, which is chi's behaviour without the
   setting. For some hybrid models that default is *no* thinking (DeepSeek V3.1 on OpenRouter); `medium` turns it on.
   `on` isn't a level.
-- Order, first set wins: `--thinking LEVEL` or `SAMAGOTCHI_THINKING_LEVEL`, then the `models:` entry (found the way
-  `profile:` is), then the `hosts:` entry, then `thinking.level` in the file, then `default`. Anything else than a
-  level warns once and counts as unset.
-- The flag reaches the sessions that start with it; a session already running keeps its level. `models:` levels
-  and `thinking.level` in the file are read every turn; a host's `thinking:` reaches a worker when it starts, as
-  its `sampling:` does (`chi sessions stop` to change it).
-- `/model` shows the level and where it came from (`thinking: off (models: qwen3.6-35b-a3b)`), `chi self` too.
+- Order, first set wins: the session's own level, then the process default (`chi web --thinking LEVEL`, or
+  `SAMAGOTCHI_THINKING_LEVEL`), then the `models:` entry (found the way `profile:` is), then the `hosts:` entry, then
+  `thinking.level` in the file, then `default`. Anything else than a level warns once and counts as unset.
+- **A session's own level** (`off`, `low`, `medium`, `high`) is saved in the session (its file's `"thinking"`), so a
+  `--resume`, a respawned worker, a continue (the next link of a chain) and `/model` keep it; a plugin's fork copies
+  it, a delegate child starts without it (it runs at its model's level). Set it with:
+  - `/thinking LEVEL` in the session (`/thinking default` unsets it, `/thinking` alone shows the level and where it
+    came from);
+  - `chi --thinking LEVEL` on a run that starts or resumes a session (the REPL, `-p`, `--resume`, an attached one);
+  - `chi send --new --thinking LEVEL`;
+  - the web's `think` chip, in the session bar and on the start page (`POST /api/sessions` takes `"thinking": "low"`;
+    anything that isn't a level answers `400 invalid_thinking`).
+- `chi web --thinking LEVEL` is the default for the sessions its workers run, below a session's own. A session started
+  with only the env (`SAMAGOTCHI_THINKING_LEVEL=low chi send --new …`) loses the level when a worker without that env
+  (`chi web`'s, say) wakes it later: use `chi send --new --thinking low`.
+- A level is fixed for a turn: a change takes effect at the next turn's start. `/thinking LEVEL` sent while a turn
+  runs waits for its end (as `/model X` does), and holds off that turn's warm-up. What a change costs the prompt cache,
+  which `/thinking` says:
+
+  | Backend | A level change |
+  |---|---|
+  | native Qwen (`qwen36`) | only the prompt's tail (the empty thought after the cue) |
+  | native Gemma 4 (`gemma4`) | the whole prompt is read again: `<\|think\|>` starts the system prompt |
+  | chat host, local llama.cpp or Splash | other request fields; the server keeps its cache (a Gemma template re-reads it all) |
+  | chat host, OpenRouter → Claude | thinking params are part of the cached prefix: the cache restarts |
+  | chat host, OpenRouter → OpenAI reasoning | an effort change rewrites hidden instructions: the prefix is lost |
+
+- `models:` levels and `thinking.level` in the file are read every turn; a host's `thinking:` reaches a worker when
+  it starts, as its `sampling:` does (`chi sessions stop` to change it).
+- `/model` shows the level and where it came from (`thinking: off (models: qwen3.6-35b-a3b)`, `thinking: low
+  (session)`), `/stats` on its `thinking:` line, `chi self` too (a session's own level first when run from its
+  commands).
 - The idle recap and plugins' side questions always ask with thinking off, whatever the level.
 
 What each backend gets:
@@ -1147,7 +1172,7 @@ described in their own sections.
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |
 | `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, within `session.max_wakes`); `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
-| `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
+| `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't; a session's own level outranks them all, and `--thinking` sets it on a session run (on `chi web` it sets this). See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
 | `hosts.<name>.models` | none | | The model ids a host serves whatever its `/v1/models` lists: a map of ids, or a plain list. See "Models a host serves but doesn't list". |
 | `hosts.<name>.models.<id>.served` | none | | The models the host may answer that id with (exact ids, any case), or `any`: no served-model warning for those. See "Models a host serves but doesn't list". |
