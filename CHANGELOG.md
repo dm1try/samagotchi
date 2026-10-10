@@ -18,6 +18,9 @@ and commands may change between minor versions. How releases are made:
 - Web: command bubbles (`/help`, `/model`, `/llm-context` …) stay in place when a `!cmd` or `!rollback` redraws the
   conversation; a reload still drops them (only a `!cmd`'s output is saved).
 - Web: a reloaded turn whose messages carry no parts keeps "(called as bash)" on its rows (from the tool records).
+- A turn posted with `delivery: "queue"` (the Bridge's and the web's `POST …/turn`) is refused with 400
+  `delivery_unavailable` until queueing is built, instead of being acked as queued and then merged at the running
+  turn's next step. No chi client sends it.
 
 ## [0.51.0] - 2026-10-10
 

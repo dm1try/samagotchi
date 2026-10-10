@@ -1224,12 +1224,13 @@ RSpec.describe Samagotchi::Bridge do
         expect(queued_inputs).to be_empty
       end
 
-      it "writes the delivery the body asked for" do
+      it "refuses a queue delivery (not built yet) with a 400 that says so, before anything is queued" do
         start_bridge
-        expect(post_turn(JSON.generate(session_id: @session.id, prompt: "later", delivery: "queue")).first)
-          .to be_between(200, 299)
+        status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "later", delivery: "queue"))
 
-        expect(queued_inputs.map { |q| q["delivery"] }).to eq(["queue"])
+        expect(status).to eq(400)
+        expect(resp).to include("error" => "delivery_unavailable", "detail" => a_string_including("queue isn't available yet"))
+        expect(queued_inputs).to be_empty
       end
 
       it "takes a missing or unknown delivery as the default, without writing the key" do

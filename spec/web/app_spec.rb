@@ -2218,11 +2218,11 @@ RSpec.describe Samagotchi::Web::App do
       bridge = instance_double(Samagotchi::BridgeClient)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       allow(bridge).to receive(:post_turn)
-        .with(prompt: "later", client_id: "web:tab-1", delivery: "queue")
+        .with(prompt: "later", client_id: "web:tab-1", delivery: "cut")
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
 
       status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
-                                 body: '{"prompt":"later","client_id":"web:tab-1","delivery":"queue"}'))
+                                 body: '{"prompt":"later","client_id":"web:tab-1","delivery":"cut"}'))
       expect(status).to eq(202)
 
       queued = nil
@@ -2232,6 +2232,20 @@ RSpec.describe Samagotchi::Web::App do
                                  body: '{"prompt":"now","client_id":"web:tab-1","delivery":"cut"}'))
       expect(status).to eq(202)
       expect(queued).to match(["s1", hash_including(prompt: "now", delivery: "cut")])
+    end
+
+    it "refuses a queue delivery (not built yet) with a 400 that says so" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      expect(app).not_to receive(:live_bridge_client)
+      expect(manager).not_to receive(:write_turn_input)
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                                body: '{"prompt":"later","delivery":"queue"}'))
+
+      expect(status).to eq(400)
+      expect(JSON.parse(body.first)).to include("error" => "delivery_unavailable",
+                                                "detail" => a_string_including("queue isn't available yet"))
     end
 
     it "refuses a delivery that is not a string" do
