@@ -17,6 +17,11 @@ and commands may change between minor versions. How releases are made:
   (the default), `vscode-insiders`, `cursor`, `zed`, `none`, or a URL template with `{path}` and `{line}`. The
   browser and VS Code each ask once to allow it.
 
+### Fixed
+
+- Web: a page that joins mid-turn (or reloads during one) keeps a grep that found nothing as a muted "no match" row,
+  as it showed live; it used to lose the mark.
+
 ## [0.54.0] - 2026-10-10
 
 ### Changed

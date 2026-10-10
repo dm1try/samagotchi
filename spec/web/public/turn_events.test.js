@@ -161,6 +161,16 @@ test("snapshotEvents splits text by iteration and leaves the last one streaming"
   ]);
 });
 
+test("snapshotEvents keeps a grep that found nothing muted: no_match in the completed event's activity, as Ruby's replay", () => {
+  const turn = { prompt: "p", parts: [
+    { kind: "tool", iteration: 1, call_index: 0, tool: "execute", params: "command=\"rg x\"", status: "ok", output: "", no_match: true },
+    { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "command=\"ls\"", status: "ok", output: "a" },
+  ] };
+  const completed = snapshotEvents({ current_turn: turn }).filter((e) => e.type === "tool_call_completed");
+  assert.equal(completed[0].activity.no_match, true);
+  assert.equal("no_match" in completed[1].activity, false);
+});
+
 test("snapshotEvents with no turn in progress is just the queue", () => {
   assert.deepEqual(snapshotEvents({ current_turn: null, queued: [] }), []);
   assert.deepEqual(snapshotEvents({}), []);
