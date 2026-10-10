@@ -5,6 +5,7 @@ require_relative "session"
 require_relative "session_manager"
 require_relative "session_retention"
 require_relative "project_scope"
+require_relative "analytics_file"
 require_relative "session_metrics"
 require_relative "recap_store"
 require_relative "session_delete_command"
@@ -337,10 +338,10 @@ module Samagotchi
           return [TerminalUI::EventRenderer.deep_symbolize_keys(body), true, nil]
         end
       end
-      return [nil, false, nil] unless File.file?(File.join(dir, "analytics.json"))
+      return [nil, false, nil] unless File.file?(Samagotchi::AnalyticsFile.path(dir))
 
       snapshot = Samagotchi::SessionMetrics.new.tap { |m| m.session_id = session.id }.saved_snapshot
-      note = live_worker?(session.id) ? "(no live worker answered; from the saved analytics.json)" : nil
+      note = live_worker?(session.id) ? "(no live worker answered; from the saved #{Samagotchi::AnalyticsFile::NAME})" : nil
       [snapshot, false, note]
     end
 

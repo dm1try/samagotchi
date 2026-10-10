@@ -9,6 +9,7 @@ require "uri"
 require "rack"
 require "rack/request"
 
+require_relative "../analytics_file"
 require_relative "../client_id"
 require_relative "../delivery"
 require_relative "../answer_tail"
@@ -1722,13 +1723,7 @@ module Samagotchi
       end
 
       def read_analytics(session_id)
-        path = File.join(@session_class.session_dir(session_id, state_dir: default_state_dir), "analytics.json")
-        return {} unless File.file?(path)
-
-        data = JSON.parse(File.read(path))
-        data.is_a?(Hash) ? data : {}
-      rescue JSON::ParserError, SystemCallError
-        {}
+        AnalyticsFile.read(@session_class.session_dir(session_id, state_dir: default_state_dir)) || {}
       end
 
       def merge_timing_records(persisted, live)

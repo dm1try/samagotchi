@@ -5,6 +5,7 @@ require "monitor"
 require "time"
 require "fileutils"
 require "securerandom"
+require_relative "analytics_file"
 require_relative "atomic_file"
 require_relative "token_usage"
 require_relative "model_price"
@@ -172,8 +173,8 @@ module Samagotchi
     # @param budget_tokens [Integer, Proc, nil] see .saved_context_pct
     # @return [SavedSummary, nil]
     def self.saved_summary(session_dir, budget_tokens: nil)
-      data = JSON.parse(File.read(File.join(session_dir, "analytics.json")))
-      return nil unless data.is_a?(Hash)
+      data = AnalyticsFile.read(session_dir)
+      return nil unless data
 
       tokens = data["tokens"].is_a?(Hash) ? data["tokens"] : {}
       count = ->(key) { tokens[key].is_a?(Numeric) ? tokens[key] : 0 }
@@ -182,7 +183,7 @@ module Samagotchi
                        reasoning_sum: count.call("reasoning_sum"), cost_sum: count.call("cost_sum"),
                        cost_estimate_sum: count.call("cost_estimate_sum"),
                        memory_index: data["memory_index"].is_a?(Hash) ? data["memory_index"] : nil)
-    rescue JSON::ParserError, SystemCallError, TypeError
+    rescue TypeError
       nil
     end
 
@@ -217,10 +218,10 @@ module Samagotchi
     def self.saved_tool_records(session_dir, turn_id)
       return [] if turn_id.to_s.empty?
 
-      records = JSON.parse(File.read(File.join(session_dir, "analytics.json")))["tool_records"]
+      records = AnalyticsFile.read(session_dir)&.dig("tool_records")
       Array(records).select { |r| r.is_a?(Hash) && r["turn_id"] == turn_id }
                     .sort_by { |r| [r["iteration"].to_i, r["call_index"].to_i] }
-    rescue JSON::ParserError, SystemCallError, TypeError
+    rescue TypeError
       []
     end
 
@@ -234,9 +235,9 @@ module Samagotchi
     def self.saved_turn_record(session_dir, turn_id)
       return nil if turn_id.to_s.empty?
 
-      records = JSON.parse(File.read(File.join(session_dir, "analytics.json")))["turn_records"]
+      records = AnalyticsFile.read(session_dir)&.dig("turn_records")
       Array(records).find { |r| r.is_a?(Hash) && r["id"] == turn_id }
-    rescue JSON::ParserError, SystemCallError, TypeError
+    rescue TypeError
       nil
     end
 
@@ -422,8 +423,7 @@ module Samagotchi
       # (XDG) location; passing an explicit nil would override it and break
       # File.join.
       FileUtils.mkdir_p(dir = session_dir(sid, state_dir || @state_dir))
-      path = File.join(dir, "analytics.json")
-      AtomicFile.write(path, JSON.pretty_generate(data) + "\n")
+      AtomicFile.write(AnalyticsFile.path(dir), JSON.pretty_generate(data) + "\n")
       @mutex.synchronize { @persisted_turns = [@persisted_turns, turn_count].max }
       true
     rescue StandardError
@@ -977,11 +977,8 @@ module Samagotchi
     # broken file, or an older shape: nothing, or zeros where keys are
     # missing). Caller holds the mutex.
     def load_persisted
-      path = File.join(session_dir(@session_id, @state_dir), "analytics.json")
-      return unless File.file?(path)
-
-      prior = JSON.parse(File.read(path))
-      return unless prior.is_a?(Hash)
+      prior = AnalyticsFile.read(session_dir(@session_id, @state_dir))
+      return unless prior
 
       loaded_turns = loaded_records(prior["turn_records"])
       @turn_records = loaded_turns + @turn_records
@@ -1004,12 +1001,10 @@ module Samagotchi
       @memory_index ||= symbolized(prior["memory_index"]) if prior["memory_index"].is_a?(Hash)
       # The window last seen, until this process's first generation reports.
       window = prior["context"].is_a?(Hash) ? prior["context"] : {}
-      if window["window_tokens"] && @context_window_tokens.nil?
-        @context_window_tokens = window["window_tokens"]
-        @context_window_source = window["window_source"]
-      end
-    rescue JSON::ParserError, SystemCallError
-      nil
+      return unless window["window_tokens"] && @context_window_tokens.nil?
+
+      @context_window_tokens = window["window_tokens"]
+      @context_window_source = window["window_source"]
     end
 
     def symbolized(hash)

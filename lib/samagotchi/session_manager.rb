@@ -6,6 +6,7 @@ require "time"
 require "securerandom"
 require "rbconfig"
 require_relative "client_id"
+require_relative "analytics_file"
 require_relative "atomic_file"
 require_relative "config"
 require_relative "delivery"
@@ -974,7 +975,7 @@ module Samagotchi
     # session keeps. "pid" is the pid file workers wrote until 2026-10-01:
     # nothing writes or reads it now, but a folder from before still has one
     # and is still empty.
-    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerSidecar::FILE, "analytics.json"].freeze
+    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerSidecar::FILE, AnalyticsFile::NAME].freeze
     EMPTY_DIRS = [SessionInbox::INPUT_DIR, SessionInbox::NOTES_DIR, "images"].freeze
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [SessionInbox::OUTPUT_DIR]).freeze
 
@@ -1058,7 +1059,7 @@ module Samagotchi
         path = File.join(dir, name)
         if EMPTY_SKELETON_DIRS.include?(name)
           File.directory?(path) && (!EMPTY_DIRS.include?(name) || Dir.empty?(path))
-        elsif name == "analytics.json"
+        elsif name == AnalyticsFile::NAME
           Array(JSON.parse(File.read(path))["turn_records"]).empty?
         # Cards and notices from before any turn (Bridge::CardStore).
         elsif name == "cards.json"
