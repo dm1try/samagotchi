@@ -3,7 +3,6 @@
 require "fileutils"
 require "digest"
 require_relative "../memory_paths"
-require_relative "bundle_hook"
 require_relative "provenance"
 require_relative "manifest"
 require_relative "source"
@@ -11,7 +10,7 @@ require_relative "placeholder"
 require_relative "index_updater"
 require_relative "merger"
 require_relative "trash"
-require_relative "../version"
+require_relative "asset_installer"
 require_relative "../bundle_needs"
 require_relative "../model_overlay"
 
@@ -19,13 +18,15 @@ module Samagotchi
   module MemoryBundle
     # Installs a bundle into a scoped memories directory.
     #
-    # Flow:
-    #   1. Normalize source → directory (returns [path, owned])
-    #   2. Read manifest.yml
-    #   3. Copy .md files to target scope dir (skip or force)
-    #   4. Verify checksums (strict mode)
-    #   5. Update index.md for each entry
-    #   6. Write provenance (.bundles/<name>/)
+    # Flow (#run):
+    #   1. Normalize source → directory, read manifest.yml (load_source)
+    #   2. Copy .md files to the target scope dir and update index.md
+    #      (install_memories: plain, dry run, or an upgrade's 3-way merge)
+    #   3. Hooks, guardrail rules, plugin, scripts into .bundles/<name>/
+    #      (AssetInstaller)
+    #   4. An upgrade prunes the files the bundle dropped
+    #   5. Verify checksums (strict mode), warn about missing needs
+    #   6. Write provenance (.bundles/<name>/manifest.json, write_provenance)
     #   7. Detect and report {{placeholders}}
     class Installer
       class InstallError < StandardError; end
@@ -78,23 +79,18 @@ module Samagotchi
         @reinstall = @existing && !@upgrade && !@force && !@dry_run
         install_memories
 
-        install_hooks
-        prune_dropped_hooks if @upgrade && @existing && !@dry_run
-        verify_hook_checksums if @manifest && @strict
-        incoming_rules = Dir.glob(File.join(@bundle_dir, "guardrails", "*.yml")).sort
-        guardrail_files = install_guardrails(incoming_rules, @provenance)
-        # Like the rules, the bundle's plugin replaces an earlier one.
-        plugin_file = install_plugin(@manifest, @bundle_dir, @provenance)
-        script_files = install_scripts(@manifest, @bundle_dir, @provenance)
-        warn_hooks_requires_chi(@manifest, @bundle_hooks)
-        warn_rules_requires_chi(@manifest, incoming_rules)
+        installed = AssetInstaller.new(
+          name: @name, source_dir: @bundle_dir, manifest: @manifest, provenance: @provenance, existing: @existing,
+          results: @results, warnings: @warnings, conflicts: @conflicts,
+          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run
+        ).run
 
         # Files the previous version shipped and this one doesn't.
         prune_dropped_files(@existing.files, @bundle_md, @target_dir, @target_scope, @provenance) if @upgrade && @existing
         verify_memory_checksums if @manifest && @strict
         warn_missing_needs(@manifest) if @manifest
         if @manifest && !@dry_run
-          write_provenance(guardrail_files: guardrail_files, plugin_file: plugin_file, script_files: script_files)
+          write_provenance(installed)
         end
         detect_placeholders
 
@@ -252,106 +248,6 @@ module Samagotchi
         end
       end
 
-      # Copies the bundle's hooks/*.rb into <bundle_dir>/hooks/: the ones
-      # its manifest lists, else (no hooks: in it) every hooks/*.rb, which is
-      # then added to manifest.hooks with no event (the loader skips it, the
-      # record keeps it). Without a manifest every hooks/*.rb is copied.
-      # Sets @bundle_hooks (every hook the bundle ships) and @hook_files
-      # (basename => installed path, for the record).
-      def install_hooks
-        @bundle_hooks = []
-        @hook_files = {}
-        return install_unlisted_hooks unless @manifest
-
-        hook_entries = @manifest.hooks
-        if hook_entries.empty?
-          Dir.glob(File.join(@bundle_dir, "hooks", "*.rb")).each { |p| hook_entries[File.basename(p)] = BundleHook.new }
-        end
-        hook_entries.each_key do |basename|
-          next unless basename.is_a?(String) && !basename.empty?
-
-          @bundle_hooks << basename
-          src = File.join(@bundle_dir, "hooks", basename)
-          install_hook(basename, src) if File.exist?(src)
-        end
-      end
-
-      # One listed hook; an upgrade overwrites a local edit with a warning.
-      def install_hook(basename, src)
-        dest = File.join(@provenance.hooks_dir, basename)
-        if @dry_run
-          @results[basename] = { status: File.exist?(dest) && !@force ? "would_skip" : "would_install" }
-          return
-        end
-
-        prev_sha = @existing&.hooks&.dig(basename)&.sha256
-        if @upgrade && File.exist?(dest) && !@force && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
-          @warnings << "Hook #{basename} was locally modified; overwriting"
-        end
-
-        FileUtils.mkdir_p(@provenance.hooks_dir)
-        unchanged = File.exist?(dest) && FileUtils.identical?(src, dest)
-        FileUtils.cp(src, dest)
-        @results[basename] = if unchanged
-                               { status: "skipped", reason: "already up to date" }
-                             elsif @upgrade && @existing
-                               { status: "updated" }
-                             else
-                               { status: "installed" }
-                             end
-        @hook_files[basename] = dest
-      end
-
-      # No manifest (a non-strict install): every hooks/*.rb is copied.
-      def install_unlisted_hooks
-        Dir.glob(File.join(@bundle_dir, "hooks", "*.rb")).each do |src|
-          basename = File.basename(src)
-          @bundle_hooks << basename
-          if @dry_run
-            @results[basename] = { status: "would_install" }
-          else
-            FileUtils.mkdir_p(@provenance.hooks_dir)
-            dest = File.join(@provenance.hooks_dir, basename)
-            FileUtils.cp(src, dest)
-            @results[basename] = { status: "installed" }
-            @hook_files[basename] = dest
-          end
-        end
-      end
-
-      # An upgrade removes the hooks the previous version shipped and this
-      # one doesn't (a local file too, with a warning).
-      def prune_dropped_hooks
-        @existing.hooks.each_key do |old_key_str|
-          next if @bundle_hooks.include?(old_key_str)
-
-          old_dest = File.join(@provenance.hooks_dir, old_key_str)
-          if File.exist?(old_dest) && !@force
-            @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
-          end
-          FileUtils.rm_f(old_dest)
-        end
-      end
-
-      # Strict mode: an installed hook whose sha256 differs from the one its
-      # manifest declares warns (as verify_memory_checksums does).
-      def verify_hook_checksums
-        @bundle_hooks.each do |basename|
-          next if @conflicts.key?(basename)
-
-          expected = @manifest.checksum_for_hook(basename)
-          next unless expected
-
-          dest = File.join(@provenance.hooks_dir, basename)
-          next unless File.exist?(dest)
-
-          actual = Digest::SHA256.hexdigest(File.read(dest))
-          if actual != expected
-            @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-          end
-        end
-      end
-
       # Strict mode: a memory written from the bundle whose sha256 differs
       # from its manifest's warns. One that wasn't copied (kept, skipped:
       # a local edit isn't a bad download) or was merged isn't checked.
@@ -391,23 +287,24 @@ module Samagotchi
       # version, the plugin's and hooks' new shas, and the old base for each
       # conflicted file, marked conflict (chi bundle status shows it).
       # Skipping it left the replaced plugin failing its sha check.
-      def write_provenance(guardrail_files:, plugin_file:, script_files:)
+      # @param installed [AssetInstaller::Installed]
+      def write_provenance(installed)
         @provenance.write(
           files: @upgrade && @existing ? upgrade_provenance_files : install_provenance_files,
           scope: @target_scope,
           version: @manifest.version,
           source_path: @source,
-          # install_hooks added the discovered hooks/*.rb to manifest.hooks.
+          # AssetInstaller added the discovered hooks/*.rb to manifest.hooks.
           hooks: @manifest.hooks,
           trust_level: @manifest.trust_level,
           source_commit: @source_commit,
-          hooks_files: @hook_files,
-          guardrails_files: guardrail_files,
-          plugin_file: plugin_file,
+          hooks_files: installed.hook_files,
+          guardrails_files: installed.guardrail_files,
+          plugin_file: installed.plugin_file,
           requires_chi: @manifest.requires_chi,
           needs: @manifest.needs,
           conflicts: @conflicts.keys,
-          scripts_files: script_files,
+          scripts_files: installed.script_files,
           context_providers: @manifest.context_providers,
           file_descriptions: @manifest.file_descriptions
         )
@@ -521,138 +418,6 @@ module Samagotchi
         BundleNeeds.missing(manifest.needs).each do |need|
           hint = need[:hint] ? " (#{need[:hint]})" : ""
           @warnings << "needs #{need[:command]}: not found on PATH#{hint}; #{@dry_run ? "would install" : "installed"} anyway"
-        end
-      end
-
-      # The hook loader skips every hook of a bundle whose requires_chi this
-      # chi doesn't meet (Hooks::BundleLoader); say so at install, as
-      # install_plugin does for the plugin.
-      def warn_hooks_requires_chi(manifest, hook_files)
-        return if manifest.nil? || hook_files.empty?
-
-        if (failure = Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION))
-          @warnings << "Bundle #{@name}: its hooks won't load: #{failure}"
-        end
-      end
-
-      # GuardrailWiring#bundle_rules doesn't read the rules of a bundle whose
-      # requires_chi this chi doesn't meet, and a session that never loaded
-      # them records a required load failure (the gate refuses guarded calls
-      # until chi is updated): say so at install, as the hooks warning does.
-      def warn_rules_requires_chi(manifest, rule_files)
-        return if manifest.nil? || rule_files.empty?
-
-        if (failure = Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION))
-          @warnings << "Bundle #{@name}: its guardrail rules won't load: #{failure}; until chi is updated " \
-                       "(chi update), guarded tool calls are refused"
-        end
-      end
-
-      # The bundle's guardrails/*.yml into <bundle_dir>/guardrails/: the
-      # set replaces what an earlier version installed. Same bytes as
-      # installed are reported up to date, not "Installed".
-      # @return [Hash{String => String}] basename => installed path ({} on a dry run)
-      def install_guardrails(incoming_rules, provenance)
-        if @dry_run
-          incoming_rules.each { |src| @results["guardrails/#{File.basename(src)}"] = { status: "would_install" } }
-          return {}
-        end
-
-        target = provenance.guardrails_dir
-        unchanged = incoming_rules.select do |src|
-          dest = File.join(target, File.basename(src))
-          File.file?(dest) && FileUtils.identical?(src, dest)
-        end
-        FileUtils.rm_rf(target)
-        return {} if incoming_rules.empty?
-
-        FileUtils.mkdir_p(target)
-        incoming_rules.to_h do |src|
-          dest = File.join(target, File.basename(src))
-          FileUtils.cp(src, dest)
-          @results["guardrails/#{File.basename(src)}"] =
-            unchanged.include?(src) ? { status: "skipped", reason: "already up to date" } : { status: "installed" }
-          [File.basename(src), dest]
-        end
-      end
-
-      # Copy the manifest's plugin file into the bundle's plugin/ dir,
-      # warning when its sha256 differs from the declared one or this chi
-      # doesn't meet requires_chi (the Engine then won't load it).
-      # @return [String, nil] the installed file (nil: none, or a dry run)
-      def install_plugin(manifest, source_dir, provenance)
-        plugin = manifest&.plugin
-        unless plugin
-          FileUtils.rm_rf(provenance.plugin_dir) unless @dry_run
-          return nil
-        end
-
-        src = File.join(source_dir, plugin[:file])
-        raise InstallError, "the manifest names plugin #{plugin[:file]}, which the bundle doesn't have" unless File.file?(src)
-
-        if (failure = Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION))
-          @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
-        end
-        if @dry_run
-          @results[plugin[:file]] = { status: "would_install" }
-          return nil
-        end
-
-        dest = File.join(provenance.plugin_dir, plugin[:file])
-        unchanged = File.file?(dest) && FileUtils.identical?(src, dest)
-        FileUtils.rm_rf(provenance.plugin_dir)
-        FileUtils.mkdir_p(provenance.plugin_dir)
-        FileUtils.cp(src, dest)
-        @results[plugin[:file]] = if unchanged
-                                    { status: "skipped", reason: "already up to date" }
-                                  elsif @upgrade && provenance.installed?
-                                    { status: "updated" }
-                                  else
-                                    { status: "installed" }
-                                  end
-        expected = manifest.checksum_for_plugin
-        actual = Digest::SHA256.hexdigest(File.binread(dest))
-        if @strict && expected && actual != expected
-          @warnings << "Checksum mismatch for plugin #{plugin[:file]}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-        end
-        dest
-      end
-
-      # The manifest's scripts, copied into <bundle_dir>/scripts/ (the
-      # folder replaced: a script the new version dropped goes). A declared
-      # sha256 that differs warns, as a plugin's does.
-      # @return [Hash{String => String}] file name => installed path
-      def install_scripts(manifest, source_dir, provenance)
-        scripts = manifest&.scripts || {}
-        scripts.each_key do |file|
-          next if File.file?(File.join(source_dir, "scripts", file))
-
-          raise InstallError, "the manifest names scripts/#{file}, which the bundle doesn't have"
-        end
-        return {} if @dry_run
-
-        unchanged = scripts.keys.select do |file|
-          dest = File.join(provenance.scripts_dir, file)
-          File.file?(dest) && FileUtils.identical?(File.join(source_dir, "scripts", file), dest)
-        end
-        FileUtils.rm_rf(provenance.scripts_dir)
-        return {} if scripts.empty?
-
-        FileUtils.mkdir_p(provenance.scripts_dir)
-        scripts.to_h do |file, declared|
-          dest = File.join(provenance.scripts_dir, file)
-          FileUtils.cp(File.join(source_dir, "scripts", file), dest)
-          @results["scripts/#{file}"] = if unchanged.include?(file) then { status: "skipped", reason: "already up to date" }
-                                        elsif @upgrade && provenance.installed? then { status: "updated" }
-                                        else { status: "installed" }
-                                        end
-          FileUtils.chmod(0o755, dest)
-          actual = Digest::SHA256.hexdigest(File.binread(dest))
-          expected = declared.to_s.delete_prefix("sha256:")
-          if @strict && !expected.empty? && actual != expected
-            @warnings << "Checksum mismatch for script #{file}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-          end
-          [file, dest]
         end
       end
 
