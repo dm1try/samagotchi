@@ -43,6 +43,7 @@ jobs:
           key: parallel-runtime-${{ runner.os }}-ruby-3.4-${{ github.run_id }}
           restore-keys: parallel-runtime-${{ runner.os }}-ruby-3.4-
       - run: bundle exec parallel_rspec -n 4
+      - run: npm ci
       - run: npm test
       - run: bundle exec rake bundles:check
 
