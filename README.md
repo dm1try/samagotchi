@@ -202,7 +202,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Configuration](docs/configuration.md): `config.yml`, hosts, model server transports, timeouts, retries, logs
 - [Memory](docs/memory.md): scopes, model-specific overlays and model notes
 - [Sessions](docs/sessions.md): storage, retention, `chi sessions`
-- [Attached context](docs/context.md): `chi context`, sources, scopes, waking, the github-pr bundle, safety
+- [Attached context](docs/context.md): `chi context`, sources, scopes, recipes (a file, a note, a stream), waking, the github-pr bundle, safety
 - [Broadcast](docs/broadcast.md): `chi broadcast`, who a note reaches, tags, triage, what a session gets, the triage log
 - [chi as a sub-agent](docs/sub-agent.md): `chi send --wait --format json`, `chi answer`, instructions for a parent agent
 - [Desktop helper](docs/desktop.md): `chi desktop`, the macOS "Send to chi" Service and hotkey

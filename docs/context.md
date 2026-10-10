@@ -107,6 +107,94 @@ and `-`, up to 40 characters, starting with a letter or digit
 In a session, `/context` lists what is attached (as `context_read` does
 with no name).
 
+## Recipes
+
+Anything that prints text is a source.
+
+```sh
+# a file you keep editing
+chi context add todo --cmd 'cat ~/notes/todo.md' --every 60 --why "my running todo" --project
+
+# an Apple Note (macOS asks once to let chi control Notes)
+chi context add plan --cmd "osascript -e 'tell application \"Notes\" to get plaintext of note \"Plan\"'" --project
+
+# pushed by something else: a Shortcut, a cron job, the clipboard
+chi context add clip --push --project
+pbpaste | chi context push clip --project
+```
+
+### A stream: chat, a log, a feed
+
+A source's text is a snapshot, not a log: each run replaces it. For
+something that only grows (a chat channel, CI events, a log), let the script
+keep a window of the latest items and fetch only what's new. chi keeps no
+state for the script apart from the last text, so the cursor lives in the
+text: each item is a line starting with its id, and the script reads the
+newest id from `SAMAGOTCHI_CONTEXT_PREVIOUS`.
+
+```ruby
+#!/usr/bin/env ruby
+# chat-feed: the last KEEP items of a stream, fetching only the new ones.
+require "json"
+
+KEEP = 50
+LINE = /\A#(?<id>\S+) /   # each item is one line: "#<id> 14:02 @ann: text"
+
+# Swap this for the real thing (Slack's conversations.history with oldest:,
+# a log file, an RSS feed…). Here: items from a JSONL file, one per line.
+def fetch_since(since_id)
+  File.readlines(ARGV.fetch(0), chomp: true).map { JSON.parse(_1) }
+      .select { since_id.nil? || _1["id"].to_s > since_id }
+end
+
+prev_path = ENV["SAMAGOTCHI_CONTEXT_PREVIOUS"]
+prev = prev_path && JSON.parse(File.read(prev_path))["text"]  # absent or no text: first run
+old_lines = prev.to_s.lines(chomp: true).grep(LINE)
+since_id = old_lines.last&.match(LINE)&.[](:id)
+
+new_items = fetch_since(since_id)
+new_lines = new_items.map { "##{_1["id"]} #{_1["ts"]} @#{_1["author"]}: #{_1["text"].tr("\n", " ")}" }
+lines = (old_lines + new_lines).last(KEEP)
+
+summary =
+  if new_items.empty? then "no new messages"
+  else "#{new_items.size} new from #{new_items.map { "@#{_1["author"]}" }.uniq.join(", ")}"
+  end
+wake_word = ENV["FEED_WAKE_ON"]
+wake = !wake_word.nil? && new_items.any? { _1["text"].include?(wake_word) }
+
+puts JSON.generate(text: lines.empty? ? "(no messages yet)" : lines.join("\n"), summary:, wake:)
+```
+
+```sh
+chi context add chat --cmd "FEED_WAKE_ON=@me ~/bin/chat-feed ~/chat.jsonl" --why "team chat" --project
+```
+
+What makes it work:
+
+- **Nothing new, same text.** The script prints the old window again, the
+  hash doesn't change, and the agent hears nothing.
+- **The window keeps it small.** The text has to stay under 1 MiB, and a
+  small model's context window is smaller still.
+- **The summary gives counts and authors, never the words** ("3 new from
+  @ann, @bob"), like the github-pr bundle's: other people's words reach the
+  agent only when it reads the text, framed as third-party.
+- **Wake rarely.** A busy channel that wakes on every message keeps a
+  session (and its bill) running; wake on what is meant for you.
+- **A failed run keeps the last text**, so the next run picks up from the
+  last good cursor.
+- **Edits and deletions aren't seen.** An id already in the window isn't
+  fetched again.
+
+The cursor lives in the text because chi keeps nothing else from the output.
+A script that wants it out of the text keeps its own file (say under
+`$XDG_STATE_HOME/<your tool>/`, by `$SAMAGOTCHI_CONTEXT_NAME`). Two sessions
+with a session source of the same name would share that file.
+
+An attached source feeds the sessions you attach it to. To drop an item and
+let chi find the sessions it concerns, pipe it to
+[`chi broadcast`](broadcast.md) instead.
+
 ## What the agent sees
 
 Notes join the conversation **between turns** (a change during a turn waits
