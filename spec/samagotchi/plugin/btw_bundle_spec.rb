@@ -48,7 +48,7 @@ RSpec.describe "The btw bundle" do
   before do
     FileUtils.mkdir_p(system_dir)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("btw" => settings)
+    allow_any_instance_of(Samagotchi::ExtensionLoad).to receive(:bundle_settings).and_return("btw" => settings)
     allow(Process).to receive(:spawn).and_return(12_345)
     @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "btw", scope: "system", strict: true)
     @installer.run

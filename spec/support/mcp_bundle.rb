@@ -53,7 +53,7 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   before do
     FileUtils.mkdir_p(system_dir)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("mcp" => settings)
+    allow_any_instance_of(Samagotchi::ExtensionLoad).to receive(:bundle_settings).and_return("mcp" => settings)
     Samagotchi::MemoryBundle::Installer.new(source: MCP_SHIPPED, name: "mcp", scope: "system", strict: true).run
   end
 

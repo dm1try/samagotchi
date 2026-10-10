@@ -118,7 +118,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
 
     it "gets the bundle's settings" do
-      allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("sample-plugin" => { "greeting" => "hey" })
+      allow_any_instance_of(Samagotchi::ExtensionLoad).to receive(:bundle_settings).and_return("sample-plugin" => { "greeting" => "hey" })
       commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
                                                  default_model: "Gemma-4B-it", registry: engine.command_registry)
       expect(commands.run("/hello").output).to eq("hey, there (session none, 0 messages)")

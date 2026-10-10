@@ -331,8 +331,8 @@ Engine initialization (in this order, among other things):
   @host_registry, @effective_model_name; @client = @host_registry.resolve(...).client
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
   @guardrail_wiring, @question_desk
-  @hooks = load_hooks_from_config (config.yml hooks), then load_hooks_from_bundles
-  @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins)
+  @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
+  @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins)
   @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
   @kernel.guardrail_gate = @guardrail_wiring.gate; @kernel.warmup = PromptWarmup.new
   @hooks.runtime = hook_runtime
@@ -476,6 +476,7 @@ Paths are under `lib/samagotchi/`.
 | `tools/registry.rb` | The tools a session offers: schemas, handlers, order |
 | `system_prompt.rb` | System prompt construction (stable part, volatile tail) |
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
+| `extension_load.rb` | What an Engine loads at start: config.yml and bundle hooks, plugins, `bundles:` settings; events held while plugins load |
 | `guardrail_wiring.rb`, `guardrails/gate.rb` | The gate's context and approvals; the verdict per call |
 | `events.rb` | Event type sets shared by the Worker, the Bridge, the TUI and the web |
 | `cancellation_controller.rb` | A turn's cancel signal, and a generation's child controller |

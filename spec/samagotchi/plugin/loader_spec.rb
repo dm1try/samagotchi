@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Plugin::Loader do
 
   it "gives the plugin its bundle's settings from config.yml bundles:" do
     install_plugin("marker", hook_plugin)
-    allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("marker" => { "mark" => "custom" })
+    allow_any_instance_of(Samagotchi::ExtensionLoad).to receive(:bundle_settings).and_return("marker" => { "mark" => "custom" })
     expect(fire_before_turn(engine)[:marks].first).to eq("custom")
   end
 

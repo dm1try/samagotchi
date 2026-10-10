@@ -225,7 +225,7 @@ RSpec.describe "Plugin init tasks" do
     it "announces the load warnings and what plugins showed while loading, once, between turns" do
       engine.instance_variable_get(:@guardrail_failures).add("hook x.rb", "missing", required: true)
       engine.instance_variable_get(:@plugin_failures).add("plugin plugin.rb (bundle b)", "boom", required: false)
-      engine.instance_variable_set(:@plugin_load_events, [
+      engine.instance_variable_get(:@extension_load).held_events.concat([
         { type: :hook_notice, hook: "plugin.rb (bundle b)", text: "loaded", level: :info },
         { type: :card, id: "c", source: "b", title: "hi", body: "", level: :info, actions: [], in_turn: true }
       ])

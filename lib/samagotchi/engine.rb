@@ -21,6 +21,7 @@ require_relative "tools/builtins"
 require_relative "tools/task_runtime"
 require_relative "session_commands"
 require_relative "plugin/loader"
+require_relative "extension_load"
 require_relative "log"
 require_relative "log_subscriber"
 require_relative "thinking_tails"
@@ -173,8 +174,8 @@ module Samagotchi
       )
       # Built here, not on first use: the turn thread and the Bridge's read it.
       @relay_desk = RelayDesk.new
-      @hooks = load_hooks_from_config
-      load_hooks_from_bundles
+      @extension_load = ExtensionLoad.new(hook_failures: @guardrail_failures)
+      @hooks = @extension_load.hooks
       # The tools this session offers (the prompts' declarations and the
       # kernel's dispatch): the built-ins, per Engine. execute.description
       # off: execute offers no description parameter.
@@ -680,7 +681,7 @@ module Samagotchi
     # @raise [ArgumentError] a card without a title, or a bad action
     def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
       card = build_card(source: source, title: title, body: body, actions: actions, level: level, id: id)
-      return hold_load_event(card.merge(in_turn: true))[:id] if @loading_plugins
+      return @extension_load.hold(card.merge(in_turn: true))[:id] if @extension_load.loading?
       return announce_anytime(card.merge(in_turn: false))[:id] if anytime_thread?
       # A plugin's init task (chi.init): never a running turn's event.
       return announce(card.merge(in_turn: false)) && card[:id] if current_init_task
@@ -781,7 +782,7 @@ module Samagotchi
         announce({ type: :guardrail_warning, message: message }) if message
         plugins = @plugin_failures.message
         announce({ type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
-        Array(@plugin_load_events).each do |event|
+        @extension_load.held_events.each do |event|
           announce(event[:type] == :card ? event.merge(in_turn: false) : event.merge(between_turns: true))
         end
       end
@@ -1242,7 +1243,7 @@ module Samagotchi
       emit_event(on_event, { type: :guardrail_warning, message: message }) if message
       plugins = @plugin_failures.message
       emit_event(on_event, { type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
-      Array(@plugin_load_events).each { |event| emit_event(on_event, event) }
+      @extension_load.held_events.each { |event| emit_event(on_event, event) }
     end
     private :announce_guardrail_failures
 
@@ -1402,7 +1403,7 @@ module Samagotchi
       level = :info unless %i[info warn].include?(level)
       notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level,
                  fallback_for: notice_fallback(fallback_for, hook) }.compact
-      return hold_load_event(notice) && nil if @loading_plugins
+      return @extension_load.hold(notice) && nil if @extension_load.loading?
 
       in_turn, sink = @turn_state.in_turn_sink
       if anytime_thread?
@@ -2394,48 +2395,6 @@ module Samagotchi
       end
     end
 
-    # Load hooks from the global config file using the Hooks::Loader.
-    # Returns a Registry with all plugins registered (or an empty Registry if
-    # no hooks config is present).
-    def load_hooks_from_config
-      config_path = Samagotchi::ConfigFile.global_path
-      data = Samagotchi::ConfigFile.read_yaml(path: config_path)
-      return Hooks::Loader.load(data, failures: @guardrail_failures) if data.is_a?(Hash)
-
-      Hooks::Registry.new
-    end
-
-    def load_hooks_from_bundles
-      require_relative "memory_bundle/provenance"
-      settings = bundle_settings
-      MemoryBundle::Provenance.each_installed(holding: :hooks) do |bundle_name, bundle|
-        if bundle.error?
-          Log.warn(:hooks, "bundle_manifest_invalid", echo: "[samagotchi:hooks] bundle '#{bundle_name}': #{bundle.error}; its hooks are not loaded",
-                                                      bundle: bundle_name)
-          @guardrail_failures.add("hooks (bundle #{bundle_name})", bundle.error, required: false)
-          next
-        end
-        bundle_dir = File.join(MemoryBundle::Provenance.bundles_dir, bundle_name)
-        hooks_dir = File.join(bundle_dir, "hooks")
-        if bundle.experimental?
-          Log.info(:hooks, "experimental_bundle", echo: "[hooks] Bundle '#{bundle_name}' is experimental — its hooks may change or misbehave.", bundle: bundle_name)
-        end
-        begin
-          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: bundle.hooks, registry: @hooks,
-                                   failures: @guardrail_failures, settings: settings[bundle_name.to_s] || {},
-                                   requires_chi: bundle.requires_chi)
-        rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
-          raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
-
-          Log.error(:hooks, "bundle_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}", bundle: bundle_name, error: e.class.name)
-        end
-      end
-    rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
-      raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
-
-      Log.error(:hooks, "bundles_load_failed", echo: "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}", error: e.class.name)
-    end
-
     def load_plugins
       host = plugin_host
       registries = Plugin::Registries.new(
@@ -2454,17 +2413,7 @@ module Samagotchi
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
       # is there yet, and the Engine isn't built.
-      @plugin_load_events = []
-      @loading_plugins = true
-      Plugin::Loader.load_installed(registries, failures: @plugin_failures, settings: bundle_settings)
-    ensure
-      @loading_plugins = false
-    end
-
-    # Keep a notice or card a plugin showed while loading (#load_plugins).
-    def hold_load_event(event)
-      @plugin_load_events << event
-      event
+      @extension_load.load_plugins(registries, failures: @plugin_failures)
     end
 
     # Keep a plugin's new tool set (chi.replace_tools, from any thread)
@@ -2549,13 +2498,6 @@ module Samagotchi
       answer.text
     end
     private :ask_side_model
-
-    # config.yml `bundles:` (ConfigFile.bundle_settings), read once: the
-    # bundle hooks and the plugins both want it.
-    def bundle_settings
-      @bundle_settings ||= Samagotchi::ConfigFile.bundle_settings
-    end
-    private :bundle_settings
 
     # The session's current model as a recap target: its host's OpenAI API
     # (native llama.cpp hosts serve /v1/chat/completions too), key variable

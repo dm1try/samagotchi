@@ -135,11 +135,11 @@ RSpec.describe "Cards" do
     end
 
     it "keeps fallback_for on a notice held while the plugins load" do
-      engine.instance_variable_set(:@loading_plugins, true)
+      extension_load = engine.instance_variable_get(:@extension_load)
+      allow(extension_load).to receive(:loading?).and_return(true)
       engine.send(:hook_notify, "held", :info, "plugin.rb (bundle b)", fallback_for: :display)
-      engine.instance_variable_set(:@loading_plugins, false)
 
-      expect(engine.instance_variable_get(:@plugin_load_events).last).to include(text: "held", fallback_for: :display)
+      expect(extension_load.held_events.last).to include(text: "held", fallback_for: :display)
     end
 
     it "still takes PluginTasks' positional notify (text, level, source)" do
