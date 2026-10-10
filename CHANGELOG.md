@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - Web: the info bar's session clock ticks during a session's first turn (a session started from the start page
   showed a frozen `session 0ms`).
+- Web: `/cut TEXT` in the composer sends TEXT as a cut, as in a terminal and `chi send --cut` (it was refused as "not a
+  session command"); with no turn running it is TEXT as a normal turn. `/queue TEXT` during a turn says it isn't
+  available in the web yet, instead of that error.
 
 ## [0.51.0] - 2026-10-10
 

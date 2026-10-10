@@ -766,7 +766,7 @@ A generation a plugin cuts while it streams (loop-guard's thinking watch, or any
 [hooks.md](hooks.md#watching-the-stream)) uses the same budget: `↻ cut by loop-guard, asking again (1/1)`, and with
 none left the turn ends as cancelled (hook).
 A message for a running turn goes in at its next step and cuts nothing. A message sent as a cut (`/cut TEXT` in a
-terminal, `chi send --cut`) cuts the model's generation once it has streamed only thinking for `steer.cut_after`
+terminal or the web composer, `chi send --cut`) cuts the model's generation once it has streamed only thinking for `steer.cut_after`
 seconds (default `20`, env `SAMAGOTCHI_STEER_CUT_AFTER`, `0` = never; counted from its first thinking token, so the
 wait for a busy server doesn't count) and still does, and the model starts the step again with the message
 (`↪ cut in for your message`). One that comes earlier cuts once the thinking passes `steer.cut_after`, unless the

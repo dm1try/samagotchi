@@ -290,12 +290,12 @@ of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 `--attach`). They all see the same turns as they happen, and any of them can send
 a prompt, also while a turn runs (it merges into that turn as steering: the model
 is told it is a steer and who sent it). Steering waits for the model's next step
-and cuts nothing. `/cut TEXT` in a terminal (or `chi send --cut`) asks for a cut:
+and cuts nothing. `/cut TEXT` in a terminal or the web composer (or `chi send --cut`) asks for a cut:
 once the model has streamed only thinking for `steer.cut_after` seconds (default
 20), now or while your message waits, that generation is cut and the step starts again with your message, marked
 `↪ cut in for your message` (see
 [configuration.md](configuration.md#llama-network-retry-behavior)). The web
-composer doesn't cut yet. The
+composer has no `/queue` yet (it says so and sends nothing). The
 first answer to an `ask_user_question` wins; the other UIs close their widget.
 An empty answer dismisses the question in every UI. The model is then told
 not to go ahead with what it asked about, or change anything else, and to wait.
@@ -503,7 +503,8 @@ REPL alike:
   cut).
 - `/queue TEXT` (plain REPL only) runs TEXT as a turn of its own after this
   one: `(queued: runs after this turn)`. An attached terminal says
-  `(/queue isn't available in an attached session yet)` and sends nothing.
+  `(/queue isn't available in an attached session yet)` and sends nothing (the web
+  composer: `(/queue isn't available in the web yet; …)`).
   At the open prompt (no turn running) `/cut TEXT` and `/queue TEXT` run TEXT
   as a normal prompt.
 - Commands answer, wait or are refused, by what they do:

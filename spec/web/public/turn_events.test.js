@@ -621,3 +621,34 @@ test("snapshotEvents passes the name the model called a tool by on, so a reload 
   assert.equal(events.find((e) => e.type === "tool_call_started").called_as, "bash");
   assert.equal(events.find((e) => e.type === "tool_call_completed").activity.called_as, "bash");
 });
+
+import { steerChoiceRoute, STEER_CHOICE_USAGE, QUEUE_UNAVAILABLE_WEB } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("steerChoiceRoute: /cut TEXT during a turn is a message sent as a cut", () => {
+  assert.deepEqual(steerChoiceRoute("/cut stop and use rg", { running: true }), { send: "stop and use rg", delivery: "cut" });
+  // Any whitespace after the word, as the terminals read it; the text keeps its lines.
+  assert.deepEqual(steerChoiceRoute("  /cut\n\tline one\nline two ", { running: true }), { send: "line one\nline two", delivery: "cut" });
+});
+
+test("steerChoiceRoute: /cut TEXT with no running turn is the text as a normal turn", () => {
+  assert.deepEqual(steerChoiceRoute("/cut hello", { running: false }), { send: "hello" });
+});
+
+test("steerChoiceRoute: /queue TEXT during a turn is answered on the page; idle it is a normal turn", () => {
+  assert.deepEqual(steerChoiceRoute("/queue later please", { running: true }), { reply: QUEUE_UNAVAILABLE_WEB });
+  assert.match(QUEUE_UNAVAILABLE_WEB, /\/queue isn't available in the web yet/);
+  assert.deepEqual(steerChoiceRoute("/queue later please", { running: false }), { send: "later please" });
+});
+
+test("steerChoiceRoute: the bare word gets the usage line", () => {
+  for (const line of ["/cut", "/queue", "/cut   "]) {
+    assert.deepEqual(steerChoiceRoute(line, { running: true }), { reply: STEER_CHOICE_USAGE }, line);
+  }
+  assert.equal(STEER_CHOICE_USAGE, "(/cut and /queue need a message: /cut TEXT, /queue TEXT)");
+});
+
+test("steerChoiceRoute: any other line is not a delivery", () => {
+  for (const line of ["", "hello /cut x", "/cutx y", "/queued y", "/model x", "!ls", "/Cut x", "/CUT"]) {
+    assert.equal(steerChoiceRoute(line, { running: true }), null, line);
+  }
+});
