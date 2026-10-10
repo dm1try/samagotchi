@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/tools/execute"
+require "open3"
 require "tempfile"
 require "tmpdir"
 require "fileutils"
@@ -312,6 +313,18 @@ RSpec.describe Samagotchi::Tools::Execute do
         end
       end
 
+      # Left running: the call has returned, so nothing of it stops the
+      # process any more. Signalable and not a zombie (a killed orphan not
+      # yet reaped still takes signal 0), checked once instead of #alive?'s
+      # 2 s of polling.
+      def running?(pid)
+        Process.kill(0, pid)
+        state, = Open3.capture2("ps", "-o", "stat=", "-p", pid.to_s)
+        !state.strip.empty? && !state.strip.start_with?("Z")
+      rescue Errno::ESRCH
+        false
+      end
+
       it "returns the output within the grace period, with the shell's exit status and a note" do
         started = now
         result = described_class.call("sleep 30.81 & echo pid=$!; echo hi")
@@ -350,7 +363,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         pid = pid_from(result)
         begin
           expect(result).to end_with("hi\n\nexit: 0")
-          expect(alive?(pid)).to be(true)
+          expect(running?(pid)).to be(true)
         ensure
           begin
             Process.kill("TERM", pid)
@@ -392,7 +405,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         begin
           expect(result).to include("hi")
           expect(result).to end_with("exit: 0\n#{described_class::BACKGROUND_DETACHED_HINT}")
-          expect(alive?(pid)).to be(true)
+          expect(running?(pid)).to be(true)
         ensure
           begin
             Process.kill("KILL", pid)
