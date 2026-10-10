@@ -1145,6 +1145,22 @@ RSpec.describe Samagotchi::Worker do
         expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "!rollback" }).not_to have_key(:waits)
       end
 
+      # The turn-end warm-up (Engine#warm_up_next_turn) would prefill a
+      # prompt the queued change throws away (all of it on Gemma).
+      it "counts a command queued mid-turn (/thinking low) as a next turn waiting: no warm-up then" do
+        start_worker(poll_interval: 5)
+        expect(engine.next_turn_waiting.call).to be(false)
+        post_turn("slow, no boundary")
+        expect(next_turn&.first).to eq("slow, no boundary")
+
+        command_id = JSON.parse(post_command("/thinking low").body)["command_id"]
+        expect(wait_until { engine.next_turn_waiting.call }).to be(true)
+        release << true
+
+        expect(ran(command_id)).to include(status: "ok", changed: ["thinking"], queued: true)
+        expect(wait_until { !engine.next_turn_waiting.call }).to be(true)
+      end
+
       it "refuses while a turn runs: at the latest when it ends" do
         start_worker(poll_interval: 5)
         post_turn("slow, no boundary")
