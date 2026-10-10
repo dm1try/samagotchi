@@ -8,28 +8,32 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-10-10
+
 ### Changed
 
-- The context-usage `:context_status` event now streams on every request (both loops) instead of only on a bucket
-  change or a `context.status_cadence` tick, so the web's ctx chip and the attached TUI's status line get a fresh
-  number each time and never fall between rounds; the model's own `[CONTEXT: …]` guidance line is still left only on a
-  rise into a guidance bucket.
-- Removed the `context.status_cadence` setting (config entry, `--status-cadence` flag, `SAMAGOTCHI_CONTEXT_STATUS_CADENCE`): the event streams on every request, so nothing reads it. A config.yml that still lists it gets a startup warning (`config: unknown key 'context.status_cadence'`) but otherwise loads.
+- Web: the ctx chip is always shown and updates on every request (it used to appear only once the context crossed
+  20/40/60/80%): `ctx ?` before a session's first request, with a tooltip saying why, on session cards too. The
+  attached TUI's status line gets the same fresh number each request; the model's own `[CONTEXT: …]` line still
+  comes only on a rise into a guidance bucket.
 - Web: a denied approval's summary line reads `<tool>: <command> → Denied`; the typed reason shows in full in the
   card body (expand the card) instead of being cut off in the summary.
 - A grep-family search that found nothing (`grep`/`rg`/`ag`/`pgrep` exiting 1 with no stderr) is no longer a
   failed tool call: it doesn't count in the turn's "(N failed)", the session's tool errors or the skills bundle's
   "fix the skill" nudge, and the web row shows a done mark with a muted "no match". The model still sees
-  `exit: 1 (no output)`. Turns saved before keep their "error".
+  `exit: 1 (no output)`. Turns saved before keep their "error". (skills bundle 0.1.7; run `chi update`.)
+
+### Removed
+
+- The `context.status_cadence` setting (config key, `--status-cadence` flag, `SAMAGOTCHI_CONTEXT_STATUS_CADENCE`):
+  the context status now streams on every request, so nothing reads it. A config.yml that still lists it gets a
+  startup warning (`config: unknown key 'context.status_cadence'`) and otherwise loads.
 
 ### Fixed
 
 - `chi -p "/cut TEXT" --non-interactive` (and `/queue TEXT`) runs `TEXT` as the turn's prompt, the same as the idle
   REPL does, instead of feeding the model the literal `/cut` / `/queue` words; a bare `/cut` / `/queue` is still
   refused, as before.
-- release.yml's `checks` job shows the CI run's URL in its "waiting" line while the run is still in progress (it used
-  to log `waiting ()`, since a tab is an IFS whitespace char that collapsed the run's empty conclusion between status
-  and URL); the success and failure conclusions are unchanged.
 - `chi bundle install` / `upgrade` no longer warns "Checksum mismatch for hook <file>: expected ..., got …" for a
   hook whose manifest entry declares no `sha256` (or a `hooks/*.rb` the manifest doesn't list); a declared sha256 that
   differs still warns. (Since 0.53.0.)
@@ -2438,7 +2442,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.53.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.54.0...HEAD
+[0.54.0]: https://github.com/dm1try/samagotchi/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/dm1try/samagotchi/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/dm1try/samagotchi/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/dm1try/samagotchi/compare/v0.50.0...v0.51.0
