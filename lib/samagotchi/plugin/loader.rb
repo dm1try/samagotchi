@@ -44,8 +44,8 @@ module Samagotchi
       # @return [Array<String>] the bundles whose plugin loaded
       def load_installed(registries, failures: nil, settings: {})
         loaded = []
-        MemoryBundle::Provenance.each_installed(holding: :plugin) do |bundle_name, data|
-          ok = load_bundle(bundle_name, data, registries, failures: failures, settings: settings[bundle_name.to_s] || {})
+        MemoryBundle::Provenance.each_installed(holding: :plugin) do |bundle_name, bundle|
+          ok = load_bundle(bundle_name, bundle, registries, failures: failures, settings: settings[bundle_name.to_s] || {})
           loaded << bundle_name if ok
         end
         loaded
@@ -56,10 +56,10 @@ module Samagotchi
       end
 
       # @return [Boolean] whether the plugin loaded
-      def load_bundle(bundle_name, data, registries, failures: nil, settings: {})
-        file = MemoryBundle::Provenance.new(name: bundle_name).plugin_path(data) unless data[:error]
+      def load_bundle(bundle_name, bundle, registries, failures: nil, settings: {})
+        file = MemoryBundle::Provenance.new(name: bundle_name).plugin_path(bundle) unless bundle.error?
         basename = file ? File.basename(file) : "plugin"
-        reason = data[:error] || unloadable_reason(file, data)
+        reason = bundle.error || unloadable_reason(file, bundle)
         return failed(bundle_name, basename, reason, failures) if reason
 
         api = nil
@@ -82,12 +82,12 @@ module Samagotchi
       def label(bundle_name, basename) = "#{basename} (bundle #{bundle_name})"
 
       # Why the installed file can't be loaded, or nil.
-      def unloadable_reason(file, data)
-        failure = MemoryBundle::Manifest.requires_chi_failure(data[:requires_chi], Samagotchi::VERSION)
+      def unloadable_reason(file, bundle)
+        failure = MemoryBundle::Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION)
         return failure if failure
         return "the file is missing" unless file && File.file?(file)
 
-        Hooks::BundleLoader.sha_mismatch(file, data[:plugin][:sha256], required: true)
+        Hooks::BundleLoader.sha_mismatch(file, bundle.plugin.sha256, required: true)
       end
 
       # module_eval the file into a fresh module in the bundle's namespace

@@ -65,19 +65,18 @@ module Samagotchi
     # entry name → marker, for the installed bundles of +scope+ with a
     # missing need. A manifest.json or needs: that doesn't parse is skipped.
     def self.entry_markers(scope, path:, bundles_dir:)
-      MemoryBundle::Provenance.each_installed(dir: bundles_dir).each_with_object({}) do |(_name, data), acc|
-        next if data[:error] || data[:scope].to_s != scope.to_s
-        next unless data[:needs].is_a?(Array) && !data[:needs].empty?
+      MemoryBundle::Provenance.each_installed(dir: bundles_dir).each_with_object({}) do |(_name, bundle), acc|
+        next if bundle.error? || bundle.scope.to_s != scope.to_s || !bundle.needs?
 
         needs = begin
-          MemoryBundle::Manifest.parse_needs(data[:needs])
+          MemoryBundle::Manifest.parse_needs(bundle.needs)
         rescue MemoryBundle::Manifest::ValidationError
           next
         end
         marker = marker(missing(needs, path: path))
         next unless marker
 
-        (data[:files].is_a?(Hash) ? data[:files].keys : []).each do |key|
+        bundle.files.each_key do |key|
           name = MutedMemories.normalize(key)
           acc[name] ||= marker if name
         end

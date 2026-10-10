@@ -84,10 +84,10 @@ module Samagotchi
     # @raise [Invalid] the provider makes a name that isn't a source name
     def resolve(url)
       url = url.to_s.strip
-      MemoryBundle::Provenance.each_installed do |bundle, data|
-        next if data[:error] || !data[:context_providers].is_a?(Array)
+      MemoryBundle::Provenance.each_installed do |bundle, record|
+        next if record.error? || !record.context_providers?
 
-        providers(bundle, data).each do |provider|
+        providers(bundle, record).each do |provider|
           match = provider.regexp.match(url) or next
           return resolved(bundle, provider, match)
         end
@@ -97,13 +97,11 @@ module Samagotchi
 
     # Whether an installed bundle declares a provider (the web's "+ URL").
     def any?
-      MemoryBundle::Provenance.each_installed.any? do |_bundle, data|
-        !data[:error] && data[:context_providers].is_a?(Array) && !data[:context_providers].empty?
-      end
+      MemoryBundle::Provenance.each_installed.any? { |_bundle, record| !record.error? && record.context_providers? }
     end
 
-    def providers(bundle, data)
-      parse_list(data[:context_providers])
+    def providers(bundle, record)
+      parse_list(record.context_providers)
     rescue Invalid => e
       Log.warn(:context, "providers_unreadable", bundle: bundle, msg: e.message)
       []
@@ -131,13 +129,12 @@ module Samagotchi
       return source.cmd unless source.provider
 
       provenance = MemoryBundle::Provenance.new(name: source.provider)
-      data = provenance.read
-      raise Invalid, "bundle #{source.provider} isn't installed" unless data
+      record = provenance.record
+      raise Invalid, "bundle #{source.provider} isn't installed" unless record
 
-      scripts = data[:scripts].is_a?(Hash) ? data[:scripts] : {}
-      scripts.each do |file, meta|
-        path = File.join(provenance.scripts_dir, file.to_s)
-        recorded = MemoryBundle::Provenance.recorded_sha(meta.is_a?(Hash) ? meta[:sha256] : nil)
+      record.scripts.each do |file, sha|
+        path = File.join(provenance.scripts_dir, file)
+        recorded = MemoryBundle::Provenance.recorded_sha(sha)
         next if File.file?(path) && MemoryBundle::Provenance.file_sha(path) == recorded
 
         raise Invalid, "bundle #{source.provider}'s scripts/#{file} differs from the installed one (reinstall the bundle)"

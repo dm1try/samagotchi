@@ -242,7 +242,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(names).not_to include("without-hooks")
     end
 
-    it "each_installed(holding: :hooks) yields a corrupt manifest as {error:} and keeps going" do
+    it "each_installed(holding: :hooks) yields a corrupt manifest as one with error set and keeps going" do
       FileUtils.mkdir_p(File.join(bundles_dir, "a-broken", "hooks"))
       File.write(File.join(bundles_dir, "a-broken", "manifest.json"), '{"hooks": {"x.rb": {}}, "hooks": ')
       FileUtils.mkdir_p(File.join(bundles_dir, "a-broken-nohooks"))
@@ -253,11 +253,11 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
                                                  hooks: { "k.rb" => { "sha256" => "sha256:x", "event" => "e" } })
       seen = described_class.each_installed(holding: :hooks).to_a
       expect(seen.map(&:first)).to eq(%w[a-broken b-valid])
-      expect(seen.first.last[:error]).to start_with("manifest.json is unreadable")
-      expect(seen.last.last[:hooks]).to include(:"k.rb")
+      expect(seen.first.last.error).to start_with("manifest.json is unreadable")
+      expect(seen.last.last.hooks).to include("k.rb")
     end
 
-    it "each_installed with holding: :plugin or :guardrails yield a corrupt manifest as {error:} only when the bundle has that dir" do
+    it "each_installed with holding: :plugin or :guardrails yield a corrupt manifest (error set) only when the bundle has that dir" do
       { "a-plug" => "plugin", "b-rules" => "guardrails", "c-plain" => nil }.each do |name, sub|
         FileUtils.mkdir_p(File.join(bundles_dir, name, *sub))
         File.write(File.join(bundles_dir, name, "manifest.json"), "{")
@@ -273,14 +273,14 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
 
       plugins = described_class.each_installed(holding: :plugin).to_a
       expect(plugins.map(&:first)).to eq(%w[a-plug g-both])
-      expect(plugins.first.last[:error]).to start_with("manifest.json is unreadable: ")
-      expect(plugins.last.last[:plugin]).to eq(file: "p.rb")
+      expect(plugins.first.last.error).to start_with("manifest.json is unreadable: ")
+      expect(plugins.last.last.plugin).to eq(Samagotchi::MemoryBundle::PluginRef.new(file: "p.rb"))
       rules = described_class.each_installed(holding: :guardrails).to_a
       expect(rules.map(&:first)).to eq(%w[b-rules g-both])
-      expect(rules.first.last.keys).to eq([:error])
+      expect(rules.first.last).to have_attributes(error: start_with("manifest.json is unreadable: "), version: nil, files: {})
     end
 
-    it "each_installed yields every bundle by name, a manifest that doesn't parse or isn't an object as {error:}" do
+    it "each_installed yields every bundle by name, a manifest that doesn't parse or isn't an object with error set" do
       { "a" => "{}", "a-b" => JSON.generate("version" => "1"), "bad" => "{", "list" => "[]" }.each do |name, body|
         make_file(bundles_dir, "#{name}/manifest.json", body)
       end
@@ -289,9 +289,9 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       File.write(File.join(bundles_dir, "samagotchi-system.lock"), "")
       seen = described_class.each_installed.to_a
       expect(seen.map(&:first)).to eq(%w[a a-b bad list])
-      expect(seen[1].last).to eq(version: "1")
-      expect(seen[2].last[:error]).to start_with("manifest.json is unreadable: ")
-      expect(seen[3].last).to eq(error: "manifest.json is not an object")
+      expect(seen[1].last).to eq(Samagotchi::MemoryBundle::InstalledBundle.new(name: "a-b", version: "1"))
+      expect(seen[2].last.error).to start_with("manifest.json is unreadable: ")
+      expect(seen[3].last).to eq(Samagotchi::MemoryBundle::InstalledBundle.unreadable("list", "manifest.json is not an object"))
     end
 
     it "matches a file against a recorded sha in either format" do

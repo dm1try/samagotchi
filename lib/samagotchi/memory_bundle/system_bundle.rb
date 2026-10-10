@@ -72,10 +72,10 @@ module Samagotchi
         to = gem_manifest.version.to_s
 
         with_lock do
-          data = Provenance.new(name: BUNDLE_NAME).read
-          from = data && data[:version].to_s
+          bundle = Provenance.new(name: BUNDLE_NAME).record
+          from = bundle&.version.to_s
 
-          if data.nil?
+          if bundle.nil?
             dry_run ? result(:installed, to: to) : install_fresh(to)
           elsif installed_newer?(from, to)
             # Running an older checkout/gem: never downgrade the user's system memories
@@ -174,8 +174,7 @@ module Samagotchi
       # here and changed in the shipped bundle (a dry run's kept).
       def conflicting(gem_manifest)
         provenance = Provenance.new(name: BUNDLE_NAME)
-        owned = (provenance.read || {})[:files]
-        owned = owned.is_a?(Hash) ? owned.keys.map(&:to_s) : []
+        owned = provenance.record&.files&.keys || []
         (gem_manifest.files.keys.map(&:to_s).sort & owned).select do |key|
           Merger.classify(base_path: provenance.base_path(key), current_path: File.join(MemoryPaths.system_dir, key),
                           incoming_path: File.join(GEM_BUNDLE_DIR, key)) == :conflict

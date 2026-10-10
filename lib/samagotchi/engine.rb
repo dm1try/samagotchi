@@ -2408,22 +2408,22 @@ module Samagotchi
     def load_hooks_from_bundles
       require_relative "memory_bundle/provenance"
       settings = bundle_settings
-      MemoryBundle::Provenance.each_installed(holding: :hooks) do |bundle_name, data|
-        if data[:error]
-          Log.warn(:hooks, "bundle_manifest_invalid", echo: "[samagotchi:hooks] bundle '#{bundle_name}': #{data[:error]}; its hooks are not loaded",
+      MemoryBundle::Provenance.each_installed(holding: :hooks) do |bundle_name, bundle|
+        if bundle.error?
+          Log.warn(:hooks, "bundle_manifest_invalid", echo: "[samagotchi:hooks] bundle '#{bundle_name}': #{bundle.error}; its hooks are not loaded",
                                                       bundle: bundle_name)
-          @guardrail_failures.add("hooks (bundle #{bundle_name})", data[:error], required: false)
+          @guardrail_failures.add("hooks (bundle #{bundle_name})", bundle.error, required: false)
           next
         end
         bundle_dir = File.join(MemoryBundle::Provenance.bundles_dir, bundle_name)
         hooks_dir = File.join(bundle_dir, "hooks")
-        if (data[:trust_level] || "experimental").to_s == "experimental"
+        if bundle.experimental?
           Log.info(:hooks, "experimental_bundle", echo: "[hooks] Bundle '#{bundle_name}' is experimental — its hooks may change or misbehave.", bundle: bundle_name)
         end
         begin
-          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: data[:hooks], registry: @hooks,
+          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: bundle.hooks, registry: @hooks,
                                    failures: @guardrail_failures, settings: settings[bundle_name.to_s] || {},
-                                   requires_chi: data[:requires_chi])
+                                   requires_chi: bundle.requires_chi)
         rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
           raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 

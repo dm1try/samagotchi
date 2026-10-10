@@ -17,10 +17,12 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
     allow(Samagotchi::ConfigFile).to receive(:read_yaml).with(path: Samagotchi::ConfigFile.global_path).and_return(data)
   end
 
+  def record(name, **raw) = Samagotchi::MemoryBundle::InstalledBundle.parse(name, raw)
+
   def installed(bundle_name)
     allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).and_call_original
     allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks)
-      .and_yield(bundle_name, { hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed" })
+      .and_yield(bundle_name, record(bundle_name, hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed"))
   end
 
   it "passes the bundle's section to BundleLoader.load, {} for a bundle without one" do
@@ -39,7 +41,7 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
     stub_config({})
     allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).and_call_original
     allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks)
-      .and_yield("k", { hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed", requires_chi: ">= 99.0" })
+      .and_yield("k", record("k", hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed", requires_chi: ">= 99.0"))
     expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(bundle_name: "k", requires_chi: ">= 99.0")).and_return(0)
     described_class.new(client: client)
   end

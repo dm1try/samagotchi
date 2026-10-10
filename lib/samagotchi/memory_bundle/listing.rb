@@ -43,14 +43,14 @@ module Samagotchi
       # @return [Array<Installed>] by name; upgrade is the Shipped when it is newer
       def installed(shipped: self.shipped)
         by_name = shipped.to_h { |s| [s.name, s] }
-        Provenance.each_installed.map do |name, data|
-          next Installed.new(name: name, error: "manifest.json unreadable") if data[:error]
+        Provenance.each_installed.map do |name, bundle|
+          next Installed.new(name: name, error: "manifest.json unreadable") if bundle.error?
 
           ship = by_name[name]
-          Installed.new(name: name, version: data[:version], scope: data[:scope],
-                        files: (data[:files] || {}).size, installed_at: data[:installed_at],
-                        upgrade: ship && newer?(ship.version, data[:version]) ? ship : nil,
-                        includes: data[:includes].is_a?(Array) ? data[:includes].map(&:to_s) : nil)
+          Installed.new(name: name, version: bundle.version, scope: bundle.scope,
+                        files: bundle.files.size, installed_at: bundle.installed_at,
+                        upgrade: ship && newer?(ship.version, bundle.version) ? ship : nil,
+                        includes: bundle.includes)
         end
       end
 

@@ -48,8 +48,8 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   def shipped_version(dir) = YAML.load_file(File.join(shipped, dir, "manifest.yml"))["version"]
 
   def plugin_loads?(name)
-    data = Samagotchi::MemoryBundle::Provenance.new(name: name).read
-    Samagotchi::Plugin::Loader.unloadable_reason(Samagotchi::MemoryBundle::Provenance.new(name: name).plugin_path(data), data).nil?
+    record = Samagotchi::MemoryBundle::Provenance.new(name: name).record
+    Samagotchi::Plugin::Loader.unloadable_reason(Samagotchi::MemoryBundle::Provenance.new(name: name).plugin_path(record), record).nil?
   end
 
   def mtimes

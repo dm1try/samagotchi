@@ -33,17 +33,15 @@ module Samagotchi
 
       def run
         provenance = Provenance.new(name: @name)
-        data = provenance.read
-        raise UninstallError, "Bundle '#{@name}' is not installed" unless data
+        bundle = provenance.record
+        raise UninstallError, "Bundle '#{@name}' is not installed" unless bundle
 
-        # Determine scope from flag or provenance
-        cli_scope = @scope.to_s.strip.empty? ? nil : @scope
-        raw = cli_scope || data[:scope]&.to_s
-        target_scope = raw.nil? || raw.strip.empty? ? "system" : raw
+        # The scope from the flag, else the record's
+        target_scope = @scope.to_s.strip.empty? ? bundle.effective_scope : @scope
         target_dir = MemoryPaths.scope_dir(target_scope) or raise UninstallError, "invalid scope: #{target_scope}"
 
-        files = data[:files] || {}
-        hooks = data[:hooks] || {}
+        files = bundle.files
+        hooks = bundle.hooks
         if files.empty? && hooks.empty?
           # No file list, just remove provenance
           FileUtils.rm_rf(provenance.bundle_dir)
@@ -99,7 +97,7 @@ module Samagotchi
         # ── Hooks removal (bundle-owned) ──────────────────────────
         # Hooks are stored under <bundle_dir>/hooks/ and are not part of the index.
         # Explicit removal for intent; the final rm_rf sweeps it anyway.
-        if hooks.is_a?(Hash) && !hooks.empty?
+        if hooks.any?
           hooks_dir = provenance.hooks_dir
           hooks.each do |hook_key, _meta|
             hook_key_str = hook_key.to_s
@@ -117,7 +115,7 @@ module Samagotchi
           FileUtils.rm_rf(provenance.hooks_dir)
         end
 
-        plugin_path = provenance.plugin_path(data)
+        plugin_path = provenance.plugin_path(bundle)
         @removed_files << "plugin/#{File.basename(plugin_path)}" if plugin_path && File.exist?(plugin_path)
         FileUtils.rm_rf(provenance.bundle_dir)
         true

@@ -7,6 +7,7 @@ require "fileutils"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
 require_relative "bundle_hook"
+require_relative "installed_bundle"
 
 module Samagotchi
   module MemoryBundle
@@ -47,9 +48,10 @@ module Samagotchi
       end
 
       # The plugin file as installed, or nil when the bundle has none.
-      def plugin_path(data = read)
-        file = data && data[:plugin].is_a?(Hash) ? data[:plugin][:file].to_s : ""
-        file.empty? ? nil : File.join(plugin_dir, file)
+      # @param bundle [InstalledBundle, nil] its record (read when not given)
+      def plugin_path(bundle = record)
+        file = bundle&.plugin&.file
+        file ? File.join(plugin_dir, file) : nil
       end
 
       # The plugin's base snapshot (bases/plugin/<file>), for bundle diff.
@@ -57,14 +59,14 @@ module Samagotchi
         File.join(@bundle_dir, "bases", "plugin", file.to_s)
       end
 
-      # Yields [name, data] for each installed bundle (a dir under
-      # bundles_dir holding a manifest.json, dot dirs aside), by name. data
-      # is the manifest with symbol keys, or {error:} when it doesn't parse
-      # or isn't an object; the rest still come.
+      # Yields [name, bundle] for each installed bundle (a dir under
+      # bundles_dir holding a manifest.json, dot dirs aside), by name. bundle
+      # is its InstalledBundle, one with error set when manifest.json doesn't
+      # parse or isn't an object; the rest still come.
       #
       # With holding: (:hooks, :guardrails or :plugin) only the bundles
       # whose manifest has a non-empty mapping under that key come, and a
-      # manifest that doesn't parse comes as {error:} only when its bundle
+      # manifest that doesn't parse comes (with error) only when its bundle
       # has that dir (hooks/, guardrails/, plugin/): what it would load
       # can't be checked. One that isn't an object is skipped there.
       # @param dir [String] the bundles dir (bundles_dir by default)
@@ -79,15 +81,14 @@ module Samagotchi
           begin
             data = JSON.parse(File.read(mjson), symbolize_names: true)
           rescue JSON::ParserError, SystemCallError => e
-            yield name, { error: "manifest.json is unreadable: #{e.message}" } if holding.nil? || Dir.exist?(File.join(dir, name, holding.to_s))
+            if holding.nil? || Dir.exist?(File.join(dir, name, holding.to_s))
+              yield name, InstalledBundle.unreadable(name, "manifest.json is unreadable: #{e.message}")
+            end
             next
           end
-          if holding
-            next unless data.is_a?(Hash) && data[holding].is_a?(Hash) && !data[holding].empty?
-          elsif !data.is_a?(Hash)
-            data = { error: "manifest.json is not an object" }
-          end
-          yield name, data
+          next if holding && !(data.is_a?(Hash) && data[holding].is_a?(Hash) && !data[holding].empty?)
+
+          yield name, InstalledBundle.parse(name, data)
         end
       end
 
@@ -96,10 +97,9 @@ module Samagotchi
       # A project-scoped record doesn't say which project: one from another
       # repo counts too, which errs on keeping the file.
       def self.claimants(file_key, scope:, except: nil, dir: bundles_dir)
-        each_installed(dir: dir).filter_map do |name, data|
-          next if name == except || data[:error]
-          next unless (data[:scope].to_s.empty? ? "system" : data[:scope].to_s) == scope.to_s
-          next unless data[:files].is_a?(Hash) && data[:files].keys.map(&:to_s).include?(file_key.to_s)
+        each_installed(dir: dir).filter_map do |name, bundle|
+          next if name == except || bundle.error?
+          next unless bundle.effective_scope == scope.to_s && bundle.owns?(file_key)
 
           name
         end
@@ -146,11 +146,10 @@ module Samagotchi
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
 
-        # Read existing manifest to merge file entries and find stale files.
-        # read symbolizes keys; stringify them so incoming string keys replace
-        # them instead of sitting next to them as duplicates.
-        existing = read
-        merged_entries = existing && existing[:files] ? existing[:files].transform_keys(&:to_s) : {}
+        # The existing record: its file entries merge with these, and its
+        # files and hooks not in this install are stale.
+        existing = record
+        merged_entries = existing ? existing.files.dup : {}
 
         files.each do |file_key, file_path|
           content = File.read(file_path)
@@ -163,10 +162,9 @@ module Samagotchi
         end
 
         # Prune stale base snapshots for files no longer in the bundle.
-        if existing && existing[:files]
-          existing[:files].keys.each do |old_key|
-            old_key_str = old_key.to_s
-            next if files.key?(old_key_str) || files.key?(old_key)
+        if existing
+          existing.files.each_key do |old_key_str|
+            next if files.key?(old_key_str) || files.key?(old_key_str.to_sym)
 
             old_base = File.join(bases_dir, old_key_str)
             FileUtils.rm_f(old_base)
@@ -176,8 +174,6 @@ module Samagotchi
 
         # Hooks provenance: persist metadata and base snapshots for hooks
         hooks_map = {}
-        # existing hooks for pruning
-        existing_hooks = existing && existing[:hooks] ? existing[:hooks] : {}
         # Incoming hooks: basename => BundleHook (or its metadata hash)
         normalized_hooks = {}
         if hooks.is_a?(Hash)
@@ -189,14 +185,8 @@ module Samagotchi
           end
         end
         # Prune stale hook bases
-        if existing_hooks.is_a?(Hash)
-          existing_hooks.keys.each do |old_key|
-            old_key_str = old_key.to_s
-            unless normalized_hooks.key?(old_key_str) || normalized_hooks.key?(old_key_str.to_sym)
-              old_base = File.join(bases_dir, old_key_str)
-              FileUtils.rm_f(old_base)
-            end
-          end
+        existing&.hooks&.each_key do |old_key_str|
+          FileUtils.rm_f(File.join(bases_dir, old_key_str)) unless normalized_hooks.key?(old_key_str)
         end
         # Save base snapshots for hooks where a file path was provided, and
         # record the sha256 of the installed file itself: the load-time check
@@ -276,7 +266,15 @@ module Samagotchi
         write_manifest(raw)
       end
 
-      # Reads provenance data (returns nil if not installed).
+      # The installed bundle's record, nil when it isn't installed.
+      # @return [InstalledBundle, nil]
+      # @raise [JSON::ParserError] manifest.json doesn't parse
+      def record
+        InstalledBundle.read(@name, File.join(@bundle_dir, "manifest.json"))
+      end
+
+      # manifest.json as it is on disk, symbol keys (nil if not installed).
+      # Readers take #record.
       def read
         manifest_path = File.join(@bundle_dir, "manifest.json")
         return nil unless File.exist?(manifest_path)
@@ -299,7 +297,7 @@ module Samagotchi
 
       # Checks whether the bundle is installed.
       def installed?
-        read.nil? ? false : true
+        !record.nil?
       end
     end
   end

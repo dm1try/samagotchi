@@ -96,14 +96,14 @@ module Samagotchi
         @file_descriptions = manifest&.file_descriptions || {}
         all_files_in_bundle = []
         provenance = Provenance.new(name: @name)
-        existing_provenance = provenance.read
+        existing_provenance = provenance.record
         # A plain install over an installed bundle: summary points at upgrade.
         @reinstall = existing_provenance && !@upgrade && !@force && !@dry_run
         # The bundle owns (records, upgrades, removes) only the files it
         # wrote: these, from an earlier install, and the ones written now.
         # A same-name file that was already there is the user's: skipped
         # and never recorded.
-        owned_before = existing_provenance && existing_provenance[:files].is_a?(Hash) ? existing_provenance[:files].keys.map(&:to_s) : []
+        owned_before = existing_provenance ? existing_provenance.files.keys : []
         owned = []
 
         Dir.glob(File.join(normalized_dir, "*.md")).each do |file_path|
@@ -204,14 +204,9 @@ module Samagotchi
             end
 
             # Local-edit detection for upgrade path (overwrite + warn)
-            if @upgrade && existing_provenance && File.exist?(dest) && !@force
-              prev_meta = existing_provenance[:hooks] ? (existing_provenance[:hooks][basename.to_sym] || existing_provenance[:hooks][basename]) : nil
-              if prev_meta
-                prev_sha = BundleHook.parse(prev_meta).sha256
-                if File.exist?(dest) && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
-                  @warnings << "Hook #{basename} was locally modified; overwriting"
-                end
-              end
+            prev_sha = existing_provenance&.hooks&.dig(basename)&.sha256
+            if @upgrade && File.exist?(dest) && !@force && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
+              @warnings << "Hook #{basename} was locally modified; overwriting"
             end
 
             FileUtils.mkdir_p(hooks_target)
@@ -244,9 +239,8 @@ module Samagotchi
         end
 
         # Prune stale hooks (removed from bundle) — reuse bases pruning via provenance but also remove files
-        if @upgrade && existing_provenance && existing_provenance[:hooks] && !@dry_run
-          existing_provenance[:hooks].keys.each do |old_key|
-            old_key_str = old_key.to_s
+        if @upgrade && existing_provenance && !@dry_run
+          existing_provenance.hooks.each_key do |old_key_str|
             next if all_hooks_in_bundle.include?(old_key_str)
 
             old_dest = File.join(hooks_target, old_key_str)
@@ -310,8 +304,8 @@ module Samagotchi
         warn_rules_requires_chi(manifest, incoming_rules)
 
         # Files the previous version shipped and this one doesn't.
-        if @upgrade && existing_provenance && existing_provenance[:files]
-          prune_dropped_files(existing_provenance[:files], all_files_in_bundle, target_dir, target_scope, provenance)
+        if @upgrade && existing_provenance
+          prune_dropped_files(existing_provenance.files, all_files_in_bundle, target_dir, target_scope, provenance)
         end
 
         # Verify checksums if we have a manifest (strict).
@@ -369,20 +363,17 @@ module Samagotchi
               end
             end
             # Handle pruned but kept files (bundle removed file but local kept)
-            if existing_provenance[:files]
-              existing_provenance[:files].keys.each do |old_key|
-                old_key_str = old_key.to_s
-                next if all_files_in_bundle.include?(old_key_str)
+            existing_provenance.files.each_key do |old_key_str|
+              next if all_files_in_bundle.include?(old_key_str)
 
-                # If it was kept_pruned, include it with base content to prevent pruning
-                next unless @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
+              # If it was kept_pruned, include it with base content to prevent pruning
+              next unless @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
 
-                base_path = provenance.base_path(old_key_str)
-                target_path = File.join(target_dir, old_key_str)
-                # Use base if exists to keep old checksum, else target
-                src = File.exist?(base_path) ? base_path : target_path
-                provenance_files[old_key_str] = src if File.exist?(src)
-              end
+              base_path = provenance.base_path(old_key_str)
+              target_path = File.join(target_dir, old_key_str)
+              # Use base if exists to keep old checksum, else target
+              src = File.exist?(base_path) ? base_path : target_path
+              provenance_files[old_key_str] = src if File.exist?(src)
             end
           else
             owned.each do |file_key|
@@ -505,8 +496,7 @@ module Samagotchi
       # matches what was installed, or with --force; one the user edited is
       # kept with a note.
       def prune_dropped_files(previous_files, bundle_files, target_dir, scope, provenance)
-        previous_files.each do |old_key, meta|
-          key = old_key.to_s
+        previous_files.each do |key, meta|
           next if bundle_files.include?(key)
 
           target = File.join(target_dir, key)
@@ -532,7 +522,7 @@ module Samagotchi
       # Whether the file on disk is what the previous install wrote: its
       # recorded checksum, else the base snapshot. Unknown counts as edited.
       def installed_unchanged?(target, meta, base_path)
-        recorded = meta.is_a?(Hash) ? meta[:checksum] || meta["checksum"] : nil
+        recorded = meta[:checksum]
         return Provenance.sha_matches?(target, recorded) unless Provenance.recorded_sha(recorded).empty?
 
         File.exist?(base_path) && Provenance.file_sha(target) == Provenance.file_sha(base_path)
@@ -608,7 +598,7 @@ module Samagotchi
         FileUtils.cp(src, dest)
         @results[plugin[:file]] = if unchanged
                                     { status: "skipped", reason: "already up to date" }
-                                  elsif @upgrade && provenance.read
+                                  elsif @upgrade && provenance.installed?
                                     { status: "updated" }
                                   else
                                     { status: "installed" }
@@ -646,7 +636,7 @@ module Samagotchi
           dest = File.join(provenance.scripts_dir, file)
           FileUtils.cp(File.join(source_dir, "scripts", file), dest)
           @results["scripts/#{file}"] = if unchanged.include?(file) then { status: "skipped", reason: "already up to date" }
-                                        elsif @upgrade && provenance.read then { status: "updated" }
+                                        elsif @upgrade && provenance.installed? then { status: "updated" }
                                         else { status: "installed" }
                                         end
           FileUtils.chmod(0o755, dest)

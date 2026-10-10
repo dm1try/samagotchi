@@ -46,32 +46,32 @@ module Samagotchi
         false
       end
 
-      # Whether the installed bundle +name+ (its provenance +data+) is a
-      # meta: it records includes, or it came from chi and chi ships it as
-      # a meta.
-      def installed_meta?(name, data, shipped_dir: SourceNormalizer::SHIPPED_DIR)
-        return false unless data.is_a?(Hash)
-        return true if data[:includes].is_a?(Array)
+      # Whether the installed bundle +name+ (its record +bundle+, an
+      # InstalledBundle or nil) is a meta: it records includes, or it came
+      # from chi and chi ships it as a meta.
+      def installed_meta?(name, bundle, shipped_dir: SourceNormalizer::SHIPPED_DIR)
+        return false unless bundle
+        return true if bundle.profile?
 
-        data[:source].to_s.match?(SourceNormalizer::SHIPPED_SOURCE) && shipped_meta?(File.join(shipped_dir, name), shipped_dir: shipped_dir)
+        bundle.source.to_s.match?(SourceNormalizer::SHIPPED_SOURCE) && shipped_meta?(File.join(shipped_dir, name), shipped_dir: shipped_dir)
       end
 
       # The members the meta has recorded: none when it isn't installed,
       # all of +manifest+'s (the shipped meta, nil when chi ships none) when
       # its provenance has no includes: an unknown record is taken as
       # everything.
-      def recorded(data, manifest)
-        return [] unless data
-        return manifest&.includes || [] unless data[:includes].is_a?(Array)
+      def recorded(bundle, manifest)
+        return [] unless bundle
+        return manifest&.includes || [] unless bundle.profile?
 
-        data[:includes].map(&:to_s)
+        bundle.includes
       end
 
       def installed_names = Provenance.each_installed.map { |name, _| name }
 
       # The one rule.
-      def to_install(manifest, data = Provenance.new(name: manifest.name).read, installed: installed_names)
-        manifest.includes - recorded(data, manifest) - installed
+      def to_install(manifest, bundle = Provenance.new(name: manifest.name).record, installed: installed_names)
+        manifest.includes - recorded(bundle, manifest) - installed
       end
 
       # Installs the shipped meta at +dir+: its to_install members from the
@@ -80,13 +80,13 @@ module Samagotchi
       # @return [InstallResult]
       def install(dir, shipped_dir: SourceNormalizer::SHIPPED_DIR, chi_version: Samagotchi::VERSION, dry_run: false, force: false)
         manifest = Manifest.read(dir: dir)
-        data = Provenance.new(name: manifest.name).read
-        was = recorded(data, manifest)
+        bundle = Provenance.new(name: manifest.name).record
+        was = recorded(bundle, manifest)
         installed = installed_names
         result = InstallResult.new(name: manifest.name, version: manifest.version, installed: [],
                                    already: (manifest.includes - was) & installed, skipped: {}, failed: {})
 
-        to_install(manifest, data, installed: installed).each do |member|
+        to_install(manifest, bundle, installed: installed).each do |member|
           install_member(member, shipped_dir, chi_version, dry_run, force, result)
         end
         return result if dry_run
@@ -94,7 +94,7 @@ module Samagotchi
         now = was | result.installed | result.already
         includes = (manifest.includes & now) + (now - manifest.includes)
         # Nothing new: the record stays as it is (installed_at too).
-        return result if data && data[:version] == manifest.version && data[:source] == dir && data[:includes] == includes
+        return result if bundle && bundle.version == manifest.version && bundle.source == dir && bundle.includes == includes
 
         Provenance.new(name: manifest.name).write(
           files: {}, scope: "system", version: manifest.version, source_path: dir,
@@ -123,12 +123,12 @@ module Samagotchi
       # @return [UninstallResult]
       # @raise [Uninstaller::UninstallError] when +name+ isn't installed
       def uninstall(name, shipped_dir: SourceNormalizer::SHIPPED_DIR, force: false)
-        data = Provenance.new(name: name).read
-        raise Uninstaller::UninstallError, "Bundle '#{name}' is not installed" unless data
+        bundle = Provenance.new(name: name).record
+        raise Uninstaller::UninstallError, "Bundle '#{name}' is not installed" unless bundle
 
         shipped = File.join(shipped_dir, name)
         manifest = File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil
-        members = recorded(data, manifest)
+        members = recorded(bundle, manifest)
         result = UninstallResult.new(name: name, removed: [], blocked: {}, gone: false, trash: {}, warnings: [])
         (members & installed_names).each do |member|
           uninstaller = Uninstaller.new(name: member, force: force)

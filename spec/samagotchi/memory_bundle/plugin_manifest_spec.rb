@@ -165,7 +165,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(File.read(target)).to eq("# Id\nmy note\n")
       data = provenance.read
       expect(data[:version]).to eq("2.0.0")
-      expect(Samagotchi::Plugin::Loader.unloadable_reason(provenance.plugin_path(data), data)).to be_nil
+      expect(Samagotchi::Plugin::Loader.unloadable_reason(provenance.plugin_path, provenance.record)).to be_nil
       expect(data[:files][:"identity.md"]).to include(conflict: true)
       expect(File.read(provenance.base_path("identity.md"))).to eq("# Id\n")
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:files]["identity.md"]).to include(conflict: true)

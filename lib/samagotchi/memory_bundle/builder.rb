@@ -98,22 +98,20 @@ module Samagotchi
         hooks_to_copy = [] # Array of [src_path, basename]
         # Try provenance first (if bundle with this name is installed)
         prov = nil
-        prov_data = nil
+        record = nil
         begin
           require_relative "provenance"
           prov = Provenance.new(name: resolved_name)
-          prov_data = prov.read
+          record = prov.record
         rescue StandardError
-          prov_data = nil
+          record = nil
         end
-        if prov_data && prov_data[:hooks].is_a?(Hash) && !prov_data[:hooks].empty?
-          prov_data[:hooks].each do |k, meta|
-            basename = k.to_s
+        if record&.hooks&.any?
+          record.hooks.each do |basename, hook|
             src = File.join(prov.hooks_dir, basename)
             # Skip if hook file missing on disk
             next unless File.exist?(src)
 
-            hook = BundleHook.parse(meta)
             hook = hook.with(sha256: BundleHook.of_file(src).sha256) if hook.sha256.empty?
             hooks_map[basename] = hook
             hooks_to_copy << [src, basename]
@@ -130,24 +128,22 @@ module Samagotchi
           end
         end
         # ── Guardrail rules: the installed bundle's, else target_dir's ──
-        rules_dir = prov && prov_data && prov_data[:guardrails].is_a?(Hash) ? prov.guardrails_dir : File.join(target_dir, "guardrails")
+        rules_dir = record&.guardrails&.any? ? prov.guardrails_dir : File.join(target_dir, "guardrails")
         rules_to_copy = Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : []
 
         # ── Plugin: the installed bundle's, with its requires_chi ──
-        plugin_src = prov && prov_data ? prov.plugin_path(prov_data) : nil
+        plugin_src = record ? prov.plugin_path(record) : nil
         plugin_src = nil unless plugin_src && File.file?(plugin_src)
-        requires_chi = prov_data && prov_data[:requires_chi]
-        needs = prov_data && prov_data[:needs]
+        requires_chi = record&.requires_chi
+        needs = record&.needs
 
         # ── Scripts and context providers: the installed bundle's ──
-        scripts_to_copy = installed_scripts(prov, prov_data)
-        context_providers = prov_data ? ContextProviders.parse_list(prov_data[:context_providers]) : []
+        scripts_to_copy = installed_scripts(prov, record)
+        context_providers = record ? ContextProviders.parse_list(record.context_providers) : []
 
         # Determine trust_level for the built bundle
         build_trust_level = @trust_level
-        if (build_trust_level.nil? || build_trust_level.empty?) && prov_data && prov_data[:trust_level]
-          build_trust_level = prov_data[:trust_level].to_s
-        end
+        build_trust_level = record.trust_level if (build_trust_level.nil? || build_trust_level.empty?) && record&.trust_level
 
         # Resolve output path and format
         resolved_out, format = resolve_out_path(@out, resolved_name)
@@ -195,7 +191,7 @@ module Samagotchi
             needs: needs,
             scripts: scripts_to_copy.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
             context_providers: context_providers,
-            file_descriptions: file_descriptions(prov_data, files_map)
+            file_descriptions: file_descriptions(record, files_map)
           )
 
           case format
@@ -259,11 +255,11 @@ module Samagotchi
       # without the includes, carrying the profile's trust_level.
       def refuse_profile!(name)
         require_relative "profile"
-        data = Provenance.new(name: name).read
-        return unless Profile.installed_meta?(name, data)
+        record = Provenance.new(name: name).record
+        return unless Profile.installed_meta?(name, record)
 
         shipped = File.join(SourceNormalizer::SHIPPED_DIR, name)
-        members = Profile.recorded(data, File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil)
+        members = Profile.recorded(record, File.file?(File.join(shipped, "manifest.yml")) ? Manifest.read(dir: shipped) : nil)
         raise BuildError, "#{name} is an installed profile (includes: #{members.join(", ")}): it ships only its includes, " \
                           "so a build can't remake it; pick another --name for these memories"
       rescue JSON::ParserError, SystemCallError, Manifest::ValidationError
@@ -272,22 +268,22 @@ module Samagotchi
 
       # The installed bundle's scripts its record lists, file name => path
       # in its scripts/ (a missing one is left out); {} without a record.
-      def installed_scripts(prov, prov_data)
-        return {} unless prov && prov_data && prov_data[:scripts].is_a?(Hash)
+      def installed_scripts(prov, record)
+        return {} unless record
 
-        prov_data[:scripts].keys.map(&:to_s).sort.to_h { |file| [file, File.join(prov.scripts_dir, file)] }
-                           .select { |_, path| File.file?(path) }
+        record.scripts.keys.sort.to_h { |file| [file, File.join(prov.scripts_dir, file)] }
+                     .select { |_, path| File.file?(path) }
       end
 
       # The descriptions the installed bundle's record keeps for the files
       # being built (its manifest's files: mappings), so a rebuild writes
       # them back; {} without a record.
-      def file_descriptions(prov_data, files_map)
-        return {} unless prov_data && prov_data[:files].is_a?(Hash)
+      def file_descriptions(record, files_map)
+        return {} unless record
 
-        prov_data[:files].each_with_object({}) do |(key, entry), acc|
-          text = entry.is_a?(Hash) ? entry[:description].to_s : ""
-          acc[key.to_s] = text if files_map.key?(key.to_s) && !text.empty?
+        record.files.each_with_object({}) do |(key, entry), acc|
+          text = entry[:description].to_s
+          acc[key] = text if files_map.key?(key) && !text.empty?
         end
       end
 

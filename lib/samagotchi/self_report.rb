@@ -406,8 +406,8 @@ module Samagotchi
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"
     def bundles_summary
       shipped = MemoryBundle::Manifest.read(dir: MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version rescue nil
-      installed = MemoryBundle::Provenance.each_installed.map do |name, data|
-        version = data[:version] || "?"
+      installed = MemoryBundle::Provenance.each_installed.map do |name, bundle|
+        version = bundle.version || "?"
         label = "#{name} #{version}"
         label += " (shipped #{shipped})" if name == MemoryBundle::SystemBundle::BUNDLE_NAME
         label

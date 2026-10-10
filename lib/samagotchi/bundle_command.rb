@@ -293,8 +293,8 @@ module Samagotchi
         @stderr.puts "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
         return CLI::Exit::USAGE
       end
-      data = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).read
-      return uninstall_profile(bundle_name, force: force) if Samagotchi::MemoryBundle::Profile.installed_meta?(bundle_name, data)
+      record = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).record
+      return uninstall_profile(bundle_name, force: force) if Samagotchi::MemoryBundle::Profile.installed_meta?(bundle_name, record)
 
       uninstaller = Samagotchi::MemoryBundle::Uninstaller.new(name: bundle_name, scope: scope, force: force)
       begin
@@ -370,7 +370,7 @@ module Samagotchi
           @stdout.puts "Bundle '#{name}' not installed."
           return 0
         end
-        @stdout.puts "Bundle: #{name} v#{st[:provenance][:version]} scope=#{status_scope(st)} installed=#{st[:provenance][:installed_at]}"
+        @stdout.puts "Bundle: #{name} v#{st[:provenance].version} scope=#{status_scope(st)} installed=#{st[:provenance].installed_at}"
         if st[:scope_error]
           @stdout.puts "Target: (unknown scope: this chi can't resolve it; upgrade chi or reinstall the bundle)"
         else
@@ -380,7 +380,7 @@ module Samagotchi
           next @stdout.puts("  #{k}: unchecked") if info[:unchecked]
 
           mods = []
-          mods << "conflict (kept your edits over v#{st[:provenance][:version]}: chi bundle diff #{name} #{k})" if info[:conflict]
+          mods << "conflict (kept your edits over v#{st[:provenance].version}: chi bundle diff #{name} #{k})" if info[:conflict]
           mods << "modified" if info[:modified]
           mods << "missing" if info[:missing]
           mods << "no-index" unless info[:index_present] || info[:overlay]
@@ -389,20 +389,19 @@ module Samagotchi
           @stdout.puts "  #{k}: #{label}"
         end
         # Hooks
-        hooks = st[:provenance][:hooks] || {}
-        trust = st[:provenance][:trust_level] || "experimental"
-        commit = st[:provenance][:source_commit]
+        hooks = st[:provenance].hooks
+        trust = st[:provenance].trust_level || "experimental"
+        commit = st[:provenance].source_commit
         @stdout.puts "  trust_level: #{trust}" if hooks.any? || trust
         @stdout.puts "  source_commit: #{commit}" if commit
         if hooks.any?
           @stdout.puts "  Hooks (#{hooks.size}):"
-          hooks.each do |hk, meta|
-            hook = Samagotchi::MemoryBundle::BundleHook.parse(meta)
-            hook_path = File.join(Samagotchi::MemoryBundle::Provenance.new(name: name).hooks_dir, hk.to_s)
+          hooks.each do |hk, hook|
+            hook_path = File.join(Samagotchi::MemoryBundle::Provenance.new(name: name).hooks_dir, hk)
             exists = File.exist?(hook_path) ? "ok" : "missing"
             @stdout.puts "    #{hk}: event=#{hook.event} on_error=#{hook.on_error} priority=#{hook.priority} [#{exists}]"
           end
-          @stdout.puts "    requires_chi: #{st[:provenance][:requires_chi]}" if st[:hooks_requires_failure]
+          @stdout.puts "    requires_chi: #{st[:provenance].requires_chi}" if st[:hooks_requires_failure]
           @stdout.puts "    not loaded: #{st[:hooks_requires_failure]}" if st[:hooks_requires_failure]
         end
         if (plugin = st[:plugin])
@@ -412,28 +411,28 @@ module Samagotchi
           @stdout.puts "    not loaded: #{plugin[:requires_failure]}" if plugin[:requires_failure]
         end
         st[:needs].each { |need| @stdout.puts "  #{Samagotchi::MemoryBundle::Status.need_line(need)}" }
-        (st[:provenance][:includes] || []).each do |member|
-          state = Samagotchi::MemoryBundle::Provenance.new(name: member.to_s).installed? ? "installed" : "not installed: chi bundle install #{member}"
+        (st[:provenance].includes || []).each do |member|
+          state = Samagotchi::MemoryBundle::Provenance.new(name: member).installed? ? "installed" : "not installed: chi bundle install #{member}"
           @stdout.puts "  includes #{member} [#{state}]"
         end
       else
         bundles = Samagotchi::MemoryBundle::Provenance.each_installed.to_a
         @stdout.puts "No installed bundles." if bundles.empty?
-        bundles.each do |bname, data|
-          next @stdout.puts("  #{bname} (manifest.json unreadable)") if data[:error]
+        bundles.each do |bname, record|
+          next @stdout.puts("  #{bname} (manifest.json unreadable)") if record.error?
 
           st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
           mods = st[:files].values.count { |v| v[:modified] || v[:missing] }
-          hooks_count = (st[:provenance][:hooks] || {}).size
+          hooks_count = st[:provenance].hooks.size
           hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
           plugin = st[:plugin]
           mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
           mods += 1 if st[:hooks_requires_failure]
           mods += 1 if st[:scope_error]
           plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
-          includes = st[:provenance][:includes]
+          includes = st[:provenance].includes
           includes_info = includes ? " includes=#{includes.join(",")}" : ""
-          @stdout.puts "  #{bname} v#{st[:provenance][:version]} scope=#{status_scope(st)} files=#{st[:files].size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
+          @stdout.puts "  #{bname} v#{st[:provenance].version} scope=#{status_scope(st)} files=#{st[:files].size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
         end
       end
       0
@@ -450,19 +449,19 @@ module Samagotchi
         @stderr.puts "Usage: chi bundle diff <bundle> [file]"; return CLI::Exit::USAGE
       end
       prov = Samagotchi::MemoryBundle::Provenance.new(name: bname)
-      data = prov.read
-      unless data
+      record = prov.record
+      unless record
         @stderr.puts "Bundle '#{bname}' not installed"; return 1
       end
-      scope = data[:scope]&.to_s || "system"
+      scope = record.scope || "system"
       begin
         target_dir = Samagotchi::MemoryPaths.scope_dir!(scope)
       rescue ArgumentError => e
         @stderr.puts "Bundle '#{bname}': #{e.message}"; return 1
       end
-      files = data[:files] || {}
-      hooks = data[:hooks] || {}
-      plugin_path = prov.plugin_path(data)
+      files = record.files
+      hooks = record.hooks
+      plugin_path = prov.plugin_path(record)
       plugin_file = plugin_path && File.basename(plugin_path)
       show_plugin = lambda do
         @stdout.puts "=== plugin/#{plugin_file} ==="
@@ -471,11 +470,11 @@ module Samagotchi
         @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
         @stdout.puts "--- current (on-disk) ---"
         @stdout.puts File.exist?(plugin_path) ? File.read(plugin_path) : "(missing)"
-        @stdout.puts "--- metadata: sha256=#{data[:plugin][:sha256]}#{" requires_chi=#{data[:requires_chi]}" if data[:requires_chi]}"
+        @stdout.puts "--- metadata: sha256=#{record.plugin.sha256}#{" requires_chi=#{record.requires_chi}" if record.requires_chi}"
       end
       if file_arg
         # Try file first, then hook
-        if files.key?(file_arg.to_sym) || files.key?(file_arg)
+        if record.owns?(file_arg)
           base = prov.base_path(file_arg)
           cur = File.join(target_dir, file_arg)
           @stdout.puts "=== #{file_arg} ==="
@@ -483,7 +482,7 @@ module Samagotchi
           @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
           @stdout.puts "--- current (on-disk) ---"
           @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
-        elsif hooks.key?(file_arg.to_sym) || hooks.key?(file_arg)
+        elsif hooks.key?(file_arg)
           base = prov.base_path(file_arg)
           cur = File.join(prov.hooks_dir, file_arg)
           @stdout.puts "=== hooks/#{file_arg} ==="
@@ -492,8 +491,7 @@ module Samagotchi
           @stdout.puts "--- current (on-disk) ---"
           @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
           # Show hook metadata
-          meta = hooks[file_arg.to_sym] || hooks[file_arg]
-          @stdout.puts hook_metadata_line(meta) if meta
+          @stdout.puts hook_metadata_line(hooks[file_arg])
         elsif plugin_file && [plugin_file, "plugin/#{plugin_file}"].include?(file_arg)
           show_plugin.call
         else
@@ -502,8 +500,7 @@ module Samagotchi
         end
         @stdout.puts ""
       else
-        keys = files.keys.map(&:to_s)
-        keys.each do |k|
+        files.each_key do |k|
           base = prov.base_path(k)
           cur = File.join(target_dir, k)
           @stdout.puts "=== #{k} ==="
@@ -514,7 +511,7 @@ module Samagotchi
           @stdout.puts ""
         end
         # Hooks diff
-        hooks.keys.map(&:to_s).each do |k|
+        hooks.each do |k, hook|
           base = prov.base_path(k)
           cur = File.join(prov.hooks_dir, k)
           @stdout.puts "=== hooks/#{k} ==="
@@ -522,8 +519,7 @@ module Samagotchi
           @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
           @stdout.puts "--- current (on-disk) ---"
           @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
-          meta = hooks[k.to_sym] || hooks[k]
-          @stdout.puts hook_metadata_line(meta) if meta
+          @stdout.puts hook_metadata_line(hook)
           @stdout.puts ""
         end
         if plugin_file
@@ -577,8 +573,7 @@ module Samagotchi
       "includes=#{here.join(",")}#{"  left out=#{gone.join(",")}" unless gone.empty?}"
     end
 
-    def hook_metadata_line(meta)
-      hook = Samagotchi::MemoryBundle::BundleHook.parse(meta)
+    def hook_metadata_line(hook)
       "--- metadata: event=#{hook.event} on_error=#{hook.on_error} priority=#{hook.priority} sha256=#{hook.sha256}"
     end
 

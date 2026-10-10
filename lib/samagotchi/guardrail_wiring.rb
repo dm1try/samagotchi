@@ -151,26 +151,26 @@ module Samagotchi
     def bundle_rules
       require_relative "memory_bundle/provenance"
       rules = []
-      MemoryBundle::Provenance.each_installed(holding: :guardrails) do |bundle_name, data|
-        if data[:error]
-          Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{data[:error]}", bundle: bundle_name)
-          @failures.add("rules (bundle #{bundle_name})", data[:error], required: true, group: :rules)
+      MemoryBundle::Provenance.each_installed(holding: :guardrails) do |bundle_name, bundle|
+        if bundle.error?
+          Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{bundle.error}", bundle: bundle_name)
+          @failures.add("rules (bundle #{bundle_name})", bundle.error, required: true, group: :rules)
           next
         end
-        if (too_new = MemoryBundle::Manifest.requires_chi_failure(data[:requires_chi], Samagotchi::VERSION))
-          rules.concat(too_new_bundle_rules(bundle_name, data, too_new))
+        if (too_new = MemoryBundle::Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION))
+          rules.concat(too_new_bundle_rules(bundle_name, bundle, too_new))
           next
         end
         dir = MemoryBundle::Provenance.new(name: bundle_name).guardrails_dir
         loaded = []
         whole = true
-        data[:guardrails].sort_by { |k, _| k.to_s }.each do |basename, meta|
+        bundle.guardrails.sort.each do |basename, sha|
           what = "rules #{basename} (bundle #{bundle_name})"
-          path = File.join(dir, basename.to_s)
+          path = File.join(dir, basename)
           begin
             raise Guardrails::Rules::ParseError, "the file is missing" unless File.file?(path)
 
-            unless MemoryBundle::Provenance.sha_matches?(path, meta.is_a?(Hash) ? meta[:sha256] : nil)
+            unless MemoryBundle::Provenance.sha_matches?(path, sha)
               raise Guardrails::Rules::ParseError, "its sha256 differs from the installed one (edited after install? reinstall the bundle)"
             end
 
@@ -256,7 +256,7 @@ module Samagotchi
     # load the new ones). Never loaded (a chi older than the bundle it
     # starts with): none, and a required load failure, as the hook loader
     # does for a guardrail hook, so the calls aren't quietly unguarded.
-    def too_new_bundle_rules(bundle_name, data, reason)
+    def too_new_bundle_rules(bundle_name, bundle, reason)
       kept = @loaded_bundle_rules[bundle_name]
       unless kept
         Log.warn(:guardrails, "bundle_rules_requires_chi", echo: "[samagotchi:guardrails] bundle #{bundle_name}: its rules are not loaded: #{reason}",
@@ -266,19 +266,19 @@ module Samagotchi
         return []
       end
 
-      key = [bundle_name, data[:version].to_s]
+      key = [bundle_name, bundle.version.to_s]
       return kept if @kept_noticed[key]
 
       @kept_noticed[key] = true
-      Log.warn(:guardrails, "bundle_rules_kept", bundle: bundle_name, version: data[:version].to_s,
-                                                 requires_chi: data[:requires_chi].to_s)
-      @notify.call(kept_notice(bundle_name, data))
+      Log.warn(:guardrails, "bundle_rules_kept", bundle: bundle_name, version: bundle.version.to_s,
+                                                 requires_chi: bundle.requires_chi.to_s)
+      @notify.call(kept_notice(bundle_name, bundle))
       kept
     end
 
-    def kept_notice(bundle_name, data)
+    def kept_notice(bundle_name, bundle)
       id = @session_lookup.call&.id || "ID"
-      "bundle #{bundle_name} #{data[:version]} needs chi #{data[:requires_chi]} and this session runs chi #{Samagotchi::VERSION}: " \
+      "bundle #{bundle_name} #{bundle.version} needs chi #{bundle.requires_chi} and this session runs chi #{Samagotchi::VERSION}: " \
         "its new rules are not loaded, the ones loaded before still apply. Restart the session to load them " \
         "(chi sessions stop #{id}, then chi --resume #{id})"
     end

@@ -210,10 +210,12 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
     it "knows a meta by its recorded includes, or by a shipped source whose manifest is a meta" do
       ship("a")
       core = ship_meta("core", %w[a])
-      expect(described_class.installed_meta?("core", { includes: [] }, shipped_dir: shipped)).to be(true)
-      expect(described_class.installed_meta?("core", { source: core }, shipped_dir: shipped)).to be(true)
-      expect(described_class.installed_meta?("core", { source: "/tmp/core" }, shipped_dir: shipped)).to be(false)
-      expect(described_class.installed_meta?("a", { source: File.join(shipped, "a") }, shipped_dir: shipped)).to be(false)
+      record = ->(name, **raw) { Samagotchi::MemoryBundle::InstalledBundle.parse(name, raw) }
+      expect(described_class.installed_meta?("core", record.call("core", includes: []), shipped_dir: shipped)).to be(true)
+      expect(described_class.installed_meta?("core", record.call("core", source: core), shipped_dir: shipped)).to be(true)
+      expect(described_class.installed_meta?("core", record.call("core", source: "/tmp/core"), shipped_dir: shipped)).to be(false)
+      expect(described_class.installed_meta?("a", record.call("a", source: File.join(shipped, "a")), shipped_dir: shipped)).to be(false)
+      expect(described_class.installed_meta?("core", nil, shipped_dir: shipped)).to be(false)
     end
   end
 end

@@ -45,8 +45,8 @@ module Samagotchi
       # @return [Array<Row>] by name
       def plan(shipped_dir: SourceNormalizer::SHIPPED_DIR, chi_version: Samagotchi::VERSION)
         shipped = Listing.shipped(dir: shipped_dir).to_h { |s| [s.name, s] }
-        installed.map do |name, data|
-          plan_row(name, data, shipped[name], shipped_dir, chi_version)
+        installed.map do |name, bundle|
+          plan_row(name, bundle, shipped[name], shipped_dir, chi_version)
         end
       end
 
@@ -88,24 +88,24 @@ module Samagotchi
         end
       end
 
-      # [name, data] for each installed bundle but the system one, by name.
+      # [name, InstalledBundle] for each installed bundle but the system one, by name.
       def installed
         Provenance.each_installed.reject { |name, _| name == SystemBundle::BUNDLE_NAME }
       end
 
-      def plan_row(name, data, ship, shipped_dir, chi_version)
+      def plan_row(name, bundle, ship, shipped_dir, chi_version)
         row = Row.new(name: name, kept: [], replaced: [])
-        return skip(row, "manifest.json unreadable") if data[:error]
+        return skip(row, "manifest.json unreadable") if bundle.error?
 
-        row.from = data[:version].to_s
-        row.scope = data[:scope].to_s.empty? ? "system" : data[:scope].to_s
-        return skip(row, "not from chi") unless ship && data[:source].to_s.match?(SourceNormalizer::SHIPPED_SOURCE)
+        row.from = bundle.version.to_s
+        row.scope = bundle.effective_scope
+        return skip(row, "not from chi") unless ship && bundle.source.to_s.match?(SourceNormalizer::SHIPPED_SOURCE)
 
         row.to = ship.version.to_s
         return skip(row, "newer than shipped: left") if Listing.newer?(row.from, row.to)
 
         row.source_dir = File.join(shipped_dir, ship.source)
-        return profile_row(row, data, shipped_dir, chi_version) if Profile.shipped_meta?(row.source_dir, shipped_dir: shipped_dir)
+        return profile_row(row, bundle, shipped_dir, chi_version) if Profile.shipped_meta?(row.source_dir, shipped_dir: shipped_dir)
         return row.tap { |r| r.status = :up_to_date; r.to = nil } unless Listing.newer?(row.to, row.from)
 
         manifest = Manifest.read(dir: row.source_dir)
@@ -115,20 +115,20 @@ module Samagotchi
         return skip(row, "project scope: chi bundle upgrade #{ship.source} in the project") if row.scope == "project"
         return skip(row, "unknown scope #{row.scope}: upgrade chi or reinstall") unless MemoryPaths.scope_dir(row.scope)
 
-        row.kept = conflicts(row, data)
-        row.replaced = edited_executables(name, data)
+        row.kept = conflicts(row, bundle)
+        row.replaced = edited_executables(name, bundle)
         row.status = :would_update
         row
       end
 
-      def profile_row(row, data, shipped_dir, chi_version)
+      def profile_row(row, bundle, shipped_dir, chi_version)
         manifest = Manifest.read(dir: row.source_dir)
         newer = Listing.newer?(row.to, row.from)
         if newer && Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
         end
 
-        row.adds = Profile.to_install(manifest, data).reject do |member|
+        row.adds = Profile.to_install(manifest, bundle).reject do |member|
           Manifest.requires_chi_failure(Manifest.read(dir: File.join(shipped_dir, member)).requires_chi, chi_version)
         rescue Manifest::ValidationError, Psych::Exception
           false # apply reports it failing
@@ -147,12 +147,10 @@ module Samagotchi
 
       # The bundle's .md files whose local edits conflict with the shipped
       # version (a same-name file it didn't install is skipped, not merged).
-      def conflicts(row, data)
+      def conflicts(row, bundle)
         provenance = Provenance.new(name: row.name)
         target_dir = MemoryPaths.scope_dir!(row.scope)
-        return [] unless data[:files].is_a?(Hash)
-
-        owned = data[:files].keys.map(&:to_s)
+        owned = bundle.files.keys
         (Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort & owned).select do |key|
           Merger.classify(base_path: provenance.base_path(key), current_path: File.join(target_dir, key),
                           incoming_path: File.join(row.source_dir, key)) == :conflict
@@ -161,22 +159,22 @@ module Samagotchi
 
       # Installed hooks, rules and the plugin whose sha differs from the
       # recorded one (they didn't load), as hooks/F, guardrails/F, plugin/F.
-      def edited_executables(name, data)
+      def edited_executables(name, bundle)
         provenance = Provenance.new(name: name)
         edited = []
-        (data[:hooks] || {}).each do |file, meta|
-          edited << "hooks/#{file}" if edited?(File.join(provenance.hooks_dir, file.to_s), meta)
+        bundle.hooks.each do |file, hook|
+          edited << "hooks/#{file}" if edited?(File.join(provenance.hooks_dir, file), hook.sha256)
         end
-        (data[:guardrails] || {}).each do |file, meta|
-          edited << "guardrails/#{file}" if edited?(File.join(provenance.guardrails_dir, file.to_s), meta)
+        bundle.guardrails.each do |file, sha|
+          edited << "guardrails/#{file}" if edited?(File.join(provenance.guardrails_dir, file), sha)
         end
-        plugin = provenance.plugin_path(data)
-        edited << "plugin/#{File.basename(plugin)}" if plugin && edited?(plugin, data[:plugin])
+        plugin = provenance.plugin_path(bundle)
+        edited << "plugin/#{File.basename(plugin)}" if plugin && edited?(plugin, bundle.plugin.sha256)
         edited
       end
 
-      def edited?(path, meta)
-        recorded = meta.is_a?(Hash) ? meta[:sha256] : nil
+      # Whether the file differs from its recorded sha (none recorded: no).
+      def edited?(path, recorded)
         return false if Provenance.recorded_sha(recorded).empty? || !File.file?(path)
 
         !Provenance.sha_matches?(path, recorded)

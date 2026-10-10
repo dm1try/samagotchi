@@ -17,30 +17,28 @@ module Samagotchi
       # unchecked (no disk reads, nothing counted as missing).
       def self.bundle_status(name, scope_override: nil)
         provenance = Provenance.new(name: name)
-        data = provenance.read
-        return nil unless data
+        bundle = provenance.record
+        return nil unless bundle
 
-        raw_scope = scope_override || data[:scope]&.to_s
-        scope = raw_scope.nil? || raw_scope.strip.empty? ? "system" : raw_scope
+        scope = (scope_override ? bundle.with(scope: scope_override) : bundle).effective_scope
         target_dir = MemoryPaths.scope_dir(scope)
-        files = data[:files] || {}
+        files = bundle.files
         details = {}
-        files.each do |file_key, meta|
-          file_key_str = file_key.to_s
+        files.each do |file_key_str, meta|
           next details[file_key_str] = unchecked_file(meta) unless target_dir
 
           target_path = File.join(target_dir, file_key_str)
           base_path = provenance.base_path(file_key_str)
-          stored_checksum = meta[:checksum] || meta["checksum"]
+          stored_checksum = meta[:checksum]
           current_checksum = File.exist?(target_path) ? Digest::SHA256.hexdigest(File.read(target_path)) : nil
           base_checksum = File.exist?(base_path) ? Digest::SHA256.hexdigest(File.read(base_path)) : nil
           modified = base_checksum && current_checksum && base_checksum != current_checksum
           missing = !File.exist?(target_path)
           # A model overlay has no index line (Installer#note_overlay).
-          overlay = ModelOverlay.bundle_overlay?(file_key_str, bundle_files: files.keys.map(&:to_s), target_dir: target_dir)
+          overlay = ModelOverlay.bundle_overlay?(file_key_str, bundle_files: files.keys, target_dir: target_dir)
           index_present = overlay ? nil : index_has_entry?(scope, file_key_str)
           details[file_key_str] = {
-            conflict: meta.is_a?(Hash) && meta[:conflict] == true,
+            conflict: meta[:conflict] == true,
             stored_checksum: stored_checksum,
             current_checksum: current_checksum,
             base_checksum: base_checksum,
@@ -52,23 +50,23 @@ module Samagotchi
             base_path: base_path
           }
         end
-        { provenance: data, scope: scope, scope_error: target_dir ? nil : "unknown scope: #{scope}",
-          target_dir: target_dir, files: details, plugin: plugin_status(provenance, data),
-          hooks_requires_failure: hooks_requires_failure(data), needs: needs_status(data) }
+        { provenance: bundle, scope: scope, scope_error: target_dir ? nil : "unknown scope: #{scope}",
+          target_dir: target_dir, files: details, plugin: plugin_status(provenance, bundle),
+          hooks_requires_failure: hooks_requires_failure(bundle), needs: needs_status(bundle) }
       end
 
       # Why none of the bundle's hooks load (this chi doesn't meet its
       # requires_chi, Hooks::BundleLoader), or nil: it has no hooks or meets it.
-      def self.hooks_requires_failure(data)
-        return nil if (data[:hooks] || {}).empty?
+      def self.hooks_requires_failure(bundle)
+        return nil if bundle.hooks.empty?
 
-        Manifest.requires_chi_failure(data[:requires_chi], Samagotchi::VERSION)
+        Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION)
       end
 
       # The stored needs, each with found: from this process's PATH (the
       # shell's; a worker's PATH can differ, see docs/memory.md).
-      def self.needs_status(data, path: ENV["PATH"])
-        Manifest.parse_needs(data[:needs]).map do |need|
+      def self.needs_status(bundle, path: ENV["PATH"])
+        Manifest.parse_needs(bundle.needs).map do |need|
           need.merge(found: BundleNeeds.found?(need[:command], path: path))
         end
       rescue Manifest::ValidationError
@@ -86,20 +84,20 @@ module Samagotchi
       # The installed plugin: {file:, path:, state:, requires_chi:,
       # requires_failure:}; state is "ok", "modified" (its sha256 differs
       # from the installed one: it won't load) or "missing". nil without one.
-      def self.plugin_status(provenance, data)
-        path = provenance.plugin_path(data)
+      def self.plugin_status(provenance, bundle)
+        path = provenance.plugin_path(bundle)
         return nil unless path
 
         state = if !File.file?(path) then "missing"
-                elsif Provenance.sha_matches?(path, data[:plugin][:sha256]) then "ok"
+                elsif Provenance.sha_matches?(path, bundle.plugin.sha256) then "ok"
                 else "modified"
                 end
-        { file: File.basename(path), path: path, state: state, requires_chi: data[:requires_chi],
-          requires_failure: Manifest.requires_chi_failure(data[:requires_chi], Samagotchi::VERSION) }
+        { file: File.basename(path), path: path, state: state, requires_chi: bundle.requires_chi,
+          requires_failure: Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION) }
       end
 
       def self.unchecked_file(meta)
-        { conflict: meta.is_a?(Hash) && meta[:conflict] == true, stored_checksum: meta.is_a?(Hash) ? meta[:checksum] || meta["checksum"] : nil,
+        { conflict: meta[:conflict] == true, stored_checksum: meta[:checksum],
           unchecked: true, modified: false, missing: false, index_present: nil, overlay: false }
       end
       private_class_method :unchecked_file
