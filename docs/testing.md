@@ -70,7 +70,8 @@ a model that follows tool instructions: a small model may fail some of them.
 strategies (freed tokens, wrongly forgotten outputs, one-step re-reads, re-prefilled tokens; for `forget_outputs` a
 model's answers to chi's offer, with its call rate and notes). It is opt-in: the suite
 runs its code only on small synthetic sessions, never on yours. See
-[internals/llm-context-bench.md](internals/llm-context-bench.md).
+[internals/llm-context-bench.md](internals/llm-context-bench.md). `script/llm_context_live.rb` runs chi itself on
+real tasks under each strategy (needs a model; costs tokens): [internals/llm-context-live.md](internals/llm-context-live.md).
 
 ## The model notes report
 

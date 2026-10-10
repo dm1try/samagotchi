@@ -210,7 +210,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Hooks](docs/hooks.md): plugin hooks and bundle hooks
 - [Plugins](docs/plugins.md): bundle plugins (commands, tools, hooks)
 - [Architecture](docs/architecture.md): Engine, TerminalUI, bridge, web
-- Internals: [Gemma 4 contract](docs/internals/gemma4-contract.md), [context telemetry](docs/internals/context-telemetry.md), [tool output limits](docs/internals/tool-guardrails.md), [background tasks](docs/internals/background-tasks.md)
+- Internals: [Engine](docs/internals/engine.md), [Gemma 4 contract](docs/internals/gemma4-contract.md), [prompt caching](docs/internals/prompt-caching.md), [context telemetry](docs/internals/context-telemetry.md), [LLM context: forget layer](docs/internals/llm-context-forget.md), [replay benchmark](docs/internals/llm-context-bench.md), [live runs](docs/internals/llm-context-live.md), [tool output limits](docs/internals/tool-guardrails.md), [background tasks](docs/internals/background-tasks.md)
 
 ## Development
 

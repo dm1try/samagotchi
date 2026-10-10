@@ -65,7 +65,7 @@ TerminalUI  ──  delegates  ──▶  Engine
 ```
 
 - **`Engine`** (`lib/samagotchi/engine.rb`) owns *all* agent logic and knows nothing
-  about the terminal.
+  about the terminal ([internals/engine.md](internals/engine.md)).
 - **`TerminalUI`** (`lib/samagotchi/terminal_ui.rb`) owns the REPL and rendering; it
   delegates all core work to an `Engine`.
 - The `on_event:` seam on `run_turn` exposes raw `KernelLoop` events plus the
