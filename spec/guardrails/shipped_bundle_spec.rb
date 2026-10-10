@@ -17,10 +17,19 @@ RSpec.describe "The guardrails bundle's rules" do
     Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(doc["rules"], source: "bundle guardrails"),
                                       mode: mode)
   end
-  let(:repo) { File.realpath(Dir.mktmpdir("shipped-rules")).tap { |d| system("git", "-C", d, "init", "-q") } }
-  let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo) }
+  let(:repo) { @shared_repo }
+  let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo, git: @shared_git) }
 
-  after { FileUtils.rm_rf(repo) }
+  # One fresh repo (git init, no commits) and one GitInfo for the group:
+  # the examples only read the repo, so each one's `git init` and
+  # rev-parse probes gave the same answers (an example that adds to its
+  # repo makes its own: the memories group).
+  before(:context) do
+    @shared_repo = File.realpath(Dir.mktmpdir("shipped-rules")).tap { |d| system("git", "-C", d, "init", "-q") }
+    @shared_git = Samagotchi::Guardrails::GitInfo.new
+  end
+
+  after(:context) { FileUtils.rm_rf(@shared_repo) }
 
   def verdict_for(call)
     v = Samagotchi::Guardrails::Verdict.new(call: call)
@@ -123,8 +132,13 @@ RSpec.describe "The guardrails bundle's rules" do
   end
 
   describe "memories that reach the system prompt (identity, model notes, their overlays)" do
+    # Its own repo and GitInfo: an example links mem/ into it.
+    let(:repo) { File.realpath(Dir.mktmpdir("shipped-rules")).tap { |d| system("git", "-C", d, "init", "-q") } }
+    let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo) }
     let(:sys) { Samagotchi::Tools::MemoryRead.memories_dir("system") }
     let(:project) { Samagotchi::Tools::MemoryRead.memories_dir("project") }
+
+    after { FileUtils.rm_rf(repo) }
 
     def prompt_verdict(call)
       v = Samagotchi::Guardrails::Verdict.new(call: call)
@@ -329,15 +343,21 @@ RSpec.describe "The guardrails bundle's small-model rules" do
     doc = YAML.safe_load_file(File.join(bundle_dir, "guardrails", "small-models.yml"))
     Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(doc["rules"], source: "bundle guardrails"))
   end
-  let(:repo) { File.realpath(Dir.mktmpdir("shipped-small-rules")).tap { |d| system("git", "-C", d, "init", "-q") } }
-  let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo) }
+  let(:repo) { @shared_repo }
+  let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo, git: @shared_git) }
+
+  # As the bundle's rules above: one read-only repo and GitInfo for the group.
+  before(:context) do
+    @shared_repo = File.realpath(Dir.mktmpdir("shipped-small-rules")).tap { |d| system("git", "-C", d, "init", "-q") }
+    @shared_git = Samagotchi::Guardrails::GitInfo.new
+  end
+
+  after(:context) { FileUtils.rm_rf(@shared_repo) }
 
   before do
     allow(Samagotchi::Config).to receive(:get).and_call_original
     allow(Samagotchi::Config).to receive(:get).with("guardrails.small_models").and_return("auto")
   end
-
-  after { FileUtils.rm_rf(repo) }
 
   def shell(command, model: "Ornith-9B")
     call = { name: "execute", content: command }
