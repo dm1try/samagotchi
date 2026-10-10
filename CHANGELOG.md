@@ -21,6 +21,9 @@ and commands may change between minor versions. How releases are made:
 - release.yml's `checks` job shows the CI run's URL in its "waiting" line while the run is still in progress (it used
   to log `waiting ()`, since a tab is an IFS whitespace char that collapsed the run's empty conclusion between status
   and URL); the success and failure conclusions are unchanged.
+- `chi bundle install` / `upgrade` no longer warns "Checksum mismatch for hook <file>: expected ..., got …" for a
+  hook whose manifest entry declares no `sha256` (or a `hooks/*.rb` the manifest doesn't list); a declared sha256 that
+  differs still warns. (Since 0.53.0.)
 
 ## [0.53.0] - 2026-10-10
 

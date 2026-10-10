@@ -837,6 +837,29 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       installer.run
       expect(installer.warnings.any? { |w| w.include?("Checksum mismatch for hook") }).to be true
     end
+
+    it "a hook with no declared sha256 (or none declared at all) installs without a checksum warning" do
+      bundle_dir = File.join(tmpdir, "bundle_hook_nosha")
+      FileUtils.mkdir_p(File.join(bundle_dir, "hooks"))
+      File.write(File.join(bundle_dir, "identity.md"), "# Id\n")
+      File.write(File.join(bundle_dir, "hooks", "guardrails.rb"), "class Guardrails; def call(e); end; end")
+      File.write(File.join(bundle_dir, "hooks", "other.rb"), "class Other; end")
+      manifest = { "name" => "nosha-hook", "version" => "1.0", "files" => { "identity.md" => "sha256:#{Digest::SHA256.hexdigest("# Id\n")}" },
+                   "hooks" => { "guardrails.rb" => { "event" => "before_tool_call" } } }
+      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
+      installer = installer_for(source: bundle_dir, name: "nosha-hook", scope: "system")
+      installer.run
+      expect(installer.results["guardrails.rb"][:status]).to eq("installed")
+      expect(installer.warnings.grep(/Checksum mismatch/)).to be_empty
+
+      FileUtils.rm_rf(File.join(bundles_dir, "nosha-hook"))
+      manifest.delete("hooks")
+      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
+      discovered = installer_for(source: bundle_dir, name: "nosha-hook", scope: "system", force: true)
+      discovered.run
+      expect(discovered.results.keys).to include("guardrails.rb", "other.rb")
+      expect(discovered.warnings.grep(/Checksum mismatch/)).to be_empty
+    end
   end
 
   describe "needs" do

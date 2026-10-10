@@ -99,9 +99,11 @@ module Samagotchi
         raw.start_with?("sha256:") ? raw[7..] : raw
       end
 
-      # Returns sha256 hex for a hook basename (e.g. "guardrails.rb").
+      # Returns sha256 hex for a hook basename (e.g. "guardrails.rb"), nil
+      # when it declares none (nothing to verify).
       def checksum_for_hook(basename)
-        @hooks[basename]&.hex
+        hex = @hooks[basename]&.hex
+        hex unless hex.nil? || hex.empty?
       end
 
       # @return [String, nil] the plugin's sha256 hex, "sha256:" stripped
