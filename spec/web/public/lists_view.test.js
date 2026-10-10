@@ -2,7 +2,7 @@ import { canon, htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  allCountText, allViewFamilies, cardHtml, matchesFilter, stripCountText, stripOrder, stripPillHtml, stripTileHtml,
+  allCountText, allViewFamilies, cardTemplate, matchesFilter, stripCountText, stripOrder, stripPillTemplate, stripTileTemplate,
 } from "../../../lib/samagotchi/web/public/lists_view.js";
 import { families } from "../../../lib/samagotchi/web/public/sessions_list.js";
 import { stripShowParts } from "../../../lib/samagotchi/web/public/strip.js";
@@ -87,30 +87,30 @@ test("stripCountText: the strip's sessions, or how many are archived when all ar
 
 // ── Markup ───────────────────────────────────────────────────────────────
 
-test("stripTileHtml and stripPillHtml", () => {
-  assert.equal(markupOf(stripTileHtml("3 sessions")), canon(
+test("stripTileTemplate and stripPillTemplate", () => {
+  assert.equal(markupOf(stripTileTemplate("3 sessions")), canon(
     `<div class="strip-side"><button type="button" class="card" id="allTile" title="All sessions, with search">All sessions →<span class="count">3 sessions</span></button><button type="button" class="strip-toggle" id="stripHide" title="Hide the latest sessions">hide ▴</button></div>`,
   ));
   const list = [sess("a", { owner: "worker" }), sess("b", { pending_question: { id: "q", kind: "question" } })];
-  assert.equal(markupOf(stripPillHtml(stripShowParts(list))), canon(
+  assert.equal(markupOf(stripPillTemplate(stripShowParts(list))), canon(
     `<span class="pill-arrow" aria-hidden="true">▾</span> 2 sessions · <span class="live"><span class="live-dot" aria-hidden="true"></span>1 live</span> · <span class="waiting"><span class="waiting-dot" aria-hidden="true"></span>1 waiting</span>`,
   ));
-  assert.equal(markupOf(stripPillHtml(stripShowParts([]))), canon(`<span class="pill-arrow" aria-hidden="true">▾</span> sessions`));
+  assert.equal(markupOf(stripPillTemplate(stripShowParts([]))), canon(`<span class="pill-arrow" aria-hidden="true">▾</span> sessions`));
 });
 
-test("cardHtml: a bare strip card", () => {
+test("cardTemplate: a bare strip card", () => {
   const s = sess("0123456789", { first_preview: "<b>hi</b>" });
-  assert.equal(markupOf(cardHtml(s, {}, { title: "<b>hi</b>" })), canon(
+  assert.equal(markupOf(cardTemplate(s, {}, { title: "<b>hi</b>" })), canon(
     `<div class="card" data-id="0123456789" title="0123456789 · updated  · idle"><div class="preview">&lt;b&gt;hi&lt;/b&gt;</div>` +
     `<div class="meta"><span class="status dot idle" title="idle" aria-label="idle"></span><span class="ctx" title="No request in this session yet">ctx ?</span></div></div>`,
   ));
 });
 
-test("cardHtml: an all-sessions card with its tools, owner, recap, memories, folder and archived badge", () => {
+test("cardTemplate: an all-sessions card with its tools, owner, recap, memories, folder and archived badge", () => {
   const s = sess("0123456789", {
     owner: "worker", archived: true, recap: "did it", used_memory_names: ["a", "b"], working_directory: "/w/other",
   });
-  assert.equal(markupOf(cardHtml(s, { deletable: true, archivable: true }, { title: "T", projectName: "proj" })), canon(
+  assert.equal(markupOf(cardTemplate(s, { deletable: true, archivable: true }, { title: "T", projectName: "proj" })), canon(
     `<div class="card archived" data-id="0123456789" title="0123456789 · updated  · idle · mem: a, b">` +
     `<div class="preview">T</div><div class="recap" title="did it">did it</div>` +
     `<div class="meta"><span class="status dot idle" title="idle" aria-label="idle"></span><span class="ctx" title="No request in this session yet">ctx ?</span>` +
@@ -122,9 +122,9 @@ test("cardHtml: an all-sessions card with its tools, owner, recap, memories, fol
   ));
 });
 
-test("cardHtml: select mode's checkbox and skip reason instead of the tools", () => {
+test("cardTemplate: select mode's checkbox and skip reason instead of the tools", () => {
   const s = sess("0123456789");
-  const html = markupOf(cardHtml(s, { selectable: true, picked: true, skipReason: "busy" }, { title: "T" }));
+  const html = markupOf(cardTemplate(s, { selectable: true, picked: true, skipReason: "busy" }, { title: "T" }));
   assert.equal(html, canon(
     `<div class="card picked" data-id="0123456789" title="0123456789 · updated  · idle"><div class="preview">T</div>` +
     `<div class="meta"><span class="status dot idle" title="idle" aria-label="idle"></span><span class="ctx" title="No request in this session yet">ctx ?</span></div>` +
@@ -132,42 +132,42 @@ test("cardHtml: select mode's checkbox and skip reason instead of the tools", ()
   ));
 });
 
-test("cardHtml: a waiting session wears the attention badge, not its stop", () => {
+test("cardTemplate: a waiting session wears the attention badge, not its stop", () => {
   const s = sess("w1", { pending_question: { id: "q", kind: "approval" }, last_turn: { outcome: "stopped" } });
-  const html = markupOf(cardHtml(s, {}, { title: "T" }));
+  const html = markupOf(cardTemplate(s, {}, { title: "T" }));
   assert.match(html, /^<div class="card waiting"/);
   assert.match(html, /<span class="status dot idle waiting" title="Waiting for your approval"/);
   assert.match(html, /<span class="attn attn-approval" title="Waiting for your approval">approval<\/span>/);
   assert.doesNotMatch(html, /stopped-badge/);
 });
 
-test("cardHtml: a delegate's parent chip", () => {
+test("cardTemplate: a delegate's parent chip", () => {
   const s = del("c1", "parent99");
-  const html = markupOf(cardHtml(s, {}, { title: "T", parent: sess("parent99", { first_preview: "The parent" }) }));
+  const html = markupOf(cardTemplate(s, {}, { title: "T", parent: sess("parent99", { first_preview: "The parent" }) }));
   assert.match(html, /<span class="parent" title="[^"]*The parent[^"]*">↳ parent99<\/span>/);
 });
 
-test("cardHtml: a family's card: its chip, members, rows when open in all sessions, the open session's row marked", () => {
+test("cardTemplate: a family's card: its chip, members, rows when open in all sessions, the open session's row marked", () => {
   const list = [sess("p"), del("c1", "p", { status: "running", owner: "worker" }), del("c2", "p", { pending_question: { id: "q", kind: "question" } })];
   const fam = families(list)[0];
-  const strip = markupOf(cardHtml(fam.head, { family: fam, open: false }, { title: "T" }));
+  const strip = markupOf(cardTemplate(fam.head, { family: fam, open: false }, { title: "T" }));
   assert.match(strip, /^<div class="card waiting" data-id="p" data-members="c1 c2"/);
   assert.match(strip, /<button type="button" class="family-chip waiting" aria-expanded="false"/);
   assert.doesNotMatch(strip, /family-rows/);
-  const all = markupOf(cardHtml(fam.head, { family: fam, open: true, rows: true, deletable: true, archivable: true }, { title: "T", activeId: "c1" }));
+  const all = markupOf(cardTemplate(fam.head, { family: fam, open: true, rows: true, deletable: true, archivable: true }, { title: "T", activeId: "c1" }));
   assert.match(all, /^<div class="card waiting family-open"/);
   assert.match(all, /aria-expanded="true"/);
   assert.match(all, /<div class="family-rows" role="list"><div class="family-row active" data-id="c1"/);
   assert.match(all, /data-arch="c1"/);
   // Select mode: the rows have no archive buttons.
-  const picking = markupOf(cardHtml(fam.head, { family: fam, open: true, rows: true, selectable: true }, { title: "T" }));
+  const picking = markupOf(cardTemplate(fam.head, { family: fam, open: true, rows: true, selectable: true }, { title: "T" }));
   assert.doesNotMatch(picking, /data-arch="c1"/);
 });
 
-test("cardHtml: a chain's card carries its day chip and its links as members", () => {
+test("cardTemplate: a chain's card carries its day chip and its links as members", () => {
   const list = [sess("d2", { continues: "d1" }), sess("d1")];
   const [fam] = stripOrder(list, list);
-  const html = markupOf(cardHtml(fam.head, { family: fam }, { title: "T", chainOpen: true }));
+  const html = markupOf(cardTemplate(fam.head, { family: fam }, { title: "T", chainOpen: true }));
   assert.match(html, /data-members="d1"/);
   assert.match(html, /<button type="button" class="chain-chip" aria-expanded="true"[^>]*><span class="cc-arrow" aria-hidden="true">↩<\/span>day 2<\/button>/);
 });
