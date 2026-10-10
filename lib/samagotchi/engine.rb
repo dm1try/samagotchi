@@ -165,13 +165,7 @@ module Samagotchi
       # off: execute offers no description parameter.
       @tools = Tools::Builtins.registry(command_description: Config.get("execute.description") != false,
                                         policy: Config.get(LLMContextStrategy::POLICY_SETTING))
-      if @scratch
-        # A scratch session's children would outlive it, and so would a
-        # note it left in a peer; its memories would too (write and edit
-        # into the memories: ScratchWrites).
-        [Tools::Delegate::NAME, Tools::DelegateResult::NAME, Tools::SendNote::NAME].each { |name| @tools.unregister(name) }
-        @tools[Tools::MemoryWrite::NAME].handler = ->(_call, _kctx) { SCRATCH_MEMORY_WRITE }
-      end
+      restrict_scratch_tools! if @scratch
       # Likewise the slash commands its SessionCommands run.
       @command_registry = SessionCommands.register_builtins(Commands::Registry.new)
       # Installed bundles' plugins add commands, tools and hooks to these
@@ -235,6 +229,23 @@ module Samagotchi
         engine: self,
         jobs: [@reminders, @recap].compact
       )
+      subscribe_session_observers
+    end
+
+    # ── initialize's collaborators ──────────────────────────────────────────
+
+    # The tools a scratch session doesn't offer, and its memory_write.
+    def restrict_scratch_tools!
+      # A scratch session's children would outlive it, and so would a
+      # note it left in a peer; its memories would too (write and edit
+      # into the memories: ScratchWrites).
+      [Tools::Delegate::NAME, Tools::DelegateResult::NAME, Tools::SendNote::NAME].each { |name| @tools.unregister(name) }
+      @tools[Tools::MemoryWrite::NAME].handler = ->(_call, _kctx) { SCRATCH_MEMORY_WRITE }
+    end
+    private :restrict_scratch_tools!
+
+    # The persistent observers of every turn's events.
+    def subscribe_session_observers
       # The metrics collector is a persistent observer so every run_turn event
       # (the REPL, -p/--non-interactive/--resume and SessionManager workers)
       # feeds it automatically.
@@ -246,8 +257,7 @@ module Samagotchi
         @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir)
       }))
     end
-
-    # ── initialize's collaborators ──────────────────────────────────────────
+    private :subscribe_session_observers
 
     # The kernel and what it holds of the Engine (stores, hooks, tools, the
     # mutes, the question flow, the gate, peers, warm-up, the hook runtime),

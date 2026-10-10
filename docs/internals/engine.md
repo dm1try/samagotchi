@@ -338,7 +338,7 @@ Engine initialization (in this order, among other things):
   @hooks.runtime = hook_runtime
   @native_backend = LLM::NativeBackend.new(kernel: @kernel)
   @prompt_builder = SystemPrompt.new(...)
-  @session_observer with the metrics, the log subscriber and the thinking tails subscribed
+  @session_observer with the metrics, the log subscriber and the thinking tails subscribed (subscribe_session_observers)
 
 Model switching, Engine#switch_model!(model_name, persist_default:, typed:):
   → checks the host (ModelProfile.check_host!), sets @effective_model_name
