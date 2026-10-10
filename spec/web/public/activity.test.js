@@ -199,3 +199,46 @@ test("addCompleted keeps a grep's no_match on an ok row, and none on a plain one
   assert.equal(row.no_match, true);
   assert.equal(plain.no_match, undefined);
 });
+
+test("the row field lists are copied by addStarted, addCompleted's synthesized row and the snapshot replay", async () => {
+  const { ACTIVITY_FIELDS, EVENT_FIELDS } = await import("../../../lib/samagotchi/web/public/activity.js");
+  const { snapshotEvents } = await import("../../../lib/samagotchi/web/public/turn_events.js");
+  const fields = Object.fromEntries([...ACTIVITY_FIELDS, ...EVENT_FIELDS].map((f) => [f, { value: f }]));
+  const activityFields = Object.fromEntries(ACTIVITY_FIELDS.map((f) => [f, fields[f]]));
+  const eventFields = Object.fromEntries(EVENT_FIELDS.map((f) => [f, fields[f]]));
+  const has = (row) => Object.fromEntries(Object.keys(fields).map((f) => [f, row[f]]));
+
+  // Live: a start, then a duplicate start that merges into the row.
+  const live = newActivity();
+  addStarted(live, { iteration: 1, call_index: 1, tool: "edit", ...fields });
+  assert.deepEqual(has(live.rows[0]), fields);
+  const later = Object.fromEntries(Object.keys(fields).map((f) => [f, { value: `${f} 2` }]));
+  addStarted(live, { iteration: 1, call_index: 1, tool: "edit", ...later });
+  assert.deepEqual(has(live.rows[0]), later);
+
+  // A replay gap: the completed event alone, each field in its place.
+  const gap = newActivity();
+  addCompleted(gap, { iteration: 1, call_index: 1, tool: "edit", output: "ok",
+    activity: { status: "ok", params: "p", ...activityFields }, ...eventFields });
+  assert.deepEqual(has(gap.rows[0]), fields);
+
+  // A snapshot's part: the events carry each field in its place, and the
+  // model built from them has them all.
+  const events = snapshotEvents({ current_turn: { prompt: "hi", parts: [
+    { kind: "tool", iteration: 1, call_index: 1, tool: "edit", params: "p", status: "ok", output: "ok", ...fields },
+  ] } });
+  const started = events.find((e) => e.type === "tool_call_started");
+  const completed = events.find((e) => e.type === "tool_call_completed");
+  assert.deepEqual(has(started), fields);
+  for (const f of ACTIVITY_FIELDS) {
+    assert.deepEqual(completed.activity[f], fields[f]);
+    assert.equal(completed[f], undefined);
+  }
+  for (const f of EVENT_FIELDS) {
+    assert.deepEqual(completed[f], fields[f]);
+    assert.equal(completed.activity[f], undefined);
+  }
+  const replayed = newActivity();
+  addCompleted(replayed, completed);
+  assert.deepEqual(has(replayed.rows[0]), fields);
+});
