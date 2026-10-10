@@ -90,6 +90,9 @@ module Samagotchi
       new(profile: profile, plugins: false).assist_system_prompt
     end
 
+    # What memory_write answers in a scratch session.
+    SCRATCH_MEMORY_WRITE = "Error: scratch session: nothing is saved"
+
     # @param client             [Client, nil] defaults to Client.new
     # @param profile            [ModelProfile, Symbol, String, nil]
     # @param session_id         [String, nil] resume an existing session
@@ -101,8 +104,6 @@ module Samagotchi
     # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
     # @param muted_memories     [Array<String>] --mute list: memories hidden from this session (not in the
     #   prompt's index, dropped from the preloads, refused by memory_read); a mute wins over a preload
-    # What memory_write answers in a scratch session.
-    SCRATCH_MEMORY_WRITE = "Error: scratch session: nothing is saved"
     # @param plugins            [Boolean] false: load no bundle plugins (a throwaway Engine for a prompt)
     # @param scratch            [Boolean] a `chi scratch` session: memory writes are refused, and there is no
     #   delegate (a child would outlive it) nor plugin fork
@@ -145,17 +146,7 @@ module Samagotchi
       # Load hooks from config (plugins) and create the registry; what fails
       # to load is announced, and a required guardrail's failure denies
       # every tool call. Rules load now too, so their errors are announced.
-      @guardrail_wiring = GuardrailWiring.new(
-        scratch: @scratch,
-        hooks: -> { @hooks },
-        tools: -> { @tools },
-        session: -> { @session },
-        model_key: -> { @model_key },
-        model_name: -> { guardrail_model_name },
-        cancelled: -> { !!active_cancel_controller&.cancelled? },
-        ask: ->(fields) { open_question(fields) },
-        notify: ->(message) { guardrail_notify(message) }
-      )
+      @guardrail_wiring = build_guardrail_wiring
       @guardrail_failures = @guardrail_wiring.failures
       # Plugins that failed to load: announced apart, as plugins (not
       # guardrails: no tool call is denied for them).
@@ -164,14 +155,7 @@ module Samagotchi
       # approvals). Built before the hooks and plugins load: a plugin can ask
       # during its load (answered nil then: the interface is still
       # :non_interactive).
-      @question_desk = QuestionDesk.new(
-        session: -> { @session },
-        state_dir: -> { session_state_dir },
-        emit: ->(event) { emit_event(nil, event) },
-        cancel_controller: -> { active_cancel_controller },
-        interface: -> { interface },
-        user_input: ->(sid) { ArchiveStore.user_input(sid, state_dir: session_state_dir) }
-      )
+      @question_desk = build_question_desk
       # Built here, not on first use: the turn thread and the Bridge's read it.
       @relay_desk = RelayDesk.new
       @extension_load = ExtensionLoad.new(hook_failures: @guardrail_failures)
@@ -200,16 +184,7 @@ module Samagotchi
       # chi.init tasks (#add_init_task), started by #start_init_tasks!, and
       # plugins' tool sets from chi.replace_tools until the turn thread
       # applies them (#apply_staged_tools!). Built before the plugins load.
-      @plugin_tasks = PluginTasks.new(
-        clock: -> { monotonic_now },
-        synchronize_events: ->(&block) { synchronize_events(&block) },
-        announce: ->(event) { announce(event) },
-        emit: ->(sink, event) { emit_event(sink, event) },
-        show_card: ->(**card) { show_card(**card) },
-        tools: -> { @tools },
-        notify: ->(text, level, source, fallback_for: nil) { hook_notify(text, level, source, fallback_for: fallback_for) },
-        tools_changed: -> { tools_changed! }
-      )
+      @plugin_tasks = build_plugin_tasks
       @lifecycle_mutex = Mutex.new
       @shut_down = false
       load_plugins if plugins
@@ -298,6 +273,52 @@ module Samagotchi
         @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir)
       }))
     end
+
+    # ── initialize's collaborators ──────────────────────────────────────────
+
+    # The tool guardrails (see #initialize for when).
+    def build_guardrail_wiring
+      GuardrailWiring.new(
+        scratch: @scratch,
+        hooks: -> { @hooks },
+        tools: -> { @tools },
+        session: -> { @session },
+        model_key: -> { @model_key },
+        model_name: -> { guardrail_model_name },
+        cancelled: -> { !!active_cancel_controller&.cancelled? },
+        ask: ->(fields) { open_question(fields) },
+        notify: ->(message) { guardrail_notify(message) }
+      )
+    end
+    private :build_guardrail_wiring
+
+    # The question flow (see #initialize for when).
+    def build_question_desk
+      QuestionDesk.new(
+        session: -> { @session },
+        state_dir: -> { session_state_dir },
+        emit: ->(event) { emit_event(nil, event) },
+        cancel_controller: -> { active_cancel_controller },
+        interface: -> { interface },
+        user_input: ->(sid) { ArchiveStore.user_input(sid, state_dir: session_state_dir) }
+      )
+    end
+    private :build_question_desk
+
+    # The plugins' init tasks and staged tool sets (see #initialize for when).
+    def build_plugin_tasks
+      PluginTasks.new(
+        clock: -> { monotonic_now },
+        synchronize_events: ->(&block) { synchronize_events(&block) },
+        announce: ->(event) { announce(event) },
+        emit: ->(sink, event) { emit_event(sink, event) },
+        show_card: ->(**card) { show_card(**card) },
+        tools: -> { @tools },
+        notify: ->(text, level, source, fallback_for: nil) { hook_notify(text, level, source, fallback_for: fallback_for) },
+        tools_changed: -> { tools_changed! }
+      )
+    end
+    private :build_plugin_tasks
 
     # A monotonically-increasing clock (wall clock can jump backwards; the idle
     # detector must never treat a jump as "activity"). Injectable for specs.
