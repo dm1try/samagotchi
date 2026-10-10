@@ -116,8 +116,9 @@ parser = OptionParser.new do |opts|
   opts.on("--model NAME", "Model for this run, not saved (overrides --resume's; config default.model) [env SAMAGOTCHI_DEFAULT_MODEL]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,
           "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join("|")}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
-  opts.on("--thinking LEVEL", Samagotchi::Thinking::LEVELS.map(&:to_s), "How much the model thinks this run: off|low|medium|high|default (outranks config.yml; " \
-                              "sessions already running keep theirs) [env SAMAGOTCHI_THINKING_LEVEL]") { |l| cli_overrides["thinking.level"] = l }
+  opts.on("--thinking LEVEL", Samagotchi::Thinking::LEVELS.map(&:to_s), "This session's own thinking level: off|low|medium|high|default (saved in the session, " \
+                              "before the model's; default unsets it; /thinking changes it). With chi web: the default for the sessions " \
+                              "its workers run, below a session's own [env SAMAGOTCHI_THINKING_LEVEL]") { |l| options[:thinking] = l }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; a comma list too)") { |m| (options[:memories] ||= []) << m }
   opts.on("--mute NAME", "Hide a memory from this session: not in the prompt, refused by memory_read (repeatable; a comma list too)") { |m| (options[:muted] ||= []) << m }
   opts.on("--llm-context LAYERS", "This session's own LLM context strategy: none, or layers such as stale,forget (saved in the session, " \
@@ -197,6 +198,11 @@ if scratch
     exit 1
   end
 end
+
+# --thinking: chi web's is a default for the workers it spawns (below a
+# session's own level); a session-starting run's is that session's own
+# (TerminalUI, AttachLauncher), not a process setting.
+cli_overrides["thinking.level"] = options[:thinking] if web && options[:thinking]
 
 # Apply CLI precedence: CLI > ENV > file. Workers this chi spawns get
 # these through their env (Config.cli_env).
@@ -333,7 +339,8 @@ if launch == :attached
                                                        default_input: !options[:no_default_input],
                                                        memories: options[:memories] || [],
                                                        muted_memories: options[:muted] || [],
-                                                       llm_context: options[:llm_context] || {})
+                                                       llm_context: options[:llm_context] || {},
+                                                       thinking: options[:thinking])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1
@@ -351,6 +358,7 @@ begin
     memories: options[:memories] || [],
     muted_memories: options[:muted] || [],
     llm_context: options[:llm_context] || {},
+    thinking: options[:thinking],
     non_interactive: options[:non_interactive],
     model_name: options[:model],
     scratch: scratch

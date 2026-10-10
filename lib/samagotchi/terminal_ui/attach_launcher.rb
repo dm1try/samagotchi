@@ -4,6 +4,7 @@ require_relative "../session"
 require_relative "../config"
 require_relative "../model_profile"
 require_relative "../session_manager"
+require_relative "../thinking_command"
 require_relative "../bridge_client"
 require_relative "../parent_report"
 require_relative "../cli/exit"
@@ -40,16 +41,20 @@ module Samagotchi
       #   (LLMContextOverride.update): a new session starts with them; a
       #   resumed or attached one's worker gets a /llm-context, after the
       #   /model
+      # @param thinking [String, nil] --thinking as typed: a new session
+      #   starts with it as its own level; a resumed or attached one's
+      #   worker gets a /thinking, after those
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
-              memories: [], muted_memories: [], llm_context: {})
+              memories: [], muted_memories: [], llm_context: {}, thinking: nil)
         client = connect(attach: attach, shared: shared, resume: resume, model: model,
-                         memories: memories, muted_memories: muted_memories, llm_context: llm_context)
+                         memories: memories, muted_memories: muted_memories, llm_context: llm_context, thinking: thinking)
         commands = []
         commands << "/model #{model}" if model && (attach || resume)
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
+        commands << "#{ThinkingCommand::NAME} #{thinking}" if (attach || resume) && thinking
         first_command = commands.size > 1 ? commands : commands.first
         surface = open_surface
         attached = AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
@@ -111,7 +116,7 @@ module Samagotchi
       # @return [BridgeClient] a client for the live Bridge of the session
       # @raise [Error]
       def connect(attach: nil, shared: false, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
-                  memories: [], muted_memories: [], llm_context: {}, err: $stderr)
+                  memories: [], muted_memories: [], llm_context: {}, thinking: nil, err: $stderr)
         sd = state_dir || Session.default_state_dir
         warn_memory_flags_ignored(attach || resume, memories, muted_memories, err) if attach || resume
         if attach
@@ -127,7 +132,8 @@ module Samagotchi
                   else
                     SessionManager.spawn_session(prompt: nil, model_name: model && model_ref(model), state_dir: sd,
                                                  memories: memories, muted_memories: muted_memories,
-                                                 setup: SessionSetup.new(llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context)))
+                                                 setup: SessionSetup.new(llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context),
+                                                                         thinking: Thinking.session_level(thinking)))
                   end
         client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
         client || raise(Error, "the worker for session #{session.id} did not start its Bridge in time")

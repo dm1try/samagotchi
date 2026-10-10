@@ -151,7 +151,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
     allow(described_class).to receive(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {})
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: nil)
       .and_return(client)
     allow(described_class).to receive(:open_surface).and_return(surface)
     allow(described_class).to receive(:close_surface)
@@ -218,7 +218,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     # Only a new session with no -p gets the default input.
     expect(default_inputs).to eq([false, false, true])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [], llm_context: {})
+      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [], llm_context: {}, thinking: nil)
   end
 
   it "sets a resumed or attached session's --llm-context through its worker, after the --model; a new one starts with it" do
@@ -239,7 +239,39 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     expect(commands).to eq([["/model qwen_moe", "/llm-context strategy stale,forget budget 64k"],
                             "/llm-context apply turn_end", nil])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words)
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words, thinking: nil)
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::AttachLauncher, "--thinking" do
+  it "sets a resumed or attached session's level through its worker, after the others; a new one starts with it" do
+    client = instance_double(Samagotchi::BridgeClient)
+    attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
+    allow(described_class).to receive_messages(connect: client, open_surface: nil, close_surface: nil)
+    commands = []
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_wrap_original do |_original, **kwargs|
+      commands << kwargs[:first_command]
+      attached
+    end
+
+    described_class.run(shared: true, resume: "s1", model: "qwen_moe", llm_context: { apply: "turn_end" }, thinking: "low")
+    described_class.run(attach: "s2", thinking: "default")
+    described_class.run(shared: true, thinking: "high")
+
+    expect(commands).to eq([["/model qwen_moe", "/llm-context apply turn_end", "/thinking low"], "/thinking default", nil])
+    expect(described_class).to have_received(:connect)
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: "high")
+  end
+
+  it "spawns a new session with the level as its own" do
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
+    allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
+    allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
+
+    described_class.connect(shared: true, thinking: "low", state_dir: Dir.pwd, wait: 0.1)
+
+    expect(Samagotchi::SessionManager).to have_received(:spawn_session)
+      .with(hash_including(setup: Samagotchi::SessionSetup.new(thinking: :low)))
   end
 end
 

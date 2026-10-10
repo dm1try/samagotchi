@@ -90,9 +90,12 @@ module Samagotchi
     #   however the REPL ends, saves no memories and writes no recap
     # @param llm_context [Hash{Symbol => String}] --llm-context* as typed
     #   (LLMContextOverride.update): set on the new or resumed session
+    # @param thinking [String, nil] --thinking as typed: the new or resumed
+    #   session's own level (default unsets it)
     def initialize(prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
-                   spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {})
+                   spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {}, thinking: nil)
       @scratch        = scratch
+      @thinking_word  = thinking
       @prompt         = prompt
       @llm_context_words = llm_context
       @default_model_name = ModelProfile.required_model_name(nil)
@@ -246,8 +249,10 @@ module Samagotchi
       ))
       # --llm-context*: the session's own values, over a resumed one's.
       # Saved at once on a resumed one: leaving before a turn keeps them.
-      unless @llm_context_words.empty?
-        session.llm_context = LLMContextOverride.update(session.llm_context, @llm_context_words)
+      # --thinking: the session's own level, saved at once on a resumed one.
+      unless @llm_context_words.empty? && @thinking_word.nil?
+        session.llm_context = LLMContextOverride.update(session.llm_context, @llm_context_words) unless @llm_context_words.empty?
+        session.thinking = Thinking.session_level(@thinking_word) if @thinking_word
         session.save if @resume_session
       end
       claim_session!(session.id) unless @owner_lock

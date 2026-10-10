@@ -17,6 +17,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `chi --thinking LEVEL` on a run that starts or resumes a session sets that session's own level (saved, above
+  `SAMAGOTCHI_THINKING_LEVEL`) instead of the process's; `default` unsets it. `chi web --thinking` stays a default for
+  the workers it spawns, below a session's own.
 - `llm_context.budget_tokens` (and a model's or host's `llm_context_budget_tokens`) takes `64k` and `off` like
   `/llm-context budget`, with the same range (4k to 10M); a budget out of range warns and is ignored.
 - Web: a turn's step is one lit-html template for the live page and a reload (lit-html 3.3.3 vendored in
