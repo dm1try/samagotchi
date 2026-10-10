@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A local llama.cpp turn whose connection dropped mid-answer now restarts that step (up to twice) instead of failing.
+
 ## [0.55.0] - 2026-10-10
 
 ### Added

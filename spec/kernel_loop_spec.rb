@@ -452,6 +452,352 @@ RSpec.describe Samagotchi::KernelLoop do
       end
     end
 
+    describe "a generation whose stream drops mid-answer" do
+      # A RetryExhausted like LLM::HTTP raises once a stream that already
+      # showed something fails (a dropped socket, Net::ReadTimeout): see
+      # lib/samagotchi/llm/http.rb ("a retry would repeat output").
+      def dropped(last_error = Net::ReadTimeout.new("Net::ReadTimeout with #<TCPSocket>"))
+        Samagotchi::LLM::RetryExhausted.new(attempts: 1, last_error: last_error, label: "llama.cpp")
+      end
+
+      # A streamed answer that dies partway: a chunk arrives, then the error.
+      def dropping(partial = "half an ans", error: dropped)
+        lambda do |on_chunk:, **|
+          on_chunk.call(content: partial, payload: {})
+          raise error
+        end
+      end
+
+      # A KernelLoop whose ask-again backoff doesn't actually sleep.
+      def drop_kernel(**opts)
+        described_class.new(client: client, sleeper: ->(_seconds) {}, **opts)
+      end
+
+      it "asks again for the same step and reports it as generation_retrying" do
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          if calls == 1
+            kwargs[:on_chunk].call(content: "half an ans", payload: {})
+            raise dropped
+          end
+          kwargs[:on_chunk].call(content: "the whole answer", payload: {})
+          "the whole answer"
+        end
+        events = []
+        result = drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e })
+
+        expect(result.output).to eq("the whole answer")
+        expect(calls).to eq(2)
+        expect(events.find { |e| e[:type] == :generation_retrying })
+          .to include(iteration: 1, attempt: 1, max_retries: 2,
+                      error_class: "Samagotchi::LLM::RetryExhausted",
+                      error_message: include("Net::ReadTimeout"), restarted: true)
+        expect(events.find { |e| e[:type] == :generation_completed }).to include(content_length: 16)
+      end
+
+      it "asks again only when something was streamed: a drop after nothing never retries" do
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          raise dropped if calls == 1
+
+          kwargs[:on_chunk].call(content: "the whole answer", payload: {})
+          "the whole answer"
+        end
+        events = []
+        expect do
+          drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e })
+        end.to raise_error(Samagotchi::LLM::RetryExhausted)
+
+        expect(calls).to eq(1)
+        expect(events).not_to include(a_hash_including(type: :generation_retrying))
+      end
+
+      it "asks again only when something was streamed: a reasoning-only drop counts as shown" do
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          if calls == 1
+            kwargs[:on_chunk].call(content: "[|think|]a thought", payload: {})
+            raise dropped
+          end
+          kwargs[:on_chunk].call(content: "the whole answer", payload: {})
+          "the whole answer"
+        end
+        events = []
+        result = drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e })
+
+        expect(result.output).to eq("the whole answer")
+        expect(calls).to eq(2)
+        expect(events.any? { |e| e[:type] == :generation_retrying }).to be true
+      end
+
+      it "asks again when a drop follows a held-back partial marker" do
+        # "a " shows (text), then "<" is held back as a possible open marker
+        # (shown=false); the buggy per-chunk overwrite would clear the flag
+        # and the drop would not ask again.
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          if calls == 1
+            kwargs[:on_chunk].call(content: "a ", payload: {})
+            kwargs[:on_chunk].call(content: "<", payload: {})
+            raise dropped
+          end
+          kwargs[:on_chunk].call(content: "the whole answer", payload: {})
+          "the whole answer"
+        end
+        events = []
+        result = drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e })
+
+        expect(result.output).to eq("the whole answer")
+        expect(calls).to eq(2)
+        expect(events.any? { |e| e[:type] == :generation_retrying }).to be true
+      end
+
+      it "rebuilds the splitter on a drop inside a tool call: the restarted prose shows as text" do
+        # The splitter `generate` builds is shared across the ask-again; a
+        # drop mid tool call leaves it inside the block, so the restarted
+        # stream's prose would be swallowed as tool-call body.
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          if calls == 1
+            kwargs[:on_chunk].call(content: "<|tool_call>", payload: {})
+            kwargs[:on_chunk].call(content: "call:foo", payload: {})
+            raise dropped
+          end
+          kwargs[:on_chunk].call(content: "The answer is ready", payload: {})
+          "The answer is ready"
+        end
+        events = []
+        result = drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e })
+
+        expect(result.output).to eq("The answer is ready")
+        expect(calls).to eq(2)
+        # The restarted prose streamed into the text lane (not dropped).
+        expect(events.select { |e| e[:type] == :generation_chunk && e[:text] == "The answer is ready" }).not_to be_empty
+      end
+
+      it "waits the retry backoff (retry.base_delay, doubling) before each ask-again, as next_delay" do
+        sleeps = []
+        calls = 0
+        kernel = described_class.new(client: client, sleeper: ->(s) { sleeps << s })
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          if calls <= 2
+            kwargs[:on_chunk].call(content: "x", payload: {})
+            raise dropped
+          end
+          kwargs[:on_chunk].call(content: "the whole answer", payload: {})
+          "the whole answer"
+        end
+        events = []
+        result = kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e })
+
+        expect(result.output).to eq("the whole answer")
+        expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:next_delay] }).to eq([0.5, 1.0])
+        expect(sleeps.sum).to be_within(0.001).of(1.5)
+      end
+
+      it "stops waiting when the turn is canceled during the backoff, and asks nothing more" do
+        controller = Samagotchi::CancellationController.new
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          kwargs[:on_chunk].call(content: "x", payload: {})
+          raise dropped
+        end
+        canceling = described_class.new(client: client, sleeper: ->(_s) { controller.cancel! })
+        events = []
+        result = canceling.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e },
+                                 cancel_controller: controller)
+
+        expect(result).to be_canceled
+        expect(calls).to eq(1)
+      end
+
+      it "fires generation_started and the before/after_generation hooks once per step, not per attempt" do
+        registry = Samagotchi::Hooks::Registry.new
+        fired = []
+        registry.register(:before_generation) { |event| fired << [:before, event[:iteration]] }
+        registry.register(:after_generation) { |event| fired << [:after, event[:response]] }
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          if calls == 1
+            kwargs[:on_chunk].call(content: "half", payload: {})
+            raise dropped
+          end
+          kwargs[:on_chunk].call(content: "ok", payload: {})
+          "ok"
+        end
+        events = []
+        result = drop_kernel(hooks: registry).run([{ role: "user", content: "go" }],
+                                                  on_stream_event: ->(e) { events << e })
+
+        expect(result.output).to eq("ok")
+        expect(fired).to eq([[:before, 1], [:after, "ok"]])
+        expect(events.count { |e| e[:type] == :generation_started }).to eq(1)
+      end
+
+      it "gives each step its own two ask-agains" do
+        script = [
+          ->(kwargs) { kwargs[:on_chunk].call(content: "x", payload: {}); raise dropped },
+          ->(kwargs) { kwargs[:on_chunk].call(content: "x", payload: {}); raise dropped },
+          lambda { |kwargs|
+            kwargs[:on_chunk].call(content: "", payload: {})
+            "<|tool_call>call:execute{command: \"true\"}<tool_call|>"
+          },
+          ->(kwargs) { kwargs[:on_chunk].call(content: "x", payload: {}); raise dropped },
+          ->(kwargs) { kwargs[:on_chunk].call(content: "x", payload: {}); raise dropped },
+          ->(kwargs) { kwargs[:on_chunk].call(content: "done", payload: {}); "done" }
+        ]
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          step = script[calls]
+          calls += 1
+          step.call(kwargs)
+        end
+        events = []
+        result = drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e })
+
+        expect(result.output).to eq("done")
+        expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| [e[:iteration], e[:attempt]] })
+          .to eq([[1, 1], [1, 2], [2, 1], [2, 2]])
+      end
+
+      it "asks again at most retry.max times: none with retry.max 0, so the turn fails on the drop" do
+        with_env("SAMAGOTCHI_RETRY_MAX" => "0") do
+          calls = 0
+          allow(client).to receive(:complete) do |_prompt, **kwargs|
+            calls += 1
+            kwargs[:on_chunk].call(content: "x", payload: {})
+            raise dropped
+          end
+          expect { drop_kernel.run([{ role: "user", content: "go" }]) }.to raise_error(Samagotchi::LLM::RetryExhausted)
+          expect(calls).to eq(1)
+        end
+      end
+
+      it "asks again once with retry.max 1" do
+        with_env("SAMAGOTCHI_RETRY_MAX" => "1") do
+          calls = 0
+          allow(client).to receive(:complete) do |_prompt, **kwargs|
+            calls += 1
+            kwargs[:on_chunk].call(content: "x", payload: {})
+            raise dropped
+          end
+          events = []
+          expect { drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e }) }
+            .to raise_error(Samagotchi::LLM::RetryExhausted)
+          expect(calls).to eq(2)
+          expect(events.select { |e| e[:type] == :generation_retrying }.map { |e| e[:max_retries] }).to eq([1])
+        end
+      end
+
+      it "gives up after two retries, failing the turn with the last error" do
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          kwargs[:on_chunk].call(content: "x", payload: {})
+          raise dropped
+        end
+        error = nil
+        expect { drop_kernel.run([{ role: "user", content: "go" }]) }.to raise_error(Samagotchi::LLM::RetryExhausted) do |raised|
+          error = raised
+        end
+
+        expect(error.summary).to include("Net::ReadTimeout")
+        expect(calls).to eq(3)
+        # Every request counts, not only the last one's transport attempts.
+        expect(error.attempts).to eq(3)
+        expect(error.summary).to include("after 3 attempts")
+        expect(error.message).to start_with("llama.cpp request failed after 3 attempts: Net::ReadTimeout")
+      end
+
+      it "counts the drops' requests in a different error that ends the step (a 503)" do
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          kwargs[:on_chunk].call(content: "x", payload: {})
+          raise dropped if calls == 1
+
+          kwargs[:on_chunk].call(content: "x", payload: {})
+          raise Samagotchi::LLM::ServerError.new("llama.cpp: HTTP 503: boom", host: "llama.cpp", status: 503,
+                                                                                     retryable: true)
+        end
+        expect { drop_kernel.run([{ role: "user", content: "go" }]) }
+          .to raise_error(Samagotchi::LLM::ServerError) { |error| expect(error.attempts).to eq(2) }
+        expect(calls).to eq(2)
+      end
+
+      it "does not ask again when nothing was streamed yet, nor after a first-token timeout or a refusal" do
+        cases = {
+          nothing_streamed: ->(_kwargs) { raise dropped },
+          first_token_timeout: lambda { |kwargs|
+            kwargs[:on_chunk].call(content: "x", payload: {})
+            raise Samagotchi::LLM::FirstTokenTimeout.new(limit: 120, host: "llama.cpp")
+          },
+          refused: lambda { |kwargs|
+            kwargs[:on_chunk].call(content: "x", payload: {})
+            raise Samagotchi::LLM::ConnectionRefused.new(host: "llama.cpp", address: "h:8080")
+          },
+          provider_status: lambda { |kwargs|
+            kwargs[:on_chunk].call(content: "x", payload: {})
+            raise Samagotchi::LLM::ServerError.new("llama.cpp: HTTP 503: boom", host: "llama.cpp", status: 503,
+                                                                                       retryable: true)
+          }
+        }
+        cases.each do |name, step|
+          calls = 0
+          allow(client).to receive(:complete) do |_prompt, **kwargs|
+            calls += 1
+            step.call(kwargs)
+          end
+          expect do
+            drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(_e) {})
+          end.to raise_error(Samagotchi::LLM::ProviderError), "expected #{name} to fail as before"
+          expect(calls).to eq(1), "expected #{name} not to be retried"
+        end
+      end
+
+      it "ends canceled, not failed, when the cancel lands as the stream drops" do
+        controller = Samagotchi::CancellationController.new
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          kwargs[:on_chunk].call(content: "x", payload: {})
+          controller.cancel!
+          raise dropped
+        end
+        events = []
+        result = drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e },
+                                 cancel_controller: controller)
+
+        expect(result).to be_canceled
+        expect(calls).to eq(1)
+      end
+
+      it "does not ask again after a cancel" do
+        controller = Samagotchi::CancellationController.new
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          kwargs[:on_chunk].call(content: "x", payload: {})
+          controller.cancel!
+          raise Samagotchi::Client::RequestCancelled, controller.reason
+        end
+        events = []
+        result = drop_kernel.run([{ role: "user", content: "go" }], on_stream_event: ->(e) { events << e },
+                                 cancel_controller: controller)
+        expect(result).to be_canceled
+        # The retry would have hit the adapter again; only the cancel's one ran.
+        expect(calls).to eq(1)
+      end
+    end
+
     it "leaves the model a line on a rise into a bucket that asks for a change, in the prompt from that request on" do
       prompts = []
       responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]

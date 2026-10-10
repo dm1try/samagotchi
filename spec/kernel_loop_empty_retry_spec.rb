@@ -48,6 +48,36 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
     expect(calls.map { |c| c[:sampling] }).to eq([{ temperature: 0.2 }, { temperature: 0.2 }])
   end
 
+  it "keeps the empty-retry sampling across a drop's ask-again" do
+    # The empty nudge arms the 0.6 retry sampling once; the next
+    # generation's drop-restart must still carry it (as ChatLoop does per
+    # step), not drop it on the retry.
+    calls = []
+    step = 0
+    allow(client).to receive(:complete) do |prompt, **kwargs|
+      calls << { prompt: prompt, sampling: kwargs[:sampling] }
+      case (step += 1)
+      when 1
+        # gen 1: empty -> nudges (arms the 0.6)
+        ""
+      when 2
+        # gen 2, first attempt: streams, then drops
+        kwargs[:on_chunk]&.call(content: "thinking", payload: {})
+        raise Samagotchi::LLM::RetryExhausted.new(attempts: 1, last_error: Net::ReadTimeout.new, label: "llama.cpp")
+      else
+        kwargs[:on_chunk]&.call(content: "PONG", payload: {})
+        "PONG"
+      end
+    end
+
+    loop = described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36, sleeper: ->(_s) {})
+    events = []
+    result = loop.run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e })
+
+    expect(result.output).to eq("PONG")
+    expect(calls.map { |c| c[:sampling] }).to eq([nil, { temperature: 0.6 }, { temperature: 0.6 }])
+  end
+
   it "ends with no answer after the retry is used up: no empty generation, no spent nudge" do
     script("<think>first</think>", "<think>second</think>")
 

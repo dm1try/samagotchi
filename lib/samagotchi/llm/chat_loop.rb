@@ -8,6 +8,7 @@ require_relative "errors"
 require_relative "usage"
 require_relative "openai_chat"
 require_relative "native_tool_normalizer"
+require_relative "stream_drops"
 require_relative "../kernel_loop"
 require_relative "../answer_display"
 require_relative "../cut_policy"
@@ -44,6 +45,8 @@ module Samagotchi
     # Cancel closes the request's socket (LLM::HTTP), so it works on any
     # thread; the text streamed so far is kept, marked [interrupted].
     class ChatLoop < ModelBackend
+      include LLM::StreamDrops
+
       attr_accessor :adapter
       # The session every request is for; Engine sets it with the adapter.
       # Goes out as a Session-Id header (OpenAIChat#chat).
@@ -61,42 +64,6 @@ module Samagotchi
         @adapter = adapter
         @stable_length = stable_length
         @sleeper = sleeper || ->(seconds) { sleep(seconds) }
-      end
-
-      # How many times a dropped stream's step may be asked again: +cap+, or
-      # retry.max when that is smaller (retry.max: 0 turns it off, as it
-      # does the transport's retries).
-      def stream_drop_limit(cap)
-        [cap, HTTP::RetryPolicy.from_config.max].min
-      rescue StandardError
-        cap
-      end
-
-      # The seconds before the +attempt+-th ask-again of a dropped stream's
-      # step: the transport's own backoff (retry.base_delay doubling, capped
-      # at retry.max_delay; LLM::HTTP::RetryPolicy), 0 when retry.max is
-      # spent.
-      def generation_retry_delay(attempt)
-        HTTP::RetryPolicy.from_config.delay_for(attempt) || 0.0
-      rescue StandardError
-        0.0
-      end
-
-      # Waits +seconds+ in short slices, raising RequestCancelled as soon as
-      # one of +controllers+ (the turn's, the generation's) is cancelled, as
-      # LLM::HTTP's own wait between retries does.
-      def wait_retry(seconds, *controllers)
-        remaining = seconds.to_f
-        while remaining.positive?
-          cancelled = controllers.compact.find(&:cancelled?)
-          raise RequestCancelled, cancelled.reason if cancelled
-
-          slice = [remaining, 0.05].min
-          @sleeper.call(slice)
-          remaining -= slice
-        end
-        cancelled = controllers.compact.find(&:cancelled?)
-        raise RequestCancelled, cancelled.reason if cancelled
       end
 
       def provider = :chat
@@ -512,7 +479,7 @@ module Samagotchi
             generation_controller = controller
             # One count for the step: the ask-again without thinking fields
             # doesn't get drops of its own.
-            drops = DropCount.new(0, 0)
+            drops = LLM::StreamDrops::DropCount.new(0, 0)
             begin
               request_with_drops(iteration, retry_generation, streamed, thought, drops, controller)
             rescue BadRequest => e
@@ -596,16 +563,8 @@ module Samagotchi
         # none with 0), after the transport's backoff: the partial reply is
         # dropped and the step restarts. A refusal or a first-token timeout
         # fails as before, and a cancel (before or during the wait) never
-        # retries.
-        MAX_STREAM_DROPS = 2
-
-        # A step's drops asked again (+drops+) and the HTTP requests made so
-        # far (+requests+: each failed request's transport attempts), so the
-        # error that ends the step counts every request, not the last one's.
-        DropCount = Struct.new(:drops, :requests)
-
-        # Runs one request, asking again on a mid-stream drop; +count+ (a
-        # DropCount) carries on across calls for one step.
+        # retries. +count+ (a DropCount) carries on across calls for one
+        # step.
         def request_with_drops(iteration, retry_generation, streamed, thought, count, generation_controller)
           streamed_any = false
           request(iteration, retry_generation, streamed, thought, generation_controller, -> { streamed_any = true })
@@ -616,7 +575,7 @@ module Samagotchi
           raise RequestCancelled, cancelled.reason if cancelled
 
           count.requests += e.attempts.to_i
-          limit = @loop.stream_drop_limit(MAX_STREAM_DROPS)
+          limit = @loop.stream_drop_limit(LLM::StreamDrops::MAX_STREAM_DROPS)
           if count.drops >= limit || !streamed_any
             raise if count.requests == e.attempts.to_i
 

@@ -32,6 +32,7 @@ require_relative "llm_context_notice"
 require_relative "answer_display"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
+require_relative "llm/stream_drops"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -47,6 +48,8 @@ module Samagotchi
   #   - Gemma 4: <|tool_call>call:NAME{params}<tool_call|>
   #   - Qwen 3.6: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
   class KernelLoop
+    include LLM::StreamDrops
+
     # The built-in tool classes (Tools::Builtins registers them).
     TOOLS = Tools::Builtins::CLASSES
 
@@ -113,8 +116,12 @@ module Samagotchi
 
     # @param tools [Tools::Registry, nil] the tools calls dispatch to (the
     #   Engine's; nil: the built-ins alone)
-    def initialize(client: nil, profile: nil, model_name: nil, hooks: nil, reminder_store: nil, model_key: nil, tools: nil)
+    # @param sleeper [#call, nil] waits the given seconds before a dropped
+    #   stream's step is asked again (specs pass one that doesn't sleep)
+    def initialize(client: nil, profile: nil, model_name: nil, hooks: nil, reminder_store: nil, model_key: nil, tools: nil,
+                   sleeper: nil)
       @client = client || Client.new
+      @sleeper = sleeper || ->(seconds) { sleep(seconds) }
       @tools = tools || Tools::Builtins.default
       resolved_model_name = ModelProfile.required_model_name(model_name)
       # The turn's settings (LLM::TurnSettings). Its model name is the
@@ -349,9 +356,9 @@ module Samagotchi
     # Ends with its :generation_completed (and, unless cut, the
     # after_generation hook).
     def generate(turn, request)
-      # Each generation splits its own stream: one that ended inside a
-      # thought or a tool call doesn't leave the next one "inside" it.
-      stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
+      # Each ask splits its own stream (run_generation rebuilds the
+      # splitter), so one that ended inside a thought or a tool call doesn't
+      # leave the next one "inside" it.
       emit(turn, type: :generation_started, iteration: turn.iteration, context_window_tokens: request.window.tokens,
                  context_window_source: request.window.source, profile: @profile.name, profile_source: @profile_source,
                  price: @turn_settings.price&.to_h)
@@ -369,14 +376,55 @@ module Samagotchi
       uncached = turn.uncached_next
       turn.uncached_next = false
       generation.response = with_generation(turn.cancel_controller) do |generation_controller|
+        run_generation(turn, request, generation, generation_controller, buffer_mark, uncached)
+      rescue Client::RequestCancelled
+        raise unless cut?(generation_controller, turn.cancel_controller)
+
+        generation.cut = generation_controller.detail || {}
+        nil
+      end
+      generation.cut ? cut_generation(turn, generation, buffer_mark) : completed_generation(turn, request, generation)
+      generation
+    end
+
+    # One generation's request, asking again on a mid-stream drop (LLM::HTTP
+    # raises RetryExhausted once a stream that already showed something
+    # fails, where a retry would repeat output) up to MAX_STREAM_DROPS
+    # times after the transport's backoff: the partial reply is dropped and
+    # the step restarts from the same conversation, as generation_retrying
+    # with restarted: true. A cancel (before or during the wait) never
+    # retries; a refusal or a first-token timeout fails as before.
+    def run_generation(turn, request, generation, generation_controller, buffer_mark, uncached)
+      # The empty-retry sampling is taken once, before the ask-again loop:
+      # a drop's restart must still carry the nudge's 0.6 (as ChatLoop does
+      # per step), not lose it when request_sampling is asked again.
+      sampling = turn.empty_retry.request_sampling(@turn_settings.sampling)
+      count = LLM::StreamDrops::DropCount.new(0, 0)
+      begin
+        # Each ask splits its own stream: a drop mid tool call (or mid
+        # thinking) leaves the splitter inside that block, so rebuilding it
+        # keeps the restarted stream's prose in the right lane.
+        stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
+        # Each ask starts with streamed_any = false, but once any chunk of
+        # this ask is shown it stays shown: a held-back partial marker after
+        # real text must not clear it, or the drop below won't ask again.
+        streamed_any = false
         request_generation(
           request.prompt,
           generation_controller: generation_controller,
           cancel_controller: turn.cancel_controller,
           model_name: turn.model_name,
-          sampling: turn.empty_retry.request_sampling(@turn_settings.sampling),
+          sampling: sampling,
           cache_prompt: !uncached,
-          on_chunk: ->(chunk) { stream_chunk(turn, generation, stream_splitter, chunk) },
+          on_chunk: lambda { |chunk|
+            # Shown the way ChatLoop counts it: anything that split into
+            # text or thinking was shown (a tool-call delta counts too, even
+            # though its bytes are dropped from both lanes). stream_chunk runs
+            # for every chunk (it splits the stream and emits the chunk event);
+            # streamed_any is sticky — once shown it stays shown, so a
+            # held-back partial marker after real text doesn't clear it.
+            streamed_any = true if stream_chunk(turn, generation, stream_splitter, chunk)
+          },
           on_retry: lambda { |retry_event|
             # The retry streams from the start: its counts replace these.
             generation.usage = nil
@@ -388,17 +436,54 @@ module Samagotchi
           },
           images: request.images
         )
-      rescue Client::RequestCancelled
-        raise unless cut?(generation_controller, turn.cancel_controller)
+      rescue LLM::RetryExhausted => e
+        # A cancel that landed as the stream drops ends the turn canceled,
+        # not failed, whatever the drop's count.
+        cancelled = [turn.cancel_controller, generation_controller].compact.find(&:cancelled?)
+        raise Client::RequestCancelled, cancelled.reason if cancelled
 
-        generation.cut = generation_controller.detail || {}
-        nil
+        count.requests += e.attempts.to_i
+        limit = stream_drop_limit(LLM::StreamDrops::MAX_STREAM_DROPS)
+        if count.drops >= limit || !streamed_any
+          raise if count.requests == e.attempts.to_i
+
+          raise LLM::RetryExhausted.new(attempts: count.requests, last_error: e.last_error, label: e.host)
+        end
+
+        count.drops += 1
+        attempt = count.drops
+        # restarted: the step's streamed chunks so far are void (the UIs and
+        # the Bridge's TurnAccumulator drop them); the same prompt goes
+        # again from where the step started, and the failed attempt's
+        # counts (mirroring the transport-retry reset) don't linger onto it.
+        turn.buffer.slice!(buffer_mark..)
+        turn.streamed_thinking = +""
+        generation.usage = nil
+        generation.cache = nil
+        generation.served_model = nil
+        generation.finish_reason = nil
+        generation.streamed_thinking = 0
+        delay = generation_retry_delay(attempt)
+        emit(turn, type: :generation_retrying, iteration: turn.iteration, attempt: attempt, max_retries: limit,
+                   next_delay: delay, error_class: e.class.name, error_message: e.message, status: nil, restarted: true)
+        wait_retry(delay, turn.cancel_controller, generation_controller)
+        retry
+      rescue LLM::ProviderError => e
+        # Another failure (a 503, a refusal) after earlier requests this
+        # step: its count takes theirs in.
+        count.requests += e.attempts.to_i
+        e.attempts = count.requests
+        raise
       end
-      generation.cut ? cut_generation(turn, generation, buffer_mark) : completed_generation(turn, request, generation)
-      generation
     end
 
+    # Whether the chunk showed anything: a delta that split into text or
+    # thinking was shown, and a tool-call delta too (its bytes are dropped
+    # from both lanes, but it still counts). run_generation reads this to
+    # decide whether a dropped stream actually streamed its partial reply.
     def stream_chunk(turn, generation, stream_splitter, chunk)
+      split = stream_splitter.feed(chunk[:content])
+      shown = !split[:text].to_s.empty? || !split[:thinking].to_s.empty? || split[:tool]
       generation.usage = turn.context.capture(chunk[:payload]) || generation.usage
       note_cache_counts(generation, chunk[:payload])
       # llama.cpp names the loaded model in the stream's last payload.
@@ -407,18 +492,16 @@ module Samagotchi
       slot = chunk[:payload]["id_slot"] if chunk[:payload].is_a?(Hash)
       @last_slot = slot if slot.is_a?(Integer)
       generation.finish_reason = chunk[:finish_reason] if chunk[:finish_reason]
-      split = stream_splitter.feed(chunk[:content])
       turn.buffer << split[:text]
       turn.streamed_thinking << split[:thinking].to_s
       generation.streamed_thinking += split[:thinking].to_s.length
-      return unless turn.on_stream_event
-
       event = { type: :generation_chunk, iteration: turn.iteration, content: chunk[:content], text: split[:text],
                 thinking: split[:thinking], payload: event_payload(chunk[:payload]) }
       # A chunk of a tool call (its bytes are dropped from both lanes): a
       # steer doesn't cut this generation (Engine#cut_for_steer).
       event[:tool_call] = true if split[:tool]
-      emit(turn, **event)
+      emit(turn, **event) if turn.on_stream_event
+      shown
     end
 
     # The payload a :generation_chunk event carries: llama.cpp's last chunk
