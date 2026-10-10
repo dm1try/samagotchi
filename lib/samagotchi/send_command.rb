@@ -63,12 +63,11 @@ module Samagotchi
         --continues ID
                     (--new) start the next link of that session's chain:
                     in its folder, on its model, LLM context and
-                    thinking level, with a
-                    note carrying its recap; it is archived. last:ID
-                    names the chain's latest link. Without -m the new
-                    session waits idle. Refused for a session continued
-                    already (naming the next link) or with delegates
-                    still open
+                    thinking level, with a note carrying its recap; it
+                    is archived. last:ID names the chain's latest link.
+                    Without -m the new session waits idle. Refused for a
+                    session continued already (naming the next link) or
+                    with delegates still open
         --model M   (--new) its model; default the configured one
         --llm-context LAYERS, --llm-context-apply RULE, --llm-context-budget N
                     (--new) its own LLM context strategy (none, stale,forget),
