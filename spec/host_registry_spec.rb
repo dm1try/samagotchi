@@ -51,6 +51,18 @@ RSpec.describe Samagotchi::HostRegistry do
     end
   end
 
+  describe "#alias_note" do
+    it "says what an alias became and on which host; nil for a plain id" do
+      allow(Samagotchi::ConfigFile).to receive(:model_aliases)
+        .and_return({ "splash" => "gemma-x", "small" => "box:gemma-small" })
+
+      expect(registry.alias_note("splash")).to eq("splash is an alias: gemma-x on host default")
+      expect(registry.alias_note("small")).to eq("small is an alias: gemma-small on host box")
+      expect(registry.alias_note("gemma-x")).to be_nil
+      expect(registry.alias_note("box:gemma-x")).to be_nil
+    end
+  end
+
   describe "a bare id declared under hosts.<name>.models" do
     def declared(*ids) = Samagotchi::HostModel.parse_map(ids, "spec")
 

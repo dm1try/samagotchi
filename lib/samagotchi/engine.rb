@@ -504,6 +504,20 @@ module Samagotchi
     end
     private :record_prompt_notes
 
+    # A failed turn's one line (the error's #summary). A host's failure
+    # under an alias says what the alias became (HostRegistry#alias_note):
+    # "host main" alone doesn't tell --model splash's user it was splash.
+    # @return [String]
+    def failure_summary(error)
+      summary = error.respond_to?(:summary) ? error.summary : error.message
+      return summary unless error.is_a?(LLM::ProviderError) && error.host
+
+      note = @host_registry.alias_note(@effective_model_name)
+      note && note.end_with?("on host #{error.host}") ? "#{summary} (#{note})" : summary
+    rescue StandardError
+      summary
+    end
+
     # +name+'s resolved ref (ModelRef#ref).
     def model_ref_for(name)
       @host_registry.model_ref(name).ref
@@ -2119,7 +2133,7 @@ module Samagotchi
       failed[:kept_steps] = steps if steps
       # A provider error says what kind it is, for one line per kind in the UIs.
       if error.is_a?(LLM::ProviderError)
-        failed.merge!(error_kind: error.kind, retryable: error.retryable?, host: error.host, summary: error.summary)
+        failed.merge!(error_kind: error.kind, retryable: error.retryable?, host: error.host, summary: failure_summary(error))
       end
       failed
     end

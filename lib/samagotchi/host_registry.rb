@@ -273,6 +273,19 @@ module Samagotchi
       ModelTarget.new(model: raw_model, entry: entry, bare_model: bare, client: client_for(entry))
     end
 
+    # What the alias +raw_model+ became, for an error that names only the
+    # host ("splash is an alias: gemma-x on host main"), or nil when it
+    # isn't an alias. An alias without a host of its own goes where a bare
+    # id goes (#host_for_model), often the default host the user never typed.
+    # @return [String, nil]
+    def alias_note(raw_model)
+      ref = model_ref(raw_model)
+      return nil unless ref.alias_name
+
+      target = resolve(raw_model)
+      "#{ref.alias_name} is an alias: #{target.bare_model} on host #{target.entry.name}"
+    end
+
     # The model id sent for +full_ref+: its alias applied, a known host
     # prefix stripped ("box:gemma" → "gemma").
     def bare_name(full_ref)

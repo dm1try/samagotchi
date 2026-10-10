@@ -352,7 +352,7 @@ module Samagotchi
     # so the session is kept and `chi --resume` takes it up again.
     # @return [Symbol] :turn_failed
     def one_shot_failed(session, error)
-      warn "Error: #{error.respond_to?(:summary) ? error.summary : error.message}"
+      warn "Error: #{@engine.failure_summary(error)}"
       if !@scratch && Session.exist?(session.id)
         warn "chi: the session is kept with your prompt; continue it with: chi --resume #{session.id}"
       end

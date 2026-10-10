@@ -579,6 +579,34 @@ file2.rb")
         .to output("chi: refused: /exit is a terminal and web command; --non-interactive doesn't run it\n").to_stderr
     end
 
+    # --model splash, an alias with no host of its own: it goes to host
+    # main, and the error says what splash became, not only "host main".
+    it "names the alias and what it resolved to when a -p --non-interactive turn's host fails" do
+      Dir.mktmpdir("alias-cfg") do |cfg|
+        FileUtils.mkdir_p(File.join(cfg, "samagotchi"))
+        File.write(File.join(cfg, "samagotchi", "config.yml"), <<~YAML)
+          default:
+            model: main:real-model
+          hosts:
+            main:
+              url: http://127.0.0.1:9/v1
+          model_aliases:
+            splash: gemma-x
+        YAML
+        original_xdg = ENV["XDG_CONFIG_HOME"]
+        ENV["XDG_CONFIG_HOME"] = cfg
+        Samagotchi::Config.reload!(cli_overrides: {})
+        allow(client).to receive(:complete).and_raise(Samagotchi::LLM::ConnectionRefused.new(host: "main"))
+        agent = described_class.new(prompt: "hi", client: client, non_interactive: true, model_name: "splash")
+
+        expect { agent.run }
+          .to output(/^Error: can't reach host main \(connection refused\) — is the server running\? \(splash is an alias: gemma-x on host main\)$/).to_stderr
+      ensure
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {})
+      end
+    end
+
     # stdout is the answer's alone: the session line goes to stderr.
     it "exits normally when the -p --non-interactive turn answers: the answer on stdout, the session on stderr" do
       allow(client).to receive(:complete).and_return("done")

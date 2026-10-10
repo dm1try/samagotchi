@@ -25,6 +25,8 @@ and commands may change between minor versions. How releases are made:
   `/exit` …) stay out of it.
 - `chi -p /stats --non-interactive` (and `/exit`, `/recap` … — the terminals' own commands) is refused with a line
   on stderr, as `chi send` refuses them, instead of going to the model as a prompt; it exits 1 and makes no session.
+- A turn that fails on its host under a model alias says what the alias became: `--model splash` (an alias with no
+  host) failing on host `main` adds `(splash is an alias: gemma-x on host main)` to the error line.
 
 ## [0.52.0] - 2026-10-10
 
