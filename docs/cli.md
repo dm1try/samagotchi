@@ -294,7 +294,7 @@ and cuts nothing. `/cut TEXT` in a terminal or the web composer (or `chi send --
 once the model has streamed only thinking for `steer.cut_after` seconds (default
 20), now or while your message waits, that generation is cut and the step starts again with your message, marked
 `↪ cut in for your message` (see
-[configuration.md](configuration.md#llama-network-retry-behavior)). The web
+[configuration.md](configuration.md#messages-during-a-running-turn-steer-and-cut)). The web
 composer has no `/queue` yet (it says so and sends nothing). The
 first answer to an `ask_user_question` wins; the other UIs close their widget.
 An empty answer dismisses the question in every UI. The model is then told
