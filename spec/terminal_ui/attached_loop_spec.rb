@@ -1549,11 +1549,21 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
                                     "(cutting is off; goes in at the next step)")
   end
 
-  it "refuses /queue with a line and sends nothing" do
+  it "refuses /queue with a line while a turn runs, and sends nothing" do
     run_inputs("/queue later please")
 
     expect(client).not_to have_received(:post_turn)
     expect(screen.lines).to include("(/queue isn't available in an attached session yet)")
+  end
+
+  it "runs /queue TEXT and /cut TEXT at an idle prompt as plain turns (no delivery)" do
+    snapshot["snapshot"]["current_turn"] = nil
+    snapshot["session_state_snapshot"]["status"] = "idle"
+    run_inputs("/queue later please", "/cut now please")
+
+    expect(client).to have_received(:post_turn).with(prompt: "later please", client_id: "tui:1").ordered
+    expect(client).to have_received(:post_turn).with(prompt: "now please", client_id: "tui:1").ordered
+    expect(screen.lines).not_to include("(/queue isn't available in an attached session yet)")
   end
 
   it "says a /cut with no text is a usage error, and sends nothing" do

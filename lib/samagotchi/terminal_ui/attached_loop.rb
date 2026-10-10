@@ -430,7 +430,7 @@ module Samagotchi
       # @return [nil]
       def submit_delivery(choice, text)
         return @screen.commit(STEER_CHOICE_USAGE) if text.empty?
-        return @screen.commit(QUEUE_UNAVAILABLE) if choice == :queue
+        return @screen.commit(QUEUE_UNAVAILABLE) if choice == :queue && @running
 
         # To an idle session it is an ordinary prompt: no delivery to send.
         send_prompt(text, delivery: @running ? Delivery::CUT : nil)
