@@ -201,36 +201,9 @@ module Samagotchi
       @reminders = build_reminders(auto_turn_callback: callback)
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
-      # A given kernel (specs) gets the Engine's store, hooks and tools, as
-      # the one built here does.
-      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, hooks: @hooks, reminder_store: @reminder_store,
-                                         tools: @tools)
-      @kernel.reminder_store = @reminder_store
-      @kernel.hooks = @hooks
-      @kernel.tools = @tools
-      sync_kernel_client!
-      sync_model_key!
-      # The mutes never change during a session, so no re-sync: the kernel's
-      # memory_read guard reads the same list for every turn.
-      @muted_memory_names = MutedMemories.normalize_list(muted_memories)
-      @kernel.muted_memory_names = @muted_memory_names
-      # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
-      @kernel.question_handler = proc { |payload| request_question(payload) }
-      # Every tool call asks this gate first. The kernel is never rebuilt, so
-      # it holds across model switches.
-      self.guardrail_state_dir = Session.default_state_dir
-      # list_sessions and send_note speak for whichever session runs now.
-      @kernel.peers = PeerView.new(self)
-      @kernel.guardrail_gate = @guardrail_wiring.gate
-      # The turn-end warm-up; the kernel asks it for a slot pin per request.
-      @prompt_warmup = PromptWarmup.new
-      @kernel.warmup = @prompt_warmup
-      # What a hook can do beyond reading its event (event[:notify],
-      # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
-      @hooks.runtime = hook_runtime
-      # The loop follows the effective model's host (its api:): the raw-prompt
-      # NativeBackend, or the chat backend for openai hosts.
-      @native_backend = LLM::NativeBackend.new(kernel: @kernel)
+      # The kernel (built here, or a spec's) and what it reads of the Engine;
+      # then the native backend over it.
+      wire_kernel(kernel, muted_memories)
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
       @prompt_builder = SystemPrompt.new(profile: -> { self.profile }, tools: -> { @tools }, session: -> { @session },
@@ -275,6 +248,43 @@ module Samagotchi
     end
 
     # ── initialize's collaborators ──────────────────────────────────────────
+
+    # The kernel and what it holds of the Engine (stores, hooks, tools, the
+    # mutes, the question flow, the gate, peers, warm-up, the hook runtime),
+    # and the native backend over it. After the plugins load.
+    def wire_kernel(kernel, muted_memories)
+      # A given kernel (specs) gets the Engine's store, hooks and tools, as
+      # the one built here does.
+      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, hooks: @hooks, reminder_store: @reminder_store,
+                                         tools: @tools)
+      @kernel.reminder_store = @reminder_store
+      @kernel.hooks = @hooks
+      @kernel.tools = @tools
+      sync_kernel_client!
+      sync_model_key!
+      # The mutes never change during a session, so no re-sync: the kernel's
+      # memory_read guard reads the same list for every turn.
+      @muted_memory_names = MutedMemories.normalize_list(muted_memories)
+      @kernel.muted_memory_names = @muted_memory_names
+      # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
+      @kernel.question_handler = proc { |payload| request_question(payload) }
+      # Every tool call asks this gate first. The kernel is never rebuilt, so
+      # it holds across model switches.
+      self.guardrail_state_dir = Session.default_state_dir
+      # list_sessions and send_note speak for whichever session runs now.
+      @kernel.peers = PeerView.new(self)
+      @kernel.guardrail_gate = @guardrail_wiring.gate
+      # The turn-end warm-up; the kernel asks it for a slot pin per request.
+      @prompt_warmup = PromptWarmup.new
+      @kernel.warmup = @prompt_warmup
+      # What a hook can do beyond reading its event (event[:notify],
+      # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
+      @hooks.runtime = hook_runtime
+      # The loop follows the effective model's host (its api:): the raw-prompt
+      # NativeBackend, or the chat backend for openai hosts.
+      @native_backend = LLM::NativeBackend.new(kernel: @kernel)
+    end
+    private :wire_kernel
 
     # The tool guardrails (see #initialize for when).
     def build_guardrail_wiring

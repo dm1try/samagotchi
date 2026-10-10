@@ -333,7 +333,7 @@ Engine initialization (in this order, among other things):
   @guardrail_wiring, @question_desk
   @extension_load = ExtensionLoad.new; @hooks = @extension_load.hooks (config.yml's, then the bundles')
   @tools = Tools::Builtins.registry; the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins)
-  @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
+  wire_kernel: @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
   @kernel.guardrail_gate = @guardrail_wiring.gate; @kernel.warmup = PromptWarmup.new
   @hooks.runtime = hook_runtime
   @native_backend = LLM::NativeBackend.new(kernel: @kernel)
