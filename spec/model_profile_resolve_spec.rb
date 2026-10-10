@@ -98,7 +98,7 @@ RSpec.describe "ModelProfile.resolve" do
 
   it "takes each layer in order: override, models:, hosts:, server, name, default" do
     gemma_server = FakePropsClient.new(answered("chat_template" => gemma4_template))
-    models = { "ista" => { profile: "qwen36" } }
+    models = { "ista" => Samagotchi::ModelSettings.new(profile: "qwen36") }
     host = entry(profile: "gemma4")
 
     expect(resolve(names: ["ista"], entry: host, models: models, override: ["gemma4", :cli]))
@@ -117,7 +117,7 @@ RSpec.describe "ModelProfile.resolve" do
   end
 
   it "matches models: under any of the names (as typed, alias-resolved, bare), ignoring case" do
-    models = { "ornith-ai/ornith-1.5-35b-a3b-gguf:q4_k_m" => { profile: "gemma4" } }
+    models = { "ornith-ai/ornith-1.5-35b-a3b-gguf:q4_k_m" => Samagotchi::ModelSettings.new(profile: "gemma4") }
     result = resolve(names: ["orn", "main:ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M", "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M"],
                      models: models)
 
@@ -130,7 +130,7 @@ RSpec.describe "ModelProfile.resolve" do
 
   it "warns once about an unknown configured profile and skips that layer" do
     result = nil
-    expect { result = resolve(names: ["ista"], entry: entry(profile: "llama"), models: { "ista" => { profile: "qwen" } }) }
+    expect { result = resolve(names: ["ista"], entry: entry(profile: "llama"), models: { "ista" => Samagotchi::ModelSettings.new(profile: "qwen") }) }
       .to output(/unknown profile "qwen" in models: ista.*\n.*unknown profile "llama" in hosts.main/).to_stderr
     expect(result.source).to eq(:server)
   end

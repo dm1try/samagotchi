@@ -1079,9 +1079,9 @@ module Samagotchi
     end
 
     # The top-level `models:` map: per-model settings keyed by model id or
-    # alias (downcased), e.g. `models: {my-alias: {profile: qwen36}}`. Values are
-    # kept as written (profile downcased; ModelProfile.resolve validates it);
-    # an entry that is not a map is skipped.
+    # alias (downcased), e.g. `models: {my-alias: {profile: qwen36}}`, each a
+    # ModelSettings; an entry that is not a map is skipped.
+    # @return [Hash{String => ModelSettings}]
     def model_settings(env: ENV, path: global_path(env: env))
       data = read_yaml(env: env, path: path)
       raw = data[MODELS_KEY] if data.is_a?(Hash)
@@ -1089,40 +1089,26 @@ module Samagotchi
 
       raw.each_with_object({}) do |(k, v), result|
         key = k.to_s.strip.downcase
-        next if key.empty? || !v.is_a?(Hash)
-
-        profile = (v["profile"] || v[:profile]).to_s.strip.downcase
-        vision = vision_flag(v.key?("vision") ? v["vision"] : v[:vision], "models: #{key}")
-        result[key] = { profile: profile.empty? ? nil : profile }
-        result[key][:vision] = vision unless vision.nil?
-        sampling = sampling_map(v.key?("sampling") ? v["sampling"] : v[:sampling], "models: #{key}")
-        result[key][:sampling] = sampling if sampling
-        thinking = Thinking.level(v.key?("thinking") ? v["thinking"] : v[:thinking], "models: #{key}")
-        result[key][:thinking] = thinking if thinking
-        window = window_tokens(v.key?("window_tokens") ? v["window_tokens"] : v[:window_tokens], "models: #{key}")
-        result[key][:window_tokens] = window if window
-        layers = LLMContextStrategy.parse(v.key?(LLMContextStrategy::KEY) ? v[LLMContextStrategy::KEY] : v[:llm_context_strategy],
-                                          "models: #{key}")
-        result[key][:llm_context_strategy] = layers if layers
-        apply = LLMContextStrategy.parse_apply(v.key?(LLMContextStrategy::APPLY_KEY) ? v[LLMContextStrategy::APPLY_KEY] : v[:llm_context_apply],
-                                               "models: #{key}")
-        result[key][:llm_context_apply] = apply if apply
-        budget = LLMContextStrategy.parse_budget(v.key?(LLMContextStrategy::BUDGET_KEY) ? v[LLMContextStrategy::BUDGET_KEY] : v[:llm_context_budget_tokens],
-                                                 "models: #{key}")
-        result[key][:llm_context_budget_tokens] = budget if budget
+        settings = ModelSettings.parse(key, v)
+        result[key] = settings if settings
       end
     rescue StandardError
       {}
     end
 
     # The first +names+ (model as typed, alias-resolved, bare, …) whose
-    # models: entry sets +field+: [key, value], or nil. VisionSupport and
-    # SamplingSettings look a model up the same way.
+    # models: entry sets +field+ (a ModelSettings member; another name
+    # raises ArgumentError): a ModelSetting (key, value), or nil.
+    # VisionSupport and SamplingSettings look a model up the same way.
+    # @param models [Hash{String => ModelSettings}, nil] model_settings by default
+    # @return [ModelSetting, nil]
     def model_setting(names, field, models: nil)
+      raise ArgumentError, "unknown models: field #{field.inspect}" unless ModelSettings.members.include?(field)
+
       models ||= model_settings
       Array(names).map { |name| name.to_s.strip.downcase }.reject(&:empty?).uniq.each do |key|
-        value = models.dig(key, field)
-        return [key, value] unless value.nil?
+        value = models[key]&.public_send(field)
+        return ModelSetting.new(key: key, value: value) unless value.nil?
       end
       nil
     end

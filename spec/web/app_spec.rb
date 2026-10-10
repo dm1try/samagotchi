@@ -1769,7 +1769,7 @@ RSpec.describe Samagotchi::Web::App do
         Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
       end
       registry.define_singleton_method(:lookup_names) { |typed, target:| [typed, target.bare_model].uniq }
-      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({ "qwen" => { llm_context_strategy: %i[stale] } })
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({ "qwen" => Samagotchi::ModelSettings.new(llm_context_strategy: %i[stale]) })
 
       models = models_payload(registry)["models"].to_h { |m| [m["name"], m["llm_context"]] }
 

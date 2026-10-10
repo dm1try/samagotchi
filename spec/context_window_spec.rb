@@ -102,7 +102,7 @@ RSpec.describe Samagotchi::ContextWindow, "per model and per host (models.<key>.
   after { described_class.reset! }
 
   it "takes the model's setting over the host's, by the model's lookup names" do
-    models = { "m" => { window_tokens: 32_768 } }
+    models = { "m" => Samagotchi::ModelSettings.new(window_tokens: 32_768) }
     expect(described_class.setting(target(window_tokens: 65_536), names: %w[box:m m], models: models).to_h)
       .to eq(tokens: 32_768, source: :model_setting)
     expect(described_class.setting(target(window_tokens: 65_536), names: %w[box:m m], models: {}).to_h)

@@ -15,7 +15,7 @@ RSpec.describe Samagotchi::SessionCommands, "/llm-context" do
     engine.session = session
   end
 
-  let(:models) { { "qwen3-14b" => { llm_context_strategy: [:stale], llm_context_budget_tokens: 48_000 } } }
+  let(:models) { { "qwen3-14b" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale], llm_context_budget_tokens: 48_000) } }
   let(:registry) { Samagotchi::HostRegistry.new(hosts_config: { "beta" => { host: "beta.test", port: 2222 } }) }
   let(:engine) { Samagotchi::Engine.new(host_registry: registry, model_name: "beta:Qwen3-14B") }
   let(:saved) { [] }

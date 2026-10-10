@@ -151,7 +151,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
     it "names the configured sampling of the model" do
       allow(Samagotchi::ConfigFile).to receive(:model_settings)
-        .and_return("qwen3-14b" => { profile: nil, sampling: { temperature: 0.6, presence_penalty: 1.5 } })
+        .and_return("qwen3-14b" => Samagotchi::ModelSettings.new(sampling: { temperature: 0.6, presence_penalty: 1.5 }))
 
       expect(commands.run("/model").output)
         .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); " \
@@ -159,7 +159,7 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "names the model's thinking level and where it came from, nothing when none is set" do
-      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => { profile: nil, thinking: :off })
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(thinking: :off))
 
       expect(commands.run("/model").output)
         .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); thinking: off (models: qwen3-14b)")

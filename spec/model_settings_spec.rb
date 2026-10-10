@@ -30,4 +30,23 @@ RSpec.describe Samagotchi::ModelSettings do
       expect(settings).to have_attributes(window_tokens: nil, profile: "gemma4")
     end
   end
+
+  describe "ConfigFile.model_setting" do
+    let(:models) do
+      { "fast" => described_class.new(vision: false), "qwen" => described_class.new(vision: true, thinking: :high) }
+    end
+
+    it "gives the first lookup name whose entry sets the field, with its key; false counts as set" do
+      expect(Samagotchi::ConfigFile.model_setting(%w[Fast qwen], :vision, models: models))
+        .to eq(Samagotchi::ModelSetting.new(key: "fast", value: false))
+      expect(Samagotchi::ConfigFile.model_setting(%w[fast qwen], :thinking, models: models))
+        .to eq(Samagotchi::ModelSetting.new(key: "qwen", value: :high))
+      expect(Samagotchi::ConfigFile.model_setting(%w[fast], :thinking, models: models)).to be_nil
+    end
+
+    it "raises on a field no models: entry has, instead of finding nothing" do
+      expect { Samagotchi::ConfigFile.model_setting(%w[qwen], :thinkng, models: models) }
+        .to raise_error(ArgumentError, /unknown models: field :thinkng/)
+    end
+  end
 end

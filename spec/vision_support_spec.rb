@@ -85,7 +85,7 @@ RSpec.describe Samagotchi::VisionSupport do
     end
 
     it "prefers models: over hosts:" do
-      models = { "ornith" => { profile: nil, vision: false } }
+      models = { "ornith" => Samagotchi::ModelSettings.new(vision: false) }
       expect(answer(native_target(props(ornith), vision: true), models: models).reason).to eq("models: ornith sets vision: false")
     end
   end
@@ -139,7 +139,7 @@ RSpec.describe Samagotchi::VisionSupport do
       hosts = Samagotchi::ConfigFile.hosts_config(env: @env)
       expect(hosts["main"].vision).to be(false)
       expect(hosts["box"].vision).to be_nil
-      expect(Samagotchi::ConfigFile.model_settings(env: @env)["ornith"]).to eq(profile: nil, vision: true)
+      expect(Samagotchi::ConfigFile.model_settings(env: @env)["ornith"]).to eq(Samagotchi::ModelSettings.new(vision: true))
       expect(JSON.parse(Samagotchi::ConfigFile.hosts_json_for_env(env: @env))["main"]).to include("vision" => false)
     end
   end

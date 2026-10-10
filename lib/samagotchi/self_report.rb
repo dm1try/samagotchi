@@ -145,7 +145,7 @@ module Samagotchi
       return nil unless window
       return [window.tokens, "hosts.#{target.entry.name}"] if window.source == :host_setting
 
-      [window.tokens, "models: #{ConfigFile.model_setting(names, :window_tokens, models: models).first}"]
+      [window.tokens, "models: #{ConfigFile.model_setting(names, :window_tokens, models: models).key}"]
     rescue StandardError
       nil
     end

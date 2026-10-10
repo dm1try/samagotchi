@@ -55,7 +55,7 @@ module Samagotchi
     # "models: qwen", "hosts.work", "thinking.level"; nil for the default).
     # @param target [HostRegistry::ModelTarget]
     # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
-    # @param models [Hash, nil] ConfigFile.model_settings (specs)
+    # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
     # @return [Array(Symbol, String|nil)]
     def resolve(target, names:, models: nil)
       global, origin = global_level
@@ -66,8 +66,8 @@ module Samagotchi
       rescue StandardError
         {}
       end
-      key, value = ConfigFile.model_setting(names, :thinking, models: models)
-      return [value, "models: #{key}"] if key
+      setting = ConfigFile.model_setting(names, :thinking, models: models)
+      return [setting.value, "models: #{setting.key}"] if setting
 
       host = target.entry.thinking
       return [host, "hosts.#{target.entry.name}"] if host

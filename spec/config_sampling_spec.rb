@@ -37,8 +37,8 @@ RSpec.describe "sampling config" do
                               "other" => { "profile" => "qwen36" } }) do |path|
       models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
 
-      expect(models["qwen3.6-35b"]).to eq(profile: nil, sampling: { temperature: 0.6, top_p: 0.95 })
-      expect(models["other"]).not_to have_key(:sampling)
+      expect(models["qwen3.6-35b"]).to eq(Samagotchi::ModelSettings.new(sampling: { temperature: 0.6, top_p: 0.95 }))
+      expect(models["other"]).to have_attributes(sampling: nil)
     end
   end
 
@@ -72,7 +72,7 @@ RSpec.describe "sampling config" do
       models = nil
       expect { models = Samagotchi::ConfigFile.model_settings(env: {}, path: path) }
         .to output(/models: m: sampling must be a map of request parameters; ignored/).to_stderr
-      expect(models["m"]).to eq(profile: nil)
+      expect(models["m"]).to eq(Samagotchi::ModelSettings.new)
     end
   end
 

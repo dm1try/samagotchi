@@ -433,10 +433,10 @@ module Samagotchi
       end
 
       names.map(&:downcase).uniq.each do |key|
-        setting = models[key]
-        next unless setting && setting[:profile]
+        configured_profile = models[key]&.profile
+        next unless configured_profile
 
-        profile = configured(setting[:profile], "models: #{key}")
+        profile = configured(configured_profile, "models: #{key}")
         return Resolution.new(profile: profile, source: :config, detail: "models: #{key}", retry: false) if profile
       end
 

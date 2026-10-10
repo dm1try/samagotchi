@@ -25,13 +25,13 @@ RSpec.describe Samagotchi::SamplingSettings do
   end
 
   it "takes the model's map alone, found by the bare name" do
-    models = { "qwen3.6-35b" => { profile: nil, sampling: { temperature: 0.7 } } }
+    models = { "qwen3.6-35b" => Samagotchi::ModelSettings.new(sampling: { temperature: 0.7 }) }
 
     expect(described_class.for(target, names: names(target), models: models)).to eq(temperature: 0.7)
   end
 
   it "merges the two, the model's keys winning per key" do
-    models = { "qwen3.6-35b" => { profile: nil, sampling: { temperature: 0.7, top_p: 0.95 } } }
+    models = { "qwen3.6-35b" => Samagotchi::ModelSettings.new(sampling: { temperature: 0.7, top_p: 0.95 }) }
     t = target(sampling: { temperature: 0.6, presence_penalty: 1.5 })
 
     expect(described_class.for(t, names: names(t), models: models)).to eq(temperature: 0.7, presence_penalty: 1.5, top_p: 0.95)
@@ -40,8 +40,8 @@ RSpec.describe Samagotchi::SamplingSettings do
   end
 
   it "finds a models: entry under an alias among the lookup names, first name first" do
-    models = { "fast" => { profile: nil, sampling: { temperature: 0.3 } },
-               "qwen3.6-35b" => { profile: nil, sampling: { temperature: 0.9 } } }
+    models = { "fast" => Samagotchi::ModelSettings.new(sampling: { temperature: 0.3 }),
+               "qwen3.6-35b" => Samagotchi::ModelSettings.new(sampling: { temperature: 0.9 }) }
 
     expect(described_class.for(target, names: ["fast", "Qwen3.6-35B"], models: models)).to eq(temperature: 0.3)
   end

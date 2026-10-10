@@ -61,7 +61,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
 
     it "takes the model's setting, then the host's, then llm_context.strategy (a model's none wins too)" do
       config("stale")
-      models = { "m" => { llm_context_strategy: [] } }
+      models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: []) }
 
       expect(described_class.resolve(target([:stale]), names: %w[box:m m], models: models).source).to eq(:model_setting)
       expect(described_class.resolve(target([]), names: %w[m], models: {}).source).to eq(:host_setting)
@@ -70,13 +70,13 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     end
 
     it "takes the session's own layers first, once something sets them" do
-      models = { "m" => { llm_context_strategy: [] } }
+      models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: []) }
 
       expect(described_class.resolve(target, names: %w[m], models: models, session: []).source).to eq(:session)
     end
 
     it "runs stale, and stale with forget, and names the layers a turn runs under" do
-      models = { "m" => { llm_context_strategy: [:stale] }, "d" => { llm_context_strategy: %i[stale forget] } }
+      models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale]), "d" => Samagotchi::ModelSettings.new(llm_context_strategy: %i[stale forget]) }
       resolved = nil
 
       expect { resolved = described_class.resolve(target, names: %w[m], models: models) }.not_to output.to_stderr
@@ -89,7 +89,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
 
     it "takes the apply rule from the session, the model, the host, then llm_context.apply, apart from the layers" do
       allow(Samagotchi::Config).to receive(:get).with(described_class::APPLY_SETTING).and_return("turn_end")
-      models = { "m" => { llm_context_apply: :next_request }, "s" => { llm_context_strategy: [:stale] } }
+      models = { "m" => Samagotchi::ModelSettings.new(llm_context_apply: :next_request), "s" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale]) }
 
       expect(described_class.resolve(target(apply: :payoff), names: %w[m], models: models).apply).to eq(:next_request)
       expect(described_class.resolve(target(apply: :payoff), names: %w[s], models: models).apply).to eq(:payoff)
@@ -116,7 +116,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     before { allow(Samagotchi::Config).to receive(:get).and_call_original }
 
     it "names where the strategy, the apply rule and the budget each came from" do
-      models = { "m" => { llm_context_strategy: [:stale], llm_context_budget_tokens: 48_000 } }
+      models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale], llm_context_budget_tokens: 48_000) }
 
       explained = described_class.explain(target(apply: :turn_end), names: %w[m], models: models)
 
@@ -129,7 +129,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     end
 
     it "takes the session's own values first: none and a budget of 0 (off) too" do
-      models = { "m" => { llm_context_strategy: [:stale], llm_context_apply: :turn_end, llm_context_budget_tokens: 48_000 } }
+      models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale], llm_context_apply: :turn_end, llm_context_budget_tokens: 48_000) }
 
       explained = described_class.explain(target, names: %w[m], models: models, session: [], session_apply: :next_request,
                                                   session_budget: 0)
@@ -153,7 +153,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
   describe "the budget" do
     it "is off by default, and comes from the session, the model, the host, then llm_context.budget_tokens" do
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      models = { "m" => { llm_context_budget_tokens: 48_000 } }
+      models = { "m" => Samagotchi::ModelSettings.new(llm_context_budget_tokens: 48_000) }
 
       expect(described_class.resolve(target, names: %w[x], models: models).budget_tokens).to be_nil
       expect(described_class.resolve(target(budget: 96_000), names: %w[m], models: models).budget_tokens).to eq(48_000)
@@ -186,7 +186,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
         hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
-        expect(models["deepseek"][:llm_context_budget_tokens]).to eq(48_000)
+        expect(models["deepseek"].llm_context_budget_tokens).to eq(48_000)
         expect(hosts["box"].llm_context_budget_tokens).to be_nil
       end
       expect { Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {}) }.not_to output.to_stderr
@@ -206,7 +206,7 @@ RSpec.describe Samagotchi::LLMContextStrategy do
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
         hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
-        expect(models["deepseek"][:llm_context_budget_tokens]).to eq(48_000)
+        expect(models["deepseek"].llm_context_budget_tokens).to eq(48_000)
         expect(Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).entries["box"].llm_context_budget_tokens).to eq(32_000)
       end
       expect(Samagotchi::Config.validate_yaml_sections(data)).to eq([])
@@ -223,8 +223,8 @@ RSpec.describe Samagotchi::LLMContextStrategy do
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
         hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
-        expect(models["deepseek"][:llm_context_apply]).to eq(:next_request)
-        expect(models["other"]).not_to have_key(:llm_context_apply)
+        expect(models["deepseek"].llm_context_apply).to eq(:next_request)
+        expect(models["other"]).to have_attributes(llm_context_apply: nil)
         expect(Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).entries["box"].llm_context_apply).to eq(:turn_end)
       end
     end
@@ -238,9 +238,9 @@ RSpec.describe Samagotchi::LLMContextStrategy do
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
         hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
 
-        expect(models["qwen3.6-35b"][:llm_context_strategy]).to eq([:stale])
-        expect(models["deepseek"][:llm_context_strategy]).to eq(%i[stale forget])
-        expect(models["other"]).not_to have_key(:llm_context_strategy)
+        expect(models["qwen3.6-35b"].llm_context_strategy).to eq([:stale])
+        expect(models["deepseek"].llm_context_strategy).to eq(%i[stale forget])
+        expect(models["other"]).to have_attributes(llm_context_strategy: nil)
         expect(hosts["box"].llm_context_strategy).to eq([])
         expect(hosts["plain"].llm_context_strategy).to be_nil
         expect(Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).entries["box"].llm_context_strategy).to eq([])

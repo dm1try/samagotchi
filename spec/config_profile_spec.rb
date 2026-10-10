@@ -69,15 +69,15 @@ RSpec.describe "prompt profile config" do
       with_config("models" => { "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M" => { "profile" => "qwen36" },
                                 "Ista" => { "profile" => "Gemma4" } }) do |path|
         expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq(
-          "ornith-ai/ornith-1.5-35b-a3b-gguf:q4_k_m" => { profile: "qwen36" },
-          "ista" => { profile: "gemma4" }
+          "ornith-ai/ornith-1.5-35b-a3b-gguf:q4_k_m" => Samagotchi::ModelSettings.new(profile: "qwen36"),
+          "ista" => Samagotchi::ModelSettings.new(profile: "gemma4")
         )
       end
     end
 
     it "skips entries that are not maps and gives {} without a models: section" do
       with_config("models" => { "a" => "qwen36", "b" => { "profile" => "" }, "c" => { "profile" => "qwen36" } }) do |path|
-        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq("b" => { profile: nil }, "c" => { profile: "qwen36" })
+        expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq("b" => Samagotchi::ModelSettings.new, "c" => Samagotchi::ModelSettings.new(profile: "qwen36"))
       end
       with_config("default" => { "model" => "m" }) do |path|
         expect(Samagotchi::ConfigFile.model_settings(env: {}, path: path)).to eq({})

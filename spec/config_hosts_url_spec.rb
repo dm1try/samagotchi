@@ -162,8 +162,8 @@ RSpec.describe "window_tokens on hosts: and models: entries" do
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
       end.to output(/'bad'.*window_tokens must be a positive number of tokens.*\n.*odd.*window_tokens/m).to_stderr
       expect(hosts.transform_values(&:window_tokens)).to eq("box" => 65_536, "bad" => nil)
-      expect(models["qwen3"][:window_tokens]).to eq(32_768)
-      expect(models["odd"]).not_to have_key(:window_tokens)
+      expect(models["qwen3"].window_tokens).to eq(32_768)
+      expect(models["odd"]).to have_attributes(window_tokens: nil)
       expect(Samagotchi::HostRegistry.new(hosts_config: hosts).entries["box"].window_tokens).to eq(65_536)
 
       json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
