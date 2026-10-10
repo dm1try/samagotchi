@@ -1,0 +1,20 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The spec files to run for a change, best first and capped: the specs it
+# changed, the specs named after the files it changed, the rules for specs
+# that read docs or source as text, then the specs that name a changed
+# file's class. For builders while they work; the coordinator still runs
+# the full suite at merge.
+#
+#   script/affected-specs [RANGE] [--why] [--all] [--cap N] [--run]   # --help says more
+#   bundle exec rspec $(script/affected-specs)
+#
+# RANGE defaults to the merge-base with main plus uncommitted and untracked
+# files. Ruby specs go to stdout; node tests (npm test targets) and hints to
+# stderr. Plain git, no Bundler: it answers in well under a second. See
+# docs/testing.md.
+
+require_relative "affected_specs/cli"
+
+exit AffectedSpecs::CLI.new(ARGV).run
