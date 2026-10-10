@@ -188,9 +188,12 @@ module Samagotchi
     #   nil when it names no sender), whether its turn runs with the raised
     #   iteration limit (--no-interrupt), its image refs ({file:, name:}),
     #   and its delivery ("queue" or nil; a file without the key is one an
-    #   older chi wrote, so nil)
+    #   older chi wrote, so nil); a file that isn't a JSON object reads as
+    #   no prompt
     def self.read_input(claimed_file)
       data = JSON.parse(File.read(claimed_file).to_s)
+      return [nil, nil, false, [], nil] unless data.is_a?(Hash)
+
       origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"] }.compact
       images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
       [data["prompt"].to_s, origin.empty? ? nil : origin, data["no_interrupt"] == true, images,

@@ -58,6 +58,16 @@ RSpec.describe Samagotchi::SessionInbox do
       expect(described_class.read_input(old)).to eq(["hi", { client_id: "web:1" }, false, [], nil])
     end
 
+    it "reads a file that holds JSON but no object (an array, a number, null) as an unreadable one" do
+      FileUtils.mkdir_p(input_dir)
+      ["[1,2]", "5", "null", '"hi"'].each_with_index do |json, i|
+        path = File.join(input_dir, "2026010100000000000000#{i}.json")
+        File.write(path, json)
+
+        expect(described_class.read_input(path)).to eq([nil, nil, false, [], nil])
+      end
+    end
+
     describe ".waits_for_turn_end?" do
       it "answers true for an image message, the one thing a drain leaves today" do
         with_images = described_class.write_input(session_dir, prompt: "look", images: [{ file: "a.png", name: "a" }])
