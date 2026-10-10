@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle build --name <profile>` (an installed profile such as `core`) is refused with a line saying why: it used
   to build a plain bundle of the scope's other memories under the profile's name, without its `includes:` and with
   its trust level, which reinstalled over the profile would lose its members.
+- Web: Tab completion in the composer offers `/cut` (`/cu` + Tab); the terminals' own commands (`/stats`,
+  `/exit` …) stay out of it.
 
 ## [0.52.0] - 2026-10-10
 

@@ -11,10 +11,12 @@ const commands = [
   { name: "/hello-slow", description: "greet later", anytime: true, local: false, source: "sample-plugin" },
   { name: "/hello", description: "greet", anytime: false, local: false, source: "sample-plugin" },
   { name: "/stats", description: "stats", anytime: false, local: true, uis: null, source: "core" },
+  { name: "/cut", description: "cut in", anytime: false, local: true, uis: ["repl", "attached", "web"], source: "core" },
+  { name: "/queue", description: "queue", anytime: false, local: true, uis: ["repl"], source: "core" },
 ];
 
 test("commandMatches offers the session's slash commands starting with what is typed, by name", () => {
-  assert.deepEqual(commandMatches(commands, "/").map((c) => c.name), ["/hello", "/hello-slow", "/help", "/model", "/models"]);
+  assert.deepEqual(commandMatches(commands, "/").map((c) => c.name), ["/cut", "/hello", "/hello-slow", "/help", "/model", "/models"]);
   assert.deepEqual(commandMatches(commands, "/he").map((c) => c.name), ["/hello", "/hello-slow", "/help"]);
   assert.deepEqual(commandMatches(commands, "/HEL").map((c) => c.name), ["/hello", "/hello-slow", "/help"]);
   assert.deepEqual(commandMatches(commands, "/model").map((c) => c.name), ["/model", "/models"]);
@@ -30,6 +32,11 @@ test("commandMatches offers nothing once arguments start, for other text, a term
   assert.deepEqual(commandMatches(commands, "/zz"), []);
   assert.deepEqual(commandMatches(undefined, "/"), []);
   assert.deepEqual(commandMatches([null, { description: "no name" }], "/"), []);
+});
+
+test("commandMatches offers a UI's own command that lists the web among its uis (/cut), not a terminal-only one", () => {
+  assert.deepEqual(commandMatches(commands, "/cu").map((c) => c.name), ["/cut"]);
+  assert.deepEqual(commandMatches(commands, "/qu"), []);
 });
 
 test("pickCommand completes the name with a space; Enter on the full name sends it", () => {
