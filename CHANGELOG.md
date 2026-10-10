@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
   request, or this machine on its LAN address); the phone sees plain text. `web.editor` picks the editor: `vscode`
   (the default), `vscode-insiders`, `cursor`, `zed`, `none`, or a URL template with `{path}` and `{line}`. The
   browser and VS Code each ask once to allow it.
+- For development: `script/affected-specs`, the spec files to run for a change (changed specs, name matches,
+  docs-reading specs, specs naming the changed class), ranked and capped. It isn't part of the gem. See
+  [docs/testing.md](docs/testing.md).
 
 ### Fixed
 
