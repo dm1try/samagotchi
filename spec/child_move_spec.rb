@@ -4,7 +4,7 @@ require "json"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/child_move"
-require "samagotchi/session_manager"
+require "samagotchi/session_continue"
 
 # ChildMove: a continue moving the previous link's open delegates to the
 # new link (spec/session_continue_spec.rb has the continue's side).
@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::ChildMove do
       Samagotchi::ArchiveStore.archive(archived.id, state_dir: tmpdir)
       Samagotchi::SessionInbox.write_output(dir_of(open.id), "done")
 
-      plan = described_class.plan(from.id, open: Samagotchi::SessionManager.open_children(from.id, tmpdir), state_dir: tmpdir)
+      plan = described_class.plan(from.id, open: Samagotchi::SessionContinue.open_children(from.id, tmpdir), state_dir: tmpdir)
 
       expect(plan.move).to eq([])
       expect(plan.refuse.map { |c| [c.id, c.why] })

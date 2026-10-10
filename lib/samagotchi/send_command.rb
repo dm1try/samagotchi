@@ -339,7 +339,7 @@ module Samagotchi
                                                                                   thinking: options[:thinking]),
                                                           state_dir: @state_dir)
                   end
-      rescue SessionManager::ContinueRefused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e
+      rescue SessionContinue::Refused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e
         error_line("chi send: refused: #{e.message}")
         return 1
       rescue StandardError => e

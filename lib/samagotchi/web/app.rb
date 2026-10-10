@@ -698,7 +698,7 @@ module Samagotchi
       # the new link started is not a refusal of it.
       def continue_from(given, prompt:, title:)
         [@manager.continue_session(given, prompt: prompt, title: title, state_dir: @state_dir), nil]
-      rescue SessionManager::ContinueRefused => e
+      rescue SessionContinue::Refused => e
         extra = e.reason == :continued ? { next_id: e.ids.first } : { ids: e.ids }
         [nil, json_response(409, { error: e.reason.to_s, detail: e.message, **extra })]
       rescue SessionManager::ArchiveRefused => e

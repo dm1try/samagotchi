@@ -3,12 +3,13 @@
 require "json"
 require "tmpdir"
 require "spec_helper"
-require "samagotchi/session_manager"
+require "samagotchi/session_continue"
 require "samagotchi/session_chain"
 require "samagotchi/tools/delegate_cursor"
 
-# SessionManager.continue_session: the next link of a session chain.
-RSpec.describe Samagotchi::SessionManager, ".continue_session" do
+# SessionContinue.run (SessionManager.continue_session): the next link of a session chain.
+RSpec.describe Samagotchi::SessionContinue, ".run" do
+  let(:manager) { Samagotchi::SessionManager }
   let(:tmpdir) { Dir.mktmpdir("continue-spec") }
   let(:folder) { Dir.mktmpdir("continue-folder") }
   let(:locks) { [] }
@@ -50,7 +51,7 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
   end
 
   def continue(ref, **)
-    described_class.continue_session(ref, state_dir: tmpdir, recap_wait: 0, **)
+    described_class.run(ref, state_dir: tmpdir, recap_wait: 0, **)
   end
 
   it "starts the next link in the previous one's folder, model (as typed), llm_context and thinking level, and archives the previous one" do
@@ -98,8 +99,8 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
     previous = make
     save_recap(previous.id, "The old recap.")
     client = instance_double(Samagotchi::BridgeClient)
-    allow(described_class).to receive(:worker_live?).and_call_original
-    allow(described_class).to receive(:worker_live?).with(previous.id, state_dir: tmpdir).and_return(true)
+    allow(manager).to receive(:worker_live?).and_call_original
+    allow(manager).to receive(:worker_live?).with(previous.id, state_dir: tmpdir).and_return(true)
     allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
     allow(client).to receive(:request_recap) do
       Thread.new do
@@ -160,7 +161,7 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       link = continue(previous.id)
 
       expect(link.moved_children).to match_array(moved)
-      expect(described_class.children_of(link.id, state_dir: tmpdir).map { |r| r[:id] }).to match_array(moved)
+      expect(manager.children_of(link.id, state_dir: tmpdir).map { |r| r[:id] }).to match_array(moved)
       moved.each do |id|
         expect(Samagotchi::Session.parent_override(id, state_dir: tmpdir)).to eq(link.id)
         expect(archived?(id)).to be(false)
@@ -197,8 +198,8 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
 
       expect(JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))["parent_id"]).to eq(previous.id)
       expect(Samagotchi::Session.list(state_dir: tmpdir).find { |s| s.id == child.id }.parent_id).to eq(link.id)
-      expect(described_class.children_of(link.id, state_dir: tmpdir).map { |r| r[:id] }).to eq([child.id])
-      expect(described_class.children_of(previous.id, state_dir: tmpdir)).to be_empty
+      expect(manager.children_of(link.id, state_dir: tmpdir).map { |r| r[:id] }).to eq([child.id])
+      expect(manager.children_of(previous.id, state_dir: tmpdir)).to be_empty
     end
 
     it "moves a delegate started during the recap wait too" do
@@ -228,11 +229,11 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
           Samagotchi::ChildRing.await_wakes
         end
       end
-      allow(described_class).to receive(:wake_for_report).and_call_original
+      allow(manager).to receive(:wake_for_report).and_call_original
 
       link = continue(previous.id)
 
-      expect(described_class).to have_received(:wake_for_report).with(link.id, state_dir: tmpdir)
+      expect(manager).to have_received(:wake_for_report).with(link.id, state_dir: tmpdir)
       expect(Process).to have_received(:spawn).once
       expect(ring_ids(link.id)).to eq([child.id])
       reports = Samagotchi::ChildReports.new(session_id: link.id, state_dir: tmpdir, predecessor: previous.id).take
@@ -280,19 +281,19 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
           Samagotchi::SessionInbox.write_ring(dir_of(kwargs[:from]), child_id: child.id, why: "turn_end") if kwargs[:undo]
         end
       end
-      allow(described_class).to receive(:wake_for_report)
+      allow(manager).to receive(:wake_for_report)
 
       expect { continue(previous.id) }.to raise_error(Errno::EAGAIN)
 
       expect(ring_ids(previous.id)).to eq([child.id])
-      expect(described_class).to have_received(:wake_for_report).with(previous.id, state_dir: tmpdir)
+      expect(manager).to have_received(:wake_for_report).with(previous.id, state_dir: tmpdir)
     end
 
     describe "a failure once the new link's worker exists" do
       let(:link_locks) { [] }
 
       before do
-        allow(described_class).to receive(:spawn_worker_for_session) do |session, **|
+        allow(manager).to receive(:spawn_worker_for_session) do |session, **|
           link_locks << Samagotchi::OwnerLock.acquire(dir_of(session.id), kind: "worker")
           raise IOError, "spawned, then failed"
         end
@@ -304,14 +305,14 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
         previous = make
         child = make(prompt: "a", parent_id: previous.id, delegate: true)
         Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
-        allow(described_class).to receive(:stop_session) do
+        allow(manager).to receive(:stop_session) do
           link_locks.each(&:release)
           true
         end
 
         expect { continue(previous.id) }.to raise_error(IOError)
 
-        expect(described_class).to have_received(:stop_session).once
+        expect(manager).to have_received(:stop_session).once
         expect(Samagotchi::Session.list(state_dir: tmpdir, include_archived: true).map(&:id))
           .to contain_exactly(previous.id, child.id)
         expect(load(child.id).parent_id).to eq(previous.id)
@@ -322,9 +323,9 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
         previous = make
         child = make(prompt: "a", parent_id: previous.id, delegate: true)
         Samagotchi::SessionInbox.write_output(dir_of(child.id), "done")
-        allow(described_class).to receive(:stop_session).and_return(false)
+        allow(manager).to receive(:stop_session).and_return(false)
 
-        expect { continue(previous.id) }.to raise_error(described_class::DeleteRefused, /still shutting down/)
+        expect { continue(previous.id) }.to raise_error(manager::DeleteRefused, /still shutting down/)
 
         expect(load(child.id).parent_id).to eq(previous.id)
         expect([archived?(previous.id), archived?(child.id)]).to eq([false, false])
@@ -343,7 +344,7 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       previous = make
       link = continue(previous.id)
 
-      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ContinueRefused) { |e|
+      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionContinue::Refused) { |e|
         expect(e).to have_attributes(reason: :continued, ids: [link.id])
         expect(e.message).to eq("#{previous.id[0, 8]} is continued already, by #{link.id[0, 8]}; " \
                                 "continue that one (or last:#{previous.id[0, 8]})")
@@ -364,7 +365,7 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       allow(Samagotchi::WorkerSidecar).to receive(:live).and_call_original
       allow(Samagotchi::WorkerSidecar).to receive(:live).with(dir_of(old.id), unlink: false).and_return(sidecar)
 
-      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ContinueRefused) { |e|
+      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionContinue::Refused) { |e|
         expect(e).to have_attributes(reason: :open_children, ids: [old.id])
         expect(e.message).to include("#{old.id[0, 8]} (older chi worker 0.46.1; restart it)")
       }
@@ -398,7 +399,7 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       previous = make
       FileUtils.rm_rf(folder)
 
-      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionManager::ContinueRefused, /folder .* is gone/)
+      expect { continue(previous.id) }.to raise_error(Samagotchi::SessionContinue::Refused, /folder .* is gone/)
       expect_nothing_started(previous)
     end
 
@@ -407,10 +408,10 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
       previous = make
       previous.model_name = "gone:org/model"
       previous.save(state_dir: tmpdir)
-      allow(described_class).to receive(:archive_session).and_call_original
+      allow(manager).to receive(:archive_session).and_call_original
 
       expect { continue(previous.id) }.to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'gone'/)
-      expect(described_class).not_to have_received(:archive_session)
+      expect(manager).not_to have_received(:archive_session)
       expect_nothing_started(previous)
     end
 
@@ -433,7 +434,7 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
 
     it "puts what it archived back when the new link fails to start" do
       previous = make
-      allow(described_class).to receive(:spawn_session).and_raise(Samagotchi::ModelProfile::MissingModel, "no model")
+      allow(manager).to receive(:spawn_session).and_raise(Samagotchi::ModelProfile::MissingModel, "no model")
 
       expect { continue(previous.id) }.to raise_error(Samagotchi::ModelProfile::MissingModel)
       expect(archived?(previous.id)).to be(false)
@@ -483,13 +484,13 @@ RSpec.describe Samagotchi::SessionManager, ".continue_session" do
   # is kept, not discarded as empty, with the note queued or absorbed.
   it "keeps an idle continuation that holds only the carry note" do
     link = continue(make.id)
-    expect(described_class.discardable?(link.id, default_model: "main:gemma-small", state_dir: tmpdir)).to be(false)
+    expect(manager.discardable?(link.id, default_model: "main:gemma-small", state_dir: tmpdir)).to be(false)
 
     note = note_of(link.id)
     saved = load(link.id)
     saved.messages = [{ role: "system", content: "prompt" }, Samagotchi::ContextNote.message(**note)]
     saved.save(state_dir: tmpdir)
     FileUtils.rm_rf(File.join(dir_of(link.id), Samagotchi::SessionInbox::NOTES_DIR))
-    expect(described_class.discardable?(link.id, default_model: "main:gemma-small", state_dir: tmpdir)).to be(false)
+    expect(manager.discardable?(link.id, default_model: "main:gemma-small", state_dir: tmpdir)).to be(false)
   end
 end

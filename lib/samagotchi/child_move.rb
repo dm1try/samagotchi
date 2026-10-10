@@ -14,6 +14,8 @@ module Samagotchi
   # Loaded on first use: session_manager requires terminal_ui, which
   # requires KernelLoop and so the tools (a require cycle otherwise).
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
+  # SessionContinue::OpenChild, the rows a plan refuses: loaded on first use too.
+  autoload :SessionContinue, File.expand_path("session_continue", __dir__)
 
   # A continue moving the previous link's open delegates to the chain's new
   # link (SessionManager.continue_session), instead of archiving them with
@@ -45,7 +47,7 @@ module Samagotchi
     # What a continue does with the previous link's children: +move+ the
     # direct children whose subtree has an open node (they go to the new
     # link, their subtrees with them), +refuse+ the open ones it can't move
-    # (SessionManager::OpenChild, why: an older chi worker or a chi REPL).
+    # (SessionContinue::OpenChild, why: an older chi worker or a chi REPL).
     Plan = Data.define(:move, :refuse)
     # A move under way: from the session, the children moved, and those
     # already sent their note (so a move finished again notes no one twice).
@@ -55,8 +57,8 @@ module Samagotchi
 
     module_function
 
-    # @param open [Array<SessionManager::OpenChild>] the previous link's open
-    #   nodes, at any depth (SessionManager.open_children)
+    # @param open [Array<SessionContinue::OpenChild>] the previous link's open
+    #   nodes, at any depth (SessionContinue.open_children)
     # @return [Plan]
     def plan(prev_id, open:, state_dir:)
       open_ids = open.map(&:id)
@@ -77,7 +79,7 @@ module Samagotchi
 
         why = unmovable(row[:id], state_dir: state_dir)
         if why
-          refuse << SessionManager::OpenChild.new(id: row[:id], short_id: row[:id][0, 8], why: why)
+          refuse << SessionContinue::OpenChild.new(id: row[:id], short_id: row[:id][0, 8], why: why)
         else
           move << row[:id]
         end
