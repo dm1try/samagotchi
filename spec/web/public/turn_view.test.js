@@ -384,3 +384,22 @@ test("turnHistoryHtml: a failed turn whose steps stayed ends with the live failu
   const bare = normalizeTiming({ turn_records: [{ id: "T1", status: "failed", duration_ms: 12000 }] });
   assert.doesNotMatch(turnHistoryHtml(items, bare, { thumbs }), /bubble cancel/);
 });
+
+test("turnHistoryHtml without parts: a call's row keeps its called_as from the tool record", () => {
+  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Let me check." }, { role: "assistant", content: "done" }];
+  const aliased = normalizeTiming({
+    turn_records: [{ id: "T1", status: "completed", duration_ms: 500 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", called_as: "bash", status: "ok", duration_ms: 7 }],
+  });
+  const html = turnHistoryHtml(items, aliased, { thumbs });
+  assert.match(html, /<span class="activity-tool">execute<\/span><span class="activity-alias">\(called as bash\)<\/span>/);
+});
+
+test("turnHistoryHtml with parts: a record no saved message took keeps its called_as too", () => {
+  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "done", parts: {} }];
+  const aliased = normalizeTiming({
+    turn_records: [{ id: "T1", status: "completed", duration_ms: 500 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", called_as: "Bash", status: "ok", duration_ms: 7 }],
+  });
+  assert.match(turnHistoryHtml(items, aliased, { thumbs }), /\(called as Bash\)/);
+});

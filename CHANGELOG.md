@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
   available in the web yet, instead of that error.
 - Web: command bubbles (`/help`, `/model`, `/llm-context` …) stay in place when a `!cmd` or `!rollback` redraws the
   conversation; a reload still drops them (only a `!cmd`'s output is saved).
+- Web: a reloaded turn whose messages carry no parts keeps "(called as bash)" on its rows (from the tool records).
 
 ## [0.51.0] - 2026-10-10
 
