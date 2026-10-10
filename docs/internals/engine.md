@@ -16,14 +16,14 @@ Engine#run_turn → backend.complete(...) → KernelLoop#run (native) or ChatLoo
 
 ```
 Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:, max_tool_output_chars:,
-                pending_input:, continue:, origin:, images:)
+                pending_input:, continue:, origin:, images:, id:)
   │
-  ├── begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:)
+  ├── begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id:)
   │     # @session = session, session.status = RUNNING, used memories absorbed,
   │     # TurnState#begin!(controller:, sink:) (a new CancellationController when none is given),
   │     # a recap in flight invalidated, GuardrailWiring#begin_turn(origin)
   │     # Returns a Turn {session, prompt (nil on a continue), continue, on_event, controller,
-  │     #                 origin, started_at, id}
+  │     #                 origin, started_at, id (the caller's id:, else a new uuid)}
   │
   ├── Client.swap_probe_cancel(turn.controller)   # a Stop cuts this turn's /props probes
   │
@@ -39,7 +39,9 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     # Returns false when a Stop came during the probes or the init wait, else true
   │
   ├── generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
-  │     # sync_kernel_client!, then @kernel.turn_settings = turn.settings with model_name and window_setting
+  │     # sync_kernel_client!, then @kernel.turn_settings = turn.settings with model_name, window_setting,
+  │     #   llm_context (turn_llm_context: the session's, the model's/host's, else llm_context.strategy)
+  │     #   and price (turn_price: hosts.<name>.models.<id>.price), all read per turn
   │     # turn.limit = max_iterations or IterationLimit.for
   │     # backend.complete(messages: turn.messages, ..., pending_input: turn_drain(pending_input))
   │     # Returns LLM::ModelResult (text, conversation, canceled?, exhausted?, tool_activity,
@@ -181,6 +183,7 @@ Both loops run a batch of calls the same way:
 One iteration with tool calls:
   KernelLoop#dispatch_calls / ChatLoop::Run#dispatch
     → ToolResponse.run_batch(runner, calls, iteration:, emit:, on_stream_event:, cap:)
+       # chat passes a block, called with each run as it finishes
       → :tool_dispatch_started {iteration, call_count}
       → for each call: ToolRunner#run(call, iteration:, call_index:, call_count:,
                                       on_stream_event:, max_tool_output_chars:)
@@ -192,8 +195,11 @@ One iteration with tool calls:
           → returns {output:, capped_output:, truncated:, activity:, images:, shown_params:,
                      shown_label:, diff:}
       → :tool_dispatch_completed {iteration, call_count}
-    → native: ToolResponse.joined(runs), one entry with the capped outputs
-      chat:   ToolResponse.single(run, tool_call_id:) per call, with the capped output
+    → native: ToolResponse.joined(runs, ids:), one entry with the capped outputs
+      chat:   ToolResponse.single(run, tool_call_id:, ids:) as each call finishes (the block), with the
+              capped output
+      ids: ToolIds.next_ids, chi's own ids for the outputs ("t41"), saved on the entry as tool_ids
+      (one per call of the batch for native, one for chat); LLM context edits name outputs by them
 ```
 
 **ToolRunner** (`ToolRunner#run`):
@@ -299,8 +305,8 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 |---|---|---|
 | `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, images?}` |
 | `:reminder_injected` | due reminders went into the turn | `{reminders}` |
-| `:context_status` | every request, the current estimate before it | `{iteration, ...}` |
-| `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source}` (native adds `profile`, `profile_source`) |
+| `:context_status` | every request (unless `context.status` is off), the current estimate before it | `{iteration, status, usage, bucket, source}` (internals/context-telemetry.md) |
+| `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source, price}` (`price`: the turn's `ModelPrice#to_h`, nil without one; native adds `profile`, `profile_source`) |
 | `:generation_chunk` | each streamed chunk | `{iteration, content, text, thinking, payload, tool_call?}` |
 | `:generation_retrying` | the transport retries the request, or the chat loop asks again for a step whose stream dropped mid-answer (`restarted: true`: what the step streamed is void, and the web's live step, the TUI's activity line, the Bridge's TurnAccumulator and the stream hooks' watch start it over) | `{iteration, attempt, max_retries, next_delay, error_class, error_message, status, restarted?}` |
 | `:generation_completed` | a generation ended, or was cut | `{iteration, content_length, thinking_chars, served_model, requested_model, finish_reason, ...}`; a cut adds `stopped_by`, `stop_reason`; the Engine adds `speed`, `tokens` |
@@ -368,7 +374,7 @@ puts the hook runtime on the event: `event[:hook]` (the hook's label) and five h
 
 | Helper | What it does | Used by |
 |---|---|---|
-| `event[:notify].call(text, level:)` | One line to the user (`:hook_notice`) | mcp (a server didn't start), loop-guard |
+| `event[:notify].call(text, level:, fallback_for:)` | One line to the user (`:hook_notice`); `fallback_for: :display` marks a line that stands in for the answer's display, which a UI that renders the display's links leaves out | mcp (a server didn't start), loop-guard |
 | `event[:ask_user].call(question:, options:, header:, allow_freeform:)` | A single-select question through the question flow; nil when there is no one to ask | known-names (a near-miss name: correct it?) |
 | `event[:stop_turn].call(reason)` | Cancel the running turn (reason `:hook`), with a warn notice | loop-guard (repeated calls), check-in (`/checkin stop`) |
 | `event[:stop_generation].call(reason)` | Cut the streaming generation; the turn goes on | loop-guard (thinking repeats itself) |
@@ -394,9 +400,18 @@ From `:after_turn` and `:session_end` there is no turn left: `stop_turn` and `st
 `ToolRunner` asks the kernel's `Guardrails::Gate` (set by the Engine from `GuardrailWiring`) before each call;
 the gate is not itself a hook. `Gate#evaluate` fires the `:before_tool_call` hooks (the voters, e.g. the
 known-names bundle or a config hook), which vote through `event[:guardrail]` (`deny!`, `ask!`) or the legacy
-`event[:blocked]` flag. A deny stays a deny for the hooks after it. Then the core checks run on the final call:
-protected paths, then the rules (config and bundles, e.g. the guardrails bundle's `rules.yml`; a rule can match
-the tool, its targets and the model). A gate that raises denies the call.
+`event[:blocked]` flag. A deny stays a deny for the hooks after it. Then the core checks run on the final call,
+in `GuardrailWiring#checks` order:
+
+1. load failures (`Guardrails::LoadFailures`): a required hook or rule file that failed to load denies every call;
+2. `rules.hook_asks`: with guardrails disabled, a hook's ask is dropped (a deny still applies);
+3. protected paths;
+4. `ScratchWrites` (a `chi scratch` session only): write and edit under the memories folder are denied;
+5. `ChildBoundary` (a delegate child only): a change outside its folder asks;
+6. the rules (config and bundles, e.g. the guardrails bundle's `rules.yml`; a rule can match the tool, its
+   targets and the model).
+
+A gate that raises denies the call.
 
 The verdict is one of:
 
@@ -457,10 +472,11 @@ thought after the cue, kept in the model message so the next prompt starts with 
    `FailedTurn.attach`; after a Ctrl-C, only `turn.messages`.
 4. **Events are the contract.** UIs read events, not internal state. `on_event` is per turn; observers are
    persistent.
-5. **A stable system prompt for the cache.** `SystemPrompt#build` caches the prompt per Engine (per chat/native
-   and thinking level) and is reset only on a model switch, a tools change or a profile change. The stable part
-   (base prompt, identity, memories, AGENT.md, memory indexes) comes before the volatile tail (model, working
-   directory, session). prompt-caching.md covers this in detail.
+5. **A stable system prompt for the cache.** `SystemPrompt#build` caches the prompt per Engine, keyed by
+   `[chat, thinking, layers]` (chat/native, the thinking level, the turn's LLM context layers), and is reset
+   only on a model switch, a tools change or a profile change. The stable part (base prompt, identity,
+   memories, AGENT.md, memory indexes) comes before the volatile tail (model, working directory, session).
+   prompt-caching.md covers this in detail.
 
 ## Key files
 
