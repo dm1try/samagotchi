@@ -13,17 +13,10 @@ require "samagotchi/tool_call_parser"
 RSpec.describe "The known-names bundle" do
   let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/known-names", __dir__) }
   let(:manifest) { YAML.safe_load_file(File.join(bundle_dir, "manifest.yml")) }
-  # A repo named samagotchi whose git user is "J0hnni Doe" <j0hnny@example.com>.
-  let(:repo) do
-    base = File.realpath(Dir.mktmpdir("known-names"))
-    dir = File.join(base, "samagotchi")
-    Dir.mkdir(dir)
-    system("git", "-C", dir, "init", "-q")
-    system("git", "-C", dir, "config", "user.name", "J0hnni Doe")
-    system("git", "-C", dir, "config", "user.email", "j0hnny@example.com")
-    dir
-  end
-  let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo) }
+  # A repo named samagotchi whose git user is "J0hnni Doe" <j0hnny@example.com>
+  # (before(:context) below).
+  let(:repo) { @shared_repo }
+  let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo, git: @shared_git) }
   let(:settings) { { "names" => ["jonathandoe"] } }
   let(:notices) { [] }
   let(:asked) { [] }
@@ -43,13 +36,25 @@ RSpec.describe "The known-names bundle" do
   end
   let(:gate) { Samagotchi::Guardrails::Gate.new(-> { registry }, context_lookup: -> { context }) }
 
+  # The repo and its GitInfo, made once: the examples only read the repo, so a repo
+  # and rev-parse probes each gave the same answers.
+  before(:context) do
+    base = File.realpath(Dir.mktmpdir("known-names"))
+    @shared_repo = File.join(base, "samagotchi")
+    Dir.mkdir(@shared_repo)
+    system("git", "-C", @shared_repo, "init", "-q")
+    system("git", "-C", @shared_repo, "config", "user.name", "J0hnni Doe")
+    system("git", "-C", @shared_repo, "config", "user.email", "j0hnny@example.com")
+    @shared_git = Samagotchi::Guardrails::GitInfo.new
+  end
+
+  after(:context) { FileUtils.rm_rf(File.dirname(@shared_repo)) }
+
   before do
     allow(Dir).to receive(:home).and_return("/home/johndoe")
     allow(ENV).to receive(:[]).and_call_original
     allow(ENV).to receive(:[]).with("USER").and_return("johndoe")
   end
-
-  after { FileUtils.rm_rf(File.dirname(repo)) }
 
   def verdict_for(call) = gate.evaluate(call, iteration: 1, params: "#{call[:name]} #{call[:content] || call[:path]}")
   def shell(command) = verdict_for({ name: "execute", content: command })
