@@ -106,28 +106,7 @@ module Samagotchi
           prune_dropped_files(existing_provenance.files, all_files_in_bundle, target_dir, target_scope, provenance)
         end
 
-        # Verify checksums if we have a manifest (strict).
-        if manifest && @strict
-          all_files_in_bundle.each do |file_key|
-            next if @conflicts.key?(file_key)
-
-            status = @results[file_key] ? @results[file_key][:status].to_s : nil
-            # skipped: not copied, so a local edit isn't a bad download.
-            next if %w[kept kept_pruned fast_forward updated skipped].include?(status)
-
-            # For dry-run, fast_forward would appear as "fast_forward", updated not yet
-            target_path = File.join(target_dir, file_key)
-            next unless File.exist?(target_path)
-
-            expected = manifest.checksum_for(file_key)
-            next unless expected
-
-            actual = Digest::SHA256.hexdigest(File.read(target_path))
-            if actual != expected
-              @warnings << "Checksum mismatch for #{file_key}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-            end
-          end
-        end
+        verify_memory_checksums if manifest && @strict
 
         warn_missing_needs(manifest) if manifest
 
@@ -216,16 +195,7 @@ module Samagotchi
           )
         end
 
-        # Detect placeholders.
-        all_files_in_bundle.each do |file_key|
-          file_path = File.join(target_dir, file_key)
-          next unless File.exist?(file_path)
-
-          names = Placeholder.detect_in_file(file_path)
-          if names.any?
-            @placeholder_warnings << "#{file_key}: {{#{names.join("}}, {{")}}}"
-          end
-        end
+        detect_placeholders
 
         [normalized_dir, manifest]
       ensure
@@ -478,6 +448,40 @@ module Samagotchi
           if actual != expected
             @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
           end
+        end
+      end
+
+      # Strict mode: a memory written from the bundle whose sha256 differs
+      # from its manifest's warns. One that wasn't copied (kept, skipped:
+      # a local edit isn't a bad download) or was merged isn't checked.
+      def verify_memory_checksums
+        @bundle_md.each do |file_key|
+          next if @conflicts.key?(file_key)
+
+          status = @results[file_key] ? @results[file_key][:status].to_s : nil
+          next if %w[kept kept_pruned fast_forward updated skipped].include?(status)
+
+          target_path = File.join(@target_dir, file_key)
+          next unless File.exist?(target_path)
+
+          expected = @manifest.checksum_for(file_key)
+          next unless expected
+
+          actual = Digest::SHA256.hexdigest(File.read(target_path))
+          if actual != expected
+            @warnings << "Checksum mismatch for #{file_key}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
+          end
+        end
+      end
+
+      # One line per memory with {{placeholders}} left to fill in.
+      def detect_placeholders
+        @bundle_md.each do |file_key|
+          file_path = File.join(@target_dir, file_key)
+          next unless File.exist?(file_path)
+
+          names = Placeholder.detect_in_file(file_path)
+          @placeholder_warnings << "#{file_key}: {{#{names.join("}}, {{")}}}" if names.any?
         end
       end
 
