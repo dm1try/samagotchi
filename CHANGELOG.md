@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-10-10
+
 ### Changed
 
 - Web: the `think` chip's level popover is a lit-html template (it was built as an HTML string); it looks and works
@@ -2410,7 +2412,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.52.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.53.0...HEAD
+[0.53.0]: https://github.com/dm1try/samagotchi/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/dm1try/samagotchi/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/dm1try/samagotchi/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/dm1try/samagotchi/compare/v0.49.0...v0.50.0
