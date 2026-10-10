@@ -211,6 +211,77 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(saved).to eq(["alpha:gemma-small"])
     end
 
+    describe "on a successful switch" do
+      it "carries the model's thinking level after the model note" do
+        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+          .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
+
+        expect(commands.run("/model alpha:gemma-small").output)
+          .to eq("runtime model set to alpha:gemma-small (profile=gemma4, name); thinking: off (models: gemma-small)")
+      end
+
+      it "prefers the session's own level over the model's" do
+        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+          .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
+        session.thinking = :low
+
+        expect(commands.run("/model alpha:gemma-small").output)
+          .to eq("runtime model set to alpha:gemma-small (profile=gemma4, name); thinking: low (session)")
+      end
+
+      it "keeps no thinking note when the new model has none" do
+        expect(commands.run("/model alpha:gemma-small").output).to eq("runtime model set to alpha:gemma-small (profile=gemma4, name)")
+      end
+
+      it "puts the level before the notes part" do
+        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+          .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
+        gemma = Samagotchi::ModelNotes::Note.new(name: "model_notes_gemma", scope: "project", body: "B", chars: 1, digest: "d")
+        allow(Samagotchi::ModelNotes).to receive(:for).and_return([gemma])
+
+        expect(commands.run("/model alpha:gemma-small").output)
+          .to eq("runtime model set to alpha:gemma-small (profile=gemma4, name); " \
+                 "thinking: off (models: gemma-small); notes: model_notes_gemma (project, 1 chars)")
+      end
+
+      it "carries the level on a reset to the default" do
+        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+          .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
+
+        expect(commands.run("/model clear").output)
+          .to eq("runtime model reset to alpha:gemma-small (profile=gemma4, name); thinking: off (models: gemma-small)")
+      end
+
+      it "carries the level after the default clause" do
+        allow(Samagotchi::ConfigFile).to receive(:write_default_model!)
+        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+          .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
+
+        expect(commands.run("/model alpha:gemma-small --default").output)
+          .to eq("runtime model set to alpha:gemma-small (profile=gemma4, name) and default updated; " \
+                 "thinking: off (models: gemma-small)")
+      end
+
+      it "carries the level before the alias clause" do
+        allow(Samagotchi::ConfigFile).to receive(:write_model_alias!)
+        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+          .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
+
+        expect(commands.run("/model alpha:gemma-small --alias gemma").output)
+          .to eq("runtime model set to alpha:gemma-small (profile=gemma4, name); " \
+                 "thinking: off (models: gemma-small); alias 'gemma' -> 'alpha:gemma-small' persisted")
+      end
+
+      it "leaves a failed-persist alias reply without the level" do
+        allow(Samagotchi::ConfigFile).to receive(:write_model_alias!).and_raise(StandardError, "disk full")
+        allow(Samagotchi::ConfigFile).to receive(:model_settings)
+          .and_return("gemma-small" => Samagotchi::ModelSettings.new(thinking: :off))
+
+        expect(commands.run("/model alpha:gemma-small --alias gemma").output)
+          .to eq("runtime model set to alpha:gemma-small (profile=gemma4, name) but failed to persist alias: disk full")
+      end
+    end
+
     # A chat host's loop doesn't use a prompt profile: naming one misleads.
     it "names no profile for a chat host's model" do
       # --default below would write the suite's shared config.yml.

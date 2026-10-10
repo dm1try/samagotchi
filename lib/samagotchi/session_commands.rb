@@ -488,7 +488,7 @@ module Samagotchi
 
         key = alias_name.strip.downcase
         warn_prefix = previous ? "warning: overwriting alias '#{key}' (#{previous} -> #{model_name}); " : ""
-        base = persist_default ? "runtime model set to #{model_name}#{model_note} and default updated" : "runtime model set to #{model_name}#{model_note}"
+        base = persist_default ? "runtime model set to #{model_name}#{model_note} and default updated#{thinking_note}" : "runtime model set to #{model_name}#{model_note}#{thinking_note}"
         ["#{warn_prefix}#{base}; alias '#{key}' -> '#{model_name}' persisted", true]
       else
         return ["--default requires a model name: usage /model --default <name> or /model <name> [--default]", false] if arg.empty?
@@ -497,14 +497,14 @@ module Samagotchi
           return ["--default cannot be combined with clear/default/none/off", false] if persist_default
 
           switch_model(@default_model)
-          return ["runtime model reset to #{model_name}#{model_note}#{notes_note}", true]
+          return ["runtime model reset to #{model_name}#{model_note}#{thinking_note}#{notes_note}", true]
         end
 
         switch_model(arg, persist_default: persist_default)
         if persist_default
-          ["runtime model set to #{model_name}#{model_note} and default updated#{notes_note}", true]
+          ["runtime model set to #{model_name}#{model_note} and default updated#{thinking_note}#{notes_note}", true]
         else
-          ["runtime model set to #{model_name}#{model_note}#{notes_note}", true]
+          ["runtime model set to #{model_name}#{model_note}#{thinking_note}#{notes_note}", true]
         end
       end
     end

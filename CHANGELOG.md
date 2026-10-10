@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `/model X` (and `/model X --default`, `/model clear`, and a successful `/model X --alias NAME`) now carry the
+  model's thinking level in the same place the plain `/model` reply does; a switch that fails to persist its alias
+  is unchanged.
+
 ## [0.52.0] - 2026-10-10
 
 ### Added
