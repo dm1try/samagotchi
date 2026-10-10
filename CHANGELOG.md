@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-10-10
+
 ### Added
 
 - Web: refs. A file tool's row (read, edit, write) and the lines of its diff open the file in your editor: they look
@@ -2459,7 +2461,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.54.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.55.0...HEAD
+[0.55.0]: https://github.com/dm1try/samagotchi/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/dm1try/samagotchi/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/dm1try/samagotchi/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/dm1try/samagotchi/compare/v0.51.0...v0.52.0
