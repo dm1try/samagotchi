@@ -47,6 +47,19 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     end
   end
 
+  it "starts the session with its own --thinking level, none for default, and refuses one that isn't a level" do
+    expect(run("--new", "--thinking", "Low", "-m", "hi")).to eq(0), err.string
+    expect(spawned.last[:setup]).to eq(Samagotchi::SessionSetup.new(thinking: :low))
+    expect(run("--new", "--thinking=default", "-m", "hi")).to eq(0), err.string
+    expect(spawned.last[:setup]).to eq(Samagotchi::SessionSetup.new)
+
+    expect(run("--new", "--thinking", "turbo", "-m", "hi")).to eq(2)
+    expect(err.string).to include("--thinking takes off, low, medium, high, default, not turbo")
+    expect(run("--thinking", "low", "-m", "hi", "abcd")).to eq(2)
+    expect(err.string).to include("--thinking needs --new")
+    expect(spawned.size).to eq(2)
+  end
+
   it "starts the session with its own --llm-context values, and refuses one that isn't a value" do
     expect(run("--new", "--llm-context", "stale", "--llm-context-budget=off", "-m", "hi")).to eq(0), err.string
     expect(spawned.last[:setup].llm_context).to eq(Samagotchi::LLMContextOverride.new(strategy: [:stale], budget_tokens: 0))
@@ -150,8 +163,10 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(run("--continues", previous.id, "-m", "x", "3fa2")).to eq(2)
       expect(err.string).to include("--continues needs --new")
       expect(run("--new", "--continues", previous.id, "--model", "M", "--llm-context", "stale", "-m", "x")).to eq(2)
-      expect(err.string).to include("--continues takes the previous session's folder, model and LLM context; " \
+      expect(err.string).to include("--continues takes the previous session's folder, model, LLM context and thinking level; " \
                                     "leave out --model, --llm-context")
+      expect(run("--new", "--continues", previous.id, "--thinking", "low", "-m", "x")).to eq(2)
+      expect(err.string).to include("leave out --thinking")
       expect(run("--new", "--continues", previous.id, "--wait")).to eq(2)
       expect(err.string).to include("--wait needs a message to wait for")
       expect(links).to be_empty

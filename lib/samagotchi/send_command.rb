@@ -39,7 +39,7 @@ module Samagotchi
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... [--cut] (ID|PREFIX)...
-             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [-m TEXT] [--image PATH]...
+             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --wait [--timeout S] [--format json] ID
@@ -62,7 +62,8 @@ module Samagotchi
                     the current one
         --continues ID
                     (--new) start the next link of that session's chain:
-                    in its folder, on its model and LLM context, with a
+                    in its folder, on its model, LLM context and
+                    thinking level, with a
                     note carrying its recap; it is archived. last:ID
                     names the chain's latest link. Without -m the new
                     session waits idle. Refused for a session continued
@@ -72,6 +73,10 @@ module Samagotchi
         --llm-context LAYERS, --llm-context-apply RULE, --llm-context-budget N
                     (--new) its own LLM context strategy (none, stale,forget),
                     apply rule and budget (64k, off), as chi takes them
+        --thinking LEVEL
+                    (--new) its own thinking level (off, low, medium,
+                    high; default: none of its own), above a process
+                    default such as SAMAGOTCHI_THINKING_LEVEL
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
                     answer from you: the question, its options and the
@@ -113,6 +118,7 @@ module Samagotchi
       f.value "--llm-context", key: :llm_strategy
       f.value "--llm-context-apply", key: :llm_apply
       f.value "--llm-context-budget", key: :llm_budget
+      f.value "--thinking"
       f.value "--image", key: :images, repeat: true
       f.switch "--wait"
       f.switch "--cut"
@@ -245,7 +251,7 @@ module Samagotchi
       return usage_error("at most #{MAX_IMAGES} images") if options[:images].size > MAX_IMAGES
       return new_options(options) if options[:new]
 
-      %i[dir model continues].each { |key| return usage_error("--#{key} needs --new") if options[key] }
+      %i[dir model continues thinking].each { |key| return usage_error("--#{key} needs --new") if options[key] }
       LLM_CONTEXT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") if options[key] }
       return usage_error("give session ids") if options[:ids].empty?
 
@@ -262,9 +268,9 @@ module Samagotchi
 
       if options[:continues]
         taken = [("--dir" if options[:dir]), ("--model" if options[:model])] +
-                LLM_CONTEXT_FLAGS.filter_map { |key, flag| flag if options[key] }
+                LLM_CONTEXT_FLAGS.filter_map { |key, flag| flag if options[key] } + [("--thinking" if options[:thinking])]
         unless taken.compact.empty?
-          return usage_error("--continues takes the previous session's folder, model and LLM context; " \
+          return usage_error("--continues takes the previous session's folder, model, LLM context and thinking level; " \
                              "leave out #{taken.compact.join(", ")}")
         end
       end
@@ -274,6 +280,15 @@ module Samagotchi
         options[:llm_context] = LLMContextOverride.update(nil, words) unless words.empty?
       rescue ArgumentError => e
         return usage_error(e.message)
+      end
+
+      if options[:thinking]
+        word = options[:thinking].strip.downcase
+        unless Thinking::LEVELS.map(&:to_s).include?(word)
+          return usage_error("--thinking takes #{Thinking::LEVELS.join(", ")}, not #{options[:thinking]}")
+        end
+
+        options[:thinking] = Thinking.session_level(word)
       end
 
       if options[:dir]
@@ -321,7 +336,8 @@ module Samagotchi
                   else
                     SessionManager.spawn_session(**start, working_directory: options[:dir],
                                                           model_name: options[:model],
-                                                          setup: SessionSetup.new(llm_context: options[:llm_context]),
+                                                          setup: SessionSetup.new(llm_context: options[:llm_context],
+                                                                                  thinking: options[:thinking]),
                                                           state_dir: @state_dir)
                   end
       rescue SessionManager::ContinueRefused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e

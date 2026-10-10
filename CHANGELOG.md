@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   sets the session's own level (saved with the session, first in the order), `/thinking default` unsets it. A change
   waits for the turn's end, and the reply says what it costs the prompt cache. `/model` and `/stats` show
   `low (session)`; a continue and a plugin's fork keep the level, a delegate starts without it.
+- `chi send --new --thinking LEVEL` starts the session with its own thinking level (refused beside `--continues`,
+  which takes the previous link's).
 
 ### Changed
 
