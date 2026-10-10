@@ -703,12 +703,16 @@ module Samagotchi
     #   the cards and notices it showed, held: they follow its command_ran,
     #   as its output
     def run_command_line(command)
-      result, shown = @engine.holding_announcements do
-        @commands.run(command.line)
-      rescue StandardError => e
-        SessionCommands::Result.new(status: :error, output: "#{command.line.split.first}: #{e.message}", changed: [])
-      end
-      [result || SessionCommands::Result.new(status: :error, output: "not a session command", changed: []), shown]
+      @engine.holding_announcements { command_result(command) { @commands.run(command.line) } }
+    end
+
+    # The block's Result for +command+; one that raised, or found no
+    # command for the line, is an error Result saying so.
+    # @return [SessionCommands::Result]
+    def command_result(command)
+      yield || SessionCommands::Result.new(status: :error, output: "not a session command", changed: [])
+    rescue StandardError => e
+      SessionCommands::Result.new(status: :error, output: "#{command.line.split.first}: #{e.message}", changed: [])
     end
 
     # A session command from the Bridge, called with the event log held:
@@ -760,12 +764,7 @@ module Samagotchi
     # saved.
     def start_anytime_command(command)
       @engine.spawn_anytime do
-        result = begin
-          @engine.running_anytime { @commands.run(command.line) }
-        rescue StandardError => e
-          SessionCommands::Result.new(status: :error, output: "#{command.line.split.first}: #{e.message}", changed: [])
-        end
-        result ||= SessionCommands::Result.new(status: :error, output: "not a session command", changed: [])
+        result = command_result(command) { @engine.running_anytime { @commands.run(command.line) } }
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
                                   anytime: true)
       rescue StandardError => e
