@@ -73,85 +73,17 @@ module Samagotchi
         manifest = @manifest
         normalized_dir = @bundle_dir
         source_commit = @source_commit
-        target_scope, target_dir = resolve_target
-
-        # Copy .md files and update index for each.
+        @target_scope, @target_dir = resolve_target
+        target_scope = @target_scope
+        target_dir = @target_dir
         @file_descriptions = manifest&.file_descriptions || {}
-        all_files_in_bundle = []
-        provenance = Provenance.new(name: @name)
-        existing_provenance = provenance.record
+        @provenance = provenance = Provenance.new(name: @name)
+        @existing = existing_provenance = provenance.record
         # A plain install over an installed bundle: summary points at upgrade.
         @reinstall = existing_provenance && !@upgrade && !@force && !@dry_run
-        # The bundle owns (records, upgrades, removes) only the files it
-        # wrote: these, from an earlier install, and the ones written now.
-        # A same-name file that was already there is the user's: skipped
-        # and never recorded.
-        owned_before = existing_provenance ? existing_provenance.files.keys : []
-        owned = []
-
-        Dir.glob(File.join(normalized_dir, "*.md")).each do |file_path|
-          file_key = File.basename(file_path)
-          all_files_in_bundle << file_key
-          note_overlay(file_key, target_dir)
-          target_path = File.join(target_dir, file_key)
-
-          if @upgrade && existing_provenance && !@force && File.exist?(target_path) && !owned_before.include?(file_key)
-            # Not the bundle's (the user's, or another bundle's): no merge.
-            skip_existing(file_key, file_path, target_path, target_scope)
-          elsif @upgrade && existing_provenance && !@force && !@dry_run
-            # 3-way merge path for upgrades
-            owned << file_key
-            base_path = provenance.base_path(file_key)
-            classification = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
-            case classification
-            when :install
-              FileUtils.cp(file_path, target_path)
-              @results[file_key] = { status: "installed" }
-              update_target_index(target_scope, target_path, file_key)
-            when :fast_forward
-              FileUtils.cp(file_path, target_path)
-              @results[file_key] = { status: "updated", reason: "auto-merged (not edited)" }
-              update_target_index(target_scope, target_path, file_key)
-            when :keep
-              @results[file_key] = { status: "kept", reason: "bundle unchanged, local edits preserved" }
-              update_target_index(target_scope, target_path, file_key)
-            when :noop
-              @results[file_key] = { status: "skipped", reason: "already up to date" }
-              update_target_index(target_scope, target_path, file_key)
-            when :conflict
-              @results[file_key] = { status: "conflict", reason: "local edits conflict with bundle update" }
-              @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path }
-              @warnings << "Conflict in #{file_key}: local edits conflict with bundle update (use --force to overwrite or resolve interactively)"
-              update_target_index(target_scope, target_path, file_key)
-            end
-          elsif @dry_run
-            # Dry-run: classify but do not write
-            if File.exist?(target_path) && !@force
-              if @upgrade && existing_provenance
-                base_path = provenance.base_path(file_key)
-                classification = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
-                @results[file_key] = { status: classification.to_s }
-                @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path } if classification == :conflict
-              elsif FileUtils.identical?(file_path, target_path)
-                @results[file_key] = { status: "skipped", reason: "already up to date" }
-              else
-                @results[file_key] = { status: "would_skip" }
-              end
-            else
-              @results[file_key] = { status: "would_install" }
-            end
-          elsif File.exist?(target_path) && !@force
-            # A re-install keeps what an earlier install wrote.
-            owned << file_key if owned_before.include?(file_key)
-            skip_existing(file_key, file_path, target_path, target_scope, owned: owned_before.include?(file_key))
-          else
-            FileUtils.cp(file_path, target_path) unless @dry_run
-            owned << file_key
-            @results[file_key] = { status: "installed" }
-            # Update index for newly installed files.
-            update_target_index(target_scope, target_path, file_key) unless @dry_run
-          end
-        end
+        install_memories
+        all_files_in_bundle = @bundle_md
+        owned = @owned
 
         # ── Hooks: copy hooks/*.rb into <bundle_dir>/hooks/ ───────────────
         hooks_target = File.join(provenance.bundle_dir, "hooks")
@@ -481,6 +413,89 @@ module Samagotchi
         dir = MemoryPaths.scope_dir(scope) or raise InstallError, "invalid scope: #{scope}"
         FileUtils.mkdir_p(dir)
         [scope, dir]
+      end
+
+      # Copies the bundle's *.md files into the target dir and refreshes
+      # their index lines: an upgrade merges (merge_memory), a dry run only
+      # classifies (preview_memory), a plain install writes the new ones.
+      # Sets @bundle_md (every file the bundle ships) and @owned: the bundle
+      # owns (records, upgrades, removes) only the files it wrote, these
+      # from an earlier install and the ones written now. A same-name file
+      # that was already there is the user's: skipped and never recorded.
+      def install_memories
+        owned_before = @existing ? @existing.files.keys : []
+        @bundle_md = []
+        @owned = []
+        Dir.glob(File.join(@bundle_dir, "*.md")).each do |file_path|
+          file_key = File.basename(file_path)
+          @bundle_md << file_key
+          note_overlay(file_key, @target_dir)
+          target_path = File.join(@target_dir, file_key)
+          merging = @upgrade && @existing && !@force
+
+          if merging && File.exist?(target_path) && !owned_before.include?(file_key)
+            # Not the bundle's (the user's, or another bundle's): no merge.
+            skip_existing(file_key, file_path, target_path, @target_scope)
+          elsif merging && !@dry_run
+            @owned << file_key
+            merge_memory(file_key, file_path, target_path)
+          elsif @dry_run
+            preview_memory(file_key, file_path, target_path)
+          elsif File.exist?(target_path) && !@force
+            # A re-install keeps what an earlier install wrote.
+            @owned << file_key if owned_before.include?(file_key)
+            skip_existing(file_key, file_path, target_path, @target_scope, owned: owned_before.include?(file_key))
+          else
+            FileUtils.cp(file_path, target_path)
+            @owned << file_key
+            @results[file_key] = { status: "installed" }
+            update_target_index(@target_scope, target_path, file_key)
+          end
+        end
+      end
+
+      # An upgrade's 3-way merge of one file (Merger.classify against the
+      # base the last install recorded); a conflict leaves the local file
+      # and is recorded in @conflicts for the agent step.
+      def merge_memory(file_key, file_path, target_path)
+        base_path = @provenance.base_path(file_key)
+        case Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
+        when :install
+          FileUtils.cp(file_path, target_path)
+          @results[file_key] = { status: "installed" }
+        when :fast_forward
+          FileUtils.cp(file_path, target_path)
+          @results[file_key] = { status: "updated", reason: "auto-merged (not edited)" }
+        when :keep
+          @results[file_key] = { status: "kept", reason: "bundle unchanged, local edits preserved" }
+        when :noop
+          @results[file_key] = { status: "skipped", reason: "already up to date" }
+        when :conflict
+          @results[file_key] = { status: "conflict", reason: "local edits conflict with bundle update" }
+          @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path }
+          @warnings << "Conflict in #{file_key}: local edits conflict with bundle update (use --force to overwrite or resolve interactively)"
+        end
+        update_target_index(@target_scope, target_path, file_key)
+      end
+
+      # A dry run's verdict for one file, nothing written: an upgrade
+      # classifies as merge_memory would (its status is the classification).
+      def preview_memory(file_key, file_path, target_path)
+        unless File.exist?(target_path) && !@force
+          @results[file_key] = { status: "would_install" }
+          return
+        end
+
+        if @upgrade && @existing
+          base_path = @provenance.base_path(file_key)
+          classification = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
+          @results[file_key] = { status: classification.to_s }
+          @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path } if classification == :conflict
+        elsif FileUtils.identical?(file_path, target_path)
+          @results[file_key] = { status: "skipped", reason: "already up to date" }
+        else
+          @results[file_key] = { status: "would_skip" }
+        end
       end
 
       # A file already in the target dir that the install doesn't write: the
