@@ -3,6 +3,7 @@
 require "fileutils"
 require "digest"
 require_relative "../memory_paths"
+require_relative "bundle_hook"
 require_relative "provenance"
 require_relative "manifest"
 require_relative "source"
@@ -180,7 +181,7 @@ module Samagotchi
             discovered = Dir.glob(File.join(normalized_dir, "hooks", "*.rb")).map { |p| File.basename(p) }
             discovered.each do |bn|
               # Build minimal metadata so copy still happens (event unknown -> skipped by loader but copied for integrity)
-              hook_entries[bn] = { sha256: "", event: "", on_error: "skip", priority: 100 }
+              hook_entries[bn] = BundleHook.new
             end
           end
 
@@ -206,7 +207,7 @@ module Samagotchi
             if @upgrade && existing_provenance && File.exist?(dest) && !@force
               prev_meta = existing_provenance[:hooks] ? (existing_provenance[:hooks][basename.to_sym] || existing_provenance[:hooks][basename]) : nil
               if prev_meta
-                prev_sha = prev_meta[:sha256] || prev_meta["sha256"]
+                prev_sha = BundleHook.parse(prev_meta).sha256
                 if File.exist?(dest) && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
                   @warnings << "Hook #{basename} was locally modified; overwriting"
                 end
@@ -403,8 +404,7 @@ module Samagotchi
             hooks_files_for_provenance.each do |basename, path|
               next unless File.exist?(path)
 
-              sha = Digest::SHA256.hexdigest(File.read(path))
-              hooks_for_provenance[basename] = { "sha256" => "sha256:#{sha}", "event" => "", "on_error" => "skip", "priority" => 100 }
+              hooks_for_provenance[basename] = BundleHook.of_file(path)
             end
           end
           Provenance.new(name: @name).write(

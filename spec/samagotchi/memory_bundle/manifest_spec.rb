@@ -164,12 +164,12 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
         "trust_level" => "reviewed"
       })
       m = described_class.new(path: path)
-      expect(m.hooks["guardrails.rb"][:sha256]).to eq("sha256:abc123")
-      expect(m.hooks["guardrails.rb"][:event]).to eq("before_tool_call")
-      expect(m.hooks["guardrails.rb"][:on_error]).to eq("fail_closed")
-      expect(m.hooks["guardrails.rb"][:priority]).to eq(10)
-      expect(m.hooks["audit.rb"][:on_error]).to eq("skip") # default
-      expect(m.hooks["audit.rb"][:priority]).to eq(100)
+      expect(m.hooks["guardrails.rb"].sha256).to eq("sha256:abc123")
+      expect(m.hooks["guardrails.rb"].event).to eq("before_tool_call")
+      expect(m.hooks["guardrails.rb"].on_error).to eq("fail_closed")
+      expect(m.hooks["guardrails.rb"].priority).to eq(10)
+      expect(m.hooks["audit.rb"].on_error).to eq("skip") # default
+      expect(m.hooks["audit.rb"].priority).to eq(100)
       expect(m.trust_level).to eq("reviewed")
     end
 
@@ -207,7 +207,7 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
         trust_level: "reviewed"
       )
       m = described_class.read(dir: dest)
-      expect(m.hooks["guardrails.rb"][:event]).to eq("before_tool_call")
+      expect(m.hooks["guardrails.rb"].event).to eq("before_tool_call")
       expect(m.trust_level).to eq("reviewed")
       expect(m.checksum_for_hook("guardrails.rb")).to eq("abc")
     end

@@ -4,6 +4,7 @@ require "yaml"
 require "digest"
 require "fileutils"
 require_relative "../context_providers"
+require_relative "bundle_hook"
 
 module Samagotchi
   module MemoryBundle
@@ -53,7 +54,8 @@ module Samagotchi
       BUNDLE_NAME = /\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
 
       # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
-      # the description a mapping gave, for the files that have one.
+      # the description a mapping gave, for the files that have one; hooks:
+      # name → BundleHook.
       attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
                   :scripts, :context_providers
 
@@ -99,13 +101,7 @@ module Samagotchi
 
       # Returns sha256 hex for a hook basename (e.g. "guardrails.rb").
       def checksum_for_hook(basename)
-        raw = @hooks[basename]
-        return nil unless raw
-
-        sha = raw[:sha256] || raw["sha256"]
-        return nil unless sha
-
-        sha.to_s.start_with?("sha256:") ? sha.to_s[7..] : sha.to_s
+        @hooks[basename]&.hex
       end
 
       # @return [String, nil] the plugin's sha256 hex, "sha256:" stripped
@@ -142,14 +138,7 @@ module Samagotchi
           text = file_descriptions[key].to_s.strip
           [key, text.empty? ? sha : { "sha256" => sha, "description" => text }]
         end
-        if hooks && !hooks.empty?
-          # Normalize hooks to string-keyed with sha256 prefix preserved
-          manifest["hooks"] = hooks.transform_keys(&:to_s).transform_values do |v|
-            h = v.transform_keys(&:to_s)
-            h["sha256"] = h["sha256"].to_s.start_with?("sha256:") ? h["sha256"].to_s : "sha256:#{h["sha256"]}" if h["sha256"]
-            h
-          end
-        end
+        manifest["hooks"] = hooks.to_h { |k, v| [k.to_s, BundleHook.parse(v).to_record] } if hooks && !hooks.empty?
         manifest["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
         if plugin
           sha = plugin[:sha256].to_s
@@ -306,18 +295,7 @@ module Samagotchi
           next unless k.is_a?(String) && !k.empty?
           next unless v.is_a?(Hash)
 
-          sha = (v["sha256"] || v[:sha256] || "").to_s
-          sha = "sha256:#{sha}" unless sha.empty? || sha.start_with?("sha256:")
-          event = (v["event"] || v[:event] || "").to_s.strip
-          on_error = (v["on_error"] || v[:on_error] || "skip").to_s.strip
-          on_error = "skip" if on_error.empty?
-          priority = (v["priority"] || v[:priority] || 100).to_i
-          acc[k] = {
-            sha256: sha,
-            event: event,
-            on_error: on_error,
-            priority: priority
-          }
+          acc[k] = BundleHook.parse(v)
         end
       end
     end

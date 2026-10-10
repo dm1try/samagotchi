@@ -6,6 +6,7 @@ require "date"
 require "fileutils"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
+require_relative "bundle_hook"
 
 module Samagotchi
   module MemoryBundle
@@ -177,22 +178,14 @@ module Samagotchi
         hooks_map = {}
         # existing hooks for pruning
         existing_hooks = existing && existing[:hooks] ? existing[:hooks] : {}
-        # Normalize incoming hooks (basename => metadata hash)
+        # Incoming hooks: basename => BundleHook (or its metadata hash)
         normalized_hooks = {}
         if hooks.is_a?(Hash)
           hooks.each do |k, v|
             next unless k.is_a?(String) && !k.empty?
-            next unless v.is_a?(Hash)
+            next unless v.is_a?(Hash) || v.is_a?(BundleHook)
 
-            hv = v.transform_keys(&:to_sym)
-            sha = (hv[:sha256] || "").to_s
-            sha = "sha256:#{sha}" unless sha.empty? || sha.start_with?("sha256:")
-            normalized_hooks[k] = {
-              sha256: sha,
-              event: (hv[:event] || "").to_s,
-              on_error: (hv[:on_error] || "skip").to_s,
-              priority: (hv[:priority] || 100).to_i
-            }
+            normalized_hooks[k] = BundleHook.parse(v)
           end
         end
         # Prune stale hook bases
@@ -210,12 +203,10 @@ module Samagotchi
         # compares against it, and a declared sha can be wrong (installing
         # only warns about that).
         hooks_files = {} unless hooks_files.is_a?(Hash)
-        normalized_hooks.each do |k, meta|
+        normalized_hooks.each do |k, hook|
           src = hooks_files[k] || hooks_files[k.to_sym]
-          if src && File.exist?(src.to_s)
-            meta = meta.merge(sha256: "sha256:#{Digest::SHA256.hexdigest(File.read(src.to_s))}")
-          end
-          hooks_map[k] = meta.transform_keys(&:to_s)
+          hook = hook.with(sha256: BundleHook.of_file(src.to_s).sha256) if src && File.exist?(src.to_s)
+          hooks_map[k] = hook.to_record
           next unless src && File.exist?(src.to_s)
 
           begin

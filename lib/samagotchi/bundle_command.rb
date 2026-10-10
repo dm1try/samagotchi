@@ -397,13 +397,10 @@ module Samagotchi
         if hooks.any?
           @stdout.puts "  Hooks (#{hooks.size}):"
           hooks.each do |hk, meta|
-            m = meta.is_a?(Hash) ? meta.transform_keys(&:to_s) : {}
-            event = m["event"] || ""
-            on_error = m["on_error"] || "skip"
-            prio = m["priority"] || 100
+            hook = Samagotchi::MemoryBundle::BundleHook.parse(meta)
             hook_path = File.join(Samagotchi::MemoryBundle::Provenance.new(name: name).hooks_dir, hk.to_s)
             exists = File.exist?(hook_path) ? "ok" : "missing"
-            @stdout.puts "    #{hk}: event=#{event} on_error=#{on_error} priority=#{prio} [#{exists}]"
+            @stdout.puts "    #{hk}: event=#{hook.event} on_error=#{hook.on_error} priority=#{hook.priority} [#{exists}]"
           end
           @stdout.puts "    requires_chi: #{st[:provenance][:requires_chi]}" if st[:hooks_requires_failure]
           @stdout.puts "    not loaded: #{st[:hooks_requires_failure]}" if st[:hooks_requires_failure]
@@ -496,10 +493,7 @@ module Samagotchi
           @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
           # Show hook metadata
           meta = hooks[file_arg.to_sym] || hooks[file_arg]
-          if meta
-            m = meta.transform_keys(&:to_s)
-            @stdout.puts "--- metadata: event=#{m["event"]} on_error=#{m["on_error"]} priority=#{m["priority"]} sha256=#{m["sha256"]}"
-          end
+          @stdout.puts hook_metadata_line(meta) if meta
         elsif plugin_file && [plugin_file, "plugin/#{plugin_file}"].include?(file_arg)
           show_plugin.call
         else
@@ -529,10 +523,7 @@ module Samagotchi
           @stdout.puts "--- current (on-disk) ---"
           @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
           meta = hooks[k.to_sym] || hooks[k]
-          if meta
-            m = meta.transform_keys(&:to_s)
-            @stdout.puts "--- metadata: event=#{m["event"]} on_error=#{m["on_error"]} priority=#{m["priority"]} sha256=#{m["sha256"]}"
-          end
+          @stdout.puts hook_metadata_line(meta) if meta
           @stdout.puts ""
         end
         if plugin_file
@@ -584,6 +575,11 @@ module Samagotchi
       names = installed.map(&:name)
       here, gone = members.partition { |m| names.include?(m) }
       "includes=#{here.join(",")}#{"  left out=#{gone.join(",")}" unless gone.empty?}"
+    end
+
+    def hook_metadata_line(meta)
+      hook = Samagotchi::MemoryBundle::BundleHook.parse(meta)
+      "--- metadata: event=#{hook.event} on_error=#{hook.on_error} priority=#{hook.priority} sha256=#{hook.sha256}"
     end
 
     def build(rest)

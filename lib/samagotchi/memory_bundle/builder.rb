@@ -3,6 +3,7 @@
 require "digest"
 require "fileutils"
 require "tmpdir"
+require_relative "bundle_hook"
 require_relative "manifest"
 require_relative "placeholder"
 require_relative "../context_providers"
@@ -112,20 +113,9 @@ module Samagotchi
             # Skip if hook file missing on disk
             next unless File.exist?(src)
 
-            # meta may be symbol-keyed
-            m = meta.is_a?(Hash) ? meta.transform_keys(&:to_s) : {}
-            sha = (m["sha256"] || m["checksum"] || "").to_s
-            if sha.empty?
-              sha = "sha256:#{Digest::SHA256.hexdigest(File.read(src))}"
-            elsif !sha.start_with?("sha256:")
-              sha = "sha256:#{sha}"
-            end
-            hooks_map[basename] = {
-              "sha256" => sha,
-              "event" => (m["event"] || "").to_s,
-              "on_error" => (m["on_error"] || "skip").to_s,
-              "priority" => (m["priority"] || 100).to_i
-            }
+            hook = BundleHook.parse(meta)
+            hook = hook.with(sha256: BundleHook.of_file(src).sha256) if hook.sha256.empty?
+            hooks_map[basename] = hook
             hooks_to_copy << [src, basename]
           end
         else
@@ -134,13 +124,7 @@ module Samagotchi
           if Dir.exist?(local_hooks_dir)
             Dir.glob(File.join(local_hooks_dir, "*.rb")).sort.each do |src|
               basename = File.basename(src)
-              sha = Digest::SHA256.hexdigest(File.read(src))
-              hooks_map[basename] = {
-                "sha256" => "sha256:#{sha}",
-                "event" => "",
-                "on_error" => "skip",
-                "priority" => 100
-              }
+              hooks_map[basename] = BundleHook.of_file(src)
               hooks_to_copy << [src, basename]
             end
           end
