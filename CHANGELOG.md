@@ -13,6 +13,12 @@ and commands may change between minor versions. How releases are made:
 - Web: a denied approval's summary line reads `<tool>: <command> → Denied`; the typed reason shows in full in the
   card body (expand the card) instead of being cut off in the summary.
 
+### Fixed
+
+- `chi -p "/cut TEXT" --non-interactive` (and `/queue TEXT`) runs `TEXT` as the turn's prompt, the same as the idle
+  REPL does, instead of feeding the model the literal `/cut` / `/queue` words; a bare `/cut` / `/queue` is still
+  refused, as before.
+
 ## [0.53.0] - 2026-10-10
 
 ### Changed

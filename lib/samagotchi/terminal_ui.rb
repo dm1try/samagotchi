@@ -273,6 +273,16 @@ module Samagotchi
       return run_one_shot_command(session) if @prompt && @non_interactive && command_registry.command?(@prompt)
 
       if @prompt && @non_interactive
+        # A /cut TEXT / /queue TEXT prompt runs its text as the turn's
+        # prompt, the same as the idle REPL does (Formatting#steer_choice);
+        # a bare /cut / /queue (no text) is refused above as a UI command,
+        # so only the text here. The images are the text's, not the words'.
+        one_shot_prompt =
+          if (choice = steer_choice(@prompt)) && !choice.last.empty?
+            choice.last
+          else
+            @prompt
+          end
         # Headless / CI mode: run directly without TTY rendering.
         ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir)
         # Retry lines and hook notices on stderr; stdout gets the answer below.
@@ -281,11 +291,11 @@ module Samagotchi
         begin
           result = @engine.run_turn(
             session,
-            @prompt,
+            one_shot_prompt,
             on_event: sink,
             max_iterations: IterationLimit.for(no_interrupt: true),
             cancel_controller: nil,
-            images: ImageInput.extract(@prompt)
+            images: ImageInput.extract(one_shot_prompt)
           )
         rescue LLM::ProviderError, ImageStore::Error => e
           return one_shot_failed(session, e)

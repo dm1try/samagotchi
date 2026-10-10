@@ -520,6 +520,50 @@ file2.rb")
       expect(seen.first).to include("refactor this")
     end
 
+    # A /cut TEXT / /queue TEXT one-shot prompt runs its text as the turn's
+    # prompt, the same as the idle REPL does (Formatting#steer_choice): the
+    # model sees only the text, never the /cut / /queue words.
+    it "runs a /cut TEXT one-shot prompt as its text, not the /cut words" do
+      seen = []
+      allow(client).to receive(:complete) { |p| seen << p; "done" }
+      agent = described_class.new(prompt: "/cut hello", client: client, non_interactive: true)
+
+      expect(Reline).not_to receive(:readmultiline) # never enters the REPL
+      agent.run
+
+      expect(seen.first).to include("hello")
+      expect(seen.first).not_to include("/cut hello")
+    end
+
+    it "runs a /queue TEXT one-shot prompt as its text, not the /queue words" do
+      seen = []
+      allow(client).to receive(:complete) { |p| seen << p; "done" }
+      agent = described_class.new(prompt: "/queue hello", client: client, non_interactive: true)
+
+      agent.run
+
+      expect(seen.first).to include("hello")
+      expect(seen.first).not_to include("/queue hello")
+    end
+
+    # A bare /cut / /queue has no text: it is refused in a --non-interactive
+    # run (a terminal and web command), today's behavior, not run as a turn.
+    it "refuses a bare /cut one-shot prompt, like a terminal command" do
+      expect(client).not_to receive(:complete) # no turn runs
+      agent = described_class.new(prompt: "/cut", client: client, non_interactive: true)
+
+      expect { agent.run }
+        .to output("chi: refused: /cut is a terminal and web command; --non-interactive doesn't run it\n").to_stderr
+    end
+
+    it "refuses a bare /queue one-shot prompt, like a terminal command" do
+      expect(client).not_to receive(:complete) # no turn runs
+      agent = described_class.new(prompt: "/queue", client: client, non_interactive: true)
+
+      expect { agent.run }
+        .to output("chi: refused: /queue is a terminal and web command; --non-interactive doesn't run it\n").to_stderr
+    end
+
     # An empty answer (retries used up) is a failure: a line on stderr,
     # nothing on stdout that could pass for an answer, and :empty_answer
     # for bin/chi to exit 1 on (the run returns, so its ensure tidies up).
