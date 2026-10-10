@@ -53,45 +53,8 @@ module Samagotchi
 
         refuse_profile!(resolved_name)
 
-        # Collect *.md files, excluding index.md and hidden files
-        all_md = Dir.glob(File.join(target_dir, "*.md")).sort
-        candidates = all_md.reject { |p| File.basename(p) == "index.md" }
-        candidates.reject! { |p| File.basename(p).start_with?(".") }
-
-        if candidates.empty?
-          raise BuildError, "No memories to build in #{@scope} scope (#{target_dir}): no .md files found"
-        end
-
-        # Apply allowlist filter if provided
-        if @filter_files && !@filter_files.empty?
-          allow = @filter_files.map { |f| normalize_filter_entry(f) }
-          # Validate each requested file exists in candidates
-          candidates_by_basename = candidates.map { |p| [File.basename(p), p] }.to_h
-          missing = allow.reject { |k| candidates_by_basename.key?(k) }
-          unless missing.empty?
-            raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(", ")}"
-          end
-
-          candidates = with_overlays(allow, candidates_by_basename).map { |k| candidates_by_basename[k] }
-        else
-          candidates = leave_out_owned(candidates, resolved_name)
-        end
-
-        # Compute checksums and detect placeholders
-        files_map = {}
-        candidates.each do |path|
-          key = File.basename(path)
-          content = File.read(path)
-          hex = Digest::SHA256.hexdigest(content)
-          files_map[key] = "sha256:#{hex}"
-          @built_files << key
-
-          names = Placeholder.new(content: content).placeholders
-          unless names.empty?
-            uniq = names.map(&:strip).uniq.sort
-            @placeholder_warnings << "#{key}: {{#{uniq.join("}}, {{")}}}"
-          end
-        end
+        candidates = select_memories(target_dir, resolved_name)
+        files_map = checksum_memories(candidates)
 
         # ── Hooks: collect hooks for the bundle ──────────────────────
         hooks_map = {}
@@ -249,6 +212,39 @@ module Samagotchi
       end
 
       private
+
+      # The scope's memories to build: every *.md but index.md and hidden
+      # ones; with an allowlist the named ones (each must exist) with their
+      # model overlays, else all but those another installed bundle owns.
+      # @return [Array<String>] paths
+      def select_memories(target_dir, name)
+        candidates = Dir.glob(File.join(target_dir, "*.md")).sort
+                        .reject { |p| File.basename(p) == "index.md" || File.basename(p).start_with?(".") }
+        if candidates.empty?
+          raise BuildError, "No memories to build in #{@scope} scope (#{target_dir}): no .md files found"
+        end
+        return leave_out_owned(candidates, name) unless @filter_files && !@filter_files.empty?
+
+        allow = @filter_files.map { |f| normalize_filter_entry(f) }
+        candidates_by_basename = candidates.to_h { |p| [File.basename(p), p] }
+        missing = allow.reject { |k| candidates_by_basename.key?(k) }
+        raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(", ")}" unless missing.empty?
+
+        with_overlays(allow, candidates_by_basename).map { |k| candidates_by_basename[k] }
+      end
+
+      # file key => "sha256:<hex>" for the manifest; fills @built_files and
+      # a placeholder warning per memory with {{placeholders}}.
+      def checksum_memories(paths)
+        paths.to_h do |path|
+          key = File.basename(path)
+          content = File.read(path)
+          @built_files << key
+          names = Placeholder.new(content: content).placeholders
+          @placeholder_warnings << "#{key}: {{#{names.map(&:strip).uniq.sort.join("}}, {{")}}}" unless names.empty?
+          [key, "sha256:#{Digest::SHA256.hexdigest(content)}"]
+        end
+      end
 
       # An installed profile (meta bundle) ships only its includes: a build
       # under its name would make a plain bundle of the scope's memories,
