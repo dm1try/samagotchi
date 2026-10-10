@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: the info bar's session clock ticks during a session's first turn (a session started from the start page
+  showed a frozen `session 0ms`).
+
 ## [0.51.0] - 2026-10-10
 
 ### Added

@@ -8,6 +8,7 @@ import {
   liveDurationText,
   mergeTiming,
   normalizeTiming,
+  sessionDurationNow,
   turnRecordAt,
   timedTurnIndexes,
   appendAboveLiveTiming,
@@ -438,4 +439,24 @@ test("normalizeTiming / mergeTiming keep the session's tokens; a reply without t
   const newer = { ...tokens, prompt_sum: 30 };
   assert.deepEqual(mergeTiming(normalizeTiming({ tokens }), { tokens: newer, turn_count: 0 }).timing.tokens, newer);
   assert.deepEqual(mergeTiming(normalizeTiming({ tokens }), { turn_count: 0 }).timing.tokens, tokens);
+});
+
+test("sessionDurationNow counts from the session's start while a turn runs", () => {
+  const timing = { startedAt: "2026-10-10T10:00:00.000Z", sessionDurationMs: 5, activeTurn: { started_at: "2026-10-10T10:00:30.000Z" } };
+  const now = Date.parse("2026-10-10T10:01:00.000Z");
+  assert.equal(sessionDurationNow(timing, true, now), 60000);
+  assert.equal(sessionDurationNow(timing, false, now), 5);
+});
+
+test("sessionDurationNow falls back to the running turn's start on a session's first turn", () => {
+  // A session created from the start page: its snapshot had no started_at
+  // (session_duration_ms 0) and the first turn_started carries none either.
+  const timing = { startedAt: null, sessionDurationMs: 0, activeTurn: { started_at: "2026-10-10T10:00:00.000Z" } };
+  assert.equal(sessionDurationNow(timing, true, Date.parse("2026-10-10T10:00:07.000Z")), 7000);
+});
+
+test("sessionDurationNow keeps the server's duration without any start", () => {
+  assert.equal(sessionDurationNow({ startedAt: null, sessionDurationMs: 0, activeTurn: null }, true, 1), 0);
+  assert.equal(sessionDurationNow({ startedAt: null, sessionDurationMs: null, activeTurn: null }, false, 1), null);
+  assert.equal(sessionDurationNow(undefined, false, 1), null);
 });
