@@ -37,4 +37,13 @@ RSpec.describe Samagotchi::Delivery do
       expect(described_class.queue?(nil)).to be(false)
     end
   end
+
+  describe ".refusal" do
+    it "takes nil and any string, and refuses anything else as bad_delivery" do
+      expect(described_class.refusal(nil)).to be_nil
+      expect(described_class.refusal("cut")).to be_nil
+      expect(described_class.refusal("now")).to be_nil
+      expect(described_class.refusal(5)).to eq(error: "bad_delivery", detail: "delivery must be a string")
+    end
+  end
 end

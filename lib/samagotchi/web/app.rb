@@ -10,6 +10,7 @@ require "rack"
 require "rack/request"
 
 require_relative "../client_id"
+require_relative "../delivery"
 require_relative "../answer_tail"
 require_relative "../bridge_client"
 require_relative "../bridge/bounded_queue"
@@ -1066,7 +1067,9 @@ module Samagotchi
         return error_response(400, "bad_images", images) if images.is_a?(String)
 
         delivery = body["delivery"] || body[:delivery]
-        return error_response(400, "bad_delivery", "delivery must be a string") unless delivery.nil? || delivery.is_a?(String)
+        if (refused = Delivery.refusal(delivery))
+          return error_response(400, refused[:error], refused[:detail])
+        end
 
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
                                                  delivery: delivery, state_dir: @state_dir, manager: @manager,

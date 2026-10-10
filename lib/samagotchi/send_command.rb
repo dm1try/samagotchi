@@ -2,6 +2,7 @@
 
 require_relative "client_id"
 require_relative "delivery"
+require_relative "terminal_ui/formatting"
 require_relative "session"
 require_relative "session_commands"
 require_relative "session_inbox"
@@ -33,6 +34,8 @@ module Samagotchi
     CLIENT_ID = ClientId::CLI_SEND
     # The cap on one turn's images the Bridge checks.
     MAX_IMAGES = ImageStore::MAX_TURN_REFS
+    # A cut's outcomes in the Bridge's ack (SteerCut#cut_for_steer).
+    CUT_OUTCOMES = %w[now waits off].freeze
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... [--cut] (ID|PREFIX)...
@@ -585,14 +588,13 @@ module Samagotchi
       # rather than merging it into the running one.
       return " (runs after the current turn)" unless @images.empty?
 
-      case (Delivery.cut?(delivery) ? ack["cut"].to_s : "")
-      when "now" then " (cut in now)"
-      when "waits" then " (cuts in once the thinking passes #{Config.get("steer.cut_after").to_i} s)"
-      when "off" then " (cutting is off; goes in at the next step)"
-      # No outcome: a plain message, or the input file (the Bridge went
-      # away), which the next step's drain takes.
-      else " (goes in at the running turn's next step)"
-      end
+      # The TUIs' words for a cut's outcome. No outcome: a plain message,
+      # or the input file (the Bridge went away), which the next step's
+      # drain takes.
+      outcome = Delivery.cut?(delivery) ? ack["cut"].to_s : ""
+      return " (goes in at the running turn's next step)" unless CUT_OUTCOMES.include?(outcome)
+
+      " #{TerminalUI::Formatting.steer_cut_note(outcome.to_sym)}"
     end
 
     # More keys for --format json, with --cut only (the line is unchanged

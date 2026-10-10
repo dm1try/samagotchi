@@ -5,6 +5,7 @@ require_relative "../served_model"
 require_relative "../image_store"
 require_relative "../turn_note"
 require_relative "../steer"
+require_relative "../steer_cut"
 require_relative "../memory_bundle/index_size"
 require_relative "../prompt_note"
 
@@ -99,7 +100,8 @@ module Samagotchi
       # line goes in at the running turn's next step boundary (nothing cuts
       # unless the message asked for it), /cut's cutting now or once the
       # thinking passes steer.cut_after, and /queue's waiting for the end.
-      # Both TUIs print the same words (SteerCut#cut_for_steer's answer).
+      # Both TUIs and chi send --cut print the same words
+      # (SteerCut#cut_for_steer's answer).
       NEXT_STEP_NOTE = "(goes in at the next step)"
       CUT_NOW_NOTE = "(cut in now)"
       CUT_WAITS_NOTE = "(cuts in once the thinking passes %d s)"
@@ -115,13 +117,16 @@ module Samagotchi
 
       # @param outcome [Symbol] SteerCut#cut_for_steer's answer: :now, :waits or :off
       # @return [String] the dim line to show for a /cut
-      def steer_cut_note(outcome)
+      def self.steer_cut_note(outcome)
         case outcome
         when :now then CUT_NOW_NOTE
-        when :waits then format(CUT_WAITS_NOTE, Config.get("steer.cut_after").to_i)
+        when :waits then format(CUT_WAITS_NOTE, SteerCut.cut_after)
         else CUT_OFF_NOTE
         end
       end
+
+      # The same words, for a UI that includes the module.
+      def steer_cut_note(outcome) = Formatting.steer_cut_note(outcome)
 
       # The choice a mid-turn line carries, as [:cut, "TEXT"] or
       # [:queue, "TEXT"]; nil for any other line. The text is "" when the

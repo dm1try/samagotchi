@@ -62,10 +62,6 @@ module Samagotchi
     MAX_BODY_BYTES = 1_000_000
     # A request's deadline (see #handle_post_turn) that isn't epoch seconds.
     BAD_DEADLINE = [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }].freeze
-    # A request's delivery (see #handle_post_turn) that isn't a string. An
-    # unknown string is not an error: it is the default, as a missing one is.
-    BAD_DELIVERY = [{ "Allow" => "POST" }, 400,
-                    { error: "bad_delivery", detail: "delivery must be a string" }].freeze
 
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
@@ -832,7 +828,9 @@ module Samagotchi
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
       raw_delivery = fetched(parsed, "delivery")
-      return BAD_DELIVERY unless raw_delivery.nil? || raw_delivery.is_a?(String)
+      if (refused = Delivery.refusal(raw_delivery))
+        return [{ "Allow" => "POST" }, 400, refused]
+      end
 
       delivery = Delivery.parse(raw_delivery)
 

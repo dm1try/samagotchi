@@ -22,6 +22,13 @@ module Samagotchi
       { thinking: event[:thinking].to_s, text: text.to_s }
     end
 
+    # steer.cut_after: how long a generation streams only thinking before a
+    # message may cut it, in whole seconds (0 or less: cutting is off).
+    # @return [Integer]
+    def self.cut_after
+      Config.get("steer.cut_after").to_i
+    end
+
     # +clock+: monotonic seconds; +controller+: the running turn's cancel
     # controller (nil between turns), read only when a cut is due.
     def initialize(clock:, controller:)
@@ -51,7 +58,7 @@ module Samagotchi
     def cut_for_steer(source, epoch: nil)
       return :off unless Steer.cuts?(source)
 
-      after = Config.get("steer.cut_after").to_i
+      after = self.class.cut_after
       return :off unless after.positive?
 
       ctrl = @controller.call
@@ -104,7 +111,7 @@ module Samagotchi
     def recheck
       return unless @waiting.waiting?
 
-      after = Config.get("steer.cut_after").to_i
+      after = self.class.cut_after
       return unless after.positive? && @phase.cuttable?(after)
 
       source = @waiting.take
