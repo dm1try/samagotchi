@@ -25,7 +25,8 @@ update.
 - **A command** (`--cmd CMD`): chi runs it every `--every` seconds (at least
   30; default `context.every_seconds`, 300) while the session's worker is up.
 - **Pushed** (`--push`): nothing runs; `chi context push NAME` (stdin, or
-  `-m TEXT`) sets its text. Only a pushed source takes a push: a command
+  `-m TEXT`) sets its text, as plain text or the same JSON a command prints
+  ([below](#the-command-contract)). Only a pushed source takes a push: a command
   source's text is its command's.
 - **A URL** (`chi context add URL`): an installed bundle's provider turns it
   into a command source (name, command, hint, interval). The `github-pr`
@@ -38,19 +39,24 @@ for up to 60 s; stdout is the text (up to 1 MiB), stderr goes to the debug
 log. It gets two variables:
 
 - `SAMAGOTCHI_CONTEXT_NAME`: the source's name;
-- `SAMAGOTCHI_CONTEXT_PREVIOUS`: the path of the last snapshot (JSON with
-  `text`), absent the first time, so the script can say what changed.
+- `SAMAGOTCHI_CONTEXT_PREVIOUS`: the path of the last snapshot, absent the
+  first time, so the script can say what changed. It is JSON: `text` (missing
+  while every run so far failed), `summary`, `fetched_at`, `error` and a few
+  more. Only the text is kept from your output: an extra key of yours (a
+  cursor) isn't there next time.
 
 Its output is either:
 
 - **plain text**: all of it is the text; chi's summary is
-  `content changed (+12/−3 lines)`. It never wakes the session.
-- **JSON**, an object with a string `text`:
+  `content changed (+12/−3 lines)` (`12 lines of text` the first time). It never wakes the session.
+- **JSON**: output that starts with `{` and parses as an object with a string
+  `text` (anything else is plain text):
   ```json
   {"text": "...the full text...", "summary": "2 new comments; checks failing", "wake": true, "hint": "optional new hint"}
   ```
   `summary` (one line, up to 200 characters) goes into the update note;
-  `wake: true` asks for a turn ([Waking](#waking)). Unknown keys are ignored.
+  `wake: true` asks for a turn ([Waking](#waking)); `hint` replaces the
+  source's hint until a later output gives another. Unknown keys are ignored.
 
 A non-zero exit, a timeout, more than 1 MiB or empty output is a failed
 fetch: the last good text stays, and the agent hears once, at the first
@@ -84,7 +90,7 @@ web) without touching the other sessions.
 
 ```
 chi context add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] TARGET
-chi context add URL [--why TEXT] TARGET          a URL an installed bundle's provider knows
+chi context add URL [--why TEXT] [--hint TEXT] TARGET   a URL an installed bundle's provider knows
 chi context push NAME [-m TEXT] [TARGET]         new text for a --push source (stdin without -m)
 chi context ls [TARGET] [--format json]
 chi context show NAME [--json] [TARGET]
@@ -95,7 +101,8 @@ chi context mute|unmute NAME ID...               a project source, for one sessi
 
 `TARGET` is session ids (or unique prefixes) or `--project`. Inside a chi
 session (its `execute`) the default is that session. `NAME` is `a-z`, `0-9`
-and `-`, up to 40 characters.
+and `-`, up to 40 characters, starting with a letter or digit
+(`subscriptions` is taken).
 
 In a session, `/context` lists what is attached (as `context_read` does
 with no name).
@@ -226,7 +233,7 @@ project root, working directory, branch, PR URL, main checkout or worktree,
 model), `attached` and `declined` (with the seconds since the offer), and
 `first_prompt` (the first 160 characters of every session's first message,
 offered or not; a fork's first after the conversation it started from, once;
-not scratch sessions or delegate children). Over 1 MB it is
+not scratch sessions or delegate children). Over 1 MiB it is
 renamed to `offers.ndjson.1` (one old file is kept). Only you can read it
 (0600), and nothing leaves your machine.
 

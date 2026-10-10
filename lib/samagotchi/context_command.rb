@@ -22,7 +22,7 @@ module Samagotchi
     USAGE = <<~TEXT
       Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute> [options] [TARGET]
         add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] TARGET
-        add URL [--why TEXT] TARGET         a URL an installed bundle's provider knows (github-pr: a PR)
+        add URL [--why TEXT] [--hint TEXT] TARGET   a URL an installed bundle's provider knows (github-pr: a PR)
               a source: CMD prints its text (plain, or JSON {"text", "summary", "wake", "hint"});
               --push: text comes from chi context push. --every: how often CMD runs
               (seconds, at least 30; default context.every_seconds). --why: why it's attached;
