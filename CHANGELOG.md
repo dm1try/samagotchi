@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - `llm_context.budget_tokens` (and a model's or host's `llm_context_budget_tokens`) takes `64k` and `off` like
   `/llm-context budget`, with the same range (4k to 10M); a budget out of range warns and is ignored.
+- Web: a turn's step is one lit-html template for the live page and a reload (lit-html 3.3.3 vendored in
+  `web/public/vendor/`, no build step). A live step no longer keeps an empty narration element, and a plain answer's
+  thinking block is drawn fresh from the same template.
 
 ### Fixed
 

@@ -1,9 +1,12 @@
+import { canon, htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { turnHistoryHtml } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { failedTurnText } from "../../../lib/samagotchi/web/public/format.js";
 import { commandBlockHtml } from "../../../lib/samagotchi/web/public/command_view.js";
+
+const turnHistoryHtml = (...args) => htmlOf(turnHistoryNodes(...args));
 
 const timing = normalizeTiming({
   turn_records: [{ id: "T1", status: "completed", duration_ms: 18503 }],
@@ -75,10 +78,10 @@ test("turnHistoryHtml with parts: each step expands to its thinking, text and ca
     '<details class="turn-work done"><summary>3 steps · 2 tool calls</summary>' +
     '<details class="gen"><summary class="repeats"><span class="gen-head">Let me check.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span>' +
-    '<span class="activity-params">command=&quot;true&quot;</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +
+    '<span class="activity-params">command="true"</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
     '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">read</span>' +
-    `<span class="activity-params">path=&quot;R.md&quot;</span><span class="activity-duration">1.2s</span><div class="activity-output" title="${"x".repeat(310)}">${"x".repeat(300)}…</div></div></div></details>` +
+    `<span class="activity-params">path="R.md"</span><span class="activity-duration">1.2s</span><div class="activity-output" title="${"x".repeat(310)}">${"x".repeat(300)}…</div></div></div></details>` +
     // A thinking-only step: one header, the body directly under it (no
     // nested wrap that would repeat "thinking"), as the live view leaves it.
     '<details class="gen"><summary>thinking</summary><div class="thinking-body">sum up</div></details>' +
@@ -172,7 +175,7 @@ test("turnHistoryHtml: the user's lines merged into a turn stay in it: a steered
   const twoTurns = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5000 }, { id: "T2", duration_ms: 2000 }] });
   const html = turnHistoryHtml(items, twoTurns, { thumbs });
   assert.equal((html.match(/class="bubble user"/g) || []).length, 2);
-  assert.match(html, /<\/details><div class="bubble user steered" data-user-state="steered" data-step="2"[^>]*><div class="user-message">also &lt;typos&gt;<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output[^"]*"[^>]*>.*Both fine.*<\/div><div class="turn-timing">turn 1 · 5\.0s<\/div>/);
+  assert.match(html, /<\/details><div class="bubble user steered" data-user-state="steered" data-step="2" data-copy-source="[^"]*"><div class="user-message">also &lt;typos&gt;<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output[^"]*"[^>]*>.*Both fine.*<\/div><div class="turn-timing">turn 1 · 5\.0s<\/div>/);
   assert.match(html, /ok.*<div class="turn-timing">turn 2 · 2\.0s<\/div>/);
 });
 
@@ -318,7 +321,7 @@ test("turnHistoryHtml with parts: an execute's reloaded row shows its full comma
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.ok(html.includes(
     '<span class="activity-params" title="cd /p &amp;&amp; rg -n foo lib |\n  head -5">rg -n foo lib |</span><span class="activity-duration">7ms</span>' +
-    `${commandBlockHtml(view)}<div class="activity-output" title="a">a</div>`), html);
+    `${canon(commandBlockHtml(view))}<div class="activity-output" title="a">a</div>`), html);
 });
 
 test("turnHistoryHtml with parts: a failed call's row keeps its word after the params; its step is marked failed", () => {
@@ -333,7 +336,7 @@ test("turnHistoryHtml with parts: a failed call's row keeps its word after the p
   });
   const html = turnHistoryHtml(items, failed, { thumbs });
   assert.match(html, /<div class="activity-row" data-key="1:1"><span class="activity-status error" role="img" aria-label="error" title="error"><\/span>/);
-  assert.match(html, /<span class="activity-params">command=&quot;ls \/x&quot;<\/span><span class="activity-state error">error<\/span><span class="activity-duration">15ms<\/span>/);
+  assert.match(html, /<span class="activity-params">command="ls \/x"<\/span><span class="activity-state error">error<\/span><span class="activity-duration">15ms<\/span>/);
   // The step says so, with the red-chevron class, and the block's bare count too (under 3 calls).
   assert.match(html, /<details class="turn-work done"><summary>1 step · 1 tool call \(1 failed\)<\/summary><details class="gen has-failed"><summary>working with execute · 1 tool call \(1 failed\)<\/summary>/);
 });

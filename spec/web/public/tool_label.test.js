@@ -1,11 +1,14 @@
+import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { newActivity, addStarted, addCompleted, toolName } from "../../../lib/samagotchi/web/public/activity.js";
 import { tallyText } from "../../../lib/samagotchi/web/public/tally.js";
 import { genLabel } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
-import { turnHistoryHtml } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
+
+const turnHistoryHtml = (...args) => htmlOf(turnHistoryNodes(...args));
 
 // A plugin tool's label ("mcp") stands for its raw name (mcp_call) wherever
 // a row, a step title or the tally names it; the MCP tool it calls is in its
