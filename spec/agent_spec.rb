@@ -1025,6 +1025,10 @@ file2.rb")
 
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      # The looping turns run `echo step` up to the iteration limit (100
+      # calls): its answer without a shell each time.
+      allow(Samagotchi::Tools::Execute).to receive(:call).and_call_original
+      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo step", any_args).and_return("stdout:\nstep\n\nexit: 0")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
     end
 
