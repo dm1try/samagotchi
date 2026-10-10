@@ -47,7 +47,7 @@ RSpec.describe Samagotchi::SessionInbox do
 
       expect(JSON.parse(File.read(path))["delivery"]).to eq("queue")
       expect(described_class.read_input(path))
-        .to eq(["later", { client_id: "cli:send" }, false, [], "queue"])
+        .to eq(described_class::Input.new(prompt: "later", origin: { client_id: "cli:send" }, delivery: "queue"))
     end
 
     it "reads an old file that carries no delivery as a step-boundary message" do
@@ -55,7 +55,7 @@ RSpec.describe Samagotchi::SessionInbox do
       old = File.join(input_dir, "20260101000000000000000.json")
       File.write(old, JSON.generate({ "prompt" => "hi", "client_id" => "web:1" }))
 
-      expect(described_class.read_input(old)).to eq(["hi", { client_id: "web:1" }, false, [], nil])
+      expect(described_class.read_input(old)).to eq(described_class::Input.new(prompt: "hi", origin: { client_id: "web:1" }))
     end
 
     it "reads a file that holds JSON but no object (an array, a number, null) as an unreadable one" do
@@ -64,7 +64,7 @@ RSpec.describe Samagotchi::SessionInbox do
         path = File.join(input_dir, "2026010100000000000000#{i}.json")
         File.write(path, json)
 
-        expect(described_class.read_input(path)).to eq([nil, nil, false, [], nil])
+        expect(described_class.read_input(path)).to eq(described_class::UNREADABLE_INPUT)
       end
     end
 

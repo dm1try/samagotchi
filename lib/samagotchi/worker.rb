@@ -959,9 +959,9 @@ module Samagotchi
           next unless claimed_file
 
           begin
-            prompt, origin = SessionInbox.read_input(claimed_file)
-            prompt = prompt.to_s.strip
-            prompt.empty? ? nil : [prompt, origin]
+            input = SessionInbox.read_input(claimed_file)
+            prompt = input.prompt.to_s.strip
+            prompt.empty? ? nil : [prompt, input.origin]
           ensure
             FileUtils.rm_f(claimed_file)
           end

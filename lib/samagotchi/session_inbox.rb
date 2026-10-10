@@ -183,23 +183,29 @@ module Samagotchi
       Dir.glob(File.join(input_dir, "*.json"))
     end
 
-    # @return [Array(String, Hash|nil, Boolean, Array<Hash>, String|nil)] a
-    #   claimed input file's prompt, origin ({client_id:, enqueued_id:},
-    #   nil when it names no sender), whether its turn runs with the raised
-    #   iteration limit (--no-interrupt), its image refs ({file:, name:}),
-    #   and its delivery ("queue" or nil; a file without the key is one an
-    #   older chi wrote, so nil); a file that isn't a JSON object reads as
-    #   no prompt
+    # A claimed input file as read: its +prompt+, +origin+ ({client_id:,
+    # enqueued_id:}, nil when it names no sender), whether its turn runs
+    # with the raised iteration limit (+no_interrupt+, --no-interrupt), its
+    # +images+ ({file:, name:} refs), and its +delivery+ ("queue" or nil; a
+    # file without the key is one an older chi wrote, so nil).
+    Input = Data.define(:prompt, :origin, :no_interrupt, :images, :delivery) do
+      def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil) = super
+    end
+    # A file that doesn't parse, or isn't a JSON object: no prompt.
+    UNREADABLE_INPUT = Input.new(prompt: nil)
+
+    # @return [Input] a claimed input file's contents; UNREADABLE_INPUT for
+    #   one that isn't a JSON object
     def self.read_input(claimed_file)
       data = JSON.parse(File.read(claimed_file).to_s)
-      return [nil, nil, false, [], nil] unless data.is_a?(Hash)
+      return UNREADABLE_INPUT unless data.is_a?(Hash)
 
       origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"] }.compact
       images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
-      [data["prompt"].to_s, origin.empty? ? nil : origin, data["no_interrupt"] == true, images,
-       Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil]
+      Input.new(prompt: data["prompt"].to_s, origin: origin.empty? ? nil : origin, no_interrupt: data["no_interrupt"] == true,
+                images: images, delivery: Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil)
     rescue JSON::ParserError
-      [nil, nil, false, [], nil]
+      UNREADABLE_INPUT
     end
 
     # Whether an unclaimed input file carries images (a mid-turn drain

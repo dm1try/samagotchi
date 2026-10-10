@@ -183,12 +183,12 @@ module Samagotchi
       return unless claimed_file
 
       begin
-        message, origin, no_interrupt, images, delivery = SessionInbox.read_input(claimed_file)
-        return if message.to_s.strip.empty?
-        return if Array(images).empty? && queue_as_command(message, origin, File.basename(input_file))
+        input = SessionInbox.read_input(claimed_file)
+        return if input.prompt.to_s.strip.empty?
+        return if input.images.empty? && queue_as_command(input.prompt, input.origin, File.basename(input_file))
 
-        yield Prompt.new(text: message, origin: origin, no_interrupt: !!no_interrupt, images: images || [],
-                         delivery: delivery)
+        yield Prompt.new(text: input.prompt, origin: input.origin, no_interrupt: input.no_interrupt, images: input.images,
+                         delivery: input.delivery)
       ensure
         FileUtils.rm_f(claimed_file)
       end
