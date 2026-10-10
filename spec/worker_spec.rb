@@ -105,9 +105,13 @@ RSpec.describe Samagotchi::Worker do
       @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
       expect(wait_until { File.exist?(sidecar) }).to be(true)
-      # Let the loop reach its wait.
-      sleep(0.1)
+      # Let the loop reach its wait (or end): at most what a turn the
+      # example holds open would let it.
+      wait_until(timeout: 0.5) { !@thread.alive? || loop_waiting?(@thread) }
     end
+
+    # Whether the worker's loop sleeps on its Waker (nothing to do).
+    def loop_waiting?(thread) = thread.backtrace.to_a.any? { |frame| frame.include?("Waker#wait") }
 
     def sidecar
       File.join(session_dir, Samagotchi::WorkerSidecar::FILE)
