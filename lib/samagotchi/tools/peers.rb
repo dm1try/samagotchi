@@ -8,10 +8,11 @@ module Samagotchi
     # canceled (a waiting tool returns on it), and the question flow a
     # delegate's approval is relayed through (relay: nil when this session
     # can't host one), and the model the session runs on (model_ref: the
-    # resolved ref, live after /model). Engine hands KernelLoop one that follows its current
+    # resolved ref, live after /model), and the session's own thinking level
+    # (thinking: nil without one). Engine hands KernelLoop one that follows its current
     # session (Engine::PeerView); this plain one is for specs and a kernel
     # without an Engine.
-    Peers = Struct.new(:session_id, :cwd, :state_dir, :cancelled, :relay, :model_ref, keyword_init: true) do
+    Peers = Struct.new(:session_id, :cwd, :state_dir, :cancelled, :relay, :model_ref, :thinking, keyword_init: true) do
       # @return [Boolean] the turn was canceled (:cancelled is a proc or a value)
       def cancelled?
         cancelled.respond_to?(:call) ? !!cancelled.call : !!cancelled

@@ -165,6 +165,14 @@ RSpec.describe Samagotchi::SessionCommands do
         .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); thinking: off (models: qwen3-14b)")
     end
 
+    it "names the session's own thinking level over the model's" do
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(thinking: :off))
+      session.thinking = :low
+
+      expect(commands.run("/model").output)
+        .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); thinking: low (session)")
+    end
+
     it "names the model notes the session's prompt carries, and the new model's after a switch" do
       session.prompt_notes = [{ "name" => "model_notes_qwen", "scope" => "system", "chars" => 40, "digest" => "0123456789ab" }]
 

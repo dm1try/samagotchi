@@ -40,6 +40,20 @@ RSpec.describe Samagotchi::Tools::Execute do
     end
 
     # chi self run by the command reports the session's model (live after /model).
+    it "exports SAMAGOTCHI_SESSION_THINKING, the session's own level, and unsets an inherited one without it" do
+      require "samagotchi/tools/builtins"
+      execute = Samagotchi::Tools::Builtins::HANDLERS.fetch("execute")
+      own = Struct.new(:peers).new(Samagotchi::Tools::Peers.new(session_id: "sess-1", thinking: :low, cancelled: false))
+      expect(execute.call({ content: "printenv SAMAGOTCHI_SESSION_THINKING" }, own)).to include("low")
+
+      with_env("SAMAGOTCHI_SESSION_THINKING" => "high") do
+        none = Struct.new(:peers).new(Samagotchi::Tools::Peers.new(session_id: "sess-1", cancelled: false))
+        bare = execute.call({ content: "printenv SAMAGOTCHI_SESSION_THINKING; echo done" }, none)
+        expect(bare).to include("done")
+        expect(bare).not_to include("high")
+      end
+    end
+
     it "exports SAMAGOTCHI_SESSION_MODEL, the session's model ref, and unsets an inherited one without it" do
       require "samagotchi/tools/builtins"
       peers = Samagotchi::Tools::Peers.new(session_id: "sess-1", model_ref: "splash:qwen", cancelled: false)

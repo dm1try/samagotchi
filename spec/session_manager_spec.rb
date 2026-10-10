@@ -766,11 +766,12 @@ RSpec.describe Samagotchi::SessionManager do
         12_345
       end
       stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_PARENT_SESSION" => "aaaaaaaa-0000-0000-0000-000000000000",
-                                       "SAMAGOTCHI_SESSION_MODEL" => "main:outer"))
+                                       "SAMAGOTCHI_SESSION_MODEL" => "main:outer", "SAMAGOTCHI_SESSION_THINKING" => "low"))
 
       described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
-      expect(spawned_env).to include("SAMAGOTCHI_PARENT_SESSION" => nil, "SAMAGOTCHI_SESSION_MODEL" => nil)
+      expect(spawned_env).to include("SAMAGOTCHI_PARENT_SESSION" => nil, "SAMAGOTCHI_SESSION_MODEL" => nil,
+                                     "SAMAGOTCHI_SESSION_THINKING" => nil)
     end
 
     it "reaps the worker when it exits, so a long-lived spawner (chi web) keeps no zombies" do

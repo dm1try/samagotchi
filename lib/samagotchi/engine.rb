@@ -1029,14 +1029,36 @@ module Samagotchi
       nil
     end
 
-    # "off (models: qwen)" for /model: the effective model's thinking level
-    # and where it came from, nil when none is set.
+    # "off (models: qwen)", "low (session)" for /model: the effective
+    # model's thinking level and where it came from, nil when none is set.
     def thinking_summary
+      explained = thinking_explained
+      explained&.source ? explained.label : nil
+    end
+
+    # The effective model's thinking level with where it came from and the
+    # session's own (Thinking::Explained), as the next turn resolves it;
+    # nil when it can't be resolved.
+    # @return [Thinking::Explained, nil]
+    def thinking_explained
       target = @host_registry.resolve(@effective_model_name)
-      level, source = Thinking.resolve(target, names: model_lookup_names(target))
-      source ? "#{level} (#{source})" : nil
+      Thinking.explain(target, names: model_lookup_names(target), session: thinking_override)
     rescue StandardError
       nil
+    end
+
+    # The session's own thinking level, nil when it has none.
+    # @return [Symbol, nil]
+    def thinking_override = @session&.thinking
+
+    # Set the session's own thinking level (nil unsets it); the next turn's
+    # start resolves it, never a running one (its TurnSettings are fixed).
+    # The caller saves the session.
+    # @raise [ArgumentError] with no session yet
+    def thinking_override=(level)
+      raise ArgumentError, "no session yet" unless @session
+
+      @session.thinking = level
     end
 
     # The model the server serves for the current model, and the name asked
@@ -2237,9 +2259,9 @@ module Samagotchi
       hook_notify(text, level, "thinking")
     end
 
-    # +target+'s thinking level (Thinking.resolve).
+    # +target+'s thinking level (Thinking.resolve), the session's own first.
     def thinking_level(target)
-      Thinking.resolve(target, names: model_lookup_names(target)).first
+      Thinking.resolve(target, names: model_lookup_names(target), session: thinking_override).first
     rescue StandardError
       Thinking::DEFAULT
     end

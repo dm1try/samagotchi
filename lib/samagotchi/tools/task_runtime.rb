@@ -22,7 +22,7 @@ module Samagotchi
       OUTPUT_TAIL_READ_BYTES = 16 * 1024
       SANITIZED_ENV_KEYS = %w[RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION].freeze
       # Set by chi (Builtins.parent_env); the model's env can't change it.
-      MARKER_ENV_KEYS = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL].freeze
+      MARKER_ENV_KEYS = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL SAMAGOTCHI_SESSION_THINKING].freeze
       # task_wait and task_get add it to a task the user stopped (the web's
       # stop-task button), so the model doesn't rerun the job.
       # A record whose pid isn't a process group chi started (missing, 0, 1,

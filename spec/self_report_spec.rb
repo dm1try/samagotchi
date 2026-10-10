@@ -446,6 +446,15 @@ RSpec.describe Samagotchi::SelfReport do
       expect(field("thinking")).to eq("default")
     end
 
+    it "puts the session's own level first in a session's commands (SAMAGOTCHI_SESSION_THINKING), not outside one" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    thinking: low\n")
+      env["SAMAGOTCHI_SESSION_THINKING"] = "high"
+      expect(field("thinking")).to eq("low (hosts.main)")
+
+      env["SAMAGOTCHI_SESSION_MODEL"] = "main:spec-model"
+      expect(field("thinking")).to eq("high (session)")
+    end
+
     it "finds models: under the model an alias points at, as a turn does" do
       write_config("hosts:\n  main:\n    host: 10.0.0.5\nmodel_aliases:\n  fast: org/Fast-1\n" \
                    "models:\n  org/fast-1:\n    thinking: off\n")

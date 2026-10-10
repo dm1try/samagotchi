@@ -152,6 +152,8 @@ module Samagotchi
 
     SESSION_MODEL_ENV = "SAMAGOTCHI_SESSION_MODEL"
     PARENT_SESSION_ENV = "SAMAGOTCHI_PARENT_SESSION"
+    # The session's own thinking level, beside its model (Builtins.parent_env).
+    SESSION_THINKING_ENV = "SAMAGOTCHI_SESSION_THINKING"
 
     # The model of the session this chi self runs in (its execute exports
     # SAMAGOTCHI_SESSION_MODEL, the resolved ref, live after /model); nil
@@ -355,13 +357,14 @@ module Samagotchi
       end
     end
 
-    # The model's thinking level and where it came from (Thinking.resolve).
+    # The model's thinking level and where it came from (Thinking.resolve);
+    # in a session's commands its own level first (SAMAGOTCHI_SESSION_THINKING).
     def thinking_for(model, env)
       registry = HostRegistry.new(env: env)
       target = registry.resolve(model)
-      level, source = Thinking.resolve(target, names: registry.lookup_names(model, target: target),
-                                               models: ConfigFile.model_settings(env: env))
-      source ? "#{level} (#{source})" : level.to_s
+      session = session_model(env) ? Thinking.session_level(env[SESSION_THINKING_ENV]) : nil
+      Thinking.explain(target, names: registry.lookup_names(model, target: target),
+                               models: ConfigFile.model_settings(env: env), session: session).label
     rescue StandardError => e
       "(unknown: #{e.message})"
     end

@@ -113,6 +113,8 @@ RSpec.describe "task tools" do
 
       expect(described_class.call("true", env: { "SAMAGOTCHI_SESSION_MODEL" => "x" }))
         .to eq("Error: env key is reserved: SAMAGOTCHI_SESSION_MODEL")
+      expect(described_class.call("true", env: { "SAMAGOTCHI_SESSION_THINKING" => "low" }))
+        .to eq("Error: env key is reserved: SAMAGOTCHI_SESSION_THINKING")
     end
 
     # A worker started by `chi --model X` has SAMAGOTCHI_DEFAULT_MODEL=X for

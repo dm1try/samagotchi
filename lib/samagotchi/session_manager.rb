@@ -516,7 +516,7 @@ module Samagotchi
 
     GUARDRAILS_ENV_PREFIX = "SAMAGOTCHI_GUARDRAILS_"
     # Tools::Builtins.parent_env's (Tools::TaskRuntime::MARKER_ENV_KEYS).
-    SESSION_MARKER_ENV = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL].freeze
+    SESSION_MARKER_ENV = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL SAMAGOTCHI_SESSION_THINKING].freeze
 
     # List all sessions, reading status from persisted session.json files.
     # +project_root+: only that project's sessions (nil: every session).
