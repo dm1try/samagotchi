@@ -550,6 +550,49 @@ RSpec.describe Samagotchi::SessionCommands do
     end
   end
 
+  describe "/model with default_model: nil" do
+    let(:engine) { Samagotchi::Engine.new(host_registry: registry, model_name: "splash:test-id") }
+    let(:commands) do
+      described_class.new(engine: engine, turn_flow: turn_flow, default_model: nil,
+                          save: ->(s) { s.save(state_dir: state_dir) })
+    end
+
+    it "shows the runtime model without 'default:' text" do
+      result = commands.run("/model")
+
+      expect(result.status).to eq(:ok)
+      expect(result.output).to include("runtime model: splash:test-id")
+      expect(result.output).not_to include("(default:")
+      expect(result.changed).to eq([])
+    end
+
+    it "refuses /model clear with an error when there is no default" do
+      result = commands.run("/model clear")
+
+      expect(result.status).to eq(:error)
+      expect(result.output).to include("no default model is configured")
+      expect(result.output).to include("default.model")
+    end
+
+    it "still sets the runtime model on /model X" do
+      result = commands.run("/model alpha:gemma-small")
+
+      expect(result.status).to eq(:ok)
+      expect(result.output).to include("runtime model set to alpha:gemma-small")
+      expect(result.changed).to eq([:model])
+      expect(engine.effective_model_name).to eq("alpha:gemma-small")
+    end
+
+    it "sets both runtime model and default on /model X --default" do
+      result = commands.run("/model alpha:gemma-small --default")
+
+      expect(result.status).to eq(:ok)
+      expect(result.output).to include("default updated")
+      expect(result.changed).to eq([:model])
+      expect(commands.default_model).to eq("alpha:gemma-small")
+    end
+  end
+
   describe "/context" do
     let(:state) { Dir.mktmpdir("cmd-context") }
     let(:state_dir) { File.join(state, "samagotchi", "sessions") }

@@ -188,12 +188,12 @@ module Samagotchi
     # @return [String, nil]
     def self.builtin_name(line) = builtin_registry.lookup(line)&.name
 
-    # @return [String] the model /model clear goes back to
+    # @return [String, nil] the model /model clear goes back to; nil when none
     attr_reader :default_model
 
-    # @param default_model [String] the config default, which /model clear
+    # @param default_model [String, nil] the config default, which /model clear
     #   restores and /model names (the Engine may have started elsewhere, e.g.
-    #   on a resumed session's model)
+    #   on a resumed session's model); nil when the config names no default
     # @param save [#call] saves a session (a worker passes its state dir)
     # @param registry [Commands::Registry] the commands #run looks lines up in
     def initialize(engine:, turn_flow:, default_model:, save: ->(session) { session.save },
@@ -484,7 +484,7 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false] if model_name == @engine.model_ref_for(@default_model)
+        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false] if @default_model.nil? || model_name == @engine.model_ref_for(@default_model)
 
         return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false]
       end
@@ -554,6 +554,7 @@ module Samagotchi
 
         if ConfigFile::RESERVED_MODEL_ALIASES.include?(arg.downcase)
           return ["--default cannot be combined with clear/default/none/off", false] if persist_default
+          raise ModelProfile::MissingModel, "no default model is configured (set default.model in config.yml, or /model <name> --default)" if @default_model.nil?
 
           switch_model(@default_model)
           return ["runtime model reset to #{model_name}#{model_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", true]

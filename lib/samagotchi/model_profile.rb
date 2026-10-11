@@ -142,13 +142,24 @@ module Samagotchi
       end
     end
 
+    # The model the config names as the default, or nil when it names none.
+    # It never raises.
+    # @return [String, nil]
+    def self.default_model_name
+      require_relative "config"
+      value = Samagotchi::Config.get("default.model")
+      return nil unless value
+
+      stripped = value.to_s.strip
+      stripped.empty? ? nil : stripped
+    end
+
     def self.required_model_name(model_name = nil)
       value = model_name.to_s.strip
       if value.empty?
-        require_relative "config"
-        value = Samagotchi::Config.get("default.model").to_s.strip
+        value = default_model_name
       end
-      raise MissingModel, missing_model_message if value.empty?
+      raise MissingModel, missing_model_message if value.to_s.strip.empty?
 
       value
     end

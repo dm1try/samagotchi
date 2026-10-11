@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A session with its own model resumes in its worker (`chi send`, attached) when the config names no default.model;
+  `/model clear` then says there is no default.
+
 ### Added
 
 - Web: a ref's menu. A ref with more than one target shows a `▾` on hover (a tap on a touch screen, ↓ on a focused

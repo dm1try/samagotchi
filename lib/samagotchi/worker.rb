@@ -219,8 +219,8 @@ module Samagotchi
                                      @bridge.queue_command(line, client_id: client_id, after_file: after_file)
                                    })
       # /model's default is the config's, as in the REPL; the Engine started
-      # on the session's model.
-      @default_model = ModelProfile.required_model_name(nil)
+      # on the session's model.  nil when there is no default.model.
+      @default_model = ModelProfile.default_model_name
       @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow,
                                       default_model: @default_model, registry: @engine.command_registry,
                                       save: ->(session) { session.save(state_dir: @state_dir) })

@@ -239,6 +239,47 @@ RSpec.describe Samagotchi::ModelProfile do
     end
   end
 
+  describe ".default_model_name" do
+    around do |example|
+      original = ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-empty") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        # Clear Config cache so file isolation takes effect
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        example.run
+      ensure
+        if original.nil?
+          ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+        else
+          ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
+        end
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+      end
+    end
+
+    it "returns nil when nothing sets a default" do
+      ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+      expect(described_class.default_model_name).to be_nil
+    end
+
+    it "returns the stripped value when default.model is set" do
+      path = File.join(ENV["XDG_CONFIG_HOME"], "samagotchi", "config.yml")
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "default:\n  model:  Splash:main  \n")
+      Samagotchi::Config.reload!(cli_overrides: {})
+
+      expect(described_class.default_model_name).to eq("Splash:main")
+    end
+
+    it "required_model_name still raises when nothing is set" do
+      ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+      expect { described_class.required_model_name }
+        .to raise_error(Samagotchi::ModelProfile::MissingModel)
+    end
+  end
+
   describe ".from_model_name of the configured model" do
     around do |example|
       original = ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)

@@ -1813,4 +1813,51 @@ RSpec.describe Samagotchi::Worker do
       end
     end
   end
+
+  describe "a resumed session under a no-default config" do
+    around do |example|
+      original = ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-worker-no-default") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+        example.run
+      ensure
+        if original.nil?
+          ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+        else
+          ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
+        end
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        FileUtils.rm_rf(tmpdir) if defined?(tmpdir)
+      end
+    end
+
+    let(:tmpdir) { Dir.mktmpdir("worker-no-default") }
+    let!(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "splash:some-id", working_directory: tmpdir).tap do |s|
+        s.save(state_dir: tmpdir)
+      end
+    end
+    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+
+    it "starts without raising when the session has its own model" do
+      FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
+      worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
+                                   idle_exit_minutes: 0.01, poll_interval: 0.1)
+      thread = Thread.new { worker.run }
+      thread.report_on_exception = false
+
+      # Wait until the sidecar appears (engine is building) — main bug was here
+      sidecar = File.join(session_dir, Samagotchi::WorkerSidecar::FILE)
+      expect(wait_until { File.exist?(sidecar) }).to be(true)
+
+      # Mark stopped so the worker exits (no input would keep it waiting)
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+
+      expect(thread.join(5)&.value).to eq(:stopped)
+    end
+  end
 end

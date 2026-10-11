@@ -633,4 +633,32 @@ RSpec.describe Samagotchi::Engine do
       end
     end
   end
+
+  describe "construction with a session model and no config default" do
+    around do |example|
+      original = ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-empty") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        example.run
+      ensure
+        if original.nil?
+          ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+        else
+          ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
+        end
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+      end
+    end
+
+    it "builds without kernel: under a no-default config, and its kernel uses the session model" do
+      engine = described_class.new(client: test_client, model_name: "splash:some-id")
+
+      kernel = engine.instance_variable_get(:@kernel)
+      expect(kernel).to be_a(Samagotchi::KernelLoop)
+      expect(kernel.instance_variable_get(:@turn_settings).model_name).to eq("splash:some-id")
+    end
+  end
 end

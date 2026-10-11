@@ -266,8 +266,8 @@ module Samagotchi
     def wire_kernel(kernel, muted_memories)
       # A given kernel (specs) gets the Engine's store, hooks and tools, as
       # the one built here does.
-      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, hooks: @hooks, reminder_store: @reminder_store,
-                                         tools: @tools)
+      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, model_name: @effective_model_name,
+                                         hooks: @hooks, reminder_store: @reminder_store, tools: @tools)
       @kernel.reminder_store = @reminder_store
       @kernel.hooks = @hooks
       @kernel.tools = @tools
