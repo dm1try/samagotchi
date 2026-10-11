@@ -31,6 +31,8 @@ module Samagotchi
           "exit_code: #{record["exit_code"]}",
           "stop_reason: #{record["stop_reason"]}",
           "output_path: #{record.fetch("output_path")}",
+          # A handed-over execute's stderr has a log of its own.
+          ("stderr_path: #{record["stderr_path"]}" if record["stderr_path"]),
           (TaskRuntime::USER_STOP_NOTE if TaskRuntime.stopped_by_user?(record))
         ].compact.join("\n")
       end

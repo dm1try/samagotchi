@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "samagotchi/process_group"
 require "samagotchi/tools/builtins"
+require "samagotchi/tools/execute"
 require "samagotchi/tools/task_create"
 require "samagotchi/tools/task_get"
 require "samagotchi/tools/task_list"
@@ -444,6 +446,23 @@ RSpec.describe "task tools" do
     # so a wait ends soon after the task's change, as it would at 0.5 s.
     before { stub_const("Samagotchi::Tools::TaskWait::POLL_INTERVAL", 0.05) }
 
+    it "follows a timeout's output tail with a short stderr tail when the record has a stderr log" do
+      dir = File.expand_path("logs")
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "out.log"), "o1\no2\n")
+      File.write(File.join(dir, "err.log"), (1..20).map { |n| "e#{n}\n" }.join)
+      record, = Samagotchi::Tools::TaskRuntime.create_task("sleep 31.83")
+      Samagotchi::Tools::TaskRuntime.write_record(record.merge("output_path" => File.join(dir, "out.log"),
+                                                               "stderr_path" => File.join(dir, "err.log")))
+
+      result = described_class.call(record["id"], timeout: 0, tail_lines: 50)
+
+      expect(result).to end_with("output_tail:\no1\no2\nstderr_tail:\n#{(11..20).map { |n| "e#{n}" }.join("\n")}")
+      expect(result).to include("stderr_path: #{File.join(dir, "err.log")}")
+      File.write(File.join(dir, "err.log"), "")
+      expect(described_class.call(record["id"], timeout: 0)).to end_with("output_tail:\no1\no2")
+    end
+
     it "uses a multi-minute default timeout" do
       expect(described_class::TIMEOUT_DEFAULT).to eq(600)
     end
@@ -616,6 +635,124 @@ RSpec.describe "task tools" do
       expect(Samagotchi::Tools::TaskRuntime.created_ids_in(messages)).to eq([live, done])
     ensure
       [live, other].compact.each { |id| Samagotchi::Tools::TaskStop.call(id) }
+    end
+  end
+
+  describe "TaskRuntime.created_ids_in and created_id: tasks other tools started" do
+    let(:runtime) { Samagotchi::Tools::TaskRuntime }
+    let(:id) { "20261010120000-1a2b3c4d" }
+    let(:handed_over) do
+      "#{Samagotchi::Tools::Execute.handed_over_line(120)}\ntask_id: #{id}\n" \
+        "Wait for it with task_wait (it may take minutes); task_stop stops it."
+    end
+
+    it "counts an execute's hand-over, anchored on its first line, and a gate-corrected task_create" do
+      messages = [
+        { role: "tool_response", content: ["[execute]\n#{handed_over}",
+                                           "ran as: task_create command=npm test\n[task_create]\ntask_id: t-ran-as",
+                                           "ran as: execute command=sleep 200\n[execute]\n#{handed_over.sub(id, "e-ran-as")}"]
+                                            .join("\n\n---\n\n") }
+      ]
+
+      expect(runtime.created_ids_in(messages)).to eq([id, "t-ran-as", "e-ran-as"])
+    end
+
+    it "never counts a task_id line the command printed" do
+      faked = ["[execute]\ntask_id: #{id}\nexit: 0",
+               "[execute]\nstdout:\n#{handed_over}\nexit: 0",
+               "[task_wait]\n#{handed_over}"]
+      messages = [{ role: "tool_response", content: faked.join("\n\n---\n\n") }]
+
+      expect(runtime.created_ids_in(messages)).to eq([])
+      expect(runtime.created_id("execute", "task_id: #{id}")).to be_nil
+      expect(runtime.created_id("execute", "stdout:\n#{handed_over}")).to be_nil
+    end
+
+    it "reads a UI row's output with or without the lead, per tool" do
+      expect(runtime.created_id("execute", handed_over)).to eq(id)
+      expect(runtime.created_id("execute", "[execute]\n#{handed_over}")).to eq(id)
+      expect(runtime.handed_over_id("ran as: execute command=x\n[execute]\n#{handed_over}")).to eq(id)
+      expect(runtime.created_id("task_create", "task_id: t1\nstatus: running")).to eq("t1")
+      expect(runtime.created_id("task_create", "ran as: task_create command=x\n[task_create]\ntask_id: t2")).to eq("t2")
+      expect(runtime.created_id("task_wait", "task_id: t3")).to be_nil
+      expect(runtime.created_id("task_create", handed_over)).to be_nil
+    end
+  end
+
+  describe "TaskRuntime.adopt: a command execute handed over at its limit" do
+    let(:runtime) { Samagotchi::Tools::TaskRuntime }
+
+    # What execute does before a hand-over: the command in its own group,
+    # stdout and stderr in two logs outside tmp/tasks, an exit_code file.
+    def spawn_like_execute(command)
+      dir = File.expand_path("state/execute")
+      FileUtils.mkdir_p(dir)
+      paths = { output_path: File.join(dir, "stdout.log"), stderr_path: File.join(dir, "stderr.log"),
+                exit_code_path: File.join(dir, "exit_code") }
+      started_at = Time.now - 5
+      pid = Samagotchi::ProcessGroup.spawn(*Samagotchi::Tools::Shell.argv(runtime.wrapped_shell_command(command, paths[:exit_code_path])),
+                                           in: File::NULL, out: paths[:output_path], err: paths[:stderr_path])
+      @spawned << [pid, Process.detach(pid)]
+      [pid, started_at, paths]
+    end
+
+    before { @spawned = [] }
+
+    # Stopped even when the example failed before adopt wrote a record, but
+    # only while its waiter runs: a reaped pid (stopped by stop_task, or
+    # ended) may lead another group by now.
+    after do
+      @spawned.each do |pid, waiter|
+        next unless waiter.alive?
+
+        Samagotchi::ProcessGroup.stop(pid, grace: 0.5, poll: 0.05, quiet: [Errno::ESRCH, Errno::EPERM])
+      end
+    end
+
+    it "writes a running record with the spawn time, the pid's start time read now, and absolute paths" do
+      pid, started_at, paths = spawn_like_execute("sleep 31.81")
+      id = runtime.generate_task_id
+
+      record, error = runtime.adopt(id: id, command: " sleep 31.81 ", cwd: Dir.pwd, pid: pid, started_at: started_at, **paths)
+
+      expect(error).to be_nil
+      expect(record).to include("id" => id, "command" => "sleep 31.81", "status" => "running", "pid" => pid,
+                                "cwd" => Dir.pwd, "workspace_root" => Dir.pwd, "handed_over_by" => "execute",
+                                "created_at" => started_at.utc.iso8601, "started_at" => started_at.utc.iso8601,
+                                "output_path" => paths[:output_path], "stderr_path" => paths[:stderr_path],
+                                "exit_code_path" => paths[:exit_code_path])
+      expect(record["pid_started"]).to eq(Samagotchi::ProcessGroup.start_time(pid))
+      expect(runtime.get_record(id).first).to include("status" => "running")
+      expect(runtime.command_of(id)).to eq("sleep 31.81")
+
+      stopped, = runtime.stop_task(id, by: "user")
+      expect(stopped).to include("status" => "stopped", "stop_reason" => "stopped_by_user")
+      expect(Samagotchi::ProcessGroup.alive?(pid)).to be(false)
+    end
+
+    it "ends as the command did, from its exit_code file" do
+      pid, started_at, paths = spawn_like_execute("sleep 0.3; echo out; echo err >&2; (exit 3)")
+      id = runtime.generate_task_id
+      runtime.adopt(id: id, command: "x", cwd: nil, pid: pid, started_at: started_at, **paths)
+
+      result = Samagotchi::Tools::TaskWait.call(id, timeout: 10)
+
+      expect(result).to include("status: failed", "exit_code: 3", "output_path: #{paths[:output_path]}",
+                                "stderr_path: #{paths[:stderr_path]}")
+      expect(Samagotchi::Tools::TaskGet.call(id)).to include("stderr_path: #{paths[:stderr_path]}")
+    end
+
+    it "refuses a bad id, an existing task, a relative path or a pid chi can't stop, and writes nothing" do
+      pid, started_at, paths = spawn_like_execute("sleep 31.82")
+      taken, = runtime.create_task("true")
+      args = { command: "x", cwd: nil, pid: pid, started_at: started_at, **paths }
+
+      expect(runtime.adopt(id: "../x", **args)).to eq([nil, "Error: invalid task id: ../x"])
+      expect(runtime.adopt(id: taken["id"], **args)).to eq([nil, "Error: task already exists: #{taken["id"]}"])
+      id = runtime.generate_task_id
+      expect(runtime.adopt(id: id, **args, stderr_path: "stderr.log").last).to eq("Error: stderr_path must be absolute: stderr.log")
+      expect(runtime.adopt(id: id, **args, pid: 1).last).to start_with("Error: not a process chi can stop")
+      expect(runtime.load_record(id)).to be_nil
     end
   end
 

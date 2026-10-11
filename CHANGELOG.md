@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A `task_create` the guardrails corrected (its result starts with a `ran as:` line) now counts as the session's own
+  task: the turn-end and cancel notes list it, a worker doesn't idle-exit under it, and the web's stop-task button
+  works for it.
 - Web: a blank line in a read's numbered file lines is empty, not a space, so copying the lines keeps the file
   as it is.
 

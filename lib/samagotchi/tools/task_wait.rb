@@ -10,6 +10,9 @@ module Samagotchi
       TAIL_LINES_DEFAULT = 10
       TAIL_LINES_MAX = 100
       POLL_INTERVAL = 0.5
+      # A handed-over execute keeps stderr in a log of its own: at most this
+      # many of its last lines follow the output tail.
+      STDERR_TAIL_LINES_MAX = 10
 
       def self.name = NAME
 
@@ -41,7 +44,7 @@ module Samagotchi
 
           if completion_pattern
             output_tail = output_tail(record, tail_lines)
-            return format_response(record, wait_result: "pattern_matched", output_tail: output_tail) if completion_pattern.match?(output_tail)
+            return format_response(record, wait_result: "pattern_matched", output_tail: output_tail, tail_lines: tail_lines) if completion_pattern.match?(output_tail)
           end
 
           return cancelled_response(task_id, tail_lines, started) if cancelled.call
@@ -55,7 +58,7 @@ module Samagotchi
         refreshed, = TaskRuntime.get_record(task_id)
         return finished_response(refreshed, tail_lines) unless refreshed.fetch("status") == "running"
 
-        format_response(refreshed, wait_result: "timeout", output_tail: output_tail(refreshed, tail_lines))
+        format_response(refreshed, wait_result: "timeout", output_tail: output_tail(refreshed, tail_lines), tail_lines: tail_lines)
       rescue StandardError => e
         "Error: #{e.message}"
       end
@@ -72,7 +75,8 @@ module Samagotchi
           "  To keep waiting: task_wait #{task_id}. If it is stuck or no longer needed: task_stop #{task_id}.",
           "waited: #{(monotonic_time - started).round}s"
         ]
-        format_response(record, wait_result: "canceled", output_tail: output_tail(record, tail_lines), extra: note)
+        format_response(record, wait_result: "canceled", output_tail: output_tail(record, tail_lines), tail_lines: tail_lines,
+                                extra: note)
       end
       private_class_method :cancelled_response
 
@@ -81,7 +85,8 @@ module Samagotchi
       def self.finished_response(record, tail_lines)
         return format_response(record) unless TaskRuntime.stopped_by_user?(record)
 
-        format_response(record, output_tail: output_tail(record, tail_lines), extra: [TaskRuntime::USER_STOP_NOTE])
+        format_response(record, output_tail: output_tail(record, tail_lines), tail_lines: tail_lines,
+                               extra: [TaskRuntime::USER_STOP_NOTE])
       end
       private_class_method :finished_response
 
@@ -90,7 +95,17 @@ module Samagotchi
       end
       private_class_method :output_tail
 
-      def self.format_response(record, wait_result: nil, output_tail: nil, extra: [])
+      # The last lines of a handed-over execute's stderr log (stderr_path),
+      # "" for a task_create task (one log) or an empty stderr.
+      def self.stderr_tail(record, tail_lines)
+        path = record["stderr_path"]
+        return "" if path.to_s.empty? || tail_lines.nil?
+
+        TaskRuntime.output_tail_lines(path, [tail_lines, STDERR_TAIL_LINES_MAX].min)
+      end
+      private_class_method :stderr_tail
+
+      def self.format_response(record, wait_result: nil, output_tail: nil, tail_lines: nil, extra: [])
         lines = [
           "task_id: #{record.fetch("id")}",
           "status: #{record.fetch("status")}",
@@ -98,12 +113,15 @@ module Samagotchi
           "stop_reason: #{record["stop_reason"]}",
           "output_path: #{record.fetch("output_path")}"
         ]
+        lines << "stderr_path: #{record["stderr_path"]}" if record["stderr_path"]
         return lines.join("\n") unless output_tail
 
         lines << "wait_result: #{wait_result}" if wait_result
         lines.concat(extra)
         lines << "output_tail:"
         lines << output_tail.rstrip unless output_tail.empty?
+        stderr_tail = stderr_tail(record, tail_lines)
+        lines.concat(["stderr_tail:", stderr_tail.rstrip]) unless stderr_tail.empty?
         lines.join("\n")
       end
       private_class_method :format_response

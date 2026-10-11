@@ -11,6 +11,10 @@ require_relative "shell"
 
 module Samagotchi
   module Tools
+    # Execute requires nothing from here at load, and P1b's Execute will
+    # require this file: autoload keeps the two from requiring each other.
+    autoload :Execute, File.expand_path("execute", __dir__)
+
     module TaskRuntime
       TASKS_DIR = File.join("tmp", "tasks")
       METADATA_FILENAME = "task.json"
@@ -97,6 +101,48 @@ module Samagotchi
         output_io&.close
       end
 
+      # A record for a command chi already runs: an execute still running at
+      # its limit, handed over as a task (Execute::HANDED_OVER). Its logs and
+      # exit_code file stay where execute put them, so the paths must be
+      # absolute; +stderr_path+ is a log of its own (task_wait tails it).
+      # The pid's start time is read here, at the hand-over, not at the
+      # spawn (a quick execute is spared the ps): read while execute's
+      # detach waiter is still running, so the pid is still its child.
+      # @param started_at [Time] when execute spawned the command
+      # @return [Array(Hash, nil), Array(nil, String)] the record, or an error
+      def adopt(id:, command:, cwd:, pid:, started_at:, output_path:, stderr_path:, exit_code_path:)
+        return [nil, "Error: invalid task id: #{id}"] unless TASK_ID_SHAPE.match?(id.to_s)
+        return [nil, "Error: task already exists: #{id}"] if File.exist?(metadata_path(id))
+
+        paths = { "output_path" => output_path, "stderr_path" => stderr_path, "exit_code_path" => exit_code_path }
+        relative = paths.find { |_, path| !File.absolute_path?(path.to_s) }
+        return [nil, "Error: #{relative[0]} must be absolute: #{relative[1]}"] if relative
+        return [nil, "Error: not a process chi can stop: #{pid.inspect}"] unless ProcessGroup.signalable?(pid)
+
+        started = started_at.utc.iso8601
+        record = {
+          "metadata_version" => METADATA_VERSION,
+          "id" => id,
+          "command" => command.to_s.strip,
+          "cwd" => File.expand_path(cwd.to_s.empty? ? Dir.pwd : cwd),
+          "workspace_root" => Dir.pwd,
+          "status" => "running",
+          "pid" => pid,
+          "pid_started" => ProcessGroup.start_time(pid),
+          "created_at" => started,
+          "started_at" => started,
+          "finished_at" => nil,
+          "exit_code" => nil,
+          "stop_reason" => nil,
+          **paths,
+          "handed_over_by" => Execute::NAME
+        }
+        write_record(record)
+        [record, nil]
+      rescue StandardError => e
+        [nil, "Error: #{e.message}"]
+      end
+
       def list_records
         ensure_tasks_dir
         task_dirs = Dir.glob(File.join(TASKS_DIR, "*"))
@@ -111,9 +157,10 @@ module Samagotchi
         end.compact.sort_by { |record| record["created_at"].to_s }.reverse
       end
 
-      # The tasks this conversation's task_create calls started that are
-      # still running. Only task_create results count: records are shared by
-      # every session in the worker's cwd, and task_list shows them all.
+      # The tasks this conversation started that are still running: its
+      # task_create calls and the executes it handed over at their limit.
+      # Only those results count: records are shared by every session in the
+      # worker's cwd, and task_list shows them all.
       # A native tool_response joins its calls' results with "---".
       # @return [Array<Hash>] {id:, command:}, oldest first
       def running_created_in(messages)
@@ -123,17 +170,48 @@ module Samagotchi
         end
       end
 
-      # The ids of every task this conversation's task_create calls started,
-      # whatever their status now, oldest first.
+      # The ids of every task this conversation started (task_create, a
+      # handed-over execute), whatever their status now, oldest first.
       # @return [Array<String>]
       def created_ids_in(messages)
         Array(messages).flat_map do |message|
           next [] unless (message[:role] || message["role"]).to_s == "tool_response"
 
           (message[:content] || message["content"]).to_s.split("\n\n---\n\n").filter_map do |block|
-            block[/\A\[task_create\]\ntask_id: (\S+)/, 1]
+            block[CREATED_BLOCK, 1] || handed_over_id(block)
           end
         end.uniq
+      end
+
+      # A task_create result as the model gets it: its "[task_create]" lead,
+      # after the one "ran as: …" line a gate-corrected call has.
+      RAN_AS_LINE = "(?:ran as: [^\n]*\n)?"
+      CREATED_BLOCK = /\A#{RAN_AS_LINE}\[task_create\]\ntask_id: (\S+)/
+      CREATED_OUTPUT = /\A#{RAN_AS_LINE}(?:\[task_create\]\n)?task_id: (\S+)/
+
+      # The task id of a tool output that started a task, the "[tool]" lead
+      # optional (a UI's row has it or not): a task_create's, or an execute's
+      # handed_over_id. nil for any other tool or output.
+      # @return [String, nil]
+      def created_id(tool, text)
+        case tool
+        when "task_create" then text.to_s[CREATED_OUTPUT, 1]
+        when Execute::NAME then handed_over_id(text)
+        end
+      end
+
+      # The task id an execute's hand-over result names: anchored on its
+      # first line (Execute::HANDED_OVER), never a "task_id:" line anywhere,
+      # which the command's own output can print. The "[execute]" lead and
+      # a "ran as: …" line before it are optional. web/public/task_stop.js
+      # has the JS twin (handedOverId).
+      # @return [String, nil]
+      def handed_over_id(text)
+        text.to_s[handed_over_pattern, 1]
+      end
+
+      def handed_over_pattern
+        @handed_over_pattern ||= /\A#{RAN_AS_LINE}(?:\[#{Execute::NAME}\]\n)?#{Regexp.escape(Execute::HANDED_OVER)} \d+s limit:[^\n]*\ntask_id: (\S+)/
       end
 
       # A task id as task_create makes them: no path parts.

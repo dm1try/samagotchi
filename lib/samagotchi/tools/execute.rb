@@ -36,8 +36,17 @@ module Samagotchi
       BACKGROUND_DETACHED_HINT = "(a background process kept the output open and was left running; " \
                                  "to keep a server or long job running, start it with task_create)"
       READ_CHUNK_BYTES = 65_536
+      # The first words of a command still running at the limit and handed
+      # over as a task (handed_over_line). TaskRuntime.handed_over_id, the
+      # web's task_stop.js and the slow-commands bundle match on them.
+      HANDED_OVER = "Still running at the"
 
       def self.name        = NAME
+
+      # A hand-over result's first line; its "task_id: …" line follows it.
+      def self.handed_over_line(limit_sec)
+        "#{HANDED_OVER} #{Integer(limit_sec)}s limit: moved to a background task, not killed."
+      end
 
       # @param cancelled [#call] true once the user stopped the turn: the
       #   command is killed (or not started) and its output so far returned
