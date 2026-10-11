@@ -87,14 +87,14 @@ test("nothing is found without touched files", () => {
   assert.deepEqual(textRefs("lib/foo.rb:3", new Set(), CWD), []);
 });
 
-test("linkRefs wraps refs in a rendered answer: text and inline code alone; pre, links, code in a sentence stay", () => {
+test("linkRefs wraps refs in a rendered answer: text and inline code alone; pre, links (below), code in a sentence stay", () => {
   const el = mount(
     "<p>See lib/foo.rb:12 and <code>lib/foo.rb:3-5</code>, not <code>cat lib/foo.rb:3</code>.</p>" +
     "<pre><code>lib/foo.rb:28\n</code></pre>" +
     '<p><a href="https://github.com/acme/app/pull/1/files#x"><code>lib/foo.rb:28</code></a> http://h:8080/lib/foo.rb:12</p>',
   );
   linkRefs(el, touched, CWD);
-  const refs = [...el.querySelectorAll(".ref")].map((r) => [r.textContent, r.dataset.refKind, r.dataset.refPath, r.dataset.refLine, r.dataset.refEndLine]);
+  const refs = [...el.querySelectorAll("span.ref")].map((r) => [r.textContent, r.dataset.refKind, r.dataset.refPath, r.dataset.refLine, r.dataset.refEndLine]);
   assert.deepEqual(refs, [
     ["lib/foo.rb:12", "file", "/p/lib/foo.rb", "12", undefined],
     ["lib/foo.rb:3-5", "file", "/p/lib/foo.rb", "3", "5"],
@@ -104,6 +104,25 @@ test("linkRefs wraps refs in a rendered answer: text and inline code alone; pre,
   assert.equal(el.querySelector("a .ref"), null);
   assert.equal(el.querySelector("a").getAttribute("href"), "https://github.com/acme/app/pull/1/files#x");
   assert.match(el.textContent, /See lib\/foo\.rb:12 and lib\/foo\.rb:3-5, not cat lib\/foo\.rb:3\./);
+});
+
+test("linkRefs: a link whose text is a touched ref alone is that ref too (its href stays the plain click's); other links stay", () => {
+  const el = mount(
+    '<p><a href="https://github.com/acme/app/pull/1/files#x"><code>lib/foo.rb:28</code></a> ' +
+    '<a href="https://github.com/acme/app/blob/h/lib/foo.rb#L9">lib/foo.rb:9-12</a> ' +
+    '<a href="https://x.test/a">see lib/foo.rb:3</a> <a href="https://x.test/b">lib/other.rb:3</a></p>',
+  );
+  linkRefs(el, touched, CWD);
+  linkRefs(el, touched, CWD);
+  const links = [...el.querySelectorAll("a")].map((a) => [a.getAttribute("href"), a.classList.contains("ref"), a.dataset.refPath, a.dataset.refLine, a.dataset.refEndLine]);
+  assert.deepEqual(links, [
+    ["https://github.com/acme/app/pull/1/files#x", true, "/p/lib/foo.rb", "28", undefined],
+    ["https://github.com/acme/app/blob/h/lib/foo.rb#L9", true, "/p/lib/foo.rb", "9", "12"],
+    ["https://x.test/a", false, undefined, undefined, undefined],
+    ["https://x.test/b", false, undefined, undefined, undefined],
+  ]);
+  assert.equal(el.querySelectorAll(".ref .ref, a span.ref").length, 0);
+  assert.equal(el.textContent, "lib/foo.rb:28 lib/foo.rb:9-12 see lib/foo.rb:3 lib/other.rb:3");
 });
 
 test("linkRefs on a plain step text: a fenced block in the text stays; a second run wraps nothing twice", () => {

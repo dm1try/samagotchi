@@ -1,7 +1,9 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { availableKinds, editorUrl, installRefClicks, refAction, refAttrs, refTarget, setRefKinds } from "../../../lib/samagotchi/web/public/refs.js";
+import { editorUrl, installRefClicks, refActions, refAttrs, refTarget, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
+import { createRefMenu } from "../../../lib/samagotchi/web/public/ref_menu.js";
+import { linkRefs, touchedFiles } from "../../../lib/samagotchi/web/public/ref_scan.js";
 import { toolRowHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
 import { diffHtml } from "../../../lib/samagotchi/web/public/diff_view.js";
 import { createQuestionCards } from "../../../lib/samagotchi/web/public/question_cards.js";
@@ -36,15 +38,6 @@ test("editorUrl encodes each path segment (spaces, #, unicode), keeps the slashe
   assert.equal(editorUrl("idea://open?file={path}", "/p/a.rb", 4), "idea://open?file=/p/a.rb");
   assert.equal(editorUrl("", "/p/a.rb", 1), "");
   assert.equal(editorUrl(VSCODE, "", 1), "");
-});
-
-test("refAction: the editor is the file kind's action only for a viewer with an editor and its URL", () => {
-  assert.equal(refAction("file", viewer).id, "editor");
-  assert.equal(refAction("file", { editor: false, editorUrl: null }), null);
-  assert.equal(refAction("file", { editor: true, editorUrl: null }), null);
-  assert.equal(refAction("issue", viewer), null);
-  assert.deepEqual(availableKinds(viewer), ["file"]);
-  assert.deepEqual(availableKinds({}), []);
 });
 
 test("refTarget: a row title opens its file at its line, else at the first change; a diff line at its line", () => {
@@ -160,14 +153,6 @@ test("installRefClicks opens the first available action's URL; none without an e
   root.remove();
 });
 
-test("setRefKinds marks the kinds this viewer has an action for", () => {
-  const body = document.createElement("div");
-  setRefKinds(body, viewer);
-  assert.ok(body.classList.contains("refs-file"));
-  setRefKinds(body, { editor: false });
-  assert.ok(!body.classList.contains("refs-file"));
-});
-
 test("the hover hint follows the viewer on each hover, keeping the element's own title", () => {
   const root = mount(toolRowHtml({ ...editRow, view: null }));
   let current = viewer;
@@ -192,4 +177,305 @@ test("the hover hint follows the viewer on each hover, keeping the element's own
   hover(add);
   assert.equal(add.getAttribute("title"), "Open the current file in your editor at line 11");
   root.remove();
+});
+
+// P4: a ref's targets and its menu.
+const PHONE = { editor: false, editorUrl: null };
+const ids = (actions) => actions.map((action) => action.id);
+const click = (el) => el.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+const key = (el, k) => el.dispatchEvent(new window.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+const tap = (el) => {
+  el.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
+  click(el);
+};
+
+// A turn as the page draws it: the steps (closed) holding a read row and
+// an edit row of lib/a.rb, then the answer naming it, as text and as
+// github-pr's PR diff link.
+function turnPage() {
+  const readRow = toolRowHtml({
+    key: "1:1", tool: "read", status: "ok", title: "lib/a.rb", ref: { kind: "file", path: "/p/lib/a.rb", line: 1, end_line: 2 },
+    output: "[read]\nx\ny",
+  });
+  const root = mount(
+    `<details class="turn-work"><summary>steps</summary><details class="gen"><summary>step</summary>${readRow}${toolRowHtml(editRow)}</details></details>` +
+    '<div class="bubble output markdown"><p>Fixed at lib/a.rb:11, see <a href="https://github.com/acme/app/pull/4/files#diff-1R11"><code>lib/a.rb:11</code></a>; read lib/a.rb:2.</p></div>',
+  );
+  linkRefs(root.querySelector(".bubble.output"), touchedFiles([root]), "/p");
+  const [readEl, editEl] = root.querySelectorAll(".activity-row");
+  const [text, link, readRef] = root.querySelectorAll(".bubble.output .ref");
+  return { root, readRow: readEl, editRow: editEl, text, link, readRef };
+}
+
+function cleanup(...roots) {
+  for (const el of [...roots, ...document.querySelectorAll(".ref-menu, .ref-more")]) el.remove();
+}
+
+test("refActions: the targets per ref, with and without an editor", () => {
+  const page = turnPage();
+  const title = page.editRow.querySelector(".activity-params");
+  // A row's own title: no "show in turn" (it would show itself).
+  assert.deepEqual(ids(refActions(refTarget(title), viewer)), ["editor", "copy"]);
+  assert.deepEqual(ids(refActions(refTarget(title), PHONE)), []);
+  // An answer's ref: the row that touched it, on a phone too.
+  assert.deepEqual(ids(refActions(refTarget(page.text), viewer)), ["editor", "show", "copy"]);
+  assert.deepEqual(ids(refActions(refTarget(page.text), PHONE)), ["show", "copy"]);
+  // github-pr's link: the PR diff first, its plain click.
+  assert.deepEqual(ids(refActions(refTarget(page.link), viewer)), ["link", "editor", "show", "copy"]);
+  assert.deepEqual(ids(refActions(refTarget(page.link), PHONE)), ["link", "show", "copy"]);
+  assert.deepEqual(refActions(refTarget(page.link), viewer).map((a) => a.label(refTarget(page.link))), ["PR diff", "Open in editor", "Show in turn", "Copy path"]);
+  // A diff or read line: its click only.
+  assert.deepEqual(ids(refActions(refTarget(page.editRow.querySelector(".diff-line.diff-add")), viewer)), ["editor"]);
+  assert.deepEqual(ids(refActions(refTarget(page.readRow.querySelector(".read-line")), viewer)), ["editor"]);
+  assert.deepEqual(ids(refActions(refTarget(page.readRow.querySelector(".read-line")), PHONE)), []);
+  assert.deepEqual(refActions(null, viewer), []);
+  cleanup(page.root);
+});
+
+test("refActions: an approval card's path shows the row that touched the file only when there is one", () => {
+  const card = approvalCard({ tool: "edit", paths: ["/p/lib/a.rb"], reason: "r", preview: editRow.diff });
+  const path = card.querySelector(".approval-what .ref");
+  assert.deepEqual(ids(refActions(refTarget(path), viewer)), ["editor", "copy"]);
+  assert.deepEqual(ids(refActions(refTarget(path), PHONE)), []);
+  const rows = mount(toolRowHtml({ ...editRow, key: "1:9" }));
+  assert.deepEqual(ids(refActions(refTarget(path), PHONE)), ["show", "copy"]);
+  assert.deepEqual(ids(refActions(refTarget(card.querySelector(".approval-diff .diff-line.diff-add")), PHONE)), []);
+  cleanup(card, rows);
+});
+
+test("turnRowFor: the last row before the ref showing its line, else the last before it, never the ref's own", () => {
+  const page = turnPage();
+  assert.equal(turnRowFor(refTarget(page.text)), page.editRow);
+  assert.equal(turnRowFor(refTarget(page.readRef)), page.readRow);
+  assert.equal(turnRowFor({ ...refTarget(page.text), line: 99 }), page.editRow);
+  assert.equal(turnRowFor({ ...refTarget(page.text), path: "/p/other.rb" }), null);
+  assert.equal(turnRowFor(refTarget(page.editRow.querySelector(".activity-params"))), page.readRow);
+  cleanup(page.root);
+});
+
+test("showInTurn opens the steps, the row's diff at the line, scrolls to it and flashes the row and the line", () => {
+  const page = turnPage();
+  const scrolled = [];
+  const revealed = [];
+  page.root.addEventListener("ref:reveal", (e) => revealed.push(e.target));
+  window.HTMLElement.prototype.scrollIntoView = function (options) { scrolled.push([this, options]); };
+  const row = showInTurn(refTarget(page.text), { behavior: "auto" });
+  assert.equal(row, page.editRow);
+  // The stage opens its cloud on the row's ref:reveal.
+  assert.deepEqual(revealed, [page.editRow]);
+  assert.ok(page.root.querySelector(".turn-work").open);
+  assert.ok(page.root.querySelector("details.gen").open);
+  assert.ok(page.editRow.querySelector(".activity-diff").open);
+  const line = page.editRow.querySelector('.diff-line.diff-add[data-line="11"]');
+  assert.deepEqual(scrolled, [[line, { block: "center", behavior: "auto" }]]);
+  assert.ok(row.classList.contains("ref-flash"));
+  assert.ok(line.classList.contains("ref-flash"));
+  // A read line: its read opens.
+  showInTurn(refTarget(page.readRef), { behavior: "auto" });
+  assert.ok(page.readRow.querySelector(".activity-read").open);
+  assert.equal(scrolled.at(-1)[0], page.readRow.querySelector('.read-line[data-line="2"]'));
+  assert.equal(showInTurn({ ...refTarget(page.text), path: "/p/none.rb" }), null);
+  delete window.HTMLElement.prototype.scrollIntoView;
+  cleanup(page.root);
+});
+
+function installed(root, current) {
+  const calls = [];
+  installRefClicks(root, () => current(), {
+    open: (url) => calls.push(["open", url]), openLink: (href) => calls.push(["link", href]),
+    show: (target) => calls.push(["show", target.path, target.line]), copy: (text) => calls.push(["copy", text]),
+    selection: () => null,
+  });
+  return calls;
+}
+
+test("a plain click runs the main target: the editor, else show in turn; a link's click is the browser's", () => {
+  const page = turnPage();
+  let current = viewer;
+  const calls = installed(page.root, () => current);
+  click(page.text);
+  current = PHONE;
+  click(page.text);
+  click(page.editRow.querySelector(".activity-params"));
+  assert.deepEqual(calls, [["open", "vscode://file/p/lib/a.rb:11"], ["show", "/p/lib/a.rb", 11]]);
+  current = viewer;
+  const event = new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
+  page.link.querySelector("code").dispatchEvent(event);
+  assert.equal(event.defaultPrevented, false);
+  assert.equal(calls.length, 2);
+  cleanup(page.root);
+});
+
+test("a tap opens the menu of the ref's targets; picking one runs it; a tap on a line is its click", () => {
+  const page = turnPage();
+  let current = PHONE;
+  const calls = installed(page.root, () => current);
+  page.link.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
+  page.link.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+  assert.equal(document.querySelector(".ref-more"), null);
+  click(page.link);
+  const menu = document.querySelector(".ref-menu");
+  assert.deepEqual([...menu.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent), ["PR diff", "Show in turn", "Copy path"]);
+  assert.equal(page.link.getAttribute("aria-expanded"), "true");
+  click(menu.querySelector('[data-target="show"]'));
+  assert.equal(document.querySelector(".ref-menu"), null);
+  assert.deepEqual(calls, [["show", "/p/lib/a.rb", 11]]);
+  tap(page.text);
+  click(document.querySelector('.ref-menu [data-target="copy"]'));
+  tap(page.link);
+  click(document.querySelector('.ref-menu [data-target="link"]'));
+  assert.deepEqual(calls.slice(1), [["copy", "/p/lib/a.rb"], ["link", "https://github.com/acme/app/pull/4/files#diff-1R11"]]);
+  current = viewer;
+  tap(page.editRow.querySelector(".diff-line.diff-add"));
+  assert.equal(document.querySelector(".ref-menu"), null);
+  assert.deepEqual(calls.at(-1), ["open", "vscode://file/p/lib/a.rb:11"]);
+  cleanup(page.root);
+});
+
+test("keyboard: Enter is the main target, ↓ opens the menu on its first target, ↑/↓ move, Esc closes back to the ref", () => {
+  const page = turnPage();
+  const calls = installed(page.root, () => viewer);
+  key(page.root, "Tab"); // the tab stops, worked out before the focus moves
+  page.text.focus();
+  assert.equal(document.activeElement, page.text);
+  key(page.text, "Enter");
+  assert.deepEqual(calls, [["open", "vscode://file/p/lib/a.rb:11"]]);
+  key(page.text, "ArrowDown");
+  const items = [...document.querySelectorAll('.ref-menu [role="menuitem"]')];
+  assert.deepEqual(items.map((b) => b.dataset.target), ["editor", "show", "copy"]);
+  assert.equal(document.activeElement, items[0]);
+  key(items[0], "ArrowDown");
+  assert.equal(document.activeElement, items[1]);
+  key(items[1], "ArrowUp");
+  key(items[0], "ArrowUp");
+  assert.equal(document.activeElement, items[2]);
+  key(items[2], "Escape");
+  assert.equal(document.querySelector(".ref-menu"), null);
+  assert.equal(document.activeElement, page.text);
+  // A link's Enter is its own click (the browser's); ↓ still opens its menu.
+  const enter = new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+  page.link.dispatchEvent(enter);
+  assert.equal(enter.defaultPrevented, false);
+  key(page.link, "ArrowDown");
+  assert.equal(document.querySelector('.ref-menu [role="menuitem"]').dataset.target, "link");
+  cleanup(page.root);
+});
+
+test("hover: the ▾ shows on a ref with more than one target and opens its menu; not on a line or a ref with one", () => {
+  const page = turnPage();
+  installed(page.root, () => PHONE);
+  const hover = (el) => el.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+  hover(page.text);
+  assert.equal(page.text.dataset.refMain, "show");
+  assert.equal(page.text.getAttribute("title"), "Show the row that touched it in the turn");
+  const more = document.querySelector(".ref-more");
+  assert.equal(more.hidden, false);
+  click(more);
+  assert.deepEqual([...document.querySelectorAll('.ref-menu [role="menuitem"]')].map((b) => b.dataset.target), ["show", "copy"]);
+  const title = page.editRow.querySelector(".activity-params");
+  createRefMenu(document); // another page's menu doesn't meddle
+  hover(title);
+  assert.equal(title.dataset.refMain, undefined);
+  cleanup(page.root);
+});
+
+// Rows by the steps they sit in: +rows+ ({path, line}) as edit rows with a
+// diff at their line.
+function stepHtml(text, rows) {
+  const items = rows.map(({ key, path, line }) => toolRowHtml({
+    key, tool: "edit", title: path.split("/").pop(), status: "ok", output: "[edit]\nok", ref: { kind: "file", path },
+    diff: { text: `@@ -${line},1 +${line},1 @@\n-a\n+b`, added: 1, removed: 1 },
+  })).join("");
+  return `<details class="gen"><summary>s</summary><div class="gen-text">${text}</div><div class="activity-body">${items}</div></details>`;
+}
+const turnHtml = (prompt, steps, answer) =>
+  `<div class="bubble user">${prompt}</div><details class="turn-work"><summary>steps</summary>${steps.join("")}</details>` +
+  `<div class="bubble output">${answer}</div>`;
+const rowKey = (row) => row?.dataset.key;
+const textRef = (root, sel) => {
+  for (const el of root.querySelectorAll(sel)) linkRefs(el, touchedFiles([root]), "/p");
+};
+
+test("turnRowFor: a step's text ref takes its own step's row, after the text, over an earlier step's", () => {
+  const root = mount(turnHtml("go", [
+    stepHtml("Reading it.", [{ key: "1:1", path: "/p/web/app.js", line: 40 }]),
+    stepHtml("Now I update web/app.js:40.", [{ key: "1:2", path: "/p/web/app.js", line: 40 }]),
+  ], "Done."));
+  textRef(root, ".gen-text");
+  const ref = root.querySelectorAll(".gen-text .ref")[0];
+  assert.equal(ref.closest(".gen").querySelector(".activity-row").dataset.key, "1:2");
+  assert.equal(rowKey(turnRowFor(refTarget(ref))), "1:2");
+  cleanup(root);
+});
+
+test("turnRowFor: a stage answer's ref takes the stage's own rows (the cloud after it), not an earlier turn's", () => {
+  const history = mount(turnHtml("one", [stepHtml("x", [{ key: "1:1", path: "/p/lib/a.rb", line: 3 }])], "First."));
+  const stage = mount(
+    '<section class="turn-stage"><div class="ts-answer"><div class="bubble output">Fixed lib/a.rb:3.</div></div>' +
+    `<div class="ts-cloud"><div class="ts-cloud-body"><details class="turn-work"><summary>s</summary>${stepHtml("y", [{ key: "2:1", path: "/p/lib/a.rb", line: 3 }])}</details></div></div></section>`,
+  );
+  linkRefs(stage.querySelector(".bubble.output"), touchedFiles([history, stage]), "/p");
+  assert.equal(rowKey(turnRowFor(refTarget(stage.querySelector(".ts-answer .ref")))), "2:1");
+  cleanup(history, stage);
+});
+
+test("turnRowFor: an answer's ref takes its own turn's row; a later turn never wins over an earlier one, and with neither the nearest", () => {
+  const root = mount(
+    turnHtml("one", [stepHtml("x", [{ key: "1:1", path: "/p/lib/a.rb", line: 3 }, { key: "1:2", path: "/p/lib/b.rb", line: 1 }])], "First: lib/a.rb:3.") +
+    turnHtml("two", [stepHtml("y", [{ key: "2:1", path: "/p/lib/a.rb", line: 3 }])], "Second: lib/a.rb:9 and lib/b.rb:1.") +
+    turnHtml("three", [stepHtml("z", [{ key: "3:1", path: "/p/lib/c.rb", line: 1 }])], "Third: lib/c.rb:1.") +
+    turnHtml("four", [stepHtml("w", [{ key: "4:1", path: "/p/lib/c.rb", line: 1 }])], "Fourth."),
+  );
+  textRef(root, ".bubble.output");
+  const [first, second] = root.querySelectorAll(".bubble.output");
+  assert.equal(rowKey(turnRowFor(refTarget(first.querySelector(".ref")))), "1:1");
+  const [a9, b1] = second.querySelectorAll(".ref");
+  assert.equal(rowKey(turnRowFor(refTarget(a9))), "2:1");
+  // Not in its turn: the last row before it.
+  assert.equal(rowKey(turnRowFor(refTarget(b1))), "1:2");
+  // A ref above every row of its file: the nearest after it, not the last.
+  const lone = mount('<div class="bubble output">See lib/c.rb:1.</div>');
+  root.prepend(lone);
+  textRef(lone, ".bubble.output");
+  linkRefs(lone.querySelector(".bubble.output"), touchedFiles([root]), "/p");
+  assert.equal(rowKey(turnRowFor(refTarget(lone.querySelector(".ref")))), "3:1");
+  cleanup(root);
+});
+
+test("syncRefTabs: a ref is a tab stop (a button, with a menu when it has more targets) only while it has a target", () => {
+  const page = turnPage();
+  const title = page.editRow.querySelector(".activity-params");
+  syncRefTabs(page.root, PHONE);
+  assert.equal(title.getAttribute("tabindex"), null);
+  assert.equal(title.getAttribute("role"), null);
+  assert.equal(page.text.getAttribute("tabindex"), "0");
+  assert.equal(page.text.getAttribute("role"), "button");
+  assert.equal(page.text.getAttribute("aria-haspopup"), "menu");
+  // A link keeps its own role and focus; it says it has a menu.
+  assert.equal(page.link.getAttribute("role"), null);
+  assert.equal(page.link.getAttribute("tabindex"), null);
+  assert.equal(page.link.getAttribute("aria-haspopup"), "menu");
+  syncRefTabs(page.root, viewer);
+  assert.equal(title.getAttribute("tabindex"), "0");
+  assert.equal(title.getAttribute("aria-haspopup"), "menu");
+  // A Tab press works them out for the viewer of the moment.
+  let current = viewer;
+  installed(page.root, () => current);
+  current = PHONE;
+  key(page.root, "Tab");
+  assert.equal(title.getAttribute("tabindex"), null);
+  cleanup(page.root);
+});
+
+test("after a tap, Enter on a focused link is the link's own click, not the menu", () => {
+  const page = turnPage();
+  installed(page.root, () => PHONE);
+  tap(page.text);
+  document.querySelector(".ref-menu")?.remove();
+  key(page.link, "Enter"); // a keyboard press: the pointer is a keyboard now
+  const event = new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
+  page.link.dispatchEvent(event);
+  assert.equal(event.defaultPrevented, false);
+  assert.equal(document.querySelector(".ref-menu"), null);
+  cleanup(page.root);
 });

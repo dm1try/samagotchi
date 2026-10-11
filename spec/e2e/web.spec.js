@@ -438,9 +438,9 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
 
 // Refs: a file row's title, its diff lines and a ref in the answer open
 // the file in the editor (web.editor's default, vscode; this page is a
-// loopback viewer). The window.__chiRefOpen seam records the URL instead
+// loopback viewer); the answer's ref's menu shows the row in the turn. The window.__chiRefOpen seam records the URL instead
 // of opening it; refs.js checks for it at click time.
-test("an edit's approval card, then its row's title and diff lines, open the file in the editor, live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
+test("an edit's approval card, then its row's title and diff lines, open the file in the editor; the answer's ref shows its row; live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
   const recordOpens = () => page.evaluate(() => {
     window.__refOpened = [];
     window.__chiRefOpen = (url) => window.__refOpened.push(url);
@@ -462,7 +462,7 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
   await card.locator(".question-submit").click();
   await expect(answer(page)).toHaveText("The font size is 14 now: e2e-settings.conf:1.");
   await turnEnded(page, 1);
-  await expect(page.locator("body")).toHaveClass(/\brefs-file\b/);
+  await expect(page.locator("body")).toHaveClass(/\bhas-editor\b/);
 
   const editRow = () => page.locator(`${H()} .activity-row`).filter({ has: page.locator(".activity-tool", { hasText: /^edit$/ }) });
   const check = async () => {
@@ -480,6 +480,21 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
     await expect(page.locator(`${H()} details.gen .gen-text .ref`)).toHaveText(EDIT_ASK_FILE);
     await answer(page).locator(".ref").click();
     expect(await opened()).toEqual([expect.stringMatching(url(1)), expect.stringMatching(url(1)), expect.stringMatching(url(2)), expect.stringMatching(url(1))]);
+    // The ref's menu (its ▾): "Show in turn" opens the steps and the
+    // edit's diff, scrolls to the line and flashes the row.
+    await page.evaluate(() => {
+      for (const details of document.querySelectorAll("#history .turn-work, #history .activity-diff")) details.open = false;
+    });
+    await answer(page).locator(".ref").hover();
+    await page.locator(".ref-more").click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Open in editor", "Show in turn", "Copy path"]);
+    await page.getByRole("menuitem", { name: "Show in turn" }).click();
+    await expect(page.locator(".ref-menu")).toHaveCount(0);
+    await expect(page.locator("#history .turn-work")).toHaveJSProperty("open", true);
+    await expect(editRow().locator(".activity-diff")).toHaveJSProperty("open", true);
+    await expect(editRow()).toHaveClass(/\bref-flash\b/);
+    await expect(editRow().locator('.diff-add[data-line="1"]')).toBeInViewport();
+    expect(await opened()).toEqual([]);
   };
   // The steps block and the edit's step, opened when they are closed.
   const openSteps = async () => {
