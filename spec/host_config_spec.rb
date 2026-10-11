@@ -34,6 +34,24 @@ RSpec.describe Samagotchi::HostConfig do
     it "is nil for a blank name, without a warning" do
       expect { expect(described_class.parse(" ", { "host" => "h" })).to be_nil }.not_to output.to_stderr
     end
+
+    it "reads steer_cut_after, 0 included, and warns about a bad value" do
+      expect(described_class.parse("slow", { host: "h", "steer_cut_after" => 0 })).to have_attributes(steer_cut_after: 0)
+      expect(described_class.parse("fast", { host: "h", "steer_cut_after" => "15" })).to have_attributes(steer_cut_after: 15)
+
+      host = nil
+      expect { host = described_class.parse("odd", { "host" => "h", "steer_cut_after" => 1.5 }) }
+        .to output(/hosts entry 'odd': steer_cut_after must be whole seconds/).to_stderr
+      expect(host).to have_attributes(name: "odd", steer_cut_after: nil)
+    end
+  end
+
+  describe "config" do
+    it "knows steer_cut_after as a host and model key (no unknown-key warning)" do
+      data = { "hosts" => { "w" => { "host" => "h", "steer_cut_after" => 0 } },
+               "models" => { "q" => { "steer_cut_after" => 90 } } }
+      expect(Samagotchi::Config.validate_yaml_sections(data)).to eq([])
+    end
   end
 
   describe ".coerce" do
@@ -54,6 +72,7 @@ RSpec.describe Samagotchi::HostConfig do
         "api_key_env" => "GW_KEY", "profile" => "Qwen36", "first_token_timeout" => 90, "vision" => true,
         "sampling" => { "temperature" => 0.6, "chat_template_kwargs" => { "enable_thinking" => false } },
         "thinking" => "off", "reasoning_history" => "all", "remote" => false, "window_tokens" => 65_536,
+        "steer_cut_after" => 0,
         "llm_context_strategy" => %w[stale forget], "llm_context_apply" => "turn_end",
         "llm_context_budget_tokens" => "64k",
         "models" => { "rr/DeepSeek" => { "price" => { "input" => 0.27, "output" => 1.1 }, "served" => %w[ds-a] },
@@ -85,6 +104,17 @@ RSpec.describe Samagotchi::HostConfig do
         worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json },
                                                      path: File.join(dir, "none.yml"))
         expect(worker).to eq(parent)
+      end
+    end
+
+    it "carries a host's steer_cut_after to workers in SAMAGOTCHI_HOSTS_JSON (0 survives)" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "config.yml")
+        File.write(path, "hosts:\n  slow:\n    host: h\n    steer_cut_after: 0\n")
+        json = Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path)
+        hosts = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json },
+                                                    path: File.join(dir, "none.yml"))
+        expect(hosts["slow"].steer_cut_after).to eq(0)
       end
     end
   end

@@ -10,10 +10,11 @@ module Samagotchi
   # downcased key. Each field is nil when unset: profile kept as written
   # (downcased; ModelProfile.resolve validates it), vision true/false,
   # sampling a request-field map, thinking a level, reasoning_history a
-  # ReasoningHistory level, window_tokens, and the
+  # ReasoningHistory level, window_tokens, steer_cut_after whole seconds
+  # (0 = never, SteerCutAfter), and the
   # LLM context strategy, apply rule and budget (LLMContextStrategy). The
   # same per-model fields a hosts: entry carries (HostConfig).
-  ModelSettings = Data.define(:profile, :vision, :sampling, :thinking, :reasoning_history, :window_tokens,
+  ModelSettings = Data.define(:profile, :vision, :sampling, :thinking, :reasoning_history, :window_tokens, :steer_cut_after,
                               :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens) do
     # Every field may be left out (nil).
     def initialize(**fields)
@@ -37,6 +38,7 @@ module Samagotchi
           thinking: Thinking.level(value.call(:thinking), where),
           reasoning_history: ReasoningHistory.level(value.call(:reasoning_history), where),
           window_tokens: ConfigFile.window_tokens(value.call(:window_tokens), where),
+          steer_cut_after: SteerCutAfter.seconds(value.call(:steer_cut_after), where),
           llm_context_strategy: LLMContextStrategy.parse(value.call(LLMContextStrategy::KEY), where),
           llm_context_apply: LLMContextStrategy.parse_apply(value.call(LLMContextStrategy::APPLY_KEY), where),
           llm_context_budget_tokens: LLMContextStrategy.parse_budget(value.call(LLMContextStrategy::BUDGET_KEY), where))

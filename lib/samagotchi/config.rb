@@ -20,6 +20,8 @@ module Samagotchi
   # One models: entry, and one field found in them; they need ConfigFile's readers.
   autoload :ModelSettings, File.expand_path("model_settings", __dir__)
   autoload :ModelSetting, File.expand_path("model_settings", __dir__)
+  # The per-model/host seconds a cut waits (like Thinking for the level).
+  autoload :SteerCutAfter, File.expand_path("steer_cut_after", __dir__)
 
   # Unified configuration registry implementing the implicit convention:
   #   ENV    SAMAGOTCHI_ATTR            (UPPER + prefix + _ = nesting)
@@ -216,7 +218,8 @@ module Samagotchi
       Entry.new(key: "retry.empty_answer",       yaml_path: %w[retry empty_answer],       type: :integer, default: 1,               expose: %i[env config]),
       # Seconds a generation must have streamed only thinking before a message
       # for the running turn (the user's, chi send's, a parent agent's) cuts
-      # it (Engine#cut_for_steer); 0 = never. No CLI flag: workers get no CLI args.
+      # it (Engine#cut_for_steer); 0 = never. hosts.<name>.steer_cut_after and
+      # models.<key>.steer_cut_after win. No CLI flag: workers get no CLI args.
       Entry.new(key: "steer.cut_after",          yaml_path: %w[steer cut_after],          type: :integer, default: 20,              expose: %i[env config]),
       # A turn's step limit: model ↔ tool rounds before it stops and offers to continue (IterationLimit); integer ≥ 1.
       # --no-interrupt turns get max(1000, this). No CLI flag: --no-interrupt is the flag.
@@ -274,8 +277,8 @@ module Samagotchi
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
       "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking
-                    reasoning_history enabled remote window_tokens llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
-      "models" => %w[profile vision sampling thinking reasoning_history window_tokens llm_context_strategy llm_context_apply
+                    reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
+      "models" => %w[profile vision sampling thinking reasoning_history window_tokens steer_cut_after llm_context_strategy llm_context_apply
                      llm_context_budget_tokens].freeze
     }.freeze
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).

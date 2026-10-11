@@ -38,13 +38,14 @@ module Samagotchi
     # reasoning_history: the configured level (ReasoningHistory), nil when unset;
     # remote: the configured true/false (#remote?), nil when unset;
     # window_tokens: the configured context window (ContextWindow.setting), nil when unset;
+    # steer_cut_after: the seconds a cut waits for its thinking (SteerCutAfter), nil when unset;
     # llm_context_strategy: the configured layers (LLMContextStrategy), nil when unset;
     # llm_context_apply: the configured apply rule (LLMContextStrategy), nil when unset;
     # llm_context_budget_tokens: the configured context budget (LLMContextStrategy), nil when unset;
     # models: the ids the host serves whatever it lists, {downcased id => HostModel} ({} when none).
     HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :profile,
                            :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
-                           :window_tokens, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
+                           :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models, keyword_init: true) do
       # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
       # raw-prompt loop.

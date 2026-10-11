@@ -19,7 +19,7 @@ module Samagotchi
   # describes them, nil when unset; models: {downcased id => HostModel}.
   HostConfig = Data.define(:name, :host, :port, :scheme, :url, :transport, :api, :api_key_env, :profile,
                            :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
-                           :window_tokens, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
+                           :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models) do
     # Every field but name may be left out: nil, models {}.
     def initialize(**fields)
@@ -50,6 +50,7 @@ module Samagotchi
         vision: ConfigFile.vision_flag(value.call(:vision), where),
         remote: ConfigFile.bool_flag(value.call(:remote), where, "remote"),
         window_tokens: ConfigFile.window_tokens(value.call(:window_tokens), where),
+        steer_cut_after: SteerCutAfter.seconds(value.call(:steer_cut_after), where),
         sampling: ConfigFile.sampling_map(value.call(:sampling), where),
         thinking: Thinking.level(value.call(:thinking), where),
         reasoning_history: ReasoningHistory.level(value.call(:reasoning_history), where),
@@ -170,6 +171,7 @@ module Samagotchi
                      "profile" => profile, "first_token_timeout" => first_token_timeout,
                      "vision" => vision, "sampling" => sampling, "thinking" => thinking&.to_s,
                      "reasoning_history" => reasoning_history&.to_s, "remote" => remote, "window_tokens" => window_tokens,
+                     "steer_cut_after" => steer_cut_after,
                      "llm_context_strategy" => llm_context_strategy&.map(&:to_s),
                      "llm_context_apply" => llm_context_apply&.to_s,
                      "llm_context_budget_tokens" => llm_context_budget_tokens,

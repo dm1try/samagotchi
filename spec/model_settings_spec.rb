@@ -29,6 +29,24 @@ RSpec.describe Samagotchi::ModelSettings do
         .to output(/models: odd.*window_tokens/).to_stderr
       expect(settings).to have_attributes(window_tokens: nil, profile: "gemma4")
     end
+
+    it "reads steer_cut_after, 0 included, and warns about a bad value" do
+      expect(described_class.parse("m", { "steer_cut_after" => 0 })).to have_attributes(steer_cut_after: 0)
+      expect(described_class.parse("m", { "steer_cut_after" => "15" })).to have_attributes(steer_cut_after: 15)
+
+      settings = nil
+      expect { settings = described_class.parse("odd", { "steer_cut_after" => 1.5 }) }
+        .to output(/models: odd: steer_cut_after must be whole seconds/).to_stderr
+      expect(settings).to have_attributes(steer_cut_after: nil)
+    end
+  end
+
+  describe "config" do
+    it "knows steer_cut_after as a host and model key (no unknown-key warning)" do
+      data = { "hosts" => { "w" => { "host" => "h", "steer_cut_after" => 0 } },
+               "models" => { "q" => { "steer_cut_after" => 90 } } }
+      expect(Samagotchi::Config.validate_yaml_sections(data)).to eq([])
+    end
   end
 
   describe "ConfigFile.model_setting" do
@@ -42,6 +60,12 @@ RSpec.describe Samagotchi::ModelSettings do
       expect(Samagotchi::ConfigFile.model_setting(%w[fast qwen], :thinking, models: models))
         .to eq(Samagotchi::ModelSetting.new(key: "qwen", value: :high))
       expect(Samagotchi::ConfigFile.model_setting(%w[fast], :thinking, models: models)).to be_nil
+    end
+
+    it "counts a steer_cut_after of 0 as set (0 = never)" do
+      more = { "slow" => described_class.new(steer_cut_after: 0) }
+      expect(Samagotchi::ConfigFile.model_setting(%w[fast slow], :steer_cut_after, models: models.merge(more)))
+        .to eq(Samagotchi::ModelSetting.new(key: "slow", value: 0))
     end
 
     it "raises on a field no models: entry has, instead of finding nothing" do
