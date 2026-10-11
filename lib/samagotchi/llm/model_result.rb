@@ -63,8 +63,11 @@ module Samagotchi
         !!pending_tool_calls
       end
 
-      # KernelLoop only marks a run exhausted when it stopped on pending tool
-      # calls, so exhausted? alone already means "resumable".
+      # A run that ran out of iterations can be continued (the step-limit
+      # offer). KernelLoop marks one exhausted only when it stopped on pending
+      # tool calls; ChatLoop also leaves it exhausted when its last iteration
+      # ended in a retry (an empty answer's nudge, a cut) or merged input
+      # after an answer, which a Continue then picks up.
       def resumable?
         exhausted?
       end

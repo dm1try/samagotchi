@@ -8,21 +8,6 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
-### Changed
-
-- The default step limit (`turn.max_iterations`) is 300, up from 100: most long build turns now finish in one turn
-  instead of stopping at the step-limit question. Loops are caught by the loop-guard bundle, and check-in's card
-  (at 50 tool calls, then every 50) still says a turn is long without stopping it. `--no-interrupt` stays 1000.
-
-### Fixed
-
-- A step-limit Continue no longer drops the turn's reasoning: on a chat host (`reasoning_history: turn`) the
-  continued turn sends the earlier replies' reasoning back as before the limit, and on a native host
-  (`/completion`) the prompt keeps the run's thought blocks, those before a mid-turn steer too. The model keeps its thinking, and the first request
-  after the Continue matches the last one before the limit (before the fix, a local 27B read most of a 17k prompt
-  again: 24.9 s to the first token instead of 4.0 s). Continue's text is a steer, and on a chat host still starts
-  the reasoning afresh from it. After a `/model` change while the question stands, the Continue starts afresh.
-
 ### Added
 
 - chi web has a favicon: χ on a blue-to-violet rounded square. Safari showed a "1" monogram before.
@@ -32,14 +17,26 @@ and commands may change between minor versions. How releases are made:
   `/stats` names the prompt's files on a `prompt files:` line.
 - An analytics `resumed` mark on the turn record of a step-limit Continue (`resumed: true`; every other turn has
   `resumed: false`). `continue` also marks a reminder's and a wake's turn, so `script/model_notes_report` now counts
-  Continues from `resumed`, falling back to `continue` for older files. `:turn_started` and the `before_turn` hook
-  payload carry `resumed` too.
+  Continues from `resumed`, falling back to `continue` record by record for older files. `:turn_started` and the
+  `before_turn` hook payload carry `resumed` too.
 
 ### Changed
 
+- The default step limit (`turn.max_iterations`) is 300, up from 100: most long build turns now finish in one turn
+  instead of stopping at the step-limit question. Loops are caught by the loop-guard bundle, and check-in's card
+  (at 50 tool calls, then every 50) still says a turn is long without stopping it. `--no-interrupt` stays 1000.
 - Started in a subdirectory, chi loads every `AGENTS.md` from the top of the git work tree down to the current
   directory, outermost first, instead of the subdirectory's replacing the root's. A further file is headed with its
   directory ("Project specific description for pkg/:"); a session with one `AGENTS.md` gets the same prompt as before.
+
+### Fixed
+
+- A step-limit Continue no longer drops the turn's reasoning: on a chat host (`reasoning_history: turn`) the
+  continued turn sends the earlier replies' reasoning back as before the limit, and on a native host
+  (`/completion`) the prompt keeps the run's thought blocks, those before a mid-turn steer too. The model keeps its
+  thinking, and the first request after the Continue matches the last one before the limit (before the fix, a local
+  27B read most of a 17k prompt again: 24.9 s to the first token instead of 4.0 s). Continue's text is a steer, and on a chat host still starts
+  the reasoning afresh from it. After a `/model` change while the question stands, the Continue starts afresh.
 
 ## [0.59.0] - 2026-10-11
 

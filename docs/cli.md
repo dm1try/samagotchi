@@ -505,7 +505,8 @@ back from the next turn on, and where that came from (`session`,
 comes first; `/reasoning-history default` unsets it. It is saved and carried as
 `/thinking`'s is, and a native host ignores it (the reply says so). A change to
 or from `all` once an earlier reply has thinking rewrites the earlier replies;
-`drop` ↔ `turn` costs nothing. `/stats` shows it on its `reasoning history:`
+`drop` ↔ `turn` costs nothing. Under `turn` a step-limit Continue keeps the
+reasoning of the turn it continues. `/stats` shows it on its `reasoning history:`
 line, the web as the `reasoning` chip. See "Reasoning history" in
 [configuration.md](configuration.md).
 
@@ -1017,6 +1018,9 @@ Behavior notes:
 - In the plain REPL (`--no-shared`) the CLI asks at the `? ` prompt, with the choices listed under it: `yes` (Enter
   alone, or `/continue`) resumes, `no` stops, and `no, <explanation>` stops while keeping the reason in conversation
   context. Once answered, one line stays: `? The turn ran out of iterations. Continue it? → no, too slow`.
+- Continue goes on with the same turn: the model keeps the reasoning (thinking) of the run it continues, on chat and
+  native hosts, so a local server's prompt cache stays warm. Continue's text is a steer: on a chat host the reasoning
+  starts again from it. See "Reasoning history" in [configuration.md](configuration.md).
 - Stop keeps the interrupted turn's work in the conversation, as a Ctrl-C or a new prompt does, with a note for the
   model that it wasn't continued (or your reason); `!rollback` still erases it.
 - `--non-interactive` (`chi -p`) has nobody to ask: the turn ends there. A `chi send --wait` on a session nobody can

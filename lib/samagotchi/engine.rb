@@ -2246,7 +2246,8 @@ module Samagotchi
     # replace). Runs under the event lock: it also adds the turn's note to
     # result.conversation, which the REPL keeps as-is.
     # A turn that ran out of iterations ends at its tool results, so a
-    # continue resumes from them rather than after a made-up reply.
+    # continue resumes from them rather than after a made-up reply (and a
+    # step-limit Continue from its run's start: ModelResult#run_start).
     def kept_messages(turn, result, seconds)
       conversation = result.conversation if result.conversation.is_a?(Array)
       # Nothing visible (no text) is a turn the model should know ended
