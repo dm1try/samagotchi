@@ -18,12 +18,12 @@ RSpec.describe Samagotchi::ReasoningHistory do
     end
   end
 
-  def resolve(path, dir, model, env: {})
+  def resolve(path, dir, model, env: {}, session: nil, how: :resolve)
     with_env({ "XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_REASONING_HISTORY" => nil }.merge(env)) do
       models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
       hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
       target = Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).resolve(model)
-      described_class.resolve(target, names: [target.model, target.bare_model], models: models)
+      described_class.public_send(how, target, names: [target.model, target.bare_model], models: models, session: session)
     end
   end
 
@@ -72,6 +72,14 @@ RSpec.describe Samagotchi::ReasoningHistory do
       end
     end
 
+    it "takes the session's own level before all of them" do
+      with_config(yaml) do |path, dir|
+        expect(resolve(path, dir, "work:qwen", env: { "SAMAGOTCHI_REASONING_HISTORY" => "all" }, session: :turn))
+          .to eq([:turn, "session"])
+        expect(resolve(path, dir, "other:gemma", session: :drop)).to eq([:drop, "session"])
+      end
+    end
+
     it "warns about an unknown environment value and goes on as if unset" do
       with_config(yaml) do |path, dir|
         expect { expect(resolve(path, dir, "other:m", env: { "SAMAGOTCHI_REASONING_HISTORY" => "yes" })).to eq([:turn, nil]) }
@@ -82,6 +90,29 @@ RSpec.describe Samagotchi::ReasoningHistory do
     it "reads the host and model keys without an unknown-key warning" do
       problems = Samagotchi::Config.validate_yaml_sections(YAML.safe_load(yaml))
       expect(problems).to eq([])
+    end
+  end
+
+  describe ".explain" do
+    it "is the resolved level with its source and the session's own beside it" do
+      with_config("hosts:\n  work:\n    host: h\n    api: openai\n    reasoning_history: drop\n") do |path, dir|
+        expect(resolve(path, dir, "work:m", how: :explain))
+          .to eq(Samagotchi::SettingExplained.new(level: :drop, source: "hosts.work", own: nil))
+        explained = resolve(path, dir, "work:m", session: :all, how: :explain)
+        expect(explained.summary).to eq(level: "all", source: "session", own: "all")
+        expect(explained.label).to eq("all (session)")
+      end
+    end
+  end
+
+  describe ".session_level" do
+    it "takes the three levels from a word or symbol, an explicit turn included" do
+      expect([:drop, "Turn", " all "].map { |v| described_class.session_level(v) }).to eq(%i[drop turn all])
+    end
+
+    it "is nil, without a warning, for default and anything else" do
+      expect { expect(["default", "off", nil, :low, 3].map { |v| described_class.session_level(v) }).to all(be_nil) }
+        .not_to output.to_stderr
     end
   end
 

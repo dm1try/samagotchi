@@ -55,6 +55,20 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
     end
 
+    it "exports SAMAGOTCHI_SESSION_REASONING_HISTORY, the session's own level, and unsets an inherited one without it" do
+      require "samagotchi/tools/builtins"
+      execute = Samagotchi::Tools::Builtins::HANDLERS.fetch("execute")
+      own = Struct.new(:peers).new(Samagotchi::Tools::Peers.new(session_id: "sess-1", reasoning_history: :all, cancelled: false))
+      expect(execute.call({ content: "printenv SAMAGOTCHI_SESSION_REASONING_HISTORY" }, own)).to include("all")
+
+      with_env("SAMAGOTCHI_SESSION_REASONING_HISTORY" => "drop") do
+        none = Struct.new(:peers).new(Samagotchi::Tools::Peers.new(session_id: "sess-1", cancelled: false))
+        bare = execute.call({ content: "printenv SAMAGOTCHI_SESSION_REASONING_HISTORY; echo done" }, none)
+        expect(bare).to include("done")
+        expect(bare).not_to include("drop")
+      end
+    end
+
     it "exports SAMAGOTCHI_SESSION_MODEL, the session's model ref, and unsets an inherited one without it" do
       require "samagotchi/tools/builtins"
       peers = Samagotchi::Tools::Peers.new(session_id: "sess-1", model_ref: "splash:qwen", cancelled: false)

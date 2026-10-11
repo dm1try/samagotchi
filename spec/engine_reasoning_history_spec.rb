@@ -41,6 +41,21 @@ RSpec.describe Samagotchi::Engine, "reasoning history" do
     end
   end
 
+  it "puts the session's own level first, and /model's summary reads it as the session's" do
+    engine.session = session
+    ENV["SAMAGOTCHI_REASONING_HISTORY"] = "drop"
+    engine.reasoning_history_override = :turn
+    expect([turn_level, engine.reasoning_history_summary]).to eq([:turn, "turn (session)"])
+    expect(engine.reasoning_history_explained.summary).to eq(level: "turn", source: "session", own: "turn")
+
+    engine.reasoning_history_override = nil
+    expect(engine.reasoning_history_explained.summary).to eq(level: "drop", source: "SAMAGOTCHI_REASONING_HISTORY", own: nil)
+  end
+
+  it "can't set a session's own level without a session" do
+    expect { engine.reasoning_history_override = :drop }.to raise_error(ArgumentError, /no session/)
+  end
+
   it "is turn by default, which /model doesn't mention" do
     registry.entries["oai"].reasoning_history = nil
     expect([turn_level, engine.reasoning_history_summary]).to eq([:turn, nil])
@@ -52,6 +67,12 @@ RSpec.describe Samagotchi::Engine, "reasoning history" do
     it "says nothing in /model's summary, even with a level set" do
       registry.entries["box"].reasoning_history = :drop
       expect(engine.reasoning_history_summary).to be_nil
+    end
+
+    it "explains nothing, even with the session's own level" do
+      engine.session = session
+      engine.reasoning_history_override = :all
+      expect(engine.reasoning_history_explained).to be_nil
     end
   end
 end

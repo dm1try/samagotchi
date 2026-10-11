@@ -18,6 +18,7 @@ module Samagotchi
       def relay = engine.relay_peer
       def model_ref = engine.effective_model_ref
       def thinking = engine.thinking_override
+      def reasoning_history = engine.reasoning_history_override
     end
 
     # What the approval relay needs from the parent's Engine (Peers#relay):

@@ -121,7 +121,8 @@ module Samagotchi
       # /model), which chi self reports; unset when unknown, so a value
       # inherited from an outer session never passes for this one. So too
       # the session's own thinking level (SAMAGOTCHI_SESSION_THINKING, unset
-      # without one), which chi self puts first. A
+      # without one), which chi self puts first, and its own reasoning_history
+      # level (SAMAGOTCHI_SESSION_REASONING_HISTORY, the same way). A
       # worker's `chi --model X` default (ModelProfile::MODEL_FROM_CLI_ENV)
       # is unset: it was that run's, not the default of a chi run here.
       def parent_env(kctx, env: ENV)
@@ -129,9 +130,11 @@ module Samagotchi
         id = peers.respond_to?(:session_id) ? peers.session_id.to_s : ""
         model = peers.respond_to?(:model_ref) ? peers.model_ref.to_s : ""
         thinking = peers.respond_to?(:thinking) ? peers.thinking&.to_s : nil
+        history = peers.respond_to?(:reasoning_history) ? peers.reasoning_history&.to_s : nil
         { Guardrails::ParentApprovals::PARENT_SESSION_ENV => id.empty? ? "chi" : id,
           SESSION_MODEL_ENV => model.empty? ? nil : model,
-          SESSION_THINKING_ENV => thinking }.merge(cli_model_unset(env))
+          SESSION_THINKING_ENV => thinking,
+          SESSION_REASONING_HISTORY_ENV => history }.merge(cli_model_unset(env))
       end
 
       # The unsets that keep a `chi --model X` worker's default from passing
@@ -144,6 +147,7 @@ module Samagotchi
 
       SESSION_MODEL_ENV = "SAMAGOTCHI_SESSION_MODEL"
       SESSION_THINKING_ENV = "SAMAGOTCHI_SESSION_THINKING"
+      SESSION_REASONING_HISTORY_ENV = "SAMAGOTCHI_SESSION_REASONING_HISTORY"
 
       # task_create's parent_env, less the unsets of a variable the model
       # set in its env (a SAMAGOTCHI_DEFAULT_MODEL it asked for stays).

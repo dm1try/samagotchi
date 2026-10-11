@@ -54,11 +54,12 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     described_class.run(ref, state_dir: tmpdir, recap_wait: 0, **)
   end
 
-  it "starts the next link in the previous one's folder, model (as typed), llm_context and thinking level, and archives the previous one" do
+  it "starts the next link in the previous one's folder, model (as typed), llm_context, thinking and reasoning_history levels, and archives the previous one" do
     previous = make(created: "2026-10-08T09:00:00+02:00")
     previous.model_typed = "small"
     previous.llm_context = Samagotchi::LLMContextOverride.new(strategy: [:stale], budget_tokens: 64_000)
     previous.thinking = :low
+    previous.reasoning_history = :drop
     previous.save(state_dir: tmpdir)
     save_recap(previous.id, "The user reviewed three PRs and merged two.")
     allow(Samagotchi::ConfigFile).to receive(:model_ref).and_call_original
@@ -73,6 +74,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
                                      first_preview: "you are coordinator again")
     expect(saved.llm_context).to eq(previous.llm_context)
     expect(saved.thinking).to eq(:low)
+    expect(saved.reasoning_history).to eq(:drop)
     expect(archived?(previous.id)).to be(true)
     # Not a descendant: the archive's cascade never reaches the new link.
     expect(archived?(link.id)).to be(false)

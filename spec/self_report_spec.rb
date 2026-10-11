@@ -478,6 +478,15 @@ RSpec.describe Samagotchi::SelfReport do
       write_config("hosts:\n  main:\n    host: 10.0.0.5\n")
       expect(field("reasoning history")).to eq("native loop: the running turn's, always")
     end
+
+    it "puts the session's own level first in a session's commands (SAMAGOTCHI_SESSION_REASONING_HISTORY), not outside one" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    api: openai\n    reasoning_history: drop\n")
+      env["SAMAGOTCHI_SESSION_REASONING_HISTORY"] = "all"
+      expect(field("reasoning history")).to eq("drop (hosts.main)")
+
+      env["SAMAGOTCHI_SESSION_MODEL"] = "main:spec-model"
+      expect(field("reasoning history")).to eq("all (session)")
+    end
   end
 
   describe "the profile row (offline: no server probe)" do

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "setting_explained"
 
 module Samagotchi
   # Which of its own reasoning a chat host's model gets back
@@ -13,17 +14,34 @@ module Samagotchi
   #   all   every reply that has reasoning, earlier turns too (a direct
   #         DeepSeek API with tools wants this)
   #
-  # Order (#resolve): SAMAGOTCHI_REASONING_HISTORY, then
-  # models.<key>.reasoning_history, hosts.<name>.reasoning_history, then
-  # turn. Native hosts ignore it: KernelLoop keeps the running turn's
-  # reasoning on its own.
+  # Order (#resolve): the session's own level (/reasoning-history), then
+  # SAMAGOTCHI_REASONING_HISTORY, models.<key>.reasoning_history,
+  # hosts.<name>.reasoning_history, then turn. Native hosts ignore it:
+  # KernelLoop keeps the running turn's reasoning on its own.
   module ReasoningHistory
     LEVELS = %i[drop turn all].freeze
     DEFAULT = :turn
     KEY = "reasoning_history"
     ENV_NAME = "SAMAGOTCHI_REASONING_HISTORY"
+    # The source a session's own level reads as.
+    SESSION_SOURCE = "session"
+    # The word that unsets a session's own level.
+    UNSET = "default"
 
     module_function
+
+    # A session's own level from its file or a command word: :drop, :turn
+    # or :all (an explicit turn is the session's own too); nil for anything
+    # else, default included. Never warns: a session file keeps a value it
+    # can't read as written.
+    # @return [Symbol, nil]
+    def session_level(value)
+      return value if LEVELS.include?(value)
+      return nil unless value.is_a?(String)
+
+      level = value.strip.downcase.to_sym
+      LEVELS.include?(level) ? level : nil
+    end
 
     # A configured value as a level; nil when unset or not a level (that
     # warns once, naming +where+).
@@ -38,14 +56,17 @@ module Samagotchi
       nil
     end
 
-    # The level for +target+ and where it came from
-    # ("SAMAGOTCHI_REASONING_HISTORY", "models: qwen", "hosts.work"; nil for
+    # The level for +target+ and where it came from ("session",
+    # "SAMAGOTCHI_REASONING_HISTORY", "models: qwen", "hosts.work"; nil for
     # the default).
     # @param target [HostRegistry::ModelTarget]
     # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
     # @param models [Hash{String => ModelSettings}, nil] ConfigFile.model_settings (specs)
+    # @param session [Symbol, nil] the session's own level (Session#reasoning_history)
     # @return [Array(Symbol, String|nil)]
-    def resolve(target, names:, models: nil)
+    def resolve(target, names:, models: nil, session: nil)
+      return [session, SESSION_SOURCE] if session
+
       env = env_level
       return [env, ENV_NAME] if env
 
@@ -61,6 +82,13 @@ module Samagotchi
       return [host, "hosts.#{target.entry.name}"] if host
 
       [DEFAULT, nil]
+    end
+
+    # #resolve, as a SettingExplained with the session's own level beside it.
+    # @return [SettingExplained]
+    def explain(target, names:, models: nil, session: nil)
+      level, source = resolve(target, names: names, models: models, session: session)
+      SettingExplained.new(level: level, source: source, own: session)
     end
 
     # "drop (models: qwen)", "turn (default)".

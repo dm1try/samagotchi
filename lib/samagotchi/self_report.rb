@@ -156,6 +156,8 @@ module Samagotchi
     PARENT_SESSION_ENV = "SAMAGOTCHI_PARENT_SESSION"
     # The session's own thinking level, beside its model (Builtins.parent_env).
     SESSION_THINKING_ENV = "SAMAGOTCHI_SESSION_THINKING"
+    # The session's own reasoning_history level (Builtins.parent_env).
+    SESSION_REASONING_HISTORY_ENV = "SAMAGOTCHI_SESSION_REASONING_HISTORY"
 
     # The model of the session this chi self runs in (its execute exports
     # SAMAGOTCHI_SESSION_MODEL, the resolved ref, live after /model); nil
@@ -372,15 +374,17 @@ module Samagotchi
     end
 
     # Which of its reasoning the model gets back and where that came from
-    # (ReasoningHistory.resolve); a native host keeps the running turn's
-    # on its own.
+    # (ReasoningHistory.resolve); in a session's commands its own level
+    # first (SAMAGOTCHI_SESSION_REASONING_HISTORY); a native host keeps the
+    # running turn's on its own.
     def reasoning_history_for(model, env)
       registry = HostRegistry.new(env: env)
       target = registry.resolve(model)
       return "native loop: the running turn's, always" unless target.entry&.chat?
 
+      session = session_model(env) ? ReasoningHistory.session_level(env[SESSION_REASONING_HISTORY_ENV]) : nil
       level, source = ReasoningHistory.resolve(target, names: registry.lookup_names(model, target: target),
-                                                       models: ConfigFile.model_settings(env: env))
+                                                       models: ConfigFile.model_settings(env: env), session: session)
       ReasoningHistory.label(level, source)
     rescue StandardError => e
       "(unknown: #{e.message})"

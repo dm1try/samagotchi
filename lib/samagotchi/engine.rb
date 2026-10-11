@@ -1112,10 +1112,38 @@ module Samagotchi
       target = @host_registry.resolve(@effective_model_name)
       return nil unless target.entry&.chat?
 
-      level, source = ReasoningHistory.resolve(target, names: model_lookup_names(target))
+      level, source = ReasoningHistory.resolve(target, names: model_lookup_names(target),
+                                                       session: reasoning_history_override)
       source ? ReasoningHistory.label(level, source) : nil
     rescue StandardError
       nil
+    end
+
+    # The effective chat model's reasoning_history level with where it came
+    # from and the session's own (SettingExplained), as the next turn
+    # resolves it; nil on a native host (the native loop ignores it) or when
+    # it can't be resolved.
+    # @return [SettingExplained, nil]
+    def reasoning_history_explained
+      target = @host_registry.resolve(@effective_model_name)
+      return nil unless target.entry&.chat?
+
+      ReasoningHistory.explain(target, names: model_lookup_names(target), session: reasoning_history_override)
+    rescue StandardError
+      nil
+    end
+
+    # The session's own reasoning_history level, nil when it has none.
+    # @return [Symbol, nil]
+    def reasoning_history_override = @session&.reasoning_history
+
+    # Set the session's own reasoning_history level (nil unsets it); the
+    # next turn's start resolves it. The caller saves the session.
+    # @raise [ArgumentError] with no session yet
+    def reasoning_history_override=(level)
+      raise ArgumentError, "no session yet" unless @session
+
+      @session.reasoning_history = level
     end
 
     # The session's own thinking level, nil when it has none.
@@ -2357,9 +2385,10 @@ module Samagotchi
       hook_notify(text, level, "thinking")
     end
 
-    # +target+'s ReasoningHistory level; the default when it can't be resolved.
+    # +target+'s ReasoningHistory level, the session's own first; the
+    # default when it can't be resolved.
     def reasoning_history_level(target)
-      ReasoningHistory.resolve(target, names: model_lookup_names(target)).first
+      ReasoningHistory.resolve(target, names: model_lookup_names(target), session: reasoning_history_override).first
     rescue StandardError
       ReasoningHistory::DEFAULT
     end

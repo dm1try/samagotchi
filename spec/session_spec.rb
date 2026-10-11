@@ -295,6 +295,32 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(path))["thinking"]).to eq("high")
     end
 
+    it "round-trips its own reasoning_history level (turn too), and a value it can't read as written" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      session.reasoning_history = :turn
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      expect(JSON.parse(File.read(path))["reasoning_history"]).to eq("turn")
+      expect(described_class.load(session.id, state_dir: tmpdir).reasoning_history).to eq(:turn)
+
+      session.reasoning_history = "default"
+      session.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))).to include("reasoning_history" => nil)
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("reasoning_history")))
+      expect(described_class.load(session.id, state_dir: tmpdir).reasoning_history).to be_nil
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("reasoning_history" => "turbo")))
+      loaded = nil
+      expect { loaded = described_class.load(session.id, state_dir: tmpdir) }.not_to output.to_stderr
+      expect(loaded.reasoning_history).to be_nil
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["reasoning_history"]).to eq("turbo")
+      loaded.reasoning_history = :all
+      loaded.save(state_dir: tmpdir)
+      expect(JSON.parse(File.read(path))["reasoning_history"]).to eq("all")
+    end
+
     it "follows the model for an llm_context field it can't read, and saves it back as written until the session sets its own" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
       session.save(state_dir: tmpdir)

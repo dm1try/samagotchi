@@ -137,6 +137,23 @@ module Samagotchi
     # read; nil when there is neither.
     def thinking_file = @thinking&.to_s || @thinking_unread
 
+    # The session's own reasoning_history level (:drop, :turn, :all), before
+    # SAMAGOTCHI_REASONING_HISTORY and the model's (ReasoningHistory.resolve);
+    # nil when it has none. Saved and carried like #thinking.
+    attr_reader :reasoning_history
+
+    # @param value [Symbol, String, nil] a value that isn't a level reads
+    #   as nil and is saved back as written, until the session sets its own
+    def reasoning_history=(value)
+      @reasoning_history = ReasoningHistory.session_level(value)
+      unread = @reasoning_history.nil? && value.is_a?(String) && !value.strip.casecmp?(ReasoningHistory::UNSET)
+      @reasoning_history_unread = unread ? value : nil
+    end
+
+    # The session file's "reasoning_history": the level, else a value it
+    # couldn't read; nil when there is neither.
+    def reasoning_history_file = @reasoning_history&.to_s || @reasoning_history_unread
+
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise.
     def stopped_by
@@ -165,7 +182,7 @@ module Samagotchi
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
-                   continues: nil, thinking: nil)
+                   continues: nil, thinking: nil, reasoning_history: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -192,6 +209,7 @@ module Samagotchi
       @continues = continues&.to_s
       self.llm_context = llm_context
       self.thinking = thinking
+      self.reasoning_history = reasoning_history
       @archived = false
     end
 
@@ -270,6 +288,7 @@ module Samagotchi
         delegate: delegate,
         llm_context: setup.llm_context,
         thinking: setup.thinking,
+        reasoning_history: setup.reasoning_history,
         continues: continues
       )
     end
@@ -331,7 +350,8 @@ module Samagotchi
       "delegate" => false,
       "llm_context" => nil,
       "continues" => nil,
-      "thinking" => nil
+      "thinking" => nil,
+      "reasoning_history" => nil
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the
@@ -453,6 +473,7 @@ module Samagotchi
                 when "delegate" then @delegate
                 when "llm_context" then llm_context_file
                 when "thinking" then thinking_file
+                when "reasoning_history" then reasoning_history_file
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names"
