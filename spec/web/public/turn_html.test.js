@@ -91,6 +91,12 @@ test("toolRowHtml: a call the model made under an alias's name says so, dim, aft
   assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "List" }), /called as/);
 });
 
+test("toolRowHtml: a read row with a ref adds its numbered lines under the preview, closed", () => {
+  const html = toolRowHtml({ key: "2:2", tool: "read", status: "ok", title: "a.rb", ref: { kind: "file", path: "/p/a.rb" }, output: "[read]\n  x\n" });
+  assert.match(html, /<div class="activity-output" title="x\n">x\n<\/div><details class="activity-read"><summary>line 1<\/summary>/);
+  assert.match(html, /<span class="read-line" data-line="1">  x<\/span>/);
+});
+
 test("toolRowHtml: a done row has its duration, its output without the tool tag, cut at 300 with the rest on hover", () => {
   const out = `[read] ${"y".repeat(310)}`;
   const html = toolRowHtml({ key: "2:1", tool: "read", status: "ok", params: 'path="a"', output: out, duration_ms: 1200 });

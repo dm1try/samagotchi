@@ -117,6 +117,21 @@ test("refTarget: a diff line outside a row or a card, and a row without a ref, a
   plain.remove();
 });
 
+test("refTarget: a read row's numbered line opens the file at that line; an unnumbered one is none", () => {
+  const root = mount(toolRowHtml({
+    key: "1:3", tool: "read", status: "ok", title: "b.rb", ref: { kind: "file", path: "/p/b.rb", line: 40, end_line: 41 },
+    output: "[read]\nx\ny\n[cut: 4 of 9 chars; read it in parts]",
+  }));
+  const [x, y, cut] = root.querySelectorAll(".activity-read .read-line");
+  assert.equal(refTarget(y).line, 41);
+  assert.equal(refTarget(cut), null);
+  const opened = [];
+  installRefClicks(root, () => viewer, { open: (url) => opened.push(url), selection: () => null });
+  x.dispatchEvent(new window.MouseEvent("click", { bubbles: true, button: 0 }));
+  assert.deepEqual(opened, ["vscode://file/p/b.rb:40"]);
+  root.remove();
+});
+
 test("installRefClicks opens the first available action's URL; none without an editor or while selecting in the row", () => {
   const root = mount(toolRowHtml(editRow));
   const opened = [];
