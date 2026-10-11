@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-10-11
+
 ### Added
 
 - `reasoning_history` (`drop`, `turn`, `all`) on a `models:` or `hosts:` entry, and `SAMAGOTCHI_REASONING_HISTORY`
@@ -21,15 +23,14 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
-- `/thinking`'s cache note now tells a local chat server (only the tail; the whole prompt for a Gemma model) from a
-  hosted one (the whole conversation). The web's thinking chip sends its level with `--yes`.
-
 - A chat host (`api: openai`) now gets the running turn's reasoning back: each of the turn's earlier replies carries its
   reasoning as `reasoning_content`, as Qwen's, Gemma 4's and DeepSeek's templates and the hosted APIs expect
   (`reasoning_history: turn`, the default). A local Qwen thought ~8x less per request with it. `drop` sends none (as
   before), `all` sends every reply's, earlier turns too. A host that refuses it (a 400 about reasoning) gets the step
   again without it, and that model sends none from then on (a notice says so once). See "Reasoning history" in
   docs/configuration.md.
+- `/thinking`'s cache note now tells a local chat server (only the tail; the whole prompt for a Gemma model) from a
+  hosted one (the whole conversation). The web's thinking chip sends its level with `--yes`.
 
 ### Fixed
 
@@ -2488,7 +2489,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.55.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.56.0...HEAD
+[0.56.0]: https://github.com/dm1try/samagotchi/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/dm1try/samagotchi/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/dm1try/samagotchi/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/dm1try/samagotchi/compare/v0.52.0...v0.53.0
