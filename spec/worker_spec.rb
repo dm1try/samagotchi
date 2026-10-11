@@ -981,6 +981,26 @@ RSpec.describe Samagotchi::Worker do
         expect(switched[:thinking]).to include(level: "low", source: "session")
       end
 
+      it "runs /reasoning-history: the session keeps its own level, and the command_ran carries the level (nil on a native host)" do
+        start_worker(poll_interval: 5)
+
+        done = ran(JSON.parse(post_command("/reasoning-history all").body)["command_id"])
+
+        expect(done).to include(status: "ok", changed: ["reasoning_history"])
+        # This spec's model runs on the native loop, which ignores the level: the web hides its chip.
+        expect(done).to have_key(:reasoning_history)
+        expect(done[:reasoning_history]).to be_nil
+        expect(done[:output]).to start_with("reasoning history: all (session)")
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).reasoning_history).to eq(:all)
+        shown = ran(JSON.parse(post_command("/reasoning-history").body)["command_id"])
+        expect(shown).not_to have_key(:reasoning_history)
+
+        allow(engine).to receive(:reasoning_history_explained)
+          .and_return(Samagotchi::SettingExplained.new(level: :all, source: "session", own: :all))
+        switched = ran(JSON.parse(post_command("/model clear").body)["command_id"])
+        expect(switched[:reasoning_history]).to eq(level: "all", source: "session", own: "all")
+      end
+
       it "runs a plugin command, and the cards it shows follow its command_ran (as its output)" do
         engine.command_registry.register("/hi", "greet", source: "b") do |_args|
           engine.show_card(source: "b", title: "Hi card")

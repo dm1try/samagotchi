@@ -82,14 +82,14 @@ RSpec.describe Samagotchi::SessionCommands do
       lines = result.output.lines.map(&:rstrip)
       expect(lines.first).to eq("commands:")
       expect(lines.map { |l| l.split.first }.drop(1))
-        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /thinking /hello /side
+        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /reasoning-history /thinking /hello /side
                   /archive /cut /detach /exit /queue /quit /recap /stats])
-      expect(lines).to include("  /hello        greet  (sample-plugin)", "  /side         ask aside  (btw; mid-turn too)",
-                               start_with("  /model        show or switch the model  (show: mid-turn too)"),
-                               "  /detach       leave and keep the worker running  (attached only)",
-                               "  /cut          cut the running generation and go in now (/cut TEXT)  (terminal and web only)",
-                               "  /queue        run as the next turn after this one (/queue TEXT)  (repl only)",
-                               "  /stats        show the session's stats  (terminal only)")
+      expect(lines).to include("  /hello              greet  (sample-plugin)", "  /side               ask aside  (btw; mid-turn too)",
+                               start_with("  /model              show or switch the model  (show: mid-turn too)"),
+                               "  /detach             leave and keep the worker running  (attached only)",
+                               "  /cut                cut the running generation and go in now (/cut TEXT)  (terminal and web only)",
+                               "  /queue              run as the next turn after this one (/queue TEXT)  (repl only)",
+                               "  /stats              show the session's stats  (terminal only)")
       expect(result.status).to eq(:ok)
       expect(engine.command_registry.lookup("/help").anytime).to be(true)
     end

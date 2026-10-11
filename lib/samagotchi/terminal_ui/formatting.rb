@@ -598,8 +598,11 @@ module Samagotchi
         lines << "model notes:      #{notes}" unless notes.empty?
         llm_context = llm_context_stats_text(snapshot[:llm_context])
         lines << "llm context:      #{llm_context}" if llm_context
-        thinking = thinking_stats_text(snapshot[:thinking])
+        thinking = setting_stats_text(snapshot[:thinking])
         lines << "thinking:         #{thinking}" if thinking
+        # A chat host's only: a native one ignores it (the summary is nil).
+        history = setting_stats_text(snapshot[:reasoning_history])
+        lines << "reasoning history: #{history}" if history
         if snapshot[:served_model]
           asked = snapshot[:served_model_for]
           differs = !snapshot[:served_expected_by] && ServedModel.differs?(asked, snapshot[:served_model])
@@ -641,10 +644,10 @@ module Samagotchi
           "budget #{budget} (#{get.call(:budget_where)})"
       end
 
-      # "low (session)", "default" for /stats (SettingExplained#summary;
-      # symbol or string keys, the attached TUI's come as JSON); nil
-      # without one.
-      def thinking_stats_text(summary)
+      # "low (session)", "default" for /stats (SettingExplained#summary:
+      # thinking, reasoning_history; symbol or string keys, the attached
+      # TUI's come as JSON); nil without one.
+      def setting_stats_text(summary)
         return nil unless summary.is_a?(Hash)
 
         level = summary[:level] || summary["level"]

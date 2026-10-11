@@ -1011,7 +1011,8 @@ module Samagotchi
       served, served_for = served_model_for(snapshot, target: target)
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for,
                                 served_expected_by: served_expected_by(served, target: target), llm_context: llm_context_summary,
-                                thinking: thinking_explained&.summary, prompt_notes: prompt_notes.map(&:to_h), price_host: target.entry.name)
+                                thinking: thinking_explained&.summary,
+                                reasoning_history: reasoning_history_explained&.summary, prompt_notes: prompt_notes.map(&:to_h), price_host: target.entry.name)
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(target)
         if window
@@ -1121,12 +1122,13 @@ module Samagotchi
 
     # The effective chat model's reasoning_history level with where it came
     # from and the session's own (SettingExplained), as the next turn
-    # resolves it; nil on a native host (the native loop ignores it) or when
-    # it can't be resolved.
+    # resolves it; nil on a native host (the native loop ignores it; native:
+    # true resolves it there too, for /reasoning-history) or when it can't
+    # be resolved.
     # @return [SettingExplained, nil]
-    def reasoning_history_explained
+    def reasoning_history_explained(native: false)
       target = @host_registry.resolve(@effective_model_name)
-      return nil unless target.entry&.chat?
+      return nil unless native || target.entry&.chat?
 
       ReasoningHistory.explain(target, names: model_lookup_names(target), session: reasoning_history_override)
     rescue StandardError
@@ -1235,6 +1237,7 @@ module Samagotchi
         context_status: @last_context_status&.dup || saved_context_status(metrics[:context]),
         llm_context: llm_context_summary,
         thinking: thinking_explained&.summary,
+        reasoning_history: reasoning_history_explained&.summary,
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
         recap_inactivity_seconds: @recap&.inactivity&.to_i

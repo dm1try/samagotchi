@@ -166,6 +166,14 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, {})).not_to include("thinking:  ")
     end
 
+    it "shows a chat host's reasoning history with where it came from in /stats, nothing without one (a native host)" do
+      expect(agent.send(:format_session_metrics, { reasoning_history: { level: "all", source: "session", own: "all" } }))
+        .to include("reasoning history: all (session)")
+      expect(agent.send(:format_session_metrics, { reasoning_history: { "level" => "turn", "source" => nil } }))
+        .to include("reasoning history: turn")
+      expect(agent.send(:format_session_metrics, { reasoning_history: nil })).not_to include("reasoning history")
+    end
+
     it "names a set budget with its tokens and where it came from, string keys or symbol ones" do
       stringy = { "strategy" => "stale", "strategy_where" => "the session", "apply" => "turn_end",
                   "apply_where" => "llm_context.apply", "budget_tokens" => 64_000, "budget_where" => "the session" }

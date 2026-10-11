@@ -788,6 +788,9 @@ module Samagotchi
       event[:llm_context] = @engine.llm_context_summary if changed.intersect?(%i[llm_context model])
       # /thinking or /model: the level the next turn runs at (the web's chip).
       event[:thinking] = @engine.thinking_explained&.summary if changed.intersect?(%i[thinking model])
+      # /reasoning-history or /model: the level the next turn runs under
+      # (the web's chip); nil on a native host, which ignores it.
+      event[:reasoning_history] = @engine.reasoning_history_explained&.summary if changed.intersect?(%i[reasoning_history model])
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)
     end

@@ -12,6 +12,7 @@ require_relative "tools/peers"
 require_relative "commands/registry"
 require_relative "llm_context_command"
 require_relative "thinking_command"
+require_relative "reasoning_history_command"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
@@ -31,6 +32,7 @@ module Samagotchi
     HELP_COMMAND = "/help"
     LLM_CONTEXT_COMMAND = LLMContextCommand::NAME
     THINKING_COMMAND = ThinkingCommand::NAME
+    REASONING_HISTORY_COMMAND = ReasoningHistoryCommand::NAME
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
     MODELS_PER_HOST = 20
@@ -92,6 +94,9 @@ module Samagotchi
                         id: :llm_context, mid_turn: show_mid_turn(LLM_CONTEXT_COMMAND), match: ->(text) { text.match?(%r{\A/llm-context(?:\s+.*)?\z}) }) { |text| llm_context(text) }
       registry.register(THINKING_COMMAND, "show or set this session's thinking level (off|low|medium|high|default)",
                         id: :thinking, mid_turn: show_mid_turn(THINKING_COMMAND), match: ->(text) { text.match?(%r{\A/thinking(?:\s+.*)?\z}) }) { |text| thinking(text) }
+      registry.register(REASONING_HISTORY_COMMAND, "show or set which of its reasoning this session's model gets back (drop|turn|all|default)",
+                        id: :reasoning_history, mid_turn: show_mid_turn(REASONING_HISTORY_COMMAND),
+                        match: ->(text) { text.match?(%r{\A/reasoning-history(?:\s+.*)?\z}) }) { |text| reasoning_history(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
@@ -435,7 +440,18 @@ module Samagotchi
       reply(e.message, status: :error)
     end
 
-    # A session setting changed (/llm-context, /thinking): saved with its model.
+    # /reasoning-history (ReasoningHistoryCommand); :reasoning_history in
+    # changed when it set the session's level.
+    def reasoning_history(text)
+      output, changed = ReasoningHistoryCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                               .run(text.delete_prefix(REASONING_HISTORY_COMMAND))
+      reply(output, changed: changed ? [:reasoning_history] : [])
+    rescue ArgumentError => e
+      reply(e.message, status: :error)
+    end
+
+    # A session setting changed (/llm-context, /thinking, /reasoning-history):
+    # saved with its model.
     def save_setup(session)
       @engine.store_model!(session)
       @save.call(session)

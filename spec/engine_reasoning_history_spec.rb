@@ -52,6 +52,14 @@ RSpec.describe Samagotchi::Engine, "reasoning history" do
     expect(engine.reasoning_history_explained.summary).to eq(level: "drop", source: "SAMAGOTCHI_REASONING_HISTORY", own: nil)
   end
 
+  it "puts it in both snapshots" do
+    engine.session = session
+    engine.reasoning_history_override = :drop
+    expect(engine.session_state_snapshot[:reasoning_history]).to eq(level: "drop", source: "session", own: "drop")
+    allow(engine).to receive_messages(served_model_for: [nil, nil], current_context_window: nil)
+    expect(engine.stats_snapshot[:reasoning_history]).to eq(level: "drop", source: "session", own: "drop")
+  end
+
   it "can't set a session's own level without a session" do
     expect { engine.reasoning_history_override = :drop }.to raise_error(ArgumentError, /no session/)
   end
