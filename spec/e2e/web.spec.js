@@ -412,7 +412,7 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
   await expect(card.locator(".approval-diff .diff-add")).toHaveText("+font_size 14");
   await card.locator(".question-option").first().click();
   await card.locator(".question-submit").click();
-  await expect(answer(page)).toHaveText("The font size is 14 now.");
+  await expect(answer(page)).toHaveText("The font size is 14 now: e2e-settings.conf:1.");
   await turnEnded(page, 1);
   const editRow = () => page.locator("#history .activity-row").filter({ has: page.locator(".activity-tool", { hasText: /^edit$/ }) });
   const check = async () => {
@@ -436,10 +436,10 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
   await check();
 });
 
-// Refs: a file row's title and its diff lines open the file in the editor
-// (web.editor's default, vscode; this page is a loopback viewer). The
-// window.__chiRefOpen seam records the URL instead of opening it; refs.js
-// checks for it at click time.
+// Refs: a file row's title, its diff lines and a ref in the answer open
+// the file in the editor (web.editor's default, vscode; this page is a
+// loopback viewer). The window.__chiRefOpen seam records the URL instead
+// of opening it; refs.js checks for it at click time.
 test("an edit's approval card, then its row's title and diff lines, open the file in the editor, live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
   const recordOpens = () => page.evaluate(() => {
     window.__refOpened = [];
@@ -460,7 +460,7 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
   expect(await opened()).toEqual([expect.stringMatching(url(1)), expect.stringMatching(url(2))]);
   await card.locator(".question-option").first().click();
   await card.locator(".question-submit").click();
-  await expect(answer(page)).toHaveText("The font size is 14 now.");
+  await expect(answer(page)).toHaveText("The font size is 14 now: e2e-settings.conf:1.");
   await turnEnded(page, 1);
   await expect(page.locator("body")).toHaveClass(/\brefs-file\b/);
 
@@ -475,7 +475,11 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
     await diff.locator("summary").click({ force: true });
     await diff.locator(".diff-add").click();
     await diff.locator(".diff-ctx").filter({ hasText: "theme dark" }).click();
-    expect(await opened()).toEqual([expect.stringMatching(url(1)), expect.stringMatching(url(1)), expect.stringMatching(url(2))]);
+    // The answer's `path:line` and the step's bare path name the touched
+    // file (ref_scan.js): refs too.
+    await expect(page.locator(`${H()} details.gen .gen-text .ref`)).toHaveText(EDIT_ASK_FILE);
+    await answer(page).locator(".ref").click();
+    expect(await opened()).toEqual([expect.stringMatching(url(1)), expect.stringMatching(url(1)), expect.stringMatching(url(2)), expect.stringMatching(url(1))]);
   };
   // The steps block and the edit's step, opened when they are closed.
   const openSteps = async () => {
