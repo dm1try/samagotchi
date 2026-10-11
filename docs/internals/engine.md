@@ -495,7 +495,7 @@ thought after the cue, kept in the model message so the next prompt starts with 
 5. **A stable system prompt for the cache.** `SystemPrompt#build` caches the prompt per Engine, keyed by
    `[chat, thinking, layers]` (chat/native, the thinking level, the turn's LLM context layers), and is reset
    only on a model switch, a tools change or a profile change. The stable part (base prompt, identity,
-   memories, AGENT.md, memory indexes) comes before the volatile tail (model, working directory, session).
+   memories, AGENTS.md, memory indexes) comes before the volatile tail (model, working directory, session).
    prompt-caching.md covers this in detail.
 
 ## Key files

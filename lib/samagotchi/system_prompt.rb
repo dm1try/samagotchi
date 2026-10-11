@@ -16,7 +16,7 @@ module Samagotchi
   # The system prompt an Engine gives its model: the base prompt (tool
   # declarations and call syntax for the raw-prompt loop, none for the chat
   # loop, the shared guidance) and around it the thinking token, rg
-  # guidance, the identity memory, the model notes, the preloaded memories, AGENT.md, the
+  # guidance, the identity memory, the model notes, the preloaded memories, AGENTS.md, the
   # memory indexes and, last, the model, where the session runs and the
   # session (#system_prompt_with_index has the order and why).
   #
@@ -24,7 +24,7 @@ module Samagotchi
   # tools a plugin replaces, the attached session, the thinking level) is
   # read at build time through the lookups; the memory lists are fixed.
   class SystemPrompt
-    AGENT_DESCRIPTION_FILE = "AGENT.md"
+    AGENT_DESCRIPTION_FILE = "AGENTS.md"
 
     # The model a session runs on, as the prompt names it: the resolved
     # ref, its host ("name, host:port" or url), the memory overlay key, and
@@ -282,7 +282,7 @@ module Samagotchi
     # Ordered for the servers' prompt caches (they reuse only an exact token
     # prefix): what every session shares first, what changes least before
     # what changes more, and the per-session lines last. The global parts
-    # (identity, preloads) come before the project's AGENT.md, the memory
+    # (identity, preloads) come before the project's AGENTS.md, the memory
     # indexes (a memory write changes them) after both; the model, the
     # location and the session close the prompt (Gemma's tool declarations
     # still follow them).
@@ -464,7 +464,7 @@ module Samagotchi
 
     # ── Project / rg helpers ───────────────────────────────────────────────────
 
-    # AGENT.md in the cwd, else at the top of its git work tree.
+    # AGENTS.md in the cwd, else at the top of its git work tree.
     def project_specific_description
       return nil if skip_agent_description?
 
@@ -566,7 +566,7 @@ module Samagotchi
     end
 
     def skip_agent_description?
-      Config.get("skip_agent_md") == true
+      Config.get("skip_agents_md") == true
     end
 
     def rg_available?

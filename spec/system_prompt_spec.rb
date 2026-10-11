@@ -34,13 +34,13 @@ RSpec.describe Samagotchi::SystemPrompt do
     expect(rg_available?).to be(false)
   end
 
-  describe "AGENT.md" do
+  describe "AGENTS.md" do
     def description(cwd)
-      saved = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      saved = ENV["SAMAGOTCHI_SKIP_AGENTS_MD"]
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
       Dir.chdir(cwd) { prompt.send(:project_specific_description) }
     ensure
-      saved.nil? ? ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD") : ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = saved
+      saved.nil? ? ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD") : ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = saved
     end
 
     def write(path, text)
@@ -53,31 +53,39 @@ RSpec.describe Samagotchi::SystemPrompt do
     before { FileUtils.mkdir_p(File.join(repo, ".git")) }
 
     it "is read from the work tree root when chi runs in a subdirectory" do
-      write(File.join(repo, "AGENT.md"), "root notes")
+      write(File.join(repo, "AGENTS.md"), "root notes")
       FileUtils.mkdir_p(File.join(repo, "lib", "deep"))
       expect(description(File.join(repo, "lib", "deep"))).to eq("Project specific description:\nroot notes")
     end
 
-    it "prefers the current directory's AGENT.md over the root's" do
-      write(File.join(repo, "AGENT.md"), "root notes")
-      write(File.join(repo, "sub", "AGENT.md"), "sub notes")
+    it "prefers the current directory's AGENTS.md over the root's" do
+      write(File.join(repo, "AGENTS.md"), "root notes")
+      write(File.join(repo, "sub", "AGENTS.md"), "sub notes")
       expect(description(File.join(repo, "sub"))).to eq("Project specific description:\nsub notes")
     end
 
     it "is read from a linked worktree's own checkout, not the main one" do
-      write(File.join(repo, "AGENT.md"), "main checkout notes")
+      write(File.join(repo, "AGENTS.md"), "main checkout notes")
       FileUtils.mkdir_p(File.join(repo, ".git", "worktrees", "wt"))
       wt = File.join(File.dirname(repo), "wt")
       write(File.join(wt, ".git"), "gitdir: #{File.join(repo, ".git", "worktrees", "wt")}\n")
-      write(File.join(wt, "AGENT.md"), "worktree notes")
+      write(File.join(wt, "AGENTS.md"), "worktree notes")
       FileUtils.mkdir_p(File.join(wt, "src"))
       expect(description(File.join(wt, "src"))).to eq("Project specific description:\nworktree notes")
+    end
+
+    # AGENTS.md is the cross-tool name; the old AGENT.md has no fallback.
+    it "doesn't read an AGENT.md" do
+      write(File.join(repo, "AGENT.md"), "old notes")
+      expect(description(repo)).to be_nil
+      write(File.join(repo, "AGENTS.md"), "new notes")
+      expect(description(repo)).to eq("Project specific description:\nnew notes")
     end
 
     it "is only the current directory's outside a git repository" do
       outside = File.join(File.realpath(@bin), "plain", "sub")
       FileUtils.mkdir_p(outside)
-      write(File.join(File.realpath(@bin), "plain", "AGENT.md"), "parent notes")
+      write(File.join(File.realpath(@bin), "plain", "AGENTS.md"), "parent notes")
       expect(description(outside)).to be_nil
     end
   end

@@ -198,7 +198,7 @@ engine.session           # current session (Engine owns create/resume)
 ```
 
 The system prompt (`SystemPrompt#build`) is the base prompt, then rg guidance, the
-identity and the preloaded memories, AGENT.md, the memory indexes, and last **the
+identity and the preloaded memories, AGENTS.md, the memory indexes, and last **the
 model** (`Model: this session runs on <ref> (host …; model key …)` and a line telling
 the model to answer "which model are you" from it, not from training), the working
 directory and the session id and log (Gemma's native tool declarations still follow).

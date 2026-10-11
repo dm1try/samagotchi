@@ -193,13 +193,13 @@ RSpec.describe Samagotchi::ConfigFile do
         FileUtils.mkdir_p(File.join(dir, "samagotchi"))
         File.write(File.join(dir, "samagotchi", "config.yml"), <<~YAML)
           max_tool_output_chars: 5000
-          skip_agent_md: true
+          skip_agents_md: true
         YAML
         ENV["XDG_CONFIG_HOME"] = dir
 
         expect { described_class.load! }.not_to output.to_stderr
         expect(Samagotchi::Config.get("max_tool_output_chars")).to eq(5000)
-        expect(Samagotchi::Config.get("skip_agent_md")).to be(true)
+        expect(Samagotchi::Config.get("skip_agents_md")).to be(true)
       end
     end
 

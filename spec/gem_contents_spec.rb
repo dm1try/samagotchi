@@ -37,7 +37,7 @@ RSpec.describe "The built gem" do
 
   it "ships nothing from the dev tree" do
     leaked = files.select do |f|
-      f.match?(%r{\A(spec|tmp|pkg|script|node_modules|\.claude)/}) || f == "AGENT.md" ||
+      f.match?(%r{\A(spec|tmp|pkg|script|node_modules|\.claude)/}) || f == "AGENTS.md" ||
         f.split("/").any? { |part| part.start_with?(".") }
     end
     expect(leaked).to eq([])

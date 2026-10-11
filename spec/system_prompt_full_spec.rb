@@ -6,7 +6,7 @@ require "tmpdir"
 
 # Byte-for-byte snapshots of the whole system prompt Engine#system_prompt
 # builds (the base prompt that prompt_snapshot_spec pins, plus the thinking
-# token, rg guidance, AGENT.md, location, session, memory indexes, identity
+# token, rg guidance, AGENTS.md, location, session, memory indexes, identity
 # and preloaded memories) across the variants that change it: native vs chat
 # host, thinking default vs off, rg or not, a delegated child, preloaded and
 # muted memories, a scratch session. Machine-specific paths and ids are
@@ -37,12 +37,12 @@ RSpec.describe "Full system prompt snapshots" do
   let(:warnings) { [] }
 
   around do |example|
-    saved = %w[SAMAGOTCHI_THINKING_LEVEL SAMAGOTCHI_SKIP_AGENT_MD PATH].to_h { |k| [k, ENV[k]] }
+    saved = %w[SAMAGOTCHI_THINKING_LEVEL SAMAGOTCHI_SKIP_AGENTS_MD PATH].to_h { |k| [k, ENV[k]] }
     Dir.mktmpdir do |tmp|
       @tmp = File.realpath(tmp)
       @project = File.join(@tmp, "project")
       FileUtils.mkdir_p(@project)
-      File.write(File.join(@project, "AGENT.md"), "This project builds widgets.\n")
+      File.write(File.join(@project, "AGENTS.md"), "This project builds widgets.\n")
       @bin = File.join(@tmp, "bin")
       FileUtils.mkdir_p(@bin)
       File.write(File.join(@bin, "rg"), "#!/bin/sh\n")
@@ -92,15 +92,15 @@ RSpec.describe "Full system prompt snapshots" do
     text.gsub(SPEC_XDG_STATE_HOME, "<STATE>").gsub(@tmp, "<TMP>").gsub(Dir.home, "<HOME>")
   end
 
-  it "gemma4 on a native host, default thinking, rg, AGENT.md, no session" do
+  it "gemma4 on a native host, default thinking, rg, AGENTS.md, no session" do
     with_rg(true)
     expect_snapshot("gemma4_native.txt", normalized(engine("box:gemma-small", "gemma4").system_prompt))
   end
 
-  it "gemma4 on a native host, thinking off, no rg, AGENT.md skipped" do
+  it "gemma4 on a native host, thinking off, no rg, AGENTS.md skipped" do
     with_rg(false)
     ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
-    ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = "1"
+    ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = "1"
     expect_snapshot("gemma4_native_off.txt", normalized(engine("box:gemma-small", "gemma4").system_prompt))
   end
 

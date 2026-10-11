@@ -263,7 +263,7 @@ module Samagotchi
       # env+config only
       Entry.new(key: "default.input",            yaml_path: %w[default input],            type: :string, default: nil,              expose: %i[env config]),
       Entry.new(key: "history.file",             yaml_path: %w[history file],             type: :string, default: nil,              expose: %i[env config]),
-      Entry.new(key: "skip_agent_md",            yaml_path: %w[skip_agent_md],            type: :bool,   default: false,            expose: %i[env config])
+      Entry.new(key: "skip_agents_md",           yaml_path: %w[skip_agents_md],           type: :bool,   default: false,            expose: %i[env config])
     ].freeze
 
     # Top-level maps read by their own code, whose entry names and contents

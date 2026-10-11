@@ -12,12 +12,12 @@ RSpec.describe Samagotchi::Engine do
 
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    original_skip = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
+    original_skip = ENV["SAMAGOTCHI_SKIP_AGENTS_MD"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+    ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
     example.run
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-    ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip
+    ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = original_skip
   end
 
   let(:client) { test_client }

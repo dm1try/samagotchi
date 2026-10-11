@@ -6,7 +6,7 @@ require "samagotchi/utf8_default"
 require "samagotchi/system_prompt"
 
 # LC_ALL=C (or no locale at all) makes Ruby read files as US-ASCII; chi's
-# memories, AGENT.md and sessions are UTF-8.
+# memories, AGENTS.md and sessions are UTF-8.
 RSpec.describe Samagotchi::Utf8Default do
   around do |example|
     saved = Encoding.default_external
@@ -51,22 +51,22 @@ RSpec.describe Samagotchi::Utf8Default do
     around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
     after { FileUtils.rm_rf(tmp) }
 
-    it "reads the memory index, memories and AGENT.md as UTF-8" do
+    it "reads the memory index, memories and AGENTS.md as UTF-8" do
       system_dir = Samagotchi::MemoryPaths.system_dir
       FileUtils.mkdir_p(system_dir)
       File.write(File.join(system_dir, "index.md"), "- **notes** · system · 2026-10-02 · 1 KB — café notes\n")
       File.write(File.join(system_dir, "notes.md"), "naïve — but UTF-8\n")
       repo = File.join(tmp, "repo")
       FileUtils.mkdir_p(File.join(repo, ".git"))
-      File.write(File.join(repo, "AGENT.md"), "Ünïcode project — notes\n")
+      File.write(File.join(repo, "AGENTS.md"), "Ünïcode project — notes\n")
       as_ascii
-      saved = ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      saved = ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
       text = Dir.chdir(repo) { prompt.send(:system_prompt_with_index, "Base — with a dash", chat: true, thinking: :off) }
       expect(text.encoding).to eq(Encoding::UTF_8)
       expect(text).to include("café notes", "Ünïcode project")
       expect(Samagotchi::Tools::MemoryRead.call("notes", scope: "system")).to include("naïve")
     ensure
-      ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = saved if saved
+      ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = saved if saved
     end
   end
 end

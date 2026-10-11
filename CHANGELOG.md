@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi reads a project's AGENTS.md (the name other agent tools read) instead of AGENT.md: rename yours. AGENT.md is no
+  longer read. The setting that skips it is now `skip_agents_md` (env `SAMAGOTCHI_SKIP_AGENTS_MD`).
+
 ### Fixed
 
 - Web: a blank line in a read's numbered file lines is empty, not a space, so copying the lines keeps the file

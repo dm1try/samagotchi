@@ -1,4 +1,4 @@
-# AGENT.md
+# AGENTS.md
 
 ## Project Overview: Samagotchi
 Samagotchi is an agent harness which heavily relies on memory. It runs each session's Engine in a background Worker that terminals (TerminalUI) and the browser (`chi web`) reach through the worker's Bridge, using project/system memories for long-term state.
@@ -66,7 +66,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - `memory_write` accepts an optional `description` (and its scoped `index.md` is auto-maintained). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). Each entry is written as a managed line — `- **name** · scope · date · size — description` — with every other line preserved byte-for-byte.
 - `memory_write` also accepts `current_model_only: true` to save a model-specific overlay (`<name>.<model-key>.md`) that is auto-appended when read under that model. See `docs/memory.md`.
 - When adding new capabilities, update the relevant tools in `lib/samagotchi/tools/`.
-- Always check `AGENT.md` for current operational context.
+- Always check `AGENTS.md` for current operational context.
 - Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.
 - Let `task_wait` return its timeout tail before separately reading a task `output_path`; use `done_pattern` when the command emits a reliable completion marker.
 - Sessions are file-based (`~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar). Retention is 14d/500 (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`), `updated_at desc` by default, lazy sweep ≤1/24h from `chi web`'s session hub tick (and on `GET /api/sessions`); manual via `bin/chi sessions {list,prune,clean} --dry-run`. Use `XDG_STATE_HOME` for isolated test runs; `test_run` flag auto-set when `SAMAGOTCHI_ENV`/`RACK_ENV`/`CI`.

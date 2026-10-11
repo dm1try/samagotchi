@@ -1058,15 +1058,15 @@ The helper reads these from its launch file: after editing them run
 
 ## Project specific description
 
-If an AGENT.md file is present in the project root, samagotchi injects its
+If an AGENTS.md file is present in the project root, samagotchi injects its
 contents into the system prompt under a "Project specific description:" section.
 The project root is the top of the git work tree chi runs in (a linked
 worktree's own checkout), or the current directory outside a repository. An
-AGENT.md in the current directory is read instead when there is one; only one
+AGENTS.md in the current directory is read instead when there is one; only one
 file is read.
 
-To skip loading AGENT.md, set `skip_agent_md: true` at the top level of
-`config.yml` (env `SAMAGOTCHI_SKIP_AGENT_MD=true`).
+To skip loading AGENTS.md, set `skip_agents_md: true` at the top level of
+`config.yml` (env `SAMAGOTCHI_SKIP_AGENTS_MD=true`).
 
 ## LLM context: the forget layer
 
@@ -1318,8 +1318,8 @@ described in their own sections.
 | `history.file` | state dir | | Prompt history path, shared by the TUI and the web composer. |
 | `no_interrupt` | `false` | `--no-interrupt` | Raise the step limit of a turn to 1000 (or `turn.max_iterations`, when larger); a top-level key. |
 | `no_default_input` | `false` | `--no-default-input` | Don't pre-fill `default.input`; a top-level key. |
-| `skip_agent_md` | `false` | | Don't load AGENT.md; a top-level key (see below). |
+| `skip_agents_md` | `false` | | Don't load AGENTS.md; a top-level key (see below). |
 
-`max_tool_output_chars`, `skip_agent_md`, `no_interrupt` and
+`max_tool_output_chars`, `skip_agents_md`, `no_interrupt` and
 `no_default_input` have no section: in `config.yml` they are top-level keys as
 written (`max_tool_output_chars: 20000`).

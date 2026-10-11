@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Samagotchi
-  # chi's files (memories, AGENT.md, sessions, config.yml) are UTF-8,
+  # chi's files (memories, AGENTS.md, sessions, config.yml) are UTF-8,
   # whatever the locale. Under LC_ALL=C (or with no locale at all: an app
   # started from Finder or launchd, `env -i`) Ruby reads files as US-ASCII,
   # and a UTF-8 memory index then breaks the system prompt

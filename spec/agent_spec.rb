@@ -33,7 +33,7 @@ RSpec.describe Samagotchi::TerminalUI do
 
   around do |example|
     original_thinking_mode = ENV["SAMAGOTCHI_THINKING_LEVEL"]
-    original_skip_agent_md = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
+    original_skip_agents_md = ENV["SAMAGOTCHI_SKIP_AGENTS_MD"]
     original_history_file = ENV["SAMAGOTCHI_HISTORY_FILE"]
     original_xdg_state_home = ENV["XDG_STATE_HOME"]
     original_status_line = ENV["SAMAGOTCHI_STATUS_LINE"]
@@ -44,7 +44,7 @@ RSpec.describe Samagotchi::TerminalUI do
     ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
     example.run
     ENV["SAMAGOTCHI_THINKING_LEVEL"] = original_thinking_mode
-    ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
+    ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = original_skip_agents_md
     ENV["SAMAGOTCHI_HISTORY_FILE"] = original_history_file
     ENV["XDG_STATE_HOME"] = original_xdg_state_home
     ENV["SAMAGOTCHI_STATUS_LINE"] = original_status_line
@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::TerminalUI do
       # baseline (e.g. user_preferences) leaks into the assertions.
       # Mirrors spec/engine_spec.rb:65.
       allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
       # The prompt entrypoint runs one turn then drops into the REPL; stub
       # Reline to exit immediately so .run returns in tests.
       allow(Reline).to receive(:readmultiline).and_return(nil)
@@ -409,7 +409,7 @@ file2.rb")
       expect(received_prompt).to include("Read a full file only when targeted snippet extraction is insufficient")
     end
 
-    it "injects AGENT.md as project specific description when present" do
+    it "injects AGENTS.md as project specific description when present" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
         received_prompt = prompt
@@ -417,8 +417,8 @@ file2.rb")
       end
       allow(File).to receive(:file?).and_call_original
       allow(File).to receive(:read).and_call_original
-      allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENT.md")).and_return(true)
-      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md"), encoding: "UTF-8").and_return("Use project conventions")
+      allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENTS.md")).and_return(true)
+      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENTS.md"), encoding: "UTF-8").and_return("Use project conventions")
 
       agent = described_class.new(prompt: "hi", client: client)
       agent.run
@@ -466,8 +466,8 @@ file2.rb")
       expect(received_prompt).to include("Current session id: #{id}")
     end
 
-    it "skips AGENT.md injection when SAMAGOTCHI_SKIP_AGENT_MD=true" do
-      ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = "true"
+    it "skips AGENTS.md injection when SAMAGOTCHI_SKIP_AGENTS_MD=true" do
+      ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = "true"
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
         received_prompt = prompt
@@ -475,8 +475,8 @@ file2.rb")
       end
       allow(File).to receive(:file?).and_call_original
       allow(File).to receive(:read).and_call_original
-      allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENT.md")).and_return(true)
-      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md"), encoding: "UTF-8").and_return("Use project conventions")
+      allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENTS.md")).and_return(true)
+      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENTS.md"), encoding: "UTF-8").and_return("Use project conventions")
 
       agent = described_class.new(prompt: "hi", client: client)
       agent.run
@@ -489,7 +489,7 @@ file2.rb")
   describe "run entrypoints (--prompt / --non-interactive / --resume)" do
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
     end
 
     # Scenario 1: -p "x" (no --non-interactive) feeds the prompt, runs one turn,
@@ -927,7 +927,7 @@ file2.rb")
     before do
       # Clear ENV to ensure tests are isolated from the environment
       ENV.delete("SAMAGOTCHI_THINKING_LEVEL")
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     end
 
@@ -1082,7 +1082,7 @@ file2.rb")
       # calls): its answer without a shell each time.
       allow(Samagotchi::Tools::Execute).to receive(:call).and_call_original
       allow(Samagotchi::Tools::Execute).to receive(:call).with("echo step", any_args).and_return("stdout:\nstep\n\nexit: 0")
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
     end
 
     around do |example|
@@ -1326,7 +1326,7 @@ file2.rb")
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:skip?).and_return(true)
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
       allow(Samagotchi::MemoryPaths).to receive(:system_dir).and_return(system_memories_dir)
 
       project_memories_dir = File.join(tmpdir, "memories")
@@ -1496,7 +1496,7 @@ file2.rb")
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(client).to receive(:complete).and_return("done")
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
     end
 
     around do |example|
@@ -1580,7 +1580,7 @@ file2.rb")
   describe "#assist_loop exits with session id" do
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
       allow(client).to receive(:complete).and_return("done")
       # Nothing is sent: keep the session, for the resume line.
       allow(Samagotchi::SessionManager).to receive(:discard_empty?).and_return(false)
@@ -1620,7 +1620,7 @@ file2.rb")
 
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
     end
 
     it "queues prefill when env is set, no resume, and no --no-default-input" do
