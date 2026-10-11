@@ -59,6 +59,7 @@ RSpec.describe "The hook runtime through the Engine" do
       engine.register_hook(:after_turn) do |e|
         e[:notify].call("sources: a", fallback_for: :display)
         e[:notify].call("sources: b", fallback_for: "display")
+        e[:notify].call("open lib/a.rb:3", fallback_for: :editor)
         e[:notify].call("odd", fallback_for: :terminal)
         e[:notify].call("plain", fallback_for: nil)
       end
@@ -70,9 +71,9 @@ RSpec.describe "The hook runtime through the Engine" do
 
       notices = sink.select { |e| e[:type] == :hook_notice }
       expect(notices.map { |e| [e[:text], e[:fallback_for]] })
-        .to eq([["sources: a", :display], ["sources: b", :display], ["odd", nil], ["plain", nil]])
+        .to eq([["sources: a", :display], ["sources: b", :display], ["open lib/a.rb:3", :editor], ["odd", nil], ["plain", nil]])
       expect(notices.last(2)).to all(satisfy { |e| !e.key?(:fallback_for) })
-      expect(seen.select { |e| e[:type] == :hook_notice }.map { |e| e[:fallback_for] }).to eq([:display, :display, nil, nil])
+      expect(seen.select { |e| e[:type] == :hook_notice }.map { |e| e[:fallback_for] }).to eq([:display, :display, :editor, nil, nil])
     end
   end
 

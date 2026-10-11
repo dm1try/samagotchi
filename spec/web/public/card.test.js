@@ -86,6 +86,9 @@ test("shownElsewhere: a notice marked fallback_for a capability the page has; un
   assert.equal(shownElsewhere(marked, undefined), false);
   assert.equal(shownElsewhere({ type: "hook_notice", text: "plain" }, { display: true }), false);
   assert.equal(shownElsewhere({ ...marked, fallback_for: "terminal" }, { display: true }), false);
+  // An editor notice: left out only for a viewer that can open refs.
+  assert.equal(shownElsewhere({ ...marked, fallback_for: "editor" }, { display: true, editor: true }), true);
+  assert.equal(shownElsewhere({ ...marked, fallback_for: "editor" }, { display: true, editor: false }), false);
   assert.equal(shownElsewhere(null, { display: true }), false);
 });
 

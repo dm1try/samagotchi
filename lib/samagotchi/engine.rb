@@ -1521,7 +1521,7 @@ module Samagotchi
     private :hook_source
 
     # What a notice may stand in for (hook_notify's fallback_for:).
-    NOTICE_FALLBACKS = %i[display].freeze
+    NOTICE_FALLBACKS = %i[display editor].freeze
 
     # One line to the user (:hook_notice). During a turn it is a turn
     # event: the turn's sink (the REPL) and the observers (bridge, log).
@@ -1530,9 +1530,10 @@ module Samagotchi
     #
     # +fallback_for+ names what the line stands in for (NOTICE_FALLBACKS):
     # :display, the answer's display (AnswerDisplay), for a UI that doesn't
-    # render its links. A UI that does leaves the line out; the others, the
-    # log among them, show it. An unknown value is dropped, so the line
-    # shows everywhere.
+    # render its links; :editor, a ref the viewer could open in its editor
+    # (Web::Capabilities#editor), for a UI or a viewer that can't. A UI that
+    # does leaves the line out; the others, the log among them, show it. An
+    # unknown value is dropped, so the line shows everywhere.
     def hook_notify(text, level, hook, fallback_for: nil)
       level = (level || :info).to_sym
       level = :info unless %i[info warn].include?(level)

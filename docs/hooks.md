@@ -117,7 +117,7 @@ known-names)` for a bundle hook, `audit.rb (config)` for a config hook,
 `turn hook` for one registered at runtime.
 
 `event[:notify]` also takes `fallback_for:`, what the line stands in for, so
-that a UI that already shows it can leave the line out. The one value is
+that a UI that already shows it can leave the line out. The main value is
 `:display`: the line repeats what the hook's
 [`event[:present]`](#presenting-the-answer-display-only) display shows (its
 links), for a UI that doesn't render that display. The hook never names a UI;
@@ -125,7 +125,13 @@ each decides by what it renders. The web with markdown on (`web.markdown` and
 the commonmarker gem) leaves such a line out, live and after a reload; with
 markdown off it shows, as it does in the REPL, the attached TUI and
 `chi -p`, which print the answer as text. The log keeps the line with
-`fallback_for=display`. Another value, or none, shows the line everywhere.
+`fallback_for=display`. `:editor` marks a line that names a file the viewer
+could open from a ref in its editor: the web leaves it out for a viewer on
+this machine with `web.editor` set, and every other UI and viewer (a phone,
+the terminals) shows it. Name only a file the page shows as a ref (one a
+tool row touched): a loopback viewer with `web.editor` set never sees the
+line, so a file it can't open from a ref would be lost to it. Another value,
+or none, shows the line everywhere.
 Mark a line only when the display really shows all of it (source-links marks
 its note only when the answer links every URL the note names). It needs chi
 0.35.0: an older chi's `event[:notify]` raises `ArgumentError` on the keyword,

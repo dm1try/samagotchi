@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
   `resumed: false`). `continue` also marks a reminder's and a wake's turn, so `script/model_notes_report` now counts
   Continues from `resumed`, falling back to `continue` record by record for older files. `:turn_started` and the
   `before_turn` hook payload carry `resumed` too.
+- A hook's or plugin's notice can be marked `fallback_for: :editor`: a line naming a file the viewer could open from
+  a ref. The web leaves it out for a viewer on this machine with `web.editor` set; a phone and the terminals show it.
 
 ### Changed
 
