@@ -28,7 +28,8 @@ module Samagotchi
 
     # @param kernel [KernelLoop] read lazily: Engine sets its hooks after
     #   the kernel is built.
-    # @param clock [#call] monotonic seconds, for the approval wait
+    # @param clock [#call] monotonic seconds, for the approval wait and the
+    #   dispatch time (after_tool_call's elapsed_ms)
     def initialize(kernel, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @kernel = kernel
       @clock = clock
@@ -71,7 +72,14 @@ module Samagotchi
       end
       before = verdict.deny? ? NOT_AN_EDIT : file_before(call)
       index_before = before.equal?(NOT_AN_EDIT) ? nil : memory_index_size(call)
-      result = verdict.deny? ? denied(call, verdict) : dispatch(call)
+      elapsed_ms = nil
+      if verdict.deny?
+        result = denied(call, verdict)
+      else
+        dispatched_at = @clock.call
+        result = dispatch(call)
+        elapsed_ms = ((@clock.call - dispatched_at) * 1000).round
+      end
       diff = file_change(call, before)
       if diff && refresh_memory_index(call)
         result = with_index_note(result, index_before, call)
@@ -80,6 +88,9 @@ module Samagotchi
       result, images = attach_images(call, result) if result[:images]
 
       output = scrub(result[:output].to_s)
+      # The tool's own text, for after_tool_call: no "[tool]" lead, no
+      # ran-as line, no cap.
+      tool_text = output.sub(/\A\[#{Regexp.escape(call[:name].to_s)}\](?:\n| )/, "")
       # The gate may have replaced the call (known-names corrects a near
       # miss): one leading line tells the model what actually ran.
       if (changed = changed_call_line(original, call))
@@ -104,7 +115,7 @@ module Samagotchi
       # After the completed event: a hook's card (check-in, skills) prints
       # under the call's tool row, not before it.
       fire(:after_tool_call, { type: :after_tool_call, iteration: iteration, tool: call[:name], output: capped,
-                               status: status || "error" })
+                               status: status || "error", call: call.dup, elapsed_ms: elapsed_ms, result: tool_text })
 
       run = { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }
       run[:images] = images if images&.any?

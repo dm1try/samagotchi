@@ -96,4 +96,18 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
       expect(commands(text)).to eq([["git", "commit", "-m", subst], %w[git push]])
     end
   end
+
+  describe ".unterminated?" do
+    it "is true for an open quote, $( or heredoc" do
+      ["echo 'a", "echo \"a", "echo $(date", "cat <<EOF\nx"].each do |text|
+        expect(described_class.unterminated?(text)).to be(true), text
+      end
+    end
+
+    it "is false for complete input" do
+      ["echo 'a'", "echo $(date) && ls", "cat <<EOF\nx\nEOF\n", ""].each do |text|
+        expect(described_class.unterminated?(text)).to be(false), text
+      end
+    end
+  end
 end

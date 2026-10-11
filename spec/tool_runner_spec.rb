@@ -63,6 +63,63 @@ RSpec.describe Samagotchi::ToolRunner do
     end
   end
 
+  # A hook pairs the outcome with the call without a before_tool_call of
+  # its own (the slow-commands bundle).
+  describe "after_tool_call's call, elapsed_ms and result" do
+    let(:seen) { [] }
+    let(:now) { [100.0] }
+    let(:runner) { described_class.new(kernel, clock: -> { now.first }) }
+
+    before do
+      hooks.register(:after_tool_call) { |event| seen << event.slice(:call, :elapsed_ms, :result) }
+      allow(kernel).to receive(:dispatch_tool_call) do |c|
+        now[0] += 1.25
+        { output: "[#{c[:name]}]\nexit: 0", activity: { tool: c[:name], status: "ok" } }
+      end
+    end
+
+    it "carries the call that ran, how long the dispatch took and the tool's own text" do
+      run
+      expect(seen).to eq([{ call: call, elapsed_ms: 1250, result: "exit: 0" }])
+    end
+
+    it "gives a gate-replaced call's result without the ran-as line" do
+      hooks.register(:before_tool_call) { |e| e[:call] = { name: "execute", content: "pwd" } }
+      run
+      expect(seen).to eq([{ call: { name: "execute", content: "pwd" }, elapsed_ms: 1250, result: "exit: 0" }])
+    end
+
+    it "gives the result uncut when the model's output is capped" do
+      allow(kernel).to receive(:dispatch_tool_call) { { output: "[execute]\n#{"x" * 50}", activity: nil } }
+      runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil, max_tool_output_chars: 20)
+      expect(seen.first[:result]).to eq("x" * 50)
+    end
+
+    it "strips the lead of a one-line error too" do
+      allow(kernel).to receive(:dispatch_tool_call).and_return({ output: "[execute] Error: boom", activity: nil })
+      run
+      expect(seen.first[:result]).to eq("Error: boom")
+    end
+
+    it "has no elapsed_ms for a denied call, which never ran" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no", source: "test") }
+      run
+      expect(seen.first[:elapsed_ms]).to be_nil
+      expect(seen.first[:result]).to start_with("Error: denied by guardrail (test): no")
+    end
+
+    it "leaves the approval wait out of elapsed_ms" do
+      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: lambda { |verdict|
+        now[0] += 5
+        verdict.settle!(:allow).tap { verdict.scope = "once" }
+      })
+      kernel.define_singleton_method(:guardrail_gate) { gate }
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("sure?") }
+      run
+      expect(seen.first[:elapsed_ms]).to eq(1250)
+    end
+  end
+
   it "dispatches an unvetoed call; nothing waited, so no waited_ms" do
     run
     expect(events.last).not_to have_key(:waited_ms)

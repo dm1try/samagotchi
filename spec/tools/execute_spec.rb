@@ -205,13 +205,14 @@ RSpec.describe Samagotchi::Tools::Execute do
       result = described_class.call("ruby -e 'sleep 5'")
 
       expect(result).to eq("Error: command timed out after 1s\n(killed at the limit; for a long command use task_create, then task_wait)")
+      expect(result).to start_with(described_class::TIMEOUT_PREFIX)
     end
 
     it "gives a command 120 s by default, the same as the config default" do
       ENV.delete("SAMAGOTCHI_EXECUTE_TIMEOUT_SEC")
       Dir.mktmpdir do |dir|
         with_env("XDG_CONFIG_HOME" => dir) do
-          expect(described_class.send(:timeout_seconds)).to eq(120)
+          expect(described_class.timeout_seconds).to eq(120)
         end
       end
       expect(Samagotchi::Config::ENTRIES.find { |e| e.key == "execute.timeout_sec" }.default).to eq(described_class::TIMEOUT_SEC)

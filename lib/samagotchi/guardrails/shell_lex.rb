@@ -33,6 +33,14 @@ module Samagotchi
         Lexer.new(text).tokens
       end
 
+      # Whether +text+ ends inside a quote, a $(…) or a heredoc: its tokens
+      # are a best guess.
+      def self.unterminated?(text)
+        lexer = Lexer.new(text)
+        lexer.tokens
+        lexer.unterminated?
+      end
+
       # The token stream split at operators into word lists; ( and ) become
       # :open / :close markers.
       def self.simple_commands(tokens)
