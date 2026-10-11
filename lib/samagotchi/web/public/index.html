@@ -307,6 +307,9 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .bubble.command.queued .command-output{color:var(--text-faint)}
 .command-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-3)}
 .command-output{margin:6px 0 0;white-space:pre-wrap;font-size:12px;color:var(--text-2)}
+.bubble.command .command-confirm{margin-top:8px;padding:3px 10px;border-radius:6px;font:inherit;font-size:12px;cursor:pointer;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
+.bubble.command .command-confirm:hover:not(:disabled){border-color:var(--accent)}
+.bubble.command .command-confirm:disabled{opacity:.55;cursor:default}
 .bubble.continue{border-left:3px solid var(--accent);background:var(--bg-panel);padding:10px 12px}
 .bubble.continue.resolved{border-left-color:var(--text-muted);opacity:.8}
 .continue-text{font-size:14px;color:var(--text);margin-bottom:6px}
@@ -704,9 +707,9 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
 /* The LLM context and thinking chips (llm_context_chip.js, thinking_chip.js): model-like chips that open their popovers; accent when the session set its own. */
-#infoBar .meta .llmctx-chip,#infoBar .meta .think-chip{padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
-#infoBar .meta .llmctx-chip:hover,#infoBar .meta .think-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
-#infoBar .meta .llmctx-chip.own,#infoBar .meta .think-chip.own{color:var(--accent);border-color:var(--accent-border)}
+#infoBar .meta .llmctx-chip,#infoBar .meta .think-chip,#infoBar .meta .rh-chip{padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
+#infoBar .meta .llmctx-chip:hover,#infoBar .meta .think-chip:hover,#infoBar .meta .rh-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .meta .llmctx-chip.own,#infoBar .meta .think-chip.own,#infoBar .meta .rh-chip.own{color:var(--accent);border-color:var(--accent-border)}
 .llmctx-form{display:flex;flex-direction:column;gap:8px;margin:0}
 .llmctx-form .ctx-pop-head strong{font-family:inherit}
 .llmctx-field{display:flex;align-items:center;gap:8px}

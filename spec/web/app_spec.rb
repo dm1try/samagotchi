@@ -958,6 +958,31 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload.dig("session", "thinking")).to eq("level" => "high")
     end
 
+    it "names a chat host's reasoning history: the live worker's (nil on a native host), else read from the session file" do
+      state_dir = Dir.mktmpdir
+      registry = Samagotchi::HostRegistry.new(hosts_config: { "oai" => { host: "oai.test", port: 8000, api: :openai },
+                                                              "box" => { host: "box.test", port: 8080 } })
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "oai:qwen", working_directory: "/tmp")
+      session.reasoning_history = :all
+      session.save(state_dir: state_dir)
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, session_class: Samagotchi::Session,
+                      registry: registry)
+
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload.dig("session", "reasoning_history")).to eq("level" => "all", "source" => "session", "own" => "all")
+      native = Samagotchi::Session.new_session(mode: "assist", model_name: "box:gemma", working_directory: "/tmp")
+      native.reasoning_history = :all
+      native.save(state_dir: state_dir)
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{native.id}"))[2].first)
+      expect(payload["session"]).to include("reasoning_history" => nil)
+
+      live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
+               "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "reasoning_history" => nil } }
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload["session"]).to include("reasoning_history" => nil)
+    end
+
     it "uses the bridge event_seq when a live bridge reports it" do
       app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
       allow(app).to receive(:bridge_event_seq).and_return(12)

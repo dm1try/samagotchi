@@ -9,7 +9,7 @@ const ID = "0123456789abcdef";
 // A bar with only what every open session has.
 const bare = {
   id: ID, copied: false, status: "idle", model: { text: "qwen", title: "qwen", mismatch: false },
-  chain: { prev: null, next: null }, parent: null, kids: null, llmContext: null, thinking: null, notes: null,
+  chain: { prev: null, next: null }, parent: null, kids: null, llmContext: null, thinking: null, reasoningHistory: null, notes: null,
   memories: [], dir: "/p", ctx: { text: "ctx ?", tip: "no request yet" }, speed: null, clock: "", worker: null,
 };
 
@@ -37,6 +37,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
     llmContext: { strategy: "stale", strategy_source: "session", strategy_where: "the session", apply: "payoff",
                   apply_where: "llm_context.apply", budget_where: "llm_context.budget_tokens" },
     thinking: { level: "low", source: "session", own: "low" },
+    reasoningHistory: { level: "all", source: "session", own: "all" },
     notes: { text: "notes 1", title: "deepseek" },
     memories: ["a", "b"],
     speed: { text: "30 t/s", tip: "Decode speed of the last generation" },
@@ -48,7 +49,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
   const classes = [...div.querySelector(".meta").children].map((el) => el.className);
   assert.deepEqual(classes, [
     "id", "copy-attach", "status running", "model served-mismatch", "model chain-link", "model chain-link", "model parent",
-    "model children-chip waiting", "model llmctx-chip own", "model think-chip own", "model notes-chip", "model mem-chip",
+    "model children-chip waiting", "model llmctx-chip own", "model think-chip own", "model rh-chip own", "model notes-chip", "model mem-chip",
     "dir", "model ctx", "model speed", "model session-time", "worker-badge",
   ]);
   assert.equal(div.querySelector(".copy-attach").textContent, "copied ✓");

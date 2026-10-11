@@ -384,23 +384,33 @@ test("commandView: who ran what, what it said, and whether the conversation must
   const ran = { type: "command_ran", client_id: "tui:7", line: "!rollback", status: "ok", output: "salvaged turn discarded",
                 changed: ["messages"], model_name: "m1" };
 
-  assert.deepEqual(commandView(ran, ME), { label: "tui", line: "!rollback", text: "salvaged turn discarded", busy: false,
+  assert.deepEqual(commandView(ran, ME), { own: false, label: "tui", line: "!rollback", text: "salvaged turn discarded", busy: false,
                                            failed: false, resync: true, modelName: "m1", anytime: false, queued: false,
-                                           waiting: false, commandId: null, hidden: false });
+                                           waiting: false, commandId: null, confirm: null, hidden: false });
   assert.deepEqual(commandView({ ...ran, client_id: ME, status: "busy", output: "busy: wait for the turn to end", changed: [] }, ME),
-                   { label: null, line: "!rollback", text: "busy: wait for the turn to end", busy: true, failed: false,
-                     resync: false, modelName: "m1", anytime: false, queued: false, waiting: false, commandId: null, hidden: false });
+                   { own: true, label: null, line: "!rollback", text: "busy: wait for the turn to end", busy: true, failed: false,
+                     resync: false, modelName: "m1", anytime: false, queued: false, waiting: false, commandId: null,
+                     confirm: null, hidden: false });
   assert.equal(commandView({ ...ran, status: "error" }, ME).failed, true);
 });
 
 test("commandView: an anytime command's queued and ran events name the bubble they share", () => {
   const queued = { type: "command_queued", command_id: "c9", client_id: ME, line: "/btw why?", anytime: true };
-  assert.deepEqual(commandView(queued, ME), { label: null, line: "/btw why?", text: "", busy: false, failed: false,
+  assert.deepEqual(commandView(queued, ME), { own: true, label: null, line: "/btw why?", text: "", busy: false, failed: false,
                                               resync: false, modelName: null, anytime: true, queued: false, waiting: false,
-                                              commandId: "c9", hidden: false });
+                                              commandId: "c9", confirm: null, hidden: false });
   const ran = commandView({ ...queued, type: "command_ran", status: "ok", output: "", changed: [] }, ME);
   assert.equal(ran.anytime, true);
   assert.equal(ran.commandId, "c9");
+});
+
+test("commandView: a change that asks first names the line that applies it, for this tab's own and another's", () => {
+  const ran = { type: "command_ran", client_id: ME, line: "/reasoning-history all", status: "ok", output: "asks", changed: [],
+                confirm: { line: "/reasoning-history all --yes", text: "Nothing changed yet" } };
+  assert.deepEqual([commandView(ran, ME).own, commandView(ran, ME).confirm], [true, "/reasoning-history all --yes"]);
+  assert.deepEqual([commandView({ ...ran, client_id: "web:other" }, ME).own, commandView({ ...ran, client_id: "web:other" }, ME).confirm],
+                   [false, "/reasoning-history all --yes"]);
+  assert.equal(commandView({ ...ran, confirm: undefined }, ME).confirm, null);
 });
 
 test("commandView: a command queued for after the turn waits in its bubble, then its ran fills it (dropped as failed)", () => {

@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drawCommandBubble, keptCommandBubbles, restoreCommandBubbles } from "../../../lib/samagotchi/web/public/commands.js";
+import { applyConfirm, drawCommandBubble, keptCommandBubbles, restoreCommandBubbles } from "../../../lib/samagotchi/web/public/commands.js";
 
 function bubble(view, keptFor = null) {
   const div = document.createElement("div");
@@ -26,6 +26,37 @@ test("drawCommandBubble draws the line (labelled for another client) and its out
   drawCommandBubble(div, { label: null, line: "/model x", text: "model: x", failed: true });
   assert.equal(div.className, "bubble command failed");
   assert.equal(div.innerHTML, '<div class="command-line">/model x</div><pre class="command-output">model: x</pre>');
+});
+
+test("drawCommandBubble draws an Apply button for this tab's own change that asks first, never for another's", () => {
+  const view = { label: null, line: "/thinking low", text: "asks", own: true, confirm: "/thinking low --yes" };
+  const div = bubble(view);
+  const apply = div.querySelector("button[data-confirm-line]");
+  assert.equal(apply.dataset.confirmLine, "/thinking low --yes");
+  assert.equal(apply.textContent, "Apply (restarts the cache)");
+  assert.equal(apply.className, "command-confirm");
+  assert.equal(bubble({ ...view, own: false, label: "web" }).querySelector("[data-confirm-line]"), null);
+  assert.equal(bubble({ ...view, confirm: null }).querySelector("[data-confirm-line]"), null);
+});
+
+test("applyConfirm sends the line once, keeps the button disabled when sent, and enables it again when not", async () => {
+  const button = bubble({ label: null, line: "/thinking low", text: "asks", own: true, confirm: "/thinking low --yes" })
+    .querySelector("[data-confirm-line]");
+  const sent = [];
+  let release;
+  const pending = applyConfirm(button, (line) => { sent.push(line); return new Promise((r) => { release = r; }); });
+  assert.equal(button.disabled, true);
+  await applyConfirm(button, (line) => sent.push(line));
+  assert.deepEqual(sent, ["/thinking low --yes"]);
+  release(true);
+  await pending;
+  assert.equal(button.disabled, true);
+
+  button.disabled = false;
+  await applyConfirm(button, async () => false);
+  assert.equal(button.disabled, false);
+  await applyConfirm(button, async () => { throw new Error("network"); });
+  assert.equal(button.disabled, false);
 });
 
 test("keptCommandBubbles keeps this session's finished page-only bubbles; restoreCommandBubbles puts them back after their turn", () => {

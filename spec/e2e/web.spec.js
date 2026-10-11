@@ -954,6 +954,32 @@ test("the start page's llm ctx chip starts the new chat under the strategy picke
   await expect(chip).toHaveText("llm ctx none");
 });
 
+// The confirm step before a change that restarts the prompt cache (CacheConfirm), one mechanism for /thinking and
+// /reasoning-history: the reply asks, its Apply button sends the --yes line. The e2e host is a local chat host and
+// plain.json's reply has thinking, so a change to all rewrites the earlier reply (ReasoningHistory.cache_cost).
+test("a costly /reasoning-history asks first; the reply's Apply sends it, and the chip follows", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  const chip = page.locator("#infoBar [data-rh-chip]");
+  await expect(chip).toHaveText("reasoning turn");
+
+  await page.locator("#prompt").fill("/reasoning-history all");
+  await page.locator("#actionBtn").click();
+  const asked = page.locator("#history .bubble.command").last();
+  await expect(asked).toContainText("Nothing changed yet: send `/reasoning-history all --yes` to apply.");
+  const apply = asked.locator("[data-confirm-line]");
+  await expect(apply).toHaveText("Apply (restarts the cache)");
+  await expect(chip).toHaveText("reasoning turn");
+
+  await apply.click();
+  await expect(apply).toBeDisabled();
+  await expect(chip).toHaveText("reasoning all · session");
+  await expect(page.locator("#history .bubble.command").last()).toContainText("reasoning history: all (session)");
+  await page.reload();
+  await expect(page.locator("#infoBar [data-rh-chip]")).toHaveText("reasoning all · session");
+});
+
 test("the info bar's llm ctx chip sets the session's own strategy through its worker, and a reload keeps it", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");

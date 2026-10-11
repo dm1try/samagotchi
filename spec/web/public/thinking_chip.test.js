@@ -61,7 +61,7 @@ test("the form is the popover's markup as it was built as a string", () => {
     '<option value="default">follow the model</option><option value="off">off</option>' +
     '<option value="low" selected="">low</option><option value="medium">medium</option>' +
     '<option value="high">high</option></select></label>' +
-    '<div class="ctx-pop-meta">From the next turn\'s start. On Gemma the whole prompt is read again; a hosted API may restart its cache.</div>' +
+    '<div class="ctx-pop-meta">From the next turn\'s start. On Gemma the whole prompt is read again; a hosted API reads the whole conversation again.</div>' +
     '<div class="ctx-pop-actions"><button type="submit" class="llmctx-set">Set</button></div></form>');
 });
 
@@ -81,11 +81,12 @@ test("the form selects the session's own level, else follows the model, and name
   assert.match(fresh, /not remembered for the next one/);
 });
 
-test("a Set runs /thinking with the picked level, nothing when it is the one the form opened with", () => {
-  assert.equal(commandLine("low", "default"), "/thinking low");
-  assert.equal(commandLine("default", "low"), "/thinking default");
+// --yes: picking a level is the choice, and the form names the cost (no second ask).
+test("a Set runs /thinking with the picked level and --yes, nothing when it is the one the form opened with", () => {
+  assert.equal(commandLine("low", "default"), "/thinking low --yes");
+  assert.equal(commandLine("default", "low"), "/thinking default --yes");
   assert.equal(commandLine("low", "low"), null);
-  assert.equal(commandLine("high"), "/thinking high");
+  assert.equal(commandLine("high"), "/thinking high --yes");
 });
 
 // A control on the shim's document: the chip inside +el+, a stub
@@ -115,14 +116,14 @@ test("a click on the chip opens the form at the session's level; a Set runs /thi
   assert.equal(c.shown(), "low");
   c.select().value = "high";
   c.submit();
-  assert.deepEqual(c.ran, ["/thinking high"]);
+  assert.deepEqual(c.ran, ["/thinking high --yes"]);
   assert.equal(c.ctl.open, false);
   assert.equal(c.pop.querySelector("form"), null);
 
   c.chip.click();
   c.select().value = "low";
   c.submit();
-  assert.deepEqual(c.ran, ["/thinking high"]);
+  assert.deepEqual(c.ran, ["/thinking high --yes"]);
   c.done();
 });
 

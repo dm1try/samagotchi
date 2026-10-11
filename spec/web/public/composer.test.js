@@ -138,15 +138,15 @@ test("send: a session a terminal holds marks the owner, no bubble", async () => 
 
 test("run: a control's command goes out and follows the worker, the composer untouched", async () => {
   const { calls, commands } = harness();
-  await commands.run("/llm-context none");
+  assert.equal(await commands.run("/llm-context none"), true);
   assert.deepEqual(calls, [["send", "s1", "/llm-context none", { clientId: "c1" }], ["follow"]]);
 });
 
 test("run: a failure is a failed bubble; no session, nothing sent", async () => {
   const failing = harness({ fail: new Error("down") });
-  await failing.commands.run("/thinking high");
+  assert.equal(await failing.commands.run("/thinking high"), false);
   assert.deepEqual(failing.calls.map((c) => c[0]), ["send", "failed"]);
   const none = harness({ session: null });
-  await none.commands.run("/thinking high");
+  assert.equal(await none.commands.run("/thinking high"), false);
   assert.deepEqual(none.calls, []);
 });

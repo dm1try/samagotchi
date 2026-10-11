@@ -26,6 +26,7 @@ require_relative "../llm_context_override"
 require_relative "../model_catalog"
 require_relative "../model_profile"
 require_relative "../thinking"
+require_relative "../reasoning_history"
 require_relative "../sampling_settings"
 require_relative "../served_model"
 require_relative "../project_scope"
@@ -573,6 +574,22 @@ module Samagotchi
         nil
       end
 
+      # A session's reasoning_history level with where it came from and its
+      # own (SettingExplained#summary), as its worker would resolve it; nil
+      # on a native host (it ignores the level) or when it can't be. Config
+      # and the registry only: no network.
+      def reasoning_history_for(session)
+        registry = host_registry
+        name = session.model_name.to_s.strip.empty? ? ModelProfile.required_model_name(nil) : session.model_name
+        target = registry.resolve(name)
+        return nil unless target.entry&.chat?
+
+        names = registry.lookup_names(session.model_typed || name, resolved: name, target: target)
+        ReasoningHistory.explain(target, names: names, session: session.reasoning_history).summary
+      rescue StandardError
+        nil
+      end
+
       # Built again when config.yml's hosts: changed (compared as read: the
       # YAML read is mtime-cached), so the model picker lists a host added
       # while chi web runs. An injected registry (specs) stays.
@@ -820,6 +837,10 @@ module Samagotchi
         session_json = session_json.merge(llm_context: (snapshot && snapshot["llm_context"]) || llm_context_for(session))
         # The thinking level the next turn runs at (the think chip), the same way.
         session_json = session_json.merge(thinking: (snapshot && snapshot["thinking"]) || thinking_for(session))
+        # Its reasoning history (the reasoning chip): the worker's (nil on a
+        # native host), else the server's reading (an older worker, none).
+        history = snapshot&.key?("reasoning_history") ? snapshot["reasoning_history"] : reasoning_history_for(session)
+        session_json = session_json.merge(reasoning_history: history)
         raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
         json_response(200, {

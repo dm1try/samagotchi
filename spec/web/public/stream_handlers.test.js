@@ -49,6 +49,7 @@ function fakePage({ selected = "s1", running = false } = {}) {
     contextChips: { refresh: rec("contextChips.refresh") },
     llmContextControl: { refresh: rec("llmContextControl.refresh") },
     thinkingControl: { refresh: rec("thinkingControl.refresh") },
+    reasoningHistoryControl: { refresh: rec("reasoningHistoryControl.refresh") },
     sentIds: new Set(),
     earlyRestores: new Map(),
     stream: {
@@ -181,6 +182,19 @@ test("command_ran: /llm-context and /thinking refresh their chips", async () => 
   assert.deepEqual(page.current.thinking, { level: "low" });
   assert.ok(page.names().includes("llmContextControl.refresh"));
   assert.ok(page.names().includes("thinkingControl.refresh"));
+});
+
+test("command_ran: /reasoning-history refreshes its chip, and a null (a native host after /model) hides it", async () => {
+  const { page, handlers } = fakePage();
+  await handlers.command_ran({ line: "/reasoning-history all", reasoning_history: { level: "all", source: "session", own: "all" } });
+  assert.deepEqual(page.current.reasoningHistory, { level: "all", source: "session", own: "all" });
+  assert.ok(page.names().includes("reasoningHistoryControl.refresh"));
+  await handlers.command_ran({ line: "/model box:gemma", model_name: "box:gemma", reasoning_history: null });
+  assert.equal(page.current.reasoningHistory, null);
+  const { page: other, handlers: plain } = fakePage();
+  other.current.reasoningHistory = { level: "turn" };
+  await plain.command_ran({ line: "/help", output: "commands" });
+  assert.deepEqual(other.current.reasoningHistory, { level: "turn" });
 });
 
 test("command_ran: a !cmd the resync drew gets no second bubble", async () => {
