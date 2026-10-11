@@ -13,6 +13,7 @@ require_relative "model_overlay"
 require_relative "model_notes"
 require_relative "prompt_note"
 require_relative "thinking"
+require_relative "reasoning_history"
 require_relative "served_model"
 require_relative "host_registry"
 require_relative "llm/http"
@@ -67,6 +68,7 @@ module Samagotchi
         ["loop", model ? loop_for(model, env) : "-"],
         ["profile", model ? profile_for(model, env) : "-"],
         ["thinking", model ? thinking_for(model, env) : "-"],
+        ["reasoning history", model ? reasoning_history_for(model, env) : "-"],
         ["served model", model ? served_model_for(model, env) : "-"],
         ["context window", context_window(env, model)],
         ["bundles", bundles_summary],
@@ -365,6 +367,21 @@ module Samagotchi
       session = session_model(env) ? Thinking.session_level(env[SESSION_THINKING_ENV]) : nil
       Thinking.explain(target, names: registry.lookup_names(model, target: target),
                                models: ConfigFile.model_settings(env: env), session: session).label
+    rescue StandardError => e
+      "(unknown: #{e.message})"
+    end
+
+    # Which of its reasoning the model gets back and where that came from
+    # (ReasoningHistory.resolve); a native host keeps the running turn's
+    # on its own.
+    def reasoning_history_for(model, env)
+      registry = HostRegistry.new(env: env)
+      target = registry.resolve(model)
+      return "native loop: the running turn's, always" unless target.entry&.chat?
+
+      level, source = ReasoningHistory.resolve(target, names: registry.lookup_names(model, target: target),
+                                                       models: ConfigFile.model_settings(env: env))
+      ReasoningHistory.label(level, source)
     rescue StandardError => e
       "(unknown: #{e.message})"
     end

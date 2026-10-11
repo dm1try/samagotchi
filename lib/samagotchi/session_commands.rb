@@ -453,9 +453,9 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}#{notes_note}", false] if model_name == @engine.model_ref_for(@default_model)
+        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false] if model_name == @engine.model_ref_for(@default_model)
 
-        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{thinking_note}#{notes_note}", false]
+        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false]
       end
 
       # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
@@ -516,7 +516,7 @@ module Samagotchi
 
         key = alias_name.strip.downcase
         warn_prefix = previous ? "warning: overwriting alias '#{key}' (#{previous} -> #{model_name}); " : ""
-        base = persist_default ? "runtime model set to #{model_name}#{model_note} and default updated#{thinking_note}" : "runtime model set to #{model_name}#{model_note}#{thinking_note}"
+        base = persist_default ? "runtime model set to #{model_name}#{model_note} and default updated#{thinking_note}#{reasoning_history_note}" : "runtime model set to #{model_name}#{model_note}#{thinking_note}#{reasoning_history_note}"
         ["#{warn_prefix}#{base}; alias '#{key}' -> '#{model_name}' persisted", true]
       else
         return ["--default requires a model name: usage /model --default <name> or /model <name> [--default]", false] if arg.empty?
@@ -525,14 +525,14 @@ module Samagotchi
           return ["--default cannot be combined with clear/default/none/off", false] if persist_default
 
           switch_model(@default_model)
-          return ["runtime model reset to #{model_name}#{model_note}#{thinking_note}#{notes_note}", true]
+          return ["runtime model reset to #{model_name}#{model_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", true]
         end
 
         switch_model(arg, persist_default: persist_default)
         if persist_default
-          ["runtime model set to #{model_name}#{model_note} and default updated#{thinking_note}#{notes_note}", true]
+          ["runtime model set to #{model_name}#{model_note} and default updated#{thinking_note}#{reasoning_history_note}#{notes_note}", true]
         else
-          ["runtime model set to #{model_name}#{model_note}#{thinking_note}#{notes_note}", true]
+          ["runtime model set to #{model_name}#{model_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", true]
         end
       end
     end
@@ -588,6 +588,15 @@ module Samagotchi
     def thinking_note
       summary = @engine.thinking_summary
       summary ? "; thinking: #{summary}" : ""
+    rescue StandardError
+      ""
+    end
+
+    # "; reasoning history: drop (models: qwen)" when the chat model has a
+    # level set.
+    def reasoning_history_note
+      summary = @engine.reasoning_history_summary
+      summary ? "; reasoning history: #{summary}" : ""
     rescue StandardError
       ""
     end

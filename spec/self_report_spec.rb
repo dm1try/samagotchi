@@ -464,6 +464,22 @@ RSpec.describe Samagotchi::SelfReport do
     end
   end
 
+  describe "the reasoning history row" do
+    before { allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model") }
+
+    it "shows a chat model's level with where it came from, turn by default, and the native loop's own" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    api: openai\n    reasoning_history: all\n" \
+                   "models:\n  spec-model:\n    reasoning_history: drop\n")
+      expect(field("reasoning history")).to eq("drop (models: spec-model)")
+
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    api: openai\n")
+      expect(field("reasoning history")).to eq("turn (default)")
+
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n")
+      expect(field("reasoning history")).to eq("native loop: the running turn's, always")
+    end
+  end
+
   describe "the profile row (offline: no server probe)" do
     before { allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model") }
 

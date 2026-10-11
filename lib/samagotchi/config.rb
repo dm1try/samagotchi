@@ -187,6 +187,10 @@ module Samagotchi
       # is bin/chi's own --thinking; models: and hosts: entries rank below
       # the flag and the env, above config.yml's value.
       Entry.new(key: "thinking.level",           yaml_path: %w[thinking level],           type: :string, default: "default",       expose: %i[env config]),
+      # Which of its reasoning a chat host's model gets back (ReasoningHistory):
+      # the environment only, for A/B runs; models: and hosts: entries are
+      # the config surface.
+      Entry.new(key: "reasoning_history",        yaml_path: %w[reasoning_history],        type: :string, default: nil,              expose: %i[env]),
 
       Entry.new(key: "default.max_tokens",       yaml_path: %w[default max_tokens],       type: :integer, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli]),
@@ -269,9 +273,9 @@ module Samagotchi
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
-      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking enabled
-                    remote window_tokens llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
-      "models" => %w[profile vision sampling thinking window_tokens llm_context_strategy llm_context_apply
+      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking
+                    reasoning_history enabled remote window_tokens llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
+      "models" => %w[profile vision sampling thinking reasoning_history window_tokens llm_context_strategy llm_context_apply
                      llm_context_budget_tokens].freeze
     }.freeze
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).

@@ -10,10 +10,10 @@ RSpec.describe Samagotchi::ModelSettings do
   describe ".parse" do
     it "reads string or symbol keys, downcases the profile and leaves unset fields nil" do
       settings = described_class.parse("m", { "profile" => " Qwen36 ", vision: false, "thinking" => "off",
-                                              window_tokens: 32_768, "sampling" => { "temperature" => 0.6 },
+                                              reasoning_history: "drop", window_tokens: 32_768, "sampling" => { "temperature" => 0.6 },
                                               "llm_context_strategy" => "stale", llm_context_budget_tokens: "64k" })
       expect(settings).to have_attributes(profile: "qwen36", vision: false, thinking: :off, window_tokens: 32_768,
-                                          sampling: { temperature: 0.6 }, llm_context_strategy: [:stale],
+                                          reasoning_history: :drop, sampling: { temperature: 0.6 }, llm_context_strategy: [:stale],
                                           llm_context_apply: nil, llm_context_budget_tokens: 64_000)
     end
 

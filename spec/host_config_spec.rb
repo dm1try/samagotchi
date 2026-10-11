@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::HostConfig do
       { "url" => "https://gw.example.test/v1/", "api" => "openai", "transport" => "omlx",
         "api_key_env" => "GW_KEY", "profile" => "Qwen36", "first_token_timeout" => 90, "vision" => true,
         "sampling" => { "temperature" => 0.6, "chat_template_kwargs" => { "enable_thinking" => false } },
-        "thinking" => "off", "remote" => false, "window_tokens" => 65_536,
+        "thinking" => "off", "reasoning_history" => "all", "remote" => false, "window_tokens" => 65_536,
         "llm_context_strategy" => %w[stale forget], "llm_context_apply" => "turn_end",
         "llm_context_budget_tokens" => "64k",
         "models" => { "rr/DeepSeek" => { "price" => { "input" => 0.27, "output" => 1.1 }, "served" => %w[ds-a] },

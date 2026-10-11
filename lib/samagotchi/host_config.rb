@@ -4,6 +4,7 @@ require "uri"
 require_relative "config"
 require_relative "host_model"
 require_relative "llm_context_strategy"
+require_relative "reasoning_history"
 
 module Samagotchi
   # One config.yml hosts: entry, parsed and checked (ConfigFile.hosts_config
@@ -17,8 +18,9 @@ module Samagotchi
   # api: symbols, nil when unset; the rest as HostRegistry::HostEntry
   # describes them, nil when unset; models: {downcased id => HostModel}.
   HostConfig = Data.define(:name, :host, :port, :scheme, :url, :transport, :api, :api_key_env, :profile,
-                           :first_token_timeout, :vision, :sampling, :thinking, :remote, :window_tokens,
-                           :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens, :models) do
+                           :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
+                           :window_tokens, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
+                           :models) do
     # Every field but name may be left out: nil, models {}.
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, models: {}, **fields)
@@ -50,6 +52,7 @@ module Samagotchi
         window_tokens: ConfigFile.window_tokens(value.call(:window_tokens), where),
         sampling: ConfigFile.sampling_map(value.call(:sampling), where),
         thinking: Thinking.level(value.call(:thinking), where),
+        reasoning_history: ReasoningHistory.level(value.call(:reasoning_history), where),
         llm_context_strategy: LLMContextStrategy.parse(value.call(LLMContextStrategy::KEY), where),
         llm_context_apply: LLMContextStrategy.parse_apply(value.call(LLMContextStrategy::APPLY_KEY), where),
         models: HostModel.parse_map(value.call(:models), name),
@@ -166,7 +169,7 @@ module Samagotchi
       location.merge("transport" => transport&.to_s, "api" => api&.to_s, "api_key_env" => api_key_env,
                      "profile" => profile, "first_token_timeout" => first_token_timeout,
                      "vision" => vision, "sampling" => sampling, "thinking" => thinking&.to_s,
-                     "remote" => remote, "window_tokens" => window_tokens,
+                     "reasoning_history" => reasoning_history&.to_s, "remote" => remote, "window_tokens" => window_tokens,
                      "llm_context_strategy" => llm_context_strategy&.map(&:to_s),
                      "llm_context_apply" => llm_context_apply&.to_s,
                      "llm_context_budget_tokens" => llm_context_budget_tokens,

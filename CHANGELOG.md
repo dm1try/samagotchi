@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `reasoning_history` (`drop`, `turn`, `all`) on a `models:` or `hosts:` entry, and `SAMAGOTCHI_REASONING_HISTORY`
+  for a whole process: which of its own reasoning a chat host's model gets back. `/model` names a configured level
+  and `chi self` shows it.
+
 ### Fixed
 
 - A local llama.cpp turn whose connection dropped mid-answer now restarts that step (up to twice) instead of failing.

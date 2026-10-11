@@ -2,16 +2,18 @@
 
 require_relative "config"
 require_relative "llm_context_strategy"
+require_relative "reasoning_history"
 
 module Samagotchi
   # One config.yml models: entry (per-model settings keyed by model id or
   # alias), parsed and checked; ConfigFile.model_settings holds them by
   # downcased key. Each field is nil when unset: profile kept as written
   # (downcased; ModelProfile.resolve validates it), vision true/false,
-  # sampling a request-field map, thinking a level, window_tokens, and the
+  # sampling a request-field map, thinking a level, reasoning_history a
+  # ReasoningHistory level, window_tokens, and the
   # LLM context strategy, apply rule and budget (LLMContextStrategy). The
   # same per-model fields a hosts: entry carries (HostConfig).
-  ModelSettings = Data.define(:profile, :vision, :sampling, :thinking, :window_tokens,
+  ModelSettings = Data.define(:profile, :vision, :sampling, :thinking, :reasoning_history, :window_tokens,
                               :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens) do
     # Every field may be left out (nil).
     def initialize(**fields)
@@ -33,6 +35,7 @@ module Samagotchi
           vision: ConfigFile.vision_flag(value.call(:vision), where),
           sampling: ConfigFile.sampling_map(value.call(:sampling), where),
           thinking: Thinking.level(value.call(:thinking), where),
+          reasoning_history: ReasoningHistory.level(value.call(:reasoning_history), where),
           window_tokens: ConfigFile.window_tokens(value.call(:window_tokens), where),
           llm_context_strategy: LLMContextStrategy.parse(value.call(LLMContextStrategy::KEY), where),
           llm_context_apply: LLMContextStrategy.parse_apply(value.call(LLMContextStrategy::APPLY_KEY), where),

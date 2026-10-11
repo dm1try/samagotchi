@@ -62,6 +62,7 @@ require_relative "vision_context"
 require_relative "vision_support"
 require_relative "sampling_settings"
 require_relative "thinking"
+require_relative "reasoning_history"
 require_relative "answer_display"
 require_relative "edit_preview"
 require_relative "question_desk"
@@ -1103,6 +1104,20 @@ module Samagotchi
       nil
     end
 
+    # "drop (models: qwen)" for /model: the effective chat model's
+    # reasoning_history level and where it came from; nil when it is the
+    # default, the model runs on the native loop (which ignores it) or it
+    # can't be resolved.
+    def reasoning_history_summary
+      target = @host_registry.resolve(@effective_model_name)
+      return nil unless target.entry&.chat?
+
+      level, source = ReasoningHistory.resolve(target, names: model_lookup_names(target))
+      source ? ReasoningHistory.label(level, source) : nil
+    rescue StandardError
+      nil
+    end
+
     # The session's own thinking level, nil when it has none.
     # @return [Symbol, nil]
     def thinking_override = @session&.thinking
@@ -1926,7 +1941,8 @@ module Samagotchi
       thinking_target = @host_registry.resolve(@effective_model_name)
       @turn_thinking = [thinking_level(thinking_target), thinking_target]
       announce_thinking_level(*@turn_thinking)
-      LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: @turn_thinking.first, model_name: nil,
+      LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: @turn_thinking.first,
+                            reasoning_history: reasoning_history_level(thinking_target), model_name: nil,
                             window_setting: nil, llm_context: nil, price: nil)
     end
     private :turn_settings
@@ -2322,6 +2338,13 @@ module Samagotchi
       return unless (@thinking_notices ||= Set.new).add?(key)
 
       hook_notify(text, level, "thinking")
+    end
+
+    # +target+'s ReasoningHistory level; the default when it can't be resolved.
+    def reasoning_history_level(target)
+      ReasoningHistory.resolve(target, names: model_lookup_names(target)).first
+    rescue StandardError
+      ReasoningHistory::DEFAULT
     end
 
     # +target+'s thinking level (Thinking.resolve), the session's own first.
