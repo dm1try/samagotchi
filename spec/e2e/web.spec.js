@@ -440,7 +440,7 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
 // (web.editor's default, vscode; this page is a loopback viewer). The
 // window.__chiRefOpen seam records the URL instead of opening it; refs.js
 // checks for it at click time.
-test("a file row's title and its diff lines open the file in the editor, live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
+test("an edit's approval card, then its row's title and diff lines, open the file in the editor, live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
   const recordOpens = () => page.evaluate(() => {
     window.__refOpened = [];
     window.__chiRefOpen = (url) => window.__refOpened.push(url);
@@ -450,8 +450,14 @@ test("a file row's title and its diff lines open the file in the editor, live an
   script("edit");
   await send(page, "Make the font bigger");
   const card = page.locator(`${HC()} .bubble.question.approval`);
-  // The approval card's diff lines are numbered but aren't refs (yet).
-  await expect(card.locator(".approval-diff .diff-add")).toHaveAttribute("data-line", "1");
+  // Before approving: the card's path opens the current file at the dry
+  // run's first change, a diff line at its own.
+  await recordOpens();
+  const path = card.locator(".approval-what .ref");
+  await expect(path).toHaveAttribute("data-ref-kind", "file");
+  await path.click();
+  await card.locator(".approval-diff .diff-ctx").filter({ hasText: "theme dark" }).click();
+  expect(await opened()).toEqual([expect.stringMatching(url(1)), expect.stringMatching(url(2))]);
   await card.locator(".question-option").first().click();
   await card.locator(".question-submit").click();
   await expect(answer(page)).toHaveText("The font size is 14 now.");
