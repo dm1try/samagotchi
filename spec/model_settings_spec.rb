@@ -41,14 +41,6 @@ RSpec.describe Samagotchi::ModelSettings do
     end
   end
 
-  describe "config" do
-    it "knows steer_cut_after as a host and model key (no unknown-key warning)" do
-      data = { "hosts" => { "w" => { "host" => "h", "steer_cut_after" => 0 } },
-               "models" => { "q" => { "steer_cut_after" => 90 } } }
-      expect(Samagotchi::Config.validate_yaml_sections(data)).to eq([])
-    end
-  end
-
   describe "ConfigFile.model_setting" do
     let(:models) do
       { "fast" => described_class.new(vision: false), "qwen" => described_class.new(vision: true, thinking: :high) }

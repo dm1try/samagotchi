@@ -39,8 +39,11 @@ RSpec.describe Samagotchi::SteerCutAfter do
     it "warns once about anything else and counts it as unset" do
       expect { expect(described_class.seconds(-1, "models: q")).to be_nil }
         .to output(/models: q: steer_cut_after must be whole seconds \(0 = never\); ignored/).to_stderr
-      expect { described_class.seconds("abc", "models: q") }.not_to output.to_stderr
-      expect { described_class.seconds(1.5, "models: q") }.not_to output.to_stderr
+      %w[abc 0x10 1_0].push(1.5).each_with_index do |value, i|
+        expect { expect(described_class.seconds(value, "models: q#{i}")).to be_nil }
+          .to output(/models: q#{i}: steer_cut_after must be whole seconds/).to_stderr
+      end
+      expect(described_class.seconds("010", "x")).to eq(10)
     end
   end
 

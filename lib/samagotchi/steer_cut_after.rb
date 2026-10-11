@@ -25,8 +25,8 @@ module Samagotchi
     def seconds(value, where)
       return nil if value.nil?
 
-      result = Integer(value.to_s.strip, exception: false)
-      return result if result && !result.negative?
+      text = value.to_s.strip
+      return text.to_i if text.match?(/\A\d+\z/)
 
       ConfigFile.warn_once "Warning: #{where}: steer_cut_after must be whole seconds (0 = never); ignored"
       nil

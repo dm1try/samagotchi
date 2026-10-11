@@ -29,7 +29,7 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │
   ├── prepare_turn(turn, images)
   │     # Emits :turn_started {session_id, prompt, turn_id, continue: true (only on a continue),
-  │     #                      images (only when there are any)}
+  │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
   │     # refresh_profile! (may ask the server's /props once)
   │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name is set in generate)
   │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools
@@ -298,12 +298,12 @@ What the running generation streams, fed by the Engine's stream handler: whether
 `cut`: `/cut TEXT`, `chi send --cut`) may cut it. `SteerCut#cut_for_steer` answers `:now`, `:waits` or `:off`; the
 Bridge acks it as `cut`.
 A generation is cuttable while it has streamed only thinking, is still thinking, and has thought for at least
-`steer.cut_after` seconds (`cuttable?(min_age)`). It has `started!`, `chunk!`, `retrying!` and `finished!`.
+the model's cut wait (`SteerCutAfter.resolve`: `steer_cut_after` per models:/hosts: entry, else `steer.cut_after`) seconds (`cuttable?(min_age)`). It has `started!`, `chunk!`, `retrying!` and `finished!`.
 
 ### WaitingSteer
 
 A message that may cut the generation but came too early (the generation hadn't been thinking long enough). It
-waits until the thinking passes `steer.cut_after` (the Engine checks on each thinking chunk), until a drain hands
+waits until the thinking passes the model's cut wait (the Engine checks on each thinking chunk), until a drain hands
 the message to the model at a boundary, or until the turn ends (`clear!` in `release_turn`).
 
 ## Events
@@ -322,7 +322,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 
 | Event | When | Payload |
 |---|---|---|
-| `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, images?}` |
+| `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, images?, cut_after}` |
 | `:reminder_injected` | due reminders went into the turn | `{reminders}` |
 | `:context_status` | every request (unless `context.status` is off), the current estimate before it | `{iteration, status, usage, bucket, source}` (internals/context-telemetry.md) |
 | `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source, price}` (`price`: the turn's `ModelPrice#to_h`, nil without one; native adds `profile`, `profile_source`) |
