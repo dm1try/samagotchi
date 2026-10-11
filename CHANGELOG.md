@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-10-11
+
 ### Added
 
 - Web: a ref's menu. A ref with more than one target shows a `▾` on hover (a tap on a touch screen, ↓ on a focused
@@ -2538,7 +2540,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.57.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.58.0...HEAD
+[0.58.0]: https://github.com/dm1try/samagotchi/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/dm1try/samagotchi/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/dm1try/samagotchi/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/dm1try/samagotchi/compare/v0.54.0...v0.55.0
