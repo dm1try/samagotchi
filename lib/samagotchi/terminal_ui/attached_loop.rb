@@ -633,11 +633,22 @@ module Samagotchi
         else
           @screen.commit("#{paint("model>", 36)} #{output}")
         end
+        prefill_confirm(event)
         return unless event[:model_name]
 
         # After the output, so the status row changes with the line saying why.
         served = @status[:model] == event[:model_name] ? @status[:served] : nil
         @status.update(model: event[:model_name], default_model: default_model_name, served: served)
+      end
+
+      # Our change that asks first (CacheConfirm) puts its --yes line in the
+      # input: Enter applies it. Another client's question is its own.
+      def prefill_confirm(event)
+        return unless own?(event[:client_id])
+
+        confirm = event[:confirm]
+        line = confirm.is_a?(Hash) ? confirm[:line] || confirm["line"] : nil
+        @reader&.prefill(line.to_s) if line
       end
 
       # Our command the worker couldn't run yet goes back into the prompt, for

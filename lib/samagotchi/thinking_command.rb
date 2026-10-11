@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "cache_confirm"
 require_relative "thinking"
 
 module Samagotchi
@@ -10,6 +11,7 @@ module Samagotchi
   # model, its host, then thinking.level). A change takes effect at the
   # next turn's start (the REPL and the worker run it between turns), and
   # the reply says what it costs the prompt cache (Thinking.cache_cost).
+  # A costly change asks first (CacheConfirm); --yes (or -y) applies it.
   class ThinkingCommand
     NAME = "/thinking"
     SETTABLE = (Thinking::LEVELS - [Thinking::DEFAULT]).freeze
@@ -22,30 +24,38 @@ module Samagotchi
       tail: "Only the prompt's tail changes: the cache keeps the rest."
     }.freeze
 
-    # @param engine [Engine] #thinking_explained, #thinking_override(=),
-    #   #session, #thinking_cache_cost
+    # @param engine [Engine] #thinking_explained(own:), #thinking_override(=),
+    #   #session, #thinking_cache_cost, #history?
     # @param save [#call] saves the session after a change
     def initialize(engine:, save:)
       @engine = engine
       @save = save
     end
 
-    # @param args [String] what follows /thinking
-    # @return [Array(String, Boolean)] the reply and whether the level changed
+    # @param args [String] what follows /thinking (--yes anywhere)
+    # @param confirm [Boolean] ask before a costly change (CacheConfirm);
+    #   false applies it at once (chi send, a delegate, a start flag)
+    # @return [Array(String, Boolean, CacheConfirm::Confirm|nil)] the reply,
+    #   whether the level changed, and the confirm it asks for (nothing
+    #   changed then)
     # @raise [ArgumentError] a word that isn't a level (with USAGE)
-    def run(args)
-      word = args.to_s.strip.downcase
-      return [listing(@engine.thinking_explained), false] if word.empty?
+    def run(args, confirm: true)
+      word, yes = CacheConfirm.split(args)
+      return [listing(@engine.thinking_explained), false, nil] if word.empty?
 
       level = word.to_sym
       raise ArgumentError, "unknown thinking level #{word}\n#{USAGE}" unless Thinking::LEVELS.include?(level)
 
       session = @engine.session or raise ArgumentError, "no session yet"
+      own = SETTABLE.include?(level) ? level : nil
       before = @engine.thinking_explained
-      @engine.thinking_override = SETTABLE.include?(level) ? level : nil
+      ask = confirm && !yes ? ask(before, own, word) : nil
+      return ask if ask
+
+      @engine.thinking_override = own
       @save.call(session)
       after = @engine.thinking_explained
-      [[listing(after), *notes(before, after)].join("\n"), true]
+      [[listing(after), *notes(before, after)].join("\n"), true, nil]
     end
 
     # The level, where it came from, and what the session sets itself.
@@ -61,6 +71,18 @@ module Samagotchi
     end
 
     private
+
+    # The reply that asks before a costly change, nil when it needn't.
+    def ask(before, own, word)
+      would = @engine.thinking_explained(own: own)
+      return nil unless before && would
+
+      cost = @engine.thinking_cache_cost
+      return nil unless CacheConfirm.needed?(cost: cost, history: @engine.history?, changed: would.level != before.level)
+
+      step = CacheConfirm.confirm(NAME, word)
+      [[listing(before), "Switching to #{would.level} restarts the prompt cache: #{COST_NOTES[cost]}", step.text].join("\n"), false, step]
+    end
 
     def notes(before, after)
       return [] unless before && after

@@ -39,7 +39,19 @@ module Samagotchi
     HUMAN_PREFIXES = [WEB_PREFIX, TUI_PREFIX].freeze
     HUMAN_IDS = [CLI_SEND].freeze
 
+    # A person at a screen that shows a command's reply and can answer it
+    # (#interactive?): a web tab, an attached chi TUI.
+    INTERACTIVE_PREFIXES = [WEB_PREFIX, TUI_PREFIX].freeze
+
     module_function
+
+    # Whether +client_id+ is a web tab or a chi TUI, which see a command's
+    # reply and can send the line it asks for (CacheConfirm); chi send, a
+    # delegate, a plugin, chi itself and nil are not.
+    def interactive?(client_id)
+      id = client_id.to_s
+      INTERACTIVE_PREFIXES.any? { |prefix| id.start_with?(prefix) }
+    end
 
     # Whether +client_id+ (a turn's or a line's origin) is a human's input.
     def human?(client_id)

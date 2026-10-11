@@ -10,7 +10,9 @@ RSpec.describe Samagotchi::ReasoningHistoryCommand do
   # The Engine's side of it: the session's own level over a model's.
   let(:engine_class) do
     Class.new do
-      attr_accessor :session, :model_level, :chat, :cost_for
+      attr_accessor :session, :model_level, :chat, :cost_for, :replied
+
+      def history? = !!replied
 
       def reasoning_history_cache_cost(from, to) = cost_for&.call(from, to)
 
@@ -20,10 +22,9 @@ RSpec.describe Samagotchi::ReasoningHistoryCommand do
         session.reasoning_history = level
       end
 
-      def reasoning_history_explained(native: false)
+      def reasoning_history_explained(native: false, own: reasoning_history_override)
         return nil unless native || chat
 
-        own = reasoning_history_override
         Samagotchi::SettingExplained.new(level: own || model_level, source: own ? "session" : "models: qwen", own: own)
       end
 
@@ -37,14 +38,15 @@ RSpec.describe Samagotchi::ReasoningHistoryCommand do
 
   it "shows the level and where it came from, and that the session has none of its own" do
     expect(command.run("")).to eq(["reasoning history: drop (models: qwen)\n  this session's own: none (follows " \
-                                   "SAMAGOTCHI_REASONING_HISTORY, the model, its host, then turn)", false])
+                                   "SAMAGOTCHI_REASONING_HISTORY, the model, its host, then turn)", false, nil])
     session.reasoning_history = :all
-    expect(command.run(" ")).to eq(["reasoning history: all (session)", false])
+    expect(command.run(" ")).to eq(["reasoning history: all (session)", false, nil])
     expect(saved).to be_empty
   end
 
   it "sets the session's own level, saves it, and says when it applies" do
-    output, changed = command.run(" ALL ")
+    output, changed, ask = command.run(" ALL ")
+    expect(ask).to be_nil
 
     expect(changed).to be(true)
     expect(session.reasoning_history).to eq(:all)
@@ -57,6 +59,38 @@ RSpec.describe Samagotchi::ReasoningHistoryCommand do
     expect(command.run("all").first).to end_with("Earlier replies gain or lose their reasoning: the server reads the " \
                                                  "conversation again from the first earlier thought.")
     expect(command.run("turn").first).to end_with("keeps its own).")
+  end
+
+  describe "the confirm step before a change that rewrites the earlier replies" do
+    before do
+      engine.replied = true
+      engine.cost_for = ->(from, to) { [from, to].include?(:all) && from != to ? :history : nil }
+    end
+
+    it "asks first, changing nothing, and names the line that applies it" do
+      output, changed, ask = command.run("all")
+
+      expect([changed, session.reasoning_history, saved]).to eq([false, nil, []])
+      expect(ask.line).to eq("/reasoning-history all --yes")
+      expect(output).to end_with("Switching to all restarts the prompt cache: Earlier replies gain or lose their reasoning: the server " \
+                                 "reads the conversation again from the first earlier thought.\n" \
+                                 "Nothing changed yet: send `/reasoning-history all --yes` to apply.")
+    end
+
+    it "applies it with --yes, or when told not to ask" do
+      expect(command.run("all --yes")[1]).to be(true)
+      expect(session.reasoning_history).to eq(:all)
+      expect(command.run("drop", confirm: false)[1]).to be(true)
+      expect(session.reasoning_history).to eq(:drop)
+    end
+
+    it "doesn't ask between drop and turn, before the first reply, or when the level stays" do
+      expect(command.run("turn")).to match([anything, true, nil])
+      engine.replied = false
+      expect(command.run("all")[1]).to be(true)
+      engine.replied = true
+      expect(command.run("all")).to match([end_with("(no change to what the next turn runs under)"), true, nil])
+    end
   end
 
   it "keeps an explicit turn as the session's own, and unsets it with default" do

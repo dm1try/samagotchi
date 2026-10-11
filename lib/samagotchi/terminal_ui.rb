@@ -371,12 +371,13 @@ module Samagotchi
 
     # `chi -p "/models" --non-interactive`: the command's output; a refused
     # one fails the run (bin/chi exits 1). The session is saved only when
-    # the command changed it.
+    # the command changed it. Nobody is there to answer a confirm: a
+    # costly /thinking or /reasoning-history applies at once.
     # @return [Symbol, nil] :turn_failed when the command was refused
     def run_one_shot_command(session)
       line = @prompt.strip
       result = begin
-        @commands.run(line)
+        @commands.run(line, confirm: false)
       rescue StandardError => e
         SessionCommands::Result.new(status: :error, output: "#{line.split.first}: #{e.message}", changed: [])
       end
@@ -789,11 +790,14 @@ module Samagotchi
 
       # /model, /models, !rollback, !cmd, /continue (shared with workers);
       # an anytime command's cards print as it shows them (btw's
-      # "thinking…" before the answer).
+      # "thinking…" before the answer). Piped input has nobody to answer a
+      # confirm (the next line is already written): a costly /thinking or
+      # /reasoning-history applies at once.
+      confirm = !piped_input?
       command = if command_registry.anytime?(input)
-                  @engine.running_anytime { @commands.run(input) }
+                  @engine.running_anytime { @commands.run(input, confirm: confirm) }
                 else
-                  @commands.run(input)
+                  @commands.run(input, confirm: confirm)
                 end
       if command
         show_command_result(command)
@@ -874,7 +878,9 @@ module Samagotchi
       session.save unless Session.exist?(session.id)
     end
 
-    # A !cmd shows its own output; everything else is the model> line.
+    # A !cmd shows its own output; everything else is the model> line. A
+    # change that asks first (CacheConfirm) puts its --yes line in the next
+    # input: Enter applies it.
     def show_command_result(result)
       if result.shell
         @surface.commit(result.output)
@@ -882,6 +888,7 @@ module Samagotchi
       elsif !result.output.nil?
         @surface.commit("\nmodel> #{result.output}")
       end
+      queue_input_prefill(result.confirm.line) if result.confirm && !piped_input?
       sync_model_mirrors if result.changed.include?(:model)
     end
 

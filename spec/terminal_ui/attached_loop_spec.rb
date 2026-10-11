@@ -1326,6 +1326,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
     expect(screen.lines.grep(/\Aqueued web>/)).to eq(["queued web> /model x", "queued web> !ls"])
   end
 
+  it "puts its own change's --yes line in the input when the worker asks first, never another UI's" do
+    reader = double("reader", prefill: true)
+    attached.instance_variable_set(:@reader, reader)
+    confirm = { line: "/reasoning-history all --yes", text: "Nothing changed yet: send `/reasoning-history all --yes` to apply." }
+
+    feed(ran(line: "/reasoning-history all", output: "reasoning history: turn (default)\n#{confirm[:text]}", confirm: confirm),
+         ran(client_id: "web:tab", line: "/thinking low", output: "asks", confirm: { line: "/thinking low --yes", text: "t" }))
+
+    expect(reader).to have_received(:prefill).once.with("/reasoning-history all --yes")
+    expect(screen.lines.first).to start_with("model> reasoning history: turn (default)")
+  end
+
   it "points to the history when the prompt already holds text" do
     attached.instance_variable_set(:@reader, double("reader", prefill: false))
 

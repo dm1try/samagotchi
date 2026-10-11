@@ -693,7 +693,8 @@ module Samagotchi
       resolved = @continue_offer.resolved?(awaiting, result)
       @engine.synchronize_events do
         @continue_offer.announce_resolved(result, command) if resolved
-        announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
+        announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
+                                  confirm: result.confirm)
         shown.each { |event| @engine.announce(event) }
       end
       save_or_log(:command) { save_session } unless Array(result.changed).empty?
@@ -706,8 +707,13 @@ module Samagotchi
     #   the cards and notices it showed, held: they follow its command_ran,
     #   as its output
     def run_command_line(command)
-      @engine.holding_announcements { command_result(command) { @commands.run(command.line) } }
+      @engine.holding_announcements { command_result(command) { @commands.run(command.line, confirm: confirm?(command)) } }
     end
+
+    # Whether +command+ asks before a costly /thinking or /reasoning-history
+    # change (CacheConfirm): only a person at a web tab or a TUI sees the
+    # question; chi send, a delegate, a plugin and a card's action apply it.
+    def confirm?(command) = ClientId.interactive?(command.client_id) && !command.card
 
     # The block's Result for +command+; one that raised, or found no
     # command for the line, is an error Result saying so.
@@ -767,9 +773,9 @@ module Samagotchi
     # saved.
     def start_anytime_command(command)
       @engine.spawn_anytime do
-        result = command_result(command) { @engine.running_anytime { @commands.run(command.line) } }
+        result = command_result(command) { @engine.running_anytime { @commands.run(command.line, confirm: confirm?(command)) } }
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
-                                  anytime: true)
+                                  anytime: true, confirm: result.confirm)
       rescue StandardError => e
         Log.warn(:worker, "anytime_command_failed", line: command.line, error: e.class.name, msg: e.message)
       end
@@ -777,7 +783,9 @@ module Samagotchi
 
     # @param anytime [Boolean] an anytime command's: its line was shown at
     #   its command_queued already
-    def announce_command(command, status:, output:, changed:, anytime: false)
+    # @param confirm [CacheConfirm::Confirm, nil] the change asks first: the
+    #   line that applies it (the TUI's prefill, the web's Apply button)
+    def announce_command(command, status:, output:, changed:, anytime: false, confirm: nil)
       text = output.to_s
       event = { type: :command_ran, **command.event_fields, status: status, output: text[0, COMMAND_OUTPUT_LIMIT],
                 changed: changed.map(&:to_s), model_name: @engine.effective_model_name }
@@ -791,6 +799,7 @@ module Samagotchi
       # /reasoning-history or /model: the level the next turn runs under
       # (the web's chip); nil on a native host, which ignores it.
       event[:reasoning_history] = @engine.reasoning_history_explained&.summary if changed.intersect?(%i[reasoning_history model])
+      event[:confirm] = confirm.to_h if confirm
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)
     end

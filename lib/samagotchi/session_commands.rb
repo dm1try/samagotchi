@@ -46,6 +46,10 @@ module Samagotchi
     # /help's note per listed mid_turn (the web's command list says the same).
     MID_TURN_NOTES = { "anytime" => "mid-turn too", "depends" => "show: mid-turn too" }.freeze
 
+    # The commands that ask before a change that restarts the prompt cache
+    # (CacheConfirm): #run passes them its confirm flag.
+    CONFIRMING = %i[thinking reasoning_history].freeze
+
     # @!attribute status [Symbol] :ok, or :error when the line was refused
     # @!attribute output [String, nil] what to tell the user
     # @!attribute changed [Array<Symbol>] :messages and/or :model
@@ -54,7 +58,9 @@ module Samagotchi
     # @!attribute shell [Boolean] output is a !cmd's own output
     # @!attribute decision [Symbol, nil] an answer to the continue offer:
     #   :resume, :abort, :abort_with_reason or :invalid
-    Result = Struct.new(:status, :output, :changed, :model_name, :resume, :shell, :decision, keyword_init: true)
+    # @!attribute confirm [CacheConfirm::Confirm, nil] a costly change asks
+    #   first (nothing changed): the line that applies it
+    Result = Struct.new(:status, :output, :changed, :model_name, :resume, :shell, :decision, :confirm, keyword_init: true)
 
     # Puts the built-in commands into +registry+, in lookup order (!rollback
     # before !cmd): the ones #run runs, then the UIs' own (local: Tab and
@@ -236,12 +242,19 @@ module Samagotchi
     # How help and errors name an entry (the shell's "!" is "!<cmd>").
     def self.display_name(entry) = entry.name == SHELL_BANG_PREFIX ? "#{SHELL_BANG_PREFIX}<cmd>" : entry.name
 
+    # @param confirm [Boolean] a costly /thinking or /reasoning-history
+    #   change asks first (CacheConfirm): true for a person at a web tab or
+    #   a TUI; false applies it at once (chi send, a delegate, a plugin,
+    #   chi -p)
     # @return [Result, nil] nil when +line+ is not one of these commands
-    def run(line)
+    def run(line, confirm: true)
       text = line.to_s.strip
       entry = @registry.lookup(text)
       return nil unless entry&.handler
       return run_bundle_command(entry, text) unless entry.source == "core"
+
+      # The two that may ask take the flag; the rest never ask.
+      return send(entry.id, text, confirm: confirm) if CONFIRMING.include?(entry.id)
 
       instance_exec(text, &entry.handler)
     end
@@ -288,8 +301,9 @@ module Samagotchi
       entry.source == "core" ? 0 : 1
     end
 
-    def reply(output, status: :ok, changed: [])
-      Result.new(status: status, output: output, changed: changed, model_name: model_name, resume: false, shell: false)
+    def reply(output, status: :ok, changed: [], confirm: nil)
+      Result.new(status: status, output: output, changed: changed, model_name: model_name, resume: false, shell: false,
+                 confirm: confirm)
     end
 
     # Explicit escape hatch after a Ctrl-C: discard the salvaged partial
@@ -432,20 +446,21 @@ module Samagotchi
 
     # /thinking (ThinkingCommand); :thinking in changed when it set the
     # session's level.
-    def thinking(text)
-      output, changed = ThinkingCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
-                                       .run(text.delete_prefix(THINKING_COMMAND))
-      reply(output, changed: changed ? [:thinking] : [])
+    def thinking(text, confirm: true)
+      output, changed, ask = ThinkingCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                            .run(text.delete_prefix(THINKING_COMMAND), confirm: confirm)
+      reply(output, changed: changed ? [:thinking] : [], confirm: ask)
     rescue ArgumentError => e
       reply(e.message, status: :error)
     end
 
     # /reasoning-history (ReasoningHistoryCommand); :reasoning_history in
     # changed when it set the session's level.
-    def reasoning_history(text)
-      output, changed = ReasoningHistoryCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
-                                               .run(text.delete_prefix(REASONING_HISTORY_COMMAND))
-      reply(output, changed: changed ? [:reasoning_history] : [])
+    def reasoning_history(text, confirm: true)
+      output, changed, ask = ReasoningHistoryCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                                    .run(text.delete_prefix(REASONING_HISTORY_COMMAND),
+                                                         confirm: confirm)
+      reply(output, changed: changed ? [:reasoning_history] : [], confirm: ask)
     rescue ArgumentError => e
       reply(e.message, status: :error)
     end

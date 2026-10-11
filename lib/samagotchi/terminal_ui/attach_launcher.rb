@@ -54,7 +54,8 @@ module Samagotchi
         commands = []
         commands << "/model #{model}" if model && (attach || resume)
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
-        commands << "#{ThinkingCommand::NAME} #{thinking}" if (attach || resume) && thinking
+        # --yes: typing the flag is the choice (no confirm step).
+        commands << "#{ThinkingCommand::NAME} #{thinking} --yes" if (attach || resume) && thinking
         first_command = commands.size > 1 ? commands : commands.first
         surface = open_surface
         attached = AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,

@@ -166,6 +166,27 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, {})).not_to include("thinking:  ")
     end
 
+    it "puts a change's --yes line in the next input when it asks first (CacheConfirm)" do
+      confirm = Samagotchi::CacheConfirm.confirm("/thinking", "low")
+      result = Samagotchi::SessionCommands::Result.new(status: :ok, output: "asks", changed: [], confirm: confirm)
+      allow(agent).to receive_messages(queue_input_prefill: nil, piped_input?: false)
+      agent.send(:show_command_result, result)
+      expect(agent).to have_received(:queue_input_prefill).with("/thinking low --yes")
+    end
+
+    # printf '/thinking high\nhello\n' | chi --resume X: nobody answers a confirm, so the change applies at once.
+    it "runs a piped line's /thinking without the confirm step, and prefills nothing" do
+      commands = agent.instance_variable_get(:@commands)
+      allow(agent).to receive_messages(queue_input_prefill: nil, piped_input?: true)
+      applied = Samagotchi::SessionCommands::Result.new(status: :ok, output: "thinking: high (session)", changed: [:thinking])
+      expect(commands).to receive(:run).with("/thinking high", confirm: false).and_return(applied)
+      agent.send(:run_input_line, nil, "/thinking high")
+
+      asked = applied.dup.tap { |r| r.confirm = Samagotchi::CacheConfirm.confirm("/thinking", "high") }
+      agent.send(:show_command_result, asked)
+      expect(agent).not_to have_received(:queue_input_prefill)
+    end
+
     it "shows a chat host's reasoning history with where it came from in /stats, nothing without one (a native host)" do
       expect(agent.send(:format_session_metrics, { reasoning_history: { level: "all", source: "session", own: "all" } }))
         .to include("reasoning history: all (session)")

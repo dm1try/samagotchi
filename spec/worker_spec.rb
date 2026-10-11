@@ -1177,12 +1177,72 @@ RSpec.describe Samagotchi::Worker do
         post_turn("slow, no boundary")
         expect(next_turn&.first).to eq("slow, no boundary")
 
-        command_id = JSON.parse(post_command("/thinking low").body)["command_id"]
+        # --yes: on this native Gemma, with a reply in the session, the change would ask first.
+        command_id = JSON.parse(post_command("/thinking low --yes").body)["command_id"]
         expect(wait_until { engine.next_turn_waiting.call }).to be(true)
         release << true
 
         expect(ran(command_id)).to include(status: "ok", changed: ["thinking"], queued: true)
         expect(wait_until { !engine.next_turn_waiting.call }).to be(true)
+      end
+
+      describe "a change that restarts the prompt cache (CacheConfirm)" do
+        before { allow(engine).to receive_messages(thinking_cache_cost: :full, history?: true) }
+
+        def post_turn_from(prompt, client_id)
+          Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
+                         JSON.generate(session_id: session.id, prompt: prompt, client_id: client_id),
+                         "Content-Type" => "application/json")
+        end
+
+        def ran_line(line)
+          wait_until { events_seen.any? { |e| e[:type] == :command_ran && e[:line] == line } }
+          seen.find { |e| e[:type] == :command_ran && e[:line] == line }
+        end
+
+        it "asks a web tab or a TUI first: nothing changes, and the command_ran carries the line that applies it" do
+          start_worker(poll_interval: 5)
+
+          asked = ran(JSON.parse(post_command("/thinking low", client_id: "web:tab").body)["command_id"])
+          expect(asked).to include(status: "ok", changed: [], confirm: { line: "/thinking low --yes",
+                                                                         text: "Nothing changed yet: send `/thinking low --yes` to apply." })
+          expect(asked).not_to have_key(:thinking)
+          expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).thinking).to be_nil
+
+          applied = ran(JSON.parse(post_command("/thinking low --yes", client_id: "web:tab").body)["command_id"])
+          expect(applied).to include(changed: ["thinking"])
+          expect(applied).not_to have_key(:confirm)
+          expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).thinking).to eq(:low)
+        end
+
+        it "applies chi send's (POST /turn from cli:send) and a card's at once" do
+          start_worker(poll_interval: 5)
+
+          post_turn_from("/thinking low", "cli:send")
+          expect(ran_line("/thinking low")).to include(changed: ["thinking"])
+          expect(ran(JSON.parse(post_command("/thinking high", client_id: "web:tab", card: true).body)["command_id"]))
+            .to include(changed: ["thinking"])
+          expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).thinking).to eq(:high)
+        end
+
+        it "applies a command that came in an input file from chi send" do
+          start_worker(poll_interval: 0.2)
+          Samagotchi::SessionManager.write_turn_input(session.id, prompt: "/thinking off", client_id: "cli:send", state_dir: tmpdir)
+
+          expect(ran_line("/thinking off")).to include(changed: ["thinking"])
+          expect(ran_line("/thinking off")).not_to have_key(:confirm)
+        end
+
+        it "asks a web tab whose command waited for the running turn's end, once it ends" do
+          start_worker(poll_interval: 5)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+
+          command_id = JSON.parse(post_command("/thinking low", client_id: "web:tab").body)["command_id"]
+          release << true
+
+          expect(ran(command_id)).to include(queued: true, changed: [], confirm: include(line: "/thinking low --yes"))
+        end
       end
 
       it "refuses while a turn runs: at the latest when it ends" do

@@ -258,7 +258,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, "--thinking" do
     described_class.run(attach: "s2", thinking: "default")
     described_class.run(shared: true, thinking: "high")
 
-    expect(commands).to eq([["/model qwen_moe", "/llm-context apply turn_end", "/thinking low"], "/thinking default", nil])
+    # --yes: the flag is the user's choice, so a costly change doesn't ask (and the launch doesn't wait on it).
+    expect(commands).to eq([["/model qwen_moe", "/llm-context apply turn_end", "/thinking low --yes"], "/thinking default --yes", nil])
     expect(described_class).to have_received(:connect)
       .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: "high")
   end

@@ -32,6 +32,14 @@ RSpec.describe Samagotchi::ClientId do
                 system:reminder plugin relay:])
   end
 
+  describe ".interactive?" do
+    it "is a web tab or a chi TUI only: they see a command's reply and can answer it" do
+      expect(%w[web:tab1 web:restart tui:4242].map { |id| described_class.interactive?(id) }).to all(be(true))
+      expect([nil, "cli:send", "delegate:1234abcd", "plugin", "system:reminder", "child:1", "webby"]
+               .map { |id| described_class.interactive?(id) }).to all(be(false))
+    end
+  end
+
   describe ".human?" do
     it "counts a human's input only: web, tui, chi send and no client id" do
       expect(known.keys.to_h { |id| [id, described_class.human?(id)] }).to eq(known)
