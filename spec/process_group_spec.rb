@@ -17,7 +17,14 @@ RSpec.describe Samagotchi::ProcessGroup do
     nil
   end
 
-  def reaped(pid) = -> { Process.wait2(pid, Process::WNOHANG) }
+  # True once the pid is reaped, here or already (ECHILD).
+  def reaped(pid)
+    lambda do
+      !Process.wait2(pid, Process::WNOHANG).nil?
+    rescue Errno::ECHILD
+      true
+    end
+  end
 
   describe ".spawn" do
     it "puts the command in a group of its own, led by it" do
@@ -52,6 +59,67 @@ RSpec.describe Samagotchi::ProcessGroup do
       expect(status&.termsig).to eq(Signal.list["KILL"])
     ensure
       reap(pid) unless status
+    end
+
+    # A `timeout N cmd` (GNU, no --foreground) moves itself to a group of
+    # its own: ruby's setpgid stands in for it, no coreutils needed.
+    describe "a descendant that left the group" do
+      def spawn_leaver(marker)
+        spawn_group("ruby -e 'Process.setpgid(0, 0); sleep #{marker}'; echo after")
+      end
+
+      # The ruby that left (its own group's leader), not the shell +shell+
+      # whose command line names it too.
+      def leaver_pids(marker, shell)
+        `pgrep -f "sleep #{marker}"`.split.map(&:to_i).select do |p|
+          p != shell && Process.getpgid(p) == p
+        rescue Errno::ESRCH
+          false
+        end
+      end
+
+      it "is stopped with the group (its group found while the shell runs)" do
+        pid = spawn_leaver(31.93)
+        expect(wait_until { leaver_pids(31.93, pid).any? }).to be(true)
+
+        expect(described_class.stop(pid, grace: 2, poll: 0.01, stopped: reaped(pid))).to be(true)
+        expect(wait_until { leaver_pids(31.93, pid).empty? }).to be(true)
+      ensure
+        reap(pid)
+      end
+
+      it "survives a stop without the walk" do
+        pid = spawn_leaver(31.94)
+        expect(wait_until { leaver_pids(31.94, pid).any? }).to be(true)
+        leavers = leaver_pids(31.94, pid)
+
+        described_class.stop(pid, grace: 2, poll: 0.01, stopped: reaped(pid), walk: false)
+        expect(leavers.all? { |p| described_class.alive?(p) }).to be(true)
+      ensure
+        reap(pid)
+        # Its own group, which this example started: never the walk's.
+        Array(leavers).each { |p| described_class.signal(p, "KILL") }
+      end
+    end
+
+    it "walks from the group's members only, from the bare pid with leader:, never into chi's own group" do
+      table = [[100, 1, 100], [200, 100, 200], [201, 200, 200], [300, 50, 300], [400, 300, 400],
+               [500, 100, Process.getpgrp], [600, 100, 1]]
+      allow(described_class).to receive(:process_table).and_return(table)
+
+      expect(described_class.descendant_groups(100)).to eq([200])
+      expect(described_class.descendant_groups(50)).to eq([])
+      expect(described_class.descendant_groups(50, leader: true)).to eq([300, 400])
+    end
+
+    it "asks +stopped+ no more once it said true, while it waits for the descendants' groups" do
+      calls = 0
+      allow(described_class).to receive(:descendant_groups).and_return([4242])
+      allow(described_class).to receive(:signal)
+      allow(described_class).to receive(:group_alive?).with(4242).and_return(true, true, false)
+
+      expect(described_class.stop(4241, grace: 1, poll: 0.01, stopped: -> { (calls += 1) == 1 })).to be(true)
+      expect(calls).to eq(1)
     end
 
     it "waits at most kill_wait after the KILL for a group that never says it stopped" do

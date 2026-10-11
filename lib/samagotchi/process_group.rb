@@ -109,21 +109,94 @@ module Samagotchi
     # TERMs the group, waits up to +grace+ for +stopped+, then KILLs it and
     # waits up to +kill_wait+ for +stopped+ again (a KILL is delivered, not
     # done, when kill returns).
+    #
+    # The groups the group's processes started are stopped with it: a
+    # descendant that moved to a group of its own (GNU `timeout N cmd`
+    # without --foreground calls setpgid) is out of reach of a signal to
+    # +pgid+. They are found (#descendant_groups) before the TERM, while the
+    # group's processes still run, and again before the KILL; each is
+    # signalled too and must be gone as well. One that already lost its
+    # parent (reparented to init: a setsid'd `cmd &` whose shell exited) is
+    # not found, and so left running.
     # @param stopped [#call] true once it has stopped (default: the leader
     #   is gone)
     # @param wait [#call] (seconds) between two checks (default: a sleep)
+    # @param walk [Boolean] also stop the descendants' groups (one ps each
+    #   time, ~40 ms on macOS with ~850 processes)
     # @param signal_options [Hash] for #signal (leader:, quiet:)
     # @return [Boolean] true when it stopped within the grace (no KILL sent)
     # @raise [ArgumentError] unless #signalable?
     def stop(pgid, grace:, poll:, stopped: -> { !alive?(pgid) }, wait: ->(seconds) { sleep(seconds) },
-             kill_wait: KILL_WAIT_SEC, **signal_options)
+             kill_wait: KILL_WAIT_SEC, walk: true, **signal_options)
       check!(pgid)
+      # The group's members only: a leader reaped by now may be another process.
+      extra = walk ? descendant_groups(pgid) : []
       signal(pgid, "TERM", **signal_options)
-      return true if wait_for(stopped, grace, poll, wait)
+      extra.each { |group| signal(group, "TERM") }
+      # +stopped+ is asked until it says true once (it may reap: a second
+      # wait on a reaped pid raises ECHILD), then only the extra groups.
+      done = false
+      all_stopped = -> { (done ||= stopped.call ? true : false) && extra.none? { |group| group_alive?(group) } }
+      return true if wait_for(all_stopped, grace, poll, wait)
 
+      extra |= descendant_groups(pgid) if walk
       signal(pgid, "KILL", **signal_options)
-      wait_for(stopped, kill_wait, poll, wait)
+      extra.each { |group| signal(group, "KILL") }
+      wait_for(all_stopped, kill_wait, poll, wait)
       false
+    end
+
+    # Whether any process is still in the group +pgid+.
+    def group_alive?(pgid)
+      check!(pgid)
+      Process.kill(0, -pgid)
+      true
+    rescue Errno::ESRCH
+      false
+    rescue Errno::EPERM
+      true
+    end
+
+    # The process groups, other than +pgid+ and chi's own, of the
+    # descendants of the processes in the group +pgid+ (and of the process
+    # +pgid+ itself with +leader+: a leader chi started that left its
+    # group). Read from one `ps -A -o pid=,ppid=,pgid=`; [] when ps fails.
+    # Only members of the group are roots, never the bare pid +pgid+ without
+    # +leader+: a reaped leader's pid may name some other process by now.
+    # @return [Array<Integer>]
+    def descendant_groups(pgid, leader: false)
+      rows = process_table
+      children = rows.group_by { |_pid, ppid, _group| ppid }
+      queue = rows.select { |_pid, _ppid, group| group == pgid }.map(&:first)
+      queue << pgid if leader
+      seen = {}
+      groups = []
+      until queue.empty?
+        pid = queue.shift
+        next if seen[pid]
+
+        seen[pid] = true
+        Array(children[pid]).each do |child, _ppid, group|
+          groups << group unless group == pgid
+          queue << child
+        end
+      end
+      own = Process.getpgrp
+      groups.uniq.select { |group| signalable?(group) && group != own }
+    end
+
+    # Every process as [pid, ppid, pgid].
+    # @return [Array<Array(Integer, Integer, Integer)>]
+    def process_table
+      out, status = Open3.capture2("ps", "-A", "-o", "pid=,ppid=,pgid=", err: File::NULL)
+      return [] unless status.success?
+
+      out.lines.filter_map do |line|
+        fields = line.split.map { |field| Integer(field, exception: false) }
+        fields if fields.size == 3 && fields.all?
+      end
+    rescue SystemCallError, IOError
+      []
     end
 
     # Checks +stopped+ every +poll+ until it is true or +seconds+ are over.
