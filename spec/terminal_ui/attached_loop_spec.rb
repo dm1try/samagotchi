@@ -1639,6 +1639,25 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
     expect(client).not_to have_received(:post_turn)
   end
 
+  # --thinking on a resumed session runs "/thinking X --yes" last; its
+  # failure (and its queued note) name --thinking, not --llm-context.
+  it "names --thinking when the /thinking first command fails or waits" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
+    allow(client).to receive(:post_turn)
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hi",
+                                   first_command: "/thinking high --yes")
+
+    attached.handle_event(joined)
+    attached.handle_event({ "type" => "command_queued", "command_id" => "c1", "client_id" => "tui:1",
+                            "line" => "/thinking high --yes", "waits" => "turn_end" })
+    expect(screen.lines.last).to eq("(--thinking queued: applies after the running turn)")
+    result = attached.handle_event(ran("error", "unknown thinking level").merge("queued" => true))
+
+    expect(result).to eq(:failed)
+    expect(screen.lines.last).to eq("could not set the --thinking: unknown thinking level")
+    expect(client).not_to have_received(:post_turn)
+  end
+
   # S6: --model on a session whose turn runs waits for that turn's end.
   it "says a queued --model applies after the running turn, and sends the first prompt once it ran" do
     allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))

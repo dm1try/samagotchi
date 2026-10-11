@@ -85,7 +85,8 @@ module Samagotchi
       # @param first_prompt [String, nil] sent once joined (`chi -p`)
       # @param first_command [String, Array<String>, nil] run before the
       #   first prompt, in order (`--model` on a resumed session: "/model X";
-      #   --llm-context: "/llm-context strategy …"); if one doesn't go
+      #   --llm-context: "/llm-context strategy …"; --thinking: "/thinking X
+      #   --yes"); if one doesn't go
       #   through, the launch stops
       # @param no_interrupt [Boolean] post every turn with no_interrupt
       # @param default_input [Boolean] type SAMAGOTCHI_DEFAULT_INPUT into
@@ -614,8 +615,7 @@ module Samagotchi
       end
 
       def first_command_queued
-        flag = @first_command_line.to_s.start_with?("/model") ? "--model" : "--llm-context"
-        "(#{flag} queued: applies after the running turn)"
+        "(#{first_command_flag} queued: applies after the running turn)"
       end
 
       def command_ran(event)
@@ -1113,7 +1113,7 @@ module Samagotchi
         nil
       end
 
-      # --model (or --llm-context) on a resumed session: run it in its
+      # --model (or --llm-context, --thinking) on a resumed session: run it in its
       # worker before the first prompt goes; its :command_ran decides
       # (#first_command_ran), and sends the next one.
       # @return [Symbol, nil] :failed when the worker didn't take it
@@ -1154,7 +1154,14 @@ module Samagotchi
       end
 
       def first_command_failed
-        @first_command_line.to_s.start_with?("/model") ? "could not switch to the --model" : "could not set the --llm-context"
+        flag = first_command_flag
+        flag == "--model" ? "could not switch to the --model" : "could not set the #{flag}"
+      end
+
+      # The launch flag the first command came from: "/model X" is --model,
+      # "/llm-context …" --llm-context, "/thinking X --yes" --thinking.
+      def first_command_flag
+        "--#{@first_command_line.to_s[%r{\A/([\w-]+)}, 1]}"
       end
 
       # After the join, so it lands below what the session already had. Our
