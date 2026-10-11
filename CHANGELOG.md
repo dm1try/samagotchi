@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- The default step limit (`turn.max_iterations`) is 300, up from 100: most long build turns now finish in one turn
+  instead of stopping at the step-limit question. Loops are caught by the loop-guard bundle, and check-in's card
+  (at 50 tool calls, then every 50) still says a turn is long without stopping it. `--no-interrupt` stays 1000.
+
 ### Added
 
 - chi web has a favicon: χ on a blue-to-violet rounded square. Safari showed a "1" monogram before.

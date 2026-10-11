@@ -3,9 +3,10 @@
 require "samagotchi/iteration_limit"
 
 RSpec.describe Samagotchi::IterationLimit do
-  it "gives a turn 100 iterations, and a --no-interrupt one 1000" do
-    expect(described_class.for).to eq(100)
-    expect(described_class.for(no_interrupt: false)).to eq(100)
+  it "gives a turn 300 iterations, and a --no-interrupt one 1000" do
+    expect(described_class::DEFAULT).to eq(300)
+    expect(described_class.for).to eq(300)
+    expect(described_class.for(no_interrupt: false)).to eq(300)
     expect(described_class.for(no_interrupt: true)).to eq(1000)
   end
 
@@ -33,10 +34,10 @@ RSpec.describe Samagotchi::IterationLimit do
       end
     end
 
-    it "falls back to 100 with a warning on a value below 1 or not a number" do
+    it "falls back to the default with a warning on a value below 1 or not a number" do
       %w[0 -5 many].each do |raw|
         with_env("SAMAGOTCHI_TURN_MAX_ITERATIONS" => raw) do
-          expect { expect(described_class.for).to eq(100) }.to output(/turn.max_iterations/).to_stderr
+          expect { expect(described_class.for).to eq(300) }.to output(/turn.max_iterations/).to_stderr
         end
       end
     end

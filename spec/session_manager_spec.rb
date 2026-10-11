@@ -1319,7 +1319,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(sub_handle).to receive(:unsubscribe)
       allow(engine).to receive(:subscribe).and_return(sub_handle)
       expect(engine).to receive(:run_turn)
-        .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc), origin: nil, max_iterations: 100, images: []) do
+        .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc), origin: nil, max_iterations: Samagotchi::IterationLimit::DEFAULT, images: []) do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
           result
         end
@@ -1771,7 +1771,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       run_worker_with(engine)
 
-      expect(runs).to eq([["long", 1000], ["short", 100]])
+      expect(runs).to eq([["long", 1000], ["short", Samagotchi::IterationLimit::DEFAULT]])
     end
 
     it "marks the session running on disk while a turn runs, and stops before the next queued turn" do

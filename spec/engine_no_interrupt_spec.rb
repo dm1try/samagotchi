@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::Engine, "with no_interrupt" do
   end
 
   it "keeps the turn's own limit without it" do
-    expect(limit_for(no_interrupt: false)).to eq(100)
+    expect(limit_for(no_interrupt: false)).to eq(Samagotchi::IterationLimit::DEFAULT)
     expect(limit_for(no_interrupt: false, max_iterations: 7)).to eq(7)
   end
 end

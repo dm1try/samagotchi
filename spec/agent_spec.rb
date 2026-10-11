@@ -1100,10 +1100,12 @@ file2.rb")
   describe "assist-mode continuation" do
     let(:looping_call) { %(<|tool_call>call:execute{command: "echo step"}<tool_call|>) }
     let(:tmpdir) { Dir.mktmpdir("samagotchi-continuation") }
+    # A small step limit: the turns run out quickly.
+    let(:limit) { 4 }
 
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      # The looping turns run `echo step` up to the iteration limit (100
+      # The looping turns run `echo step` up to the iteration limit (+limit+
       # calls): its answer without a shell each time.
       allow(Samagotchi::Tools::Execute).to receive(:call).and_call_original
       allow(Samagotchi::Tools::Execute).to receive(:call).with("echo step", any_args).and_return("stdout:\nstep\n\nexit: 0")
@@ -1118,7 +1120,7 @@ file2.rb")
         Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
         ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(tmpdir, "history.json")
         Dir.chdir(tmpdir)
-        example.run
+        with_env("SAMAGOTCHI_TURN_MAX_ITERATIONS" => limit.to_s) { example.run }
       ensure
         ENV["XDG_CONFIG_HOME"] = original_xdg
         Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
@@ -1128,7 +1130,7 @@ file2.rb")
     end
 
     it "accepts yes and resumes an exhausted turn" do
-      responses = Array.new(100, looping_call) + ["finished"]
+      responses = Array.new(limit, looping_call) + ["finished"]
 
       allow(client).to receive(:complete) { |_prompt| responses.shift }
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
@@ -1141,7 +1143,7 @@ file2.rb")
     end
 
     it "keeps /continue working for backward compatibility" do
-      responses = Array.new(100, looping_call) + ["finished"]
+      responses = Array.new(limit, looping_call) + ["finished"]
 
       allow(client).to receive(:complete) { |_prompt| responses.shift }
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
@@ -1195,7 +1197,7 @@ file2.rb")
 
     it "rejects new input until the interrupted turn is resumed" do
       allow(client).to receive(:complete)
-        .and_return(*Array.new(100, looping_call), "finished")
+        .and_return(*Array.new(limit, looping_call), "finished")
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
       allow(Reline).to receive(:readline).and_return("new request", "yes")
 
@@ -1209,7 +1211,7 @@ file2.rb")
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length <= 100 ? looping_call : "fresh answer"
+        prompts.length <= limit ? looping_call : "fresh answer"
       end
       old_request = "OLD_BROAD_REQUEST_UNIQUE"
       next_request = "NEW_NARROW_REQUEST_UNIQUE"
@@ -1229,7 +1231,7 @@ file2.rb")
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length <= 100 ? looping_call : "fresh answer"
+        prompts.length <= limit ? looping_call : "fresh answer"
       end
       old_request = "OLD_BROAD_REQUEST_WITH_REASON"
       next_request = "NEW_NARROW_REQUEST_WITH_REASON"
@@ -1249,7 +1251,7 @@ file2.rb")
 
     it "preserves prior user context while summarizing interrupted turns" do
       prompts = []
-      responses = ["anchor response"] + Array.new(100, looping_call) + ["fresh answer"]
+      responses = ["anchor response"] + Array.new(limit, looping_call) + ["fresh answer"]
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         responses.shift

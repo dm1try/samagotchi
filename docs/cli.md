@@ -998,7 +998,7 @@ Behavior notes:
 ## Iteration Limit Behavior
 
 - A turn's step limit (model ↔ tool rounds) is `turn.max_iterations` in config.yml (env
-  `SAMAGOTCHI_TURN_MAX_ITERATIONS`, default `100`, an integer of 1 or more). `--no-interrupt` and
+  `SAMAGOTCHI_TURN_MAX_ITERATIONS`, default `300`, an integer of 1 or more). `--no-interrupt` and
   `--non-interactive` turns get the larger of 1000 and it. Reminder turns follow it too.
 - Tool side effects that already ran before the limit are not rolled back.
 - `Samagotchi::KernelLoop#run` returns a resumable result object with the visible output plus the accumulated
@@ -1022,4 +1022,5 @@ Behavior notes:
 - `--non-interactive` (`chi -p`) has nobody to ask: the turn ends there. A `chi send --wait` on a session nobody can
   answer (an older worker) reports `limit` (exit 1) with how to continue it: `chi send ID -m '/continue yes'`.
 - The check-in bundle's card closes as the turn ends, before the step-limit question opens, so the two never stand
-  together; with check-in's default `after: 50` and the limit of 100 a long turn usually shows a check-in card first.
+  together; with check-in's default `after: 50` and the limit of 300 a long turn shows check-in cards (at 50, 100, …)
+  well before it.

@@ -55,8 +55,8 @@ command, folder, rule and reason, or `continue`, the step-limit question below.
 
 ## The step limit
 
-A turn that runs out of steps (`turn.max_iterations`, default 100) before it
-answers waits as a question of kind `continue` (`"limit": 100`, options
+A turn that runs out of steps (`turn.max_iterations`, default 300) before it
+answers waits as a question of kind `continue` (`"limit": 300`, options
 `Continue` and `Stop`). `answer_with` continues it:
 `chi answer ID --question QID --option Continue`, and the continued turn's
 reply (or its next question) comes back on that same wait. With

@@ -10,8 +10,9 @@ module Samagotchi
   module IterationLimit
     KEY = "turn.max_iterations"
     # A turn's limit unless turn.max_iterations says otherwise, and the
-    # loops' own default.
-    DEFAULT = 100
+    # loops' own default. Loops are caught by the loop-guard bundle and a
+    # long turn shows check-in's card well before it; this catches the rest.
+    DEFAULT = 300
     # A --no-interrupt / --non-interactive turn's, at least: nobody is there
     # to answer a continue offer.
     NO_INTERRUPT = 1000

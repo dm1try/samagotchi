@@ -1663,15 +1663,16 @@ RSpec.describe Samagotchi::Worker do
         end
 
         it "is pending in the file as the session goes idle, with the turn's limit, and no reply is written" do
-          expect(question).to include(kind: "continue", header: "Step limit", options: %w[Continue Stop], limit: 100,
+          expect(question).to include(kind: "continue", header: "Step limit", options: %w[Continue Stop], limit: Samagotchi::IterationLimit::DEFAULT,
                                       allow_freeform: true)
-          expect(question[:question]).to start_with("The turn ran out of iterations (100 steps) before it answered. Continue it?")
+          expect(question[:question])
+            .to start_with("The turn ran out of iterations (#{Samagotchi::IterationLimit::DEFAULT} steps) before it answered. Continue it?")
           expect(question[:question]).to include("Prompt: long task")
           expect(seen.find { |e| e[:type] == :question_requested }).to include(standing: true)
           # Every save from the turn's end on has it: no idle write without it.
           expect(wait_until { saved_session.status == "idle" }).to be(true)
           expect(saved_session.pending_question).to include(id: question[:id], kind: "continue")
-          expect(saved_session.last_turn.to_file).to include("exhausted" => true, "limit" => 100)
+          expect(saved_session.last_turn.to_file).to include("exhausted" => true, "limit" => Samagotchi::IterationLimit::DEFAULT)
           expect(Samagotchi::ReplyWait.newest_reply(session.id, state_dir: tmpdir)).to be_nil
         end
 

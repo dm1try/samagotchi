@@ -223,7 +223,7 @@ module Samagotchi
       Entry.new(key: "steer.cut_after",          yaml_path: %w[steer cut_after],          type: :integer, default: 20,              expose: %i[env config]),
       # A turn's step limit: model ↔ tool rounds before it stops and offers to continue (IterationLimit); integer ≥ 1.
       # --no-interrupt turns get max(1000, this). No CLI flag: --no-interrupt is the flag.
-      Entry.new(key: "turn.max_iterations",      yaml_path: %w[turn max_iterations],      type: :integer, default: 100,             expose: %i[env config]),
+      Entry.new(key: "turn.max_iterations",      yaml_path: %w[turn max_iterations],      type: :integer, default: 300,             expose: %i[env config]),
       # Whether a parent agent (chi answer) may answer Continue to a session's step-limit question; false: Stop only.
       # config.yml only, like guardrails.parent_approvals: a parent must not decide it from its own environment.
       Entry.new(key: "turn.parent_continue",     yaml_path: %w[turn parent_continue],     type: :bool,    default: true,            expose: %i[config]),
