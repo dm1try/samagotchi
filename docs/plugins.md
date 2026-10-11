@@ -1255,6 +1255,54 @@ bundles:
 | `/slow-commands` | this project's slow commands, numbered |
 | `/slow-commands forget 2` / `forget all` | drop one (a wrong entry) or all of them |
 
+## The agents-md bundle
+
+`chi bundle install agents-md` (or the `core` profile) installs the bundle shipped
+with chi (`lib/samagotchi/bundles/agents-md/plugin.rb`): two `chi.on` hooks
+(`:before_turn` rebuilds the steered set, `:after_tool_call` steers), and no memory file.
+
+chi's system prompt holds only the `AGENTS.md` chain from the checkout top down
+to the session's cwd, so an `AGENTS.md` in a directory the session doesn't run
+in (say `pkg/inner/` while the session runs in `pkg/`) is never seen. The
+bundle closes that gap in history, not in the system prompt: the first `read`,
+`write` or `edit` (its `tools` setting) of a file under a directory with an
+`AGENTS.md` steers that file into the running turn, at the loop's next
+boundary, as its own user message — with a first line that says which
+directory it belongs to:
+
+```
+AGENTS.md for pkg/inner/ (applies to work under pkg/inner/):
+<content>
+```
+
+- It steers the **outermost candidates first** (each directory from the
+  touched file's directory up to, but not including, the checkout top), so a
+  deep file can bring in several `AGENTS.md`s at once, outermost to nearest.
+- It **never re-injects**: each directory steers once per session, and a
+  `before_turn` pass over the conversation rebuilds that set from the steers
+  already there. A steer the model answered past (never injected) is absent,
+  so it fires again on the next touch; a resume, a woken worker or a fork
+  pick the set up from their messages. It never stops generation or thinking.
+- **Scope:** the touched file's own git root must be the session's checkout:
+  a file in another repository, a nested repository or a submodule is
+  ignored. Paths compare by `File.realpath`, so a symlinked cwd (a macOS
+  `/tmp`) still matches.
+- Directories whose `AGENTS.md` is already in the system prompt (`ctx.prompt_files`:
+  the chain and appended files) are skipped, as is a file at the checkout top
+  (its `AGENTS.md` is the chain's first).
+
+```yaml
+# config.yml
+bundles:
+  agents-md:
+    tools: [read, write, edit]   # the calls that count as a touch
+    max_chars: 16000            # the content is cut here, with a "[cut at N
+                                # of M chars: read <absolute path> for the rest]" last line
+```
+
+`skip_agents_md: true` disables the bundle, as it does the chain's loading
+(see [Configuration](configuration.md#project-specific-description)).
+
 ## The skills bundle
 
 `chi bundle install skills` (or the `dev` profile) installs the bundle shipped with chi

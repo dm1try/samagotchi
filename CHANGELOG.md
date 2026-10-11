@@ -23,6 +23,14 @@ and commands may change between minor versions. How releases are made:
   a ref. The web leaves it out for a viewer on this machine with `web.editor` set; a phone and the terminals show it.
 - `ctx.prompt_files` for plugins: the files whose text is in the session's system prompt now — the AGENTS.md chain
   and the appended files — as absolute paths in prompt order.
+- The `agents-md` bundle, in the `core` profile (core 0.3.0: `chi update` installs it for existing core users):
+  a nested `AGENTS.md` of the session's checkout — one in a directory the session doesn't run in, which the
+  system prompt never sees — is steered into the conversation the first time a tool (`read`, `write` or
+  `edit`) touches a file under its directory, outermost first, once per session, and never re-injected after a
+  resume or a woken worker. It never stops generation or thinking, and leaves the chain's and appended
+  `AGENTS.md` files alone (`ctx.prompt_files`). Files in another repository, a nested repository or a
+  submodule are ignored. Opt out with `skip_agents_md: true`, as with the chain; `bundles: agents-md:`
+  settings: `tools`, `max_chars`. See "The agents-md bundle" in docs/plugins.md.
 
 ### Changed
 

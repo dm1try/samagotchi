@@ -76,8 +76,9 @@ It finds out whether the server is llama.cpp or OpenAI-compatible, picks the
 model (or asks, when there are several), sends one test request and writes
 the config. With a config already there, it adds a `hosts:` entry and keeps
 the rest of the file. Then it installs the `core` bundles (loop-guard,
-check-in, guardrails, slow-commands: the safety set for a small local model) and, on a
-terminal, offers `dev` (known-names, mcp, btw, skills, source-links). Edit the
+check-in, guardrails, slow-commands, agents-md: the safety set for a small
+local model) and, on a terminal, offers `dev` (known-names, mcp, btw, skills,
+source-links). Edit the
 file later as in [Configure](#configure); `chi bootstrap --help` has the
 options.
 

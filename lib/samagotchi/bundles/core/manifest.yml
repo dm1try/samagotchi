@@ -1,6 +1,6 @@
 ---
 name: core
-version: 0.2.0
+version: 0.3.0
 scope: system
 description: "Recommended safety set"
 trust_level: reviewed
@@ -10,3 +10,4 @@ includes:
 - check-in
 - guardrails
 - slow-commands
+- agents-md

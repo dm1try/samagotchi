@@ -24,7 +24,7 @@ RSpec.describe "The shipped bundle profiles" do
   end
 
   it "core is the safety set" do
-    expect(metas["core"].includes).to eq(%w[loop-guard check-in guardrails slow-commands])
+    expect(metas["core"].includes).to eq(%w[loop-guard check-in guardrails slow-commands agents-md])
   end
 
   it "puts every shipped bundle but the system bundle and the profiles in exactly one profile" do

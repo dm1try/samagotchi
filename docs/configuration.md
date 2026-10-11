@@ -1099,6 +1099,11 @@ prompt rebuild (`/model`).
 To skip loading AGENTS.md (all of the chain), set `skip_agents_md: true` at the top level of
 `config.yml` (env `SAMAGOTCHI_SKIP_AGENTS_MD=true`).
 
+Nested `AGENTS.md` files (in directories the session doesn't run in) are
+steered into the conversation on first touch by the `agents-md` bundle
+([The agents-md bundle](plugins.md#the-agents-md-bundle)); `skip_agents_md`
+disables that steering too.
+
 ## Appended prompt files
 
 `append_system_prompt:` (a top-level list) and `chi --append-system-prompt FILE`

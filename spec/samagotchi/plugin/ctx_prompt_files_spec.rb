@@ -26,6 +26,6 @@ RSpec.describe "ctx.prompt_files" do
 
   it "is [] for a host without the member, and for a host whose callable says so" do
     expect(ctx(Samagotchi::Plugin::Host.new).prompt_files).to eq([])
-    expect(ctx(Samagotchi::Plugin::Host.new(prompt_files: -> { nil })).prompt_files).to eq([])
+    expect(ctx(Samagotchi::Plugin::Host.new(prompt_files: -> {})).prompt_files).to eq([])
   end
 end

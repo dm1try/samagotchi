@@ -68,7 +68,8 @@ RSpec.describe "chi bootstrap" do
                           "hosts" => { "local" => { "host" => "127.0.0.1", "port" => server.port } })
     expect(server.requests.map(&:path)).to include("/props", "/v1/chat/completions")
     expect(out).to include("system bundle: v#{Samagotchi::VERSION} installed\n",
-                           "core bundles: installed loop-guard, check-in, guardrails, slow-commands\n")
+                           "core bundles: installed loop-guard, check-in, guardrails, slow-commands" \
+                           "; skipped agents-md (it requires chi >= 0.60.0 (this is chi #{Samagotchi::VERSION}))\n")
     expect(out).to match(/^ +chi bundle install dev +# more bundles \(known-names, mcp, btw, skills, source-links, github-pr, coordinator\)$/)
     expect(out).not_to include("optional bundles", "Also install dev")
     expect(Dir.children(bundles_dir).reject { |e| e.end_with?(".lock") }.sort)
@@ -85,7 +86,7 @@ RSpec.describe "chi bootstrap" do
 
     expect([err, status]).to eq(["", 0])
     expect(out).to include("already has this server", "system bundle: v#{Samagotchi::VERSION} up to date\n",
-                           "core bundles: nothing new to install\n")
+                           "core bundles: skipped agents-md (it requires chi >= 0.60.0 (this is chi #{Samagotchi::VERSION}))\n")
     expect(File.mtime(File.join(bundles_dir, "loop-guard", "manifest.json"))).to eq(installed_at)
     expect(Dir.exist?(File.join(bundles_dir, "check-in"))).to be(false)
   end
@@ -97,7 +98,8 @@ RSpec.describe "chi bootstrap" do
 
     expect([err, status]).to eq(["", 0])
     expect(out).to include("dry run: would write", "system bundle: would install v#{Samagotchi::VERSION}\n",
-                           "core bundles: would install loop-guard, check-in, guardrails, slow-commands\n")
+                           "core bundles: would install loop-guard, check-in, guardrails, slow-commands" \
+                           "; skipped agents-md (it requires chi >= 0.60.0 (this is chi #{Samagotchi::VERSION}))\n")
     expect(File.exist?(config)).to be(false)
     expect(Dir.glob(File.join(bundles_dir, "*", "manifest.json"))).to eq([])
   end
@@ -302,11 +304,11 @@ RSpec.describe "chi bootstrap" do
       code, out, err = run_command("y\n", target, "--no-test")
 
       expect([code, err]).to eq([0, ""])
-      expect(out).to include("core bundles: installed loop-guard, check-in, guardrails, slow-commands\n",
+      expect(out).to include("core bundles: installed loop-guard, check-in, guardrails, slow-commands, agents-md\n",
                              "Also install dev (known-names, mcp, btw, skills, source-links, github-pr, coordinator)? [y/N] ",
                              "dev bundles: installed known-names, mcp, btw, skills, source-links, github-pr, coordinator\n")
       expect(out).to match(/^ +chi bundle list +# the installed bundles$/)
-      expect(installed).to eq(%w[btw check-in coordinator core dev github-pr guardrails known-names loop-guard mcp samagotchi-system skills slow-commands source-links])
+      expect(installed).to eq(%w[agents-md btw check-in coordinator core dev github-pr guardrails known-names loop-guard mcp samagotchi-system skills slow-commands source-links])
 
       _, again, = run_command("", target, "--no-test")
       expect(again).not_to include("Also install dev")

@@ -41,7 +41,8 @@ module Samagotchi
         With no config.yml it writes one; an existing one gets a hosts:
         entry added (after a backup), and its other lines stay as they are.
         Then it installs the system bundle and the core bundles (loop-guard,
-        check-in, guardrails), and on a terminal offers the dev bundles.
+        check-in, guardrails, slow-commands, agents-md), and on a terminal
+        offers the dev bundles.
     TEXT
 
     FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) do |f|
