@@ -1319,6 +1319,73 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         end
       end
 
+      # A step-limit Continue resumes the run before it (reasoning_since:,
+      # the Engine's resume_from): that run's replies keep their reasoning,
+      # so the request matches the one before the limit (warm cache).
+      describe "a resumed run (reasoning_since:)" do
+        # A run that ran out of steps at its tool results: it started at 1
+        # (after the prompt).
+        let(:exhausted_run) do
+          [{ role: "user", content: "go" },
+           { role: "model", content: "", thinking: "plan", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "x" } }] },
+           { role: "tool_response", content: "[read]\nx", tool_call_id: "c1" },
+           { role: "model", content: "", thinking: "more", tool_calls: [{ id: "c2", name: "read", arguments: { "path" => "y" } }] },
+           { role: "tool_response", content: "[read]\ny", tool_call_id: "c2" }]
+        end
+
+        it "sends the earlier run's replies with their reasoning, and counts it" do
+          backend.adapter = adapter = FakeChatAdapter.new(call("c3", "next"), text("done"))
+          run(exhausted_run, reasoning_since: 1)
+
+          expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([%w[plan more], %w[plan more next]])
+          expect(backend.reasoning_chars(exhausted_run, since: 1, reasoning: :turn)).to eq(8)
+        end
+
+        it "sends none of them without it (nil: a reminder's or a wake's continue, as before)" do
+          backend.adapter = adapter = FakeChatAdapter.new(call("c3", "next"), text("done"))
+          run(exhausted_run, reasoning_since: nil)
+
+          expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["next"]])
+        end
+
+        # A context wake's turn runs out of steps too (wakes make offers): its
+        # note is the turn_start entry before the run, and the run's replies
+        # after it keep their reasoning on the Continue.
+        it "keeps an exhausted wake turn's reasoning from its run's start" do
+          wake = { role: "system", content: "[context] new mail", turn_start: true, turn_id: "w1" }
+          earlier = [{ role: "user", content: "go" }, { role: "model", content: "ok", thinking: "old" }, wake]
+          run_by_wake = [{ role: "model", content: "", thinking: "woke", tool_calls: [{ id: "c1", name: "read", arguments: {} }] },
+                         { role: "tool_response", content: "[read]\nx", tool_call_id: "c1" }]
+          backend.adapter = adapter = FakeChatAdapter.new(text("done"))
+          run(earlier + run_by_wake, reasoning_since: 3)
+
+          expect(reasoning_sent(adapter.requests.first)).to eq(["woke"])
+        end
+
+        # A Continue with text is a steer: a user message, where the chat
+        # template drops the reasoning before it (D5).
+        it "starts after a Continue's text, which comes in as a steer" do
+          backend.adapter = adapter = FakeChatAdapter.new(call("c3", "after"), text("done"))
+          queue = [["finish and commit"], [], []]
+          run(exhausted_run, reasoning_since: 1, pending_input: -> { queue.shift || [] })
+
+          expect(adapter.requests.first[:messages].last).to include(role: "user")
+          expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["after"]])
+        end
+
+        it "has no effect under drop or all" do
+          with_history(:drop)
+          backend.adapter = adapter = FakeChatAdapter.new(text("done"))
+          run(exhausted_run, reasoning_since: 1)
+          with_history(:all)
+          backend.adapter = all = FakeChatAdapter.new(text("done"))
+          run(exhausted_run, reasoning_since: 3)
+
+          expect(reasoning_sent(adapter.requests.first)).to eq([])
+          expect(reasoning_sent(all.requests.first)).to eq(%w[plan more])
+        end
+      end
+
       it "sends none of an interrupted reply's partial thinking from the run before" do
         interrupted = { role: "model", content: "half\n[interrupted]", interrupted: true, thinking: "half a thought" }
         backend.adapter = adapter = FakeChatAdapter.new(text("done"))

@@ -68,12 +68,14 @@ module Samagotchi
 
       def provider = :chat
 
+      # +reasoning_since+ (ModelBackend#complete): the resumed run's start,
+      # the Run's own start then (#reasoning_boundary).
       def complete(messages:, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil,
-                   model_name: nil, max_tool_output_chars: nil, pending_input: nil)
+                   model_name: nil, max_tool_output_chars: nil, pending_input: nil, reasoning_since: nil)
         raise ArgumentError, "ChatLoop has no adapter" unless @adapter
 
         conversation = Array(messages).map(&:dup)
-        Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input)
+        Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input, start: reasoning_since)
            .call(max_iterations: max_iterations || 1, cap: KernelLoop.resolve_output_char_cap(max_tool_output_chars))
       rescue StandardError => e
         FailedTurn.attach(e, conversation && plain(conversation))
@@ -195,7 +197,8 @@ module Samagotchi
       # user message: a prompt, a steer, merged input, the chat template's
       # last query; or an entry that starts a turn, turn_start) and +since+
       # (the Run's start, so a continue turn -- a reminder, a context wake,
-      # a continue after a stop -- sends none of the run before it).
+      # a delegate report's wake -- sends none of the run before it; a
+      # step-limit Continue's Run starts where the run it resumes did).
       # @return [Integer, nil]
       def reasoning_boundary(conversation, since: nil, level: reasoning_history)
         case level
@@ -402,7 +405,9 @@ module Samagotchi
       # One turn's state: the conversation, the stream sink and tool
       # activity.
       class Run
-        def initialize(loop, conversation, on_stream_event, cancel_controller, model_name, pending_input)
+        # +start+: where the run a step-limit Continue resumes started (nil:
+        # this run starts at the conversation's end).
+        def initialize(loop, conversation, on_stream_event, cancel_controller, model_name, pending_input, start: nil)
           @loop = loop
           @conversation = conversation
           @on_stream_event = on_stream_event
@@ -410,8 +415,8 @@ module Samagotchi
           @model_name = model_name
           @pending_input = pending_input
           # Where this run's entries start: the reasoning it sends back
-          # (ChatLoop#reasoning_boundary) is its own.
-          @start = conversation.length
+          # (ChatLoop#reasoning_boundary) is its own, a resumed run's too.
+          @start = start || conversation.length
           @tool_activity = []
           @empty_retry = EmptyAnswerRetry.new
           # The empty generations, never saved: the UIs draw the turn's

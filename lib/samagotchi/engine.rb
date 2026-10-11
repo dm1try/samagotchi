@@ -2143,6 +2143,7 @@ module Samagotchi
       # Where this run starts (ChatLoop::Run's start): an offer made at its
       # end keeps it, so a Continue resumes this run.
       run_start = turn.messages.length
+      reasoning_since = resumed_run_start(turn, run_start)
       result = backend.complete(
         messages: turn.messages,
         max_iterations: turn.limit,
@@ -2150,12 +2151,27 @@ module Samagotchi
         cancel_controller: turn.controller,
         model_name: bare_for_backend,
         max_tool_output_chars: max_tool_output_chars,
-        pending_input: turn_drain(pending_input)
+        pending_input: turn_drain(pending_input),
+        reasoning_since: reasoning_since
       )
       result.run_start = run_start
       result
     end
     private :generate
+
+    # A step-limit Continue's resume_from, when it is inside the messages the
+    # run gets (a wrong one only drops reasoning: it is ignored, logged).
+    # Entries before it never move between the turns (#turn_messages adds
+    # at the tail, and the system head is replaced in place).
+    def resumed_run_start(turn, run_start)
+      start = turn.resume_from
+      return nil if start.nil?
+      return start if start.is_a?(Integer) && start.between?(0, run_start)
+
+      Log.warn(:turn, "resume_start_invalid", resume_from: start, length: run_start)
+      nil
+    end
+    private :resumed_run_start
 
     # The turn's LLM context strategy and where it came from, in the turn
     # log: when it runs a layer, or the session set it (none too).

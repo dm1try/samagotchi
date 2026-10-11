@@ -182,8 +182,10 @@ The differences from the native loop:
   `Session#reasoning_history`, `/reasoning-history`): `all` on every model message, `turn` past
   `ChatLoop#reasoning_boundary`: the later of the last query (a `role: "user"` entry: a prompt, a steer, merged input,
   the chat template's `last_query_index`; or a `turn_start` entry) and the Run's start (`Run`'s `@start`, the
-  conversation length at `#complete`), so a continue turn (reminder, context wake, continue after a stop) replays
-  nothing of the run before. `Run#prompt_chars` counts it (`#reasoning_chars`). The native loop differs on a steer:
+  conversation length at `#complete`), so a continue turn (reminder, context wake, delegate report wake) replays
+  nothing of the run before. A step-limit Continue's Run starts where the run it resumes did: `#complete`'s
+  `reasoning_since:` (the Engine's `resume_from`, checked against the messages' length in `#resumed_run_start`) is
+  the Run's `@start`. `Run#prompt_chars` counts it (`#reasoning_chars`). The native loop differs on a steer:
   `KernelLoop#inject_pending_input!` doesn't re-sanitize, so native keeps the turn's reasoning across a mid-turn
   steer, where the chat loop starts again (as the template does).
 - A 400 about reasoning (`BadRequest#reasoning_refused?`) for a request that sent reasoning back asks the step again

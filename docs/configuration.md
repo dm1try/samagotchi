@@ -568,8 +568,13 @@ models:
   reasoning as `reasoning_content`, which is what Qwen's, Gemma 4's and DeepSeek's chat templates and the hosted APIs
   (OpenRouter takes it for DeepSeek, Qwen and other text-reasoning models) expect. The running turn starts at the
   last message you sent (a prompt, or a steer: as the chat template counts it) and never before the turn's own start,
-  so a turn that goes on by itself (a reminder, a context wake, a continue after a stop) sends nothing of the one
-  before it, an interrupted reply's partial thought included.
+  so a turn that goes on by itself (a reminder, a context wake, a delegate report's wake) sends nothing of the one
+  before it, an interrupted reply's partial thought included. A **step-limit Continue** is the same turn going on: it
+  keeps the reasoning of the run it continues (back to the first run of a chain of Continues), so its first request
+  matches the last one before the limit and the server's prompt cache stays warm. Continue's text, or a `!cmd` run
+  while the step-limit question stands, is a user message: the reasoning before it goes, as for any steer, and that
+  Continue reads the conversation again once (a re-prefill on a local server). After a `/model` change while the
+  question stands the Continue starts afresh (no other model's reasoning is sent).
 - `drop` sends none (what chi did before this setting).
 - `all` sends every reply's reasoning, earlier turns too. It sends only the field: a local template that leaves out
   earlier turns' reasoning (Qwen's) needs `sampling: {chat_template_kwargs: {preserve_thinking: true}}` as well.

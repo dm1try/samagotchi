@@ -14,6 +14,14 @@ and commands may change between minor versions. How releases are made:
   instead of stopping at the step-limit question. Loops are caught by the loop-guard bundle, and check-in's card
   (at 50 tool calls, then every 50) still says a turn is long without stopping it. `--no-interrupt` stays 1000.
 
+### Fixed
+
+- A step-limit Continue no longer drops the turn's reasoning on a chat host (`reasoning_history: turn`): the
+  continued turn sends the earlier replies' reasoning back as before the limit, so it keeps its thinking and its
+  first request matches the last one before the limit (before the fix, a local 27B read most of a 17k prompt again:
+  24.9 s to the first token instead of 4.0 s). Continue's text is a steer, and still starts the reasoning afresh
+  from it.
+
 ### Added
 
 - chi web has a favicon: χ on a blue-to-violet rounded square. Safari showed a "1" monogram before.
