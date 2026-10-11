@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { editorUrl, installRefClicks, refActions, refAttrs, refTarget, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
+import { bindRef, editorUrl, httpUrl, installRefClicks, refActions, refAttrs, refTarget, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
 import { createRefMenu } from "../../../lib/samagotchi/web/public/ref_menu.js";
 import { linkRefs, touchedFiles } from "../../../lib/samagotchi/web/public/ref_scan.js";
 import { toolRowHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
@@ -478,4 +478,159 @@ test("after a tap, Enter on a focused link is the link's own click, not the menu
   assert.equal(event.defaultPrevented, false);
   assert.equal(document.querySelector(".ref-menu"), null);
   cleanup(page.root);
+});
+
+// P5a: a ref as data (the server's Ref: {kind, target, label?, actions:
+// [{id, label, url}]}) bound to its element, the plugins' actions next to
+// the kind's own.
+const PR = "https://github.com/acme/app/pull/4/files#diff-1R11";
+const JIRA = "https://jira.test/browse/ABC-12";
+
+test("httpUrl: an http(s) URL as the page would open it, anything else none", () => {
+  assert.equal(httpUrl(" https://x.test/a?b=1#c "), "https://x.test/a?b=1#c");
+  assert.equal(httpUrl("http://x.test"), "http://x.test/");
+  for (const url of ["javascript:alert(1)", "JavaScript:alert(1)", "vscode://file/p:1", "data:text/html,x", "mailto:a@b.test", "/relative", "", null, 7]) {
+    assert.equal(httpUrl(url), null, String(url));
+  }
+});
+
+test("bindRef: the element carries the kind and the target as a ref does; the data (label, actions) lives off the DOM", () => {
+  const root = mount('<p>see <span>lib/a.rb:11</span> and <span>ABC-12</span></p>');
+  const [file, issue] = root.querySelectorAll("span");
+  bindRef(file, { kind: "file", target: { path: "/p/lib/a.rb", line: 11 }, actions: [{ id: "pr_diff", label: "PR diff", url: PR }] });
+  bindRef(issue, {
+    kind: "issue", target: { id: "ABC-12" }, label: "ABC-12 Login fails",
+    actions: [{ id: "open", label: "Open in Jira", url: JIRA }, { id: "bad", label: "Bad", url: "javascript:alert(1)" }, { id: "nolabel", url: JIRA + "/x" }],
+  });
+  assert.ok(file.classList.contains("ref"));
+  assert.equal(file.dataset.refKind, "file");
+  assert.equal(file.dataset.refPath, "/p/lib/a.rb");
+  assert.equal(file.dataset.refLine, "11");
+  assert.equal(issue.dataset.refKind, "issue");
+  // No JSON on the element: the actions are the WeakMap's.
+  assert.doesNotMatch(root.innerHTML, /jira|github|Open in/);
+  const target = refTarget(file);
+  assert.deepEqual({ kind: target.kind, path: target.path, line: target.line, el: target.el }, { kind: "file", path: "/p/lib/a.rb", line: 11, el: file });
+  assert.deepEqual(target.actions, [{ id: "pr_diff", label: "PR diff", url: PR }]);
+  // A bad URL, or an action without a label, is dropped.
+  const other = refTarget(issue);
+  assert.deepEqual({ kind: other.kind, id: other.id, label: other.label }, { kind: "issue", id: "ABC-12", label: "ABC-12 Login fails" });
+  assert.deepEqual(other.actions, [{ id: "open", label: "Open in Jira", url: JIRA }]);
+  // A ref without data (a row title, a scanned ref) has none.
+  const row = mount(toolRowHtml(editRow));
+  assert.deepEqual(refTarget(row.querySelector(".activity-params")).actions, []);
+  assert.equal(bindRef(null, { kind: "file" }), null);
+  cleanup(root, row);
+});
+
+test("refActions: a file ref's plugin actions come after the editor, for every viewer; the kind's own stay", () => {
+  const page = turnPage();
+  bindRef(page.text, { kind: "file", target: { path: "/p/lib/a.rb", line: 11 }, actions: [{ id: "pr_diff", label: "PR diff", url: PR }, { id: "blob", label: "File at head", url: PR.replace("pull/4/files", "blob/main/lib/a.rb") }] });
+  const target = refTarget(page.text);
+  assert.deepEqual(ids(refActions(target, viewer)), ["editor", "url:pr_diff", "url:blob", "show", "copy"]);
+  assert.deepEqual(ids(refActions(target, PHONE)), ["url:pr_diff", "url:blob", "show", "copy"]);
+  assert.deepEqual(refActions(target, viewer).map((a) => a.label(target)), ["Open in editor", "PR diff", "File at head", "Show in turn", "Copy path"]);
+  assert.equal(refActions(target, viewer)[1].hint(target), PR);
+  cleanup(page.root);
+});
+
+test("refActions: a link and a ref action to the same URL show once, at the link's place, under the action's label", () => {
+  const page = turnPage();
+  bindRef(page.link, { kind: "file", target: { path: "/p/lib/a.rb", line: 11 }, actions: [{ id: "pr_diff", label: "PR diff (#4)", url: PR }, { id: "again", label: "Again", url: PR }] });
+  const target = refTarget(page.link);
+  assert.equal(target.href, PR);
+  const actions = refActions(target, viewer);
+  assert.deepEqual(ids(actions), ["link", "editor", "show", "copy"]);
+  assert.equal(actions[0].label(target), "PR diff (#4)");
+  // Without the data (an old session), the regex label as before.
+  const old = turnPage();
+  assert.equal(refActions(refTarget(old.link), viewer)[0].label(refTarget(old.link)), "PR diff");
+  cleanup(page.root, old.root);
+});
+
+test("refActions: another kind runs its own actions (a link first when it is one), on a phone too; none without any", () => {
+  const root = mount(`<p><span>ABC-12</span> <a href="${JIRA}">ABC-12</a> <span>abc123</span></p>`);
+  const [issue, link, commit] = root.querySelectorAll("span, a");
+  const open = [{ id: "open", label: "Open in Jira", url: JIRA }, { id: "board", label: "Board", url: "https://jira.test/board" }];
+  bindRef(issue, { kind: "issue", target: { id: "ABC-12" }, actions: open });
+  bindRef(link, { kind: "issue", target: { id: "ABC-12" }, actions: open });
+  bindRef(commit, { kind: "commit", target: { id: "abc123" } });
+  assert.deepEqual(ids(refActions(refTarget(issue), PHONE)), ["url:open", "url:board"]);
+  assert.deepEqual(ids(refActions(refTarget(issue), viewer)), ["url:open", "url:board"]);
+  assert.deepEqual(ids(refActions(refTarget(link), PHONE)), ["link", "url:board"]);
+  assert.equal(refActions(refTarget(link), PHONE)[0].label(refTarget(link)), "Open in Jira");
+  assert.deepEqual(refActions(refTarget(commit), viewer), []);
+  cleanup(root);
+});
+
+test("a ref's URL action opens a new tab: a click runs the main one, the menu any; a URL never goes to the editor", () => {
+  const root = mount("<p><span>ABC-12</span> and <span>lib/a.rb</span></p>");
+  const [issue, file] = root.querySelectorAll("span");
+  bindRef(issue, { kind: "issue", target: { id: "ABC-12" }, actions: [{ id: "open", label: "Open in Jira", url: JIRA }, { id: "board", label: "Board", url: "https://jira.test/board" }] });
+  bindRef(file, { kind: "file", target: { path: "/p/lib/a.rb" }, actions: [{ id: "pr_diff", label: "PR diff", url: PR }] });
+  let current = PHONE;
+  const calls = installed(root, () => current);
+  click(issue);
+  tap(issue);
+  assert.deepEqual([...document.querySelectorAll('.ref-menu [role="menuitem"]')].map((b) => b.textContent), ["Open in Jira", "Board"]);
+  click(document.querySelector('.ref-menu [data-target="url:board"]'));
+  // The phone: a file ref's main target is its PR diff now (no editor).
+  file.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
+  click(file);
+  current = viewer;
+  click(file);
+  assert.deepEqual(calls, [["link", JIRA], ["link", "https://jira.test/board"], ["link", PR], ["open", "vscode://file/p/lib/a.rb:1"]]);
+  cleanup(root);
+});
+
+test("the default link opener opens a new tab with no opener and no referrer", () => {
+  const root = mount("<p><span>ABC-12</span></p>");
+  const issue = root.querySelector("span");
+  bindRef(issue, { kind: "issue", target: { id: "ABC-12" }, actions: [{ id: "open", label: "Open in Jira", url: JIRA }] });
+  const opened = [];
+  const before = window.open;
+  window.open = (...args) => opened.push(args);
+  installRefClicks(root, () => PHONE, { selection: () => null });
+  click(issue);
+  window.open = before;
+  assert.deepEqual(opened, [[JIRA, "_blank", "noopener,noreferrer"]]);
+  cleanup(root);
+});
+
+test("a bound row title's URL actions stay on the title: its diff and read lines keep their click only", () => {
+  const page = turnPage();
+  const title = page.editRow.querySelector(".activity-params");
+  bindRef(title, { kind: "file", target: { path: "/p/lib/a.rb" }, actions: [{ id: "pr_diff", label: "PR diff", url: PR }] });
+  assert.deepEqual(ids(refActions(refTarget(title), PHONE)), ["url:pr_diff", "copy"]);
+  const line = page.editRow.querySelector(".diff-line.diff-add");
+  assert.deepEqual(ids(refActions(refTarget(line), viewer)), ["editor"]);
+  assert.deepEqual(ids(refActions(refTarget(line), PHONE)), []);
+  cleanup(page.root);
+});
+
+test("a kind named like an Object property ('constructor') is any other kind; bindRef refuses a kind the server would", () => {
+  const root = mount("<p><span>a</span> <span>b</span> <span>c</span></p>");
+  const [ctor, bad, after] = root.querySelectorAll("span");
+  bindRef(ctor, { kind: "constructor", target: { id: "x" }, actions: [{ id: "open", label: "Open", url: JIRA }] });
+  assert.deepEqual(ids(refActions(refTarget(ctor), PHONE)), ["url:open"]);
+  assert.deepEqual(refActions({ kind: "toString", actions: [] }, PHONE), []);
+  bindRef(bad, { kind: "Is Sue\"", target: { id: "x" }, actions: [{ id: "open", label: "Open", url: JIRA }] });
+  assert.equal(bad.dataset.refKind, undefined);
+  assert.equal(refTarget(bad), null);
+  bindRef(after, { kind: "issue", target: { id: "y" }, actions: [{ id: "open", label: "Open", url: JIRA }] });
+  syncRefTabs(root, PHONE);
+  assert.equal(after.getAttribute("role"), "button");
+  cleanup(root);
+});
+
+test("bindRef over a ref (a rebind, a scanned ref) replaces its target: no stale path or lines", () => {
+  const root = mount('<p><span class="ref" data-ref-kind="file" data-ref-path="/p/old.rb" data-ref-line="7" data-ref-end-line="9">x</span></p>');
+  const el = root.querySelector("span");
+  bindRef(el, { kind: "file", target: { path: "/p/new.rb" } });
+  assert.deepEqual([el.dataset.refPath, el.dataset.refLine, el.dataset.refEndLine], ["/p/new.rb", undefined, undefined]);
+  assert.equal(refTarget(el).line, null);
+  bindRef(el, { kind: "issue", target: { id: "ABC-1" } });
+  assert.equal(el.dataset.refPath, undefined);
+  assert.equal(refTarget(el).path, "");
+  cleanup(root);
 });
