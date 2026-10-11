@@ -768,6 +768,28 @@ RSpec.describe "task tools" do
     end
   end
 
+  describe "the exit_code wrapper (an EXIT trap set before the command)" do
+    {
+      "echo a \\" => [0, "a\n"],
+      "echo x; exit 3" => [3, "x\n"],
+      "set -e; false; echo no" => [1, ""]
+    }.each do |command, (code, output)|
+      it "records #{code} for #{command.inspect}, with its output as typed" do
+        record, = Samagotchi::Tools::TaskRuntime.create_task(command)
+        result = Samagotchi::Tools::TaskWait.call(record["id"], timeout: 10)
+
+        expect(result).to include("exit_code: #{code}")
+        expect(File.read(record["output_path"])).to eq(output)
+      end
+    end
+
+    it "fails a command with a trailing pipe (a parse error), never as a success" do
+      record, = Samagotchi::Tools::TaskRuntime.create_task("echo a |")
+
+      expect(Samagotchi::Tools::TaskWait.call(record["id"], timeout: 10)).to include("status: failed")
+    end
+  end
+
   it "writes command output that can be read from output_path" do
     create_result = Samagotchi::Tools::TaskCreate.call("ruby -e 'puts \"from-output\"'")
     task_id = extract_field(create_result, "task_id")

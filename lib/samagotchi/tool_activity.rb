@@ -46,7 +46,11 @@ module Samagotchi
         status: tool_activity_status(result, tool_name, command: call.is_a?(Hash) ? call[:content] : nil)
       }
       # A grep that found nothing: ok, and the web row says "no match".
-      event[:no_match] = true if event[:status] == "ok" && tool_name == Tools::Execute::NAME && execute_failed?(result.to_s)
+      # Not a hand-over: an "exit: 1" in its output tail is the command's.
+      if event[:status] == "ok" && tool_name == Tools::Execute::NAME && !handed_over?(tool_name, result) &&
+         execute_failed?(result.to_s)
+        event[:no_match] = true
+      end
       title = tool_title(tool_name, call, cwd: cwd)
       event[:title] = title if title
       # The name the model used when an alias ran a built-in (called_as: "bash"
@@ -214,6 +218,8 @@ module Samagotchi
       return "stopped" if text == Tools::Execute::NOT_RUN_ON_STOP
       return "stopped" if tool_name == Tools::Execute::NAME && text.start_with?(Tools::Execute::STOPPED_BY_USER)
       return "error" if text.start_with?("Error:")
+      # Still running, as a task: its output tail may hold any "exit: N".
+      return "ok" if handed_over?(tool_name, text)
       if tool_name == Tools::Execute::NAME && execute_failed?(text)
         return no_match?(text, command) ? "ok" : "error"
       end
@@ -221,6 +227,17 @@ module Samagotchi
 
       "ok"
     end
+
+    # An execute still running at its limit, handed over as a task
+    # (Tools::Execute::HANDED_OVER).
+    def handed_over?(tool_name, text)
+      return false unless tool_name == Tools::Execute::NAME && text.to_s.start_with?(Tools::Execute::HANDED_OVER)
+
+      # The first line only, scrubbed: a regexp raises on bytes that aren't UTF-8.
+      text.to_s.each_line.first.to_s.scrub.match?(HANDED_OVER_START)
+    end
+
+    HANDED_OVER_START = /\A#{Regexp.escape(Tools::Execute::HANDED_OVER)} \d+s limit:/
 
     def execute_failed?(text)
       code = execute_exit_code(text)
