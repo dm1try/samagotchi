@@ -584,6 +584,8 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "sets both runtime model and default on /model X --default" do
+      # --default would write the suite's shared config.yml.
+      allow(Samagotchi::ConfigFile).to receive(:write_default_model!)
       result = commands.run("/model alpha:gemma-small --default")
 
       expect(result.status).to eq(:ok)
