@@ -276,7 +276,15 @@ class Plugin
   # +client+ is the running process's (a restart replaces it; the
   # service's stop closes the current one), +restarts+ how many it had.
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
-                      :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, :info, keyword_init: true)
+                      :digest, :cached_at, :relist, :relisting, :client, :restarts, :tokens, :info, keyword_init: true) do
+    # Its state and tools, never the env (values often a token) or the
+    # command's args (which may carry a token too): a failing spec or a
+    # debugger would print those. `command` and `env` are nil before the
+    # server is resolved.
+    def inspect = "#<Server #{name} state=#{state} command=#{Array(command).first} env=#{(env || {}).keys.join(",")} tools=#{Array(tools).size}>"
+
+    def pretty_print(printer) = printer.text(inspect)
+  end
 
   def initialize(settings = {})
     @settings = settings
@@ -290,6 +298,12 @@ class Plugin
     @left_out = []
     @left_out_lock = Mutex.new
   end
+
+  # The servers' names, never @settings (the raw servers config, env values
+  # included): a failing spec prints the plugin.
+  def inspect = "#<Plugin mcp servers=#{@servers.map(&:name).join(",")}>"
+
+  def pretty_print(printer) = printer.text(inspect)
 
   # Each server's tools come from its cache (tools-<server>.json in the
   # bundle's data dir, keyed by a digest of its config) when there is one:

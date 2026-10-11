@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   in a failing spec's output or a debugger: they show host names, addresses, key variable names and models.
 - `chi --resume ID --thinking X` whose `/thinking` fails (or waits for the running turn) now says `--thinking`, not
   "could not set the --llm-context".
+- The MCP bundle no longer prints a server's env values or command arguments (e.g. a token) when inspected; a failing
+  spec or a debugger now shows only the server's state, the command's first word and the env's variable names.
 
 ## [0.56.0] - 2026-10-11
 

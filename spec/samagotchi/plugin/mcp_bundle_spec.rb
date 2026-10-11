@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "pp"
 require_relative "../../support/mcp_bundle"
 
 # The shipped mcp bundle (lib/samagotchi/bundles/mcp), installed into an
@@ -513,5 +514,45 @@ RSpec.describe "The mcp bundle" do
     engine.shutdown
     expect(alive?(pid)).to be(false)
     expect(mcp("echo", { "text" => "x" })).to eq("Error: service mcp:fake is stopped")
+  end
+end
+
+# The bundle's #inspect: the Server struct and the Plugin hold env values and
+# command args that a failing spec would otherwise dump. This block loads the
+# shipped class the way mcp_client_spec does, so it tests the real file.
+RSpec.describe "The mcp bundle's inspect" do
+  let(:mod) { m = Module.new; m.module_eval(File.read(File.join(MCP_SHIPPED, "plugin.rb")), "plugin.rb", 1); m }
+  let(:server_class) { mod::Plugin::Server }
+  let(:plugin_class) { mod::Plugin }
+
+  let(:server) do
+    server_class.new(
+      name: "github",
+      config: { "command" => "npx", "env" => { "GITHUB_TOKEN" => "ghp_SECRET" } },
+      state: :running,
+      command: ["npx", "-y", "@x/server", "--token=ghp_SECRET"],
+      env: { "GITHUB_TOKEN" => "ghp_SECRET" },
+      tools: []
+    )
+  end
+
+  it "inspects a server without its env value or the command's args, with the env's key names" do
+    expect(server.inspect).not_to include("ghp_SECRET")
+    expect(server.pretty_inspect).not_to include("ghp_SECRET")
+    expect([server].inspect).not_to include("ghp_SECRET")
+    expect(server.inspect).to include("GITHUB_TOKEN")
+    expect(server.inspect)
+      .to eq("#<Server github state=running command=npx env=GITHUB_TOKEN tools=0>")
+  end
+
+  it "inspects a server built with only its name" do
+    expect { server_class.new(name: "x").inspect }.not_to raise_error
+  end
+
+  it "inspects a plugin without its servers' env values" do
+    plugin = plugin_class.new("servers" => { "github" => { "env" => { "GITHUB_TOKEN" => "ghp_SECRET" } } })
+    expect(plugin.inspect).not_to include("ghp_SECRET")
+    expect(plugin.pretty_inspect).not_to include("ghp_SECRET")
+    expect(plugin.inspect).to eq("#<Plugin mcp servers=>")
   end
 end
