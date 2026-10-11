@@ -966,7 +966,8 @@ test("a costly /reasoning-history asks first; the reply's Apply sends it, and th
 
   await page.locator("#prompt").fill("/reasoning-history all");
   await page.locator("#actionBtn").click();
-  const asked = page.locator("#history .bubble.command").last();
+  // Filtered, not .last(): the --yes reply adds a newer bubble once Apply is clicked.
+  const asked = page.locator("#history .bubble.command").filter({ hasText: "Nothing changed yet" });
   await expect(asked).toContainText("Nothing changed yet: send `/reasoning-history all --yes` to apply.");
   const apply = asked.locator("[data-confirm-line]");
   await expect(apply).toHaveText("Apply (restarts the cache)");
