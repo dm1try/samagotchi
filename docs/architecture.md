@@ -176,8 +176,8 @@ engine.run_turn(session, "hello", on_event: nil)   # => LLM::ModelResult (`.outp
 forwards the raw `KernelLoop` events unchanged (the low-level contract) and adds a few
 higher-level events so UIs get clean turn boundaries without inferring them:
 
-- `:turn_started` — `{ session_id:, prompt:, turn_id: }` (plus `continue: true` for a continue
-  turn, `images:` with the prompt's image refs)
+- `:turn_started` — `{ session_id:, prompt:, turn_id:, cut_after: }` (`cut_after`: the seconds a cut waits for this
+  model's thinking, `0` = never; plus `continue: true` for a continue turn, `images:` with the prompt's image refs)
 - `:turn_completed` — `{ result:, turn_summary:, display_pending: }` (`result`: the final
   `LLM::ModelResult`; `display_pending`: `after_turn` hooks may still present the answer)
 - `:turn_canceled` — `{ cancellation_reason:, cancelled_by:, duration_ms: }` (`cancelled_by`: the bundle or hook label that

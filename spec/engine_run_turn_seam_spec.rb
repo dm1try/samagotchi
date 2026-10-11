@@ -86,7 +86,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     it "keeps :turn_started unchanged for a normal turn" do
       allow(kernel).to receive(:run).and_return(kernel_result)
 
-      expect(events_of.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", turn_id: a_string_matching(/\A\h{8}-/))
+      expect(events_of.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", cut_after: 20,
+                                       turn_id: a_string_matching(/\A\h{8}-/))
     end
   end
 
@@ -247,8 +248,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
       events = events_of(origin: origin)
 
-      expect(events.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", origin: origin,
-                                    turn_id: a_string_matching(/\A\h{8}-/))
+      expect(events.first).to match(type: :turn_started, session_id: session.id, prompt: "hi", cut_after: 20,
+                                    origin: origin, turn_id: a_string_matching(/\A\h{8}-/))
       expect(events.find { |e| e[:type] == :turn_completed }).to include(origin: origin)
     end
 

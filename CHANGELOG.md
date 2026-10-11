@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `hosts.<name>.steer_cut_after` and `models.<key>.steer_cut_after`: how long a message sent as a cut waits, per host
+  or model (`0` = never, e.g. a slow local thinker); `/model` shows the resolved one.
+
 ### Changed
 
 - chi reads a project's AGENTS.md (the name other agent tools read) instead of AGENT.md: rename yours. AGENT.md is no

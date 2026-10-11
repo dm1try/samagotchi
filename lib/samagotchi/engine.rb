@@ -115,7 +115,8 @@ module Samagotchi
       # may steer or ask whether a turn runs while it loads.
       @turn_state = TurnState.new(clock: -> { monotonic_now })
       # A message for the running turn cutting its generation.
-      @steer_cut = SteerCut.new(clock: -> { monotonic_now }, controller: -> { active_cancel_controller })
+      @steer_cut = SteerCut.new(clock: -> { monotonic_now }, controller: -> { active_cancel_controller },
+                                cut_after: -> { steer_cut_after })
       @scratch = scratch
       @no_interrupt = no_interrupt
       @chat_backend = nil
@@ -1094,6 +1095,29 @@ module Samagotchi
       explained&.source ? explained.label : nil
     end
 
+    # The seconds a cut waits for the effective model to stream only
+    # thinking (SteerCutAfter.resolve), resolved on every call, as
+    # turn_sampling; on any error, the global and its name.
+    # @return [Array(Integer, String|nil)]
+    def steer_cut_after_explained
+      target = @host_registry.resolve(@effective_model_name)
+      SteerCutAfter.resolve(target, names: model_lookup_names(target))
+    rescue StandardError
+      [SteerCut.cut_after, "steer.cut_after"]
+    end
+
+    # #steer_cut_after_explained's seconds: what SteerCut#cut_for_steer
+    # reads, per host and model.
+    def steer_cut_after = steer_cut_after_explained.first
+
+    # "after 60 s (models: qwen)", "never (hosts.splash)" for /model: the
+    # effective model's cut wait and where it came from, nil for the
+    # default.
+    def steer_cut_summary
+      seconds, source = steer_cut_after_explained
+      source ? SteerCutAfter.label(seconds, source) : nil
+    end
+
     # The effective model's thinking level with where it came from and the
     # session's own (SettingExplained), as the next turn resolves it;
     # nil when it can't be resolved.
@@ -1916,6 +1940,7 @@ module Samagotchi
       turn_started = { type: :turn_started, session_id: session.id, prompt: turn.prompt, turn_id: turn.id }
       turn_started[:continue] = true if turn.continue
       turn_started[:images] = image_refs unless image_refs.empty?
+      turn_started[:cut_after] = steer_cut_after
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 

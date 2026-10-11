@@ -291,7 +291,7 @@ of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 a prompt, also while a turn runs (it merges into that turn as steering: the model
 is told it is a steer and who sent it). Steering waits for the model's next step
 and cuts nothing. `/cut TEXT` in a terminal or the web composer (or `chi send --cut`) asks for a cut:
-once the model has streamed only thinking for `steer.cut_after` seconds (default
+once the model has streamed only thinking for `steer.cut_after` seconds (per host/model: `steer_cut_after`; default
 20), now or while your message waits, that generation is cut and the step starts again with your message, marked
 `↪ cut in for your message` (see
 [configuration.md](configuration.md#messages-during-a-running-turn-steer-and-cut)). The web
@@ -530,11 +530,12 @@ REPL alike:
   does one sent after Ctrl-C: it doesn't merge into the turn being cancelled.
   Reminder turns take merged lines too.
 - `/cut TEXT` asks for a cut: a generation that has streamed only thinking for
-  `steer.cut_after` seconds is cut and the step starts again with TEXT. The dim
+  `steer.cut_after` seconds (per host/model: `steer_cut_after`) is cut and the
+  step starts again with TEXT. The dim
   line says what happened: `(cut in now)`, `(cuts in once the thinking passes
   20 s)` (it waits for the thinking; the step may end first) or `(cutting is
-  off; goes in at the next step)` (`steer.cut_after: 0`, or no generation to
-  cut).
+  off; goes in at the next step)` (`steer.cut_after` is 0, per host/model:
+  `steer_cut_after`, or no generation to cut).
 - `/queue TEXT` (plain REPL only) runs TEXT as a turn of its own after this
   one: `(queued: runs after this turn)`. An attached terminal says
   `(/queue isn't available in an attached session yet)` and sends nothing (the web

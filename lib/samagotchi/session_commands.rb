@@ -484,9 +484,9 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false] if @default_model.nil? || model_name == @engine.model_ref_for(@default_model)
+        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{steer_cut_after_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false] if @default_model.nil? || model_name == @engine.model_ref_for(@default_model)
 
-        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false]
+        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{steer_cut_after_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false]
       end
 
       # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
@@ -602,6 +602,16 @@ module Samagotchi
     def sampling_note
       summary = @engine.sampling_summary
       summary ? "; sampling: #{summary}" : ""
+    rescue StandardError
+      ""
+    end
+
+    # "; steer cut: after 60 s (models: qwen)", or "; steer cut: never
+    # (hosts.splash)" for 0 or less, when the model has one configured;
+    # "" for the default.
+    def steer_cut_after_note
+      summary = @engine.steer_cut_summary
+      summary ? "; steer cut: #{summary}" : ""
     rescue StandardError
       ""
     end

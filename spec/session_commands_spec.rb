@@ -173,6 +173,22 @@ RSpec.describe Samagotchi::SessionCommands do
         .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); thinking: low (session)")
     end
 
+    it "names the model's steer cut wait and where it came from, nothing for the default" do
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(steer_cut_after: 0))
+
+      expect(commands.run("/model").output)
+        .to end_with("; steer cut: never (models: qwen3-14b)")
+
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => Samagotchi::ModelSettings.new(steer_cut_after: 60))
+
+      expect(commands.run("/model").output)
+        .to end_with("; steer cut: after 60 s (models: qwen3-14b)")
+
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+
+      expect(commands.run("/model").output).not_to include("steer cut")
+    end
+
     it "names the model notes the session's prompt carries, and the new model's after a switch" do
       session.prompt_notes = [{ "name" => "model_notes_qwen", "scope" => "system", "chars" => 40, "digest" => "0123456789ab" }]
 

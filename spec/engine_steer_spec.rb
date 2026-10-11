@@ -252,9 +252,26 @@ RSpec.describe Samagotchi::Engine, "#steer" do
       end
     end
 
+    it "waits for the model's own steer_cut_after (models: 60), where the global would cut" do
+      allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        .and_return(engine.effective_model_name.downcase => Samagotchi::ModelSettings.new(steer_cut_after: 60))
+      expect(cut_during(nil, thinking_for: 30)).to eq([:waits, nil])
+      expect(cut_during(nil, thinking_for: 61).first).to eq(:now)
+    end
+
     it "is off with no turn running, and waits between generations (it cuts in the next one)" do
       expect(engine.cut_for_steer(nil)).to eq(:off)
       expect(cut_during(nil, between: true)).to eq([:waits, nil])
+    end
+  end
+
+  describe ":turn_started" do
+    it "carries cut_after (the default 20 s when nothing is set)" do
+      started = nil
+      allow(kernel).to receive(:run) { |_messages, **| kernel_result }
+      engine.run_turn(session, "hi", on_event: ->(event) { started = event if event[:type] == :turn_started })
+
+      expect(started).to include(cut_after: 20)
     end
   end
 

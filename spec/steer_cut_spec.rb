@@ -160,4 +160,41 @@ RSpec.describe Samagotchi::SteerCut do
     end
     expect(detail).to be_nil
   end
+
+  # The Engine passes the model's own SteerCutAfter as a lambda: the value
+  # is read on every check, so a per-host/model setting applies to the
+  # running turn, over the global.
+  describe "with a per-host/model cut_after lambda" do
+    let(:cut_after) { [60] }
+    let(:steer_cut) { described_class.new(clock: -> { now.first }, controller: -> { running.first }, cut_after: -> { cut_after.first }) }
+
+    it "is :off when it is 0, even with the global on: nothing waits either" do
+      cut_after.replace([0])
+      detail = in_generation do
+        thinking(30)
+        expect(steer_cut.cut_for_steer(nil, epoch: steer_cut.input_epoch)).to eq(:off)
+        thinking(30)
+      end
+      expect(detail).to be_nil
+    end
+
+    it "waits until its own seconds, not the global's: :waits at 30 s, cut once the thinking passes 60" do
+      detail = in_generation do
+        thinking(30)
+        expect(steer_cut.cut_for_steer(nil, epoch: steer_cut.input_epoch)).to eq(:waits)
+        thinking(31)
+      end
+      expect(detail).to eq(steer_detail(""))
+    end
+
+    it "reads the lambda on each call, so a change between calls applies" do
+      detail = in_generation do
+        thinking(30)
+        expect(steer_cut.cut_for_steer(nil, epoch: steer_cut.input_epoch)).to eq(:waits)
+        cut_after.replace([20])
+        thinking(15)
+      end
+      expect(detail).to eq(steer_detail(""))
+    end
+  end
 end

@@ -30,19 +30,23 @@ module Samagotchi
     end
 
     # +clock+: monotonic seconds; +controller+: the running turn's cancel
-    # controller (nil between turns), read only when a cut is due.
-    def initialize(clock:, controller:)
+    # controller (nil between turns), read only when a cut is due;
+    # +cut_after+: seconds a thinking-only generation may stream before a
+    # cut, called on every check (the Engine passes the model's own
+    # SteerCutAfter; the global steer.cut_after here).
+    def initialize(clock:, controller:, cut_after: -> { self.class.cut_after })
       # What the running generation streams: whether a steer may cut it.
       @phase = GenerationPhase.new(clock: clock)
       # A message that may cut it but came too early: it cuts later.
       @waiting = WaitingSteer.new
+      @cut_after = cut_after
       @controller = controller
     end
 
     # A message for the running turn from +source+ (Steer.source_for_client:
     # nil for the user, "chi_send", "parent_agent") cuts the streaming
-    # generation when it has streamed only thinking for steer.cut_after
-    # seconds (GenerationPhase): the loops' cut path (CutPolicy) then starts
+    # generation when it has streamed only thinking for cut_after seconds
+    # (GenerationPhase): the loops' cut path (CutPolicy) then starts
     # the step again with the message, no nudge, no retry spent. Too early,
     # the message waits (WaitingSteer) and cuts once the thinking passes it
     # (#recheck, on each thinking chunk), unless a boundary hands it to the
@@ -52,13 +56,13 @@ module Samagotchi
     # before queueing it. Outside any lock; a cut that lands just after the
     # generation ended is harmless (the loop re-asks).
     # @return [Symbol] :now (a generation was cut now), :waits (the message
-    #   waits for the thinking to pass steer.cut_after), or :off (cutting
+    #   waits for the thinking to pass cut_after), or :off (cutting
     #   off for this source: a plugin, no turn, cut_after 0, a generation
     #   that isn't thinking-only, or a drain already took the message)
     def cut_for_steer(source, epoch: nil)
       return :off unless Steer.cuts?(source)
 
-      after = self.class.cut_after
+      after = @cut_after.call.to_i
       return :off unless after.positive?
 
       ctrl = @controller.call
@@ -107,11 +111,11 @@ module Samagotchi
     private
 
     # A thinking chunk streamed: a waiting message cuts once the thinking
-    # passes steer.cut_after.
+    # passes cut_after.
     def recheck
       return unless @waiting.waiting?
 
-      after = self.class.cut_after
+      after = @cut_after.call.to_i
       return unless after.positive? && @phase.cuttable?(after)
 
       source = @waiting.take
