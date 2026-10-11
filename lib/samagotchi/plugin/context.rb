@@ -19,7 +19,9 @@ module Samagotchi
     # (chat messages, timeout:, max_tokens:, cancel_controller:) and returns
     # the answer text.
     # +messages_partial+ says whether +messages+ leaves out a running turn;
-    # +model_name+ (the session's resolved model ref, live after /model) and
+    # +prompt_files+ returns the files whose text the built system prompt
+    # holds (SystemPrompt#prompt_files, [] before a build); +model_name+
+    # (the session's resolved model ref, live after /model) and
     # +state_dir+ are what ctx.sessions forks with, and +setup+ (the
     # session's own SessionSetup), which a fork copies; +model_key+ is the
     # model's memory overlay key (ctx.model, ctx.model_key).
@@ -28,8 +30,8 @@ module Samagotchi
     # +frontend+ returns the Engine's interface (:repl, :worker,
     # :non_interactive), which ctx.frontend names for plugins.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
-                      :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :steer, :stop_turn, :stop_generation,
-                      :frontend, keyword_init: true)
+                      :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
+                      :steer, :stop_turn, :stop_generation, :frontend, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -158,6 +160,17 @@ module Samagotchi
       # Whether #messages leaves out a running turn (the REPL mid-turn), so
       # a plugin can say what its answer is about.
       def messages_partial? = !!@host.messages_partial&.call
+
+      # The files whose text the session's system prompt holds now, as
+      # absolute paths in prompt order (SystemPrompt#prompt_files): the
+      # AGENTS.md chain (the work tree top down to the cwd), then the
+      # appended files (append_system_prompt:, --append-system-prompt).
+      # [] before the first build and after one that drops them (a model
+      # or tools change). A Host without the member (a spec's) reads [].
+      # @return [Array<String>] frozen
+      def prompt_files
+        Array(@host.prompt_files&.call || []).freeze
+      end
 
       # Run +block+ as this plugin's handler for +event+: until it returns,
       # the helpers called on this thread act as the event's own. Nests (a

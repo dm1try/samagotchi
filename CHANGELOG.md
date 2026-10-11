@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
   `before_turn` hook payload carry `resumed` too.
 - A hook's or plugin's notice can be marked `fallback_for: :editor`: a line naming a file the viewer could open from
   a ref. The web leaves it out for a viewer on this machine with `web.editor` set; a phone and the terminals show it.
+- `ctx.prompt_files` for plugins: the files whose text is in the session's system prompt now — the AGENTS.md chain
+  and the appended files — as absolute paths in prompt order.
 
 ### Changed
 
