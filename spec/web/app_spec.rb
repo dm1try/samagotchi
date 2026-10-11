@@ -1380,16 +1380,21 @@ RSpec.describe Samagotchi::Web::App do
       end
 
       it "titles a file call relative to the session's working directory" do
-        app = build_app(state_dir: Dir.mktmpdir)
+        # A short working directory of its own: the params line is cut at the preview limit, so
+        # one built from Dir.pwd fails in a checkout with a long path.
+        loader = Class.new(StubSessionLoader) do
+          def self.load(id, state_dir: nil) = super.tap { |s| s.working_directory = "/work/proj" }
+        end
+        app = build_app(state_dir: Dir.mktmpdir, session_class: loader)
         messages = [{ "role" => "user", "content" => "check" },
                     { "role" => "model", "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "read",
-                                                                             "arguments" => { "path" => "#{Dir.pwd}/lib/x.rb" } }] },
+                                                                             "arguments" => { "path" => "/work/proj/lib/x.rb" } }] },
                     { "role" => "tool_response", "content" => "[read]\nx", "tool_call_id" => "c1" }]
         allow(app).to receive(:bridge_get_json).with("s1", "snapshot")
                                                .and_return(live.merge("snapshot" => { "messages" => messages }))
         payload = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)
         expect(payload["messages"].last["parts"]["tools"].first).to include("title" => "lib/x.rb",
-                                                                            "params" => %(path="#{Dir.pwd}/lib/x.rb"))
+                                                                            "params" => %(path="/work/proj/lib/x.rb"))
       end
 
       it "without it the messages are as before: no parts, no text-less step" do
