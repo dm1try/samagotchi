@@ -131,10 +131,13 @@ parses tool calls out of the generated text.
 
 ```
 KernelLoop#run(messages, max_iterations:, on_stream_event:, cancel_controller:,
-               model_name:, max_tool_output_chars:, pending_input:)
+               model_name:, max_tool_output_chars:, pending_input:, reasoning_since:)
   │
   │ turn = start_turn(...)   # turn.conversation = prepare_conversation(messages): a copy,
-  │                          # old model messages without their thought blocks
+  │                          # old model messages without their thought blocks, but a resumed
+  │                          # run's (a step-limit Continue's reasoning_since:, #thought_floor:
+  │                          # all of them, a steer merged mid-run included; only a user entry
+  │                          # added after the run's last reply starts them past itself)
   │ each iteration:
   │ 1. Queued input (user lines, plugin steers) goes in at the boundary (Steer.inject!)
   │ 2. Format the conversation as prompt text (Prompt.format_with_images); a context

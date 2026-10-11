@@ -16,11 +16,12 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- A step-limit Continue no longer drops the turn's reasoning on a chat host (`reasoning_history: turn`): the
-  continued turn sends the earlier replies' reasoning back as before the limit, so it keeps its thinking and its
-  first request matches the last one before the limit (before the fix, a local 27B read most of a 17k prompt again:
-  24.9 s to the first token instead of 4.0 s). Continue's text is a steer, and still starts the reasoning afresh
-  from it.
+- A step-limit Continue no longer drops the turn's reasoning: on a chat host (`reasoning_history: turn`) the
+  continued turn sends the earlier replies' reasoning back as before the limit, and on a native host
+  (`/completion`) the prompt keeps the run's thought blocks, those before a mid-turn steer too. The model keeps its thinking, and the first request
+  after the Continue matches the last one before the limit (before the fix, a local 27B read most of a 17k prompt
+  again: 24.9 s to the first token instead of 4.0 s). Continue's text is a steer, and on a chat host still starts
+  the reasoning afresh from it. After a `/model` change while the question stands, the Continue starts afresh.
 
 ### Added
 

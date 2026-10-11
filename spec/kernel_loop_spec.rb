@@ -1200,6 +1200,59 @@ Need to inspect the filesystem first.
       expect(prompts.first).to include("Answer")
     end
 
+    # A step-limit Continue resumes the run before it (reasoning_since:, the
+    # Engine's resume_from): that run's thought blocks stay in the prompt,
+    # as they do within one run, so it starts with what the server has
+    # cached. A steer the run merged left its earlier thoughts in the
+    # prompt (nothing re-sanitizes within a run): they stay too. Only a user
+    # entry added after the run's last reply (a !cmd's output) strips the
+    # thoughts before it.
+    describe "a resumed run (reasoning_since:)" do
+      let(:call_one) { %(<|think|>plan first\n<|tool_call>call:execute{command: "echo one"}<tool_call|>) }
+      let(:exhausted_run) do
+        [{ role: "user", content: "go" }, { role: "model", content: call_one },
+         { role: "tool_response", content: "stdout:\none\n\nexit: 0" }]
+      end
+
+      def first_prompt(history, **options)
+        prompts = []
+        allow(client).to receive(:complete) do |prompt|
+          prompts << prompt
+          "ok"
+        end
+        kernel.run(history, **options)
+        prompts.first
+      end
+
+      it "keeps the earlier run's thought blocks from the index on" do
+        expect(first_prompt(exhausted_run, reasoning_since: 1)).to include("<|think|>plan first")
+      end
+
+      it "strips them all without it, as before (nil)" do
+        prompt = first_prompt(exhausted_run, reasoning_since: nil)
+
+        expect(prompt).not_to include("plan first")
+        expect(prompt).to include("echo one")
+      end
+
+      it "keeps a thought before a steer the resumed run merged" do
+        later = %(<|think|>after the steer\n<|tool_call>call:execute{command: "echo two"}<tool_call|>)
+        history = exhausted_run + [{ role: "user", content: "finish and commit" }, { role: "model", content: later },
+                                   { role: "tool_response", content: "stdout:\ntwo\n\nexit: 0" }]
+
+        prompt = first_prompt(history, reasoning_since: 1)
+
+        expect(prompt).to include("<|think|>plan first", "<|think|>after the steer")
+      end
+
+      it "strips the thoughts before a user entry added after the run's last reply (a !cmd's output)" do
+        prompt = first_prompt(exhausted_run + [{ role: "user", content: "!ls output" }], reasoning_since: 1)
+
+        expect(prompt).not_to include("plan first")
+        expect(prompt).to include("echo one")
+      end
+    end
+
     it "stops after max_iterations to prevent runaway loops" do
       call_count = 0
       allow(client).to receive(:complete) do

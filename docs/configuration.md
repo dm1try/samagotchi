@@ -598,7 +598,8 @@ models:
   | nothing thought yet, the same level, or a native host | none |
 
 - The native loop (`/completion`) ignores it: it always keeps the running turn's reasoning, a mid-turn steer included
-  (the chat loop starts again after a steer).
+  (the chat loop starts again after a steer), and a step-limit Continue keeps the thoughts of the run it continues,
+  a mid-turn steer's earlier ones included.
 - When a host answers a request that sent reasoning back with an HTTP 400 about reasoning, chi asks again without it,
   sends none to that model from then on (until the worker restarts) and says so once. If the request without it is
   refused too, the thinking fields get the same fallback ("Thinking") and the reasoning goes back on the next step.

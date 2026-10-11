@@ -204,12 +204,18 @@ module Samagotchi
     #   steering mid-stream); drained lines merge into ONE user message appended
     #   at the conversation tail (prefix KV cache preserved) and a
     #   :pending_input_merged stream event is emitted.
+    # @param reasoning_since [Integer, nil] a step-limit Continue's: where the
+    #   run it resumes started in +messages+; that run's model messages keep
+    #   their thought blocks (#prepare_conversation), as within one run. nil:
+    #   every earlier thought is stripped.
     # @return [LLM::ModelResult] final visible response with continuation metadata
-    def run(messages, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
+    def run(messages, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil,
+            reasoning_since: nil)
       @turn_settings = @turn_settings.with(model_name: completion_model_name(model_name))
       @last_slot = nil
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
-                                  pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars))
+                                  pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars),
+                                  reasoning_since: reasoning_since)
 
       max_iterations.times do |iteration_index|
         turn.iteration = iteration_index + 1
@@ -284,8 +290,8 @@ module Samagotchi
                             :buffer_mark, keyword_init: true)
     private_constant :Turn, :Request, :Generation
 
-    def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:)
-      conversation = prepare_conversation(messages)
+    def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:, reasoning_since: nil)
+      conversation = prepare_conversation(messages, keep_thought_from: thought_floor(messages, reasoning_since))
       context = ContextStatus.new(conversation: conversation, llm_context: @turn_settings.llm_context)
       emit = ->(event) { emit_stream_event(on_stream_event, event) }
       @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context, emit: emit)
@@ -992,9 +998,13 @@ module Samagotchi
       @profile.uses_role_prefixes? ? @profile.user_prefix : "#{@profile.turn_start}user\n"
     end
 
-    def sanitize_history(messages)
-      messages.map do |m|
-        if m[:role] == "model"
+    # +keep_thought_from+: model messages from this index on keep their
+    # thought blocks (a resumed run's); nil strips every one.
+    def sanitize_history(messages, keep_thought_from: nil)
+      messages.each_with_index.map do |m, index|
+        if m[:role] == "model" && keep_thought_from && index >= keep_thought_from
+          { role: m[:role], content: m[:content].to_s, display: m[:display] }.compact
+        elsif m[:role] == "model"
           # `display` rides along so the stored conversation keeps it; the
           # prompt formatter never reads it (AnswerDisplay).
           { role: m[:role], content: strip_thought_blocks(m[:content].to_s), display: m[:display] }.compact
@@ -1004,8 +1014,24 @@ module Samagotchi
       end
     end
 
-    # Standard multi-turn compliance: never pass prior raw thought blocks.
-    def prepare_conversation(messages) = sanitize_history(messages)
+    # Standard multi-turn compliance: never pass prior raw thought blocks,
+    # but a resumed run's (+keep_thought_from+, #thought_floor): the same
+    # run going on after a step-limit Continue.
+    def prepare_conversation(messages, keep_thought_from: nil) = sanitize_history(messages, keep_thought_from: keep_thought_from)
+
+    # Where a resumed run's thought blocks start: its start (+since+). Inside
+    # one native run nothing re-sanitizes, so a user entry the run merged (a
+    # steer, a delegate report, the Qwen recovery prompt) left the thoughts
+    # before it in the prompt: they stay. Only a user or turn_start entry
+    # added after the run ended (after its last model message: a !cmd's
+    # output) starts them again past itself. nil without +since+.
+    def thought_floor(messages, since)
+      return nil if since.nil?
+
+      last_reply = messages.rindex { |m| m[:role].to_s == "model" } || -1
+      query = messages.rindex { |m| m[:role].to_s == "user" || m[:turn_start] == true }
+      query && query > last_reply ? [query + 1, since].max : since
+    end
 
     def duplicate_conversation(messages)
       messages.map(&:dup)

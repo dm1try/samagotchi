@@ -25,7 +25,8 @@ module Samagotchi
           cancel_controller: cancel_controller,
           model_name: model_name,
           max_tool_output_chars: max_tool_output_chars,
-          pending_input: pending_input
+          pending_input: pending_input,
+          reasoning_since: reasoning_since
         )
       end
     end

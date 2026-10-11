@@ -107,6 +107,18 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect(result.run_start).to eq(5) # system head + history + the prompt
     end
 
+    it "hands the native loop the resumed run's start as reasoning_since:, nil on any other turn" do
+      session.messages = history
+      seen = []
+      allow(kernel).to receive(:run) { |_messages, **options| seen << options[:reasoning_since]; kernel_result }
+
+      engine.run_turn(session, nil, continue: true, resume_from: 2)
+      engine.run_turn(session, nil, continue: true)
+      engine.run_turn(session, "next")
+
+      expect(seen).to eq([2, nil, nil])
+    end
+
     it "marks :turn_started and the before_turn payload resumed; a plain continue (a reminder, a wake) isn't" do
       session.messages = history
       allow(kernel).to receive(:run).and_return(kernel_result)
