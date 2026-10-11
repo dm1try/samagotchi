@@ -99,8 +99,9 @@ module Samagotchi
       # What a line submitted at the open prompt says became of it: a plain
       # line goes in at the running turn's next step boundary (nothing cuts
       # unless the message asked for it), /cut's cutting now or once the
-      # thinking passes steer.cut_after, and /queue's waiting for the end.
-      # Both TUIs and chi send --cut print the same words
+      # thinking passes the model's cut wait (the run's cut_after; the global
+      # steer.cut_after when the worker didn't say), and /queue's waiting for
+      # the end. Both TUIs and chi send --cut print the same words
       # (SteerCut#cut_for_steer's answer).
       NEXT_STEP_NOTE = "(goes in at the next step)"
       CUT_NOW_NOTE = "(cut in now)"
@@ -116,17 +117,20 @@ module Samagotchi
       STEER_CHOICE = /\A(#{CUT_COMMAND}|#{QUEUE_COMMAND})(?:\s+(.*))?\z/m
 
       # @param outcome [Symbol] SteerCut#cut_for_steer's answer: :now, :waits or :off
+      # @param after [Integer, nil] the run's cut wait (the model's own
+      #   SteerCutAfter): the seconds a :waits waits for; the global
+      #   steer.cut_after when not given.
       # @return [String] the dim line to show for a /cut
-      def self.steer_cut_note(outcome)
+      def self.steer_cut_note(outcome, after = nil)
         case outcome
         when :now then CUT_NOW_NOTE
-        when :waits then format(CUT_WAITS_NOTE, SteerCut.cut_after)
+        when :waits then format(CUT_WAITS_NOTE, after || SteerCut.cut_after)
         else CUT_OFF_NOTE
         end
       end
 
       # The same words, for a UI that includes the module.
-      def steer_cut_note(outcome) = Formatting.steer_cut_note(outcome)
+      def steer_cut_note(outcome, after = nil) = Formatting.steer_cut_note(outcome, after)
 
       # The choice a mid-turn line carries, as [:cut, "TEXT"] or
       # [:queue, "TEXT"]; nil for any other line. The text is "" when the

@@ -54,6 +54,14 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.queued).to eq([])
   end
 
+  it "keeps the turn's cut wait from :turn_started in the snapshot, and no key when the event has none" do
+    feed({ type: :turn_started, prompt: "hi", cut_after: 0 })
+    expect(acc.current_turn[:cut_after]).to eq(0)
+
+    feed({ type: :turn_started, prompt: "next" })
+    expect(acc.current_turn).not_to have_key(:cut_after)
+  end
+
   it "folds a running turn: prompt, origin, generations, thinking and text in order, tool calls" do
     feed(
       { type: :turn_started, session_id: "s", prompt: "hi", origin: { client_id: "web:1", enqueued_id: "e1" } },

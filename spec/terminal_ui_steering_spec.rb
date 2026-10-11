@@ -72,6 +72,17 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(surface.lines.join("\n")).to include("(cutting is off; goes in at the next step)")
   end
 
+  it "says the engine's cut wait for a /cut that waits, not the global" do
+    allow(engine).to receive(:cut_for_steer).and_return(:waits)
+    allow(engine).to receive(:steer_cut_after).and_return(60)
+    allow(engine).to receive(:run_turn) do |*, **|
+      repl_input << [:line, "/cut now please"]
+      result
+    end
+    agent.run_engine_turn(session, "go")
+    expect(surface.lines.join("\n")).to include("(cuts in once the thinking passes 60 s)")
+  end
+
   it "runs /cut TEXT and /queue TEXT as a normal prompt when no turn is running" do
     run = nil
     allow(agent).to receive(:save_session)

@@ -608,6 +608,7 @@ RSpec.describe Samagotchi::Bridge do
       it "acks the delivery it applied, and the cut's outcome" do
         start_bridge(input_format: 2, on_command: ->(_) {})
         allow(@engine).to receive(:cut_for_steer).and_return(:now, :waits, :off)
+        allow(@engine).to receive(:steer_cut_after).and_return(60)
 
         _, plain = post("from the web", "web:tab-1")
         _, cut_now = post("cut it", "web:tab-1", delivery: "cut")
@@ -616,9 +617,12 @@ RSpec.describe Samagotchi::Bridge do
 
         expect(plain).to include("delivery" => "next_step")
         expect(plain).not_to have_key("cut")
+        expect(plain).not_to have_key("cut_after")
         expect(cut_now).to include("delivery" => "cut", "cut" => "now")
-        expect(cut_waits).to include("delivery" => "cut", "cut" => "waits")
+        expect(cut_now).not_to have_key("cut_after")
+        expect(cut_waits).to include("delivery" => "cut", "cut" => "waits", "cut_after" => 60)
         expect(cut_off).to include("delivery" => "cut", "cut" => "off")
+        expect(cut_off).not_to have_key("cut_after")
       end
 
       it "takes an unknown delivery as the default, which never cuts" do

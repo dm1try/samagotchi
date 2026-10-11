@@ -1573,6 +1573,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
                                     "(cutting is off; goes in at the next step)")
   end
 
+  it "says the seconds the worker's ack gives when the model's cut wait differs from the global" do
+    run_inputs("/cut one", ack: { "enqueued_id" => "e1", "delivery" => "cut", "cut" => "waits", "cut_after" => 60 })
+
+    expect(screen.lines).to include("(cuts in once the thinking passes 60 s)")
+  end
+
   it "refuses /queue with a line while a turn runs, and sends nothing" do
     run_inputs("/queue later please")
 

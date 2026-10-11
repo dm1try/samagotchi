@@ -240,6 +240,7 @@ module Samagotchi
                     parts: [], pending_question: nil }
           @tool_started_at = {}
           @turn[:images] = event[:images] if event[:images]
+          @turn[:cut_after] = event[:cut_after] if event[:cut_after]
         when :input_merged
           @merged_origins = Array(event[:origins])
           dequeue(@merged_origins)

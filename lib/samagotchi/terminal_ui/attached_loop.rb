@@ -712,7 +712,7 @@ module Samagotchi
 
         return NEXT_STEP_NOTE unless delivery == Delivery::CUT
 
-        steer_cut_note(ack["cut"].to_s.to_sym)
+        steer_cut_note(ack["cut"].to_s.to_sym, ack["cut_after"])
       end
 
       def send_prompt(text, delivery: nil)

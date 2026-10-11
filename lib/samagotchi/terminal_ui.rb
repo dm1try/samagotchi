@@ -1199,7 +1199,7 @@ module Samagotchi
       @pending_input_queue.push(text)
       # With no session running the cut is :off; the text still waits for
       # the running turn's next step.
-      @surface.commit(steer_cut_note(@engine.cut_for_steer(nil, epoch: epoch)))
+      @surface.commit(steer_cut_note(@engine.cut_for_steer(nil, epoch: epoch), @engine.steer_cut_after))
       true
     end
 

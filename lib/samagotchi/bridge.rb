@@ -876,6 +876,7 @@ module Samagotchi
       cut = @engine.cut_for_steer(Steer.source_for_client(client_id), epoch: epoch) if images.empty? && Delivery.cut?(delivery)
       ack = { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id, delivery: delivery }
       ack[:cut] = cut.to_s if cut
+      ack[:cut_after] = @engine.steer_cut_after if cut == :waits
       [{}, 202, ack]
     end
 

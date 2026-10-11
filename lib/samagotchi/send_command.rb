@@ -586,7 +586,7 @@ module Samagotchi
       outcome = Delivery.cut?(delivery) ? ack["cut"].to_s : ""
       return " (goes in at the running turn's next step)" unless CUT_OUTCOMES.include?(outcome)
 
-      " #{TerminalUI::Formatting.steer_cut_note(outcome.to_sym)}"
+      " #{TerminalUI::Formatting.steer_cut_note(outcome.to_sym, ack["cut_after"])}"
     end
 
     # More keys for --format json, with --cut only (the line is unchanged

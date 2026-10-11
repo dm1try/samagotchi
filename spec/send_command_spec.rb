@@ -240,6 +240,15 @@ RSpec.describe Samagotchi::SendCommand do
       expect(out.string).to eq("#{short(a)}  sent (cuts in once the thinking passes 20 s)\n")
     end
 
+    it "says the seconds the worker's ack gives when the model's cut wait differs from the global" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a, cut: :waits)
+      allow(engine_of(a)).to receive(:steer_cut_after).and_return(60)
+
+      expect(run("--cut", "-m", "hit it", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (cuts in once the thinking passes 60 s)\n")
+    end
+
     it "says cutting is off when the worker's ack says so" do
       a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
       serve(a, cut: :off)
