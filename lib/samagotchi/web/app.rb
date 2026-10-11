@@ -45,6 +45,7 @@ require_relative "editor"
 require_relative "message_parts"
 require_relative "session_summary"
 require_relative "../log"
+require_relative "../redacted_inspect"
 
 module Samagotchi
   module Web
@@ -56,6 +57,9 @@ module Samagotchi
     # (the single live client transport); history for any session — including
     # dead ones — is served by GET /api/sessions/:id/output from output/ files.
     class App
+      # @lan holds the LAN access token.
+      include RedactedInspect
+
       DEFAULT_HOST = BridgeClient::HOST
       BRIDGE_WAIT_TIMEOUT = 10.0
       # An uploaded image may be this big before it is downscaled.
@@ -2130,10 +2134,12 @@ module Samagotchi
       # before returning, and a read blocked on a quiet worker would hang
       # Ctrl-C of chi web. The bytes go through unchanged.
       class ProxyStreamBody
+        # @param headers [Hash] the request's Rack env; only its Last-Event-ID
+        #   is kept (the env carries the token cookie, never held or inspected)
         def initialize(host:, port:, session_id:, query:, headers:, server_running: -> { true })
           @client = BridgeClient.new(session_id: session_id, port: port, host: host)
           @query = query
-          @headers = headers
+          @last_event_id = headers["HTTP_LAST_EVENT_ID"]
           @server_running = server_running
         end
 
@@ -2142,7 +2148,7 @@ module Samagotchi
           # Last-Event-ID header over ?from_seq, and the reconnect URL carries a
           # stale initial cursor — without this the bridge would replay content
           # already delivered (duplicate bubbles).
-          @client.stream(query: @query, last_event_id: @headers["HTTP_LAST_EVENT_ID"], running: @server_running, &)
+          @client.stream(query: @query, last_event_id: @last_event_id, running: @server_running, &)
         end
       end
     end

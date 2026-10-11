@@ -12,6 +12,7 @@ require "samagotchi/bootstrap/config_writer"
 require "samagotchi/guardrails/shell_paths"
 require "samagotchi/desktop/macos"
 require "samagotchi/web/token"
+require "samagotchi/web/app"
 
 RSpec.describe Samagotchi::RedactedInspect do
   # A real (named) class so its #inspect names itself; an anonymous class's
@@ -43,6 +44,13 @@ RSpec.describe Samagotchi::RedactedInspect do
     end
   end
 
+  it "redacts a :token key inside a Hash ivar and keeps the rest of the Hash" do
+    holder.instance_variable_set(:@lan, { ip: "192.168.1.55", token: "lan-SECRET" })
+    expect(holder.inspect).to include('@lan={ip: "192.168.1.55", token: [redacted]}')
+                          .or include('@lan={:ip=>"192.168.1.55", :token=>[redacted]}')
+    expect(holder.inspect).not_to include("lan-SECRET")
+  end
+
   # Every class that holds the environment or the web token shares this
   # module, so inspecting any of them can no longer print the keys.
   redacted_classes = [
@@ -55,7 +63,8 @@ RSpec.describe Samagotchi::RedactedInspect do
     Samagotchi::Bootstrap::ConfigWriter,
     Samagotchi::Guardrails::ShellPaths::Walk,
     Samagotchi::Desktop::MacOS,
-    Samagotchi::Web::Token::Source
+    Samagotchi::Web::Token::Source,
+    Samagotchi::Web::App
   ]
 
   it "is included by every class that holds the environment or the token" do

@@ -192,7 +192,7 @@ RSpec.describe Samagotchi::Web::App do
         env_for("/api/sessions/s1/stream?from_seq=3", headers: { "HTTP_LAST_EVENT_ID" => "7" })
       )
 
-      expect(body.instance_variable_get(:@headers)["HTTP_LAST_EVENT_ID"]).to eq("7")
+      expect(body.instance_variable_get(:@last_event_id)).to eq("7")
     end
 
     it "honors rack.hijack? by returning a lambda that pipes bridge frames straight to the socket" do
@@ -2097,7 +2097,30 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "#inspect" do
+    it "never prints the LAN token, but still names the class and the LAN ip" do
+      app = build_app(state_dir: Dir.mktmpdir, lan: { ip: "192.168.1.55", token: "lan-SECRET-tok" })
+      expect(app.inspect).to start_with("#<Samagotchi::Web::App")
+      [app.inspect, app.pretty_inspect, [app].inspect].each do |text|
+        expect(text).to include("192.168.1.55")
+        expect(text).not_to include("lan-SECRET-tok")
+      end
+    end
+  end
+
   describe "ProxyStreamBody" do
+    it "never prints the request's cookie or Authorization header in #inspect" do
+      proxy = described_class::ProxyStreamBody.new(
+        host: "127.0.0.1", port: 1, session_id: "s1", query: "?from_seq=0",
+        headers: { "HTTP_COOKIE" => "chi_token=cookie-SECRET", "HTTP_AUTHORIZATION" => "Bearer auth-SECRET",
+                   "HTTP_LAST_EVENT_ID" => "7" }
+      )
+      expect(proxy.inspect).to start_with("#<Samagotchi::Web::App::ProxyStreamBody")
+      expect(proxy.inspect).to include("?from_seq=0")
+      expect(proxy.inspect).not_to include("cookie-SECRET")
+      expect(proxy.inspect).not_to include("auth-SECRET")
+    end
+
     # Capture the raw request a ProxyStreamBody issues against the upstream bridge.
     def capture_bridge_request(headers:, query: "")
       server = TCPServer.new("127.0.0.1", 0)

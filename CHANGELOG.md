@@ -21,6 +21,10 @@ and commands may change between minor versions. How releases are made:
   stays the first. **Show in turn** scrolls to the row that touched the file, opens its diff at the line and flashes
   it. It needs no editor, so a phone on the LAN now gets an answer's refs too.
 
+### Fixed
+
+- Web: the LAN access token no longer shows when the web app or a stream proxy is inspected (an error message, a log line).
+
 ## [0.57.0] - 2026-10-11
 
 ### Added
