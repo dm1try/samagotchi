@@ -10,6 +10,7 @@ require_relative "session"
 require_relative "cli/command"
 require_relative "cli/exit"
 require_relative "cli/flags"
+require_relative "redacted_inspect"
 
 module Samagotchi
   # `chi context`: attach live external text to sessions (ContextSources).
@@ -18,6 +19,7 @@ module Samagotchi
   # reads the text with context_read.
   class ContextCommand
     include CLI::Command
+    include RedactedInspect
 
     USAGE = <<~TEXT
       Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute> [options] [TARGET]

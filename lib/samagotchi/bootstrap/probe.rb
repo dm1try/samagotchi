@@ -9,6 +9,7 @@ require_relative "../version"
 require_relative "../llm/openai_chat"
 require_relative "../llm/http"
 require_relative "../llm/api_key"
+require_relative "../redacted_inspect"
 
 module Samagotchi
   module Bootstrap
@@ -17,6 +18,8 @@ module Samagotchi
     # API key, or nothing. One attempt per request, no retries: a refused
     # port answers at once instead of after chi's usual backoff.
     class Probe
+      include RedactedInspect
+
       # The ports `chi bootstrap` with no target tries on localhost.
       LOCAL_PORTS = { 8080 => "llama.cpp", 11_434 => "Ollama", 1234 => "LM Studio", 8000 => "vLLM" }.freeze
       DEFAULT_PORT = 8080

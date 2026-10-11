@@ -5,6 +5,7 @@ require "securerandom"
 require_relative "../atomic_file"
 
 require_relative "../session"
+require_relative "../redacted_inspect"
 
 module Samagotchi
   module Web
@@ -62,6 +63,8 @@ module Samagotchi
       # its mtime changes (one stat per check), so `chi web --new-token`
       # takes effect at once, without a restart.
       class Source
+        include RedactedInspect
+
         attr_reader :path
 
         def initialize(path = Token.path)

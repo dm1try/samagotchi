@@ -17,6 +17,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- More of chi's internal objects (commands, bootstrap, gem update, the web token) no longer print the environment or
+  the web token when inspected, e.g. in a failing spec's output or a debugger: they show every other instance variable
+  but the ones holding the environment or token, which print `[redacted]`.
 - The host registry and a plugin's `ctx` no longer print the environment (API keys included) when inspected, e.g.
   in a failing spec's output or a debugger: they show host names, addresses, key variable names and models.
 - `chi --resume ID --thinking X` whose `/thinking` fails (or waits for the running turn) now says `--thinking`, not

@@ -11,6 +11,7 @@ require_relative "../version"
 require_relative "../self_report"
 require_relative "../installed_gem"
 require_relative "../config"
+require_relative "../redacted_inspect"
 
 module Samagotchi
   module Desktop
@@ -22,6 +23,8 @@ module Samagotchi
     # command goes through the runner, and the dirs are injectable, so specs
     # (and smokes with register: false) never touch the real system.
     class MacOS
+      include RedactedInspect
+
       class Error < StandardError
       end
 

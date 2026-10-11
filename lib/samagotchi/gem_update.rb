@@ -6,6 +6,7 @@ require "open3"
 require "rbconfig"
 require "rubygems/package"
 require_relative "version"
+require_relative "redacted_inspect"
 
 module Samagotchi
   # The gem part of `chi update`: the newest samagotchi on rubygems, and a
@@ -15,6 +16,8 @@ module Samagotchi
   # SAMAGOTCHI_UPDATE_GEM_FILE=<path to a .gem> (hidden, for smokes) makes that
   # file the newest version and installs it instead.
   class GemUpdate
+    include RedactedInspect
+
     class Error < StandardError
     end
 

@@ -2,6 +2,7 @@
 
 require_relative "installed_gem"
 require_relative "version"
+require_relative "redacted_inspect"
 
 module Samagotchi
   # The newest chi on this machine, which a long-lived process (chi web, an
@@ -18,6 +19,8 @@ module Samagotchi
   # SAMAGOTCHI_INSTALLED_VERSION=<v> (hidden, for smokes and e2e) answers
   # <v> instead.
   class InstalledVersions
+    include RedactedInspect
+
     ENV_KEY = "SAMAGOTCHI_INSTALLED_VERSION"
     GEMSPEC = /\Asamagotchi-(#{Gem::Version::VERSION_PATTERN})\.gemspec\z/
     VERSION_LINE = /^\s*VERSION\s*=\s*["']([^"']+)["']/

@@ -7,6 +7,7 @@ require "ipaddr"
 require_relative "../atomic_file"
 require_relative "../config"
 require_relative "../yaml_lines"
+require_relative "../redacted_inspect"
 
 module Samagotchi
   module Bootstrap
@@ -17,6 +18,7 @@ module Samagotchi
     # other key must be unchanged, or the backup goes back.
     class ConfigWriter
       include YAMLLines
+      include RedactedInspect
 
       class Error < StandardError
       end

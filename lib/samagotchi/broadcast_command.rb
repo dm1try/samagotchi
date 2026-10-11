@@ -13,6 +13,7 @@ require_relative "broadcast/triage_model"
 require_relative "broadcast/triage_log"
 require_relative "cli/command"
 require_relative "cli/flags"
+require_relative "redacted_inspect"
 
 module Samagotchi
   # `chi broadcast`: share a note with every session it may concern,
@@ -25,6 +26,7 @@ module Samagotchi
   # skipped. For the user only: refused inside a chi session.
   class BroadcastCommand
     include CLI::Command
+    include RedactedInspect
 
     SOURCE = "broadcast"
     # Bytes kept free under SessionInbox's 16 KiB for the line each note

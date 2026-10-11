@@ -2,6 +2,7 @@
 
 require_relative "shell_lex"
 require_relative "protected_paths"
+require_relative "../redacted_inspect"
 
 module Samagotchi
   module Guardrails
@@ -62,6 +63,8 @@ module Samagotchi
       # Follows the current dir and gives, per simple command, each word
       # with its path (nil when it can't be resolved).
       class Walk
+        include RedactedInspect
+
         def initialize(cwd, home, env)
           @dir = cwd
           @home = home

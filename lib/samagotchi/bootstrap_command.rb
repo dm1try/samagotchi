@@ -9,6 +9,7 @@ require_relative "bootstrap/config_writer"
 require_relative "bootstrap/bundles"
 require_relative "cli/command"
 require_relative "cli/flags"
+require_relative "redacted_inspect"
 
 module Samagotchi
   # `chi bootstrap [TARGET]`: the first setup. It names a model server, works
@@ -19,6 +20,7 @@ module Samagotchi
   # Prompts only on a terminal; a script gets the list and exit 2 instead.
   class BootstrapCommand
     include CLI::Command
+    include RedactedInspect
 
     USAGE = <<~TEXT
       Usage: chi bootstrap [TARGET] [--name NAME] [--model ID] [--key-env VAR] [--no-test] [--dry-run]
