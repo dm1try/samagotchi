@@ -1456,9 +1456,7 @@ module Samagotchi
 
       # The config's default model, as the worker's /model names it.
       def default_model_name
-        @default_model_name ||= ModelProfile.required_model_name(nil)
-      rescue StandardError
-        nil
+        @default_model_name ||= ModelProfile.default_model_name
       end
 
       def reminder_origin?(origin) = origin[:client_id].to_s.start_with?(ClientId::SYSTEM_PREFIX)

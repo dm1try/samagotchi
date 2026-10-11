@@ -98,7 +98,7 @@ module Samagotchi
       @thinking_word  = thinking
       @prompt         = prompt
       @llm_context_words = llm_context
-      @default_model_name = ModelProfile.required_model_name(nil)
+      @default_model_name = ModelProfile.default_model_name
       # As typed: the Engine applies an alias where it resolves the model.
       flag_model_name = model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(model_name)
       @effective_model_name = flag_model_name || @default_model_name
@@ -127,6 +127,12 @@ module Samagotchi
         # Re-resolve client after resume may change effective model
         @client = @host_registry.resolve(@effective_model_name).client
       end
+      # No --model, no session model and no default: nothing to run.
+      raise ModelProfile::MissingModel, ModelProfile.missing_model_message if @effective_model_name.to_s.strip.empty?
+
+      # With no config default the Engine starts on the model it runs.
+      no_default = @default_model_name.nil?
+
       # The model it starts on names a configured host (a bad default.model
       # doesn't matter when --model or the session picks another).
       ModelProfile.check_host!(@effective_model_name, hosts: @host_registry.entries)
@@ -166,8 +172,10 @@ module Samagotchi
         session_id: session_id,
         no_interrupt: no_interrupt,
         # nil: the config default, unchecked here (the model the REPL starts
-        # on is checked above, and --model may make the default moot).
-        model_name: nil,
+        # on is checked above, and --model may make the default moot). With
+        # no default, the model it runs (the switch below is then skipped).
+        model_name: no_default ? @effective_model_name : nil,
+        model_typed: no_default ? @resumed_model_typed : nil,
         memories: @requested_memories,
         muted_memories: @muted_memory_names,
         recap: scratch ? nil : recap_config,
@@ -199,8 +207,9 @@ module Samagotchi
       @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow, default_model: @default_model_name,
                                       registry: @engine.command_registry)
       # Runtime --model flag or resumed session: switch the Engine (client,
-      # kernel profile) without persisting the default.
-      @engine.switch_model!(@effective_model_name, typed: @resumed_model_typed) if @effective_model_name != @default_model_name
+      # kernel profile) without persisting the default. Skipped when there's
+      # no config default (the Engine was built on the session model).
+      @engine.switch_model!(@effective_model_name, typed: @resumed_model_typed) if !no_default && @effective_model_name != @default_model_name
       # Render an idle session-recap via the cursor-safe background writer; the
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
       @recap_handle = @engine.subscribe(observer: ->(event) { @between_turns.take_recap(event) })

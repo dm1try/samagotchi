@@ -10,8 +10,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- A session with its own model resumes in its worker (`chi send`, attached) when the config names no default.model;
-  `/model clear` then says there is no default.
+- A session with its own model resumes when the config names no default.model — `chi send`, attached, the
+  plain REPL (`chi --resume ID --no-shared`), and `-p … --non-interactive` — `/model clear` says there
+  is no default.
 
 ### Added
 
