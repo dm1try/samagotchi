@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: a ref's menu. A ref with more than one target shows a `▾` on hover (a tap on a touch screen, ↓ on a focused
+  ref) with **Open in editor**, **Show in turn**, **Copy path** and, on github-pr's link, **PR diff**; the plain click
+  stays the first. **Show in turn** scrolls to the row that touched the file, opens its diff at the line and flashes
+  it. It needs no editor, so a phone on the LAN now gets an answer's refs too.
+
 ## [0.57.0] - 2026-10-11
 
 ### Added

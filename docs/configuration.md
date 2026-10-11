@@ -1191,9 +1191,11 @@ web:
   and Chrome ask per origin, so another `chi web` port asks again), and VS Code asks to allow opening local files.
 - It opens the file as it is now, not the agent's copy: after later edits a diff line's number can point elsewhere,
   and a file in a worktree that was removed won't open. The row's diff and output are what the agent saw.
-- Only a viewer on this machine gets refs: a loopback request, or this machine on its own LAN address
-  (`web.host: lan`, the LAN URL or its QR code opened here). A phone sees plain text. An SSH tunnel or a local
-  reverse proxy (`tailscale serve`) looks like loopback, so a remote viewer behind one gets refs that can't open.
+- Only a viewer on this machine opens the editor: a loopback request, or this machine on its own LAN address
+  (`web.host: lan`, the LAN URL or its QR code opened here). A phone gets the targets that need no editor (an
+  answer's ref shows its row in the turn; see the refs in [sessions.md](sessions.md)); a row's title stays plain
+  text there. An SSH tunnel or a local reverse proxy (`tailscale serve`) looks like loopback, so a remote viewer
+  behind one gets an editor target that can't open.
 - `GET /api/sessions/:id` (and its `?tail=1`) carries `capabilities.editor` (true for such a viewer) and
   `editor_url`, the template (null otherwise).
 
