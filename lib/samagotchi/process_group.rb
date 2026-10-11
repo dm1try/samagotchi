@@ -129,14 +129,14 @@ module Samagotchi
     def stop(pgid, grace:, poll:, stopped: -> { !alive?(pgid) }, wait: ->(seconds) { sleep(seconds) },
              kill_wait: KILL_WAIT_SEC, walk: true, **signal_options)
       check!(pgid)
-      leader = signal_options[:leader] || false
-      extra = walk ? descendant_groups(pgid, leader: leader) : []
+      # The group's members only: a leader reaped by now may be another process.
+      extra = walk ? descendant_groups(pgid) : []
       signal(pgid, "TERM", **signal_options)
       extra.each { |group| signal(group, "TERM") }
       all_stopped = -> { stopped.call && extra.none? { |group| group_alive?(group) } }
       return true if wait_for(all_stopped, grace, poll, wait)
 
-      extra |= descendant_groups(pgid, leader: leader) if walk
+      extra |= descendant_groups(pgid) if walk
       signal(pgid, "KILL", **signal_options)
       extra.each { |group| signal(group, "KILL") }
       wait_for(all_stopped, kill_wait, poll, wait)
