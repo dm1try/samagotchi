@@ -39,7 +39,8 @@ Configuration (config.yml `execute.*` keys and CLI flags too, as for `read`):
 - `SAMAGOTCHI_EXECUTE_TRUNCATE_AT_BYTES` (default `65536`): output above this size is truncated.
 - `SAMAGOTCHI_EXECUTE_PREVIEW_BYTES` (default `12288`): total preview budget split across head and tail.
 - `SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT` (default `80`): include estimated output token impact only when threshold is crossed.
-- `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC` (`execute.timeout_sec`, default `120`): a command running longer is stopped and answers `Error: command timed out after …s`.
+- `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC` (`execute.timeout_sec`, default `120`): what a command still running then gets is `execute.on_timeout`.
+- `SAMAGOTCHI_EXECUTE_ON_TIMEOUT` (`execute.on_timeout`, default `task`): `task` hands the command over as a background task, not killed; the result starts `Still running at the 120s limit: moved to a background task, not killed.` (`Execute::HANDED_OVER`), then its `task_id:` and the tails of stdout and stderr so far, and `task_wait` waits for it. `kill` stops it and answers `Error: command timed out after …s` (`Execute::TIMEOUT_PREFIX`) with the hint to use `task_create`. The `!cmd` bang always kills. See [Background tasks](background-tasks.md).
 
 Implementation note:
 

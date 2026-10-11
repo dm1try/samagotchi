@@ -1178,12 +1178,14 @@ bootstrap` installs it with the `core` profile). It is written only against
 this API (`lib/samagotchi/bundles/slow-commands/plugin.rb`), with `chi.on`
 hooks and a `/slow-commands` command, and has no memory file.
 
-`execute` kills a command at its limit (120 s, `execute.timeout_sec`). A full
-test suite or a build takes longer, so the model loses those two minutes,
-then starts it again with `task_create` and `task_wait`; the next session
-does the same. slow-commands remembers such a command for the project:
+At its limit (120 s, `execute.timeout_sec`) `execute` hands a command still
+running over as a background task (`execute.on_timeout: task`, the default),
+or kills it (`kill`). A full test suite or a build takes longer, so each run
+first blocks the turn for those two minutes (and, in kill mode, loses them,
+then starts again with `task_create` and `task_wait`); the next session does
+the same. slow-commands remembers such a command for the project:
 
-- An `execute` that **timed out**, or ran **`warn_ratio` of the limit** or
+- An `execute` that **timed out** or was **handed over** at the limit, or ran **`warn_ratio` of the limit** or
   longer (default 0.8, so 96 s of 120), is recorded as slow. A later run of
   it under half the limit **with exit 0** drops the entry; a fast failure (a
   load error) doesn't, since it says nothing about how long the suite takes.
@@ -1203,6 +1205,10 @@ does the same. slow-commands remembers such a command for the project:
 - **Once per command per turn**: the same `execute` again in that turn runs.
   The model insisting is a signal (maybe the suite got faster), and that run
   records the new truth. A new turn denies again.
+- In kill mode (`execute.on_timeout: kill`), a **`timeout N` past the limit**
+  is denied up front, with no history: execute stops the command first, so
+  `timeout` never fires. In task mode it runs on as a task until `timeout`
+  fires. `timeout`'s exit codes (124, 137) mean nothing special here.
 
 A command is the same when its project and its text match. The project is
 the session's git checkout (else its working directory). The text is the
@@ -1215,6 +1221,19 @@ command that ends inside a quote, `$(` or heredoc is never recorded, nor
 one with a `$(…)`, backticks or a heredoc `cat` or `tee` reads (the key
 can't tell two of those apart). A heredoc script (`python3 - <<'EOF'`)
 keeps its body in the key, so each script is its own command.
+
+Wrappers a model adds by habit don't make a new command: at the start of
+each simple command (so after a leading `cd X &&` too), `time [-p]` and
+`timeout`/`gtimeout` with its options and duration are left out, so
+`timeout 300 bundle exec rspec` and `bundle exec rspec` are one entry. `X=…`
+assignments stay, sorted (`SPEC=… rake spec` is not `rake spec`), except
+`NO_COLOR`, `FORCE_COLOR`, `CI` and `TERM`; a plain `env X=… cmd` is `X=…
+cmd`, and an `env` with an option (`-C`, `-i`, `-u`) stays as typed. The
+list shows each entry as it was last typed.
+
+Since 0.2.0 (chi 0.59.0) a hand-over counts as timed out, and the advice's
+duration also reads a handed-over task, whose `exit_code` file is in the
+state dir (the record's `exit_code_path`).
 
 Entries live in `$XDG_STATE_HOME/samagotchi/plugins/slow-commands/commands.json`,
 shared by every session (another session's record counts at once) and

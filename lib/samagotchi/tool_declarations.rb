@@ -20,7 +20,7 @@ module Samagotchi
     TOOL_SCHEMAS = [
       {
         name: "execute",
-        description: "Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata. Don't background with &; use task_create.",
+        description: "Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata. A command still running at the time limit keeps running as a background task (by default): the result gives its task_id, and task_wait waits for it. Don't background with &; use task_create.",
         parameters: {
           type: "object",
           properties: {

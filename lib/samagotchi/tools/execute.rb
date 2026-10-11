@@ -27,8 +27,11 @@ module Samagotchi
       NOT_RUN_ON_STOP = "Error: not run, the user stopped the turn"
       # The first words of a command the user's Stop killed.
       STOPPED_BY_USER = "Error: command stopped by the user"
-      # The first words of a command killed at the limit (hooks match on it).
+      # The first words of a command killed at the limit in kill mode (hooks
+      # match on it).
       TIMEOUT_PREFIX = "Error: command timed out after"
+      # Only in kill mode (execute.on_timeout: kill, the !cmd bang): in task
+      # mode a command at the limit is handed over (HANDED_OVER).
       TIMEOUT_HINT = "(killed at the limit; for a long command use task_create, then task_wait)"
       # How long the output may stay open once the shell has exited: a
       # `server &` child keeps the pipes, and the read would never end.

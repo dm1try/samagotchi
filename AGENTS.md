@@ -65,7 +65,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - `memory_write` accepts an optional `description` (and its scoped `index.md` is auto-maintained). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). Each entry is written as a managed line — `- **name** · scope · date · size — description` — with every other line preserved byte-for-byte.
 - `memory_write` also accepts `current_model_only: true` to save a model-specific overlay (`<name>.<model-key>.md`) that is auto-appended when read under that model. See `docs/memory.md`.
 - When adding new capabilities, update the relevant tools in `lib/samagotchi/tools/`.
-- Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.
+- Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands; an `execute` still running at its limit (120 s) is handed over as a task (its `task_id` is in the result) rather than killed. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.
 - Let `task_wait` return its timeout tail before separately reading a task `output_path`; use `done_pattern` when the command emits a reliable completion marker.
 - Sessions are file-based (`~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar). Retention is 14d/500 (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`, `SAMAGOTCHI_SESSION_MAX_COUNT`), `updated_at desc` by default, lazy sweep at most once per `session.sweep_interval_hours` (default 24) from `chi web`'s session hub tick (and on `GET /api/sessions`); manual via `bin/chi sessions {list,prune,clean} --dry-run`. Use `XDG_STATE_HOME` for isolated test runs; `test_run` flag auto-set when `SAMAGOTCHI_ENV`/`RACK_ENV`/`CI`.
 
@@ -76,7 +76,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Context-usage telemetry (`:context_status`, the CONTEXT line) → `docs/internals/context-telemetry.md`
 - Attached context (`chi context`, refreshed outside text) → `docs/context.md`
 - Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
-- read/execute output size limits → `docs/internals/tool-guardrails.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
+- read/execute limits (size, timeout, hand-over) → `docs/internals/tool-guardrails.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle) → `docs/plugins.md`
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
 - Session files, context notes, sending, chains, delegating → `docs/sessions.md`
