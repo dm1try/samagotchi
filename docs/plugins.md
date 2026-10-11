@@ -1171,6 +1171,69 @@ and goes with the session; another session starts from config.yml:
 | `/checkin mode ask` / `nudge` / `notify` | the mode |
 | `/checkin nudge` / `later` / `stop` | the card's actions, also by hand |
 
+## The slow-commands bundle
+
+`chi bundle install slow-commands` installs the bundle shipped with chi (`chi
+bootstrap` installs it with the `core` profile). It is written only against
+this API (`lib/samagotchi/bundles/slow-commands/plugin.rb`), with `chi.on`
+hooks and a `/slow-commands` command, and has no memory file.
+
+`execute` kills a command at its limit (120 s, `execute.timeout_sec`). A full
+test suite or a build takes longer, so the model loses those two minutes,
+then starts it again with `task_create` and `task_wait`; the next session
+does the same. slow-commands remembers such a command for the project:
+
+- An `execute` that **timed out**, or ran **`warn_ratio` of the limit** or
+  longer (default 0.8, so 96 s of 120), is recorded as slow. A later run of
+  it under half the limit **with exit 0** drops the entry; a fast failure (a
+  load error) doesn't, since it says nothing about how long the suite takes.
+  Nor does one through a filter the key leaves out (`rspec 2>&1 | tail -30`
+  exits with `tail`'s 0, and a `| head` can end it early).
+  A call the user stopped, or that was denied, records nothing.
+- The **next identical `execute`** is **denied** with advice:
+
+  ```
+  [execute] Error: denied by guardrail (bundle slow-commands): slow command. The user was not asked. This command ran past the execute limit (120 s) here on 2026-10-09. Start it with task_create, then task_wait (timeout 600). A finished task of this command took 4m10s.
+  ```
+
+  The last sentence is there when a task of the same command (and cwd)
+  finished with exit 0 in the project's `tmp/tasks`; a longer one raises the
+  `task_wait` timeout it suggests. The user sees one line:
+  `slow-commands> execute bundle exec rspec: ran past 120 s before, denied`.
+- **Once per command per turn**: the same `execute` again in that turn runs.
+  The model insisting is a signal (maybe the suite got faster), and that run
+  records the new truth. A new turn denies again.
+
+A command is the same when its project and its text match. The project is
+the session's git checkout (else its working directory). The text is the
+command's words and operators (`a && b` is not `a b`), the call's `cwd:`
+folded in as `cd web && …`, and a trailing `2>&1`, `| tail …`, `| head …`
+or `| grep …` dropped (they don't change how long it runs). Arguments stay:
+`bundle exec rspec` (the suite) is slow, `bundle exec rspec
+spec/foo_spec.rb` isn't the same command, and stays the fast path. A
+command that ends inside a quote, `$(` or heredoc is never recorded, nor
+one with a `$(…)`, backticks or a heredoc `cat` or `tee` reads (the key
+can't tell two of those apart). A heredoc script (`python3 - <<'EOF'`)
+keeps its body in the key, so each script is its own command.
+
+Entries live in `$XDG_STATE_HOME/samagotchi/plugins/slow-commands/commands.json`,
+shared by every session (another session's record counts at once) and
+forgotten after `ttl_days`.
+
+```yaml
+# config.yml
+bundles:
+  slow-commands:
+    mode: deny        # deny | notify (warn the user, never deny)
+    warn_ratio: 0.8   # a run this share of the execute limit or longer is slow
+    ttl_days: 14      # entries older than this are forgotten
+```
+
+| | |
+|---|---|
+| `/slow-commands` | this project's slow commands, numbered |
+| `/slow-commands forget 2` / `forget all` | drop one (a wrong entry) or all of them |
+
 ## The skills bundle
 
 `chi bundle install skills` (or the `dev` profile) installs the bundle shipped with chi

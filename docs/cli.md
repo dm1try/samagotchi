@@ -64,7 +64,7 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
   or with anchors gets the lines printed to paste instead. `--dry-run` shows
   what it would write.
 - **The bundles.** Unless writing the config failed, it installs the system
-  bundle and the `core` profile (loop-guard, check-in, guardrails), one line
+  bundle and the `core` profile (loop-guard, check-in, guardrails, slow-commands), one line
   each; on a terminal it then asks `Also install dev (known-names, mcp, btw,
   skills, source-links)? [y/N]`. Run again, it installs nothing new: a bundle
   you uninstalled stays out ([Bundle profiles](memory.md#bundle-profiles-core-and-dev)).

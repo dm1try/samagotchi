@@ -17,6 +17,13 @@ and commands may change between minor versions. How releases are made:
 - Web: a `path:line` in an answer or a step's text opens that file in your editor too, when it names a file the
   session's tool rows touched (`app.js:12` names the one touched file ending in it). It links once the turn has ended
   and after a reload; code blocks, links (a PR link stays the PR's) and files the session didn't touch stay text.
+- The `slow-commands` bundle, in the `core` profile: an `execute` that ran past its limit (or 80% of it) is remembered
+  for the project, and the next identical `execute` is denied once a turn with advice to start it with `task_create`
+  and wait with `task_wait` (with how long a finished task of it took, when there is one). `mode: notify` only warns;
+  `/slow-commands` lists a project's entries, `/slow-commands forget <n|all>` drops them. See "The slow-commands
+  bundle" in docs/plugins.md.
+- `after_tool_call` hooks get `call:` (the call that ran), `elapsed_ms:` (the tool's run, nil for a denied call) and
+  `result:` (the tool's own text, without the `[tool]` lead, the `ran as:` line or the cap).
 
 ### Fixed
 
