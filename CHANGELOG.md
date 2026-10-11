@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-11
+
 ### Added
 
 - `hosts.<name>.steer_cut_after` and `models.<key>.steer_cut_after`: how long a message sent as a cut waits, per host
@@ -2574,7 +2576,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.58.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.59.0...HEAD
+[0.59.0]: https://github.com/dm1try/samagotchi/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/dm1try/samagotchi/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/dm1try/samagotchi/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/dm1try/samagotchi/compare/v0.55.0...v0.56.0
