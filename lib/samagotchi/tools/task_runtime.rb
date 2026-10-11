@@ -207,7 +207,10 @@ module Samagotchi
       # has the JS twin (handedOverId).
       # @return [String, nil]
       def handed_over_id(text)
-        text.to_s[handed_over_pattern, 1]
+        text = text.to_s
+        # A regexp raises on bytes that aren't UTF-8 (a command's raw output).
+        text = text.scrub unless text.valid_encoding?
+        text[handed_over_pattern, 1]
       end
 
       def handed_over_pattern

@@ -231,7 +231,10 @@ module Samagotchi
     # An execute still running at its limit, handed over as a task
     # (Tools::Execute::HANDED_OVER).
     def handed_over?(tool_name, text)
-      tool_name == Tools::Execute::NAME && text.to_s.match?(HANDED_OVER_START)
+      return false unless tool_name == Tools::Execute::NAME && text.to_s.start_with?(Tools::Execute::HANDED_OVER)
+
+      # The first line only, scrubbed: a regexp raises on bytes that aren't UTF-8.
+      text.to_s.each_line.first.to_s.scrub.match?(HANDED_OVER_START)
     end
 
     HANDED_OVER_START = /\A#{Regexp.escape(Tools::Execute::HANDED_OVER)} \d+s limit:/

@@ -158,6 +158,9 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(event).to include(status: "ok")
       expect(event).not_to have_key(:no_match)
       expect(described_class.tool_activity_status("stdout:\n#{handed}", "execute")).to eq("error")
+      expect(described_class.tool_activity_status("stdout:\nok\xFF\xFE\nexit: 0", "execute")).to eq("ok")
+      expect(described_class.tool_activity_status("#{handed}\xFF", "execute")).to eq("ok")
+      expect(Samagotchi::Tools::TaskRuntime.handed_over_id("#{handed}\xFF")).to eq("20261010120000-1a2b3c4d")
     end
   end
 
