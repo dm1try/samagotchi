@@ -706,10 +706,12 @@ module Samagotchi
 
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
       # link of that session's chain (SessionManager.continue_session), in its
-      # folder, on its model and with its llm_context and thinking level, so
-      # dir, model, llm_context and thinking are refused beside it. 409 continued (with next_id, the
-      # link that continues it already: the page opens that one),
-      # open_children (ids), folder_gone, busy, scratch or owned_by_tui.
+      # folder, on its model and with its own setup (SessionSetup: llm_context,
+      # thinking and reasoning_history levels), so dir, model, llm_context and
+      # thinking are refused beside it (a create takes no reasoning_history).
+      # 409 continued (with next_id, the link that continues it already: the
+      # page opens that one), open_children (ids), folder_gone, busy, scratch
+      # or owned_by_tui.
       def handle_continue(body, prompt, idle)
         given = body["continues"]
         unless given.is_a?(String) && !given.strip.empty?
