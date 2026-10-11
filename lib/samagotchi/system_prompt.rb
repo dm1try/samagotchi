@@ -11,6 +11,7 @@ require_relative "model_notes"
 require_relative "bundle_needs"
 require_relative "memory_bundle/index_size"
 require_relative "thinking"
+require_relative "prompt_files"
 
 module Samagotchi
   # The system prompt an Engine gives its model: the base prompt (tool
@@ -24,8 +25,6 @@ module Samagotchi
   # tools a plugin replaces, the attached session, the thinking level) is
   # read at build time through the lookups; the memory lists are fixed.
   class SystemPrompt
-    AGENT_DESCRIPTION_FILE = "AGENTS.md"
-
     # The model a session runs on, as the prompt names it: the resolved
     # ref, its host ("name, host:port" or url), the memory overlay key, and
     # what a llama.cpp server says it serves when that differs (else nil).
@@ -464,27 +463,17 @@ module Samagotchi
 
     # ── Project / rg helpers ───────────────────────────────────────────────────
 
-    # AGENTS.md in the cwd, else at the top of its git work tree.
+    # AGENTS.md in the cwd, else at the top of its git work tree (PromptFiles).
     def project_specific_description
       return nil if skip_agent_description?
 
       path = agent_description_path
       return nil unless path
 
-      content = File.read(path, encoding: "UTF-8").strip
-      return nil if content.empty?
-
-      "Project specific description:\n#{content}"
-    rescue StandardError
-      nil
+      PromptFiles.section(path, "Project specific description:")
     end
 
-    def agent_description_path
-      cwd = Dir.pwd
-      [cwd, MemoryPaths.work_tree_root(cwd)].compact.uniq
-        .map { |dir| File.join(dir, AGENT_DESCRIPTION_FILE) }
-        .find { |path| File.file?(path) }
-    end
+    def agent_description_path = PromptFiles.agents_paths(Dir.pwd).first
 
     # Where the session runs and which project memory folder it uses. Only
     # this checkout is named: its top (at its root too, so a model doesn't
