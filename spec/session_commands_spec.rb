@@ -493,7 +493,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
   describe "!cmd" do
     it "runs the command, adds its output to the conversation and ends the rollback window" do
-      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi", env: {}).and_return("hi\n")
+      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi", env: {}, on_timeout: :kill).and_return("hi\n")
       cancelled_turn
 
       result = commands.run("!echo hi")

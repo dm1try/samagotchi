@@ -202,7 +202,7 @@ RSpec.describe Samagotchi::Tools::Execute do
     it "returns a timeout error when command exceeds configured timeout" do
       ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
 
-      result = described_class.call("ruby -e 'sleep 5'")
+      result = described_class.call("ruby -e 'sleep 5'", on_timeout: :kill)
 
       expect(result).to eq("Error: command timed out after 1s\n(killed at the limit; for a long command use task_create, then task_wait)")
       expect(result).to start_with(described_class::TIMEOUT_PREFIX)
@@ -222,9 +222,11 @@ RSpec.describe Samagotchi::Tools::Execute do
       ENV.delete("SAMAGOTCHI_EXECUTE_TIMEOUT_SEC")
       Dir.mktmpdir do |dir|
         FileUtils.mkdir_p(File.join(dir, "samagotchi"))
-        File.write(File.join(dir, "samagotchi", "config.yml"), "default:\n  model: m\nexecute:\n  timeout_sec: 1\n")
+        File.write(File.join(dir, "samagotchi", "config.yml"),
+                   "default:\n  model: m\nexecute:\n  timeout_sec: 1\n  on_timeout: kill\n")
         with_env("XDG_CONFIG_HOME" => dir) do
           expect(Samagotchi::Config.validate_yaml_sections(Samagotchi::ConfigFile.read_yaml)).to eq([])
+          # on_timeout: kill from the file too.
           expect(described_class.call("ruby -e 'sleep 5'").lines.first).to eq("Error: command timed out after 1s\n")
         end
       end
@@ -235,7 +237,7 @@ RSpec.describe Samagotchi::Tools::Execute do
     it "returns the output captured before the timeout along with the error" do
       ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "3"
 
-      result = described_class.call("echo before; echo oops >&2; sleep 10; echo never-printed")
+      result = described_class.call("echo before; echo oops >&2; sleep 10; echo never-printed", on_timeout: :kill)
 
       expect(result).to start_with("Error: command timed out after 3s\n(killed at the limit; for a long command use task_create, then task_wait)\n")
       expect(result).to include("stdout:\nbefore")
@@ -288,7 +290,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       it "kills the whole group at the timeout, a grandchild the shell waits on too" do
         ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
 
-        result = described_class.call("sleep 31.73 & wait")
+        result = described_class.call("sleep 31.73 & wait", on_timeout: :kill)
 
         expect(result).to start_with("Error: command timed out after 1s\n")
         expect(running?("sleep 31.73")).to be(false)
@@ -436,10 +438,164 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
     end
 
+    describe "logs" do
+      it "keeps no dir under the state dir once a command has finished, and reads a big log by its head and tail" do
+        ENV["SAMAGOTCHI_EXECUTE_TRUNCATE_AT_BYTES"] = "1000"
+        ENV["SAMAGOTCHI_EXECUTE_PREVIEW_BYTES"] = "100"
+        before = Dir.exist?(described_class.logs_root) ? Dir.children(described_class.logs_root) : []
+        result = described_class.call("ruby -e 'print \"h\" * 50, \"x\" * 5_000_000, \"t\" * 50'")
+
+        expect(result).to include("stdout:\ntruncated=true", "stdout_bytes=5000100", "#{"h" * 50}\n[... omitted",
+                                  "[TRUNCATED_PREVIEW_TAIL]\n#{"t" * 50}")
+        expect(Dir.children(described_class.logs_root)).to match_array(before)
+      end
+
+      it "gives the command /dev/null for stdin: a read gets EOF at once" do
+        expect(described_class.call("read x; echo got=$x")).to eq("stdout:\ngot=\n\nexit: 0")
+      end
+    end
+
+    describe "at the limit, handed over as a task (on_timeout: task)" do
+      around do |example|
+        Dir.mktmpdir do |dir|
+          Dir.chdir(dir) do
+            example.run
+          ensure
+            # Every task an example handed over, stopped through its record
+            # (which checks the pid still is the group chi started).
+            Samagotchi::Tools::TaskRuntime.list_records.each do |record|
+              Samagotchi::Tools::TaskRuntime.stop_task(record["id"], by: "model")
+            end
+          end
+        end
+      end
+
+      def task_id(result) = result[/^task_id: (\S+)$/, 1]
+
+      it "is the default: the command runs on as a task with its logs in the state dir, and finishes there" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+
+        result = described_class.call("echo before; echo oops >&2; sleep 2.5; echo done")
+        id = task_id(result)
+
+        expect(result).to eq("#{described_class.handed_over_line(1)}\ntask_id: #{id}\n" \
+                             "Wait for it with task_wait (it may take minutes); task_stop stops it.\n" \
+                             "stdout (so far, tail):\nbefore\nstderr (so far, tail):\noops")
+        expect(Samagotchi::Tools::TaskRuntime.handed_over_id("[execute]\n#{result}")).to eq(id)
+        record, = Samagotchi::Tools::TaskRuntime.get_record(id)
+        dir = File.join(described_class.logs_root, id)
+        expect(record).to include("status" => "running", "command" => "echo before; echo oops >&2; sleep 2.5; echo done",
+                                  "output_path" => File.join(dir, "stdout.log"), "stderr_path" => File.join(dir, "stderr.log"),
+                                  "exit_code_path" => File.join(dir, "exit_code"), "handed_over_by" => "execute")
+        expect(File.read(File.join(dir, "task"))).to eq(File.expand_path(Samagotchi::Tools::TaskRuntime.metadata_path(id)))
+
+        waited = Samagotchi::Tools::TaskWait.call(id, timeout: 10)
+        expect(waited).to include("status: completed", "exit_code: 0")
+        expect(File.read(record["output_path"])).to eq("before\ndone\n")
+      end
+
+      # perl's setpgrp stands in for GNU timeout's setpgid (no coreutils
+      # needed), and starts in milliseconds: it has left the group well
+      # before the limit or the Stop.
+      it "is fully stopped by task_stop, a descendant that left the group (a `timeout N cmd`) too" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+
+        result = described_class.call("cd . && perl -e 'setpgrp(0, 0); sleep 31.61'; echo after")
+        stopped = Samagotchi::Tools::TaskStop.call(task_id(result))
+
+        expect(stopped).to include("status: stopped")
+        expect(running?("sleep 31.61")).to be(false)
+      end
+
+      it "kills a command it can't hand over, as on_timeout: kill does" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        allow(Samagotchi::Tools::TaskRuntime).to receive(:adopt).and_return([nil, "Error: disk full"])
+
+        result = described_class.call("echo before; sleep 31.62")
+
+        expect(result).to start_with("Error: command timed out after 1s\n")
+        expect(result).to include("stdout:\nbefore")
+        expect(running?("sleep 31.62")).to be(false)
+        expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
+      end
+
+      it "kills at the limit with on_timeout: kill (the kwarg wins over the config)" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        ENV["SAMAGOTCHI_EXECUTE_ON_TIMEOUT"] = "task"
+
+        expect(described_class.call("sleep 31.63", on_timeout: :kill)).to start_with("Error: command timed out after 1s")
+        expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
+      ensure
+        ENV.delete("SAMAGOTCHI_EXECUTE_ON_TIMEOUT")
+      end
+
+      it "defaults execute.on_timeout to task" do
+        expect(Samagotchi::Config::ENTRIES.find { |e| e.key == "execute.on_timeout" }).to have_attributes(default: "task", enum_values: %w[task kill])
+      end
+
+      it "kills a command whose user Stop came first, a descendant that left the group too" do
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = described_class.call("cd . && perl -e 'setpgrp(0, 0); sleep 31.64'; echo after",
+                                      cancelled: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) - started > 0.5 })
+
+        expect(result).to start_with(described_class::STOPPED_BY_USER)
+        expect(running?("sleep 31.64")).to be(false)
+      end
+
+      def running?(pattern)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+        sleep 0.05 while (alive = system("pgrep", "-f", pattern, out: File::NULL)) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        alive
+      end
+    end
+
+    describe ".sweep_leftovers" do
+      let(:root) { Dir.mktmpdir }
+
+      before { allow(described_class).to receive(:logs_root).and_return(root) }
+      after { FileUtils.rm_rf(root) }
+
+      def make_dir(name, age:, pointer: nil)
+        dir = File.join(root, name)
+        FileUtils.mkdir_p(dir)
+        %w[stdout.log stderr.log].each { |log| File.write(File.join(dir, log), "x") }
+        File.write(File.join(dir, "task"), pointer) if pointer
+        time = Time.now - age
+        [dir, *Dir.children(dir).map { |c| File.join(dir, c) }].each { |path| File.utime(time, time, path) }
+        dir
+      end
+
+      it "removes a dir with no back-pointer after a day, one whose record is gone, and one past retention" do
+        record = Tempfile.new("task.json")
+        day = 24 * 3600
+        fresh = make_dir("fresh", age: 60)
+        crashed = make_dir("crashed", age: day + 60)
+        gone = make_dir("gone", age: 60, pointer: "/nowhere/task.json")
+        kept = make_dir("kept", age: 2 * day, pointer: record.path)
+        old = make_dir("old", age: 15 * day, pointer: record.path)
+
+        expect(described_class.sweep_leftovers).to contain_exactly(crashed, gone, old)
+        expect([fresh, kept].all? { |dir| Dir.exist?(dir) }).to be(true)
+      ensure
+        record&.close!
+      end
+
+      it "keeps a dir whose logs a process still holds open" do
+        dir = make_dir("held", age: 30 * 24 * 3600)
+        holder = File.open(File.join(dir, "stdout.log"), "a") # rubocop:disable Style/FileOpen -- closed in the ensure
+        holder.flock(File::LOCK_SH)
+
+        expect(described_class.sweep_leftovers).to eq([])
+        expect(Dir.exist?(dir)).to be(true)
+      ensure
+        holder&.close
+      end
+    end
+
     it "keeps partial output from a compound command whose last part hangs" do
       ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "3"
 
-      result = described_class.call("echo first-part; sleep 10")
+      result = described_class.call("echo first-part; sleep 10", on_timeout: :kill)
 
       expect(result).to start_with("Error: command timed out after 3s")
       expect(result).to include("first-part")

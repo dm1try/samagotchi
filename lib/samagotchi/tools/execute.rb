@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
-require "open3"
+require "fileutils"
+require_relative "../config"
+require_relative "../paths"
 require_relative "../process_group"
 require_relative "output_guardrails"
 require_relative "shell"
+require_relative "task_runtime"
 
 module Samagotchi
   module Tools
@@ -35,7 +38,24 @@ module Samagotchi
       # It had left the process group (setsid), so it is still running.
       BACKGROUND_DETACHED_HINT = "(a background process kept the output open and was left running; " \
                                  "to keep a server or long job running, start it with task_create)"
-      READ_CHUNK_BYTES = 65_536
+      # What a command still running at the limit gets (execute.on_timeout):
+      # :task hands it over as a task (HANDED_OVER), :kill stops it.
+      ON_TIMEOUT = %i[task kill].freeze
+      # How many of the last lines of each log a hand-over shows.
+      HAND_OVER_TAIL_LINES = 10
+      # Where each command's logs and exit_code file live while it runs, and
+      # after, for a handed-over one: <state dir>/execute/<id>/ (outside the
+      # workspace, so git and `rm -rf tmp` never see them).
+      LOGS_DIRNAME = "execute"
+      STDOUT_LOG = "stdout.log"
+      STDERR_LOG = "stderr.log"
+      # A handed-over command's dir names its task.json here (the sweep).
+      BACK_POINTER = "task"
+      # The sweep (sweep_leftovers): a dir no command holds any more, with
+      # no back-pointer after a day (chi died mid-execute), or whose task
+      # record is gone or is older than RETENTION_DAYS.
+      ORPHAN_AGE_SEC = 24 * 3600
+      RETENTION_DAYS = 14
       # The first words of a command still running at the limit and handed
       # over as a task (handed_over_line). TaskRuntime.handed_over_id, the
       # web's task_stop.js and the slow-commands bundle match on them.
@@ -51,16 +71,19 @@ module Samagotchi
       # @param cancelled [#call] true once the user stopped the turn: the
       #   command is killed (or not started) and its output so far returned
       # @param env [Hash, nil] added to the command's environment
-      def self.call(command, cwd: nil, cancelled: -> { false }, env: nil)
+      # @param on_timeout [Symbol, String, nil] :task or :kill (ON_TIMEOUT);
+      #   nil reads execute.on_timeout
+      def self.call(command, cwd: nil, cancelled: -> { false }, env: nil, on_timeout: nil)
         return NOT_RUN_ON_STOP if cancelled.call
 
         command = command.strip
         resolved_cwd = resolve_cwd(cwd)
         return "Error: cwd not found: #{resolved_cwd}" unless resolved_cwd
 
+        sweep_leftovers_once
         timeout_sec = timeout_seconds
         stdout, stderr, status, held_open = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd, cancelled: cancelled,
-                                                      env: env)
+                                                                 env: env, on_timeout: on_timeout_mode(on_timeout))
 
         stdout_block = output_block("stdout", stdout)
         stderr_block = output_block("stderr", stderr)
@@ -76,6 +99,8 @@ module Samagotchi
         parts << (silent ? "exit: #{status.exitstatus} (no output)" : "exit: #{status.exitstatus}")
         parts << (held_open == :detached ? BACKGROUND_DETACHED_HINT : BACKGROUND_HINT) if held_open
         parts.join("\n")
+      rescue HandedOver => e
+        e.text
       rescue CommandTimedOut => e
         # Keep the "Error:" first line (callers classify on it), say how to run
         # a long command, and return whatever it printed before it was killed.
@@ -86,6 +111,14 @@ module Samagotchi
         "Error: #{e.message}"
       end
 
+      # execute.on_timeout, or the caller's: :task (the default) or :kill.
+      def self.on_timeout_mode(value)
+        value = Samagotchi::Config.get("execute.on_timeout") if value.nil? || value.to_s.strip.empty?
+        mode = value.to_s.strip.downcase.to_sym
+        ON_TIMEOUT.include?(mode) ? mode : :task
+      end
+      private_class_method :on_timeout_mode
+
       def self.stopped_result(first_line, error)
         parts = [first_line]
         parts << output_block("stdout", error.stdout)
@@ -94,58 +127,77 @@ module Samagotchi
       end
       private_class_method :stopped_result
 
-      def self.run_command(command, timeout_sec:, cwd:, cancelled: -> { false }, env: nil)
-        stdout_text = ""
-        stderr_text = ""
+      # The command's stdout and stderr go to two logs in its dir under the
+      # state dir (logs_root), not to pipes: a command handed over at the
+      # limit keeps writing there after execute (or chi) is gone. chi holds
+      # each log with a shared flock across the spawn, so the command's
+      # processes inherit open files a fresh exclusive flock can't get while
+      # any of them still has one (held?). stdin is /dev/null: a background
+      # group reading the terminal would stop on SIGTTIN. The shell is
+      # detached at once; the waiter it returns reaps it, also after a
+      # hand-over, so it never stays a zombie.
+      def self.run_command(command, timeout_sec:, cwd:, cancelled: -> { false }, env: nil, on_timeout: :task)
         status = nil
         timed_out = false
         was_cancelled = false
         aborted = false
+        handed_over = false
         held_open = false
+        started_at = Time.now
         started = monotonic_time
         deadline = started + timeout_sec
 
-        Open3.popen3(env || {}, *Shell.argv(command), chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
-          stdin.close
-          readers = [stdout, stderr].map { |io| ProcessGroup::PipeReader.new(io, chunk: READ_CHUNK_BYTES) }
+        id = TaskRuntime.generate_task_id
+        dir = File.join(logs_root, id)
+        FileUtils.mkdir_p(dir)
+        logs = [File.join(dir, STDOUT_LOG), File.join(dir, STDERR_LOG)]
+        exit_code_path = File.join(dir, TaskRuntime::EXIT_CODE_FILENAME)
+        pid = spawn_logged(command, env: env, cwd: cwd, logs: logs, exit_code_path: exit_code_path)
+        wait_thr = Process.detach(pid)
 
-          begin
-            until wait_thr.join(WAIT_SLICE_SEC)
-              if cancelled.call
-                was_cancelled = true
-                break
-              elsif monotonic_time > deadline
-                timed_out = true
-                break
-              end
+        begin
+          until wait_thr.join(WAIT_SLICE_SEC)
+            if cancelled.call
+              was_cancelled = true
+              break
+            elsif monotonic_time > deadline
+              timed_out = true
+              break
             end
-            terminate_process_tree(wait_thr.pid) if timed_out || was_cancelled
-            wait_thr.join
-            status = wait_thr.value
-          rescue Exception # rubocop:disable Lint/RescueException -- kill the child, then re-raise
-            # An Interrupt (or anything else) mid-wait: the child is in its own
-            # process group, so it never saw the SIGINT. Kill it, or the reads
-            # below block until it closes stdout.
-            aborted = true
-            terminate_process_tree(wait_thr.pid)
-            raise
-          ensure
-            # The shell is gone, but a child it put in the background (`cmd &`)
-            # may still hold the pipes: wait for EOF a short grace only, then
-            # stop the command's process group and keep the output so far.
-            # Already stopped (timeout, Stop, an exception): no more checks.
-            stopping = timed_out || was_cancelled || aborted
-            outcome = await_readers(readers, until_time: monotonic_time + BACKGROUND_GRACE_SEC,
-                                             deadline: stopping ? nil : deadline,
-                                             cancelled: stopping ? -> { false } : cancelled)
-            unless outcome == :done
+          end
+          if timed_out && on_timeout == :task
+            text = hand_over(id: id, command: command, cwd: cwd, pid: pid, waiter: wait_thr, started_at: started_at,
+                             timeout_sec: timeout_sec, dir: dir, logs: logs, exit_code_path: exit_code_path)
+            if text
+              handed_over = true
+              raise HandedOver, text
+            end
+          end
+          terminate_process_tree(pid) if timed_out || was_cancelled
+          wait_thr.join
+          status = wait_thr.value
+        rescue HandedOver
+          raise
+        rescue Exception # rubocop:disable Lint/RescueException -- kill the child, then re-raise
+          # An Interrupt (or anything else) mid-wait: the child is in its own
+          # process group, so it never saw the SIGINT. Kill it.
+          aborted = true
+          terminate_process_tree(pid) if wait_thr.alive?
+          raise
+        ensure
+          unless handed_over
+            # The shell is gone; a child it put in the background may still
+            # hold the logs. Already stopped (timeout, Stop, an exception): no
+            # more checks.
+            unless timed_out || was_cancelled || aborted
+              outcome, held_open = background_check(pid, logs, deadline: deadline, cancelled: cancelled)
               was_cancelled = true if outcome == :cancelled
+              # Under on_timeout: task too: the shell is reaped, there is no
+              # leader left to hand over.
               timed_out = true if outcome == :timeout
-              stopped = stop_process_group(wait_thr.pid, readers)
-              held_open = (stopped ? :stopped : :detached) if outcome == :grace && !stopping
             end
-            readers.each { |reader| reader.finish(poll: STOP_POLL_INTERVAL_SEC, grace: STOP_GRACE_SEC) }
-            stdout_text, stderr_text = readers.map(&:text)
+            stdout_text, stderr_text = logs.map { |path| read_log(path) }
+            FileUtils.rm_rf(dir)
           end
         end
 
@@ -156,33 +208,150 @@ module Samagotchi
       end
       private_class_method :run_command
 
-      # Waits for both readers to hit EOF until +until_time+, the overall
+      # @return [Integer] the pid of the shell, which leads its own group
+      def self.spawn_logged(command, env:, cwd:, logs:, exit_code_path:)
+        ios = logs.map { |path| File.open(path, "w") }
+        ios.each { |io| io.flock(File::LOCK_SH) }
+        ProcessGroup.spawn(env || {}, *Shell.argv(TaskRuntime.wrapped_shell_command(command, exit_code_path)),
+                           chdir: cwd, in: File::NULL, out: ios[0], err: ios[1])
+      ensure
+        ios&.each(&:close)
+      end
+      private_class_method :spawn_logged
+
+      # After the shell exited: a background child still holding the logs
+      # (`cmd &`) gets BACKGROUND_GRACE_SEC, then its group is stopped
+      # (BACKGROUND_HINT), unless it left the group (setsid) and holds them
+      # still (BACKGROUND_DETACHED_HINT, left running). One that holds none
+      # (`nohup cmd >f 2>&1 &`) is left alone, with no note.
+      # @return [Array(Symbol, Symbol|false)] the outcome (:done, :grace,
+      #   :timeout, :cancelled) and the hint (:stopped, :detached or false)
+      def self.background_check(pgid, logs, deadline:, cancelled:)
+        return [:done, false] unless held?(logs)
+
+        outcome = await_release(logs, until_time: monotonic_time + BACKGROUND_GRACE_SEC, deadline: deadline, cancelled: cancelled)
+        return [outcome, false] if outcome == :done
+
+        # Only the group: the leader's pid is reaped, so it may name another process.
+        ProcessGroup.stop(pgid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, stopped: -> { !held?(logs) })
+        return [outcome, false] unless outcome == :grace
+
+        [outcome, held?(logs) ? :detached : :stopped]
+      end
+      private_class_method :background_check
+
+      # Whether some process still has one of +paths+ open from the spawn:
+      # a flock belongs to the open file description, so an exclusive try
+      # fails while any inherited copy is open (~0.2 ms; no lsof, no /proc).
+      def self.held?(paths)
+        paths.any? do |path|
+          File.open(path, "r") do |file|
+            got = file.flock(File::LOCK_EX | File::LOCK_NB)
+            file.flock(File::LOCK_UN) if got
+            !got
+          end
+        rescue Errno::ENOENT
+          false
+        end
+      end
+
+      # Polls the logs until no one holds them (+until_time+), the overall
       # +deadline+ or a Stop. Returns :done, :grace, :timeout or :cancelled.
-      def self.await_readers(readers, until_time:, deadline:, cancelled:)
+      def self.await_release(paths, until_time:, deadline:, cancelled:)
         loop do
-          return :done if readers.all?(&:done?)
+          return :done unless held?(paths)
           return :cancelled if cancelled.call
           return :timeout if deadline && monotonic_time > deadline
           return :grace if monotonic_time > until_time
 
-          readers.find { |r| !r.done? }&.wait(STOP_POLL_INTERVAL_SEC)
+          sleep(STOP_POLL_INTERVAL_SEC)
         end
       end
-      private_class_method :await_readers
+      private_class_method :await_release
 
-      # The shell has exited (its pid is reaped) but its process group still
-      # has members holding the output: TERM the group, then KILL it. A process
-      # that left the group (setsid) is out of reach; the pipes get closed.
-      # True once the output was released, false if something still holds it.
-      # Only the group: the leader's pid is reaped, so it may name another process.
-      def self.stop_process_group(pgid, readers)
-        released = -> { readers.all?(&:done?) }
-        wait = ->(seconds) { readers.find { |r| !r.done? }&.wait(seconds) }
-        return true if ProcessGroup.stop(pgid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, stopped: released, wait: wait)
+      # The whole log when it is under execute.truncate_at_bytes, else its
+      # head and tail only, read by seek (never the whole 100 MB).
+      # @return [String, LogPreview]
+      def self.read_log(path)
+        return "" unless File.file?(path)
 
-        await_readers(readers, until_time: monotonic_time + STOP_GRACE_SEC, deadline: nil, cancelled: -> { false }) == :done
+        size = File.size(path)
+        return File.read(path) if size <= truncate_at_bytes
+
+        LogPreview.new(size, OutputGuardrails.head_tail_from_file(path: path, file_size: size, preview_bytes: preview_bytes))
       end
-      private_class_method :stop_process_group
+      private_class_method :read_log
+
+      # A command still running at the limit becomes a task (TaskRuntime.
+      # adopt) with the logs where they are; a back-pointer in its dir names
+      # the record for the sweep. nil when it can't be adopted (the caller
+      # then kills it as in :kill mode) or when it ended meanwhile (the
+      # caller then reads it as finished).
+      # @return [String, nil] the HANDED_OVER result
+      def self.hand_over(id:, command:, cwd:, pid:, waiter:, started_at:, timeout_sec:, dir:, logs:, exit_code_path:)
+        return nil unless waiter.alive?
+
+        record, error = TaskRuntime.adopt(id: id, command: command, cwd: cwd, pid: pid, started_at: started_at,
+                                          output_path: logs[0], stderr_path: logs[1], exit_code_path: exit_code_path)
+        return nil if error
+
+        File.write(File.join(dir, BACK_POINTER), File.expand_path(TaskRuntime.metadata_path(record["id"])))
+        # Ended between the deadline and the adopt: the record says how.
+        TaskRuntime.get_record(id) unless waiter.alive?
+        lines = [handed_over_line(timeout_sec), "task_id: #{id}",
+                 "Wait for it with task_wait (it may take minutes); task_stop stops it."]
+        { "stdout" => logs[0], "stderr" => logs[1] }.each do |label, path|
+          tail = TaskRuntime.output_tail_lines(path, HAND_OVER_TAIL_LINES)
+          lines << "#{label} (so far, tail):\n#{tail.chomp}" unless tail.empty?
+        end
+        lines.join("\n")
+      end
+      private_class_method :hand_over
+
+      # <state dir>/execute: every command's dir (LOGS_DIRNAME).
+      def self.logs_root = File.join(Paths.state_dir, LOGS_DIRNAME)
+
+      # Once per process, at the first command (sweep_leftovers).
+      def self.sweep_leftovers_once
+        return if @swept
+
+        @swept = true
+        sweep_leftovers
+      rescue StandardError
+        nil
+      end
+      private_class_method :sweep_leftovers_once
+
+      # Removes the dirs under logs_root no process holds any more: one
+      # without a back-pointer, older than ORPHAN_AGE_SEC (a chi that died
+      # mid-execute); one whose back-pointer's task.json is gone, or whose
+      # logs are older than RETENTION_DAYS (a handed-over task long done).
+      # A dir whose logs are still held is a command still running: kept.
+      # The records live in each project's tmp/tasks, which the state dir
+      # can't list: hence the back-pointer.
+      # @return [Array<String>] the dirs removed
+      def self.sweep_leftovers(now: Time.now)
+        Dir.glob(File.join(logs_root, "*")).select { |dir| File.directory?(dir) }.filter_map do |dir|
+          next unless leftover?(dir, now)
+
+          FileUtils.rm_rf(dir)
+          dir
+        end
+      end
+
+      def self.leftover?(dir, now)
+        logs = [File.join(dir, STDOUT_LOG), File.join(dir, STDERR_LOG)]
+        return false if held?(logs)
+
+        age = now - ([dir, *logs].filter_map { |path| File.mtime(path) if File.exist?(path) }.max || now)
+        pointer = File.join(dir, BACK_POINTER)
+        return age > ORPHAN_AGE_SEC unless File.file?(pointer)
+
+        !File.file?(File.read(pointer).strip) || age > RETENTION_DAYS * 24 * 3600
+      rescue SystemCallError
+        false
+      end
+      private_class_method :leftover?
 
       # The shell still runs: TERM its group (or the shell alone, if it left
       # the group), then KILL it once the grace is over.
@@ -212,15 +381,29 @@ module Samagotchi
       end
       private_class_method :resolve_cwd
 
+      def self.truncate_at_bytes
+        OutputGuardrails.config_positive_int("execute.truncate_at_bytes", OutputGuardrails::DEFAULT_TRUNCATE_AT_BYTES)
+      end
+      private_class_method :truncate_at_bytes
+
+      def self.preview_bytes
+        OutputGuardrails.config_positive_int("execute.preview_bytes", OutputGuardrails::DEFAULT_PREVIEW_BYTES)
+      end
+      private_class_method :preview_bytes
+
+      # @param content [String, LogPreview] a log read whole, or its head
+      #   and tail (read_log)
       def self.output_block(label, content)
         return nil if content.nil? || content.empty?
 
-        truncate_at_bytes = OutputGuardrails.config_positive_int("execute.truncate_at_bytes", OutputGuardrails::DEFAULT_TRUNCATE_AT_BYTES)
-        preview_bytes = OutputGuardrails.config_positive_int("execute.preview_bytes", OutputGuardrails::DEFAULT_PREVIEW_BYTES)
         bytes = content.bytesize
-        return "#{label}:\n#{content}" if bytes <= truncate_at_bytes
+        return "#{label}:\n#{content}" if bytes <= truncate_at_bytes && !content.is_a?(LogPreview)
 
-        preview = OutputGuardrails.head_tail_from_string(content: content, preview_bytes: preview_bytes)
+        preview = if content.is_a?(LogPreview)
+                    content.preview
+                  else
+                    OutputGuardrails.head_tail_from_string(content: content, preview_bytes: preview_bytes)
+                  end
 
         [
           "#{label}:",
@@ -245,6 +428,29 @@ module Samagotchi
           token_key: "estimated_tokens_for_command_output",
           pct_key: "estimated_window_pct_for_command_output"
         )
+      end
+
+      # A big log: its size, and the head and tail read by seek, which
+      # output_block shows as it shows a long string's.
+      class LogPreview
+        attr_reader :bytesize, :preview
+
+        def initialize(bytesize, preview)
+          @bytesize = bytesize
+          @preview = preview
+        end
+
+        def empty? = @bytesize.zero?
+      end
+
+      # Raised out of the wait with the hand-over's text: no read, no rm_rf.
+      class HandedOver < StandardError
+        attr_reader :text
+
+        def initialize(text)
+          @text = text
+          super("handed over")
+        end
       end
 
       class CommandTimedOut < StandardError

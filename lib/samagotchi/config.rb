@@ -247,6 +247,9 @@ module Samagotchi
       Entry.new(key: "execute.telemetry_threshold_pct", yaml_path: %w[execute telemetry_threshold_pct], type: :integer, default: 80,     expose: %i[env config cli]),
       # Seconds one execute command may run before it is stopped (Tools::Execute::TIMEOUT_SEC).
       Entry.new(key: "execute.timeout_sec",             yaml_path: %w[execute timeout_sec],             type: :integer, default: 120,    expose: %i[env config cli]),
+      # What happens to a command still running at that limit (Tools::Execute::ON_TIMEOUT): task hands it over as a
+      # background task (task_wait waits for it), kill stops it.
+      Entry.new(key: "execute.on_timeout",              yaml_path: %w[execute on_timeout],              type: :enum,    default: "task", expose: %i[env config cli], enum_values: %w[task kill]),
       # Whether execute declares its optional description parameter (a few model-written words, a tool row's title).
       Entry.new(key: "execute.description",             yaml_path: %w[execute description],             type: :bool,    default: true,   expose: %i[env config]),
 

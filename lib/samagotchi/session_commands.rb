@@ -328,7 +328,9 @@ module Samagotchi
       command = text.delete_prefix(SHELL_BANG_PREFIX).strip
       return reply("!: please provide a shell command after '!'", status: :error) if command.empty?
 
-      output = Samagotchi::Tools::Execute.call(command, env: Samagotchi::Tools::Builtins.cli_model_unset)
+      # Killed at the limit, never handed over: the output goes in a user
+      # message, which no one reads a task id from (created_ids_in).
+      output = Samagotchi::Tools::Execute.call(command, env: Samagotchi::Tools::Builtins.cli_model_unset, on_timeout: :kill)
       @engine.append_messages([{ role: "user", content: "!(#{command})\n#{output}" }])
       # Rolling back past this would silently drop the command output.
       @turn_flow.note_conversation_changed

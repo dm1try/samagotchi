@@ -148,6 +148,17 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_event("execute", { name: "execute", content: "false" }, "exit: 1 (no output)")[:status])
         .to eq("error")
     end
+
+    # Its output tail is the command's so far: an "exit: 1" there is no failure and no empty search.
+    it "calls an execute handed over as a task ok, never no_match, whatever its output tail says" do
+      handed = "#{Samagotchi::Tools::Execute.handed_over_line(120)}\ntask_id: 20261010120000-1a2b3c4d\n" \
+               "Wait for it with task_wait (it may take minutes); task_stop stops it.\nstdout (so far, tail):\nexit: 1"
+      expect(described_class.tool_activity_status(handed, "execute", command: "grep -r x .; sleep 300")).to eq("ok")
+      event = described_class.tool_activity_event("execute", { name: "execute", content: "grep -r x .; sleep 300" }, handed)
+      expect(event).to include(status: "ok")
+      expect(event).not_to have_key(:no_match)
+      expect(described_class.tool_activity_status("stdout:\n#{handed}", "execute")).to eq("error")
+    end
   end
 
   describe ".no_match?" do

@@ -1131,7 +1131,7 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "runs !cmd in the worker and keeps its output for the next turn" do
-        allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi", env: {}).and_return("hi\n")
+        allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi", env: {}, on_timeout: :kill).and_return("hi\n")
         start_worker(poll_interval: 5)
 
         done = ran(JSON.parse(post_command("!echo hi").body)["command_id"])
