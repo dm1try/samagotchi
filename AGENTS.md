@@ -69,5 +69,26 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Let `task_wait` return its timeout tail before separately reading a task `output_path`; use `done_pattern` when the command emits a reliable completion marker.
 - Sessions are file-based (`~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar). Retention is 14d/500 (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`, `SAMAGOTCHI_SESSION_MAX_COUNT`), `updated_at desc` by default, lazy sweep at most once per `session.sweep_interval_hours` (default 24) from `chi web`'s session hub tick (and on `GET /api/sessions`); manual via `bin/chi sessions {list,prune,clean} --dry-run`. Use `XDG_STATE_HOME` for isolated test runs; `test_run` flag auto-set when `SAMAGOTCHI_ENV`/`RACK_ENV`/`CI`.
 
+## Where to read before changing a layer
+- Engine, turn loop, KernelLoop/ChatLoop, tool dispatch → `docs/internals/engine.md`; components, Worker, Bridge, web → `docs/architecture.md`
+- System prompt order, request layout, prompt caching → `docs/internals/prompt-caching.md`
+- LLM context strategies (`llm_context`, the forget layer) → `docs/internals/llm-context-forget.md`
+- Context-usage telemetry (`:context_status`, the CONTEXT line) → `docs/internals/context-telemetry.md`
+- Attached context (`chi context`, refreshed outside text) → `docs/context.md`
+- Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
+- read/execute output size limits → `docs/internals/tool-guardrails.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
+- Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle) → `docs/plugins.md`
+- Bundle install, upgrade and build → `docs/internals/bundles.md`
+- Session files, context notes, sending, chains, delegating → `docs/sessions.md`
+- chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
+- `chi broadcast` → `docs/broadcast.md`
+- macOS desktop helper → `docs/desktop.md`
+- Memory scopes, tools, overlays, model notes, skills, bundles' memories → `docs/memory.md`
+- Settings, config.yml, env vars → `docs/configuration.md`
+- CLI commands and REPL → `docs/cli.md`
+- Gemma 4 native tool calls and thought context → `docs/internals/gemma4-contract.md`
+- Specs, affected specs, lint, worktrees → `docs/testing.md`
+- Versions, bundle versions, release runbook → `docs/releasing.md`
+
 ## Releases
 Releases follow `docs/releasing.md`: versioning (gem == system bundle; other bundles bump their own version), CHANGELOG rules, and the runbook (`rake release:draft_changelog` → the user approves → `rake release:bump[X.Y.Z]` → `rake release:check` → tag `vX.Y.Z` → GitHub Actions publishes). Never publish or push a tag without the user's OK.
