@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Web: more refs. An edit or write approval card's path opens the current file at the first line the dry run
+  changes, and its diff lines open at theirs, so you can look at the real file before you approve. A read of a whole
+  file or a range (not the head/tail preview of a big file) gets a closed `lines 40–60` under its output: opened, it
+  shows the text as read with line numbers, and a click on a line opens the file there.
+
 ### Fixed
 
 - The host registry and a plugin's `ctx` no longer print the environment (API keys included) when inspected, e.g.
