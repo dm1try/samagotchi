@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { availableKinds, editorUrl, installRefClicks, refAction, refAttrs, refTarget, setRefKinds } from "../../../lib/samagotchi/web/public/refs.js";
 import { toolRowHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
 import { diffHtml } from "../../../lib/samagotchi/web/public/diff_view.js";
+import { createQuestionCards } from "../../../lib/samagotchi/web/public/question_cards.js";
 
 const VSCODE = "vscode://file{path}:{line}";
 const viewer = { editor: true, editorUrl: VSCODE };
@@ -63,12 +64,55 @@ test("refTarget: a row title opens its file at its line, else at the first chang
   read.remove();
 });
 
-test("refTarget: a diff line outside a row (an approval card) and a row without a ref are none", () => {
+// An edit's approval card as the page draws it (question_cards.js).
+function approvalCard(approval) {
+  const root = mount("");
+  const cards = createQuestionCards({
+    sessionId: () => "s1", clientId: "web", place: (card) => root.append(card), isNearBottom: () => false,
+    scrollToEnd: () => {}, removeHintIfEmpty: () => {}, api: {},
+  });
+  cards.renderQuestion({ id: "a1", kind: "approval", question: "Edit?", options: ["Allow", "Deny"], approval });
+  return root;
+}
+
+test("refTarget: an approval card's path opens the current file at the dry run's first change; its diff lines at theirs", () => {
+  const root = approvalCard({ tool: "edit", paths: ["/p/lib/a.rb"], reason: "r", preview: editRow.diff });
+  const path = root.querySelector(".approval-what .ref");
+  const target = refTarget(path);
+  assert.deepEqual({ kind: target.kind, path: target.path, line: target.line }, { kind: "file", path: "/p/lib/a.rb", line: 11 });
+  assert.ok(target.owner.matches(".bubble.approval"));
+  assert.equal(refTarget(root.querySelector(".approval-diff .diff-line.diff-add")).line, 11);
+  assert.equal(refTarget(root.querySelector(".approval-diff .diff-line.diff-hunk")).line, 10);
+  assert.equal(refTarget(root.querySelector(".approval-tool")), null);
+
+  const opened = [];
+  installRefClicks(root, () => viewer, { open: (url) => opened.push(url), selection: () => null });
+  path.dispatchEvent(new window.MouseEvent("click", { bubbles: true, button: 0 }));
+  root.querySelector(".approval-diff .diff-line.diff-hunk").dispatchEvent(new window.MouseEvent("click", { bubbles: true, button: 0 }));
+  assert.deepEqual(opened, ["vscode://file/p/lib/a.rb:11", "vscode://file/p/lib/a.rb:10"]);
+  root.remove();
+});
+
+test("refTarget: a write approval without a diff opens at line 1; a command approval has no ref", () => {
+  const write = approvalCard({ tool: "write", paths: ["/p/new.rb", "/p/two.rb"], reason: "r" });
+  const [first, second] = write.querySelectorAll(".approval-what .ref");
+  assert.equal(refTarget(first).line, null);
+  assert.equal(refTarget(second).path, "/p/two.rb");
+  const command = approvalCard({ tool: "execute", command: "cat /p/a.rb", paths: ["/p/a.rb"], reason: "r" });
+  assert.equal(command.querySelector("[data-ref-kind]"), null);
+  write.remove();
+  command.remove();
+});
+
+test("refTarget: a diff line outside a row or a card, and a row without a ref, are none", () => {
+  const loose = mount(`<div class="bubble">${diffHtml(editRow.diff)}</div>`);
+  assert.equal(refTarget(loose.querySelector(".diff-line.diff-add")), null);
   const card = mount(`<div class="bubble question approval">${diffHtml(editRow.diff)}</div>`);
   assert.equal(refTarget(card.querySelector(".diff-line.diff-add")), null);
   const plain = mount(toolRowHtml({ ...editRow, ref: null }));
   assert.equal(plain.querySelector("[data-ref-kind]"), null);
   assert.equal(refTarget(plain.querySelector(".diff-line.diff-add")), null);
+  loose.remove();
   card.remove();
   plain.remove();
 });

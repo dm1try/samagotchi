@@ -242,6 +242,25 @@ test("an approval: its details, Deny, and a denied answer marks it", () => {
   assert.equal(card.classList.contains("denied"), true);
 });
 
+test("an edit approval: one ref per path, the path text as before", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ id: "a2", kind: "approval", question: "Edit?", options: ["Allow", "Deny"],
+    approval: { tool: "write", paths: ["/r/a.rb", "/r/b c.rb"], reason: "outside" } });
+  const code = cards.questionCard().querySelector(".approval-what code");
+  const refs = code.children.filter((c) => c.tagName === "SPAN");
+  assert.deepEqual(refs.map((r) => [r.className, r.dataset.refKind, r.dataset.refPath, r.textContent]),
+    [["ref", "file", "/r/a.rb", "/r/a.rb"], ["ref", "file", "/r/b c.rb", "/r/b c.rb"]]);
+  assert.equal(code.children.map((c) => c.textContent).join(""), "/r/a.rb\n/r/b c.rb");
+});
+
+test("an approval's directory path (a plugin's, ending in /) stays plain text", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ id: "a3", kind: "approval", question: "Save?", options: ["Allow", "Deny"],
+    approval: { tool: "save_note", paths: ["/r/notes/", "/r/a.rb"], reason: "outside" } });
+  const code = cards.questionCard().querySelector(".approval-what code");
+  assert.deepEqual(code.children.map((c) => [c.tagName, c.textContent]), [["#TEXT", "/r/notes/"], ["#TEXT", "\n"], ["SPAN", "/r/a.rb"]]);
+});
+
 test("removeQuestion drops the live card", () => {
   const { cards, history } = setup();
   cards.renderQuestion(PQ);

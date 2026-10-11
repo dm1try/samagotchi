@@ -371,8 +371,8 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 /* Refs (refs.js): text until hovered, and only for a kind this viewer has an action for (body.refs-file). */
 .refs-file .ref[data-ref-kind="file"]:hover{color:var(--accent);text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}
 .refs-file .ref[data-ref-kind="file"]:hover::after{content:"\2197";margin-left:.3em;color:var(--text-faint);display:inline-block}
-.refs-file .activity-row:has(.ref[data-ref-kind="file"]) .diff-line[data-line]:hover{cursor:pointer;box-shadow:inset 2px 0 var(--accent)}
-.refs-file .activity-row:has(.ref[data-ref-kind="file"]) .diff-line[data-line]:hover::after{content:"\2197  " attr(data-line);float:right;padding-left:12px;color:var(--text-faint)}
+.refs-file :is(.activity-row,.bubble.approval):has(.ref[data-ref-kind="file"]) .diff-line[data-line]:hover{cursor:pointer;box-shadow:inset 2px 0 var(--accent)}
+.refs-file :is(.activity-row,.bubble.approval):has(.ref[data-ref-kind="file"]) .diff-line[data-line]:hover::after{content:"\2197  " attr(data-line);float:right;padding-left:12px;color:var(--text-faint)}
 .diff-add{background:var(--diff-add-bg);color:var(--diff-add-text)}
 .diff-del{background:var(--diff-del-bg);color:var(--diff-del-text)}
 .diff-hunk{color:var(--text-faint)}

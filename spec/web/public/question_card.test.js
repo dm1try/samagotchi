@@ -180,6 +180,15 @@ test("approvalView passes an edit's dry-run diff on as preview, and adds nothing
   assert.equal("preview" in approvalView(approval), false);
 });
 
+test("approvalView keeps the paths as a list (one ref each on the card); a command has none", () => {
+  const write = { ...approval, approval: { ...approval.approval, tool: "write", command: undefined, paths: ["/x/a.rb", "/x/b.rb"] } };
+  assert.deepEqual(approvalView(write).paths, ["/x/a.rb", "/x/b.rb"]);
+  assert.equal(approvalView(write).what, "/x/a.rb\n/x/b.rb");
+  assert.equal("paths" in approvalView(approval), false);
+  const both = { ...approval, approval: { ...approval.approval, paths: ["/x/a.rb"] } };
+  assert.equal("paths" in approvalView(both), false);
+});
+
 const relayed = {
   ...approval,
   id: "a2",
