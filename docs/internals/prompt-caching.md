@@ -32,7 +32,8 @@ right-hand column happens.
 │   model notes (model_notes_* matching the model)                         │  memory / AGENTS.md
 │   explicit (preloaded) memories                                          │
 │   AGENTS.md (root → cwd)                                                 │  (picked up by a new
-│   project + system memory indexes                                        │  process or a rebuild)
+│   appended files (append_system_prompt:, --append-system-prompt)         │  process or a rebuild)
+│   project + system memory indexes                                        │
 │                         ◄── remote Claude: cache_control breakpoint #1   │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ SYSTEM, volatile tail (per session, least → most changing)               │

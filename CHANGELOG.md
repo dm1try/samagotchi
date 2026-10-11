@@ -11,6 +11,10 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - chi web has a favicon: χ on a blue-to-violet rounded square. Safari showed a "1" monogram before.
+- `chi --append-system-prompt FILE` (repeatable) and a config.yml `append_system_prompt:` list: a file's text goes
+  into the system prompt after AGENTS.md, in the cached part. A relative config entry is looked up where chi runs
+  (`append_system_prompt: [CLAUDE.md]`); the flag's files are saved in the session and kept by forks and continues.
+  `/stats` names the prompt's files on a `prompt files:` line.
 
 ### Changed
 

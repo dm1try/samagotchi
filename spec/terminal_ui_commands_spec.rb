@@ -253,6 +253,16 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, {})).not_to include("model notes")
     end
 
+    it "shows the files whose text is in the session's prompt in /stats, relative to the checkout" do
+      top = Samagotchi::MemoryPaths.work_tree_root(Dir.pwd)
+      files = [File.join(top, "AGENTS.md"), File.join(top, "lib", "AGENTS.md"), File.join(Dir.home, "notes", "x.md")]
+
+      expect(agent.send(:format_session_metrics, { prompt_files: files }))
+        .to include("prompt files:     AGENTS.md, lib/AGENTS.md, ~/notes/x.md")
+      expect(agent.send(:format_session_metrics, { prompt_files: [] })).not_to include("prompt files")
+      expect(agent.send(:format_session_metrics, {})).not_to include("prompt files")
+    end
+
     it "shows the prompt profile and where it came from in /stats" do
       metrics = agent.engine.metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")

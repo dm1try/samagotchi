@@ -16,6 +16,10 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
     expect(Samagotchi::Config.validate_yaml_sections(data)).to eq([])
   end
 
+  it "knows the top-level append_system_prompt: list" do
+    expect(problems("append_system_prompt:\n  - CLAUDE.md\nmemories:\n  - notes\n")).to eq([])
+  end
+
   it "warns about an unknown key, with a close known key as a suggestion" do
     expect(problems(<<~YAML)).to eq([
       default: {modle: m}

@@ -267,6 +267,31 @@ RSpec.describe Samagotchi::ConfigFile do
     end
   end
 
+  describe ".appended_prompt_files" do
+    def appended(body)
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        path = File.join(dir, "config.yml")
+        File.write(path, body)
+        described_class.appended_prompt_files(path: path)
+      end
+    end
+
+    it "is the append_system_prompt: list with ~ expanded and relative entries kept as written" do
+      expect(appended("append_system_prompt:\n  - CLAUDE.md\n  - ~/notes/a.md\n  - /etc/b.md\n  - ''\n"))
+        .to eq(["CLAUDE.md", File.join(Dir.home, "notes", "a.md"), "/etc/b.md"])
+    end
+
+    it "skips only an entry whose ~user can't be expanded, keeping the others" do
+      expect(appended("append_system_prompt:\n  - ~nosuchuser_zz/x.md\n  - CLAUDE.md\n")).to eq(["CLAUDE.md"])
+    end
+
+    it "takes a single string, and is [] without the key or with a malformed one" do
+      expect(appended("append_system_prompt: CLAUDE.md\n")).to eq(["CLAUDE.md"])
+      expect(appended("default:\n  model: m\n")).to eq([])
+      expect(appended("append_system_prompt: {a: 1}\n")).to eq([])
+    end
+  end
+
   describe ".preloaded_memories" do
     around do |example|
       ENV.delete("XDG_CONFIG_HOME")

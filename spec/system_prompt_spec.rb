@@ -189,3 +189,88 @@ RSpec.describe Samagotchi::SystemPrompt, "#prompt_files" do
     expect(prompt.prompt_files).to eq([File.join(@repo, "AGENTS.md")])
   end
 end
+
+RSpec.describe Samagotchi::SystemPrompt, "appended files" do
+  around do |example|
+    saved = ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
+    Dir.mktmpdir do |tmp|
+      @tmp = File.realpath(tmp)
+      @repo = File.join(@tmp, "repo")
+      FileUtils.mkdir_p(File.join(@repo, ".git"))
+      FileUtils.mkdir_p(File.join(@repo, "pkg"))
+      File.write(File.join(@repo, "AGENTS.md"), "root notes")
+      example.run
+    end
+  ensure
+    saved.nil? ? ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD") : ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = saved
+  end
+
+  let(:config_entries) { [] }
+
+  before do
+    allow(Samagotchi::ConfigFile).to receive_messages(preloaded_memories: [], appended_prompt_files: config_entries)
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call) { |name, **| name.to_s.empty? ? "- **idx** · 1 B\n" : "Error: none" }
+  end
+
+  def prompt_for(files)
+    described_class.new(profile: -> { Samagotchi::ModelProfile.for("gemma4") }, tools: -> { Samagotchi::Tools::Registry.new },
+                        session: -> {}, thinking: -> {}, appended_files: files)
+  end
+
+  def write(path, text)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, text)
+    path
+  end
+
+  def build_in(prompt, dir = @repo) = Dir.chdir(dir) { prompt.build(chat: true) }
+
+  it "goes after the AGENTS.md chain and before the memory indexes, one section per file" do
+    a = write(File.join(@repo, "docs", "a.md"), "alpha")
+    b = write(File.join(@tmp, "elsewhere", "b.md"), "beta")
+    prompt = prompt_for([a, b])
+    text = build_in(prompt)
+    expect(text).to include("Project specific description:\nroot notes\n" \
+                            "Appended from docs/a.md:\nalpha\n\nAppended from #{b}:\nbeta\nProject memories:")
+    expect(prompt.prompt_files).to eq([File.join(@repo, "AGENTS.md"), a, b])
+  end
+
+  it "puts the config entries first, resolves a relative one against the cwd and skips a missing one" do
+    write(File.join(@repo, "pkg", "CLAUDE.md"), "claude notes")
+    cli = write(File.join(@repo, "cli.md"), "cli notes")
+    config_entries.replace(["CLAUDE.md", "missing.md", cli])
+    prompt = prompt_for([cli])
+    text = build_in(prompt, File.join(@repo, "pkg"))
+    expect(text).to include("Appended from pkg/CLAUDE.md:\nclaude notes\n\nAppended from cli.md:\ncli notes\nProject memories:")
+    expect(text.scan("cli notes").size).to eq(1)
+    expect(prompt.prompt_files).to eq([File.join(@repo, "AGENTS.md"), File.join(@repo, "pkg", "CLAUDE.md"), cli])
+  end
+
+  it "drops a file the AGENTS.md chain already holds, and leaves out an empty one" do
+    empty = write(File.join(@repo, "empty.md"), "\n")
+    prompt = prompt_for([File.join(@repo, "AGENTS.md"), empty])
+    text = build_in(prompt)
+    expect(text.scan("root notes").size).to eq(1)
+    expect(text).not_to include("Appended from")
+    expect(prompt.prompt_files).to eq([File.join(@repo, "AGENTS.md")])
+  end
+
+  it "leaves out a file gone at a later rebuild" do
+    a = write(File.join(@repo, "a.md"), "alpha")
+    prompt = prompt_for([a])
+    expect(build_in(prompt)).to include("Appended from a.md:\nalpha")
+    File.delete(a)
+    prompt.reset!
+    expect(build_in(prompt)).not_to include("Appended from")
+    expect(prompt.prompt_files).to eq([File.join(@repo, "AGENTS.md")])
+  end
+
+  it "reads the config list once, when the prompt is made" do
+    prompt_for([])
+    prompt = prompt_for([])
+    build_in(prompt)
+    prompt.reset!
+    build_in(prompt)
+    expect(Samagotchi::ConfigFile).to have_received(:appended_prompt_files).twice
+  end
+end

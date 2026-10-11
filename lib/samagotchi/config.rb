@@ -272,10 +272,10 @@ module Samagotchi
       Entry.new(key: "skip_agents_md",           yaml_path: %w[skip_agents_md],           type: :bool,   default: false,            expose: %i[env config])
     ].freeze
 
-    # Top-level maps read by their own code, whose entry names and contents
-    # are the user's: ConfigFile.model_aliases / preloaded_memories,
-    # Hooks::Loader, Engine#read_bundle_settings.
-    FREE_FORM_MAPS = %w[model_aliases hooks bundles memories].freeze
+    # Top-level maps and lists read by their own code, whose entry names and
+    # contents are the user's: ConfigFile.model_aliases / preloaded_memories /
+    # appended_prompt_files, Hooks::Loader, Engine#read_bundle_settings.
+    FREE_FORM_MAPS = %w[model_aliases hooks bundles memories append_system_prompt].freeze
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
@@ -985,6 +985,34 @@ module Samagotchi
       items.flat_map { |v| v.to_s.split(",") }.map(&:strip).reject(&:empty?)
     rescue StandardError
       []
+    end
+
+    # Resolve the `append_system_prompt:` list: files whose text goes into
+    # the system prompt after AGENTS.md (SystemPrompt). A YAML list of
+    # strings or a single string; ~ is expanded, a relative entry is kept as
+    # written (resolved against the cwd the prompt is built in). [] when
+    # the key is absent or malformed.
+    # @return [Array<String>]
+    def appended_prompt_files(env: ENV, path: global_path(env: env))
+      data = read_yaml(env: env, path: path)
+      raw = data["append_system_prompt"] if data.is_a?(Hash)
+      items = case raw
+              when Array then raw
+              when String then [raw]
+              else []
+              end
+      items.select { |v| v.is_a?(String) }.map(&:strip).reject(&:empty?).filter_map { |v| expand_appended_entry(v) }
+    rescue StandardError
+      []
+    end
+
+    # An append_system_prompt: entry with ~ expanded; nil (skipped, logged)
+    # for a ~user that doesn't exist, so the other entries still load.
+    def expand_appended_entry(entry)
+      entry.start_with?("~") ? File.expand_path(entry) : entry
+    rescue ArgumentError => e
+      Samagotchi::Log.warn(:config, "appended_prompt_file_skipped", entry: entry, error: e.message) if defined?(Samagotchi::Log)
+      nil
     end
 
     # Parse a model string that may be qualified as "host_alias:model"

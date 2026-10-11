@@ -8,6 +8,7 @@ require_relative "../steer"
 require_relative "../steer_cut"
 require_relative "../memory_bundle/index_size"
 require_relative "../prompt_note"
+require_relative "../prompt_files"
 
 module Samagotchi
   class TerminalUI
@@ -404,6 +405,16 @@ module Samagotchi
         "#{"~" if source.to_s == "estimate"}#{number} tok/s"
       end
 
+      # The prompt files (absolute paths) named as the prompt names them:
+      # relative to this checkout's top, else with ~; nil with none.
+      def prompt_files_text(paths)
+        list = Array(paths).map(&:to_s).reject(&:empty?)
+        return nil if list.empty?
+
+        top = MemoryPaths.work_tree_root(Dir.pwd)
+        list.map { |path| PromptFiles.display_path(path, top: top) }.join(", ")
+      end
+
       # "~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)":
       # the memory indexes the session's prompt holds (the snapshot's
       # memory_index, symbol or string keys); "" without one. As ctx.js
@@ -600,6 +611,9 @@ module Samagotchi
         # The model notes the session's prompt carried (Engine#prompt_notes).
         notes = PromptNote.text(snapshot[:prompt_notes])
         lines << "model notes:      #{notes}" unless notes.empty?
+        # The files whose text is in the prompt (SystemPrompt#prompt_files).
+        files = prompt_files_text(snapshot[:prompt_files])
+        lines << "prompt files:     #{files}" if files
         llm_context = llm_context_stats_text(snapshot[:llm_context])
         lines << "llm context:      #{llm_context}" if llm_context
         thinking = setting_stats_text(snapshot[:thinking])

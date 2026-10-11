@@ -50,8 +50,10 @@ module Samagotchi
     #   model's (none: the section is left out)
     # @param memories [Array<String>] the --memory list
     # @param muted_memory_names [Array<String>] normalized (MutedMemories)
+    # @param appended_files [Array<String>] chi --append-system-prompt's
+    #   files (absolute paths), after config.yml's append_system_prompt:
     def initialize(profile:, tools:, session:, thinking:, model: -> {}, model_notes: -> { [] }, memories: [],
-                   muted_memory_names: [])
+                   muted_memory_names: [], appended_files: [])
       @profile_lookup = profile
       @model_lookup = model
       @model_notes_lookup = model_notes
@@ -60,6 +62,14 @@ module Samagotchi
       @thinking_lookup = thinking
       @muted_memory_names = muted_memory_names
       @requested_memories = effective_preload_list(preload_memory_list(memories))
+      # Read once, as the memories: list is: a config edit is picked up by
+      # a new process. The files' text is read at each build.
+      @config_appended = begin
+        ConfigFile.appended_prompt_files
+      rescue StandardError
+        []
+      end
+      @cli_appended = Array(appended_files).map { |path| File.expand_path(path.to_s) }
     end
 
     # @return [Array<String>] the names the session preloads, known before
@@ -112,7 +122,8 @@ module Samagotchi
     attr_reader :prompt_notes
 
     # The files whose text the prompt #build returned last holds, as
-    # absolute paths in prompt order: the AGENTS.md chain. [] before a
+    # absolute paths in prompt order: the AGENTS.md chain, then the
+    # appended files (append_system_prompt:, --append-system-prompt). [] before a
     # build and after #reset!. Read when the prompt is built, as the
     # sections are.
     # @return [Array<String>]
@@ -307,7 +318,7 @@ module Samagotchi
         "System memories:\n#{indexes[:system]}"
       ].join("\n\n")
       stable = [thinking_token + base, rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
-                project_specific_description, memory_sections]
+                project_specific_description, appended_section, memory_sections]
       stable_text = stable.compact.join("\n")
       volatile = [current_model, project_location, current_session].compact
       return with_tail_declarations(stable_text, chat: chat, layers: layers) if volatile.empty?
@@ -488,6 +499,47 @@ module Samagotchi
       sections.map(&:text).join("\n\n")
     rescue StandardError
       nil
+    end
+
+    # The appended files' text, right after AGENTS.md (the stable, cached
+    # part): config.yml's append_system_prompt: entries first (a relative
+    # one against the cwd, as AGENTS.md is found; a missing one is skipped),
+    # then --append-system-prompt's. A file the AGENTS.md chain holds, a
+    # repeat and an empty or vanished file are left out.
+    def appended_section
+      cwd = Dir.pwd
+      top = MemoryPaths.work_tree_root(cwd)
+      seen = Set.new((skip_agent_description? ? [] : PromptFiles.agents_paths(cwd)).map { |path| canonical_path(path) })
+      sections = []
+      appended_candidates(cwd).each do |path, source|
+        next unless seen.add?(canonical_path(path))
+
+        unless File.file?(path)
+          Log.debug(:config, "appended_prompt_file_missing", path: path, source: source)
+          next
+        end
+        text = PromptFiles.section(path, "Appended from #{PromptFiles.display_path(path, top: top)}:")
+        next unless text
+
+        @section_files&.push(path)
+        sections << text
+      end
+      sections.empty? ? nil : sections.join("\n\n")
+    rescue StandardError
+      nil
+    end
+
+    # [absolute path, "config" | "cli"], in prompt order.
+    def appended_candidates(cwd)
+      @config_appended.map { |entry| [File.expand_path(entry, cwd), "config"] } +
+        @cli_appended.map { |path| [path, "cli"] }
+    end
+
+    # The same file however it's spelled (/tmp vs /private/tmp on macOS).
+    def canonical_path(path)
+      File.realpath(path)
+    rescue SystemCallError
+      File.expand_path(path)
     end
 
     # Where the session runs and which project memory folder it uses. Only

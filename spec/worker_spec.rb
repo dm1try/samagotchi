@@ -141,6 +141,18 @@ RSpec.describe Samagotchi::Worker do
       expect(kwargs).to include(memories: ["cli_usage"], muted_memories: ["gh-helper"])
     end
 
+    it "builds its Engine with the session's appended prompt files" do
+      session.appended_prompt_files = ["/r/extra.md"]
+      session.save(state_dir: tmpdir)
+      kwargs = nil
+      allow(Samagotchi::Engine).to receive(:new) do |**given|
+        kwargs = given
+        engine
+      end
+      start_worker
+      expect(kwargs).to include(appended_prompt_files: ["/r/extra.md"])
+    end
+
     it "drops a question a dead worker saved (its turn is gone) and saves, before its Engine sees the session" do
       session.pending_question = { id: "q1", question: "Which?", options: %w[a b] }
       session.status = Samagotchi::Session::STATUS_RUNNING

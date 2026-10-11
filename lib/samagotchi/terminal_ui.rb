@@ -92,8 +92,12 @@ module Samagotchi
     #   (LLMContextOverride.update): set on the new or resumed session
     # @param thinking [String, nil] --thinking as typed: the new or resumed
     #   session's own level (default unsets it)
+    # @param appended_prompt_files [Array<String>] --append-system-prompt's
+    #   files (absolute): a new session saves them; a resumed one's own come
+    #   first, and the merge goes only to the Engine (as --memory's does)
     def initialize(prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
-                   spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {}, thinking: nil)
+                   spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {}, thinking: nil,
+                   appended_prompt_files: [])
       @scratch        = scratch
       @thinking_word  = thinking
       @prompt         = prompt
@@ -142,9 +146,11 @@ module Samagotchi
       # session started attached with mutes keeps them here.
       @requested_memories = Array(memories)
       @muted_memory_names = Array(muted_memories)
+      @appended_prompt_files = Array(appended_prompt_files)
       if @resume_session
         @requested_memories = (@resume_session.preloaded_memory_names + @requested_memories).uniq
         @muted_memory_names = (@resume_session.muted_memory_names + @muted_memory_names).uniq
+        @appended_prompt_files = (@resume_session.appended_prompt_files + @appended_prompt_files).uniq
       end
       # Every terminal write goes through the surface. The REPL swaps in a
       # live region when the terminal can show one (#assist_loop), unless it
@@ -178,6 +184,7 @@ module Samagotchi
         model_typed: no_default ? @resumed_model_typed : nil,
         memories: @requested_memories,
         muted_memories: @muted_memory_names,
+        appended_prompt_files: @appended_prompt_files,
         recap: scratch ? nil : recap_config,
         scratch: scratch,
         reminders: {
@@ -258,7 +265,8 @@ module Samagotchi
         working_directory: Dir.pwd,
         preloaded_memory_names: @requested_memories,
         muted_memory_names: @muted_memory_names,
-        scratch: @scratch
+        scratch: @scratch,
+        setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files)
       ))
       # --llm-context*: the session's own values, over a resumed one's.
       # Saved at once on a resumed one: leaving before a turn keeps them.

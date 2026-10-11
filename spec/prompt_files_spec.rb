@@ -85,3 +85,38 @@ RSpec.describe Samagotchi::PromptFiles do
     end
   end
 end
+
+RSpec.describe Samagotchi::PromptFiles, ".display_path" do
+  it "is relative to the work tree top inside it, else with ~ for the home directory" do
+    expect(described_class.display_path("/r/docs/a.md", top: "/r")).to eq("docs/a.md")
+    expect(described_class.display_path("#{Dir.home}/notes/b.md", top: "/r")).to eq("~/notes/b.md")
+    expect(described_class.display_path("/etc/c.md", top: nil)).to eq("/etc/c.md")
+  end
+end
+
+RSpec.describe Samagotchi::PromptFiles, ".check_cli_file" do
+  around do |example|
+    Dir.mktmpdir do |tmp|
+      @tmp = File.realpath(tmp)
+      example.run
+    end
+  end
+
+  it "expands the path against the cwd" do
+    File.write(File.join(@tmp, "a.md"), "x")
+    expect(described_class.check_cli_file("a.md", cwd: @tmp)).to eq([File.join(@tmp, "a.md"), nil])
+  end
+
+  it "is an error, not an exception, for a ~user that doesn't exist" do
+    expect(described_class.check_cli_file("~nosuchuser_zz/x.md", cwd: @tmp)).to eq(["~nosuchuser_zz/x.md", "no such user"])
+  end
+
+  it "is an error for a missing file, a directory and an unreadable file" do
+    expect(described_class.check_cli_file("gone.md", cwd: @tmp).last).to include("no such file")
+    expect(described_class.check_cli_file(@tmp, cwd: @tmp).last).to include("not a file")
+    path = File.join(@tmp, "locked.md")
+    File.write(path, "x")
+    File.chmod(0o000, path)
+    expect(described_class.check_cli_file(path, cwd: @tmp).last).to include("can't be read") unless Process.uid.zero?
+  end
+end

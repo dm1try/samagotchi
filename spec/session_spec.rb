@@ -295,6 +295,19 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(path))["thinking"]).to eq("high")
     end
 
+    it "round-trips its appended prompt files, and reads [] from a file without the field" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      expect(session.appended_prompt_files).to eq([])
+      session.appended_prompt_files = ["/r/a.md", "/r/b.md"]
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      expect(JSON.parse(File.read(path))["appended_prompt_files"]).to eq(["/r/a.md", "/r/b.md"])
+      expect(described_class.load(session.id, state_dir: tmpdir).appended_prompt_files).to eq(["/r/a.md", "/r/b.md"])
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("appended_prompt_files")))
+      expect(described_class.load(session.id, state_dir: tmpdir).appended_prompt_files).to eq([])
+    end
+
     it "round-trips its own reasoning_history level (turn too), and a value it can't read as written" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
       session.reasoning_history = :turn

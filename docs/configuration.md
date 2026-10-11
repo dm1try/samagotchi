@@ -81,6 +81,13 @@ session:
 memories:
   # - system/user_preferences
   # - project/feature-env-template
+
+# Files whose text goes into the system prompt after AGENTS.md (same as
+# --append-system-prompt, which adds to these). A relative entry is looked up
+# in the directory chi runs in; a missing one is skipped.
+append_system_prompt:
+  # - CLAUDE.md
+  # - ~/notes/house-rules.md
 ```
 
 Behavior:
@@ -108,8 +115,8 @@ Besides the settings sections, the file holds maps that are read by their
 own subsystems: `hosts:` (below), `models:` (see "Prompt profile" and
 "Images"), `model_aliases:`, `hooks:` (see [Hooks](hooks.md)),
 `guardrails:` (see [Guardrails](guardrails.md)), `bundles:` (a bundle's
-settings for its hooks, see [Hooks: Settings](hooks.md#settings)) and
-`memories:`. Their entry names (host names, model ids, aliases) are yours to
+settings for its hooks, see [Hooks: Settings](hooks.md#settings)),
+`memories:` and `append_system_prompt:` (see "Appended prompt files"). Their entry names (host names, model ids, aliases) are yours to
 choose. The `memories:` list is the persistent baseline for preloaded memory entries —
 the same name shape as `--memory` (bare name or `scope/name`), merged under
 any per-run `--memory` values (config baseline first, deduped). A per-run
@@ -1086,6 +1093,33 @@ prompt rebuild (`/model`).
 To skip loading AGENTS.md (all of the chain), set `skip_agents_md: true` at the top level of
 `config.yml` (env `SAMAGOTCHI_SKIP_AGENTS_MD=true`).
 
+## Appended prompt files
+
+`append_system_prompt:` (a top-level list) and `chi --append-system-prompt FILE`
+(repeatable) put a file's text into the system prompt right after the AGENTS.md
+chain and before the memory indexes, in the stable part a prompt cache keeps.
+Each file is one section, `Appended from <path>:`, the path relative to the
+work tree top when inside it, else with `~`.
+
+- The config list comes first, then the flag's files; a repeat, or a file the
+  AGENTS.md chain already holds, is left out, and so is an empty file.
+- A config entry: `~` is expanded, and a relative one is looked up in the
+  directory chi runs in, so `append_system_prompt: [CLAUDE.md]` loads a
+  project's `CLAUDE.md` wherever there is one. A missing entry is skipped
+  without a warning. The list is read when the session's engine starts (a new
+  process picks up an edit).
+- `--append-system-prompt FILE`: relative to the shell's directory. A missing,
+  unreadable or non-file `FILE` stops chi (`Error: --append-system-prompt FILE:
+  no such file`); above 32,000 chars it warns once (`… is N chars; it is in
+  every request`). The files are saved in the session (`appended_prompt_files`),
+  so a respawned worker builds the same prompt, and a fork or a continue keeps
+  them; a delegate child doesn't. With `--attach` or `--resume` the flag is
+  ignored with one line, as `--memory` is; a REPL `--resume` (`--no-shared`)
+  adds them for that run only.
+- The files' text is read at each prompt build, as AGENTS.md's is: an edit is
+  picked up by a new process or a rebuild (`/model`). `/stats` lists the files
+  in the prompt on its `prompt files:` line.
+
 ## LLM context: the forget layer
 
 Experimental, off by default. With `forget` in a model's `llm_context.strategy` (next to `stale`), chi offers that
@@ -1224,8 +1258,8 @@ Every setting below takes the three forms described in
 `config.yml`, `SAMAGOTCHI_<DOTTED_NAME>` in the environment (not for one
 marked config.yml only) and, where the CLI
 column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
-`model_aliases:`, `hooks:`, `guardrails:` rules, `bundles:`, `memories:`) are
-described in their own sections.
+`model_aliases:`, `hooks:`, `guardrails:` rules, `bundles:`, `memories:`,
+`append_system_prompt:`) are described in their own sections.
 
 | Setting | Default | CLI | What it does |
 |---|---|---|---|

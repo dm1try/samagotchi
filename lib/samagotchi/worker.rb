@@ -367,6 +367,7 @@ module Samagotchi
         # (re)spawn.
         memories: @session.preloaded_memory_names,
         muted_memories: @session.muted_memory_names,
+        appended_prompt_files: @session.appended_prompt_files,
         reminders: {
           callback: lambda { |due_names|
             # A reminder is due: the loop runs a reminder turn for it once

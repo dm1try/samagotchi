@@ -37,6 +37,8 @@ module Samagotchi
       # @param memories [Array<String>] --memory: a new session's worker
       #   preloads them (an existing session keeps its own list)
       # @param muted_memories [Array<String>] --mute: hidden from a new session
+      # @param appended_prompt_files [Array<String>] --append-system-prompt's
+      #   files (absolute): a new session's setup carries them
       # @param llm_context [Hash{Symbol => String}] --llm-context* as typed
       #   (LLMContextOverride.update): a new session starts with them; a
       #   resumed or attached one's worker gets a /llm-context, after the
@@ -48,9 +50,10 @@ module Samagotchi
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
-              memories: [], muted_memories: [], llm_context: {}, thinking: nil)
+              memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [])
         client = connect(attach: attach, shared: shared, resume: resume, model: model,
-                         memories: memories, muted_memories: muted_memories, llm_context: llm_context, thinking: thinking)
+                         memories: memories, muted_memories: muted_memories, llm_context: llm_context, thinking: thinking,
+                         appended_prompt_files: appended_prompt_files)
         commands = []
         commands << "/model #{model}" if model && (attach || resume)
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
@@ -117,9 +120,11 @@ module Samagotchi
       # @return [BridgeClient] a client for the live Bridge of the session
       # @raise [Error]
       def connect(attach: nil, shared: false, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
-                  memories: [], muted_memories: [], llm_context: {}, thinking: nil, err: $stderr)
+                  memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], err: $stderr)
         sd = state_dir || Session.default_state_dir
-        warn_memory_flags_ignored(attach || resume, memories, muted_memories, err) if attach || resume
+        if attach || resume
+          warn_memory_flags_ignored(attach || resume, memories, muted_memories, err, appended_prompt_files: appended_prompt_files)
+        end
         if attach
           live = connect_existing(attach, sd)
           return live if live
@@ -134,7 +139,8 @@ module Samagotchi
                     SessionManager.spawn_session(prompt: nil, model_name: model && model_ref(model), state_dir: sd,
                                                  memories: memories, muted_memories: muted_memories,
                                                  setup: SessionSetup.new(llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context),
-                                                                         thinking: Thinking.session_level(thinking)))
+                                                                         thinking: Thinking.session_level(thinking),
+                                                                         appended_prompt_files: appended_prompt_files))
                   end
         client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
         client || raise(Error, "the worker for session #{session.id} did not start its Bridge in time")
@@ -150,16 +156,19 @@ module Samagotchi
       end
 
       # An existing session's prompt is built from its own session fields:
-      # --memory/--mute given with --attach or --resume are ignored, with a
-      # line saying so (printed before the live region opens).
-      def warn_memory_flags_ignored(session_id, memories, muted_memories, err)
+      # --memory/--mute/--append-system-prompt given with --attach or
+      # --resume are ignored, with a line saying so (printed before the live
+      # region opens).
+      def warn_memory_flags_ignored(session_id, memories, muted_memories, err, appended_prompt_files: [])
         flags = []
         flags << "--memory" unless Array(memories).empty?
         flags << "--mute" unless Array(muted_memories).empty?
+        flags << "--append-system-prompt" unless Array(appended_prompt_files).empty?
         return if flags.empty?
 
         verb = flags.size == 1 ? "applies" : "apply"
-        err.puts "(#{flags.join(" and ")} #{verb} to a new session; #{session_id}'s prompt is already built)"
+        names = flags.size > 2 ? "#{flags[0..-2].join(", ")} and #{flags.last}" : flags.join(" and ")
+        err.puts "(#{names} #{verb} to a new session; #{session_id}'s prompt is already built)"
       end
 
       # @return [BridgeClient, nil] the running worker's, or nil when none runs

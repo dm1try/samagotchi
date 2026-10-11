@@ -99,6 +99,30 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
               setup: Samagotchi::SessionSetup.new)
     end
 
+    it "starts a new session with --append-system-prompt's files in its setup" do
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+
+      connect(shared: true, appended_prompt_files: ["/r/a.md"])
+      expect(Samagotchi::SessionManager).to have_received(:spawn_session)
+        .with(hash_including(setup: Samagotchi::SessionSetup.new(appended_prompt_files: ["/r/a.md"])))
+    end
+
+    it "ignores --append-system-prompt for an existing session, with --memory and --mute's line" do
+      allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      err = StringIO.new
+
+      connect(attach: session.id, appended_prompt_files: ["/r/a.md"], err: err)
+      connect(attach: session.id, memories: ["a"], muted_memories: ["b"], appended_prompt_files: ["/r/a.md"], err: err)
+
+      expect(err.string).to eq(
+        "(--append-system-prompt applies to a new session; #{session.id}'s prompt is already built)\n" \
+        "(--memory, --mute and --append-system-prompt apply to a new session; #{session.id}'s prompt is already built)\n"
+      )
+    end
+
     it "ignores --memory/--mute for an existing session, saying so, and goes on" do
       allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
       allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
@@ -151,7 +175,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
     allow(described_class).to receive(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: nil)
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [])
       .and_return(client)
     allow(described_class).to receive(:open_surface).and_return(surface)
     allow(described_class).to receive(:close_surface)
@@ -218,7 +242,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     # Only a new session with no -p gets the default input.
     expect(default_inputs).to eq([false, false, true])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [], llm_context: {}, thinking: nil)
+      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [])
   end
 
   it "sets a resumed or attached session's --llm-context through its worker, after the --model; a new one starts with it" do
@@ -239,7 +263,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     expect(commands).to eq([["/model qwen_moe", "/llm-context strategy stale,forget budget 64k"],
                             "/llm-context apply turn_end", nil])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words, thinking: nil)
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words, thinking: nil, appended_prompt_files: [])
   end
 end
 
@@ -261,7 +285,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, "--thinking" do
     # --yes: the flag is the user's choice, so a costly change doesn't ask (and the launch doesn't wait on it).
     expect(commands).to eq([["/model qwen_moe", "/llm-context apply turn_end", "/thinking low --yes"], "/thinking default --yes", nil])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: "high")
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: "high", appended_prompt_files: [])
   end
 
   it "spawns a new session with the level as its own" do

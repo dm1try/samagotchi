@@ -53,6 +53,15 @@ module Samagotchi
     # from it (--mute): the worker rebuilds the same prompt on a respawn.
     # Names as given; the engine normalizes them.
     attr_accessor :preloaded_memory_names, :muted_memory_names
+    # The files chi --append-system-prompt put into the session's system
+    # prompt (absolute paths; config.yml's append_system_prompt: entries
+    # aren't stored): kept on respawns, copied by a fork and a continue
+    # (SessionSetup).
+    attr_reader :appended_prompt_files
+
+    def appended_prompt_files=(paths)
+      @appended_prompt_files = Array(paths).map(&:to_s).reject(&:empty?).uniq
+    end
     # The model notes the session's system prompt carried at its last build
     # (Array<PromptNote>: name, scope, chars, digest; ModelNotes), set by the
     # Engine at each build (a start, a resume's or a woken worker's first
@@ -182,7 +191,7 @@ module Samagotchi
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
-                   continues: nil, thinking: nil, reasoning_history: nil)
+                   continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [])
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -210,6 +219,7 @@ module Samagotchi
       self.llm_context = llm_context
       self.thinking = thinking
       self.reasoning_history = reasoning_history
+      self.appended_prompt_files = appended_prompt_files
       @archived = false
     end
 
@@ -289,6 +299,7 @@ module Samagotchi
         llm_context: setup.llm_context,
         thinking: setup.thinking,
         reasoning_history: setup.reasoning_history,
+        appended_prompt_files: setup.appended_prompt_files,
         continues: continues
       )
     end
@@ -351,7 +362,8 @@ module Samagotchi
       "llm_context" => nil,
       "continues" => nil,
       "thinking" => nil,
-      "reasoning_history" => nil
+      "reasoning_history" => nil,
+      "appended_prompt_files" => []
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the
@@ -476,7 +488,7 @@ module Samagotchi
                 when "reasoning_history" then reasoning_history_file
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
-                when "used_memory_names", "preloaded_memory_names", "muted_memory_names"
+                when "used_memory_names", "preloaded_memory_names", "muted_memory_names", "appended_prompt_files"
                   Array(instance_variable_get(:"@#{key}"))
                 else instance_variable_get(:"@#{key}")
                 end

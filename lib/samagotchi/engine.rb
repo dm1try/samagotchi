@@ -105,11 +105,13 @@ module Samagotchi
     # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
     # @param muted_memories     [Array<String>] --mute list: memories hidden from this session (not in the
     #   prompt's index, dropped from the preloads, refused by memory_read); a mute wins over a preload
+    # @param appended_prompt_files [Array<String>] --append-system-prompt's files (absolute paths; a session's
+    #   appended_prompt_files): their text goes into the system prompt after config.yml's append_system_prompt:
     # @param plugins            [Boolean] false: load no bundle plugins (a throwaway Engine for a prompt)
     # @param scratch            [Boolean] a `chi scratch` session: memory writes are refused, and there is no
     #   delegate (a child would outlive it) nor plugin fork
     def initialize(client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
-                   plugins: true, scratch: false, model_typed: nil)
+                   plugins: true, scratch: false, model_typed: nil, appended_prompt_files: [])
       # The turn as other threads see it (flag, cancel controller, sink,
       # steers) and the idle layer's activity clock. Built first: a plugin
       # may steer or ask whether a turn runs while it loads.
@@ -205,7 +207,7 @@ module Samagotchi
       @prompt_builder = SystemPrompt.new(profile: -> { self.profile }, tools: -> { @tools }, session: -> { @session },
                                          thinking: -> { turn_thinking }, model: -> { model_identity },
                                          model_notes: -> { model_notes }, memories: memories,
-                                         muted_memory_names: @muted_memory_names)
+                                         muted_memory_names: @muted_memory_names, appended_files: appended_prompt_files)
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
@@ -1013,7 +1015,8 @@ module Samagotchi
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for,
                                 served_expected_by: served_expected_by(served, target: target), llm_context: llm_context_summary,
                                 thinking: thinking_explained&.summary,
-                                reasoning_history: reasoning_history_explained&.summary, prompt_notes: prompt_notes.map(&:to_h), price_host: target.entry.name)
+                                reasoning_history: reasoning_history_explained&.summary, prompt_notes: prompt_notes.map(&:to_h),
+                                prompt_files: @prompt_builder.prompt_files, price_host: target.entry.name)
       unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(target)
         if window

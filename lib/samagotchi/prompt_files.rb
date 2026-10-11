@@ -69,6 +69,49 @@ module Samagotchi
       dir.start_with?(prefix) ? dir.delete_prefix(prefix) : nil
     end
 
+    # How a prompt file is named in the prompt and /stats: relative to the
+    # work tree +top+ when inside it, else with ~ for the home directory.
+    # @return [String]
+    def display_path(path, top:)
+      rel = top && relative_dir(path, top)
+      return rel if rel && rel != "."
+
+      home = Dir.home
+      path.start_with?("#{home}/") ? "~#{path.delete_prefix(home)}" : path
+    rescue ArgumentError
+      path
+    end
+
+    # A chi --append-system-prompt value: [absolute path, nil], or
+    # [absolute path, the reason it can't be used].
+    # @param cwd [String] the shell's cwd the value is relative to
+    # @return [Array(String, String)]
+    def check_cli_file(value, cwd: Dir.pwd)
+      begin
+        path = File.expand_path(value.to_s, cwd)
+      rescue ArgumentError
+        # A quoted "~nosuchuser/x" reaches chi unexpanded.
+        return [value.to_s, "no such user"]
+      end
+      reason = if !File.exist?(path) then "no such file"
+               elsif !File.file?(path) then "not a file"
+               elsif !File.readable?(path) then "can't be read"
+               end
+      [path, reason]
+    end
+
+    # Text this long goes into every request: chi warns once, at start.
+    LARGE_CHARS = 32_000
+
+    # The number of chars of +path+ when above LARGE_CHARS, else nil.
+    # @return [Integer, nil]
+    def large_size(path)
+      chars = File.read(path, encoding: "UTF-8").length
+      chars > LARGE_CHARS ? chars : nil
+    rescue StandardError
+      nil
+    end
+
     # +path+'s text under +header+ ("<header>\n<text>", stripped); nil when
     # the file is empty or can't be read.
     # @return [String, nil]

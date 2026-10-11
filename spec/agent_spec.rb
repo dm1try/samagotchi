@@ -278,6 +278,31 @@ file2.rb")
       expect(session.muted_memory_names).to eq(["system/bar.md"])
     end
 
+    it "records --append-system-prompt's files on a new REPL session and gives them to its Engine" do
+      allow(client).to receive(:complete).and_return("ok")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Engine).to receive(:new).and_call_original
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true, appended_prompt_files: ["/r/a.md"])
+      agent.run
+
+      expect(agent.engine.session.appended_prompt_files).to eq(["/r/a.md"])
+      expect(Samagotchi::Engine).to have_received(:new).with(hash_including(appended_prompt_files: ["/r/a.md"]))
+    end
+
+    it "gives the Engine a resumed session's appended files first, then the flag's, without saving the merge" do
+      stored = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd,
+                                               setup: Samagotchi::SessionSetup.new(appended_prompt_files: ["/r/a.md"]))
+      stored.save
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Engine).to receive(:new).and_call_original
+      agent = described_class.new(client: client, session_id: stored.id, appended_prompt_files: ["/r/b.md", "/r/a.md"])
+
+      expect(Samagotchi::Engine).to have_received(:new).with(hash_including(appended_prompt_files: ["/r/a.md", "/r/b.md"]))
+      expect(Samagotchi::Session.load(stored.id).appended_prompt_files).to eq(["/r/a.md"])
+    ensure
+      agent&.instance_variable_get(:@owner_lock)&.release
+    end
+
     it "merges a resumed session's stored --memory and --mute lists with the flags" do
       stored = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd,
                                                preloaded_memory_names: ["foo"], muted_memory_names: ["bar"])
