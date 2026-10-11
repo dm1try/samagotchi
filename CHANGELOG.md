@@ -20,7 +20,8 @@ and commands may change between minor versions. How releases are made:
   reasoning as `reasoning_content`, as Qwen's, Gemma 4's and DeepSeek's templates and the hosted APIs expect
   (`reasoning_history: turn`, the default). A local Qwen thought ~8x less per request with it. `drop` sends none (as
   before), `all` sends every reply's, earlier turns too. A host that refuses it (a 400 about reasoning) gets the step
-  again without it, and that model sends none from then on (a notice says so once).
+  again without it, and that model sends none from then on (a notice says so once). See "Reasoning history" in
+  docs/configuration.md.
 
 ### Fixed
 

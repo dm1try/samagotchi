@@ -539,6 +539,46 @@ hosts:
 A different level changes a native model's system prompt (Gemma's token, Qwen's turn preamble), so the next turn
 reads the whole context again once; on a chat host only the end of the prompt changes.
 
+## Reasoning history
+
+Which of its own reasoning a chat host's model (`api: openai`) gets back. chi saves each step's reasoning; with it
+sent back, the model goes on from its own plan between tool calls instead of working it out again (in one test a local
+Qwen thought about 8x less per request and finished a small task about 40% sooner). One level, set per model or per host:
+
+```yaml
+hosts:
+  deepseek-api:
+    url: https://api.deepseek.com/v1
+    api: openai
+    api_key_env: DEEPSEEK_API_KEY
+    reasoning_history: all   # its API wants every earlier reply's reasoning when tools are sent
+models:
+  some-model:
+    reasoning_history: drop
+```
+
+- `turn` (the default) sends the running turn's reasoning: each reply since the last user message carries its
+  reasoning as `reasoning_content`, which is what Qwen's, Gemma 4's and DeepSeek's chat templates and the hosted APIs
+  (OpenRouter takes it for DeepSeek, Qwen and other text-reasoning models) expect. The running turn starts at the
+  last message you sent (a prompt, or a steer: as the chat template counts it) and never before the turn's own start,
+  so a turn that goes on by itself (a reminder, a context wake, a continue after a stop) sends nothing of the one
+  before it, an interrupted reply's partial thought included.
+- `drop` sends none (what chi did before this setting).
+- `all` sends every reply's reasoning, earlier turns too. It sends only the field: a local template that leaves out
+  earlier turns' reasoning (Qwen's) needs `sampling: {chat_template_kwargs: {preserve_thinking: true}}` as well.
+- Order, first set wins: `SAMAGOTCHI_REASONING_HISTORY` (the whole process; for A/B runs), the `models:` entry (found
+  the way `profile:` is), the `hosts:` entry, then `turn`. Anything else than a level warns once and counts as unset.
+  A host's level reaches a worker when it starts, as its `sampling:` does.
+- The native loop (`/completion`) ignores it: it always keeps the running turn's reasoning, a mid-turn steer included
+  (the chat loop starts again after a steer).
+- When a host answers a request that sent reasoning back with an HTTP 400 about reasoning, chi asks again without it,
+  sends none to that model from then on (until the worker restarts) and says so once. If the request without it is
+  refused too, the thinking fields get the same fallback ("Thinking") and the reasoning goes back on the next step.
+- `/model` names a level that isn't the default (`reasoning history: drop (models: some-model)`), and `chi self`
+  shows it on its `reasoning history` row.
+- Claude via OpenRouter signs its reasoning (`reasoning_details`), which chi doesn't keep: it gets the plain text,
+  and the fallback above covers a refusal.
+
 ## Llama HTTP Timeouts
 
 Long-running llama.cpp completions can exceed Ruby's default HTTP read timeout.
@@ -1199,6 +1239,7 @@ described in their own sections.
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |
 | `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, within `session.max_wakes`); `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
+| `reasoning_history` | `turn` | | Which of its reasoning a chat host's model gets back: `drop`, `turn`, `all`; environment only (`SAMAGOTCHI_REASONING_HISTORY`), outranks the `models:`/`hosts:` entries. See "Reasoning history". |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't; a session's own level outranks them all, and `--thinking` sets it on a session run (on `chi web` it sets this). See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
 | `hosts.<name>.models` | none | | The model ids a host serves whatever its `/v1/models` lists: a map of ids, or a plain list. See "Models a host serves but doesn't list". |

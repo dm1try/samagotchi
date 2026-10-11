@@ -390,7 +390,8 @@ server's `reasoning_content`; the raw-prompt loop splits each generation's
 stream with a fresh `ThoughtStreamSplitter` (Qwen's `<think>` and Gemma's
 `<|channel>thought … <channel|>` are thinking, tool-call bodies are dropped
 from `text:`). The chat loop's model turns keep their `tool_calls` and tool results their `tool_call_id`,
-so later requests and resumed sessions pair them. It has its own system prompt
+so later requests and resumed sessions pair them, and their reasoning (`thinking:`), which goes back as
+`reasoning_content` on the running turn's replies (`reasoning_history`). It has its own system prompt
 (no raw-prompt tool declarations; the tools go as JSON schemas).
 
 `Engine#build_stream_event_handler` is the one seam both loops' streams pass

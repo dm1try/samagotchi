@@ -174,6 +174,18 @@ The differences from the native loop:
   as `stable_length:`), where the prompt's stable part ends. For remote Claude, `LLM::PromptCache` puts the
   first cache breakpoint there; see prompt-caching.md.
 - Each call's result is its own tool message, paired by `tool_call_id`.
+- A model turn's saved reasoning (`thinking:`) goes back as `reasoning_content` per the turn's
+  `TurnSettings#reasoning_history` (`ReasoningHistory.resolve`): `all` on every model message, `turn` past
+  `ChatLoop#reasoning_boundary`: the later of the last query (a `role: "user"` entry: a prompt, a steer, merged input,
+  the chat template's `last_query_index`; or a `turn_start` entry) and the Run's start (`Run`'s `@start`, the
+  conversation length at `#complete`), so a continue turn (reminder, context wake, continue after a stop) replays
+  nothing of the run before. `Run#prompt_chars` counts it (`#reasoning_chars`). The native loop differs on a steer:
+  `KernelLoop#inject_pending_input!` doesn't re-sanitize, so native keeps the turn's reasoning across a mid-turn
+  steer, where the chat loop starts again (as the template does).
+- A 400 about reasoning (`BadRequest#reasoning_refused?`) for a request that sent reasoning back asks the step again
+  without it; when that goes through, `#reasoning_history_refused!` marks the model (worker lifetime) and
+  `:reasoning_history_refused` goes out. When it is refused too, the thinking-fields fallback (`#thinking_refused!`,
+  `:thinking_refused`) runs on it, still without reasoning. Up to three requests per step.
 
 ### Shared: ToolResponse (per batch) and ToolRunner (per call)
 
@@ -320,6 +332,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:empty_answer_retry` | an empty, cut or malformed answer is asked again | `{iteration, attempt, of, finish_reason, thinking_chars, stopped_by?, malformed?}` |
 | `:steer_cut` | a steer cut the generation | `{iteration, source}` |
 | `:llm_context_edited` | the apply rule applied a batch of LLM context edits (a request, a forget_outputs call, turn end; never the warm-up) | `{moment, why, freed_tokens, tail_tokens, staged, text, groups}` (`LLMContextNotice`) |
+| `:thinking_refused` / `:reasoning_history_refused` | the chat loop asked a step again without the thinking fields / the reasoning sent back; the Engine logs it and makes a once-per-session-and-host `:hook_notice` of it, the event itself never reaches the sink | `{iteration, model, level, detail}` |
 | `:pending_input_merged` | queued input joined the conversation | `{iteration, count, content, steers?, answer}` |
 | `:tool_dispatch_started` / `:tool_dispatch_completed` | around a batch | `{iteration, call_count}` |
 | `:tool_call_started` | before a call runs | see ToolRunner |
