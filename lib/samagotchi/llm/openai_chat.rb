@@ -333,10 +333,11 @@ module Samagotchi
       end
 
       # A String stays a String, an Array of parts an Array; both scrubbed
-      # of invalid UTF-8 (Utf8Scrub).
+      # of invalid UTF-8 (Utf8Scrub), as is reasoning sent back.
       def wire_message(message)
         wire = message.to_h.transform_keys(&:to_sym)
         wire[:content] = format_content(wire[:content]) if wire.key?(:content)
+        wire[:reasoning_content] = format_content(wire[:reasoning_content]) if wire.key?(:reasoning_content)
         wire
       end
 

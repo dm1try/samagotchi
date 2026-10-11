@@ -1152,8 +1152,16 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
   end
 
   # api: openai hosts stream the reasoning apart from the text. It is saved
-  # on the model message for the web turn view's reload, and never sent back.
+  # on the model message for the web turn view's reload, and sent back as
+  # reasoning_content as the turn's reasoning_history level says.
   describe "the model's reasoning" do
+    let(:earlier_turn) do
+      [{ role: "user", content: "go" },
+       { role: "model", content: "", thinking: "plan", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "x" } }] },
+       { role: "tool_response", content: "[read]\nx", tool_call_id: "c1" },
+       { role: "model", content: "read it", thinking: "summarise" }]
+    end
+
     it "is saved as thinking on each model message that had some" do
       backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "true" }]).with(reasoning: "run it first"),
                                             text("done", reasoning: "\nit passed"))
@@ -1176,22 +1184,90 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(run(history).conversation[1]).to eq(role: "model", content: "ok", thinking: "hm")
     end
 
-    it "is not sent back: a past message's thinking stays out of the wire messages" do
-      history = [{ role: "user", content: "go" },
-                 { role: "model", content: "", thinking: "plan", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "x" } }] },
-                 { role: "tool_response", content: "[read]\nx", tool_call_id: "c1" },
-                 { role: "model", content: "read it", thinking: "summarise" }, { role: "user", content: "again" }]
+    def with_history(level) = fake_kernel.turn_settings = fake_kernel.turn_settings.with(reasoning_history: level)
 
-      run(history)
+    def reasoning_sent(request) = request[:messages].filter_map { |m| m[:reasoning_content] }
 
-      wire = adapter.requests.last[:messages]
+    def call(id, reasoning) = tools([id, "read", { "path" => "#{id}.rb" }]).with(reasoning: reasoning)
+
+    it "is not sent back under drop (TurnSettings.none's), not even within the turn" do
+      backend.adapter = adapter = FakeChatAdapter.new(call("c2", "look"), text("done"))
+      run(earlier_turn + [{ role: "user", content: "again" }])
+
+      expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], []])
+      wire = adapter.requests.first[:messages]
       expect(wire[1].keys).to contain_exactly(:role, :content, :tool_calls)
       expect(wire[3]).to eq(role: "assistant", content: "read it")
     end
 
+    context "under turn" do
+      before { with_history(:turn) }
+
+      it "sends the running turn's reasoning on its model messages, step after step" do
+        backend.adapter = adapter = FakeChatAdapter.new(call("c1", "first"), call("c2", "second"), text("done"))
+        run
+
+        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["first"], %w[first second]])
+        expect(adapter.requests.last[:messages][1]).to include(role: "assistant", reasoning_content: "first",
+                                                               tool_calls: [include(id: "c1")])
+      end
+
+      it "sends none of an earlier turn's" do
+        backend.adapter = adapter = FakeChatAdapter.new(call("c2", "look"), text("done"))
+        run(earlier_turn + [{ role: "user", content: "again" }])
+
+        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["look"]])
+      end
+
+      it "starts again after a mid-turn steer (a user message, as the chat template counts it)" do
+        backend.adapter = adapter = FakeChatAdapter.new(call("c1", "before"), call("c2", "after"), text("done"))
+        queue = [[], ["also this"], [], []]
+        run(pending_input: -> { queue.shift || [] })
+
+        expect(adapter.requests[1][:messages].last).to include(role: "user")
+        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], [], ["after"]])
+      end
+
+      it "sends none of the previous run's in a continue turn (a reminder, a context wake)" do
+        reminder = { role: "system", content: "[SYSTEM: REMINDERS DUE]\n  r: x\n[END REMINDERS]" }
+        wake = { role: "system", content: "[context] new mail", turn_start: true, turn_id: "w1" }
+        [reminder, wake].each do |note|
+          backend.adapter = adapter = FakeChatAdapter.new(call("c2", "look"), text("done"))
+          run(earlier_turn + [note])
+
+          expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["look"]])
+        end
+      end
+
+      it "sends none of an interrupted reply's partial thinking from the run before" do
+        interrupted = { role: "model", content: "half\n[interrupted]", interrupted: true, thinking: "half a thought" }
+        backend.adapter = adapter = FakeChatAdapter.new(text("done"))
+        run([{ role: "user", content: "go" }, interrupted])
+
+        expect(reasoning_sent(adapter.requests.first)).to eq([])
+      end
+    end
+
+    it "counts the reasoning it sends in the context estimate's characters (reasoning_chars)" do
+      conversation = earlier_turn + [{ role: "user", content: "again" }, { role: "model", content: "", thinking: "look" }]
+
+      expect(%i[drop turn all].map { |level| backend.reasoning_chars(conversation, reasoning: level) }).to eq([0, 4, 17])
+      expect(backend.reasoning_chars(conversation, since: 6, reasoning: :turn)).to eq(0)
+    end
+
+    it "sends every model message's reasoning under all, earlier turns too, and no template kwarg" do
+      with_history(:all)
+      backend.adapter = adapter = FakeChatAdapter.new(call("c2", "look"), text("done"))
+      run(earlier_turn + [{ role: "user", content: "again" }])
+
+      expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([%w[plan summarise], %w[plan summarise look]])
+      expect(adapter.requests.map { |r| r[:options] }).to all(eq({}))
+    end
+
     # The real adapter over HTTP: the request body the host gets on the next
-    # turn holds none of the saved reasoning.
+    # turn holds none of the saved reasoning, under turn as under drop.
     it "is not in the next turn's request body" do
+      with_history(:turn)
       FakeProviderServer.without_webmock do
         server = FakeProviderServer.start
         server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("reasoning_tool_stream.sse"))

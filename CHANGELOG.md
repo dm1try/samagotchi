@@ -14,6 +14,13 @@ and commands may change between minor versions. How releases are made:
   for a whole process: which of its own reasoning a chat host's model gets back. `/model` names a configured level
   and `chi self` shows it.
 
+### Changed
+
+- A chat host (`api: openai`) now gets the running turn's reasoning back: each of the turn's earlier replies carries its
+  reasoning as `reasoning_content`, as Qwen's, Gemma 4's and DeepSeek's templates and the hosted APIs expect
+  (`reasoning_history: turn`, the default). A local Qwen thought ~8x less per request with it. `drop` sends none (as
+  before), `all` sends every reply's, earlier turns too.
+
 ### Fixed
 
 - A local llama.cpp turn whose connection dropped mid-answer now restarts that step (up to twice) instead of failing.

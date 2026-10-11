@@ -131,11 +131,17 @@ module Samagotchi
       # as one user message "[images from tool results]". Images the request
       # leaves out (ImagePlan) become placeholder lines in the text.
       #
+      # A model turn carries its saved reasoning as reasoning_content when
+      # +reasoning+ (a ReasoningHistory level; the turn's by default) says
+      # so: under turn the running turn's only (#reasoning_boundary, with
+      # +since+ the Run's start), under all every one.
+      #
       # The conversation goes through the kernel's LLMContextView first,
-      # as the native prompt does.
-      def wire_messages(conversation)
+      # as the native prompt does (it keeps every entry in place).
+      def wire_messages(conversation, since: nil, reasoning: reasoning_history)
         conversation = llm_context_view.messages(conversation)
         paired = paired_call_ids(conversation)
+        boundary = reasoning_boundary(conversation, since: since, level: reasoning)
         plan = ImagePlan.new(conversation, vision)
         tool_images = []
         wire = []
@@ -149,7 +155,9 @@ module Samagotchi
             content = Steer.header(entry) ? Steer.wire_text(entry, entry[:content].to_s) : entry[:content]
             wire << { role: "user", content: parts(content, items) }
           when "model"
-            wire << assistant_message(entry, paired)
+            message = assistant_message(entry, paired)
+            message[:reasoning_content] = entry[:thinking] if boundary && index >= boundary && thought?(entry)
+            wire << message
           when "tool_response"
             id = entry[:tool_call_id]
             if id && paired.include?(id)
@@ -181,6 +189,33 @@ module Samagotchi
       end
 
       TOOL_IMAGES_TEXT = "[images from tool results]"
+
+      # The first index whose model entries carry their reasoning (nil:
+      # none do) under +level+. Under turn: past both the last query (a
+      # user message: a prompt, a steer, merged input, the chat template's
+      # last query; or an entry that starts a turn, turn_start) and +since+
+      # (the Run's start, so a continue turn -- a reminder, a context wake,
+      # a continue after a stop -- sends none of the run before it).
+      # @return [Integer, nil]
+      def reasoning_boundary(conversation, since: nil, level: reasoning_history)
+        case level
+        when :all then 0
+        when :turn
+          query = conversation.rindex { |entry| entry[:role].to_s == "user" || entry[:turn_start] == true }
+          [query ? query + 1 : 0, since.to_i].max
+        end
+      end
+
+      # The reasoning +conversation+'s wire messages carry from +since+ on
+      # (#reasoning_boundary), in characters.
+      def reasoning_chars(conversation, since: nil, reasoning: reasoning_history)
+        boundary = reasoning_boundary(conversation, since: since, level: reasoning) or return 0
+        conversation.drop(boundary).sum { |entry| entry[:role].to_s == "model" && thought?(entry) ? entry[:thinking].length : 0 }
+      end
+
+      # The turn's ReasoningHistory level (the kernel's turn_settings); drop
+      # without settings.
+      def reasoning_history = @kernel.turn_settings&.reasoning_history || :drop
 
       # The turn's VisionContext (the Engine sets the kernel's
       # turn_settings), or nil.
@@ -249,7 +284,7 @@ module Samagotchi
 
       # The shape the engine persists: role and content (parts stay an
       # Array), plus a model turn's tool_calls and thinking (the host's
-      # reasoning, never sent back), a result's tool_call_id, the image
+      # reasoning, sent back as #wire_messages says), a result's tool_call_id, the image
       # refs of a user message or a tool result, a prompt's turn_id (Engine,
       # never sent) and a wake turn's report's turn_start (Steer, never sent), and a plugin tool result's tool_params and tool_labels
       # (the live row's params line and label, never sent back), an
@@ -347,6 +382,8 @@ module Samagotchi
         notes.empty? ? text : [text, *notes].reject(&:empty?).join("\n")
       end
 
+      def thought?(entry) = entry[:thinking].is_a?(String) && !entry[:thinking].strip.empty?
+
       def scrub(text)
         text.encoding == Encoding::UTF_8 && !text.valid_encoding? ? text.scrub("?") : text
       end
@@ -361,6 +398,9 @@ module Samagotchi
           @cancel_controller = cancel_controller
           @model_name = model_name
           @pending_input = pending_input
+          # Where this run's entries start: the reasoning it sends back
+          # (ChatLoop#reasoning_boundary) is its own.
+          @start = conversation.length
           @tool_activity = []
           @empty_retry = EmptyAnswerRetry.new
           # The empty generations, never saved: the UIs draw the turn's
@@ -453,8 +493,8 @@ module Samagotchi
 
         # The host's reasoning, kept on the model message as +thinking+ for
         # the web turn view's reload (the whole of it, as the live view
-        # shows). Only saved: #assistant_message builds the wire message from
-        # content and tool_calls, so it never goes back to the model.
+        # shows), and sent back to the model as ChatLoop#wire_messages says
+        # (reasoning_history).
         def with_thinking(message, response)
           reasoning = response.reasoning.to_s
           reasoning.strip.empty? ? message : message.merge(thinking: reasoning)
@@ -538,7 +578,7 @@ module Samagotchi
 
         def request(iteration, retry_generation, streamed, thought, generation_controller, streamed_any = nil)
           @loop.adapter.chat(
-            messages: @loop.wire_messages(@conversation), tools: @loop.tool_definitions, model: @model_name,
+            messages: @loop.wire_messages(@conversation, since: @start), tools: @loop.tool_definitions, model: @model_name,
             cancel_controller: generation_controller || @cancel_controller, session_id: @loop.session_id,
             options: @loop.request_options(retry_generation: retry_generation, model: @model_name),
             on_delta: lambda { |content:, reasoning:, payload:|
@@ -630,10 +670,11 @@ module Samagotchi
 
         # The conversation's text as the request carries it, through the
         # kernel's LLMContextView (a stub counts, not the output it stands
-        # for): contents (a parts list's text parts) and the tool calls'
-        # names and arguments.
+        # for): contents (a parts list's text parts), the tool calls'
+        # names and arguments, and the reasoning sent back.
         def prompt_chars
-          LLMContextView.chars(@loop.llm_context_view.messages(@conversation))
+          LLMContextView.chars(@loop.llm_context_view.messages(@conversation)) +
+            @loop.reasoning_chars(@conversation, since: @start)
         end
 
         # The server's counts for this request (prompt + answer): the status

@@ -317,6 +317,17 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(sent.last).to eq("type" => "image_url", "image_url" => { "url" => "data:image/png;base64,AA" })
     end
 
+    it "sends reasoning back as reasoning_content, scrubbed of invalid UTF-8" do
+      replay("text_stream.sse")
+      thought = "bad \xE2\x80 thought".dup.force_encoding("UTF-8")
+
+      adapter.chat(messages: [{ role: "user", content: "go" }, { role: "assistant", content: "ok", reasoning_content: thought },
+                              { role: "user", content: "on" }], tools: [], model: "m")
+
+      expect(server.requests.last.json["messages"][1]).to eq("role" => "assistant", "content" => "ok",
+                                                             "reasoning_content" => "bad ? thought")
+    end
+
     it "assembles a tool call from its deltas" do
       replay("tool_call_stream.sse")
 
