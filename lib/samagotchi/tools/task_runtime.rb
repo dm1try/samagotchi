@@ -376,14 +376,16 @@ module Samagotchi
         value.empty? ? Dir.pwd : File.expand_path(value)
       end
 
+      # The command with an EXIT trap set before it that writes the shell's
+      # exit status to +exit_code_path+. A prefix, not lines after the
+      # command: a trailing "\\" or "|" in the command would swallow those,
+      # and an `exit N` or a `set -e` failure would skip them. A command that
+      # sets its own EXIT trap replaces this one: no exit_code file then
+      # (the task ends failed with process_ended_without_exit_code, unless
+      # its starter's waiter writes the code: Execute's hand-over).
       def wrapped_shell_command(command, exit_code_path)
-        escaped_exit_code_path = Shellwords.escape(exit_code_path)
-        <<~SH
-          #{command}
-          status=$?
-          printf "%s" "$status" > #{escaped_exit_code_path}
-          exit "$status"
-        SH
+        write = %(printf "%s" "$?" > #{Shellwords.escape(exit_code_path)})
+        "trap #{Shellwords.escape(write)} EXIT\n#{command}\n"
       end
 
       def sanitized_spawn_env
