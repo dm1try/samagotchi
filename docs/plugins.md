@@ -1227,7 +1227,8 @@ each simple command (so after a leading `cd X &&` too), `time [-p]` and
 `timeout`/`gtimeout` with its options and duration are left out, so
 `timeout 300 bundle exec rspec` and `bundle exec rspec` are one entry. `X=…`
 assignments stay, sorted (`SPEC=… rake spec` is not `rake spec`), except
-`NO_COLOR`, `FORCE_COLOR`, `CI` and `TERM`; a plain `env X=… cmd` is `X=…
+`NO_COLOR`, `FORCE_COLOR` and `TERM` (`CI` stays: jest or vitest without it
+can sit in watch mode); a plain `env X=… cmd` is `X=…
 cmd`, and an `env` with an option (`-C`, `-i`, `-u`) stays as typed. The
 list shows each entry as it was last typed.
 

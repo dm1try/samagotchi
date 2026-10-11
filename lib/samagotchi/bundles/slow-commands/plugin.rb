@@ -15,8 +15,9 @@
 # dropped at the start of each simple command (after &&, ||, ;, a newline,
 # so after a leading `cd X &&` too): `time [-p]` and `timeout`/`gtimeout`
 # with its options and duration. `X=…` assignments stay, sorted (they can
-# pick the target or the mode: SPEC=…, RAILS_ENV=…), except NO_COLOR,
-# FORCE_COLOR, CI and TERM, which never change what runs; a plain
+# pick the target or the mode: SPEC=…, RAILS_ENV=…, CI=… (jest/vitest
+# watch without it)), except NO_COLOR, FORCE_COLOR and TERM, which never
+# change what runs; a plain
 # `env X=… cmd` is `X=… cmd`, an `env` with -C/-i/-u (or any other option)
 # stays as typed. The entry's `shown` is the last run as typed. Input that ends inside a quote, $(…)
 # or heredoc is never recorded, nor one with a $(…), backticks or a heredoc
@@ -82,7 +83,7 @@ class Plugin
   STARTS = ["&&", "||", ";", "\n"].freeze
   ASSIGNMENT = /\A[A-Za-z_][A-Za-z0-9_]*=/
   # Assignments that never change what runs: not part of the key.
-  NEUTRAL_VARS = %w[NO_COLOR FORCE_COLOR CI TERM].freeze
+  NEUTRAL_VARS = %w[NO_COLOR FORCE_COLOR TERM].freeze
   TIMEOUTS = %w[timeout gtimeout].freeze
   # timeout's options: those that take a value, and the flags.
   TIMEOUT_VALUE_OPTIONS = %w[-s -k --signal --kill-after].freeze
@@ -129,7 +130,9 @@ class Plugin
 
   # The tokens without the wrappers at the start of each simple command
   # (time, timeout), assignments sorted and the neutral ones dropped, and
-  # the seconds of every timeout dropped.
+  # the seconds of every timeout dropped. A simple command left with no
+  # words (`NO_COLOR=1 && rspec`) goes with the operator after it, and a
+  # last one with the operator before it.
   # @return [Array(Array, Array<Float>)]
   def self.unwrap(tokens)
     durations = []
@@ -140,16 +143,16 @@ class Plugin
       durations.concat(seconds)
       out.concat(words)
       segment = []
+      !words.empty?
     end
     tokens.each do |token|
       if token[0] == :op && STARTS.include?(token[1])
-        flush.call
-        out << token
+        out << token if flush.call
       else
         segment << token
       end
     end
-    flush.call
+    out.pop if !flush.call && out.last&.first == :op && STARTS.include?(out.last[1])
     [out, durations]
   end
 
@@ -162,7 +165,8 @@ class Plugin
     loop do
       assignments << rest.shift[1] while word?(rest.first) && rest.first[1].match?(ASSIGNMENT)
       head = word?(rest.first) ? rest.first[1] : nil
-      if head == "time"
+      # time -p only: another option (GNU time -v) is a different program.
+      if head == "time" && !(word?(rest[1]) && rest[1][1].start_with?("-") && rest[1][1] != "-p")
         rest.shift
         rest.shift if word?(rest.first) && rest.first[1] == "-p"
       elsif head == "env" && word?(rest[1]) && !rest[1][1].start_with?("-")

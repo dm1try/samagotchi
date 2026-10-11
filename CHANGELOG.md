@@ -24,8 +24,8 @@ and commands may change between minor versions. How releases are made:
 - slow-commands bundle 0.2.0 (needs chi 0.59.0): a command `execute` handed over as a task at its limit counts as
   slow, and the "a finished task took …" advice also reads handed-over tasks. A command is now remembered without
   the `time` / `timeout N` wrappers and `env` a model adds (`timeout 300 rspec` and `rspec` are one entry), its
-  `X=…` assignments sorted; `/slow-commands` shows each as last typed. With `execute.on_timeout: kill`, a
-  `timeout N` past the execute limit is denied up front.
+  `X=…` assignments sorted and `NO_COLOR`, `FORCE_COLOR` and `TERM` left out; `/slow-commands` shows each as last
+  typed. With `execute.on_timeout: kill`, a `timeout N` past the execute limit is denied up front.
 - chi reads a project's AGENTS.md (the name other agent tools read) instead of AGENT.md: rename yours. AGENT.md is no
   longer read. The setting that skips it is now `skip_agents_md` (env `SAMAGOTCHI_SKIP_AGENTS_MD`).
 

@@ -123,13 +123,29 @@ RSpec.describe "The slow-commands bundle" do
         expect(normalize("timeout 5")).to eq("timeout 5")
       end
 
-      it "keeps assignments, sorted, without NO_COLOR, FORCE_COLOR, CI and TERM; a plain env is dropped" do
+      it "keeps assignments, sorted, without NO_COLOR, FORCE_COLOR and TERM; a plain env is dropped" do
         expect(normalize("B=2 A=1 rspec")).to eq(normalize("A=1 B=2 rspec"))
         expect(normalize("B=2 A=1 rspec")).to eq("A=1 B=2 rspec")
-        expect(normalize("env RAILS_ENV=test CI=1 NO_COLOR=1 rspec")).to eq("RAILS_ENV=test rspec")
+        expect(normalize("env RAILS_ENV=test NO_COLOR=1 rspec")).to eq("RAILS_ENV=test rspec")
+        # jest/vitest watch without CI: CI=true npm test is another run.
+        expect(normalize("CI=true npm test")).to eq("CI=true npm test")
         expect(normalize("FORCE_COLOR=0 TERM=dumb timeout 60 env SPEC=spec/a_spec.rb rake spec"))
           .to eq("SPEC=spec/a_spec.rb rake spec")
         expect(normalize("SPEC=spec/a_spec.rb rake spec")).not_to eq(normalize("rake spec"))
+      end
+
+      it "drops a simple command left with no words together with its operator" do
+        expect(normalize("NO_COLOR=1 && rspec")).to eq("rspec")
+        expect(normalize("TERM=dumb; rspec")).to eq("rspec")
+        expect(normalize("time\nrspec")).to eq("rspec")
+        expect(normalize("rspec && NO_COLOR=1")).to eq("rspec")
+        expect(normalize("make; time; rspec")).to eq("make ; rspec")
+        expect(normalize("CI=1 && rspec")).to eq("CI=1 && rspec")
+      end
+
+      it "keeps time with an option other than -p (GNU time -v is another program)" do
+        expect(normalize("time -v rspec")).to eq("time -v rspec")
+        expect(normalize("time -p rspec")).to eq("rspec")
       end
 
       it "never drops an env with -C, -i, -u (or another option)" do
