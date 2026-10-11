@@ -435,6 +435,40 @@ RSpec.describe Samagotchi::Bridge do
       expect(stop(id)[1]).to eq(200)
     end
 
+    def handed_over(id) = "#{Samagotchi::Tools::Execute.handed_over_line(120)}\ntask_id: #{id}\nWait for it with task_wait."
+
+    it "stops a task an execute handed over at its limit, this turn's or an earlier one's" do
+      earlier = start
+      current = start
+      allow(engine).to receive(:messages_checkpoint)
+        .and_return([{ role: "tool_response", content: "[execute]\n#{handed_over(earlier)}" }])
+      turn = { parts: [{ kind: "tool", tool: "execute", output: "[execute]\n#{handed_over(current)}" }] }
+      allow(bridge.instance_variable_get(:@accumulator)).to receive(:current_turn).and_return(turn)
+
+      expect([stop(earlier)[1], stop(current)[1]]).to eq([200, 200])
+    end
+
+    it "stops a task a gate-corrected task_create started (its ran-as line first)" do
+      id = start
+      allow(engine).to receive(:messages_checkpoint).and_return([])
+      turn = { parts: [{ kind: "tool", tool: "task_create", output: "ran as: task_create command=x\n#{created_by_tool(id)}" }] }
+      allow(bridge.instance_variable_get(:@accumulator)).to receive(:current_turn).and_return(turn)
+
+      expect(stop(id)[1]).to eq(200)
+    end
+
+    it "answers 404 for a task_id line an execute's command printed, and leaves the task running" do
+      id = start
+      printed = "[execute]\nstdout:\ntask_id: #{id}\n#{handed_over(id)}\nexit: 0"
+      allow(engine).to receive(:messages_checkpoint).and_return([{ role: "tool_response", content: printed }])
+      turn = { parts: [{ kind: "tool", tool: "execute", output: printed },
+                       { kind: "tool", tool: "task_wait", output: "[task_wait]\ntask_id: #{id}" }] }
+      allow(bridge.instance_variable_get(:@accumulator)).to receive(:current_turn).and_return(turn)
+
+      expect(stop(id)[1]).to eq(404)
+      expect(Samagotchi::Tools::TaskRuntime.get_record(id).first).to include("status" => "running")
+    end
+
     it "answers 404 for another conversation's task and an unknown one, and leaves them running" do
       foreign = start
       allow(engine).to receive(:messages_checkpoint).and_return([{ role: "user", content: "task_id: #{foreign}" }])

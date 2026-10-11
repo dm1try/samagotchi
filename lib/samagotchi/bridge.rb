@@ -29,7 +29,6 @@ require_relative "version"
 require_relative "worker_sidecar"
 require_relative "relay_verifier"
 require_relative "relay_watcher"
-require_relative "tools/task_create"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -581,9 +580,13 @@ module Samagotchi
       [{}, 200, { status: record["status"], stop_reason: record["stop_reason"], task_id: task_id }]
     end
 
+    # The tasks this session started: its history's (created_ids_in) and
+    # this turn's rows, a task_create's or an execute handed over at its
+    # limit (only after its HANDED_OVER line: its output can print a
+    # "task_id:" line of its own).
     def own_task_ids
       running = Array(@accumulator.current_turn&.dig(:parts)).filter_map do |part|
-        part[:output].to_s[/\A(?:\[task_create\]\n)?task_id: (\S+)/, 1] if part[:kind] == "tool" && part[:tool] == Tools::TaskCreate::NAME
+        Tools::TaskRuntime.created_id(part[:tool], part[:output]) if part[:kind] == "tool"
       end
       Tools::TaskRuntime.created_ids_in(@engine.messages_checkpoint) | running
     end

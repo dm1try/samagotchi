@@ -668,6 +668,18 @@ RSpec.describe "task tools" do
       expect(runtime.created_id("execute", "stdout:\n#{handed_over}")).to be_nil
     end
 
+    it "has a JS twin in the web's task_stop.js that spells the same first line" do
+      js = File.read(File.expand_path("../../lib/samagotchi/web/public/task_stop.js", __dir__))
+      twin = js[%r{^const HANDED_OVER = /(.+)/;$}, 1]
+
+      expect(twin).to include("#{Samagotchi::Tools::Execute::HANDED_OVER} \\d+s limit:")
+      expect(Samagotchi::Tools::Execute.handed_over_line(120.0)).to start_with("Still running at the 120s limit:")
+      # JS's leading ^ (no m flag) is Ruby's \A.
+      ruby_twin = Regexp.new("\\A#{twin.delete_prefix("^")}")
+      expect(ruby_twin.match("ran as: execute command=x\n[execute]\n#{handed_over}")&.[](1)).to eq(id)
+      expect(ruby_twin.match("[execute]\nstdout:\n#{handed_over}")).to be_nil
+    end
+
     it "reads a UI row's output with or without the lead, per tool" do
       expect(runtime.created_id("execute", handed_over)).to eq(id)
       expect(runtime.created_id("execute", "[execute]\n#{handed_over}")).to eq(id)

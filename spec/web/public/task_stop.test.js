@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  confirmText, createTaskStopper, quietFailure, stopTarget, taskCommand,
+  confirmText, createTaskStopper, handedOverId, quietFailure, stopTarget, taskCommand,
 } from "../../../lib/samagotchi/web/public/task_stop.js";
 
 const ID = "20261004120000-0a1b2c3d";
@@ -35,6 +35,29 @@ test("taskCommand: a task from an earlier turn, by its task_wait row's title wit
   // This turn's task_create still wins: the full command.
   const create = { tool: "task_create", output: `task_id: ${ID}`, view: { command: "npm run build && npm test" } };
   assert.equal(taskCommand([{ tools: [wait] }, { tools: [create] }], ID), "npm run build && npm test");
+});
+
+const handedOver = (id) => `Still running at the 120s limit: moved to a background task, not killed.\ntask_id: ${id}\n`
+  + "Wait for it with task_wait (it may take minutes); task_stop stops it.";
+
+test("handedOverId: only after an execute's hand-over line at the start", () => {
+  assert.equal(handedOverId(handedOver(ID)), ID);
+  assert.equal(handedOverId(`[execute]\n${handedOver(ID)}`), ID);
+  assert.equal(handedOverId(`ran as: execute command=x\n[execute]\n${handedOver(ID)}`), ID);
+  // A task_id line the command printed doesn't count, nor does the line printed later.
+  assert.equal(handedOverId(`task_id: ${ID}\nexit: 0`), null);
+  assert.equal(handedOverId(`[execute]\nstdout:\n${handedOver(ID)}`), null);
+  assert.equal(handedOverId(`[task_wait]\n${handedOver(ID)}`), null);
+  assert.equal(handedOverId(undefined), null);
+});
+
+test("taskCommand: the command of this turn's execute that handed the task over", () => {
+  const gens = [{ tools: [
+    { tool: "execute", output: `[execute]\nstdout:\ntask_id: ${ID}\nexit: 0`, view: { command: "echo task_id" } },
+    { tool: "execute", output: `[execute]\n${handedOver(ID)}`, view: { command: "bundle exec rspec" } },
+  ] }];
+  assert.equal(taskCommand(gens, ID), "bundle exec rspec");
+  assert.equal(taskCommand([{ tools: [gens[0].tools[0]] }], ID), null);
 });
 
 test("confirmText: the command on one line, cut, else the id", () => {
