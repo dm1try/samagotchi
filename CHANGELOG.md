@@ -39,6 +39,9 @@ and commands may change between minor versions. How releases are made:
 - Web: a blank line in a read's numbered file lines is empty, not a space, so copying the lines keeps the file
   as it is.
 
+Update with `chi update`: it updates slow-commands (0.2.0: hand-overs and command wrappers). Then restart `chi web`.
+If your project has an AGENT.md, rename it to AGENTS.md.
+
 ## [0.58.0] - 2026-10-11
 
 ### Added
