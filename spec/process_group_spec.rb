@@ -54,6 +54,57 @@ RSpec.describe Samagotchi::ProcessGroup do
       reap(pid) unless status
     end
 
+    # A `timeout N cmd` (GNU, no --foreground) moves itself to a group of
+    # its own: ruby's setpgid stands in for it, no coreutils needed.
+    describe "a descendant that left the group" do
+      def spawn_leaver(marker)
+        spawn_group("ruby -e 'Process.setpgid(0, 0); sleep #{marker}'; echo after")
+      end
+
+      # The ruby that left (its own group's leader), not the shell +shell+
+      # whose command line names it too.
+      def leaver_pids(marker, shell)
+        `pgrep -f "sleep #{marker}"`.split.map(&:to_i).select do |p|
+          p != shell && Process.getpgid(p) == p
+        rescue Errno::ESRCH
+          false
+        end
+      end
+
+      it "is stopped with the group (its group found while the shell runs)" do
+        pid = spawn_leaver(31.93)
+        expect(wait_until { leaver_pids(31.93, pid).any? }).to be(true)
+
+        expect(described_class.stop(pid, grace: 2, poll: 0.01, stopped: reaped(pid))).to be(true)
+        expect(wait_until { leaver_pids(31.93, pid).empty? }).to be(true)
+      ensure
+        reap(pid)
+      end
+
+      it "survives a stop without the walk" do
+        pid = spawn_leaver(31.94)
+        expect(wait_until { leaver_pids(31.94, pid).any? }).to be(true)
+        leavers = leaver_pids(31.94, pid)
+
+        described_class.stop(pid, grace: 2, poll: 0.01, stopped: reaped(pid), walk: false)
+        expect(leavers.all? { |p| described_class.alive?(p) }).to be(true)
+      ensure
+        reap(pid)
+        # Its own group, which this example started: never the walk's.
+        Array(leavers).each { |p| described_class.signal(p, "KILL") }
+      end
+    end
+
+    it "walks from the group's members only, from the bare pid with leader:, never into chi's own group" do
+      table = [[100, 1, 100], [200, 100, 200], [201, 200, 200], [300, 50, 300], [400, 300, 400],
+               [500, 100, Process.getpgrp], [600, 100, 1]]
+      allow(described_class).to receive(:process_table).and_return(table)
+
+      expect(described_class.descendant_groups(100)).to eq([200])
+      expect(described_class.descendant_groups(50)).to eq([])
+      expect(described_class.descendant_groups(50, leader: true)).to eq([300, 400])
+    end
+
     it "waits at most kill_wait after the KILL for a group that never says it stopped" do
       pid = spawn_group("trap '' TERM; sleep 31.99")
       started = described_class.monotonic

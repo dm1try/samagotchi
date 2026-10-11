@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A `timeout N cmd` (GNU coreutils) that moved to a process group of its own is now stopped with the command: by the
+  user's Stop, at the execute limit and by `task_stop`. It used to run on, orphaned.
 - A `task_create` the guardrails corrected (its result starts with a `ran as:` line) now counts as the session's own
   task: the turn-end and cancel notes list it, a worker doesn't idle-exit under it, and the web's stop-task button
   works for it.
