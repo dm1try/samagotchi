@@ -111,13 +111,15 @@ module Samagotchi
     end
 
     # The continue offer was answered yes: resume the conversation without a
-    # user message, with the iteration limit the offer's turn had. A failure
+    # user message, with the iteration limit the offer's turn had, from the
+    # run that turn started (TurnFlow#resume_from: its reasoning stays). A failure
     # keeps the offer, as the REPL does ("continue prompt preserved"), and
     # asks again, one before the turn began too (logged, no :turn_failed).
     # The answer's text is carried into the turn as it begins; a turn that
     # never began leaves it to no other.
     def run_continue_turn(command)
       offer = @turn_flow.offer
+      resume_from = @turn_flow.resume_from
       close("answered")
       steer = @continue_steer
       @continue_steer = nil
@@ -129,7 +131,8 @@ module Samagotchi
           Log.warn(:worker, "turn_not_begun", continue: true, error: e.class.name, msg: e.message)
           return announce_offer(offer)
         end
-        @run_turn.call(nil, continue: true, origin: { client_id: command.client_id }.compact,
+        @run_turn.call(nil, continue: true, origin: { client_id: command.client_id }.compact, resumed: true,
+                            resume_from: resume_from,
                             max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
           if error
             announce_offer(offer)

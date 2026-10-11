@@ -107,8 +107,10 @@ sessions by model and by the model notes their prompt carried (the session file'
 prints the numbers a model note is meant to move: the place of the first edit (an `edit` or `write` call) and of the
 first commit (an `execute` call that runs `git [options] commit`) among the tool calls, commits per 100 steps (model
 requests), `execute` calls with a bare `&`, the longest run of calls with no edit, and what the session needed from
-outside: Continues (the turns in its `analytics.json` marked `continue: true` — the mark a file written after
-2026-10-09 carries; an older file has none, and its turns with no prompt of their own are counted instead), steers (lines that reached a
+outside: Continues (the step-limit Continues: the turns in its `analytics.json` marked `resumed: true`, the mark a
+file written after 2026-10-11 carries; a file from 2026-10-09 on has `continue: true` only, which a reminder's and a
+wake's turn carry too, and that is counted instead, record by record in a file that spans both; an older file has neither, and its turns with no prompt of their
+own are counted), steers (lines that reached a
 running turn from the user, `chi send` or a parent, and a Continue's text), follow-up prompts and plugin nudges. A
 group has the medians of the places and runs, commits per 100 steps pooled and the counts summed. `--help` defines
 each column; `--model GLOB`, `--since DATE` and `--min-steps N` filter, `--json` gives JSON. It reads only and prints

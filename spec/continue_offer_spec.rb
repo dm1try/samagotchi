@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::ContinueOffer do
   let(:offer) { { context: { original_prompt: "long task" }, no_interrupt: false } }
   let(:turn_flow) do
     instance_double(Samagotchi::TurnFlow, offer: offer, awaiting_continue?: true, after_turn: :continue_offered,
-                                          before_continue_turn: nil)
+                                          before_continue_turn: nil, resume_from: 7)
   end
   let(:queued) { [] }
   # The worker's run_engine_turn, as far as the Engine: what fails before
@@ -122,5 +122,15 @@ RSpec.describe Samagotchi::ContinueOffer do
     continue_offer.run_continue_turn(command_from("web:2"))
 
     expect(drains).to eq([[{ text: "also X", source: "user" }]])
+  end
+
+  it "resumes the run the offer's turn started (TurnFlow#resume_from), so the Continue keeps its reasoning" do
+    args = nil
+    offer = described_class.new(engine: engine, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args = a },
+                                max_iterations: ->(_) { 100 })
+
+    offer.run_continue_turn(command_from("web:2"))
+
+    expect(args).to include(continue: true, resumed: true, resume_from: 7, max_iterations: 100)
   end
 end

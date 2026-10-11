@@ -1804,8 +1804,14 @@ module Samagotchi
     # +id+: names the turn on :turn_started (its metrics record's id) and on
     # its saved prompt, so a UI pairs the two whatever left the conversation.
     # +limit+: the iteration limit #generate ran it with.
+    # +resumed+: a step-limit Continue (run_turn's resumed:).
+    # +resume_from+: where its reasoning starts, the run it resumes
+    # (run_turn's resume_from:); nil for every other turn, and for a
+    # Continue that starts cold (after a model change).
     Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                      :settings, :id, :limit) do
+                      :settings, :id, :limit, :resumed, :resume_from) do
+      def resumed? = resumed ? true : false
+
       # The turn's boundary events carry the origin only when there is one,
       # so payloads stay unchanged for callers that don't pass it.
       def tag(event) = origin ? event.merge(origin: origin) : event
@@ -1835,6 +1841,14 @@ module Samagotchi
     # @param continue [Boolean] resume the conversation without appending a
     #   user prompt (continue after the iteration limit, reminder turns);
     #   +prompt+ is ignored and :turn_started carries `continue: true`
+    # @param resumed [Boolean] a step-limit Continue (with continue:):
+    #   :turn_started carries `resumed: true`, so do the before_turn payload
+    #   and the turn's analytics record. false for every other continue (a
+    #   reminder, a wake).
+    # @param resume_from [Integer, nil] a step-limit Continue's: where the
+    #   run it resumes started (ModelResult#run_start, kept in the offer by
+    #   TurnFlow), so it keeps that run's reasoning; nil starts cold (a
+    #   model change while the offer stood, every other turn).
     # @param origin [Hash, nil] who queued the turn ({client_id:, enqueued_id:});
     #   when given, the turn's boundary events (:turn_started, :turn_completed,
     #   :turn_canceled, :turn_failed) carry it as `origin:`
@@ -1857,9 +1871,13 @@ module Samagotchi
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil,
-                 images: [], id: nil)
+                 images: [], id: nil, resumed: false, resume_from: nil)
       turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
                                          continue: continue, id: id)
+      if continue
+        turn.resumed = resumed
+        turn.resume_from = resume_from
+      end
       begin
         # A Stop cuts the /props probes this thread makes for the turn
         # (window, served model, vision) instead of waiting their timeout.
@@ -1942,6 +1960,7 @@ module Samagotchi
       bind_metrics(session)
       turn_started = { type: :turn_started, session_id: session.id, prompt: turn.prompt, turn_id: turn.id }
       turn_started[:continue] = true if turn.continue
+      turn_started[:resumed] = true if turn.resumed?
       turn_started[:images] = image_refs unless image_refs.empty?
       turn_started[:cut_after] = steer_cut_after
       emit_event(turn.on_event, turn.tag(turn_started))
@@ -1983,9 +2002,9 @@ module Samagotchi
       end
 
       # Fire :before_turn hook, with a read-only copy of the history so far
-      # and the prompt (nil on a continue).
+      # and the prompt (nil on a continue); resumed: a step-limit Continue.
       @hooks.fire(:before_turn, { type: :before_turn, session_id: session.id, prompt: turn.prompt,
-                                  messages: hook_messages(session.messages) })
+                                  resumed: turn.resumed?, messages: hook_messages(session.messages) })
 
       turn_messages(turn, image_refs)
       true
@@ -2121,7 +2140,10 @@ module Samagotchi
       log_llm_context(explained)
 
       turn.limit = @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for
-      backend.complete(
+      # Where this run starts (ChatLoop::Run's start): an offer made at its
+      # end keeps it, so a Continue resumes this run.
+      run_start = turn.messages.length
+      result = backend.complete(
         messages: turn.messages,
         max_iterations: turn.limit,
         on_stream_event: build_stream_event_handler(turn.on_event, cancel_controller: turn.controller),
@@ -2130,6 +2152,8 @@ module Samagotchi
         max_tool_output_chars: max_tool_output_chars,
         pending_input: turn_drain(pending_input)
       )
+      result.run_start = run_start
+      result
     end
     private :generate
 

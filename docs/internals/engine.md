@@ -16,25 +16,28 @@ Engine#run_turn → backend.complete(...) → KernelLoop#run (native) or ChatLoo
 
 ```
 Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:, max_tool_output_chars:,
-                pending_input:, continue:, origin:, images:, id:)
+                pending_input:, continue:, origin:, images:, id:, resumed:, resume_from:)
   │
   ├── begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id:)
+  │     # (then, on a continue, turn.resumed = resumed (a step-limit Continue) and
+  │     #  turn.resume_from = resume_from (its run's start; nil: it starts cold))
   │     # @session = session, session.status = RUNNING, used memories absorbed,
   │     # TurnState#begin!(controller:, sink:) (a new CancellationController when none is given),
   │     # a recap in flight invalidated, GuardrailWiring#begin_turn(origin)
   │     # Returns a Turn {session, prompt (nil on a continue), continue, on_event, controller,
-  │     #                 origin, started_at, id (the caller's id:, else a new uuid)}
+  │     #                 origin, started_at, id (the caller's id:, else a new uuid), resumed, resume_from}
   │
   ├── Client.swap_probe_cancel(turn.controller)   # a Stop cuts this turn's /props probes
   │
   ├── prepare_turn(turn, images)
   │     # Emits :turn_started {session_id, prompt, turn_id, continue: true (only on a continue),
+  │     #                      resumed: true (only on a step-limit Continue: resumed: given),
   │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
   │     # refresh_profile! (may ask the server's /props once)
   │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name is set in generate)
   │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools
   │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
-  │     #   (a frozen copy of the history, and the prompt)
+  │     #   (a frozen copy of the history, the prompt, and resumed)
   │     # turn_messages: system head + history + due reminders (:reminder_injected) + the user message
   │     # Returns false when a Stop came during the probes or the init wait, else true
   │
@@ -322,7 +325,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 
 | Event | When | Payload |
 |---|---|---|
-| `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, images?, cut_after}` |
+| `:turn_started` | `prepare_turn` | `{session_id, prompt, turn_id, continue?, resumed?, images?, cut_after}` (`resumed`: a step-limit Continue) |
 | `:reminder_injected` | due reminders went into the turn | `{reminders}` |
 | `:context_status` | every request (unless `context.status` is off), the current estimate before it | `{iteration, status, usage, bucket, source}` (internals/context-telemetry.md) |
 | `:generation_started` | a request begins | `{iteration, context_window_tokens, context_window_source, price}` (`price`: the turn's `ModelPrice#to_h`, nil without one; native adds `profile`, `profile_source`) |

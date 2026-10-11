@@ -42,8 +42,9 @@ module Samagotchi
       [:invalid, nil]
     end
 
-    # @return [Hash, nil] the pending continue offer: {context:, no_interrupt:}
-    #   (context summarizes the interrupted turn for a "no, <reason>")
+    # @return [Hash, nil] the pending continue offer: {context:, no_interrupt:,
+    #   run_start:, model:} (context summarizes the interrupted turn for a
+    #   "no, <reason>"; run_start and model are #resume_from's)
     attr_reader :offer
 
     # How many times the conversation went back to a checkpoint (a failed
@@ -94,7 +95,11 @@ module Samagotchi
       end
 
       if result.resumable?
-        @offer = { context: interrupted_turn_context(result), no_interrupt: no_interrupt }
+        # A Continue that ran out again goes on from the run the chain
+        # started; any other turn's offer (a prompt's, a wake's) from its own.
+        run_start = (continue && resume_from) || result.run_start
+        @offer = { context: interrupted_turn_context(result), no_interrupt: no_interrupt, run_start: run_start,
+                   model: @engine.effective_model_name }
         :continue_offered
       else
         @offer = nil
@@ -141,6 +146,20 @@ module Samagotchi
       end
       @checkpoint = nil
       :restored
+    end
+
+    # Where a Continue of the pending offer resumes: the run its turn (or
+    # the first turn of a chain of Continues) started (ModelResult#run_start),
+    # so the Continue keeps that run's reasoning (Engine#run_turn
+    # resume_from:). nil with no offer, and after a model change while the
+    # offer stands: another model's reasoning isn't replayed, the Continue
+    # starts cold. A cancelled or failed Continue keeps the offer, and so
+    # this; every way the offer goes takes it along.
+    # @return [Integer, nil]
+    def resume_from
+      return nil unless @offer && @offer[:model] == @engine.effective_model_name
+
+      @offer[:run_start]
     end
 
     # Answer the offer with no (Stop): the interrupted turn stays, as

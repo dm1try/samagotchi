@@ -50,7 +50,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | Event | When it fires | Event payload |
 |-------|--------------|---------------|
 | `:session_start` | The first turn this chi process runs for the session (so again after `--resume`, a worker that idle-exited and woke, or a restart) | `{ type: :session_start, session_id: "..." }` |
-| `:before_turn` | Before each turn starts | `{ type: :before_turn, session_id: "...", prompt: "..." (nil on a continue), messages: [...] (the history before this turn) }` |
+| `:before_turn` | Before each turn starts | `{ type: :before_turn, session_id: "...", prompt: "..." (nil on a continue), resumed: true \| false (true on a step-limit Continue, which resumes the run before it; false on every other turn, a reminder's or a wake's too), messages: [...] (the history before this turn) }` |
 | `:after_turn` | After a turn completed or was stopped once the model was asked (not after one that failed, was cut short by an interrupt signal (SIGINT), or was stopped before its `:before_turn` hooks) | `{ type: :after_turn, status: "completed" \| "canceled", present: (see [Presenting the answer](#presenting-the-answer-display-only)), messages: [...] (the conversation the turn stored; a cancelled or empty turn ends it with a `kind: turn_note` system message, and a context line is `kind: context`, see [sessions.md](sessions.md#notes-a-turn-leaves-for-the-model)) }` |
 | `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
 | `:after_generation` | After LLM returns (both loops); not after a generation a hook cut (`stop_generation`) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |

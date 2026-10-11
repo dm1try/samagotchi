@@ -24,11 +24,14 @@ module ModelNotesReport
   #   first, between two or after the last.
   # - bare_amp: execute calls with a bare `&` (a background operator; not
   #   &&, 2>&1, >&, &> or one in quotes).
-  # - continues: turns that ran without a prompt of their own, from the
-  #   session's analytics.json (<dir>/<id>/analytics.json). A file written
-  #   after 2026-10-09 has continue: on every turn record, true on a
-  #   Continue's, and that mark is the count (a reminder's turn and a turn
-  #   whose prompt !rollback erased aren't continues). An older file has no
+  # - continues: step-limit Continues, from the session's analytics.json
+  #   (<dir>/<id>/analytics.json). A file written after 2026-10-11 has
+  #   resumed: on every turn record, true on a Continue's, and that mark is
+  #   the count. One written after 2026-10-09 has continue: on every turn
+  #   record, true on a turn with no prompt of its own (a Continue's, and
+  #   also a reminder's or a wake's), and that mark is the count. Each
+  #   record is read by its own mark (resumed, else continue), so a file
+  #   that spans the upgrade counts both parts. An older file has no
   #   mark: its
   #   turn records whose id is no turn prompt's turn_id are counted instead
   #   (a step-limit Continue is such a turn, so is a due reminder's turn).
@@ -191,8 +194,11 @@ module ModelNotesReport
     def continues(messages, records)
       return nil unless records
 
-      marked = records.count { |record| record["continue"] == true }
-      return marked if records.any? { |record| record.key?("continue") }
+      # Each record by its own mark: a file written across the upgrade has
+      # both kinds.
+      if records.any? { |record| record.key?("resumed") || record.key?("continue") }
+        return records.count { |record| record.fetch("resumed") { record["continue"] } == true }
+      end
 
       prompts = messages.select { |message| Samagotchi::Steer.turn_prompt?(message) }
       ids = prompts.map { |message| message[:turn_id] }

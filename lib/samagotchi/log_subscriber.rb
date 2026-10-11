@@ -63,7 +63,8 @@ module Samagotchi
       @generation_started_at.clear
       @tool_started_at.clear
       log(:info, :turn_started, session: event[:session_id], prompt_chars: event[:prompt].to_s.length,
-                                continue: event[:continue] || nil, **items(event), **origin(event))
+                                continue: event[:continue] || nil, resumed: event[:resumed] || nil, **items(event),
+                                **origin(event))
     end
 
     def on_turn_completed(event)

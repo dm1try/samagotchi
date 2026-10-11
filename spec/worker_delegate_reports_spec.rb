@@ -440,7 +440,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       end
 
       it "commits the report a continue turn read when the turn fails, and gives a canceled one's back" do
-        resumable = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: false, resumable?: true,
+        resumable = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: false, resumable?: true, run_start: 3,
                                                                   conversation: nil, tool_activity: [])
         canceled = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: true, resumable?: false,
                                                                  conversation: nil)
@@ -523,6 +523,10 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         prompt, kwargs, lines = wake_turns.pop(timeout: 3)
         expect(prompt).to be_nil
         expect(kwargs).to include(continue: true, origin: { client_id: "child:#{child.id[0, 8]}" })
+        # A new reason to act, not a step-limit Continue: it doesn't resume
+        # the run before it (its reasoning isn't sent back).
+        expect(kwargs).not_to have_key(:resume_from)
+        expect(kwargs).not_to have_key(:resumed)
         expect(lines.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nfound it"])
         # Its message starts the turn (a reload shows the wake turn as its own).
         expect(lines.first.mark).to include(turn_start: true)
@@ -659,7 +663,7 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
       end
 
       it "doesn't wake while a continue offer waits; the report joins the continue turn" do
-        resumable = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: false, resumable?: true,
+        resumable = instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: false, resumable?: true, run_start: 3,
                                                                   conversation: nil, tool_activity: [])
         allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
           lines = kwargs[:pending_input].call

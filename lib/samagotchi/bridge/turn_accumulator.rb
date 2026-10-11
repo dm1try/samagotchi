@@ -118,6 +118,7 @@ module Samagotchi
         return [] unless turn
 
         started = { type: :turn_started, prompt: turn[:prompt], origin: turn[:origin], continue: !!turn[:continue] }
+        started[:resumed] = true if turn[:resumed]
         started[:started_at] = started_at if started_at
         events = [with_images(started, turn[:images])]
         text_iteration = nil # a text part is open for this iteration
@@ -238,6 +239,7 @@ module Samagotchi
           dequeue([event[:origin]])
           @turn = { prompt: event[:prompt], origin: event[:origin], continue: !!event[:continue],
                     parts: [], pending_question: nil }
+          @turn[:resumed] = true if event[:resumed]
           @tool_started_at = {}
           @turn[:images] = event[:images] if event[:images]
           @turn[:cut_after] = event[:cut_after] if event[:cut_after]

@@ -23,8 +23,9 @@ module ModelNotesReport
         commits/100  commits per 100 steps
         no-edit      the most calls in a row with no edit or write
         bare&        execute calls with a background & (not &&, 2>&1, &> or a quoted one)
-        cont         turns with no prompt of their own (a step-limit Continue; also a reminder's turn),
-                     from <dir>/<id>/analytics.json; - without it
+        cont         step-limit Continues (marked resumed; in a file before 2026-10-11, turns with no
+                     prompt of their own, a reminder's or a wake's too), from <dir>/<id>/analytics.json;
+                     - without it
         steer        user lines that reached a running turn (the user's, chi send's, a parent's) and the
                      steers a person sent (a Continue's text)
         f-up         user prompts after the first that started a turn (not a delegate report's wake)

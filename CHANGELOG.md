@@ -15,6 +15,10 @@ and commands may change between minor versions. How releases are made:
   into the system prompt after AGENTS.md, in the cached part. A relative config entry is looked up where chi runs
   (`append_system_prompt: [CLAUDE.md]`); the flag's files are saved in the session and kept by forks and continues.
   `/stats` names the prompt's files on a `prompt files:` line.
+- An analytics `resumed` mark on the turn record of a step-limit Continue (`resumed: true`; every other turn has
+  `resumed: false`). `continue` also marks a reminder's and a wake's turn, so `script/model_notes_report` now counts
+  Continues from `resumed`, falling back to `continue` for older files. `:turn_started` and the `before_turn` hook
+  payload carry `resumed` too.
 
 ### Changed
 

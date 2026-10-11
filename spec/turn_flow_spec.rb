@@ -7,9 +7,13 @@ RSpec.describe Samagotchi::TurnFlow do
   # Engine's out-of-turn messages API over a plain array.
   let(:engine_class) do
     Class.new do
-      attr_accessor :messages
+      attr_accessor :messages, :effective_model_name
 
-      def initialize(messages) = @messages = messages
+      def initialize(messages)
+        @messages = messages
+        @effective_model_name = "m1"
+      end
+
       def messages_checkpoint = @messages.map(&:dup)
       def rollback_to(checkpoint) = @messages = checkpoint.map(&:dup)
       def append_messages(extra) = @messages += extra.map(&:dup)
@@ -19,10 +23,10 @@ RSpec.describe Samagotchi::TurnFlow do
   let(:engine) { engine_class.new(before.map(&:dup)) }
   let(:flow) { described_class.new(engine: engine) }
 
-  def result(conversation, canceled: false, exhausted: false, pending: false, activity: [])
+  def result(conversation, canceled: false, exhausted: false, pending: false, activity: [], run_start: nil)
     Samagotchi::LLM::ModelResult.new(text: "", conversation: conversation, exhausted: exhausted,
                                      pending_tool_calls: pending, tool_activity: activity, canceled: canceled,
-                                     cancellation_reason: canceled ? :ctrl_c : nil)
+                                     cancellation_reason: canceled ? :ctrl_c : nil).tap { |r| r.run_start = run_start }
   end
 
   # What a prompt turn leaves in the engine (Engine#run_turn replaces the
@@ -129,6 +133,81 @@ RSpec.describe Samagotchi::TurnFlow do
       flow.after_turn(result(engine.messages, exhausted: true, pending: true))
 
       expect(flow.offer[:context][:last_model_intent]).to eq("I should list.")
+    end
+  end
+
+  # The run's start (ModelResult#run_start, the Engine's) lives in the
+  # offer: a step-limit Continue resumes from it (Engine#run_turn
+  # resume_from:), so the turn keeps its reasoning.
+  describe "#resume_from" do
+    def exhaust(start, continue: false)
+      engine.messages = engine.messages + [{ role: "tool_response", content: "r#{engine.messages.length}" }]
+      flow.after_turn(result(engine.messages, exhausted: true, pending: true, run_start: start), continue: continue)
+    end
+
+    it "is nil with no offer, and the run's start once a turn runs out of steps" do
+      expect(flow.resume_from).to be_nil
+      run_prompt("go", [])
+      exhaust(4)
+
+      expect(flow.resume_from).to eq(4)
+    end
+
+    it "goes back to the first run across a chain of Continues" do
+      run_prompt("go", [])
+      exhaust(4)
+      flow.before_continue_turn
+      exhaust(6, continue: true)
+      flow.before_continue_turn
+      exhaust(8, continue: true)
+
+      expect(flow.resume_from).to eq(4)
+    end
+
+    it "takes the run's own start when an offer comes from a turn that isn't a Continue (a wake)" do
+      run_prompt("go", [])
+      exhaust(4)
+      exhaust(6)
+
+      expect(flow.resume_from).to eq(6)
+    end
+
+    it "stays on a cancelled Continue (the offer stays) and on a failed one (no after_turn)" do
+      run_prompt("go", [])
+      exhaust(4)
+      flow.before_continue_turn
+      flow.after_turn(result(engine.messages, canceled: true, run_start: 5), continue: true)
+
+      expect(flow.resume_from).to eq(4)
+    end
+
+    it "goes with the offer: Stop, a dropped offer, !rollback, a reminder, a completed turn" do
+      stops = {
+        stop: -> { flow.abort_continue! },
+        drop: -> { flow.drop_offer! },
+        rollback: -> { flow.rollback! },
+        reminder: -> { flow.before_reminder_turn },
+        completed: -> { flow.after_turn(result(engine.messages, run_start: 5)) }
+      }
+      stops.each do |name, stop|
+        run_prompt("go", [])
+        exhaust(4)
+        stop.call
+
+        expect(flow.resume_from).to be_nil, "#{name} kept the start"
+      end
+    end
+
+    # D8: another model's reasoning (or thought blocks) is not replayed.
+    it "is nil after a model change while the offer stands; a Continue then runs cold and starts its own chain" do
+      run_prompt("go", [])
+      exhaust(4)
+      engine.effective_model_name = "m2"
+
+      expect(flow.resume_from).to be_nil
+      flow.before_continue_turn
+      exhaust(7, continue: true)
+      expect(flow.resume_from).to eq(7)
     end
   end
 

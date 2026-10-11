@@ -142,9 +142,13 @@ module Samagotchi
       :cuts,
       :capped,
       :model,
-      # The turn the user started by answering the step-limit question with
-      # Continue (:turn_started's +continue+); its record carries it.
+      # A turn with no prompt of its own (:turn_started's +continue+): a
+      # step-limit Continue, a reminder's or a wake's turn; its record
+      # carries it.
       :continue,
+      # The turn the user started by answering the step-limit question with
+      # Continue (:turn_started's +resumed+): it resumed the run before it.
+      :resumed,
       :id,
       :started_at,
       :started_monotonic,
@@ -558,6 +562,7 @@ module Samagotchi
           capped: 0,
           model: nil,
           continue: event[:continue] ? true : false,
+          resumed: event[:resumed] ? true : false,
           id: event[:turn_id] || SecureRandom.uuid,
           started_at: now.iso8601(3),
           started_monotonic: monotonic_time,
@@ -597,6 +602,7 @@ module Samagotchi
           # Every record says, so the report can tell a file with no Continue
           # from one written before the mark.
           record[:continue] = @turn.continue
+          record[:resumed] = @turn.resumed
           record.merge!(turn_token_fields(@turn))
           @turn_records << record
           count_turn(record)

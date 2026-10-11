@@ -35,6 +35,24 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(records.last).to include(continue: true)
   end
 
+  # A reminder's or a wake's turn is a continue too (no prompt of its own);
+  # only a step-limit Continue resumes its run: resumed counts those.
+  it "marks a step-limit Continue's record resumed: true, every other one resumed: false" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi", turn_id: "turn-a" },
+      { type: :turn_completed },
+      { type: :turn_started, session_id: "sess-1", prompt: nil, turn_id: "turn-r", continue: true },
+      { type: :turn_completed },
+      { type: :turn_started, session_id: "sess-1", prompt: nil, turn_id: "turn-k", continue: true, resumed: true },
+      { type: :turn_completed }
+    ])
+
+    records = metrics.snapshot[:turn_records]
+    expect(records.map { |r| r.slice(:continue, :resumed) }).to eq([{ continue: false, resumed: false },
+                                                                    { continue: true, resumed: false },
+                                                                    { continue: true, resumed: true }])
+  end
+
   it "starts empty" do
     snap = metrics.snapshot
     expect(snap[:turns]).to eq(0)

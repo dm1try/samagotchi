@@ -126,6 +126,33 @@ RSpec.describe ModelNotesReport::SessionReader do
     expect(stats(messages, turn_records: records).continues).to eq(0)
   end
 
+  # A reminder's or a wake's turn is marked continue too; resumed marks the
+  # step-limit Continues alone (files written after 2026-10-11).
+  it "counts records marked resumed: true when the records carry that mark, whatever continue says" do
+    messages = [ReportFixtures.prompt("Build it.", turn_id: "t1"), ReportFixtures.model("Done.")]
+    records = [
+      { "id" => "t1", "status" => "completed", "continue" => false, "resumed" => false },
+      { "id" => "r1", "status" => "completed", "continue" => true, "resumed" => false },
+      { "id" => "k1", "status" => "completed", "continue" => true, "resumed" => true }
+    ]
+
+    expect(stats(messages, turn_records: records).continues).to eq(1)
+  end
+
+  # A file written across the upgrade: its older records have continue
+  # only, the newer ones resumed too; each record is read by its own mark.
+  it "reads each record by its own mark in a file that spans the resumed mark's arrival" do
+    messages = [ReportFixtures.prompt("Build it.", turn_id: "t1"), ReportFixtures.model("Done.")]
+    records = [
+      { "id" => "t1", "status" => "completed", "continue" => false },
+      { "id" => "k0", "status" => "completed", "continue" => true },
+      { "id" => "r1", "status" => "completed", "continue" => true, "resumed" => false },
+      { "id" => "k1", "status" => "completed", "continue" => true, "resumed" => true }
+    ]
+
+    expect(stats(messages, turn_records: records).continues).to eq(2)
+  end
+
   it "counts records over prompts for prompts without a turn id, and has no continues without analytics.json" do
     messages = [ReportFixtures.prompt("Build it."), *ReportFixtures.read("c1"), ReportFixtures.model("Done.")]
 

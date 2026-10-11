@@ -407,6 +407,14 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
       expect(described_class.replay_events(acc.current_turn).last).to eq(type: :generation_started, iteration: 2)
     end
 
+    it "replays a step-limit Continue's turn_started as resumed, a plain continue's without the key" do
+      feed({ type: :turn_started, prompt: nil, continue: true, resumed: true })
+      expect(described_class.replay_events(acc.current_turn).first).to include(continue: true, resumed: true)
+
+      feed({ type: :turn_started, prompt: nil, continue: true })
+      expect(described_class.replay_events(acc.current_turn).first).not_to have_key(:resumed)
+    end
+
     it "has nothing to replay with no turn" do
       expect(described_class.replay_events(nil)).to eq([])
     end

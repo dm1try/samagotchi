@@ -91,6 +91,53 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
+  # A step-limit Continue resumes the run its offer's turn started
+  # (resume_from:, TurnFlow#resume_from); reminders and wakes don't.
+  describe "resume_from:" do
+    let(:history) { [{ role: "user", content: "go" }, { role: "model", content: "m" }, { role: "tool_response", content: "r" }] }
+
+    it "says where the turn's run started: the length of the messages the loop got" do
+      session.messages = history
+      sent = nil
+      allow(kernel).to receive(:run) { |messages, **| sent = messages; kernel_result(exhausted: true, pending_tool_calls: true) }
+
+      result = engine.run_turn(session, "next")
+
+      expect(result.run_start).to eq(sent.length)
+      expect(result.run_start).to eq(5) # system head + history + the prompt
+    end
+
+    it "marks :turn_started and the before_turn payload resumed; a plain continue (a reminder, a wake) isn't" do
+      session.messages = history
+      allow(kernel).to receive(:run).and_return(kernel_result)
+      hooked = []
+      hook = -> { engine.register_hook(:before_turn) { |e| hooked << e[:resumed] } } # hooks are turn-scoped
+
+      hook.call
+      resumed = events_of(continue: true, resumed: true, resume_from: 2).first
+      hook.call
+      plain = events_of(continue: true).first
+
+      expect(resumed).to include(type: :turn_started, continue: true, resumed: true)
+      expect(plain).to include(type: :turn_started, continue: true)
+      expect(plain).not_to have_key(:resumed)
+      expect(hooked).to eq([true, false])
+    end
+
+    # D8: after a model change the Continue starts cold (no resume_from) but
+    # is still a step-limit Continue.
+    it "marks a cold step-limit Continue resumed too, and hands the loop no start" do
+      session.messages = history
+      seen = []
+      allow(kernel).to receive(:run) { |_messages, **options| seen << options[:reasoning_since]; kernel_result }
+
+      started = events_of(continue: true, resumed: true).first
+
+      expect(started).to include(type: :turn_started, continue: true, resumed: true)
+      expect(seen).to eq([nil])
+    end
+  end
+
   describe "turn id" do
     it "is on :turn_started and on the turn's saved prompt, so a UI pairs the prompt with its turn record" do
       sent = nil

@@ -636,7 +636,7 @@ module Samagotchi
     # Run one REPL turn (a prompt, or a continue/reminder turn with nil) through
     # Engine#run_turn, rendering via @renderer.
     # @param images [Array<Hash>] the prompt's `@path` images ({path:})
-    def run_engine_turn(session, prompt, continue: false, max_iterations: IterationLimit.for, images: [])
+    def run_engine_turn(session, prompt, continue: false, max_iterations: IterationLimit.for, images: [], resumed: false, resume_from: nil)
       cancellation_controller = CancellationController.new
       @active_cancel_controller = cancellation_controller
       @renderer.begin_turn
@@ -654,7 +654,9 @@ module Samagotchi
           cancel_controller: cancellation_controller,
           pending_input: method(:drain_steering),
           continue: continue,
-          images: images
+          images: images,
+          resumed: resumed,
+          resume_from: resume_from
         )
       end
     rescue Interrupt
@@ -782,9 +784,11 @@ module Samagotchi
       end
       return show_command_result(answer) unless answer.resume
 
+      # The run the offer's turn started: the Continue keeps its reasoning.
+      resume_from = @turn_flow.resume_from
       @turn_flow.before_continue_turn
       begin
-        result = run_engine_turn(session, nil, continue: true)
+        result = run_engine_turn(session, nil, continue: true, resumed: true, resume_from: resume_from)
       rescue LLM::ProviderError
         # The renderer showed the failure (:turn_failed).
         @surface.commit(turn_end_hint("continue prompt preserved"))

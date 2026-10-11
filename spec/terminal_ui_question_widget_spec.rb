@@ -187,6 +187,22 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     expect(surface.events).not_to include(%i[clear_slot notes])
   end
 
+  # A yes resumes the run the offer's turn started (TurnFlow#resume_from):
+  # the Continue keeps that run's reasoning.
+  it "runs a continue answered yes from the offer's run start" do
+    agent.send(:use_surface, RecordingSurface.new)
+    yes = Samagotchi::SessionCommands::Result.new(status: :ok, changed: [], resume: true, decision: :resume)
+    agent.instance_variable_set(:@commands, double("commands", continue_answer: yes))
+    flow = agent.instance_variable_get(:@turn_flow)
+    allow(flow).to receive(:resume_from).and_return(5)
+    allow(agent).to receive(:run_engine_turn).and_return(nil)
+    allow(agent).to receive(:finish_turn)
+
+    agent.send(:answer_continue_offer, nil, "yes")
+
+    expect(agent).to have_received(:run_engine_turn).with(nil, nil, continue: true, resumed: true, resume_from: 5)
+  end
+
   # A reminder turn drops a pending continue offer (the worker's rule), so a
   # later "no" can't roll the reminder's exchange back with the turn.
   it "drops a pending continue offer when a reminder turn runs, with one line" do
