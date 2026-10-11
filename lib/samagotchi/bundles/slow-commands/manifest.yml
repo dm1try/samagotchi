@@ -1,0 +1,11 @@
+---
+name: slow-commands
+version: 0.1.0
+scope: system
+description: "Remembers commands that ran past the execute limit in a project; the next identical execute is denied once a turn with advice to run it with task_create and task_wait; /slow-commands lists and forgets them"
+trust_level: reviewed
+plugin:
+  file: plugin.rb
+  sha256: sha256:00a35b8f930d8f99a908b99c5eb3a5e97b1209c63c616037072580d92d3c8639
+# after_tool_call's call:, elapsed_ms: and result: (0.57.0)
+requires_chi: ">= 0.57.0"
