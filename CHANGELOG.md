@@ -14,6 +14,9 @@ and commands may change between minor versions. How releases are made:
   changes, and its diff lines open at theirs, so you can look at the real file before you approve. A read of a whole
   file or a range (not the head/tail preview of a big file) gets a closed `lines 40–60` under its output: opened, it
   shows the text as read with line numbers, and a click on a line opens the file there.
+- Web: a `path:line` in an answer or a step's text opens that file in your editor too, when it names a file the
+  session's tool rows touched (`app.js:12` names the one touched file ending in it). It links once the turn has ended
+  and after a reload; code blocks, links (a PR link stays the PR's) and files the session didn't touch stay text.
 
 ### Fixed
 
