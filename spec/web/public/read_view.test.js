@@ -73,7 +73,13 @@ test("readLinesHtml: a closed toggle naming the lines, each numbered line with i
     '<details class="activity-read"><summary>lines 7–8</summary><pre class="read-lines"><code>' +
     '<span class="read-line" data-line="7">&lt;a&gt;</span><span class="read-line" data-line="8">b</span>' +
     '<span class="read-line read-meta">[cut: 4 of 9 chars; read it in parts]</span></code></pre></details>');
-  assert.match(readLinesHtml(row("[read]\n\nx")), /<summary>lines 1–2<\/summary>.*<span class="read-line" data-line="1"> <\/span>/);
   assert.match(readLinesHtml(row("[read]\nx")), /<summary>line 1<\/summary>/);
   assert.equal(readLinesHtml(row("[read]\nError: no")), "");
+});
+
+test("readLinesHtml draws a blank line of the file as a <br>, not a space", () => {
+  const html = readLinesHtml(row("[read]\n\nx\n\ny\n"));
+  assert.match(html, /<summary>lines 1–4<\/summary>/);
+  assert.match(html, /<span class="read-line" data-line="1"><br><\/span><span class="read-line" data-line="2">x<\/span>/);
+  assert.match(html, /<span class="read-line" data-line="3"><br><\/span><span class="read-line" data-line="4">y<\/span>/);
 });

@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: a blank line in a read's numbered file lines is empty, not a space, so copying the lines keeps the file
+  as it is.
+
 ## [0.58.0] - 2026-10-11
 
 ### Added
