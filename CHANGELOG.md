@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- chi web has a favicon: χ on a blue-to-violet rounded square. Safari showed a "1" monogram before.
+
 ## [0.59.0] - 2026-10-11
 
 ### Added

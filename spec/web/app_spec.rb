@@ -2007,6 +2007,16 @@ RSpec.describe Samagotchi::Web::App do
       expect(body.first).to include("/assets/app.js")
     end
 
+    # Without an icon Safari draws a "1" monogram from 127.0.0.1.
+    it "links the SVG favicon, served as image/svg+xml" do
+      app = build_app(manager: FakeResponsesManager.new)
+      expect(app.call(env_for("/"))[2].first).to include('<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">')
+
+      status, headers, body = app.call(env_for("/assets/favicon.svg"))
+      expect([status, headers["Content-Type"]]).to eq([200, "image/svg+xml"])
+      expect(body.first).to start_with("<svg")
+    end
+
     # Assets revalidate on every load (no max-age), so a gem upgrade + chi web
     # restart reaches the browser at once, ES-module imports included; the
     # ETag keeps an unchanged asset a bodyless 304.
