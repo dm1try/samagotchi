@@ -384,6 +384,21 @@ module Samagotchi
       @mutex.synchronize { @cache }
     end
 
+    # Hosts, their addresses, key variable names and declared models, never
+    # the environment: it holds every host's API key (a failing spec prints
+    # the registry).
+    def inspect
+      hosts = @entries.values.map do |entry|
+        parts = [entry.openai_base_url]
+        parts << "key=#{entry.api_key_env}" if entry.api_key_env
+        parts << "models=#{entry.models.values.map(&:id).join(",")}" unless entry.models.empty?
+        "#{entry.name}(#{parts.join(" ")})"
+      end
+      "#<#{self.class.name} #{hosts.join(", ")}>"
+    end
+
+    def pretty_print(printer) = printer.text(inspect)
+
     private
 
     # A listing error as text without the host's name (a provider error's

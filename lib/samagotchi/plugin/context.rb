@@ -90,6 +90,11 @@ module Samagotchi
         @data_dir = nil
       end
 
+      # The bundle, never the environment it holds (every API key in it).
+      def inspect = "#<#{self.class.name} bundle=#{@bundle}>"
+
+      def pretty_print(printer) = printer.text(inspect)
+
       # @return [String, nil] the session's id (nil before the first one)
       def session_id = @host.session_id.call
 

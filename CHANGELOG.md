@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- The host registry and a plugin's `ctx` no longer print the environment (API keys included) when inspected, e.g.
+  in a failing spec's output or a debugger: they show host names, addresses, key variable names and models.
+
 ## [0.56.0] - 2026-10-11
 
 ### Added

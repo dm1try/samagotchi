@@ -11,6 +11,22 @@ RSpec.describe Samagotchi::HostRegistry do
     })
   end
 
+  describe "#inspect" do
+    it "names the hosts, key variables and declared models, never an environment value" do
+      env = { "BOX_KEY" => "sk-secret-value", "HOME" => "/home/secret-home" }
+      keyed = described_class.new(hosts_config: {
+        "box" => { url: "https://box.test/v1", api_key_env: "BOX_KEY",
+                   models: Samagotchi::HostModel.parse_map(["m1"], "spec") }
+      }, env: env)
+
+      [keyed.inspect, keyed.pretty_inspect, [keyed].inspect].each do |text|
+        expect(text).to include("box(https://box.test/v1", "key=BOX_KEY", "models=m1")
+        expect(text).not_to include("sk-secret-value")
+        expect(text).not_to include("secret-home")
+      end
+    end
+  end
+
   describe "#resolve" do
     before { allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({}) }
 
