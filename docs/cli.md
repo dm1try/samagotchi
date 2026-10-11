@@ -489,13 +489,33 @@ from (`session`, `--thinking` / `SAMAGOTCHI_THINKING_LEVEL`, `models: <key>`,
 session's own level, which comes first; `/thinking default` unsets it. It is
 saved with the session (a `--resume`, a continue and `/model` keep it) and
 applies from the next turn's start; the reply says what the change costs the
-prompt cache: the whole prompt on native Gemma 4 (its `<|think|>` starts the
-prompt), only the tail on native Qwen, and other request fields on a chat host
-(a local llama.cpp or Splash server keeps its cache; a hosted API such as
-OpenRouter → Claude or OpenAI may restart its own). `/thinking` alone answers
+prompt cache: the whole prompt on Gemma 4 (native, or a local chat server whose
+model name says gemma: `<|think|>` starts the prompt), only the tail on Qwen
+(native, or a local llama.cpp or Splash server), and the whole conversation on a
+remote chat host (OpenRouter, a hosted API). `/thinking` alone answers
 mid-turn too; a change sent while a turn runs waits for the turn's end, and
 skips that turn's warm-up. `/stats` shows the level on its `thinking:` line.
 See "Thinking" in [configuration.md](configuration.md).
+
+`/reasoning-history` shows which of its own reasoning a chat host's model gets
+back from the next turn on, and where that came from (`session`,
+`SAMAGOTCHI_REASONING_HISTORY`, `models: <key>`, `hosts.<name>`, the default
+`turn`). `/reasoning-history drop|turn|all` sets the session's own level, which
+comes first; `/reasoning-history default` unsets it. It is saved and carried as
+`/thinking`'s is, and a native host ignores it (the reply says so). A change to
+or from `all` once an earlier reply has thinking rewrites the earlier replies;
+`drop` ↔ `turn` costs nothing. `/stats` shows it on its `reasoning history:`
+line, the web as the `reasoning` chip. See "Reasoning history" in
+[configuration.md](configuration.md).
+
+A `/thinking` or `/reasoning-history` change that restarts the prompt cache
+asks first: the reply says what it costs, changes nothing, and names the line
+that applies it (`/thinking low --yes`). `--yes` (or `-y`) applies it at once.
+The terminal puts that line in the next input (Enter applies it); the web's
+reply has an Apply button. `chi send ID "/thinking low"`,
+`chi -p "/thinking low" --non-interactive` and lines piped into the REPL apply
+without asking (a plain `chi -p` opens the REPL, which asks). See "Changes that
+restart the prompt cache" in [configuration.md](configuration.md).
 
 ### Typing during a turn
 
@@ -525,9 +545,10 @@ REPL alike:
   - At once, beside the turn: `/stats`, `/recap`, `/help`, `/context`, a
     plugin's anytime command (`/btw`), and the commands that only show
     something: `/models` (with a filter too), and `/model`, `/llm-context`,
-    `/thinking` and `/guardrails` alone.
+    `/thinking`, `/reasoning-history` and `/guardrails` alone.
   - After the turn: the ones that change something (`/model X`, `/model clear`,
-    `/llm-context strategy …`, `/thinking LEVEL`, `/guardrails revoke N`) and `!cmd`, whose output
+    `/llm-context strategy …`, `/thinking LEVEL`, `/reasoning-history LEVEL`, `/guardrails revoke N`) and
+    `!cmd`, whose output
     joins the conversation. `(queued: runs after this turn)` says so at once (the
     web draws the command's bubble dashed, with the same words, until it ran);
     when the turn ends they run in the order sent, a prompt sent before one

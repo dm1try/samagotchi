@@ -13,8 +13,16 @@ and commands may change between minor versions. How releases are made:
 - `reasoning_history` (`drop`, `turn`, `all`) on a `models:` or `hosts:` entry, and `SAMAGOTCHI_REASONING_HISTORY`
   for a whole process: which of its own reasoning a chat host's model gets back. `/model` names a configured level
   and `chi self` shows it.
+- `/reasoning-history drop|turn|all|default` sets a session's own level (saved; continue and fork copy it); `/model`,
+  `/stats` and the web's session bar (a `reasoning` chip, on chat hosts) show it with its source.
+- `/thinking` and `/reasoning-history` ask before a change that makes the server read the conversation again (Gemma,
+  hosted APIs, a change to or from `all`); `--yes` applies at once. The terminal puts the `--yes` line in the next
+  input, the web's reply has an Apply button; `chi send`, `chi -p … --non-interactive` and piped lines apply directly.
 
 ### Changed
+
+- `/thinking`'s cache note now tells a local chat server (only the tail; the whole prompt for a Gemma model) from a
+  hosted one (the whole conversation). The web's thinking chip sends its level with `--yes`.
 
 - A chat host (`api: openai`) now gets the running turn's reasoning back: each of the turn's earlier replies carries its
   reasoning as `reasoning_content`, as Qwen's, Gemma 4's and DeepSeek's templates and the hosted APIs expect

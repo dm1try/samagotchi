@@ -135,6 +135,14 @@ is prefilled once. The native and the chat loop use the same plan.
    on its `generation_completed` log line. `/stats` shows "cached N (P%)" and "cache writes". A change that
    drops `cached=` on the second fresh session is a regression. Update the prompt snapshot fixtures with
    `UPDATE_PROMPTS=1` and read the diff: a cache-friendly change moves sections, it doesn't reorder per run.
+6. **Ask before a setting change that restarts the cache.** A session setting whose change makes the server read
+   the conversation again asks a person at a web tab or a TUI first (`CacheConfirm`: the reply carries the
+   `--yes` line, `SessionCommands::Result#confirm` and the `command_ran` event's `confirm`). Each setting has a
+   classifier: `Thinking.cache_cost` (`:full` for Gemma, `:provider` for a remote chat host, `:tail` otherwise) and
+   `ReasoningHistory.cache_cost` (`:history` for a change to or from `all` once an earlier reply has thinking).
+   `CacheConfirm.needed?` asks only for `:full`, `:provider` and `:history`, when the effective level changes and
+   the session has a model reply. A new setting with a cost (a `/model` across templates, `/llm-context` turning
+   forget on) adds its classifier and goes through the same step.
 
 ## Server-side settings worth knowing
 

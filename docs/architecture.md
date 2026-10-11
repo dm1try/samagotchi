@@ -280,7 +280,10 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   `404` for an unknown id. A POST with a body because routes match exact paths.
 - `POST /session/:id/command` — a session command (`/model`, `/models`, `!rollback`, `!cmd`,
   `/continue`) for the worker loop; `202` with a `command_id` its `:command_ran` names, `400` when
-  the line isn't one.
+  the line isn't one. A `:command_ran` carries `thinking`, `reasoning_history` and `llm_context`
+  (the summaries the next turn runs under) when the command changed them or the model, and
+  `confirm: {line, text}` when a `/thinking` or `/reasoning-history` change from a `web:` or `tui:`
+  client asks first (`CacheConfirm`; nothing changed, `line` applies it).
 - `POST /session/:id/exit` — ask the worker to exit now (`{client_id:}`). The worker checks with
   the event log held (`WorkerIdleExit#hold_for_request`): `200 {status: "exiting"}` and it leaves
   like an idle exit, or `409 {status: "held", reason:}` with `turn_running`, `input_queued`,

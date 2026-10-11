@@ -175,7 +175,8 @@ The differences from the native loop:
   first cache breakpoint there; see prompt-caching.md.
 - Each call's result is its own tool message, paired by `tool_call_id`.
 - A model turn's saved reasoning (`thinking:`) goes back as `reasoning_content` per the turn's
-  `TurnSettings#reasoning_history` (`ReasoningHistory.resolve`): `all` on every model message, `turn` past
+  `TurnSettings#reasoning_history` (`ReasoningHistory.resolve`, the session's own level first:
+  `Session#reasoning_history`, `/reasoning-history`): `all` on every model message, `turn` past
   `ChatLoop#reasoning_boundary`: the later of the last query (a `role: "user"` entry: a prompt, a steer, merged input,
   the chat template's `last_query_index`; or a `turn_start` entry) and the Run's start (`Run`'s `@start`, the
   conversation length at `#complete`), so a continue turn (reminder, context wake, continue after a stop) replays

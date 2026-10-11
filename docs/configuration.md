@@ -487,15 +487,15 @@ models:
   (`chi web`'s, say) wakes it later: use `chi send --new --thinking low`.
 - A level is fixed for a turn: a change takes effect at the next turn's start. `/thinking LEVEL` sent while a turn
   runs waits for its end (as `/model X` does), and holds off that turn's warm-up. What a change costs the prompt cache,
-  which `/thinking` says:
+  which `/thinking` says (and asks before the costly ones: "Changes that restart the prompt cache"):
 
-  | Backend | A level change |
-  |---|---|
-  | native Qwen (`qwen36`) | only the prompt's tail (the empty thought after the cue) |
-  | native Gemma 4 (`gemma4`) | the whole prompt is read again: `<\|think\|>` starts the system prompt |
-  | chat host, local llama.cpp or Splash | other request fields; the server keeps its cache (a Gemma template re-reads it all) |
-  | chat host, OpenRouter → Claude | thinking params are part of the cached prefix: the cache restarts |
-  | chat host, OpenRouter → OpenAI reasoning | an effort change rewrites hidden instructions: the prefix is lost |
+  | Backend | A level change | Asks |
+  |---|---|---|
+  | native Qwen (`qwen36`) | only the prompt's tail (the empty thought after the cue) | no |
+  | native Gemma 4 (`gemma4`) | the whole prompt is read again: `<\|think\|>` starts the system prompt | yes |
+  | chat host, local (llama.cpp, Splash), a model name with `gemma` | the whole prompt: the template writes the same token | yes |
+  | chat host, local, any other model | other request fields; the server keeps its cache, only the tail changes | no |
+  | chat host, remote (OpenRouter, a hosted API) | Claude's thinking params are part of the cached prefix, an OpenAI effort change rewrites hidden instructions: the conversation is read again | yes |
 
 - `models:` levels and `thinking.level` in the file are read every turn; a host's `thinking:` reaches a worker when
   it starts, as its `sampling:` does (`chi sessions stop` to change it).
@@ -566,18 +566,53 @@ models:
 - `drop` sends none (what chi did before this setting).
 - `all` sends every reply's reasoning, earlier turns too. It sends only the field: a local template that leaves out
   earlier turns' reasoning (Qwen's) needs `sampling: {chat_template_kwargs: {preserve_thinking: true}}` as well.
-- Order, first set wins: `SAMAGOTCHI_REASONING_HISTORY` (the whole process; for A/B runs), the `models:` entry (found
-  the way `profile:` is), the `hosts:` entry, then `turn`. Anything else than a level warns once and counts as unset.
-  A host's level reaches a worker when it starts, as its `sampling:` does.
+- Order, first set wins: the session's own level, `SAMAGOTCHI_REASONING_HISTORY` (the whole process; for A/B runs),
+  the `models:` entry (found the way `profile:` is), the `hosts:` entry, then `turn`. Anything else than a level warns
+  once and counts as unset. A host's level reaches a worker when it starts, as its `sampling:` does.
+- **A session's own level** (`drop`, `turn` or `all`; an explicit `turn` counts as its own) is saved in the session
+  (its file's `"reasoning_history"`), so a `--resume`, a respawned worker, a continue and `/model` keep it; a plugin's
+  fork copies it, a delegate child starts without it. Set it with `/reasoning-history LEVEL` in the session
+  (`/reasoning-history default` unsets it, `/reasoning-history` alone shows the level and where it came from) or the
+  web's `reasoning` chip in the session bar (shown on chat hosts only). There is no start flag: a fresh session runs
+  the command before its first turn at no cost. A change takes effect at the next turn's start; sent while a turn runs
+  it waits for its end.
+- What a change costs the prompt cache (`/reasoning-history` says so, and asks first when it costs: "Changes that
+  restart the prompt cache"):
+
+  | Change | Cost |
+  |---|---|
+  | `drop` ↔ `turn` | none: a turn's first request carries no reasoning under either |
+  | to or from `all`, once an earlier reply has thinking | every earlier reply gains or loses its reasoning: a server that renders it (hosted APIs, llama.cpp's default template) reads the conversation again from the first earlier thought |
+  | nothing thought yet, the same level, or a native host | none |
+
 - The native loop (`/completion`) ignores it: it always keeps the running turn's reasoning, a mid-turn steer included
   (the chat loop starts again after a steer).
 - When a host answers a request that sent reasoning back with an HTTP 400 about reasoning, chi asks again without it,
   sends none to that model from then on (until the worker restarts) and says so once. If the request without it is
   refused too, the thinking fields get the same fallback ("Thinking") and the reasoning goes back on the next step.
-- `/model` names a level that isn't the default (`reasoning history: drop (models: some-model)`), and `chi self`
-  shows it on its `reasoning history` row.
+- `/model` names a level that isn't the default (`reasoning history: drop (models: some-model)`, `all (session)`),
+  `/stats` shows it on its `reasoning history:` line (chat hosts only), and `chi self` on its `reasoning history` row
+  (a session's own level first when run from its commands).
 - Claude via OpenRouter signs its reasoning (`reasoning_details`), which chi doesn't keep: it gets the plain text,
   and the fallback above covers a refusal.
+
+## Changes that restart the prompt cache
+
+`/thinking` and `/reasoning-history` ask before a change that makes the server read the conversation again: Gemma's
+thinking switch, a remote chat host's thinking fields ("Thinking"), and a change to or from `all` once an earlier reply
+has thinking ("Reasoning history"). They ask only when the level the next turn runs under really changes and the
+session has a model reply.
+
+- The reply says what it costs and changes nothing yet: `Nothing changed yet: send /thinking low --yes to apply.`
+- `--yes` (or `-y`, anywhere after the command) applies it at once.
+- The terminal (the REPL and an attached TUI) puts the `--yes` line in the next input: Enter applies it.
+- The web's reply bubble has an **Apply (restarts the cache)** button. The session bar's chips are already an explicit
+  choice: their Set sends the `--yes` line, and their form says what a change costs. Command bubbles are page-only, so
+  the button is gone after a reload.
+- Only a person at a web tab or a chi TUI is asked. `chi send ID "/thinking low"`,
+  `chi -p "/thinking low" --non-interactive`, lines piped into the REPL, a delegate, a plugin and a card's action
+  apply directly, since nobody would see the question; so do the start flags (`chi --thinking` on a resumed or
+  attached session sends `/thinking LEVEL --yes`). A plain `chi -p` opens the REPL, which asks.
 
 ## Llama HTTP Timeouts
 
@@ -1239,7 +1274,7 @@ described in their own sections.
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |
 | `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, within `session.max_wakes`); `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
-| `reasoning_history` | `turn` | | Which of its reasoning a chat host's model gets back: `drop`, `turn`, `all`; environment only (`SAMAGOTCHI_REASONING_HISTORY`), outranks the `models:`/`hosts:` entries. See "Reasoning history". |
+| `reasoning_history` | `turn` | | Which of its reasoning a chat host's model gets back: `drop`, `turn`, `all`; environment only (`SAMAGOTCHI_REASONING_HISTORY`), below a session's own level (`/reasoning-history`), above the `models:`/`hosts:` entries. See "Reasoning history". |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't; a session's own level outranks them all, and `--thinking` sets it on a session run (on `chi web` it sets this). See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
 | `hosts.<name>.models` | none | | The model ids a host serves whatever its `/v1/models` lists: a map of ids, or a plain list. See "Models a host serves but doesn't list". |
