@@ -45,7 +45,10 @@ RSpec.describe Samagotchi::SelfReport do
 
   it "reports the version and the source dir this code runs from" do
     expect(field("version")).to start_with(Samagotchi::VERSION)
-    expect(field("source")).to eq("#{File.expand_path("../", __dir__)} (git checkout)")
+    # The kind is the source dir's own (a copy without .git is a "directory");
+    # .install_kind below checks each kind.
+    root = File.expand_path("../", __dir__)
+    expect(field("source")).to eq("#{root} (#{described_class.install_kind(root)})")
   end
 
   it "resolves config and sessions from the XDG env it is given" do
@@ -570,6 +573,10 @@ RSpec.describe Samagotchi::SelfReport do
     it "is 'installed gem' under a gem path" do
       dir = File.join(Gem.path.first, "gems", "samagotchi-9.9.9")
       expect(described_class.install_kind(dir)).to eq("installed gem")
+    end
+
+    it "is 'git checkout' for a git repo" do
+      expect(described_class.install_kind(git_repo)).to eq("git checkout")
     end
 
     it "is 'directory' for a plain dir" do

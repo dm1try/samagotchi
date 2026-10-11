@@ -96,14 +96,6 @@ RSpec.describe Samagotchi::Web::App do
     )
   end
 
-  # A folder of its own with `git init`, for the ?dir scoping specs: the
-  # checkout itself may not be a git repo (a copy, an unpacked gem).
-  def git_repo
-    @git_repo ||= Dir.mktmpdir("web-dir-scope").tap { |dir| system("git", "init", "-q", dir, exception: true) }
-  end
-
-  after { FileUtils.rm_rf(@git_repo) if @git_repo }
-
   def env_for(path, method: "GET", body: nil, headers: {})
     Rack::MockRequest.env_for(
       path,

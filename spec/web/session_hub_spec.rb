@@ -284,7 +284,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
     it "filters by project root, taking an old session's project from its working directory, and no filter for a nil root" do
       mine = save_session(project_root: "/repo/mine")
       other = save_session(project_root: "/repo/other")
-      old = save_session(working_directory: File.expand_path("../..", __dir__), project_root: nil)
+      old = save_session(working_directory: git_repo, project_root: nil)
       hub.scan
 
       expect(hub.snapshot(project_root: "/repo/mine").map { |s| s[:id] }).to eq([mine.id])

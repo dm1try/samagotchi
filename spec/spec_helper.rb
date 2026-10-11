@@ -21,6 +21,7 @@ WebMock.disable_net_connect!
 # alone still finds its missing requires.
 require_relative "support/waiting"
 require_relative "support/env"
+require_relative "support/git_repo"
 require_relative "support/chi_cli"
 # Reads SAMAGOTCHI_INTEGRATION_* now, before the clear below.
 require_relative "support/integration_server"
@@ -100,12 +101,14 @@ RSpec.configure do |config|
   config.include SpecWaiting
   config.include SpecEnv
   config.include ChiCli
+  config.include SpecGitRepo
   config.warnings = true
   config.order = :random
   Kernel.srand config.seed
 
   # A spec's allow_net_connect! ends with its example: back to no net.
   config.after { WebMock.disable_net_connect! }
+  config.after { remove_git_repo }
 
   # Never let a spec block on the developer's real terminal. Unstubbed Reline
   # reads behave like EOF (Ctrl-D); specs that need input stub their own values.

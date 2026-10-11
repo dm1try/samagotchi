@@ -485,10 +485,11 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
 
     it "finds the git checkout of cwd" do
-      checkout = File.expand_path("../../..", __dir__)
+      lib = File.join(git_repo, "lib")
+      FileUtils.mkdir_p(lib)
       ctx = described_class.new(bundle: "b", label: "l", settings: {},
-                                host: Samagotchi::Plugin::Host.new(cwd: -> { File.join(checkout, "lib") }))
-      expect(File.realpath(ctx.repo_root)).to eq(File.realpath(checkout))
+                                host: Samagotchi::Plugin::Host.new(cwd: -> { lib }))
+      expect(File.realpath(ctx.repo_root)).to eq(File.realpath(git_repo))
     end
   end
 end
