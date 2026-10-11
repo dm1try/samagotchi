@@ -133,7 +133,10 @@ module Samagotchi
       extra = walk ? descendant_groups(pgid) : []
       signal(pgid, "TERM", **signal_options)
       extra.each { |group| signal(group, "TERM") }
-      all_stopped = -> { stopped.call && extra.none? { |group| group_alive?(group) } }
+      # +stopped+ is asked until it says true once (it may reap: a second
+      # wait on a reaped pid raises ECHILD), then only the extra groups.
+      done = false
+      all_stopped = -> { (done ||= stopped.call ? true : false) && extra.none? { |group| group_alive?(group) } }
       return true if wait_for(all_stopped, grace, poll, wait)
 
       extra |= descendant_groups(pgid) if walk

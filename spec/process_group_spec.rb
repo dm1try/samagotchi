@@ -17,7 +17,14 @@ RSpec.describe Samagotchi::ProcessGroup do
     nil
   end
 
-  def reaped(pid) = -> { Process.wait2(pid, Process::WNOHANG) }
+  # True once the pid is reaped, here or already (ECHILD).
+  def reaped(pid)
+    lambda do
+      !Process.wait2(pid, Process::WNOHANG).nil?
+    rescue Errno::ECHILD
+      true
+    end
+  end
 
   describe ".spawn" do
     it "puts the command in a group of its own, led by it" do
@@ -103,6 +110,16 @@ RSpec.describe Samagotchi::ProcessGroup do
       expect(described_class.descendant_groups(100)).to eq([200])
       expect(described_class.descendant_groups(50)).to eq([])
       expect(described_class.descendant_groups(50, leader: true)).to eq([300, 400])
+    end
+
+    it "asks +stopped+ no more once it said true, while it waits for the descendants' groups" do
+      calls = 0
+      allow(described_class).to receive(:descendant_groups).and_return([4242])
+      allow(described_class).to receive(:signal)
+      allow(described_class).to receive(:group_alive?).with(4242).and_return(true, true, false)
+
+      expect(described_class.stop(4241, grace: 1, poll: 0.01, stopped: -> { (calls += 1) == 1 })).to be(true)
+      expect(calls).to eq(1)
     end
 
     it "waits at most kill_wait after the KILL for a group that never says it stopped" do
