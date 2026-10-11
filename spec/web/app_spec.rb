@@ -96,6 +96,14 @@ RSpec.describe Samagotchi::Web::App do
     )
   end
 
+  # A folder of its own with `git init`, for the ?dir scoping specs: the
+  # checkout itself may not be a git repo (a copy, an unpacked gem).
+  def git_repo
+    @git_repo ||= Dir.mktmpdir("web-dir-scope").tap { |dir| system("git", "init", "-q", dir, exception: true) }
+  end
+
+  after { FileUtils.rm_rf(@git_repo) if @git_repo }
+
   def env_for(path, method: "GET", body: nil, headers: {})
     Rack::MockRequest.env_for(
       path,
@@ -306,12 +314,14 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "scopes the snapshot and the session frames to ?dir's project, and answers 400 for a folder that isn't one" do
-      here = Samagotchi::ProjectScope.root_for(__dir__) # the main repo, for a worktree too
+      repo = File.join(git_repo, "lib")
+      FileUtils.mkdir_p(repo)
+      here = Samagotchi::ProjectScope.root_for(repo)
       mine = saved_session(project_root: here)
       saved_session(project_root: "/repo/other")
       hub.scan
       app = events_app
-      status, _, body = app.call(env_for("/api/events?dir=#{URI.encode_www_form_component(__dir__)}"))
+      status, _, body = app.call(env_for("/api/events?dir=#{URI.encode_www_form_component(repo)}"))
       expect(status).to eq(200)
       collected = Thread.new { frames_of(body) }
       other = saved_session(project_root: "/repo/other")
@@ -462,7 +472,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "scopes the list by ?dir's project from the projection, and gives the sweep its chance" do
-      here = Samagotchi::ProjectScope.root_for(__dir__)
+      here = Samagotchi::ProjectScope.root_for(git_repo)
       mine = saved_session
       other = saved_session
       mine.project_root = here
@@ -472,7 +482,7 @@ RSpec.describe Samagotchi::Web::App do
       hub.scan
       allow(Samagotchi::SessionManager).to receive(:retention_sweep_if_due)
 
-      _, _, body = app.call(env_for("/api/sessions?dir=#{URI.encode_www_form_component(__dir__)}"))
+      _, _, body = app.call(env_for("/api/sessions?dir=#{URI.encode_www_form_component(git_repo)}"))
 
       expect(JSON.parse(body.first).map { |s| s["id"] }).to eq([mine.id])
       expect(Samagotchi::SessionManager).to have_received(:retention_sweep_if_due).with(state_dir: state_dir)
