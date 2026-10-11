@@ -152,8 +152,16 @@ module Samagotchi
         FileUtils.mkdir_p(dir)
         logs = [File.join(dir, STDOUT_LOG), File.join(dir, STDERR_LOG)]
         exit_code_path = File.join(dir, TaskRuntime::EXIT_CODE_FILENAME)
-        pid = spawn_logged(command, env: env, cwd: cwd, logs: logs, exit_code_path: exit_code_path)
+        begin
+          pid = spawn_logged(command, env: env, cwd: cwd, logs: logs, exit_code_path: exit_code_path)
+        rescue StandardError
+          FileUtils.rm_rf(dir)
+          raise
+        end
         wait_thr = Process.detach(pid)
+        # A stop is done once the shell is reaped and nothing holds the logs:
+        # a child that ignores TERM keeps them, so the stop goes on to KILL.
+        stopped = -> { !wait_thr.alive? && !held?(logs) }
 
         begin
           until wait_thr.join(WAIT_SLICE_SEC)
@@ -165,6 +173,8 @@ module Samagotchi
               break
             end
           end
+          # Ended right at the deadline: finished, not timed out.
+          timed_out = false if timed_out && !wait_thr.alive?
           if timed_out && on_timeout == :task
             text = hand_over(id: id, command: command, cwd: cwd, pid: pid, waiter: wait_thr, started_at: started_at,
                              timeout_sec: timeout_sec, dir: dir, logs: logs, exit_code_path: exit_code_path)
@@ -172,8 +182,10 @@ module Samagotchi
               handed_over = true
               raise HandedOver, text
             end
+            # Not adopted because it ended meanwhile: finished too.
+            timed_out = false unless wait_thr.alive?
           end
-          terminate_process_tree(pid) if timed_out || was_cancelled
+          terminate_process_tree(pid, stopped: stopped) if timed_out || was_cancelled
           wait_thr.join
           status = wait_thr.value
         rescue HandedOver
@@ -182,7 +194,7 @@ module Samagotchi
           # An Interrupt (or anything else) mid-wait: the child is in its own
           # process group, so it never saw the SIGINT. Kill it.
           aborted = true
-          terminate_process_tree(pid) if wait_thr.alive?
+          terminate_process_tree(pid, stopped: stopped) if wait_thr.alive?
           raise
         ensure
           unless handed_over
@@ -197,7 +209,9 @@ module Samagotchi
               timed_out = true if outcome == :timeout
             end
             stdout_text, stderr_text = logs.map { |path| read_log(path) }
-            FileUtils.rm_rf(dir)
+            # A holder left running (setsid) still writes there: the dir
+            # stays, and the sweep removes it once no one holds the logs.
+            FileUtils.rm_rf(dir) unless held_open == :detached
           end
         end
 
@@ -210,7 +224,9 @@ module Samagotchi
 
       # @return [Integer] the pid of the shell, which leads its own group
       def self.spawn_logged(command, env:, cwd:, logs:, exit_code_path:)
-        ios = logs.map { |path| File.open(path, "w") }
+        # Append mode: the shell and its background children share the open
+        # file, and each write lands at the end.
+        ios = logs.map { |path| File.open(path, "a") }
         ios.each { |io| io.flock(File::LOCK_SH) }
         ProcessGroup.spawn(env || {}, *Shell.argv(TaskRuntime.wrapped_shell_command(command, exit_code_path)),
                            chdir: cwd, in: File::NULL, out: ios[0], err: ios[1])
@@ -296,6 +312,7 @@ module Samagotchi
         return nil if error
 
         File.write(File.join(dir, BACK_POINTER), File.expand_path(TaskRuntime.metadata_path(record["id"])))
+        write_missing_exit_code(waiter, exit_code_path)
         # Ended between the deadline and the adopt: the record says how.
         TaskRuntime.get_record(id) unless waiter.alive?
         lines = [handed_over_line(timeout_sec), "task_id: #{id}",
@@ -307,6 +324,18 @@ module Samagotchi
         lines.join("\n")
       end
       private_class_method :hand_over
+
+      # A command that set its own EXIT trap replaced the wrapper's, so it
+      # writes no exit_code: while this chi lives, the waiter's status fills
+      # it in (a refresh in between may still read "no exit code").
+      def self.write_missing_exit_code(waiter, path)
+        Thread.new do
+          Thread.current.report_on_exception = false
+          code = waiter.value&.exitstatus
+          File.write(path, code.to_s) if code && !File.exist?(path) && Dir.exist?(File.dirname(path))
+        end
+      end
+      private_class_method :write_missing_exit_code
 
       # <state dir>/execute: every command's dir (LOGS_DIRNAME).
       def self.logs_root = File.join(Paths.state_dir, LOGS_DIRNAME)
@@ -354,9 +383,10 @@ module Samagotchi
       private_class_method :leftover?
 
       # The shell still runs: TERM its group (or the shell alone, if it left
-      # the group), then KILL it once the grace is over.
-      def self.terminate_process_tree(pid)
-        ProcessGroup.stop(pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, leader: true)
+      # the group), then KILL it once the grace is over, unless +stopped+
+      # (the shell reaped, the logs released) came first.
+      def self.terminate_process_tree(pid, stopped:)
+        ProcessGroup.stop(pid, grace: STOP_GRACE_SEC, poll: STOP_POLL_INTERVAL_SEC, leader: true, stopped: stopped)
       end
       private_class_method :terminate_process_tree
 

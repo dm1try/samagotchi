@@ -305,6 +305,22 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(result).to start_with("Error: command stopped by the user")
         expect(running?("sleep 31.74")).to be(false)
       end
+
+      # The shell dies on TERM, its child doesn't: it still holds the logs,
+      # so the stop goes on to KILL it.
+      it "KILLs a child that ignores TERM once its shell died on TERM, under Stop and at the limit (kill mode)" do
+        stub_const("#{described_class}::STOP_GRACE_SEC", 0.2)
+        started = now
+        stopped = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); sleep 31.57'; echo after",
+                                       cancelled: -> { now - started > 0.5 })
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        killed = described_class.call("perl -e '$SIG{TERM}=q(IGNORE); sleep 31.58'; echo after", on_timeout: :kill)
+
+        expect(stopped).to start_with(described_class::STOPPED_BY_USER)
+        expect(killed).to start_with("Error: command timed out after 1s")
+        expect(running?("sleep 31.57")).to be(false)
+        expect(running?("sleep 31.58")).to be(false)
+      end
     end
 
     # `cmd &` forks a child that keeps the tool's stdout/stderr pipes: once
@@ -423,6 +439,9 @@ RSpec.describe Samagotchi::Tools::Execute do
           expect(result).to include("hi")
           expect(result).to end_with("exit: 0\n#{described_class::BACKGROUND_DETACHED_HINT}")
           expect(running?(pid)).to be(true)
+          # Its logs stay for it to write to; the sweep takes them once it is gone.
+          held = Dir.glob(File.join(described_class.logs_root, "*")).select { |dir| described_class.held?(Dir.glob(File.join(dir, "*.log"))) }
+          expect(held.size).to eq(1)
         ensure
           begin
             Process.kill("KILL", pid)
@@ -447,6 +466,26 @@ RSpec.describe Samagotchi::Tools::Execute do
 
         expect(result).to include("stdout:\ntruncated=true", "stdout_bytes=5000100", "#{"h" * 50}\n[... omitted",
                                   "[TRUNCATED_PREVIEW_TAIL]\n#{"t" * 50}")
+        expect(Dir.children(described_class.logs_root)).to match_array(before)
+      end
+
+      it "keeps a write through /dev/stdout or /dev/stderr after the earlier output" do
+        expect(described_class.call("echo a; echo b >/dev/stdout")).to eq("stdout:\na\nb\n\nexit: 0")
+        expect(described_class.call("echo a >&2; echo b >/dev/stderr")).to eq("stderr:\na\nb\n\nexit: 0")
+      end
+
+      it "reports what the command ran, whatever its last line or its exit path" do
+        expect(described_class.call("echo a \\")).to eq("stdout:\na\n\nexit: 0")
+        expect(described_class.call("echo a |")).to match(/\Astderr:\n.+\n\nexit: [12]\z/m)
+        expect(described_class.call("echo x; exit 3")).to eq("stdout:\nx\n\nexit: 3")
+        expect(described_class.call("set -e; false; echo no")).to eq("exit: 1 (no output)")
+      end
+
+      it "leaves no dir behind when the spawn fails" do
+        before = Dir.exist?(described_class.logs_root) ? Dir.children(described_class.logs_root) : []
+        allow(Samagotchi::ProcessGroup).to receive(:spawn).and_raise(Errno::EAGAIN)
+
+        expect(described_class.call("true")).to start_with("Error: ")
         expect(Dir.children(described_class.logs_root)).to match_array(before)
       end
 
@@ -505,6 +544,28 @@ RSpec.describe Samagotchi::Tools::Execute do
 
         expect(stopped).to include("status: stopped")
         expect(running?("sleep 31.61")).to be(false)
+      end
+
+      it "reads a command that ended between the deadline and the hand-over as finished, not timed out" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        allow(described_class).to receive(:hand_over).and_wrap_original do |original, **args|
+          args[:waiter].join(5)
+          original.call(**args)
+        end
+
+        expect(described_class.call("echo hi; sleep 1.3")).to eq("stdout:\nhi\n\nexit: 0")
+        expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
+      end
+
+      it "ends a handed-over command that replaced the EXIT trap with its own code, from the waiter" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+
+        result = described_class.call("trap 'echo mine' EXIT; sleep 1.5; exit 4")
+        record, = Samagotchi::Tools::TaskRuntime.get_record(task_id(result))
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+        sleep 0.05 until File.exist?(record["exit_code_path"]) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+        expect(Samagotchi::Tools::TaskWait.call(task_id(result), timeout: 10)).to include("status: failed", "exit_code: 4")
       end
 
       it "kills a command it can't hand over, as on_timeout: kill does" do
