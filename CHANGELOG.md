@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-10-11
+
 ### Added
 
 - chi web has a favicon: χ on a blue-to-violet rounded square. Safari showed a "1" monogram before.
@@ -49,6 +51,9 @@ and commands may change between minor versions. How releases are made:
   thinking, and the first request after the Continue matches the last one before the limit (before the fix, a local
   27B read most of a 17k prompt again: 24.9 s to the first token instead of 4.0 s). Continue's text is a steer, and on a chat host still starts
   the reasoning afresh from it. After a `/model` change while the question stands, the Continue starts afresh.
+
+Update with `chi update`: the system bundle 0.60.0, the core profile 0.3.0 (now with agents-md) and the new
+agents-md 0.1.0 bundle.
 
 ## [0.59.0] - 2026-10-11
 
@@ -2618,7 +2623,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.59.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.60.0...HEAD
+[0.60.0]: https://github.com/dm1try/samagotchi/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/dm1try/samagotchi/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/dm1try/samagotchi/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/dm1try/samagotchi/compare/v0.56.0...v0.57.0

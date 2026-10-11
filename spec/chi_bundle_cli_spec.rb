@@ -237,21 +237,19 @@ Hooks removed: 1\n\z})
     end
 
     it "installs the core profile's bundles, records them, and keeps one the user uninstalled out" do
-      # This chi predates the agents-md requires_chi: it is skipped, not installed.
-      skip_line = "  skipped agents-md: it requires chi >= 0.60.0 (this is chi #{Samagotchi::VERSION})\n"
       expect(chi("upgrade", "core", "--dry-run"))
-        .to eq(["core v0.3.0 (profile)\n  would install: loop-guard, check-in, guardrails, slow-commands\n#{skip_line}(dry-run: no changes written)\n", "", 0])
-      expect(chi("install", "core")).to eq(["core v0.3.0 (profile)\n  installed: loop-guard, check-in, guardrails, slow-commands\n#{skip_line}", "", 0])
-      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[check-in core guardrails loop-guard slow-commands])
+        .to eq(["core v0.3.0 (profile)\n  would install: loop-guard, check-in, guardrails, slow-commands, agents-md\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("install", "core")).to eq(["core v0.3.0 (profile)\n  installed: loop-guard, check-in, guardrails, slow-commands, agents-md\n", "", 0])
+      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[agents-md check-in core guardrails loop-guard slow-commands])
 
-      expect(chi("install", "core")).to eq(["core v0.3.0 (profile)\n#{skip_line}", "", 0])
+      expect(chi("install", "core")).to eq(["core v0.3.0 (profile)\n  nothing new to install\n", "", 0])
       expect(chi("uninstall", "check-in")[2]).to eq(0)
-      expect(chi("upgrade", "core")).to eq(["core v0.3.0 (profile)\n#{skip_line}", "", 0])
-      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[core guardrails loop-guard slow-commands])
+      expect(chi("upgrade", "core")).to eq(["core v0.3.0 (profile)\n  nothing new to install\n", "", 0])
+      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[agents-md core guardrails loop-guard slow-commands])
 
       out, err, code = chi("uninstall", "core")
       expect([err, code]).to eq(["", 0])
-      expect(out).to match(%r{\AUninstalled bundle 'core'\nRemoved: loop-guard, guardrails, slow-commands\nMoved to the trash: guardrails.md \(\S+/guardrails-\d{8}-\d{6}\)\n\z})
+      expect(out).to match(%r{\AUninstalled bundle 'core'\nRemoved: loop-guard, guardrails, slow-commands, agents-md\nMoved to the trash: guardrails.md \(\S+/guardrails-\d{8}-\d{6}\)\n\z})
       expect(Dir.children(File.join(memories, ".bundles"))).to eq([".trash"])
     end
 
@@ -260,15 +258,16 @@ Hooks removed: 1\n\z})
       chi("uninstall", "check-in")
 
       out, = chi("list")
-      expect(out).to match(/^  core +v0\.3\.0 +scope=system  includes=loop-guard,guardrails,slow-commands  left out=check-in  installed=\S+$/)
+      expect(out).to match(/^  core +v0\.3\.0 +scope=system  includes=loop-guard,guardrails,slow-commands,agents-md  left out=check-in  installed=\S+$/)
       expect(out).to match(/^Available.*\n(.*\n)*  check-in +v\S+  /)
       expect(out).to match(/^  dev +v/)
 
       out, err, code = chi("status", "core")
       expect([err, code]).to eq(["", 0])
       expect(out.lines.grep(/includes /)).to eq(["  includes loop-guard [installed]\n", "  includes check-in [not installed: chi bundle install check-in]\n",
-                                                 "  includes guardrails [installed]\n", "  includes slow-commands [installed]\n"])
-      expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.3.0 scope=system files=0 includes=loop-guard,check-in,guardrails,slow-commands issues=0\n"])
+                                                 "  includes guardrails [installed]\n", "  includes slow-commands [installed]\n",
+                                                 "  includes agents-md [installed]\n"])
+      expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.3.0 scope=system files=0 includes=loop-guard,check-in,guardrails,slow-commands,agents-md issues=0\n"])
     end
 
     it "status goes on past a bundle whose manifest.json doesn't parse" do
@@ -282,14 +281,13 @@ Hooks removed: 1\n\z})
     it "records a profile member installed by hand, refuses a profile in a project, and keeps a profile whose member is edited" do
       chi("install", "guardrails")
       expect(chi("install", "core"))
-        .to eq(["core v0.3.0 (profile)\n  installed: loop-guard, check-in, slow-commands\n  already installed: guardrails\n  " \
-                "skipped agents-md: it requires chi >= 0.60.0 (this is chi #{Samagotchi::VERSION})\n", "", 0])
+        .to eq(["core v0.3.0 (profile)\n  installed: loop-guard, check-in, slow-commands, agents-md\n  already installed: guardrails\n", "", 0])
       expect(chi("install", "core", "--scope", "project"))
         .to eq(["", "Install failed: core is a profile: its bundles install system-wide (drop --scope project)\n", 1])
 
       File.write(File.join(memories, "guardrails.md"), "mine\n")
       expect(chi("uninstall", "core"))
-        .to eq(["Removed from core: loop-guard, check-in, slow-commands\nKept guardrails: Uninstall blocked: guardrails.md has local edits (use --force)\n",
+        .to eq(["Removed from core: loop-guard, check-in, slow-commands, agents-md\nKept guardrails: Uninstall blocked: guardrails.md has local edits (use --force)\n",
                 "Uninstall failed: core stays installed until guardrails goes (chi bundle uninstall core --force)\n", 1])
       expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[core guardrails])
       out, err, code = chi("uninstall", "core", "--force")
