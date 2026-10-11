@@ -80,16 +80,20 @@ module Samagotchi
       @built ||= {}
       @index_sizes ||= {}
       @notes_loaded ||= {}
+      @files_loaded ||= {}
       unless @built.key?(key)
         @section_notes = nil
+        @section_files = []
         @built[key] = system_prompt_with_index(
           assist_system_prompt(chat: chat, thinking: thinking, layers: layers), chat: chat, thinking: thinking, layers: layers
         )
         @index_sizes[key] = @measured_index
         @notes_loaded[key] = @section_notes || []
+        @files_loaded[key] = @section_files.freeze
       end
       @memory_index = @index_sizes[key]
       @prompt_notes = @notes_loaded[key]
+      @prompt_files = @files_loaded[key]
       @built[key]
     end
 
@@ -107,6 +111,13 @@ module Samagotchi
     # @return [Array<ModelNotes::Note>, nil]
     attr_reader :prompt_notes
 
+    # The files whose text the prompt #build returned last holds, as
+    # absolute paths in prompt order: the AGENTS.md chain. [] before a
+    # build and after #reset!. Read when the prompt is built, as the
+    # sections are.
+    # @return [Array<String>]
+    def prompt_files = @prompt_files || []
+
     # Drops the built prompts: the next #build reads the profile, tools,
     # indexes and memories again (a model or profile switch, changed tools).
     def reset!
@@ -114,6 +125,8 @@ module Samagotchi
       @index_sizes = nil
       @notes_loaded = nil
       @prompt_notes = nil
+      @files_loaded = nil
+      @prompt_files = nil
       @stable_lengths = nil
     end
 
@@ -463,17 +476,19 @@ module Samagotchi
 
     # ── Project / rg helpers ───────────────────────────────────────────────────
 
-    # AGENTS.md in the cwd, else at the top of its git work tree (PromptFiles).
+    # The AGENTS.md chain from the top of the git work tree down to the cwd
+    # (PromptFiles.agents_sections), one section per file with text.
     def project_specific_description
       return nil if skip_agent_description?
 
-      path = agent_description_path
-      return nil unless path
+      sections = PromptFiles.agents_sections(Dir.pwd)
+      return nil if sections.empty?
 
-      PromptFiles.section(path, "Project specific description:")
+      @section_files&.concat(sections.map(&:path))
+      sections.map(&:text).join("\n\n")
+    rescue StandardError
+      nil
     end
-
-    def agent_description_path = PromptFiles.agents_paths(Dir.pwd).first
 
     # Where the session runs and which project memory folder it uses. Only
     # this checkout is named: its top (at its root too, so a model doesn't

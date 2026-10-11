@@ -9,19 +9,64 @@ module Samagotchi
   module PromptFiles
     AGENTS_FILE = "AGENTS.md"
 
+    AGENTS_HEADER = "Project specific description:"
+
+    # A file's text as the prompt carries it: +path+ absolute, +text+ the
+    # section with its header.
+    Section = Data.define(:path, :text)
+
     module_function
 
-    # The AGENTS.md files a session in +cwd+ loads, as absolute paths: the
-    # cwd's, else the one at the top of its git work tree ([] with neither).
+    # The AGENTS.md files a session in +cwd+ loads, as absolute paths,
+    # outermost first: inside a git work tree every one from its top (a
+    # linked worktree's own checkout) down to the cwd; outside a repository
+    # only the cwd's ([] with none).
     # @param cwd [String] where the prompt is built (Dir.pwd, not the
     #   session's working directory: /tmp vs /private/tmp would change the
     #   prompt bytes)
     # @return [Array<String>]
     def agents_paths(cwd)
-      path = [cwd, MemoryPaths.work_tree_root(cwd)].compact.uniq
-                                                   .map { |dir| File.join(dir, AGENTS_FILE) }
-                                                   .find { |candidate| File.file?(candidate) }
-      path ? [path] : []
+      chain_dirs(cwd).map { |dir| File.join(dir, AGENTS_FILE) }.select { |path| File.file?(path) }
+    end
+
+    # The sections of the AGENTS.md chain (#agents_paths) with text: the
+    # first keeps the plain header (a one-file session's prompt is as it
+    # always was), each further one names its directory relative to the
+    # work tree top ("Project specific description for pkg/:").
+    # @return [Array<Section>]
+    def agents_sections(cwd)
+      top = MemoryPaths.work_tree_root(cwd)
+      sections = []
+      agents_paths(cwd).each do |path|
+        dir = File.dirname(path)
+        header = sections.empty? ? AGENTS_HEADER : "Project specific description for #{relative_dir(dir, top) || dir}/:"
+        text = section(path, header)
+        sections << Section.new(path: path, text: text) if text
+      end
+      sections
+    end
+
+    # The directories whose AGENTS.md a session in +cwd+ reads, outermost first.
+    def chain_dirs(cwd)
+      cwd = File.expand_path(cwd)
+      top = MemoryPaths.work_tree_root(cwd)
+      return [cwd] unless top
+
+      rel = relative_dir(cwd, top)
+      return [top] if rel == "."
+      # A cwd the walk up didn't reach from (not expected): only its own and the top's.
+      return [top, cwd] if rel.nil?
+
+      parts = rel.split("/")
+      [top] + parts.each_index.map { |i| File.join(top, *parts[0..i]) }
+    end
+
+    # +dir+ relative to +top+ ("." for the top itself), nil when it isn't under it.
+    def relative_dir(dir, top)
+      return "." if dir == top
+
+      prefix = top.end_with?("/") ? top : "#{top}/"
+      dir.start_with?(prefix) ? dir.delete_prefix(prefix) : nil
     end
 
     # +path+'s text under +header+ ("<header>\n<text>", stripped); nil when

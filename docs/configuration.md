@@ -1074,11 +1074,16 @@ The helper reads these from its launch file: after editing them run
 If an AGENTS.md file is present in the project root, samagotchi injects its
 contents into the system prompt under a "Project specific description:" section.
 The project root is the top of the git work tree chi runs in (a linked
-worktree's own checkout), or the current directory outside a repository. An
-AGENTS.md in the current directory is read instead when there is one; only one
-file is read.
+worktree's own checkout), or the current directory outside a repository.
 
-To skip loading AGENTS.md, set `skip_agents_md: true` at the top level of
+Started in a subdirectory, chi loads the chain: every AGENTS.md from the work
+tree top down to the current directory, outermost first. The first keeps the
+plain header; each further one is headed with its directory, e.g. "Project
+specific description for pkg/:". Outside a repository only the current
+directory's AGENTS.md is read. Edits are picked up by a new process or a
+prompt rebuild (`/model`).
+
+To skip loading AGENTS.md (all of the chain), set `skip_agents_md: true` at the top level of
 `config.yml` (env `SAMAGOTCHI_SKIP_AGENTS_MD=true`).
 
 ## LLM context: the forget layer

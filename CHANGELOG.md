@@ -12,6 +12,12 @@ and commands may change between minor versions. How releases are made:
 
 - chi web has a favicon: χ on a blue-to-violet rounded square. Safari showed a "1" monogram before.
 
+### Changed
+
+- Started in a subdirectory, chi loads every `AGENTS.md` from the top of the git work tree down to the current
+  directory, outermost first, instead of the subdirectory's replacing the root's. A further file is headed with its
+  directory ("Project specific description for pkg/:"); a session with one `AGENTS.md` gets the same prompt as before.
+
 ## [0.59.0] - 2026-10-11
 
 ### Added

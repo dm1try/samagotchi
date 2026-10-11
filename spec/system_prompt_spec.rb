@@ -58,10 +58,35 @@ RSpec.describe Samagotchi::SystemPrompt do
       expect(description(File.join(repo, "lib", "deep"))).to eq("Project specific description:\nroot notes")
     end
 
-    it "prefers the current directory's AGENTS.md over the root's" do
+    it "is the chain from the work tree root down to the current directory, root first" do
       write(File.join(repo, "AGENTS.md"), "root notes")
+      write(File.join(repo, "pkg", "AGENTS.md"), "pkg notes")
+      write(File.join(repo, "pkg", "inner", "AGENTS.md"), "inner notes")
+      expect(description(File.join(repo, "pkg", "inner"))).to eq(
+        "Project specific description:\nroot notes\n\n" \
+        "Project specific description for pkg/:\npkg notes\n\n" \
+        "Project specific description for pkg/inner/:\ninner notes"
+      )
+    end
+
+    it "gives the plain header to a subdirectory's AGENTS.md when the root has none" do
       write(File.join(repo, "sub", "AGENTS.md"), "sub notes")
       expect(description(File.join(repo, "sub"))).to eq("Project specific description:\nsub notes")
+    end
+
+    it "leaves out an empty file in the chain" do
+      write(File.join(repo, "AGENTS.md"), "  \n")
+      write(File.join(repo, "sub", "AGENTS.md"), "sub notes")
+      expect(description(File.join(repo, "sub"))).to eq("Project specific description:\nsub notes")
+    end
+
+    it "loads none with skip_agents_md" do
+      write(File.join(repo, "AGENTS.md"), "root notes")
+      write(File.join(repo, "sub", "AGENTS.md"), "sub notes")
+      ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = "true"
+      expect(Dir.chdir(File.join(repo, "sub")) { prompt.send(:project_specific_description) }).to be_nil
+    ensure
+      ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
     end
 
     it "is read from a linked worktree's own checkout, not the main one" do
@@ -119,5 +144,48 @@ RSpec.describe Samagotchi::SystemPrompt, "#memory_index" do
     prompt.reset!
     prompt.build(chat: true, layers: [])
     expect(prompt.memory_index).to eq(system: figures(index_text), project: figures(index_text))
+  end
+end
+
+RSpec.describe Samagotchi::SystemPrompt, "#prompt_files" do
+  subject(:prompt) do
+    described_class.new(profile: -> { Samagotchi::ModelProfile.for("gemma4") }, tools: -> { Samagotchi::Tools::Registry.new },
+                        session: -> {}, thinking: -> {})
+  end
+
+  around do |example|
+    saved = ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD")
+    Dir.mktmpdir do |tmp|
+      @repo = File.join(File.realpath(tmp), "repo")
+      FileUtils.mkdir_p(File.join(@repo, ".git"))
+      FileUtils.mkdir_p(File.join(@repo, "pkg"))
+      File.write(File.join(@repo, "AGENTS.md"), "root notes")
+      File.write(File.join(@repo, "pkg", "AGENTS.md"), "pkg notes")
+      example.run
+    end
+  ensure
+    saved.nil? ? ENV.delete("SAMAGOTCHI_SKIP_AGENTS_MD") : ENV["SAMAGOTCHI_SKIP_AGENTS_MD"] = saved
+  end
+
+  before do
+    allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+  end
+
+  def build_in(dir) = Dir.chdir(dir) { prompt.build(chat: true) }
+
+  it "is the chain in the prompt built last, [] before a build and after #reset!" do
+    expect(prompt.prompt_files).to eq([])
+    text = build_in(File.join(@repo, "pkg"))
+    expect(prompt.prompt_files).to eq([File.join(@repo, "AGENTS.md"), File.join(@repo, "pkg", "AGENTS.md")])
+    expect(text).to include("Project specific description:\nroot notes\n\nProject specific description for pkg/:\npkg notes\n")
+    prompt.reset!
+    expect(prompt.prompt_files).to eq([])
+  end
+
+  it "leaves out an empty file" do
+    File.write(File.join(@repo, "pkg", "AGENTS.md"), "\n")
+    build_in(File.join(@repo, "pkg"))
+    expect(prompt.prompt_files).to eq([File.join(@repo, "AGENTS.md")])
   end
 end

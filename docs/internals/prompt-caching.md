@@ -31,7 +31,7 @@ right-hand column happens.
 │   system identity (+ model overlay)                                      │  /model, editing a
 │   model notes (model_notes_* matching the model)                         │  memory / AGENTS.md
 │   explicit (preloaded) memories                                          │
-│   AGENTS.md                                                              │  (picked up by a new
+│   AGENTS.md (root → cwd)                                                 │  (picked up by a new
 │   project + system memory indexes                                        │  process or a rebuild)
 │                         ◄── remote Claude: cache_control breakpoint #1   │
 ├──────────────────────────────────────────────────────────────────────────┤
