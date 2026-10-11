@@ -2333,6 +2333,23 @@ module Samagotchi
       nil
     end
 
+    # The host refused the model's reasoning sent back (reasoning_history)
+    # and the chat loop asked the step again without it, as it will from
+    # now on: logged, and said once per session and host.
+    def reasoning_history_refused(event)
+      _level, target = @turn_thinking
+      return unless target
+
+      Log.warn(:model, "reasoning_history_refused", level: event[:level], host: target.entry.name, model: event[:model],
+                                                    detail: event[:detail])
+      return unless (@thinking_notices ||= Set.new).add?([@session&.id, target.entry.name, :reasoning_history_refused])
+
+      hook_notify("#{target.entry.name} refused reasoning sent back (reasoning_history: #{event[:level]}) for " \
+                  "#{event[:model]} (#{event[:detail]}); sent without it from now on", :warn, "reasoning history")
+    rescue StandardError
+      nil
+    end
+
     def thinking_notice_once(kind, target, level, text)
       key = [@session&.id, target.entry.name, kind]
       return unless (@thinking_notices ||= Set.new).add?(key)
@@ -2625,9 +2642,10 @@ module Samagotchi
           end
         when :generation_chunk then note_generation_thought(progress[:thinking])
         end
-        # The chat loop asked again without the thinking fields: a notice,
-        # not an event of its own.
+        # The chat loop asked again without the thinking fields or the
+        # reasoning sent back: a notice, not an event of its own.
         next thinking_refused(event) if event[:type] == :thinking_refused
+        next reasoning_history_refused(event) if event[:type] == :reasoning_history_refused
 
         event = with_generation_report(event) if event[:type] == :generation_completed
         emit_event(on_event, event)

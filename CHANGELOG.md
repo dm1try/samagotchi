@@ -19,7 +19,8 @@ and commands may change between minor versions. How releases are made:
 - A chat host (`api: openai`) now gets the running turn's reasoning back: each of the turn's earlier replies carries its
   reasoning as `reasoning_content`, as Qwen's, Gemma 4's and DeepSeek's templates and the hosted APIs expect
   (`reasoning_history: turn`, the default). A local Qwen thought ~8x less per request with it. `drop` sends none (as
-  before), `all` sends every reply's, earlier turns too.
+  before), `all` sends every reply's, earlier turns too. A host that refuses it (a 400 about reasoning) gets the step
+  again without it, and that model sends none from then on (a notice says so once).
 
 ### Fixed
 

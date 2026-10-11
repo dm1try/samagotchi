@@ -174,6 +174,86 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  # reasoning_history's fallback: a host that 400s about reasoning when a
+  # request carries reasoning_content gets the step again without it.
+  describe "a host that refuses reasoning sent back" do
+    let(:refused) do
+      Samagotchi::LLM::ProviderErrors.from_response(
+        status: 400, host: "proxy", body: JSON.generate(error: { message: "unknown field: reasoning_content" })
+      )
+    end
+    let(:detail) { "HTTP 400: unknown field: reasoning_content" }
+
+    def call(id, reasoning) = tools([id, "read", { "path" => "#{id}.rb" }]).with(reasoning: reasoning)
+    def reasoning_sent(request) = request[:messages].filter_map { |m| m[:reasoning_content] }
+
+    before do
+      fake_kernel.turn_settings = fake_kernel.turn_settings.with(reasoning_history: :turn, thinking: :high)
+    end
+
+    it "asks the step again without it, marks the model and sends none after; the thinking fields stay" do
+      backend.adapter = FakeChatAdapter.new(call("c1", "first"), refused, call("c2", "second"), text("done"))
+
+      expect(run.text).to eq("done")
+      backend.complete(messages: [{ role: "user", content: "go" }], model_name: "other", on_stream_event: ->(e) { events << e })
+
+      requests = backend.adapter.requests
+      expect(requests.map { |r| reasoning_sent(r) }).to eq([[], ["first"], [], [], []])
+      expect(requests.map { |r| r[:options] }).to all(eq(reasoning_effort: "high"))
+      expect(events.select { |e| e[:type] == :reasoning_history_refused })
+        .to eq([{ type: :reasoning_history_refused, iteration: 2, model: "m", level: :turn, detail: detail }])
+      expect(events.map { |e| e[:type] }).not_to include(:thinking_refused)
+      expect(backend.reasoning_history("m")).to eq(:drop)
+      expect(backend.reasoning_history("other")).to eq(:turn)
+    end
+
+    it "keeps sending it to a host that refuses only the thinking fields" do
+      thinking = Samagotchi::LLM::ProviderErrors.from_response(
+        status: 400, host: "proxy", body: JSON.generate(error: { message: "reasoning_effort is not supported" })
+      )
+      backend.adapter = FakeChatAdapter.new(call("c1", "first"), thinking, thinking, call("c2", "second"), text("done"))
+
+      expect(run.text).to eq("done")
+
+      requests = backend.adapter.requests
+      expect(requests.map { |r| reasoning_sent(r) }).to eq([[], ["first"], [], [], %w[first second]])
+      expect(requests.map { |r| r[:options] }).to eq(([{ reasoning_effort: "high" }] * 3) + ([{}] * 2))
+      expect(events.map { |e| e[:type] }).to include(:thinking_refused)
+      expect(events.map { |e| e[:type] }).not_to include(:reasoning_history_refused)
+      expect(backend.reasoning_history("m")).to eq(:turn)
+    end
+
+    it "takes both fallbacks for a host that refuses both, one step each" do
+      backend.adapter = FakeChatAdapter.new(call("c1", "first"), refused, refused, call("c2", "second"), refused,
+                                            text("done"))
+
+      expect(run.text).to eq("done")
+
+      requests = backend.adapter.requests
+      expect(requests.map { |r| reasoning_sent(r) }).to eq([[], ["first"], [], [], %w[first second], []])
+      expect(requests.map { |r| r[:options] }).to eq(([{ reasoning_effort: "high" }] * 3) + ([{}] * 3))
+      expect(events.map { |e| e[:type] } & %i[thinking_refused reasoning_history_refused])
+        .to eq(%i[thinking_refused reasoning_history_refused])
+    end
+
+    it "fails the step after three requests" do
+      # A new error each time, as from the wire (a step's count goes on the error).
+      fresh = ->(**) { raise refused.dup }
+      backend.adapter = FakeChatAdapter.new(call("c1", "first"), fresh)
+
+      expect { run }.to raise_error(Samagotchi::LLM::BadRequest) { |error| expect(error.attempts).to eq(3) }
+      expect(backend.adapter.requests.size).to eq(4)
+    end
+
+    it "doesn't ask again for a 400 about something else" do
+      other = Samagotchi::LLM::ProviderErrors.from_response(status: 400, host: "h", body: JSON.generate(error: { message: "bad temperature" }))
+      backend.adapter = FakeChatAdapter.new(call("c1", "first"), other)
+
+      expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
+      expect(backend.adapter.requests.size).to eq(2)
+    end
+  end
+
   it "names the model the adapter reports in :generation_completed, next to the one asked for" do
     served = FakeChatAdapter.text("hi").with(model: "vendor/served-1")
     described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))

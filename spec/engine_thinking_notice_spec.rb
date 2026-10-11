@@ -191,4 +191,24 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     expect(events.map { |e| e[:type] }).not_to include(:thinking_refused)
     expect(notices("again")).to be_empty
   end
+
+  it "says once that the host refused reasoning sent back, and keeps the event off the UIs" do
+    allow(kernel).to receive(:run) do |messages, on_stream_event: nil, **|
+      on_stream_event&.call(type: :reasoning_history_refused, iteration: 2, model: "qwen-small", level: :turn,
+                            detail: "HTTP 400: unknown field: reasoning_content")
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+    end
+
+    events = []
+    engine.run_turn(session, "hi", on_event: ->(e) { events << e })
+    shown = events.select { |e| e[:type] == :hook_notice }
+
+    expect(shown.size).to eq(1)
+    expect(shown.first).to include(hook: "reasoning history", level: :warn)
+    expect(shown.first[:text]).to eq("box refused reasoning sent back (reasoning_history: turn) for qwen-small " \
+                                     "(HTTP 400: unknown field: reasoning_content); sent without it from now on")
+    expect(events.map { |e| e[:type] }).not_to include(:reasoning_history_refused)
+    expect(notices("again")).to be_empty
+  end
 end

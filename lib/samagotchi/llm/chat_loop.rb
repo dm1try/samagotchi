@@ -214,8 +214,19 @@ module Samagotchi
       end
 
       # The turn's ReasoningHistory level (the kernel's turn_settings); drop
-      # without settings.
-      def reasoning_history = @kernel.turn_settings&.reasoning_history || :drop
+      # without settings, and for a +model+ whose host refused it
+      # (#reasoning_history_refused!).
+      def reasoning_history(model = nil)
+        return :drop if model && @reasoning_history_refused&.include?(model)
+
+        @kernel.turn_settings&.reasoning_history || :drop
+      end
+
+      # The host refused +model+'s reasoning sent back: send none from now on
+      # (this worker's lifetime, as #thinking_refused!).
+      def reasoning_history_refused!(model)
+        (@reasoning_history_refused ||= Set.new) << model
+      end
 
       # The turn's VisionContext (the Engine sets the kernel's
       # turn_settings), or nil.
@@ -517,18 +528,17 @@ module Samagotchi
           generation_controller = nil
           response = with_generation do |controller|
             generation_controller = controller
-            # One count for the step: the ask-again without thinking fields
-            # doesn't get drops of its own.
+            # One count for the step: an ask-again without reasoning or
+            # thinking fields doesn't get drops of its own.
             drops = LLM::StreamDrops::DropCount.new(0, 0)
+            ask = -> { request_with_drops(iteration, retry_generation, streamed, thought, drops, controller) }
             begin
-              request_with_drops(iteration, retry_generation, streamed, thought, drops, controller)
+              ask.call
             rescue BadRequest => e
-              raise unless thinking_refused?(e)
-
-              # Once per model: asked again without the thinking fields.
-              @loop.thinking_refused!(@model_name)
-              emit(type: :thinking_refused, iteration: iteration, model: @model_name, level: @loop.thinking, detail: e.detail)
-              request_with_drops(iteration, retry_generation, streamed, thought, drops, controller)
+              if refused?(e) && reasoning_sent? then without_reasoning(iteration, e, ask)
+              elsif thinking_refused?(e) then without_thinking(iteration, e, ask)
+              else raise
+              end
             end
           rescue RequestCancelled
             raise unless generation_controller&.cancelled? && !@cancel_controller.cancelled?
@@ -578,7 +588,7 @@ module Samagotchi
 
         def request(iteration, retry_generation, streamed, thought, generation_controller, streamed_any = nil)
           @loop.adapter.chat(
-            messages: @loop.wire_messages(@conversation, since: @start), tools: @loop.tool_definitions, model: @model_name,
+            messages: @loop.wire_messages(@conversation, since: @start, reasoning: reasoning_level), tools: @loop.tool_definitions, model: @model_name,
             cancel_controller: generation_controller || @cancel_controller, session_id: @loop.session_id,
             options: @loop.request_options(retry_generation: retry_generation, model: @model_name),
             on_delta: lambda { |content:, reasoning:, payload:|
@@ -641,11 +651,52 @@ module Samagotchi
           raise
         end
 
-        # A 400 about reasoning, for a request that carried thinking fields
-        # (not a missing-tools, image or context error).
-        def thinking_refused?(error)
+        # A 400 about reasoning (not a missing-tools, image or context error).
+        def refused?(error)
           error.reasoning_refused? && !error.is_a?(VisionUnsupported) && !error.tools_unsupported? &&
-            !error.context_overflow? && !@loop.thinking_fields(@model_name).empty?
+            !error.context_overflow?
+        end
+
+        # #refused?, for a request that carried thinking fields.
+        def thinking_refused?(error) = refused?(error) && !@loop.thinking_fields(@model_name).empty?
+
+        # Whether this step's request sends reasoning back.
+        def reasoning_sent?
+          !@without_reasoning && @loop.reasoning_chars(@conversation, since: @start, reasoning: reasoning_level).positive?
+        end
+
+        # The level this step's request sends reasoning back under: none
+        # while it is asked again without (#without_reasoning).
+        def reasoning_level = @without_reasoning ? :drop : @loop.reasoning_history(@model_name)
+
+        # The host refused a request that sent reasoning back: ask the step
+        # again without it. When that goes through, the model sends none from
+        # now on. When it is refused too, the thinking fields may be what the
+        # host refuses: #without_thinking asks a third time (still without
+        # reasoning; a later step sends it again, so a host that refuses
+        # only the thinking fields keeps it).
+        def without_reasoning(iteration, error, ask)
+          @without_reasoning = true
+          response = begin
+            ask.call
+          rescue BadRequest => e
+            raise unless thinking_refused?(e)
+
+            return without_thinking(iteration, e, ask)
+          end
+          @loop.reasoning_history_refused!(@model_name)
+          emit(type: :reasoning_history_refused, iteration: iteration, model: @model_name,
+               level: @loop.reasoning_history, detail: error.detail)
+          response
+        ensure
+          @without_reasoning = false
+        end
+
+        # Once per model: asked again without the thinking fields.
+        def without_thinking(iteration, error, ask)
+          @loop.thinking_refused!(@model_name)
+          emit(type: :thinking_refused, iteration: iteration, model: @model_name, level: @loop.thinking, detail: error.detail)
+          ask.call
         end
 
         # Before a request, as the native loop: estimate how full the window
@@ -674,7 +725,7 @@ module Samagotchi
         # names and arguments, and the reasoning sent back.
         def prompt_chars
           LLMContextView.chars(@loop.llm_context_view.messages(@conversation)) +
-            @loop.reasoning_chars(@conversation, since: @start)
+            @loop.reasoning_chars(@conversation, since: @start, reasoning: reasoning_level)
         end
 
         # The server's counts for this request (prompt + answer): the status
