@@ -8,12 +8,6 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
-### Fixed
-
-- A session with its own model resumes when the config names no default.model — `chi send`, attached, the
-  plain REPL (`chi --resume ID --no-shared`), and `-p … --non-interactive` — `/model clear` says there
-  is no default.
-
 ### Added
 
 - Web: a ref's menu. A ref with more than one target shows a `▾` on hover (a tap on a touch screen, ↓ on a focused
@@ -23,7 +17,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
-- Web: the LAN access token no longer shows when the web app or a stream proxy is inspected (an error message, a log line).
+- A session with its own model resumes when the config names no default.model: `chi send`, attached, the plain REPL
+  (`chi --resume ID --no-shared`) and `-p … --non-interactive` crashed with "no model configured". `/model clear`
+  then says there is no default.
+- Web: the LAN access token no longer shows when the web app or a stream proxy is inspected (an error message, a log
+  line).
 
 ## [0.57.0] - 2026-10-11
 
