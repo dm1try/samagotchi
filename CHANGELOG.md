@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-10-11
+
 ### Added
 
 - Web: more refs. An edit or write approval card's path opens the current file at the first line the dry run
@@ -36,6 +38,9 @@ and commands may change between minor versions. How releases are made:
   "could not set the --llm-context".
 - The MCP bundle no longer prints a server's env values or command arguments (e.g. a token) when inspected; a failing
   spec or a debugger now shows only the server's state, the command's first word and the env's variable names.
+
+Update with `chi update`: it installs slow-commands (new in `core`, core 0.2.0) and updates mcp (0.6.2: no env
+values when inspected). Then restart `chi web`.
 
 ## [0.56.0] - 2026-10-11
 
@@ -2518,7 +2523,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.56.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.57.0...HEAD
+[0.57.0]: https://github.com/dm1try/samagotchi/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/dm1try/samagotchi/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/dm1try/samagotchi/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/dm1try/samagotchi/compare/v0.53.0...v0.54.0
