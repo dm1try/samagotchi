@@ -193,13 +193,16 @@ RSpec.describe Samagotchi::Thinking do
   end
 
   describe ".cache_cost" do
-    let(:native) { Struct.new(:entry).new(Struct.new(:chat?).new(false)) }
-    let(:chat) { Struct.new(:entry).new(Struct.new(:chat?).new(true)) }
+    def target(chat:, remote: false, model: "m")
+      Struct.new(:entry, :bare_model).new(Struct.new(:chat?, :remote?).new(chat, remote), model)
+    end
 
-    it "is the whole prompt on native Gemma, the provider's call on a chat host, the tail otherwise" do
-      expect(described_class.cache_cost(native, profile: "gemma4")).to eq(:full)
-      expect(described_class.cache_cost(native, profile: "qwen36")).to eq(:tail)
-      expect(described_class.cache_cost(chat, profile: "gemma4")).to eq(:provider)
+    it "is the whole prompt on Gemma (native, or a local chat server), the provider's on a remote chat host, the tail otherwise" do
+      expect(described_class.cache_cost(target(chat: false), profile: "qwen36")).to eq(:tail)
+      expect(described_class.cache_cost(target(chat: false), profile: "gemma4")).to eq(:full)
+      expect(described_class.cache_cost(target(chat: true, model: "google/Gemma-4-26B"), profile: nil)).to eq(:full)
+      expect(described_class.cache_cost(target(chat: true, model: "incoai/Qwen3.6-35B-A3B-Splash"))).to eq(:tail)
+      expect(described_class.cache_cost(target(chat: true, remote: true, model: "google/gemma-4"))).to eq(:provider)
     end
   end
 

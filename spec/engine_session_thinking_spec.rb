@@ -10,7 +10,8 @@ require "samagotchi/session"
 RSpec.describe Samagotchi::Engine, "session thinking level" do
   let(:registry) do
     Samagotchi::HostRegistry.new(hosts_config: { "box" => { host: "box.test", port: 8080, thinking: :high },
-                                                 "oai" => { host: "oai.test", port: 8000, api: :openai } })
+                                                 "oai" => { host: "oai.test", port: 8000, api: :openai },
+                                                 "cloud" => { host: "api.example.com", api: :openai, remote: true } })
   end
   let(:engine) { described_class.new(host_registry: registry, model_name: "box:qwen-small", profile: "qwen36") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "box:qwen-small", working_directory: Dir.pwd) }
@@ -57,9 +58,13 @@ RSpec.describe Samagotchi::Engine, "session thinking level" do
     expect(engine.session_state_snapshot[:thinking]).to eq(level: "low", source: "session", own: "low")
   end
 
-  it "names what a level change costs the prompt cache: the tail on native Qwen, the provider's call on a chat host" do
+  it "names what a level change costs the prompt cache: the tail on Qwen, the whole prompt on a local Gemma, the provider's on a remote host" do
     expect(engine.thinking_cache_cost).to eq(:tail)
-    engine.switch_model!("oai:gpt-x")
+    engine.switch_model!("oai:qwen-x")
+    expect(engine.thinking_cache_cost).to eq(:tail)
+    engine.switch_model!("oai:gemma-x")
+    expect(engine.thinking_cache_cost).to eq(:full)
+    engine.switch_model!("cloud:gpt-x")
     expect(engine.thinking_cache_cost).to eq(:provider)
   end
 

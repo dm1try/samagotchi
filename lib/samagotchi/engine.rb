@@ -1098,9 +1098,11 @@ module Samagotchi
     # session's own (SettingExplained), as the next turn resolves it;
     # nil when it can't be resolved.
     # @return [SettingExplained, nil]
-    def thinking_explained
+    # +own+: the session's own level to resolve with (the current one by
+    # default; /thinking asks what a change would resolve to).
+    def thinking_explained(own: thinking_override)
       target = @host_registry.resolve(@effective_model_name)
-      Thinking.explain(target, names: model_lookup_names(target), session: thinking_override)
+      Thinking.explain(target, names: model_lookup_names(target), session: own)
     rescue StandardError
       nil
     end
@@ -1126,13 +1128,32 @@ module Samagotchi
     # true resolves it there too, for /reasoning-history) or when it can't
     # be resolved.
     # @return [SettingExplained, nil]
-    def reasoning_history_explained(native: false)
+    # +own+: the session's own level to resolve with (the current one by
+    # default; a command asks what a change would resolve to).
+    def reasoning_history_explained(native: false, own: reasoning_history_override)
       target = @host_registry.resolve(@effective_model_name)
       return nil unless native || target.entry&.chat?
 
-      ReasoningHistory.explain(target, names: model_lookup_names(target), session: reasoning_history_override)
+      ReasoningHistory.explain(target, names: model_lookup_names(target), session: own)
     rescue StandardError
       nil
+    end
+
+    # What a reasoning_history change from level +from+ to level +to+ costs
+    # the effective model's prompt cache, given the session's conversation
+    # (ReasoningHistory.cache_cost): :history or nil. A host ChatLoop
+    # marked as refusing it may still get :history (one needless ask).
+    # @return [Symbol, nil]
+    def reasoning_history_cache_cost(from, to)
+      target = @host_registry.resolve(@effective_model_name)
+      ReasoningHistory.cache_cost(from, to, target: target, conversation: @session&.messages)
+    rescue StandardError
+      nil
+    end
+
+    # Whether the session has a model reply (a cache to restart at all).
+    def history?
+      Array(@session&.messages).any? { |entry| entry[:role].to_s == "model" }
     end
 
     # The session's own reasoning_history level, nil when it has none.

@@ -15,9 +15,15 @@ module Samagotchi
     NAME = "/reasoning-history"
     USAGE = "usage: #{NAME} [#{(ReasoningHistory::LEVELS + [ReasoningHistory::UNSET]).join("|")}]".freeze
     NATIVE_NOTE = "  (ignored on this host: the native loop keeps the running turn's reasoning)"
+    # ReasoningHistory.cache_cost's; nil (no cost) says nothing.
+    COST_NOTES = {
+      history: "Earlier replies gain or lose their reasoning: the server reads the conversation again " \
+               "from the first earlier thought."
+    }.freeze
 
     # @param engine [Engine] #reasoning_history_explained,
-    #   #reasoning_history_override(=), #session, #chat_model?
+    #   #reasoning_history_override(=), #session, #chat_model?,
+    #   #reasoning_history_cache_cost
     # @param save [#call] saves the session after a change
     def initialize(engine:, save:)
       @engine = engine
@@ -70,7 +76,8 @@ module Samagotchi
       return [] unless before && after
       return ["(no change to what the next turn runs under)"] if before.level == after.level
 
-      ["From the next turn's start (a running turn keeps its own)."]
+      cost = @engine.reasoning_history_cache_cost(before.level, after.level)
+      ["From the next turn's start (a running turn keeps its own).", COST_NOTES[cost]].compact
     end
   end
 end

@@ -116,6 +116,31 @@ RSpec.describe Samagotchi::ReasoningHistory do
     end
   end
 
+  describe ".cache_cost" do
+    def target(chat: true) = Struct.new(:entry).new(Struct.new(:chat?).new(chat))
+
+    let(:thought) do
+      [{ role: "user", content: "hi" }, { role: "model", content: "ok", thinking: "let me see" }, { role: "user", content: "and?" }]
+    end
+    let(:unthought) { [{ role: "user", content: "hi" }, { role: "model", content: "ok", thinking: " \n" }] }
+
+    it "is :history to or from all on a chat host once an earlier reply has thinking, local or remote" do
+      %i[drop turn].each do |other|
+        expect(described_class.cache_cost(other, :all, target: target, conversation: thought)).to eq(:history)
+        expect(described_class.cache_cost(:all, other, target: target, conversation: thought)).to eq(:history)
+      end
+    end
+
+    it "is nothing between drop and turn, for no change, with nothing thought yet, or on a native host" do
+      expect(described_class.cache_cost(:drop, :turn, target: target, conversation: thought)).to be_nil
+      expect(described_class.cache_cost(:turn, :drop, target: target, conversation: thought)).to be_nil
+      expect(described_class.cache_cost(:all, :all, target: target, conversation: thought)).to be_nil
+      expect(described_class.cache_cost(:turn, :all, target: target, conversation: unthought)).to be_nil
+      expect(described_class.cache_cost(:turn, :all, target: target, conversation: [])).to be_nil
+      expect(described_class.cache_cost(:turn, :all, target: target(chat: false), conversation: thought)).to be_nil
+    end
+  end
+
   describe ".label" do
     it "names the source, or says default" do
       expect(described_class.label(:drop, "models: qwen")).to eq("drop (models: qwen)")

@@ -60,6 +60,22 @@ RSpec.describe Samagotchi::Engine, "reasoning history" do
     expect(engine.stats_snapshot[:reasoning_history]).to eq(level: "drop", source: "session", own: "drop")
   end
 
+  it "names the cost of a change to or from all once a reply has thinking, and knows whether there is a reply" do
+    engine.session = session
+    expect([engine.history?, engine.reasoning_history_cache_cost(:turn, :all)]).to eq([false, nil])
+
+    session.messages.push({ role: "user", content: "hi" }, { role: "model", content: "ok", thinking: "hmm" })
+    expect(engine.history?).to be(true)
+    expect(engine.reasoning_history_cache_cost(:turn, :all)).to eq(:history)
+    expect(engine.reasoning_history_cache_cost(:turn, :drop)).to be_nil
+  end
+
+  it "resolves what a session's own level would give, without setting it" do
+    engine.session = session
+    expect(engine.reasoning_history_explained(own: :drop).label).to eq("drop (session)")
+    expect(session.reasoning_history).to be_nil
+  end
+
   it "can't set a session's own level without a session" do
     expect { engine.reasoning_history_override = :drop }.to raise_error(ArgumentError, /no session/)
   end

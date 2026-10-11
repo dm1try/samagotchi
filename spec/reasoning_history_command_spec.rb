@@ -10,7 +10,9 @@ RSpec.describe Samagotchi::ReasoningHistoryCommand do
   # The Engine's side of it: the session's own level over a model's.
   let(:engine_class) do
     Class.new do
-      attr_accessor :session, :model_level, :chat
+      attr_accessor :session, :model_level, :chat, :cost_for
+
+      def reasoning_history_cache_cost(from, to) = cost_for&.call(from, to)
 
       def reasoning_history_override = session&.reasoning_history
 
@@ -48,6 +50,13 @@ RSpec.describe Samagotchi::ReasoningHistoryCommand do
     expect(session.reasoning_history).to eq(:all)
     expect(saved).to eq([session])
     expect(output).to eq("reasoning history: all (session)\nFrom the next turn's start (a running turn keeps its own).")
+  end
+
+  it "names the cost of a change that rewrites the earlier replies" do
+    engine.cost_for = ->(from, to) { [from, to] == %i[drop all] ? :history : nil }
+    expect(command.run("all").first).to end_with("Earlier replies gain or lose their reasoning: the server reads the " \
+                                                 "conversation again from the first earlier thought.")
+    expect(command.run("turn").first).to end_with("keeps its own).")
   end
 
   it "keeps an explicit turn as the session's own, and unsets it with default" do

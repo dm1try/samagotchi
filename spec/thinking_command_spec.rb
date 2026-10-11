@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::ThinkingCommand do
     engine.cache_cost = :full
     expect(command.run("off").first).to include("the whole prompt is read again (Gemma's <|think|> starts it)")
     engine.cache_cost = :provider
-    expect(command.run("high").first).to include("a local llama.cpp or Splash server keeps its cache; hosted APIs")
+    expect(command.run("high").first).to include("a hosted API (OpenRouter, Claude, OpenAI) reads the whole conversation again")
   end
 
   it "unsets it with default, and says so when the level the next turn runs at stays" do

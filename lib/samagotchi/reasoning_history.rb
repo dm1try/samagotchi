@@ -91,6 +91,33 @@ module Samagotchi
       SettingExplained.new(level: level, source: source, own: session)
     end
 
+    # What changing the level from +from+ to +to+ costs +target+'s prompt
+    # cache, at a turn boundary (a change waits for the turn's end):
+    #   :history  to or from all on a chat host, with an earlier model entry
+    #             that has thinking: every earlier reply from there gains or
+    #             loses its reasoning_content, so a server that renders it
+    #             (hosted APIs; llama.cpp's default) reads the conversation
+    #             again from the first earlier thought;
+    #   nil       drop <-> turn (a turn's first request carries no reasoning
+    #             under either), no change, nothing thought yet, or a
+    #             native host (it ignores the level).
+    # @param conversation [Array<Hash>] the session's messages
+    # @return [Symbol, nil]
+    def cache_cost(from, to, target:, conversation:)
+      return nil unless target.entry&.chat?
+      return nil if from == to || ![from, to].include?(:all)
+
+      earlier_thought?(conversation) ? :history : nil
+    end
+
+    # Whether +conversation+ has a model entry with thinking (what all
+    # sends back as reasoning_content; LLM::ChatLoop#thought?).
+    def earlier_thought?(conversation)
+      Array(conversation).any? do |entry|
+        entry[:role].to_s == "model" && entry[:thinking].is_a?(String) && !entry[:thinking].strip.empty?
+      end
+    end
+
     # "drop (models: qwen)", "turn (default)".
     def label(level, source) = "#{level} (#{source || "default"})"
 

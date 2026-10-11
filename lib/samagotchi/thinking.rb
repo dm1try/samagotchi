@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "model_profile"
 require_relative "setting_explained"
 
 module Samagotchi
@@ -119,17 +120,25 @@ module Samagotchi
     end
 
     # What a level change costs the prompt cache on +target+ (/thinking's
-    # note; a confirm step may ask before the costly ones):
-    #   :full      the native Gemma 4 prompt starts with <|think|>, so the
-    #              whole prompt is read again;
-    #   :provider  a chat host gets other request fields: a local llama.cpp
-    #              or Splash server keeps its cache, a hosted API may not;
-    #   :tail      native Qwen and the rest: only the tail changes.
+    # note; CacheConfirm asks before the costly ones):
+    #   :full      Gemma 4's prompt starts with <|think|> (the native
+    #              profile, or a local chat server whose model name says
+    #              gemma: its template writes the same token), so the whole
+    #              prompt is read again;
+    #   :provider  a remote chat host gets other request fields: Claude's
+    #              message breakpoints and OpenAI's prefix cache are lost;
+    #   :tail      native Qwen, a local chat server's Qwen and the rest:
+    #              only the tail changes (llama.cpp and Splash keep the rest).
     # @param target [HostRegistry::ModelTarget]
     # @param profile [String, nil] the native prompt profile's name
     # @return [Symbol]
     def cache_cost(target, profile: nil)
-      return :provider if target.entry&.chat?
+      entry = target.entry
+      if entry&.chat?
+        return :provider if entry.remote?
+
+        return ModelProfile.inferred_profile_name(target.bare_model) == "gemma4" ? :full : :tail
+      end
 
       profile == "gemma4" ? :full : :tail
     end

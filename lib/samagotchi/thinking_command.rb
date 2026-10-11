@@ -17,8 +17,8 @@ module Samagotchi
 
     COST_NOTES = {
       full: "On this model the whole prompt is read again (Gemma's <|think|> starts it).",
-      provider: "The request's thinking fields change: a local llama.cpp or Splash server keeps its cache; " \
-                "hosted APIs (OpenRouter → Claude, OpenAI) may restart theirs.",
+      provider: "The request's thinking fields change: a hosted API (OpenRouter, Claude, OpenAI) reads the whole " \
+                "conversation again.",
       tail: "Only the prompt's tail changes: the cache keeps the rest."
     }.freeze
 
