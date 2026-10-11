@@ -11,7 +11,14 @@
 # (relative to the project), and a trailing output filter dropped (a final
 # 2>&1, `| tail …`, `| head …`, `| grep …`: they don't change how long it
 # runs). Arguments stay: `bundle exec rspec` (the suite) is not
-# `bundle exec rspec spec/x_spec.rb`. Input that ends inside a quote, $(…)
+# `bundle exec rspec spec/x_spec.rb`. Wrappers a model adds by habit are
+# dropped at the start of each simple command (after &&, ||, ;, a newline,
+# so after a leading `cd X &&` too): `time [-p]` and `timeout`/`gtimeout`
+# with its options and duration. `X=…` assignments stay, sorted (they can
+# pick the target or the mode: SPEC=…, RAILS_ENV=…), except NO_COLOR,
+# FORCE_COLOR, CI and TERM, which never change what runs; a plain
+# `env X=… cmd` is `X=… cmd`, an `env` with -C/-i/-u (or any other option)
+# stays as typed. The entry's `shown` is the last run as typed. Input that ends inside a quote, $(…)
 # or heredoc is never recorded, nor one with a $(…), backticks or a heredoc
 # cat/tee read as data: ShellLex makes those one placeholder, so different
 # commands would share a key.
@@ -26,8 +33,8 @@
 # running it again in the same turn is let through (maybe it got faster),
 # and that run records the new truth. before_turn resets it.
 #
-# Store: <data_dir>/commands.json, a list of {project, command, slow_at,
-# limit_s, elapsed_s, timed_out}, re-read on each lookup (another session's
+# Store: <data_dir>/commands.json, a list of {project, command (the key),
+# shown, slow_at, limit_s, elapsed_s, timed_out}, re-read on each lookup (another session's
 # record counts at once), written whole (AtomicFile), entries older than
 # ttl_days dropped on write.
 #
@@ -37,6 +44,12 @@
 # mtime minus started_at (finished_at is when chi noticed). The exit_code
 # file is the record's exit_code_path (a handed-over execute keeps it in
 # the state dir), else the one next to task.json.
+#
+# A `timeout N` over the execute limit is denied up front (no history
+# needed) when execute.on_timeout is kill: execute stops it first. Under
+# task (the default) it runs on as a task until timeout fires: nothing to
+# say. Exit codes mean what they always do here: 124/137 (timeout's) are
+# no sign of a slow command by themselves.
 #
 # Settings (config.yml, bundles: slow-commands:):
 #   mode: deny        deny | notify (warn the user, never deny)
@@ -49,6 +62,7 @@ require "json"
 require "pathname"
 require "time"
 require "samagotchi/atomic_file"
+require "samagotchi/config"
 require "samagotchi/guardrails/shell_lex"
 require "samagotchi/tools/execute"
 require "samagotchi/tools/task_runtime"
@@ -64,6 +78,17 @@ class Plugin
   LEX = Samagotchi::Guardrails::ShellLex
   SHORT_CHARS = 60
   WAIT_DEFAULT = 600
+  # Where a simple command starts: a wrapper there is dropped from the key.
+  STARTS = ["&&", "||", ";", "\n"].freeze
+  ASSIGNMENT = /\A[A-Za-z_][A-Za-z0-9_]*=/
+  # Assignments that never change what runs: not part of the key.
+  NEUTRAL_VARS = %w[NO_COLOR FORCE_COLOR CI TERM].freeze
+  TIMEOUTS = %w[timeout gtimeout].freeze
+  # timeout's options: those that take a value, and the flags.
+  TIMEOUT_VALUE_OPTIONS = %w[-s -k --signal --kill-after].freeze
+  TIMEOUT_FLAGS = %w[--foreground --preserve-status -v --verbose].freeze
+  DURATION = /\A(\d+(?:\.\d+)?|\.\d+)([smhd]?)\z/
+  UNIT_SECONDS = { "" => 1, "s" => 1, "m" => 60, "h" => 3600, "d" => 86_400 }.freeze
 
   def initialize(settings = {})
     @mode = settings["mode"].to_s == "notify" ? :notify : :deny
@@ -92,6 +117,7 @@ class Plugin
     tokens = LEX.lex(text)
     return nil if tokens.any? { |kind, value| kind == :word && value.include?("\0") }
 
+    tokens = unwrap(tokens).first
     tokens = strip_filters(tokens)
     return nil if tokens.empty?
 
@@ -99,6 +125,92 @@ class Plugin
     dir = folded_dir(cwd, project: project, base: base)
     words = ["cd", quote(dir), "&&", *words] if dir
     words.join(" ")
+  end
+
+  # The tokens without the wrappers at the start of each simple command
+  # (time, timeout), assignments sorted and the neutral ones dropped, and
+  # the seconds of every timeout dropped.
+  # @return [Array(Array, Array<Float>)]
+  def self.unwrap(tokens)
+    durations = []
+    out = []
+    segment = []
+    flush = lambda do
+      words, seconds = unwrap_command(segment)
+      durations.concat(seconds)
+      out.concat(words)
+      segment = []
+    end
+    tokens.each do |token|
+      if token[0] == :op && STARTS.include?(token[1])
+        flush.call
+        out << token
+      else
+        segment << token
+      end
+    end
+    flush.call
+    [out, durations]
+  end
+
+  # One simple command's tokens (it may hold a | or & further on: only its
+  # start is looked at).
+  def self.unwrap_command(tokens)
+    rest = tokens.dup
+    assignments = []
+    durations = []
+    loop do
+      assignments << rest.shift[1] while word?(rest.first) && rest.first[1].match?(ASSIGNMENT)
+      head = word?(rest.first) ? rest.first[1] : nil
+      if head == "time"
+        rest.shift
+        rest.shift if word?(rest.first) && rest.first[1] == "-p"
+      elsif head == "env" && word?(rest[1]) && !rest[1][1].start_with?("-")
+        rest.shift
+      elsif TIMEOUTS.include?(head) && (skipped = timeout_length(rest))
+        count, seconds = skipped
+        rest.shift(count)
+        durations << seconds
+      else
+        break
+      end
+    end
+    kept = assignments.reject { |a| NEUTRAL_VARS.include?(a.split("=", 2).first) }.sort
+    [kept.map { |a| [:word, a, ""] } + rest, durations]
+  end
+
+  # [words to drop, seconds] for a `timeout [opts] DUR` at the start of
+  # +tokens+, or nil when it can't be read (then it stays in the key).
+  def self.timeout_length(tokens)
+    i = 1
+    while word?(tokens[i]) && tokens[i][1].start_with?("-")
+      option = tokens[i][1]
+      if TIMEOUT_FLAGS.include?(option) || option.start_with?("--signal=", "--kill-after=")
+        i += 1
+      elsif TIMEOUT_VALUE_OPTIONS.include?(option)
+        i += 2
+      else
+        return nil
+      end
+    end
+    seconds = word?(tokens[i]) ? duration_seconds(tokens[i][1]) : nil
+    seconds && word?(tokens[i + 1]) ? [i + 1, seconds] : nil
+  end
+
+  def self.duration_seconds(text)
+    match = DURATION.match(text)
+    match ? Float(match[1]) * UNIT_SECONDS.fetch(match[2]) : nil
+  end
+
+  def self.word?(token) = token && token[0] == :word
+
+  # The longest `timeout N` (seconds) at the start of a simple command in
+  # +text+, or nil for none (or text that can't be keyed).
+  def self.timeout_seconds(text)
+    text = text.to_s.strip
+    return nil if text.empty? || LEX.unterminated?(text)
+
+    unwrap(LEX.lex(text)).last.max
   end
 
   # Whether the key dropped a trailing output filter (2>&1, | tail …):
@@ -153,18 +265,44 @@ class Plugin
     key = key_for(call, ctx)
     return unless key
     return if @denied[key]
+    return if over_limit_timeout(call, verdict, ctx, key)
 
     entry = live_entries(ctx).find { |e| e["project"] == key[0] && e["command"] == key[1] }
     return unless entry
 
     @denied[key] = true
     if @mode == :notify
-      ctx.notify("execute #{short(key[1])}: #{what(entry)} before", level: :warn)
+      ctx.notify("execute #{short(call[:content])}: #{what(entry)} before", level: :warn)
       return
     end
 
     verdict.deny!("slow command", source: SOURCE, advice: advice(entry, ctx, key))
-    ctx.notify("execute #{short(key[1])}: #{what(entry)} before, denied", level: :warn)
+    ctx.notify("execute #{short(call[:content])}: #{what(entry)} before, denied", level: :warn)
+  end
+
+  # A `timeout N` over the limit while execute kills at it (on_timeout:
+  # kill): N never takes effect. Denied once a turn, like a slow entry.
+  # @return [Boolean] whether it was handled
+  def over_limit_timeout(call, verdict, ctx, key)
+    return false unless Samagotchi::Config.get("execute.on_timeout").to_s == "kill"
+
+    seconds = self.class.timeout_seconds(call[:content])
+    limit = Samagotchi::Tools::Execute.timeout_seconds
+    return false unless seconds && seconds > limit
+
+    @denied[key] = true
+    wait = [WAIT_DEFAULT, seconds.ceil].max
+    line = "execute #{short(call[:content])}: timeout #{duration(seconds.ceil)} is past the #{limit} s limit"
+    if @mode == :notify
+      ctx.notify(line, level: :warn)
+    else
+      verdict.deny!("timeout past the execute limit", source: SOURCE,
+                                                      advice: "execute stops a command at #{limit} s, so its timeout " \
+                                                              "(#{duration(seconds.ceil)}) never takes effect. Start it " \
+                                                              "with task_create, then task_wait (timeout #{wait}).")
+      ctx.notify("#{line}, denied", level: :warn)
+    end
+    true
   end
 
   def after(event, ctx)
@@ -179,10 +317,11 @@ class Plugin
     return unless key
 
     limit = Samagotchi::Tools::Execute.timeout_seconds
+    shown = call[:content].to_s.strip
     if (timed_out = result[TIMED_OUT, 1] || result[HANDED_OVER, 1])
-      remember(ctx, key, limit_s: timed_out.to_i, elapsed_s: timed_out.to_i, timed_out: true)
+      remember(ctx, key, shown, limit_s: timed_out.to_i, elapsed_s: timed_out.to_i, timed_out: true)
     elsif elapsed_ms >= @warn_ratio * limit * 1000
-      remember(ctx, key, limit_s: limit, elapsed_s: (elapsed_ms / 1000.0).round, timed_out: false)
+      remember(ctx, key, shown, limit_s: limit, elapsed_s: (elapsed_ms / 1000.0).round, timed_out: false)
     elsif elapsed_ms < 0.5 * limit * 1000 && exit_zero?(result) && !self.class.filtered?(call[:content])
       forget_key(ctx, key)
     end
@@ -223,9 +362,10 @@ class Plugin
     Samagotchi::AtomicFile.write(store_path(ctx), "#{JSON.pretty_generate(list.select { |e| live?(e) })}\n")
   end
 
-  def remember(ctx, key, limit_s:, elapsed_s:, timed_out:)
+  # +shown+: the command as this run typed it (the list shows it).
+  def remember(ctx, key, shown, limit_s:, elapsed_s:, timed_out:)
     list = entries(ctx).reject { |e| e["project"] == key[0] && e["command"] == key[1] }
-    list << { "project" => key[0], "command" => key[1], "slow_at" => Time.now.utc.iso8601,
+    list << { "project" => key[0], "command" => key[1], "shown" => shown, "slow_at" => Time.now.utc.iso8601,
               "limit_s" => limit_s, "elapsed_s" => elapsed_s, "timed_out" => timed_out }
     save(ctx, list)
   end
@@ -288,7 +428,7 @@ class Plugin
       return "slow-commands: none recorded for #{project}" if mine.empty?
 
       lines = mine.each_with_index.map do |e, i|
-        "#{i + 1}. #{e["command"]}: #{what(e)} (#{e["slow_at"].to_s[0, 10]})"
+        "#{i + 1}. #{shown(e)}: #{what(e)} (#{e["slow_at"].to_s[0, 10]})"
       end
       "slow-commands in #{project}:\n#{lines.join("\n")}\n/slow-commands forget <n|all> drops an entry"
     when /\Aforget\s+(all|\d+)\z/
@@ -297,13 +437,16 @@ class Plugin
       return "slow-commands: no entry #{which} (/slow-commands lists them)" if drop.empty?
 
       save(ctx, entries(ctx).reject { |e| drop.any? { |d| d["project"] == e["project"] && d["command"] == e["command"] } })
-      "slow-commands: forgot #{drop.size == 1 ? drop.first["command"] : "#{drop.size} commands"}"
+      "slow-commands: forgot #{drop.size == 1 ? shown(drop.first) : "#{drop.size} commands"}"
     else
       "usage: /slow-commands (list this project's slow commands), /slow-commands forget <n|all>"
     end
   end
 
   # --- text ---
+
+  # The command as last typed; an entry from 0.1.0 has only its key.
+  def shown(entry) = entry["shown"].to_s.empty? ? entry["command"] : entry["shown"]
 
   def what(entry)
     entry["timed_out"] ? "ran past #{entry["limit_s"]} s" : "took #{duration(entry["elapsed_s"])} of #{entry["limit_s"]} s"

@@ -107,6 +107,102 @@ RSpec.describe "The slow-commands bundle" do
       expect([a, b].compact.uniq.size).to eq(2)
     end
 
+    describe "wrappers a model adds" do
+      it "drops time [-p] and timeout/gtimeout [opts] DUR at the start of each simple command" do
+        expect(normalize("timeout 240 bundle exec rspec")).to eq("bundle exec rspec")
+        expect(normalize("time -p rspec && gtimeout -s KILL -k 5 --preserve-status 1.5h make")).to eq("rspec && make")
+        expect(normalize("cd web && timeout --signal=TERM --foreground 5m npm test 2>&1 | tail -5")).to eq("cd web && npm test")
+        expect(normalize("echo a; time timeout 30s rspec\nmake || timeout 2d make")).to eq("echo a ; rspec ; make || make")
+        expect(normalize("rspec | timeout 5 tail")).to eq("rspec | timeout 5 tail")
+        expect(normalize("echo timeout 5 x")).to eq("echo timeout 5 x")
+      end
+
+      it "keeps a timeout it can't read: an unknown option or duration" do
+        expect(normalize("timeout --frobnicate 5 rspec")).to eq("timeout --frobnicate 5 rspec")
+        expect(normalize("timeout 5x rspec")).to eq("timeout 5x rspec")
+        expect(normalize("timeout 5")).to eq("timeout 5")
+      end
+
+      it "keeps assignments, sorted, without NO_COLOR, FORCE_COLOR, CI and TERM; a plain env is dropped" do
+        expect(normalize("B=2 A=1 rspec")).to eq(normalize("A=1 B=2 rspec"))
+        expect(normalize("B=2 A=1 rspec")).to eq("A=1 B=2 rspec")
+        expect(normalize("env RAILS_ENV=test CI=1 NO_COLOR=1 rspec")).to eq("RAILS_ENV=test rspec")
+        expect(normalize("FORCE_COLOR=0 TERM=dumb timeout 60 env SPEC=spec/a_spec.rb rake spec"))
+          .to eq("SPEC=spec/a_spec.rb rake spec")
+        expect(normalize("SPEC=spec/a_spec.rb rake spec")).not_to eq(normalize("rake spec"))
+      end
+
+      it "never drops an env with -C, -i, -u (or another option)" do
+        expect(normalize("env -C web npm test")).to eq("env -C web npm test")
+        expect(normalize("env -i PATH=/bin make")).to eq("env -i PATH=/bin make")
+        expect(normalize("env -u HOME make")).to eq("env -u HOME make")
+      end
+
+      it "still can't key a $(…) in an assignment" do
+        expect(normalize("env FOO=$(pwd) rspec")).to be_nil
+      end
+
+      it "reads timeout's duration in seconds" do
+        expect(mod::Plugin.timeout_seconds("timeout 5m rspec")).to eq(300)
+        expect(mod::Plugin.timeout_seconds("cd x && timeout 1.5h a; timeout .5 b")).to eq(5400)
+        expect(mod::Plugin.timeout_seconds("rspec")).to be_nil
+      end
+
+      it "records the run as typed in shown, keyed without the wrapper; the list shows it" do
+        hooks, commands = plugin
+        call(hooks, "timeout 300 bundle exec rspec 2>&1 | tail -3", result: timed_out, elapsed_s: 120)
+        expect(store).to contain_exactly(include("command" => "bundle exec rspec",
+                                                 "shown" => "timeout 300 bundle exec rspec 2>&1 | tail -3"))
+        expect(call(hooks, "bundle exec rspec")).to be_deny
+        expect(commands.fetch("/slow-commands").call("", ctx)).to include("1. timeout 300 bundle exec rspec 2>&1 | tail -3: ran past")
+      end
+
+      it "gives a fast exit 124 (timeout fired) no meaning: nothing recorded, nothing dropped" do
+        hooks, = plugin
+        call(hooks, "rspec", result: timed_out, elapsed_s: 120)
+        turn(hooks)
+        call(hooks, "timeout 5 rspec", result: "exit: 124", elapsed_s: 5) # denied (same key), so nothing ran
+        call(hooks, "timeout 5 rspec", result: "exit: 124", elapsed_s: 5)
+        expect(store.map { |e| e["command"] }).to eq(["rspec"])
+        call(hooks, "timeout 5 make", result: "exit: 124", elapsed_s: 5)
+        expect(store.map { |e| e["command"] }).to eq(["rspec"])
+      end
+
+      describe "a timeout past the execute limit" do
+        def with_on_timeout(mode, &)
+          with_env("SAMAGOTCHI_EXECUTE_ON_TIMEOUT" => mode, &)
+        end
+
+        it "is denied up front once a turn when execute kills at the limit, never suggesting timeout" do
+          with_on_timeout("kill") do
+            hooks, = plugin
+            verdict = call(hooks, "cd web && timeout 300 npm test")
+            expect(verdict).to be_deny
+            expect(verdict.deny_text).to include("execute stops a command at 120 s, so its timeout (5m00s) never takes effect.",
+                                                 "Start it with task_create, then task_wait (timeout 600).")
+            # No `timeout N` to run (stock macOS has none): only task_wait's own timeout.
+            expect(verdict.deny_text.gsub("task_wait (timeout", "")).not_to match(/timeout \d/)
+            expect(notices.last).to eq(["execute cd web && timeout 300 npm test: timeout 5m00s is past the 120 s limit, denied", :warn])
+            expect(call(hooks, "cd web && timeout 300 npm test")).not_to be_deny
+            expect(call(hooks, "timeout 60 npm test")).not_to be_deny
+          end
+        end
+
+        it "runs on under on_timeout: task (it becomes a task), and only warns in notify mode" do
+          with_on_timeout("task") do
+            hooks, = plugin
+            expect(call(hooks, "timeout 300 npm test")).not_to be_deny
+            expect(notices).to eq([])
+          end
+          with_on_timeout("kill") do
+            hooks, = plugin("mode" => "notify")
+            expect(call(hooks, "timeout 300 npm test")).not_to be_deny
+            expect(notices.last.first).to end_with("is past the 120 s limit")
+          end
+        end
+      end
+    end
+
     it "neither records nor denies a slow $(…) or heredoc command" do
       hooks, = plugin
       ["rspec $(git diff --name-only)", "cat <<EOF\nhi\nEOF"].each do |text|
