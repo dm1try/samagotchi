@@ -16,8 +16,9 @@
 # cat/tee read as data: ShellLex makes those one placeholder, so different
 # commands would share a key.
 #
-# after_tool_call records: timed out, or ran at least warn_ratio of the
-# limit -> slow; ran under half of it with exit 0 -> the entry is dropped
+# after_tool_call records: timed out (killed at the limit), handed over as
+# a task at the limit (Execute::HANDED_OVER), or ran at least warn_ratio of
+# the limit -> slow; ran under half of it with exit 0 -> the entry is dropped
 # (a fast failure says nothing about the suite's length), unless a trailing
 # filter was stripped: `rspec | tail` exits with tail's 0 when rspec failed,
 # and a `| head` can end it early. A stopped or
@@ -33,7 +34,9 @@
 # The advice names how long a finished task of the same command took: the
 # project's tmp/tasks/*/task.json read as files (never TaskRuntime's
 # list_records, which mkdirs, runs ps and writes), the exit_code file's
-# mtime minus started_at (finished_at is when chi noticed).
+# mtime minus started_at (finished_at is when chi noticed). The exit_code
+# file is the record's exit_code_path (a handed-over execute keeps it in
+# the state dir), else the one next to task.json.
 #
 # Settings (config.yml, bundles: slow-commands:):
 #   mode: deny        deny | notify (warn the user, never deny)
@@ -55,6 +58,8 @@ class Plugin
   FILE = "commands.json"
   FILTERS = %w[tail head grep].freeze
   TIMED_OUT = /\A#{Regexp.escape(Samagotchi::Tools::Execute::TIMEOUT_PREFIX)} (\d+)s/
+  # Still running at the limit, handed over as a task (chi >= 0.59.0).
+  HANDED_OVER = /\A#{Regexp.escape(Samagotchi::Tools::Execute::HANDED_OVER)} (\d+)s limit/
   STOPPED = [Samagotchi::Tools::Execute::STOPPED_BY_USER, Samagotchi::Tools::Execute::NOT_RUN_ON_STOP].freeze
   LEX = Samagotchi::Guardrails::ShellLex
   SHORT_CHARS = 60
@@ -174,7 +179,7 @@ class Plugin
     return unless key
 
     limit = Samagotchi::Tools::Execute.timeout_seconds
-    if (timed_out = result[TIMED_OUT, 1])
+    if (timed_out = result[TIMED_OUT, 1] || result[HANDED_OVER, 1])
       remember(ctx, key, limit_s: timed_out.to_i, elapsed_s: timed_out.to_i, timed_out: true)
     elsif elapsed_ms >= @warn_ratio * limit * 1000
       remember(ctx, key, limit_s: limit, elapsed_s: (elapsed_ms / 1000.0).round, timed_out: false)
@@ -259,7 +264,8 @@ class Plugin
   # [started_at, seconds] for a task record of +key+ that ended with exit 0.
   def finished_task(path, ctx, key)
     record = JSON.parse(File.read(path))
-    exit_code = File.join(File.dirname(path), Samagotchi::Tools::TaskRuntime::EXIT_CODE_FILENAME)
+    exit_code = record["exit_code_path"].to_s
+    exit_code = File.join(File.dirname(path), Samagotchi::Tools::TaskRuntime::EXIT_CODE_FILENAME) unless File.absolute_path?(exit_code)
     return nil unless File.file?(exit_code) && File.read(exit_code).strip == "0"
 
     command = self.class.normalize(record["command"], cwd: record["cwd"], project: key[0], base: ctx.cwd)

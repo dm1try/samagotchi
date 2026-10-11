@@ -125,6 +125,15 @@ RSpec.describe "The slow-commands bundle" do
                                                "timed_out" => true))
     end
 
+    it "records a command handed over as a task at the limit as timed out, whatever its elapsed time" do
+      hooks, = plugin
+      handed = "#{Samagotchi::Tools::Execute.handed_over_line(90)}\ntask_id: 20261011120000-1a2b3c4d\n" \
+               "Wait for it with task_wait (it may take minutes); task_stop stops it."
+      call(hooks, "bundle exec rspec", result: handed, elapsed_s: 0)
+      expect(store).to contain_exactly(include("command" => "bundle exec rspec", "limit_s" => 90, "elapsed_s" => 90,
+                                               "timed_out" => true))
+    end
+
     it "records a run of warn_ratio of the limit or more" do
       hooks, = plugin
       call(hooks, "npm test", result: "exit: 0", elapsed_s: 100)
@@ -240,6 +249,22 @@ RSpec.describe "The slow-commands bundle" do
         expect(text).to include("A finished task of this command took 4m10s.", "task_wait (timeout 600)")
       end
 
+      it "reads a handed-over execute's exit_code where its record says (the state dir)" do
+        now = Time.at(Time.now.to_i)
+        dir = File.join(project, "tmp", "tasks", "h")
+        FileUtils.mkdir_p(dir)
+        state = File.join(tmpdir, "state", "execute", "h").tap { |d| FileUtils.mkdir_p(d) }
+        code = File.join(state, "exit_code")
+        File.write(File.join(dir, "task.json"),
+                   JSON.generate("id" => "h", "command" => "make", "cwd" => project, "status" => "running",
+                                 "started_at" => (now - 3600).utc.iso8601, "exit_code_path" => code))
+        File.write(code, "0")
+        File.utime(now - 3600 + 300, now - 3600 + 300, code)
+        hooks, = plugin
+        call(hooks, "make", result: timed_out, elapsed_s: 120)
+        expect(call(hooks, "make").deny_text).to include("A finished task of this command took 5m00s.")
+      end
+
       it "raises the task_wait timeout for a longer task" do
         now = Time.at(Time.now.to_i)
         task("a", "make", cwd: project, started: now - 3600, ended: now - 3600 + 900)
@@ -304,7 +329,7 @@ RSpec.describe "The slow-commands bundle" do
 
     before do
       # requires_chi names the release that carries after_tool_call's new keys.
-      stub_const("Samagotchi::VERSION", "0.57.0")
+      stub_const("Samagotchi::VERSION", "0.59.0")
       FileUtils.mkdir_p(system_dir)
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "slow-commands", scope: "system", strict: true)

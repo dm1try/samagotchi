@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
   `execute.on_timeout: kill` keeps the old kill. The `!cmd` bang still kills at the limit. Command output now goes
   through log files under the state dir, and the command's stdin is `/dev/null`. On Linux, a command that writes
   through `/dev/stdout` or `/dev/stderr` loses its earlier output (known gap).
+- slow-commands bundle 0.2.0 (needs chi 0.59.0): a command `execute` handed over as a task at its limit counts as
+  slow, and the "a finished task took …" advice also reads handed-over tasks.
 - chi reads a project's AGENTS.md (the name other agent tools read) instead of AGENT.md: rename yours. AGENT.md is no
   longer read. The setting that skips it is now `skip_agents_md` (env `SAMAGOTCHI_SKIP_AGENTS_MD`).
 
