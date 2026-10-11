@@ -20,7 +20,7 @@ RSpec.describe Samagotchi::ThinkingCommand do
 
       def thinking_explained
         own = thinking_override
-        Samagotchi::Thinking::Explained.new(level: own || model_level, source: own ? "session" : "models: qwen", own: own)
+        Samagotchi::SettingExplained.new(level: own || model_level, source: own ? "session" : "models: qwen", own: own)
       end
 
       def thinking_cache_cost = cache_cost

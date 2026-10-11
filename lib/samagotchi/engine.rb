@@ -1094,9 +1094,9 @@ module Samagotchi
     end
 
     # The effective model's thinking level with where it came from and the
-    # session's own (Thinking::Explained), as the next turn resolves it;
+    # session's own (SettingExplained), as the next turn resolves it;
     # nil when it can't be resolved.
-    # @return [Thinking::Explained, nil]
+    # @return [SettingExplained, nil]
     def thinking_explained
       target = @host_registry.resolve(@effective_model_name)
       Thinking.explain(target, names: model_lookup_names(target), session: thinking_override)

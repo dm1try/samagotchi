@@ -641,7 +641,7 @@ module Samagotchi
           "budget #{budget} (#{get.call(:budget_where)})"
       end
 
-      # "low (session)", "default" for /stats (Thinking::Explained#summary;
+      # "low (session)", "default" for /stats (SettingExplained#summary;
       # symbol or string keys, the attached TUI's come as JSON); nil
       # without one.
       def thinking_stats_text(summary)

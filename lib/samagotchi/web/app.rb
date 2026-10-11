@@ -517,7 +517,7 @@ module Samagotchi
       end
 
       # The thinking level +model+ starts at, with where it came from (the
-      # start page's think chip; Thinking::Explained#summary, no session).
+      # start page's think chip; SettingExplained#summary, no session).
       def add_thinking(model, target, names, settings)
         model[:thinking] = Thinking.explain(target, names: names, models: settings).summary
       rescue StandardError
@@ -561,7 +561,7 @@ module Samagotchi
       end
 
       # A session's thinking level with where it came from and its own
-      # (Thinking::Explained#summary), as its worker would resolve it; nil
+      # (SettingExplained#summary), as its worker would resolve it; nil
       # when it can't be. Config and the registry only: no network.
       def thinking_for(session)
         registry = host_registry

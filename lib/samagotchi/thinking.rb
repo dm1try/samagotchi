@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "setting_explained"
 
 module Samagotchi
   # How much a model thinks: one level per model, host or run, mapped to each
@@ -37,21 +38,6 @@ module Samagotchi
 
     # The source a session's own level reads as.
     SESSION_SOURCE = "session"
-
-    # A level and where it came from (#explain): +source+ is "session",
-    # "--thinking", "SAMAGOTCHI_THINKING_LEVEL", "models: qwen",
-    # "hosts.work" or "thinking.level", nil for the default; +own+ is the
-    # session's own level, nil without one. What /thinking, /model,
-    # /stats, the snapshots and the web read.
-    Explained = Data.define(:level, :source, :own) do
-      # "low (session)", "default" with no source.
-      def label = source ? "#{level} (#{source})" : level.to_s
-
-      # The plain form the snapshots, the worker's command_ran event and
-      # the web read.
-      # @return [Hash] symbol keys
-      def summary = { level: level.to_s, source: source, own: own&.to_s }
-    end
 
     module_function
 
@@ -113,11 +99,11 @@ module Samagotchi
       [DEFAULT, nil]
     end
 
-    # #resolve, as an Explained with the session's own level beside it.
-    # @return [Explained]
+    # #resolve, as a SettingExplained with the session's own level beside it.
+    # @return [SettingExplained]
     def explain(target, names:, models: nil, session: nil)
       level, source = resolve(target, names: names, models: models, session: session)
-      Explained.new(level: level, source: source, own: session)
+      SettingExplained.new(level: level, source: source, own: session)
     end
 
     # thinking.level as a level and its origin (:cli, :env, :file), or nil.
