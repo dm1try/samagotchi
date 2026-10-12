@@ -18,6 +18,11 @@ and commands may change between minor versions. How releases are made:
 - source-links 0.5.0: each ref it links in an answer gets an "Open in <source>" action in the web's ref menu; a
   source's new `kind:` key names its refs' kind (default `issue`). Needs chi 0.61.0; run `chi update`.
 
+### Fixed
+
+- A turn run in the REPL (`--no-shared`) keeps the answer's display and refs (source-links' and github-pr's links,
+  a hook's `present`), so the web shows them when it opens the session; before, the save dropped them.
+
 ## [0.61.0] - 2026-10-12
 
 ### Added

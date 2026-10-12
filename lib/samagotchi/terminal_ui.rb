@@ -885,11 +885,34 @@ module Samagotchi
       end
 
       # The REPL keeps the kernel's conversation as-is (no [No response]
-      # placeholder), so /continue resumes from the tool results.
-      session.messages = result.conversation
+      # placeholder), so /continue resumes from the tool results; the
+      # answer keeps what the after_turn hooks stored on it.
+      session.messages = with_answer_display(result.conversation, session.messages)
       @turn_flow.after_turn(result, continue: continue)
       save_session(session)
     end
+
+    # The answer's display keys (Engine#store_answer_display put them on the
+    # session's last message) carried onto +conversation+'s last message,
+    # when that is the same answer; +conversation+ as it is otherwise.
+    ANSWER_DISPLAY_KEYS = [AnswerDisplay::KEY, AnswerRefs::KEY].freeze
+    private_constant :ANSWER_DISPLAY_KEYS
+
+    def with_answer_display(conversation, stored)
+      answer = Array(conversation).last
+      kept = Array(stored).last
+      return conversation unless answer.is_a?(Hash) && kept.is_a?(Hash) && message_field(answer, :role).to_s == "model"
+      return conversation unless message_field(kept, :role).to_s == "model" &&
+                                 message_field(kept, :content) == message_field(answer, :content)
+
+      extra = ANSWER_DISPLAY_KEYS.each_with_object({}) do |key, found|
+        value = message_field(kept, key)
+        found[key] = value unless value.nil?
+      end
+      extra.empty? ? conversation : conversation[0...-1] + [answer.merge(extra)]
+    end
+
+    def message_field(message, key) = message.key?(key) ? message[key] : message[key.to_s]
 
     def save_session(session)
       @engine.store_model!(session)
@@ -970,7 +993,7 @@ module Samagotchi
       end
       canceled = result&.canceled?
       if result && !canceled
-        session.messages = result.conversation if result.conversation.is_a?(Array)
+        session.messages = with_answer_display(result.conversation, session.messages) if result.conversation.is_a?(Array)
         @engine.store_model!(session)
         session.save
       end
