@@ -3,7 +3,7 @@
 // history. The default view: the chromium project runs it, the turn project
 // doesn't.
 import { test, expect } from "./support/fixtures.js";
-import { frames, pageNow, shiftSum, startSampling, stopSampling, watchFrames, watchShifts } from "./support/shifts.js";
+import { frames, momentAt, pageNow, shiftSum, stageMarks, startSampling, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
 const stageEl = (page) => page.locator("#turnStage");
 const handedOff = (page, turns) => expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
@@ -19,11 +19,13 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
   // A reader scrolled up into the first turn's long answer.
+  await watchShifts(page);
+  await watchStage(page);
+  const sendAt = await pageNow(page);
   await send(page, "Second round");
   await expect(stageEl(page)).toBeVisible();
   await page.mouse.move(0, 0);
   await page.evaluate(() => { document.querySelector("#history").scrollTop = 120; });
-  await watchShifts(page);
   await startSampling(page);
   await handedOff(page, 2);
   await page.waitForTimeout(600); // the fold and the arrival are over
@@ -35,6 +37,12 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   expect(noCard.length).toBeGreaterThan(5);
   expect([...new Set(noCard.map((s) => s.h))]).toHaveLength(1);
   expect([...new Set(samples.map((s) => s.top))]).toEqual([120]);
+  // The moments, by the stage's own marks (page clock).
+  const marks = await stageMarks(page);
+  const shownAt = momentAt(marks, (m) => !m.hidden, sendAt);
+  // The turn start: the stage rises over the composer, nothing moves (the
+  // click's own shifts too).
+  expect(await shiftSum(page, { from: sendAt, to: shownAt + 450, withInput: true })).toBeLessThan(0.01);
   // A handed-off turn is its outline: open on its narrated steps, each
   // tool-only (or thinking-only) step behind a fold that shows it; a reload
   // draws the same.

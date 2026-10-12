@@ -613,6 +613,10 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .dock-card{display:flex;flex-direction:column;border-radius:16px;position:relative;transition:border-color .12s ease,box-shadow .12s ease}
 .dock-card:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,transparent);box-shadow:0 0 0 3px var(--accent-ring),var(--glass-shadow)}
 .turn-stage{display:flex;flex-direction:column;min-height:0;max-height:var(--stage-max,60vh);border-left:3px solid var(--accent);border-radius:14px;overflow:hidden}
+/* Out of the dock's flow: it floats 10 px above the composer card, so its rise, growth and leaving never move #dock (a
+   bottom-pinned box changing height is a layout shift, animated or not). Painted before .dock-card (no z-index): the command
+   list (z-index 20 inside .dock-card) opens over its lower edge. The history's bottom reserve counts it (app.js, --dock-h). */
+body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-bottom:10px}
 .turn-stage[hidden]{display:none}
 .turn-stage.ended{border-left-color:var(--border-strong)}
 .turn-stage[data-phase="answered"]{border-left-color:var(--ok)}

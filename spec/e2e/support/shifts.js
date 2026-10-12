@@ -125,3 +125,26 @@ export const startSnaps = (page) => page.evaluate(() => {
 export const snaps = (page, { from = 0, to = 1e12, keys = null } = {}) => page.evaluate(([from, to, keys]) =>
   (window.snapLog || []).filter((s) => s.t >= from && s.t < to && (!keys || keys.includes(s.key))),
 [from, to, keys]);
+
+// Every frame the stage's state changes (hidden, its classes, its phase,
+// the extras' count), a mark {t, hidden, cls, phase, extras}: the moments'
+// clock (window.stageMarks). stageMarks() reads them; momentAt() finds the
+// first mark at or after +from+ that +test+ accepts.
+export const watchStage = (page) => page.evaluate(() => {
+  cancelAnimationFrame(window.stageRaf);
+  window.stageMarks = [];
+  let last = "";
+  const tick = () => {
+    const s = document.querySelector("#turnStage");
+    if (s) {
+      const mark = { hidden: s.hidden, cls: s.className, phase: s.dataset.phase || "", extras: s.querySelector(".ts-extras").children.length };
+      const key = JSON.stringify(mark);
+      if (key !== last) window.stageMarks.push({ t: performance.now(), ...mark });
+      last = key;
+    }
+    window.stageRaf = requestAnimationFrame(tick);
+  };
+  tick();
+});
+export const stageMarks = (page) => page.evaluate(() => window.stageMarks);
+export const momentAt = (marks, test, from = 0) => marks.find((m) => m.t >= from && test(m))?.t;
