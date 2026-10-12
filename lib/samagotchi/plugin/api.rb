@@ -79,9 +79,8 @@ module Samagotchi
       # @param targets [#call, nil] args → what guardrail rules match: a Hash
       #   with paths: (absolute or relative to the cwd), command: (a shell
       #   command) and cwd:, each optional
-      def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &)
-        spec = Api.tool_spec(name, description, params: params, schema: schema, label: label, preview: preview,
-                                                targets: targets, &)
+      def tool(name, description, **, &)
+        spec = Api.tool_spec(name, description, **, &)
         if (taken = @registries.tools[spec[:name]])
           raise ArgumentError, "tool #{spec[:name]} is already registered (#{taken.source})"
         end
@@ -125,9 +124,8 @@ module Samagotchi
         end
 
         # As Api#tool.
-        def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &)
-          spec = Api.tool_spec(name, description, params: params, schema: schema, label: label, preview: preview,
-                                                  targets: targets, &)
+        def tool(name, description, **, &)
+          spec = Api.tool_spec(name, description, **, &)
           raise ArgumentError, "tool #{spec[:name]} is registered twice" if @specs.any? { |s| s[:name] == spec[:name] }
 
           @specs << spec
@@ -249,7 +247,8 @@ module Samagotchi
       def counts = { commands: @commands.size, tools: @tools.size, hooks: @hooks.size, services: @services.size,
                      inits: @inits.size }
 
-      # A checked tool declaration (#tool's arguments).
+      # A checked tool declaration (#tool's arguments: Api#tool and
+      # ToolSet#tool pass theirs on, so a new keyword is added here).
       # @return [Hash] {name:, schema:, label:, preview:, targets:, block:}
       def self.tool_spec(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
         raise ArgumentError, "tool #{name.inspect} needs a block" unless block
@@ -298,18 +297,24 @@ module Samagotchi
       # wrapped as a handler (typed args, the Context), preview, targets.
       def self.entry_fields(spec, context)
         block = spec[:block]
-        preview = spec[:preview]
-        targets = spec[:targets]
         parameters = spec[:schema][:parameters]
+        preview = per_call(spec[:preview], parameters)
         {
           schema: spec[:schema], label: spec[:label],
           handler: lambda { |call, _kctx|
             result = block.call(Api.args_of(call, parameters), context)
             Api.result_text(result)
           },
-          preview: preview && ->(call) { preview.call(Api.args_of(call, parameters))&.to_s },
-          targets: targets && ->(call) { targets.call(Api.args_of(call, parameters)) }
+          preview: preview && ->(call) { preview.call(call)&.to_s },
+          targets: per_call(spec[:targets], parameters)
         }
+      end
+
+      # A plugin's args → value lambda (+fn+) as call → value: it gets the
+      # call's typed args (Api.args_of), as the tool's block does. nil
+      # without one.
+      def self.per_call(fn, parameters)
+        fn && ->(call) { fn.call(Api.args_of(call, parameters)) }
       end
 
       # A tool's result as the model reads it: a String (a ToolResult too,
