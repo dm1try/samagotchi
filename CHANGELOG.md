@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-10-12
+
 ### Added
 
 - Hooks and plugins can attach refs to the answer: `event[:refs].call(match:, kind:, target:, label:, actions:)` on
@@ -29,8 +31,9 @@ and commands may change between minor versions. How releases are made:
   A stopped session's worker now saves the turn it kept too.
 - A worker killed mid-turn (SIGKILL, a crash) no longer loses the whole turn: the worker writes the turn so far to
   the session file with an `interrupted_turn` mark (the prompt as the turn starts, then its iteration boundaries,
-  at most every 10 s), so it loses only what came after its last written boundary. The next worker (or a `--no-shared` REPL resuming the session) ends
-  that turn as canceled with a note the model reads (`cancelled (worker-stopped)`), so the session is idle again.
+  at most every 10 s), so it loses only what came after its last written boundary. The next worker (or a
+  `--no-shared` REPL resuming the session) ends that turn as canceled with a note the model reads
+  (`cancelled (worker-stopped)`), so the session is idle again.
 - Workers outlive whoever spawned them: a worker leaves the spawner's process tree (forked again, `setsid`,
   reparented to init), so a tool tearing down a background `chi send --wait`, or a closing terminal, no longer
   kills it mid-turn (run #43 lost a 169-step turn that way).
@@ -39,6 +42,10 @@ and commands may change between minor versions. How releases are made:
   coordinator) keep their buttons.
 - check-in nudges once per check-in: repeated Nudge clicks (or `/checkin nudge`) on the same check-in answer
   "check-in: already nudged at N tool calls" instead of steering the turn again. Run #43 got 12 identical nudges.
+- Web: a ref's `▾` sits in room the ref makes on hover, never over the next words.
+
+Update with `chi update`: the system bundle 0.61.0 and check-in 0.2.4 (nudges once per check-in). Then restart
+`chi web`.
 
 ## [0.60.0] - 2026-10-11
 
@@ -2655,7 +2662,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.60.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.61.0...HEAD
+[0.61.0]: https://github.com/dm1try/samagotchi/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/dm1try/samagotchi/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/dm1try/samagotchi/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/dm1try/samagotchi/compare/v0.57.0...v0.58.0
