@@ -230,6 +230,7 @@ module Samagotchi
       # The running turn, on disk at its iteration boundaries.
       @checkpoint = TurnCheckpoint.new(session: @session, state_dir: @state_dir)
       @engine = build_engine
+      settle_interrupted_turn
       # Before the Bridge serves anything: a UI joining a resumed worker's
       # stream gets the session's history and status in its snapshot, not
       # an empty session until the first turn.
@@ -448,6 +449,17 @@ module Samagotchi
       engine.guardrail_state_dir = @state_dir if @state_dir
       engine.session_state_dir = @state_dir if @state_dir
       engine
+    end
+
+    # A turn an earlier worker died in (TurnCheckpoint's mark in the file):
+    # ended now as canceled, with its note, and saved, before the Bridge
+    # serves the session (TurnCheckpoint.settle).
+    def settle_interrupted_turn
+      mark = TurnCheckpoint.settle(@session)
+      return unless mark
+
+      Log.info(:worker, "interrupted_turn_settled", turn_id: mark.id, iteration: mark.iteration, at: mark.at)
+      save_or_log(:interrupted_turn) { @session.save(state_dir: @state_dir) }
     end
 
     # A question saved by a worker that died while it waited (an

@@ -67,10 +67,11 @@ RSpec.describe "delegate tools" do
     locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), kind: kind)
   end
 
-  def set_status(session, status, pending_question: :keep)
+  def set_status(session, status, pending_question: :keep, last_turn: nil)
     s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
     s.status = status
     s.pending_question = pending_question unless pending_question == :keep
+    s.last_turn = last_turn if last_turn
     s.save(state_dir: tmpdir)
   end
 
@@ -245,7 +246,9 @@ RSpec.describe "delegate tools" do
       parent
       later do
         child_id = (session_files - [parent.id]).first
-        set_status(Samagotchi::Session.load(child_id, state_dir: tmpdir), "idle")
+        # Every turn's end records last_turn as it goes idle (Engine#end_turn); no outcome: the generic line.
+        set_status(Samagotchi::Session.load(child_id, state_dir: tmpdir), "idle",
+                   last_turn: { "ended_at" => Time.now.iso8601(3) })
       end
 
       out = described_class.call("count the specs", peers: peers)

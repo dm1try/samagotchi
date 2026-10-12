@@ -3,7 +3,9 @@
 require "time"
 require_relative "interrupted_turn"
 require_relative "log"
+require_relative "session"
 require_relative "steer"
+require_relative "turn_note"
 
 module Samagotchi
   # A worker's running turn, kept on disk at the loop's iteration
@@ -27,6 +29,33 @@ module Samagotchi
   # steps of the same turn may still edit their own entries in place.
   class TurnCheckpoint
     INTERVAL = 10.0
+
+    # A session loaded with an InterruptedTurn mark (its worker died in the
+    # turn): the turn ends now, as canceled. Its note goes at the tail
+    # (append-only: the model reads on its next turn that the previous one
+    # was cut, after how long), the status goes idle and the mark goes. The
+    # dead turn is not run again. The caller saves.
+    #
+    # last_turn is left as it was: a new last_turn saved idle here, before
+    # the turn a `chi send --wait` started this worker for, would end that
+    # wait at once as the sent turn's (ReplyWait compares last_turn), with
+    # the dead turn's outcome.
+    # @return [InterruptedTurn, nil] the mark settled, nil when there was none
+    def self.settle(session)
+      mark = session.interrupted_turn
+      return nil unless mark
+
+      messages = Array(session.messages)
+      # How long it ran up to its last checkpoint (it died later); none
+      # when that was its first boundary ("after 0s" would mislead).
+      seconds = mark.seconds
+      seconds = nil if seconds && seconds < 1
+      note = TurnNote.cancelled(:worker_stopped, seconds: seconds, shown: TurnNote.interrupted_tail?(messages))
+      session.messages = messages + [note]
+      session.status = Session::STATUS_IDLE if session.status == Session::STATUS_RUNNING
+      session.interrupted_turn = nil
+      mark
+    end
 
     # @param session [Session] the worker's session (saved as a whole)
     # @param clock [#call] monotonic seconds (specs)

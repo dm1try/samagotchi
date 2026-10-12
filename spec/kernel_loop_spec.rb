@@ -245,6 +245,36 @@ RSpec.describe Samagotchi::KernelLoop do
       end
     end
 
+    # A turn a worker died in, as TurnCheckpoint left it (the finished
+    # steps, a merged line, a call whose results never came) and
+    # TurnCheckpoint.settle ended it, then the next prompt: Gemma 4 and Qwen
+    # both format it, and the next turn runs on it.
+    {
+      "Gemma 4" => [nil, %(<|tool_call>call:execute{command: "ls"}<tool_call|>), %(<|tool_call>call:read{path: "x"}<tool_call|>)],
+      "Qwen 3.6" => [:qwen36, "<tool_call>\n<function=execute>\n<parameter=command>\nls\n</parameter>\n</function>\n</tool_call>",
+                     "<tool_call>\n<function=read>\n<parameter=path>\nx\n</parameter>\n</function>\n</tool_call>"]
+    }.each do |label, (profile, first_call, cut_call)|
+      it "formats a checkpointed, settled turn for #{label} and runs the next turn on it" do
+        looped = profile ? described_class.new(client: client, profile: Samagotchi::ModelProfile.public_send(profile)) : kernel
+        note = Samagotchi::TurnNote.cancelled(:worker_stopped, seconds: 20)
+        history = [{ role: "user", content: "task" }, { role: "model", content: first_call },
+                   { role: "tool_response", content: "[execute]\nfiles-listed" },
+                   { role: "user", kind: "input", source: "chi_send", content: "also this" },
+                   { role: "model", content: cut_call }, note, { role: "user", content: "go on" }]
+        prompts = []
+        allow(client).to receive(:complete) do |prompt, **|
+          prompts << prompt
+          "done"
+        end
+
+        result = looped.run(history)
+
+        expect(result.output).to eq("done")
+        expect(prompts.first).to include("files-listed", "also this", "cancelled (worker-stopped)", "go on")
+        expect(prompts.first.index("cancelled (worker-stopped)")).to be < prompts.first.index("go on")
+      end
+    end
+
     it "adds no tool_diffs when no call changed a file" do
       allow(client).to receive(:complete).and_return(%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done")
       tool_response = kernel.run([{ role: "user", content: "check" }]).conversation.find { |m| m[:role] == "tool_response" }

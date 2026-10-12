@@ -236,16 +236,26 @@ RSpec.describe Samagotchi::ReplyWait do
                                                        text: "out of credits on host or: x")
     end
 
-    it "doesn't take why from a last_turn that ended before the wait (not the turn waited for)" do
+    # A worker died in a turn (the file says running, with its mark); the
+    # message's own worker settles that turn (idle, same last_turn), then
+    # runs the message's turn: only that turn's end ends the wait.
+    it "waits on past a dead worker's turn going idle as it is settled, until a turn ends since the baseline" do
       s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
-      s.last_turn = { "outcome" => "failed", "ended_at" => "2026-10-04T10:00:00.000+00:00", "error_kind" => "credits",
-                      "retryable" => false }
+      s.last_turn = { "outcome" => "completed", "ended_at" => "2026-10-04T10:00:00.000+00:00" }
+      s.interrupted_turn = { "id" => "t0", "iteration" => 3 }
       s.status = "running"
       s.save(state_dir: tmpdir)
-      baseline = { messages: 0, question_id: nil, last_turn: "2026-10-04T10:00:00.000+00:00" }
-      later { set(status: "idle") }
+      baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+      later(0.1) { set(status: "idle") }
+      later(0.3) { set(status: "running") }
 
-      expect(wait(baseline: baseline).to_h).to include(status: :no_reply, outcome: nil, error_kind: nil, retryable: nil)
+      expect(wait(baseline: baseline, timeout: 0.6).status).to eq(:timeout)
+
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.status = "idle"
+      s.last_turn = { "outcome" => "canceled", "ended_at" => "2026-10-04T10:05:00.000+00:00", "cancel_reason" => "user" }
+      s.save(state_dir: tmpdir)
+      expect(wait(baseline: baseline).to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "user")
     end
 
     it "ignores the question pending at the baseline, not a new one" do

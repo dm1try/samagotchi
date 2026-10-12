@@ -95,6 +95,40 @@ RSpec.describe Samagotchi::TurnCheckpoint do
     expect(on_disk["interrupted_turn"]).to be_nil
   end
 
+  describe ".settle" do
+    let(:mark) do
+      Samagotchi::InterruptedTurn.new(id: "t1", started_at: "2026-10-12T10:00:00.000Z", at: "2026-10-12T10:01:30.000Z", iteration: 4)
+    end
+
+    it "ends the dead turn as canceled: its note at the tail, idle, the mark gone, last_turn as it was" do
+      session.last_turn = { "outcome" => "completed", "ended_at" => "2026-10-12T09:00:00.000Z" }
+      session.messages = history + [{ role: "user", content: "task" }, { role: "tool_response", content: "r1" }]
+      session.interrupted_turn = mark
+
+      expect(described_class.settle(session)).to eq(mark)
+
+      expect(session.messages.size).to eq(5)
+      expect(session.messages.first(4).map { |m| m[:content] }).to eq(%w[earlier ok task r1])
+      expect(session.messages.last[:content]).to include("the previous turn was cancelled (worker-stopped) after 90s")
+      expect(session.status).to eq("idle")
+      expect(session.interrupted_turn).to be_nil
+      # A chi send --wait whose message started the worker would read a new
+      # one as its own turn's end (ReplyWait).
+      expect(session.last_turn).to have_attributes(outcome: "completed", ended_at: "2026-10-12T09:00:00.000Z")
+    end
+
+    it "says no time when the mark is from the turn's first moments" do
+      session.interrupted_turn = mark.with(at: "2026-10-12T10:00:00.300Z")
+      described_class.settle(session)
+      expect(session.messages.last[:content]).to include("cancelled (worker-stopped); no answer")
+    end
+
+    it "does nothing without a mark" do
+      expect(described_class.settle(session)).to be_nil
+      expect(session.messages).to eq(history)
+    end
+  end
+
   it "logs a write that fails and goes on" do
     allow(session).to receive(:save).and_raise(Errno::ENOSPC)
     allow(Samagotchi::Log).to receive(:warn)

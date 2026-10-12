@@ -9,6 +9,7 @@ require_relative "client_id"
 require_relative "iteration_limit"
 require_relative "model_profile"
 require_relative "turn_note"
+require_relative "turn_checkpoint"
 require_relative "config"
 require_relative "context_note"
 require_relative "cancellation_controller"
@@ -277,6 +278,9 @@ module Samagotchi
         session.save if @resume_session
       end
       claim_session!(session.id) unless @owner_lock
+      # A turn a worker died in (TurnCheckpoint): ended as canceled, with its
+      # note, before this REPL's first turn appends after it.
+      session.save if @resume_session && TurnCheckpoint.settle(session)
       keep_cards(session)
       # Saved at once, so a process killed before its first turn leaves a
       # file the sweep knows to delete.

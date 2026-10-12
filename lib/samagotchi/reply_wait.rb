@@ -106,10 +106,14 @@ module Samagotchi
 
         if session.status == Session::STATUS_RUNNING
           seen_running = true
-        elsif seen_running || turn_ended_since?(session, baseline)
+        elsif (seen_running && !baseline&.key?(:last_turn)) || turn_ended_since?(session, baseline)
           # It ran and is idle again with no new reply: canceled, failed or
           # empty. Before it was ever seen running, idle means a
-          # file-delivered message its worker has not picked up yet.
+          # file-delivered message its worker has not picked up yet. With
+          # the baseline's last_turn only a turn that ended since counts:
+          # a session left running by a worker that died goes idle when the
+          # next worker settles that turn (TurnCheckpoint.settle), before
+          # the sent message's turn runs.
           # The worker writes the reply before its idle save, so the read
           # above has it; one more look costs nothing should that change.
           return reply_past(id, state_dir: state_dir, cursor: cursor)&.tap { |r| r.session = session } ||

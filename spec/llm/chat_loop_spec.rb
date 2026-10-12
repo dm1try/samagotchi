@@ -912,6 +912,32 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(wire.none? { |m| m.key?(:tool_calls) || m[:role] == "tool" }).to be(true)
     end
 
+    # A turn a worker died in, as TurnCheckpoint left it and
+    # TurnCheckpoint.settle ended it, then the next prompt: the pairs it
+    # finished replay paired, a call whose results never came is flattened,
+    # and the next turn runs on it.
+    it "replays a checkpointed, settled turn and runs the next one on it" do
+      note = Samagotchi::TurnNote.cancelled(:worker_stopped, seconds: 20)
+      history = [{ role: "user", content: "task" },
+                 { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "ls" } }] },
+                 { role: "tool_response", content: "[execute]\nfiles", tool_call_id: "c1" },
+                 { role: "user", kind: "input", source: "chi_send", content: "also this" },
+                 { role: "model", content: "", tool_calls: [{ id: "c2", name: "read", arguments: { "path" => "x" } }] },
+                 note, { role: "user", content: "go on" }]
+
+      result = run(history)
+
+      wire = adapter.requests.last[:messages]
+      expect(wire[1]).to include(role: "assistant", tool_calls: [include(id: "c1")])
+      expect(wire[2]).to eq(role: "tool", content: "[execute]\nfiles", tool_call_id: "c1")
+      expect(wire[4]).to eq(role: "assistant", content: %([tool call] read {"path":"x"}))
+      expect(wire[5]).to eq(role: "system", content: note[:content])
+      tool_ids = wire.select { |m| m[:role] == "tool" }.map { |m| m[:tool_call_id] }
+      call_ids = wire.flat_map { |m| Array(m[:tool_calls]).map { |c| c[:id] } }
+      expect(tool_ids).to eq(call_ids)
+      expect(result.text).to eq("hello back")
+    end
+
     it "keeps multi-part user content in the returned conversation" do
       parts = [{ type: "text", text: "look" }]
 

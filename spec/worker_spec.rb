@@ -165,6 +165,23 @@ RSpec.describe Samagotchi::Worker do
       expect(engine.pending_question).to be_nil
     end
 
+    it "settles a turn an earlier worker died in (interrupted_turn): its note, idle, canceled, saved before the Bridge serves" do
+      session.messages = [{ role: "user", content: "task" }, { role: "tool_response", content: "[execute]\nstep1" }]
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.interrupted_turn = { "id" => "t1", "started_at" => "2026-10-12T10:00:00.000Z", "at" => "2026-10-12T10:00:20.000Z",
+                                   "iteration" => 2 }
+      session.save(state_dir: tmpdir)
+
+      start_worker
+
+      saved = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      expect(saved.messages.map { |m| m[:content] }.first(2)).to eq(["task", "[execute]\nstep1"])
+      expect(saved.messages.last[:content]).to include("cancelled (worker-stopped) after 20s")
+      expect(saved).to have_attributes(status: "idle", interrupted_turn: nil)
+      expect(saved.last_turn).to be_nil
+      expect(engine.session.messages.last[:content]).to include("worker-stopped")
+    end
+
     it "tells its Engine it is a worker, so approvals wait for an attached UI" do
       start_worker
       expect(engine.interface).to eq(:worker)
