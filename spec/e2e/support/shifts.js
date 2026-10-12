@@ -85,10 +85,12 @@ export const frames = (page) => page.evaluate(() => window.frames2);
 // The snap sampler: every frame, the top of each tracked node (the stage's
 // status row and prompt line, a card in its extras, its chip, the composer
 // card, the history's last child). A node that moves more than 2 px from
-// one frame to the next is a snap, unless the stage itself animates
-// (stage.getAnimations(), not its subtree: the ticks blink forever) or an
-// eased follow runs ([data-following] on the history or the stage's
-// scroller). A replaced or removed node starts a new track (not a move).
+// one frame to the next is a snap, unless the stage itself animates (for
+// its own nodes: stage.getAnimations(), not its subtree: the ticks blink
+// forever), the
+// node animates itself (a turn's arrival in the history) or an eased
+// follow runs ([data-following] on the history or the stage's scroller).
+// A replaced or removed node starts a new track (not a move).
 export const startSnaps = (page) => page.evaluate(() => {
   cancelAnimationFrame(window.snapRaf);
   window.snapLog = [];
@@ -103,20 +105,21 @@ export const startSnaps = (page) => page.evaluate(() => {
   let prev = {};
   const tick = () => {
     const stage = document.querySelector("#turnStage");
-    const exempt = (!!stage && stage.getAnimations().length > 0) || !!document.querySelector("#history[data-following], #turnStage [data-following]");
+    const stageMoves = !!stage && stage.getAnimations().length > 0;
+    const following = !!document.querySelector("#history[data-following], #turnStage [data-following]");
     const t = performance.now();
     const next = {};
     for (const [key, find] of Object.entries(tracked)) {
       const el = find();
       if (!el || !el.isConnected || el.getClientRects().length === 0) continue;
       const top = el.getBoundingClientRect().top;
-      next[key] = { el, top };
+      const own = el.getAnimations().length > 0;
+      next[key] = { el, top, exempt: following || own || (stageMoves && !!stage?.contains(el)) };
       const was = prev[key];
-      if (was && was.el === el && Math.abs(top - was.top) > 2 && !exempt && !was.exempt) {
+      if (was && was.el === el && Math.abs(top - was.top) > 2 && !next[key].exempt && !was.exempt) {
         window.snapLog.push({ t, key, from: Math.round(was.top), to: Math.round(top) });
       }
     }
-    for (const v of Object.values(next)) v.exempt = exempt;
     prev = next;
     window.snapRaf = requestAnimationFrame(tick);
   };

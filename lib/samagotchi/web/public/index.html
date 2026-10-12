@@ -627,7 +627,10 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage[data-phase="no answer"]{border-left-color:var(--warn)}
 .turn-stage.enter{animation:ts-rise .35s cubic-bezier(.3,.7,.2,1)}
 @keyframes ts-rise{from{opacity:0;transform:translateY(14px)}}
-.turn-stage.leaving{transition:height .4s cubic-bezier(.3,.7,.2,1),opacity .3s ease;opacity:0}
+/* The hand-off: the stage slides away under the composer still drawn (a transform: nothing moves; stage_view.js handOff),
+   then the turn arrives in the history. Meanwhile the history's bottom reserve eases down (app.js). */
+.turn-stage.leaving{transition:transform .42s cubic-bezier(.4,0,.6,1),opacity .42s ease-in;transform:translateY(40px);opacity:0;pointer-events:none}
+#center.reserve-easing #history{transition:padding-bottom .42s cubic-bezier(.4,0,.6,1)}
 .ts-arrive{animation:ts-arrive .5s cubic-bezier(.3,.7,.2,1)}
 @keyframes ts-arrive{from{opacity:0;transform:translateY(60px)}}
 .ts-status{flex:none;display:flex;align-items:center;gap:8px;min-width:0;padding:8px 8px 0 14px;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -694,8 +697,9 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-extras,.ts-tail{display:flex;flex-direction:column;gap:8px;max-height:calc(var(--stage-max,60vh) * .4);overflow:auto;scrollbar-width:thin}
 .turn-stage.held-wait .ts-extras{max-height:calc(var(--stage-max,60vh) * .7)}
 /* The card under the live slots stays put from its arrival to the next step: waiting, the slots keep at least their running
-   height (the asking text sits at its bottom, over the card); answered, the height they had while waiting (stage_view.js). */
-.turn-stage.waiting .ts-live{min-height:var(--ts-live-h);justify-content:flex-end}
+   height (the asking text in the headline's place, the tool row's and the trail's room left blank); answered, the height
+   they had while waiting (stage_view.js). */
+.turn-stage.waiting .ts-live{min-height:var(--ts-live-h)}
 .turn-stage.held-wait:not(.waiting) .ts-live{min-height:max(var(--ts-live-h),var(--live-held,0px))}
 /* A 1 px mark at the tallest content's end, so the scroll extent never drops while a turn runs (stage_view.js fitFrame). */
 .ts-hold{position:absolute;left:0;top:0;width:1px;height:1px;visibility:hidden;pointer-events:none}
@@ -749,7 +753,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
   .ts-defer{display:none}
   .ts-trail-item{max-width:24ch}
 }
-@media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark,.turn-work:not(.done) .activity-status.running::before{animation:none}.turn-stage.leaving{transition:none}}
+@media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark,.turn-work:not(.done) .activity-status.running::before{animation:none}.turn-stage.leaving,#center.reserve-easing #history{transition:none}}
 #infoBar{display:flex;padding:8px 14px 10px;border-top:1px solid var(--glass-border);background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
 #infoBar.visible{display:flex}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}

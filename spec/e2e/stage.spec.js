@@ -29,6 +29,8 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   await send(page, "Second round");
   await expect(stageEl(page)).toBeVisible();
   await page.mouse.move(0, 0);
+  await page.waitForTimeout(500); // the rise and the history's follow are over
+  const scrolledAt = await pageNow(page);
   await page.evaluate(() => { document.querySelector("#history").scrollTop = 120; });
   await startSampling(page);
   await handedOff(page, 2);
@@ -43,9 +45,12 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   const noCard = running.slice(0, cardIndex);
   expect(noCard.length).toBeGreaterThan(5);
   expect([...new Set(noCard.map((s) => s.h))]).toHaveLength(1);
-  const withCard = running.slice(cardIndex + 3);
+  // (The ease can take a few samples under load: from its end on.)
+  const grown = running.at(-1).h;
+  const withCard = running.slice(running.findIndex((s, i) => i >= cardIndex && s.h === grown));
   expect(withCard.length).toBeGreaterThan(3);
   expect([...new Set(withCard.map((s) => s.h))]).toHaveLength(1);
+  expect(running.slice(cardIndex).every((s, i, all) => i === 0 || s.h >= all[i - 1].h)).toBe(true);
   expect([...new Set(samples.map((s) => s.top))]).toEqual([120]);
   // The moments, by the stage's own marks (page clock).
   const marks = await stageMarks(page);
@@ -53,6 +58,9 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   // The turn start: the stage rises over the composer, nothing moves (the
   // click's own shifts too).
   expect(await shiftSum(page, { from: sendAt, to: shownAt + 450, withInput: true })).toBeLessThan(0.01);
+  // The history behind it follows a reader at its end with a short ease
+  // (the stage's room at its foot), never a jump.
+  expect(await snaps(page, { from: sendAt, to: scrolledAt })).toEqual([]);
   // The turn end: the long answer comes in above the chip, which stays put
   // (the stage's footer).
   const endAt = momentAt(marks, (m) => /\bended\b/.test(m.cls), shownAt);
@@ -65,6 +73,12 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   expect(await snaps(page, { from: checkInAt, to: checkInAt + 600 })).toEqual([]);
   expect(await shiftSum(page, { from: endAt, to: leaveAt, withInput: true })).toBeLessThan(0.15);
   expect(await snaps(page, { from: endAt, to: leaveAt })).toEqual([]);
+  // The hand-off: the stage slides away under the composer, then the turn
+  // arrives in the history; nothing shifts or snaps, and it is hidden after.
+  const hiddenAt = momentAt(marks, (m) => m.hidden, leaveAt);
+  expect(hiddenAt - leaveAt).toBeGreaterThan(300);
+  expect(await shiftSum(page, { from: leaveAt, to: hiddenAt + 600 })).toBeLessThan(0.01);
+  expect(await snaps(page, { from: leaveAt, to: hiddenAt + 600 })).toEqual([]);
   // A handed-off turn is its outline: open on its narrated steps, each
   // tool-only (or thinking-only) step behind a fold that shows it; a reload
   // draws the same.
@@ -207,6 +221,12 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   const leaveAt = momentAt(await stageMarks(page), (m) => /\bleaving\b/.test(m.cls), answeredAt);
   expect(await shiftSum(page, { from: answeredAt, to: leaveAt, withInput: true })).toBeLessThan(0.01);
   expect(await snaps(page, { from: answeredAt, to: leaveAt })).toEqual([]);
+  // The hand-off to a reader at the history's end: the reserve eases down
+  // under the sliding stage and the history follows the turn's arrival.
+  await expect(stageEl(page)).toBeHidden();
+  await page.waitForTimeout(600);
+  expect(await shiftSum(page, { from: leaveAt })).toBeLessThan(0.01);
+  expect(await snaps(page, { from: leaveAt })).toEqual([]);
   expect((await shiftSources(page, { from: submitAt })).filter((n) => TOP_BAR.test(n))).toEqual([]);
   // Their classes without the arrival animation's (gone when it ends).
   const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>

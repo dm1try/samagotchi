@@ -703,8 +703,9 @@ runs: it grows, with a short ease, when a card or the answer needs room and give
 only when the turn moves into the history. When the turn ends the answer shows in
 the stage, and the whole turn moves up into the history once you are not
 using the stage (the pointer over it, a touch or scroll in the last 4 s,
-keyboard focus or a selection keep it) for 1.5 s; sending the next message
-moves it at once. The history is never scrolled while a turn runs, and only
+keyboard focus or a selection keep it) for 1.5 s: the stage slides away
+under the composer, then the turn appears in the history. Sending the next
+message moves it at once. The history is never scrolled while a turn runs, and only
 follows the hand-off if you were at its end. The `/` command list opens
 over the stage's lower edge.
 

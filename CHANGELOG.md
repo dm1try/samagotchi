@@ -17,11 +17,12 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
-- Web: the stage view no longer jumps: the stage floats above the composer, so its rising at a turn's start moves
-  nothing on the page; it keeps its height while a turn runs (content changes inside it: the first words of a reply,
-  an answered card, a short answer), so a card you answer stays where it is, and grows with a short ease when a card or
-  the answer needs room; and its chip is the stage's footer, so it
-  stays put when the answer arrives (the steps open right above it).
+- Web: the stage view no longer jumps: it keeps its height while a turn runs, its chip stays put when the answer
+  arrives, and the finished turn slides away instead of collapsing. The stage floats above the composer (its rising at
+  a turn's start moves nothing, and the history behind it glides instead of jumping); content changes inside it (the
+  first words of a reply, an answered card, a short answer), so a card you answer stays where it is; it grows with a
+  short ease when a card or the answer needs room; its chip is its footer (the steps open right above it); and when
+  the turn moves into the history the stage slides away under the composer, then the turn appears there.
 - Web: on a phone the top bar no longer gains a row mid-turn when the hidden strip's pill grows ("· 1 waiting"), which
   pushed the whole session down; the pill drops its session count while it says live or waiting.
 - Web: while a question or approval waits in the stage view, the stage shows the whole text of the reply that asked
