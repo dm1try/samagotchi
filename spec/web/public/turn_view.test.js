@@ -2,6 +2,7 @@ import { canon, htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { failedTurnText } from "../../../lib/samagotchi/web/public/format.js";
 import { commandBlockHtml } from "../../../lib/samagotchi/web/public/command_view.js";
@@ -405,4 +406,25 @@ test("turnHistoryHtml with parts: a record no saved message took keeps its calle
     tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", called_as: "Bash", status: "ok", duration_ms: 7 }],
   });
   assert.match(turnHistoryHtml(items, aliased, { thumbs }), /\(called as Bash\)/);
+});
+
+test("turnHistoryNodes: an answer bubble knows its message's display_refs (no index left in the DOM); one without has none", () => {
+  const refs = [{ match: "JIRA-7", kind: "issue", target: { id: "JIRA-7" }, actions: [] }];
+  const reply = [{ match: "ABC-3", kind: "issue", target: { id: "ABC-3" }, actions: [] }];
+  const items = [
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "assistant", content: "First, JIRA-7.", display_refs: refs },
+    { role: "user", content: "q", turn_id: "T2" },
+    { role: "assistant", content: "Reading." },
+    { role: "user", content: "session: c1", source: "delegate_report", merged: true, step: 2 },
+    { role: "assistant", content: "Report says ABC-3.", display_refs: reply },
+    { role: "assistant", content: "Plain." },
+  ];
+  // The nodes as returned (a clone would drop the WeakMap's data).
+  const holder = document.createElement("div");
+  holder.append(turnHistoryNodes(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }, { id: "T2", duration_ms: 5 }] }), { thumbs }));
+  const bubbles = [...holder.querySelectorAll(".bubble.output")];
+  assert.deepEqual(bubbles.map((b) => b.textContent), ["First, JIRA-7.", "Report says ABC-3.", "Plain."]);
+  assert.deepEqual(bubbles.map((b) => answerRefsOf(b)), [refs, reply, null]);
+  assert.equal(holder.querySelector("[data-answer-at]"), null);
 });

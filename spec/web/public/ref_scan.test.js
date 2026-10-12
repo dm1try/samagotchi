@@ -141,7 +141,9 @@ test("touchedFiles: the file refs of the rows and cards under the roots", () => 
   const rows = mount(
     '<div class="activity-row"><span class="ref" data-ref-kind="file" data-ref-path="/p/a.rb">a.rb</span></div>' +
     '<div class="bubble approval"><span class="ref" data-ref-kind="file" data-ref-path="/p/b.rb">b.rb</span></div>' +
-    '<span data-ref-kind="issue" data-ref-path="x"></span>',
+    '<span data-ref-kind="issue" data-ref-path="x"></span>' +
+    '<div class="bubble output"><span class="ref" data-ref-kind="file" data-ref-path="/p/c.rb">c.rb</span></div>',
   );
+  // An answer's own file ref (a plugin's, a scanned one) isn't a touched file.
   assert.deepEqual([...touchedFiles([rows])], ["/p/a.rb", "/p/b.rb"]);
 });

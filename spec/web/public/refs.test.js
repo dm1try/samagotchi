@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { bindRef, editorUrl, httpUrl, installRefClicks, refActions, refAttrs, refTarget, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
 import { createRefMenu } from "../../../lib/samagotchi/web/public/ref_menu.js";
 import { linkRefs, touchedFiles } from "../../../lib/samagotchi/web/public/ref_scan.js";
+import { pairAnswerRefs, setAnswerRefs } from "../../../lib/samagotchi/web/public/answer_refs.js";
 import { toolRowHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
 import { diffHtml } from "../../../lib/samagotchi/web/public/diff_view.js";
 import { createQuestionCards } from "../../../lib/samagotchi/web/public/question_cards.js";
@@ -658,5 +659,51 @@ test("bindRef over a ref (a rebind, a scanned ref) replaces its target: no stale
   bindRef(el, { kind: "issue", target: { id: "ABC-1" } });
   assert.equal(el.dataset.refPath, undefined);
   assert.equal(refTarget(el).path, "");
+  cleanup(root);
+});
+
+// app.js linkTextRefs' order: the touched files, each answer's plugin
+// refs, then the regex scan.
+function linkTextRefs(root) {
+  const touched = touchedFiles([root]);
+  for (const el of root.querySelectorAll(".bubble.output")) pairAnswerRefs(el);
+  for (const el of root.querySelectorAll(".bubble.output")) linkRefs(el, touched, "/p");
+}
+
+test("an answer's plugin file ref on a github-pr link keeps its actions over the regex scan; the menu labels the link from the action", () => {
+  const readRow = toolRowHtml({ ...editRow, key: "1:1" });
+  const root = mount(
+    `<details class="turn-work"><summary>steps</summary>${readRow}</details>` +
+    `<div class="bubble output markdown"><p>Fixed at lib/a.rb:11, see <a href="${PR}"><code>lib/a.rb:11</code></a>.</p></div>`,
+  );
+  const bubble = root.querySelector(".bubble.output");
+  setAnswerRefs(bubble, [{
+    match: "lib/a.rb:11", kind: "file", target: { path: "/p/lib/a.rb", line: 11 },
+    actions: [{ id: "pr_diff", label: "PR diff (#4)", url: PR }, { id: "blob", label: "File at head", url: PR.replace("pull/4/files", "blob/main/lib/a.rb") }],
+  }]);
+  linkTextRefs(root);
+  const link = bubble.querySelector("a");
+  const target = refTarget(link);
+  const actions = refActions(target, viewer);
+  assert.deepEqual(ids(actions), ["link", "editor", "url:blob", "show", "copy"]);
+  assert.equal(actions[0].label(target), "PR diff (#4)");
+  // The plain mention: the regex scan's (the plugin's ref won by its link).
+  const [text] = bubble.querySelectorAll("span.ref");
+  assert.equal(text.textContent, "lib/a.rb:11");
+  assert.deepEqual(refTarget(text).actions, []);
+  cleanup(root);
+});
+
+test("an issue-only answer pairs with nothing touched; its plain click opens the action", () => {
+  const root = mount('<div class="bubble output"><p>Filed ABC-12.</p></div>');
+  setAnswerRefs(root.querySelector(".bubble.output"), [{ match: "ABC-12", kind: "issue", target: { id: "ABC-12" }, actions: [{ id: "open", label: "Open in Jira", url: JIRA }] }]);
+  assert.equal(touchedFiles([root]).size, 0);
+  linkTextRefs(root);
+  const issue = root.querySelector('span.ref[data-ref-kind="issue"]');
+  assert.equal(issue.textContent, "ABC-12");
+  const opened = [];
+  installRefClicks(root, () => PHONE, { openLink: (url) => opened.push(url), menu: createRefMenu(document) });
+  click(issue);
+  assert.deepEqual(opened, [JIRA]);
   cleanup(root);
 });

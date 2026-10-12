@@ -1,7 +1,8 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { answerRefsOf, pairAnswerRefs, setAnswerRefs } from "../../../lib/samagotchi/web/public/answer_refs.js";
+import { answerRefsOf, applyFinalAnswer, pairAnswerRefs, setAnswerRefs } from "../../../lib/samagotchi/web/public/answer_refs.js";
+import { normalize } from "../../../lib/samagotchi/web/public/format.js";
 import { boundRef, refActions, refTarget } from "../../../lib/samagotchi/web/public/refs.js";
 import { linkRefs } from "../../../lib/samagotchi/web/public/ref_scan.js";
 
@@ -180,4 +181,69 @@ test("label: the hover title when it differs from the text, never over the eleme
   assert.equal(b.hasAttribute("title"), false);
   assert.equal(el.querySelector("a").getAttribute("title"), "Mine");
   el.remove();
+});
+
+test("applyFinalAnswer: the last answer's html replaces its streamed bubble's, which takes its refs; a read without refs clears them", () => {
+  const old = bubble("Earlier.");
+  const live = bubble("See JIRA-1.");
+  const refs = [issue("JIRA-1")];
+  const messages = [
+    { role: "assistant", content: "Earlier.", html: "<p>Earlier.</p>" },
+    { role: "assistant", content: "See JIRA-1.", html: "<p>See <strong>JIRA-1</strong>.</p>", display_refs: refs },
+    { role: "assistant", content: "" },
+  ];
+  assert.equal(applyFinalAnswer(messages, [old, live], normalize), live);
+  assert.equal(live.innerHTML, "<p>See <strong>JIRA-1</strong>.</p>");
+  assert.ok(live.classList.contains("markdown"));
+  assert.equal(live.getAttribute("data-copy-source"), "See JIRA-1.");
+  assert.deepEqual(answerRefsOf(live), refs);
+  assert.equal(answerRefsOf(old), null);
+  applyFinalAnswer(messages.map(({ display_refs: _drop, ...m }) => m), [old, live], normalize);
+  assert.equal(answerRefsOf(live), null);
+  old.remove();
+  live.remove();
+});
+
+test("applyFinalAnswer without html (web.markdown off): the bubble keeps its text and still takes the refs", () => {
+  const live = document.createElement("div");
+  live.className = "bubble output";
+  live.textContent = "See <b>JIRA-1</b>.";
+  document.body.append(live);
+  const refs = [issue("JIRA-1")];
+  assert.equal(applyFinalAnswer([{ role: "assistant", content: "See <b>JIRA-1</b>.", display_refs: refs }], [live], normalize), live);
+  assert.equal(live.textContent, "See <b>JIRA-1</b>.");
+  assert.equal(live.querySelector("b"), null);
+  assert.equal(live.classList.contains("markdown"), false);
+  assert.deepEqual(answerRefsOf(live), refs);
+  pairAnswerRefs(live);
+  assert.equal(live.querySelector('span[data-ref-kind="issue"]').textContent, "JIRA-1");
+  // No answer, no bubble: nothing happens.
+  assert.equal(applyFinalAnswer([{ role: "assistant", content: "other" }], [live], normalize), null);
+  assert.equal(applyFinalAnswer(null, [live], normalize), null);
+  live.remove();
+});
+
+test("without html (web.markdown off), a path:line the scan wrapped before the refs came is bound to the plugin's file ref", () => {
+  const live = document.createElement("div");
+  live.className = "bubble output";
+  live.textContent = "see a.rb:3";
+  document.body.append(live);
+  // The turn-end read: no refs yet, the scan wraps the touched file's ref.
+  applyFinalAnswer([{ role: "assistant", content: "see a.rb:3" }], [live], normalize);
+  pairAnswerRefs(live);
+  linkRefs(live, new Set(["/p/a.rb"]), "/p");
+  const span = live.querySelector('span[data-ref-kind="file"]');
+  assert.equal(span.textContent, "a.rb:3");
+  assert.equal(boundRef(span), null);
+  // The answer_display re-read: the refs, the same bubble (no re-render).
+  const PR = "https://github.com/acme/app/pull/4/files#diff-1R3";
+  applyFinalAnswer([{ role: "assistant", content: "see a.rb:3", display_refs: [
+    { match: "a.rb:3", kind: "file", target: { path: "/p/a.rb", line: 3 }, actions: [{ id: "pr", label: "PR diff", url: PR }] },
+  ] }], [live], normalize);
+  pairAnswerRefs(live);
+  assert.equal(live.querySelectorAll("[data-ref-kind]").length, 1);
+  assert.equal(live.querySelector("[data-ref-kind]"), span);
+  assert.deepEqual(boundRef(span).actions, [{ id: "pr", label: "PR diff", url: PR }]);
+  assert.equal(span.dataset.refLine, "3");
+  live.remove();
 });
