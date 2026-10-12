@@ -64,6 +64,7 @@ require_relative "sampling_settings"
 require_relative "thinking"
 require_relative "reasoning_history"
 require_relative "answer_display"
+require_relative "answer_refs"
 require_relative "edit_preview"
 require_relative "question_desk"
 require_relative "child_reports"
@@ -1478,19 +1479,31 @@ module Samagotchi
     private :save_quietly
 
     # Keep what the after_turn hooks presented as the answer's `display`
-    # and tell the observers (:answer_display), after the turn_completed
-    # they already had: the web re-reads the answer then. A turn_completed
+    # and the refs they attached as its `display_refs` (AnswerRefs, one
+    # replace for both), and tell the observers (:answer_display, the
+    # display or nil, and how many refs), after the turn_completed they
+    # already had: the web re-reads the answer then. A turn_completed
     # with display_pending (after_turn hooks were about to run) always gets
     # one, `display: nil` when nothing was presented, so the web holds the
     # answer's pop until then and never swaps it after. Terminals are not
     # sinks of it; they printed the answer already. The session is saved by
     # the caller, as after every turn.
-    def store_answer_display(session, display, pending: false)
+    def store_answer_display(session, display, refs, pending: false)
       synchronize_events do
+        # A plugin that kept event[:refs] and calls it later gets nil: the
+        # list is stored now (and the turn is over on every path).
+        refs.close!
         messages = Array(session.messages)
-        if display.changed? && messages.last.equal?(display.target)
-          replace_session_messages(session, messages[0...-1] + [display.target.merge(AnswerDisplay::KEY => display.text)])
-          @session_observer.notify({ type: :answer_display, display: display.text })
+        changed = display.changed? && messages.last.equal?(display.target)
+        added = refs.added? && messages.last.equal?(refs.target)
+        if changed || added
+          merged = messages.last.dup
+          merged[AnswerDisplay::KEY] = display.text if changed
+          merged[AnswerRefs::KEY] = refs.to_a if added
+          replace_session_messages(session, messages[0...-1] + [merged])
+          event = { type: :answer_display, display: changed ? display.text : nil }
+          event[:refs] = refs.count if added
+          @session_observer.notify(event)
         elsif pending
           @session_observer.notify({ type: :answer_display, display: nil })
         end
@@ -2228,15 +2241,18 @@ module Samagotchi
 
       # Fire :after_turn hook (an answer or a Stop; an Interrupt or a failure
       # ends the turn in #run_turn without it), with a read-only
-      # copy of the conversation the turn stored, and event[:present] for
-      # a display version of the answer (AnswerDisplay).
+      # copy of the conversation the turn stored, event[:present] for
+      # a display version of the answer (AnswerDisplay) and event[:refs]
+      # for refs on it (AnswerRefs).
       session = turn.session
       display = AnswerDisplay.new(session.messages)
+      refs = AnswerRefs.new(session.messages, cwd: session.working_directory)
       after_turn = { type: :after_turn, status: canceled ? "canceled" : "completed",
                      messages: hook_messages(session.messages) }
       after_turn[:present] = display.presenter(after_turn)
+      after_turn[:refs] = refs.adder(after_turn)
       @hooks.fire(:after_turn, after_turn)
-      store_answer_display(session, display, pending: display_pending)
+      store_answer_display(session, display, refs, pending: display_pending)
 
       # Fire :session_end after the turn (turn-level lifecycle), as :after_turn
       @hooks.fire(:session_end, { type: :session_end, session_id: session.id })

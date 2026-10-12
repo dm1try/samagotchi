@@ -178,7 +178,13 @@ RSpec.describe "Presenting the answer from after_turn" do
 
   describe "the field never reaches a model-facing reader" do
     let(:marker) { "DISPLAY-ONLY-MARKER" }
-    let(:history) { [{ role: "user", content: "old" }, { role: "model", content: "ok", display: marker }] }
+    let(:refs_marker) { "REFS-MARKER" }
+    let(:history) do
+      [{ role: "user", content: "old" },
+       { role: "model", content: "ok", display: marker,
+         display_refs: [{ match: "ok", kind: "issue", target: { id: "J-1" },
+                          actions: [{ id: "open", label: "Open", url: "https://example.test/#{refs_marker}" }] }] }]
+    end
 
     before { session.messages = history.map(&:dup) }
 
@@ -191,6 +197,7 @@ RSpec.describe "Presenting the answer from after_turn" do
 
       expect(seen.size).to eq(2)
       expect(JSON.generate(seen)).not_to include(marker)
+      expect(JSON.generate(seen)).not_to include(refs_marker)
     end
 
     it "is not in the recap's input" do
@@ -199,6 +206,7 @@ RSpec.describe "Presenting the answer from after_turn" do
       json = engine.messages_json_for_recap
 
       expect(json).not_to include(marker)
+      expect(json).not_to include(refs_marker)
       expect(Samagotchi::IdleRecap::TranscriptFilter.build(JSON.parse(json))).to include("ok")
     end
 
@@ -206,7 +214,161 @@ RSpec.describe "Presenting the answer from after_turn" do
       engine.instance_variable_set(:@session, session)
 
       expect(JSON.generate(engine.send(:plugin_messages))).not_to include(marker)
+      expect(JSON.generate(engine.send(:plugin_messages))).not_to include(refs_marker)
     end
+  end
+end
+
+RSpec.describe "Refs on the answer from after_turn" do
+  include_context "thinking off"
+
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
+
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
+  let(:engine) { Samagotchi::Engine.new(client: client, kernel: kernel) }
+  let(:folder) { "/proj/app" }
+  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: folder) }
+  let(:stored) { [{ role: "user", content: "hi" }, { role: "model", content: "see JIRA-1" }] }
+  let(:registry) { engine.instance_variable_get(:@hooks) }
+  let(:jira) do
+    { match: "JIRA-1", kind: "issue", target: { id: "JIRA-1" },
+      actions: [{ id: "open", label: "Open in Jira", url: "https://jira.test/browse/JIRA-1" }] }
+  end
+
+  before do
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+    allow(kernel).to receive(:run).and_return(
+      Samagotchi::LLM::ModelResult.new(text: "see JIRA-1", conversation: stored.map(&:dup), exhausted: false,
+                                       pending_tool_calls: false, tool_activity: [])
+    )
+  end
+
+  def bundle_hook(name, priority, &block)
+    registry.register_bundle("b", :after_turn, hook_name: name, priority: priority, &block)
+  end
+
+  it "a refs-only hook stores display_refs on the answer (no display, content unchanged) and says how many" do
+    got = nil
+    bundle_hook("links.rb", 10) { |e| got = e[:refs].call(**jira) }
+    events = []
+    engine.subscribe(observer: lambda { |e|
+      events << e.slice(:type, :display, :refs) if %i[turn_completed answer_display].include?(e[:type])
+    })
+
+    engine.run_turn(session, "hi")
+
+    expect(got).to be(true)
+    expect(session.messages.last).to eq(role: "model", content: "see JIRA-1", display_refs: [jira])
+    expect(events).to eq([{ type: :turn_completed }, { type: :answer_display, display: nil, refs: 1 }])
+  end
+
+  it "stores a presented display and refs from one hook in one replace, the event carrying both" do
+    bundle_hook("links.rb", 10) do |e|
+      e[:present].call { |text| text.sub("JIRA-1", "[JIRA-1](https://jira.test/browse/JIRA-1)") }
+      e[:refs].call(**jira)
+    end
+    replaces = 0
+    after_completed = false
+    allow(engine).to receive(:replace_session_messages).and_wrap_original do |original, *args|
+      replaces += 1 if after_completed
+      original.call(*args)
+    end
+    events = []
+    engine.subscribe(observer: lambda { |e|
+      after_completed = true if e[:type] == :turn_completed
+      events << e.slice(:display, :refs) if e[:type] == :answer_display
+    })
+
+    engine.run_turn(session, "hi")
+
+    expect(replaces).to eq(1)
+    expect(events).to eq([{ display: "see [JIRA-1](https://jira.test/browse/JIRA-1)", refs: 1 }])
+    expect(session.messages.last).to eq(role: "model", content: "see JIRA-1",
+                                        display: "see [JIRA-1](https://jira.test/browse/JIRA-1)", display_refs: [jira])
+  end
+
+  it "keeps the refs when a present is rejected" do
+    bundle_hook("bad.rb", 10) do |e|
+      e[:refs].call(**jira)
+      e[:present].call { :not_a_string }
+    end
+
+    engine.run_turn(session, "hi")
+
+    expect(session.messages.last).to eq(role: "model", content: "see JIRA-1", display_refs: [jira])
+  end
+
+  it "answers a late call (a plugin that kept event[:refs]) with nil and stores nothing more" do
+    kept = nil
+    bundle_hook("links.rb", 10) do |e|
+      kept = e[:refs]
+      e[:refs].call(**jira)
+    end
+
+    engine.run_turn(session, "hi")
+
+    expect(kept.call(match: "late", kind: "issue", target: { id: "L-1" })).to be_nil
+    expect(session.messages.last[:display_refs]).to eq([jira])
+  end
+
+  it "answers a late call with nil when the hooks attached nothing (the display: nil path)" do
+    kept = nil
+    bundle_hook("links.rb", 10) { |e| kept = e[:refs] }
+
+    engine.run_turn(session, "hi")
+
+    expect(kept.call(**jira)).to be_nil
+    expect(session.messages.last).not_to have_key(:display_refs)
+  end
+
+  it "gives a cancelled turn nothing to attach refs to" do
+    allow(kernel).to receive(:run).and_return(
+      Samagotchi::LLM::ModelResult.new(text: "", conversation: stored.map(&:dup), exhausted: false, pending_tool_calls: false,
+                                       tool_activity: [], canceled: true, cancellation_reason: :manual)
+    )
+    got = :unset
+    bundle_hook("links.rb", 10) { |e| got = e[:refs].call(**jira) }
+
+    engine.run_turn(session, "hi")
+
+    expect(got).to be_nil
+    expect(session.messages.none? { |m| m.key?(:display_refs) }).to be(true)
+  end
+
+  it "saves them in session.json, and they load back (nested keys as strings)" do
+    Dir.mktmpdir do |dir|
+      bundle_hook("links.rb", 10) { |e| e[:refs].call(**jira) }
+      engine.run_turn(session, "hi")
+      session.save(state_dir: dir)
+
+      raw = JSON.parse(File.read(Dir[File.join(dir, "**", "#{session.id}.json")].first))
+      expect(raw["messages"].last["display_refs"]).to eq([JSON.parse(JSON.generate(jira))])
+      loaded = Samagotchi::Session.load(session.id, state_dir: dir).messages.last
+      expect(Samagotchi::AnswerRefs.for_display(loaded[:display_refs])).to eq([jira])
+    end
+  end
+
+  it "starts from the refs the answer already has, so none are lost" do
+    with_refs = [stored.first, stored.last.merge(display_refs: [JSON.parse(JSON.generate(jira))])]
+    allow(kernel).to receive(:run).and_return(
+      Samagotchi::LLM::ModelResult.new(text: "see JIRA-1", conversation: with_refs, exhausted: false,
+                                       pending_tool_calls: false, tool_activity: [])
+    )
+    bundle_hook("links.rb", 10) { |e| e[:refs].call(match: "see", kind: "issue", target: { id: "S-1" }) }
+
+    engine.run_turn(session, "hi")
+
+    expect(session.messages.last[:display_refs].map { |r| r[:match] }).to eq(%w[JIRA-1 see])
+  end
+
+  it "stores a relative file path absolute, under the session folder" do
+    bundle_hook("files.rb", 10) { |e| e[:refs].call(match: "lib/a.rb:3", kind: "file", target: { path: "lib/a.rb", line: 3 }) }
+
+    engine.run_turn(session, "hi")
+
+    expect(session.messages.last[:display_refs]).to eq([{ match: "lib/a.rb:3", kind: "file",
+                                                          target: { path: "/proj/app/lib/a.rb", line: 3 }, actions: [] }])
   end
 end
 

@@ -329,6 +329,26 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(session.messages.last).to include(role: "model", content: "done")
   end
 
+  it "11b. an after_turn hook attaching refs only: a replace, then answer_display with the count and no display" do
+    record_hooks
+    native { |messages, **| kernel_result(messages + [reply("done")]) }
+    engine.instance_variable_get(:@hooks).register_persistent(:after_turn) do |event|
+      event[:refs].call(match: "done", kind: "issue", target: { id: "D-1" })
+    end
+    displays = []
+    engine.subscribe(observer: ->(e) { displays << e.slice(:display, :refs) if e[:type] == :answer_display })
+
+    run
+
+    expect(displays).to eq([{ display: nil, refs: 1 }])
+    expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected used_memories_updated
+                              replace! turn_completed persist hook:after_turn=completed replace! answer_display
+                              hook:session_end])
+    expect(session.messages.last).to include(role: "model", content: "done",
+                                             display_refs: [{ match: "done", kind: "issue", target: { id: "D-1" }, actions: [] }])
+    expect(session.messages.last).not_to have_key(:display)
+  end
+
   # The turn has ended once turn_completed is out: an Interrupt in the
   # post-turn hooks only re-raises (no second ending; the answer stays).
   it "12. Interrupt after turn_completed (an after_turn hook): re-raised, no second ending, the answer kept" do

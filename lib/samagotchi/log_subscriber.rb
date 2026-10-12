@@ -152,10 +152,13 @@ module Samagotchi
       log(level, :hook_notice, hook: event[:hook], fallback_for: event[:fallback_for], msg: event[:text].to_s[0, 300])
     end
 
-    # after_turn hooks presented the answer (AnswerDisplay): its size only
-    # (none for the display: nil that says nothing was presented).
+    # after_turn hooks presented the answer (AnswerDisplay) or attached refs
+    # to it (AnswerRefs): the display's size and the refs' count only (none
+    # for the display: nil that says nothing was presented).
     def on_answer_display(event)
-      log(:info, :answer_display, chars: event[:display].to_s.length) if event[:display]
+      return unless event[:display] || event[:refs]
+
+      log(:info, :answer_display, chars: event[:display]&.length, refs: event[:refs])
     end
 
     # A card shown to the user (Engine#show_card): whose, which, and its

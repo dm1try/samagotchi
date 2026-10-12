@@ -190,6 +190,19 @@ RSpec.describe Samagotchi::LogSubscriber do
     ])
   end
 
+  it "writes an answer_display with the display's size and the refs' count, nothing for display: nil without refs" do
+    feed({ type: :answer_display, display: "see [JIRA-1](u)" },
+         { type: :answer_display, display: "shown", refs: 2 },
+         { type: :answer_display, display: nil, refs: 1 },
+         { type: :answer_display, display: nil })
+
+    expect(records.map { |r| [r.event, r.fields] }).to eq([
+      ["answer_display", { "chars" => "15" }],
+      ["answer_display", { "chars" => "5", "refs" => "2" }],
+      ["answer_display", { "refs" => "1" }]
+    ])
+  end
+
   it "writes a card with its source, id and title, not its body" do
     feed({ type: :card, id: "c1", source: "sample-plugin", title: "Hello", body: "secret body", level: :info,
            actions: [{ label: "Again", command: "/hello again" }] })

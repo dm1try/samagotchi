@@ -253,9 +253,11 @@ module Samagotchi
       #   event[:steer].call(text) -> true when the text was queued for the
       #     running turn's next boundary (its own user message, source: the
       #     hook's bundle); from after_turn / session_end false
-      # and after_turn's fire site adds one more (AnswerDisplay):
+      # and after_turn's fire site adds two more (AnswerDisplay, AnswerRefs):
       #   event[:present].call { |text| new_text } -> the answer's display
       #     text after the call (chained in hook order), nil without an answer
+      #   event[:refs].call(match:, kind:, target:, label: nil, actions: [])
+      #     -> true (kept), false (refused, logged), nil without an answer
       #
       # @param name [Symbol] the hook name to fire
       # @param event [Hash] the event payload (may be mutated by hooks)
