@@ -211,7 +211,8 @@ module Samagotchi
     # wakes the worker picks which config.yml it reads (docs/guardrails.md).
     private_class_method def self.spawn_options(session)
       # Own process group: workers outlive `chi web`, and a Ctrl-C in its
-      # terminal must not reach them.
+      # terminal must not reach them (the worker then leaves the process
+      # tree too: WORKER_DETACH_ENV).
       opts = { out: File::NULL, err: File::NULL, pgroup: true }
       # The worker's tools (and `!cmd`) run in the session's directory, not
       # in the cwd of whoever woke it (`chi web`, another terminal).
@@ -254,8 +255,10 @@ module Samagotchi
       SESSION_MARKER_ENV.each { |key| child_env[key] = nil }
       # A smoke's fake "newest installed" is for this process's notices only.
       child_env[InstalledVersions::ENV_KEY] = nil
-      # A worker process: run_session_loop traps signals.
+      # A worker process: run_session_loop traps signals, and leaves this
+      # process's tree.
       child_env[WORKER_PROCESS_ENV] = "1"
+      child_env[WORKER_DETACH_ENV] = "1"
       # A gem-mode worker activates the newest installed chi itself: under
       # `bundle exec` (a Gemfile that has samagotchi) Bundler's RUBYOPT would
       # hold it to the bundle's version, and its badge would never clear.
@@ -949,6 +952,9 @@ module Samagotchi
       # Read (and taken out of ENV, so nothing the worker runs inherits it)
       # before anything else: set by spawn_options for a spawned worker.
       spawned = ENV.delete(WORKER_PROCESS_ENV) == "1"
+      # Out of the spawner's process tree before the lock (it records this
+      # process's pid) and before any thread starts.
+      detach_from_spawner(session_dir) if ENV.delete(WORKER_DETACH_ENV) == "1"
       # Kept in a class ivar so the lock's File lives as long as the worker.
       @owner_lock = OwnerLock.acquire(session_dir, kind: "worker", wait: owner_wait)
       exit(0) unless @owner_lock
@@ -999,6 +1005,31 @@ module Samagotchi
       result
     end
 
+    # A spawned worker leaves its spawner's process tree: a killer that
+    # walks the tree by parent pid (a terminal closing, a tool's teardown
+    # of a `chi send --wait` it ran in the background) no longer reaches it.
+    # This process (the spawner's child, which its Process.detach waits on)
+    # forks the worker, which starts a session of its own (setsid: no
+    # controlling terminal, no SIGHUP from one) and returns to run the loop;
+    # this one waits until the worker holds the session's OwnerLock, or has
+    # exited, or WORKER_START_GRACE passed, and exits: the spawner's waiter
+    # stays alive exactly while the worker starts (#still_starting?). The
+    # worker is reparented to init (launchd), which reaps it.
+    private_class_method def self.detach_from_spawner(session_dir)
+      worker = Process.fork
+      unless worker
+        Process.setsid
+        return
+      end
+
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + WORKER_START_GRACE
+      until Process.waitpid(worker, Process::WNOHANG) || OwnerLock.owner(session_dir)&.pid == worker ||
+            Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+        sleep(OwnerLock::RETRY_INTERVAL)
+      end
+      Process.exit!(0)
+    end
+
     # Delete a session its worker left empty. Checked again now the lock is
     # free: a note or input may have come in since the worker looked, and a
     # worker woken meanwhile owns it (delete_session refuses). A `chi send`
@@ -1045,6 +1076,10 @@ module Samagotchi
     # "1" in a worker spawn_options started: it traps signals (WorkerSignals).
     # run_session_loop deletes it from ENV as it reads it.
     WORKER_PROCESS_ENV = "SAMAGOTCHI_WORKER_PROCESS"
+    # "1" in a worker spawn_options started: run_session_loop leaves the
+    # spawner's process tree first (detach_from_spawner); deleted from ENV
+    # as it is read, so an rspec run by the worker's execute never forks.
+    WORKER_DETACH_ENV = "SAMAGOTCHI_WORKER_DETACH"
 
     def self.worker_command(session_id, state_dir:, gem_spec: InstalledGem.spec)
       boot = "require 'samagotchi/session_manager'; " \
@@ -1067,6 +1102,8 @@ module Samagotchi
       command = worker_command(session.id, state_dir: state_dir)
       pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
       # Reaped when it exits: a long-lived spawner (chi web) keeps no zombies.
+      # +pid+ is the worker's starter, which exits once the worker it forked
+      # holds the lock (detach_from_spawner): the lock's pid is the worker's.
       note_spawn(session.id, state_dir: state_dir, waiter: Process.detach(pid))
       Log.info(:worker, "spawn", sid: session.id, child_pid: pid)
       pid

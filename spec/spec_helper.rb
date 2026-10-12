@@ -31,6 +31,9 @@ require_relative "support/integration_server"
 # the worker's environment (SAMAGOTCHI_HOSTS_JSON with the real hosts, the
 # spawner's CLI flags such as SAMAGOTCHI_GUARDRAILS_ENABLED=false). Specs set
 # what they need, :integration examples included. The suite's own switches stay.
+# That includes a worker's SAMAGOTCHI_WORKER_PROCESS / SAMAGOTCHI_WORKER_DETACH
+# (run_session_loop deletes them as it reads them; this is the second guard):
+# with them set, an in-process run_session_loop would trap signals and fork.
 SPEC_ENV_SWITCHES = %w[SAMAGOTCHI_INTEGRATION SAMAGOTCHI_MACOS_BUILD].freeze
 SPEC_ENV_CLEAR = -> { ENV.keys.each { |key| ENV.delete(key) if key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) } }
 SPEC_ENV_CLEAR.call

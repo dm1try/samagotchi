@@ -888,7 +888,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect(spawned_opts).to include(pgroup: true)
       # A worker process: it traps signals (run_session_loop).
-      expect(spawned_env).to include(described_class::WORKER_PROCESS_ENV => "1")
+      expect(spawned_env).to include(described_class::WORKER_PROCESS_ENV => "1", described_class::WORKER_DETACH_ENV => "1")
     end
   end
 
@@ -1239,6 +1239,68 @@ RSpec.describe Samagotchi::SessionManager do
       expect(given.last).to be(installed.first)
     ensure
       ENV.delete(described_class::WORKER_PROCESS_ENV)
+    end
+
+    it "leaves the spawner's process tree only when spawned (WORKER_DETACH_ENV, taken out of ENV), before the lock" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      allow(Samagotchi::Worker).to receive(:new)
+        .and_return(instance_double(Samagotchi::Worker, run: :idle_exit, discard?: false, wake_due?: false))
+      order = []
+      allow(described_class).to receive(:detach_from_spawner) { order << :detach }
+      allow(Samagotchi::OwnerLock).to receive(:acquire).and_wrap_original do |original, *args, **kwargs|
+        order << :lock
+        original.call(*args, **kwargs)
+      end
+
+      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      expect(order).to eq([:lock])
+
+      ENV[described_class::WORKER_DETACH_ENV] = "1"
+      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      expect(order).to eq(%i[lock detach lock])
+      expect(ENV).not_to have_key(described_class::WORKER_DETACH_ENV)
+    ensure
+      ENV.delete(described_class::WORKER_DETACH_ENV)
+    end
+
+    # In a process of its own (a fork standing for the spawned worker
+    # process), never the rspec process: its child runs on, reparented, in
+    # a session of its own, and it exits once that child holds the lock.
+    it "detaches: the worker is forked, setsid, reparented, and its starter exits once it holds the lock" do
+      skip "fork unavailable" unless Process.respond_to?(:fork)
+
+      dir = File.join(tmpdir, "detach-session")
+      FileUtils.mkdir_p(dir)
+      reader, writer = IO.pipe
+      starter = fork do
+        reader.close
+        described_class.send(:detach_from_spawner, dir)
+        # The worker (the starter's child) from here on.
+        starter_pid = Process.ppid
+        writer.puts("worker #{Process.pid} sid #{Process.getsid} starter #{Process.ppid}")
+        sleep 0.3 # still starting: the starter waits
+        lock = Samagotchi::OwnerLock.acquire(dir, kind: "worker", wait: 0)
+        writer.puts("locked #{Process.clock_gettime(Process::CLOCK_MONOTONIC)}")
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+        sleep 0.05 while Process.ppid == starter_pid && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        writer.puts("reparented #{Process.ppid}")
+        writer.close
+        lock&.release
+        exit!(0)
+      end
+      writer.close
+      _, status = Timeout.timeout(10) { Process.wait2(starter) }
+      starter_exited = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      lines = Timeout.timeout(10) { reader.read.lines.map(&:split) }
+
+      worker, = lines.assoc("worker").values_at(1)
+      expect(status.exitstatus).to eq(0)
+      expect(lines.assoc("worker")).to eq(["worker", worker, "sid", worker, "starter", starter.to_s])
+      expect(starter_exited).to be >= Float(lines.assoc("locked")[1])
+      expect(lines.assoc("reparented")[1]).not_to eq(starter.to_s)
+    ensure
+      reader&.close
     end
 
     it "logs a worker crash with its backtrace (its stderr is /dev/null) and re-raises" do
