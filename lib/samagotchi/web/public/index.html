@@ -895,10 +895,17 @@ body.has-session #scope .scope-where{display:none}
 /* The open session's title, when no strip card in sight shows it (session_title.js): the bar's middle, cut with an ellipsis; the whole first message in its tooltip. */
 #sessionTitle{flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #sessionTitle[hidden]{display:none}
-/* A phone: the title is its own row under the bar, so "chi + · pill · bell" stay one line. */
+/* A phone: the title is its own row under the bar, so "chi + · pill · bell" stay one line. Nothing on that line wraps to a
+   row of its own when the pill's text grows mid-turn ("· 1 waiting"): the scope chip and the pill have a base size of 0 (what
+   a wrapping line counts) and grow to their text, the pill first; the scope chip cuts with an ellipsis before the pill does.
+   The pill drops its session count while it says live or waiting, so the scope chip keeps its words. */
 @media(max-width:600px){
   #topBar{flex-wrap:wrap;row-gap:2px}
   #sessionTitle{flex-basis:100%;order:10;font-size:12px}
+  #scope,#stripShow{flex:1 1 0;min-width:0;max-width:max-content}
+  #stripShow{flex-grow:1000;overflow:hidden;text-overflow:ellipsis}
+  #scope .scope-name{flex-shrink:1;min-width:0}
+  #stripShow:has(.live,.waiting) .pill-count{display:none}
 }
 #notifyBtn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;min-height:0;background:transparent;border:1px solid transparent;border-radius:999px;color:var(--text-muted)}
 #notifyBtn[hidden]{display:none}

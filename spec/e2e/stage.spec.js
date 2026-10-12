@@ -6,6 +6,8 @@ import { test, expect } from "./support/fixtures.js";
 import { frames, momentAt, pageNow, shiftSources, shiftSum, stageMarks, startSampling, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
 const stageEl = (page) => page.locator("#turnStage");
+// A shift's source in the top bar, or the session panel it pushes down.
+const TOP_BAR = /#topBar|#sessionTitle|#stripShow|#notifyBtn|section#center$/;
 const handedOff = (page, turns) => expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
 
 async function send(page, prompt) {
@@ -119,11 +121,15 @@ test("a turn with no answer ends in the stage as no answer", async ({ page, scri
   await expect(page.locator("#history .empty-answer")).toHaveText("no answer: the model returned nothing (after 1 retry)");
 });
 
+// A phone (390×700): the stage's cap is low and the top bar wraps its title.
 test("a question card sits in the stage (also after a reload mid-turn), and the answer comes after it", async ({ page, script }) => {
+  await page.setViewportSize({ width: 390, height: 700 });
   script("question");
   // Every frame: whether a card waits and whether the asking text shows. They
   // land in one frame (no frame with one and not the other).
   await watchFrames(page);
+  await watchShifts(page);
+  await watchStage(page);
   await send(page, "Read a file of my choice");
   const card = stageEl(page).locator(".ts-extras .bubble.question");
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
@@ -134,14 +140,21 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
   await expect(stageEl(page).locator(".ts-headline")).toBeHidden();
   expect((await frames(page)).filter((f) => f.waits !== f.asking)).toEqual([]);
+  // The card's arrival grows the stage, briefly; the top bar stays (the
+  // hidden strip's pill gains "· 1 waiting" and must not wrap to a row).
+  const marks = await stageMarks(page);
+  const shownAt = momentAt(marks, (m) => !m.hidden);
+  const waitingAt = momentAt(marks, (m) => /\bwaiting\b/.test(m.cls), shownAt);
+  expect(await shiftSum(page, { from: waitingAt, to: waitingAt + 600, withInput: true })).toBeLessThan(0.25);
+  expect((await shiftSources(page, { from: shownAt + 400 })).filter((n) => TOP_BAR.test(n))).toEqual([]);
   // A reload mid-turn draws the stage again with its card.
   await page.reload();
   await expect(card).toBeVisible();
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
   // From the answer until the turn is answered nothing moves on its own:
-  // the card's collapse and the slots' swap come with the click.
-  await watchShifts(page);
+  // the card's collapse and the slots' swap come with the click. (The
+  // shifts' recorder came back with the reload.)
   await watchFrames(page);
   const submitAt = await pageNow(page);
   await expect(stageEl(page).locator(".ts-prompt .user-message")).toHaveText("Read a file of my choice");
@@ -153,6 +166,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   expect(await shiftSum(page, { from: submitAt, to: answeredAt })).toBeLessThan(0.01);
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
+  expect((await shiftSources(page, { from: submitAt })).filter((n) => TOP_BAR.test(n))).toEqual([]);
   // Their classes without the arrival animation's (gone when it ends).
   const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));

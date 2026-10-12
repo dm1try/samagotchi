@@ -93,9 +93,9 @@ test("stripTileTemplate and stripPillTemplate", () => {
   ));
   const list = [sess("a", { owner: "worker" }), sess("b", { pending_question: { id: "q", kind: "question" } })];
   assert.equal(markupOf(stripPillTemplate(stripShowParts(list))), canon(
-    `<span class="pill-arrow" aria-hidden="true">▾</span> 2 sessions · <span class="live"><span class="live-dot" aria-hidden="true"></span>1 live</span> · <span class="waiting"><span class="waiting-dot" aria-hidden="true"></span>1 waiting</span>`,
+    `<span class="pill-arrow" aria-hidden="true">▾</span> <span class="pill-count">2 sessions · </span><span class="live"><span class="live-dot" aria-hidden="true"></span>1 live</span> · <span class="waiting"><span class="waiting-dot" aria-hidden="true"></span>1 waiting</span>`,
   ));
-  assert.equal(markupOf(stripPillTemplate(stripShowParts([]))), canon(`<span class="pill-arrow" aria-hidden="true">▾</span> sessions`));
+  assert.equal(markupOf(stripPillTemplate(stripShowParts([]))), canon(`<span class="pill-arrow" aria-hidden="true">▾</span> <span class="pill-count">sessions</span>`));
 });
 
 test("cardTemplate: a bare strip card", () => {
