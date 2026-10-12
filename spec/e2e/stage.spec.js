@@ -3,7 +3,7 @@
 // history. The default view: the chromium project runs it, the turn project
 // doesn't.
 import { test, expect } from "./support/fixtures.js";
-import { frames, momentAt, pageNow, shiftSum, stageMarks, startSampling, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
+import { frames, momentAt, pageNow, shiftSources, shiftSum, stageMarks, startSampling, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
 const stageEl = (page) => page.locator("#turnStage");
 const handedOff = (page, turns) => expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
@@ -18,6 +18,7 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   await send(page, "First round");
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
+  await expect(stageEl(page)).toBeHidden(); // the first turn's fold is over
   // A reader scrolled up into the first turn's long answer.
   await watchShifts(page);
   await watchStage(page);
@@ -43,6 +44,11 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   // The turn start: the stage rises over the composer, nothing moves (the
   // click's own shifts too).
   expect(await shiftSum(page, { from: sendAt, to: shownAt + 450, withInput: true })).toBeLessThan(0.01);
+  // The turn end: the long answer comes in above the chip, which stays put
+  // (the stage's footer).
+  const endAt = momentAt(marks, (m) => /\bended\b/.test(m.cls), shownAt);
+  const leaveAt = momentAt(marks, (m) => /\bleaving\b/.test(m.cls), endAt);
+  expect((await shiftSources(page, { from: endAt - 50, to: leaveAt })).filter((n) => /ts-(cloud|foot|chip)/.test(n))).toEqual([]);
   // A handed-off turn is its outline: open on its narrated steps, each
   // tool-only (or thinking-only) step behind a fold that shows it; a reload
   // draws the same.

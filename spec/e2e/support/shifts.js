@@ -55,9 +55,10 @@ export async function startSampling(page) {
       const s = document.querySelector("#turnStage");
       window.samples.push({
         h: s.offsetHeight, hidden: s.hidden, ended: s.classList.contains("ended") || s.classList.contains("leaving"),
-        // The live slots (status, prompt, headline/tool/trail, chip); the
-        // extras (a card: here check-in's, after 3 calls) may add below them.
-        slots: [".ts-status", ".ts-prompt", ".ts-live", ".ts-cloud"].reduce((sum, sel) => sum + s.querySelector(sel).offsetHeight, 0),
+        // The live slots (status, prompt, headline/tool/trail, the chip's
+        // footer); the extras (a card: here check-in's, after 3 calls) may
+        // add below them.
+        slots: [".ts-status", ".ts-prompt", ".ts-live", ".ts-foot"].reduce((sum, sel) => sum + s.querySelector(sel).offsetHeight, 0),
         extras: s.querySelector(".ts-extras").offsetHeight,
         top: document.querySelector("#history").scrollTop,
       });

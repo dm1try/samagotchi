@@ -704,12 +704,14 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-answer>.bubble.output{border-left:0;background:transparent;border:0;padding:0}
 .ts-answer>.bubble.output>.copy-btn{top:0;right:0}
 /* The cloud: one chip (steps, calls, a tick per call), the turn view's block behind it. */
-.ts-cloud{display:flex;flex-direction:column;gap:6px}
+/* The footer: the chip at the stage's bottom edge (the cloud's steps open above it, the scroller's last slot). */
+.ts-foot{flex:none;padding:0 14px 10px}
+.ts-foot[hidden],.turn-stage.collapsed .ts-foot{display:none}
 .ts-chip{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text-muted);text-align:left}
 .ts-chip:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ts-chip-label{font-size:12.5px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
 .ts-chip-label::before{content:"\25B8  ";color:var(--accent)}
-.ts-cloud.open .ts-chip-label::before{content:"\25BE  "}
+.ts-foot.open .ts-chip-label::before{content:"\25BE  "}
 /* One row whatever the count (the stage's height stays): the newest ticks show, the oldest are cut on the left. */
 .ts-ticks{display:flex;flex-wrap:nowrap;justify-content:flex-end;overflow:hidden;gap:2px;flex:0 1 auto;min-width:0}
 .ts-tick{flex:none}
@@ -735,6 +737,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 @media(max-width:600px){
   .ts-status{padding-left:10px}
   .ts-scroll{padding:8px 10px 10px}
+  .ts-foot{padding:0 10px 10px}
   .ts-defer{display:none}
   .ts-trail-item{max-width:24ch}
 }

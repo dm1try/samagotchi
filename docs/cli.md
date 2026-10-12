@@ -695,8 +695,8 @@ sentence) above the card, until you answer. Once answered, the model's
 question or its own approval keeps that reply (a delegate's relayed
 approval, a hook's question and the step limit don't): two muted lines
 under its `question → answer` line, the whole text when you open the card,
-in both views and after a reload. The chip under it, `N steps · M tool
-calls` with one tick per call, opens the turn view's block in place (newest step first
+in both views and after a reload. The chip at the stage's bottom edge, `N steps · M tool
+calls` with one tick per call, opens the turn view's block right above it (newest step first
 while it runs; a tick opens its step). `▾` folds the stage to its status
 row, remembered in this browser. When the turn ends the answer shows in
 the stage, and the whole turn moves up into the history once you are not

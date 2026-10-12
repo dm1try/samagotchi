@@ -18,7 +18,8 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - Web: the stage view no longer jumps: the stage floats above the composer, so its rising at a turn's start moves
-  nothing on the page.
+  nothing on the page, and its chip is the stage's footer, so it stays put when the answer arrives (the steps open
+  right above it).
 - Web: while a question or approval waits in the stage view, the stage shows the whole text of the reply that asked
   it, not only its last sentence.
 - Web: the model's question or its own approval, once answered, keeps the reply that asked it (a delegate's relayed
