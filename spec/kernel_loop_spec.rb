@@ -1236,7 +1236,7 @@ Need to inspect the filesystem first.
     # cached. A steer the run merged left its earlier thoughts in the
     # prompt (nothing re-sanitizes within a run): they stay too. Only a user
     # entry added after the run's last reply (a !cmd's output) strips the
-    # thoughts before it.
+    # thoughts before it (ReasoningHistory.run_start has the rule's cases).
     describe "a resumed run (reasoning_since:)" do
       let(:call_one) { %(<|think|>plan first\n<|tool_call>call:execute{command: "echo one"}<tool_call|>) }
       let(:exhausted_run) do
@@ -1265,7 +1265,7 @@ Need to inspect the filesystem first.
         expect(prompt).to include("echo one")
       end
 
-      it "keeps a thought before a steer the resumed run merged" do
+      it "keeps a thought before a steer the resumed run merged (ReasoningHistory.run_start)" do
         later = %(<|think|>after the steer\n<|tool_call>call:execute{command: "echo two"}<tool_call|>)
         history = exhausted_run + [{ role: "user", content: "finish and commit" }, { role: "model", content: later },
                                    { role: "tool_response", content: "stdout:\ntwo\n\nexit: 0" }]

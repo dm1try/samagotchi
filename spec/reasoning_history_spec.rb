@@ -29,6 +29,40 @@ RSpec.describe Samagotchi::ReasoningHistory do
 
   before { Samagotchi::ConfigFile.reset_warnings! }
 
+  describe ".run_start" do
+    let(:run) do
+      [{ role: "user", content: "go" }, { role: "model", content: "call one", thinking: "plan first" },
+       { role: "tool_response", content: "one" }]
+    end
+
+    it "is nil without a run start" do
+      expect(described_class.run_start(run, nil)).to be_nil
+    end
+
+    it "is the run's start" do
+      expect(described_class.run_start(run, 1)).to eq(1)
+    end
+
+    it "stays at the run's start past a steer the run merged" do
+      merged = run + [{ role: "user", content: "finish and commit" }, { role: "model", content: "call two" },
+                      { role: "tool_response", content: "two" }]
+
+      expect(described_class.run_start(merged, 1)).to eq(1)
+    end
+
+    it "starts past a user entry added after the run's last reply (a !cmd's output)" do
+      expect(described_class.run_start(run + [{ role: "user", content: "!ls output" }], 1)).to eq(4)
+    end
+
+    it "starts past a turn_start entry added after the run's last reply" do
+      expect(described_class.run_start(run + [{ role: "system", content: "wake", turn_start: true }], 1)).to eq(4)
+    end
+
+    it "is a fresh run's start when it begins at the conversation's end" do
+      expect(described_class.run_start(run + [{ role: "user", content: "next" }], 4)).to eq(4)
+    end
+  end
+
   describe ".level" do
     it "takes the three levels, any case" do
       expect(%w[drop turn All].map { |v| described_class.level(v, "x") }).to eq(%i[drop turn all])

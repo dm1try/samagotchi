@@ -17,7 +17,8 @@ module Samagotchi
   # Order (#resolve): the session's own level (/reasoning-history), then
   # SAMAGOTCHI_REASONING_HISTORY, models.<key>.reasoning_history,
   # hosts.<name>.reasoning_history, then turn. Native hosts ignore it:
-  # KernelLoop keeps the running turn's reasoning on its own.
+  # KernelLoop keeps the running turn's reasoning on its own, from the
+  # run's start (.run_start).
   module ReasoningHistory
     LEVELS = %i[drop turn all].freeze
     DEFAULT = :turn
@@ -116,6 +117,23 @@ module Samagotchi
       Array(conversation).any? do |entry|
         entry[:role].to_s == "model" && entry[:thinking].is_a?(String) && !entry[:thinking].strip.empty?
       end
+    end
+
+    # Where a run's own reasoning starts in +messages+: its start (+since+;
+    # nil without one). Inside one run nothing re-sanitizes, so an entry the
+    # run merged (a steer, a delegate report, the Qwen recovery prompt) left
+    # the reasoning before it in the prompt: it stays. Only a user or
+    # turn_start entry added after the run ended (after its last model
+    # message: a !cmd's output) starts it again past itself.
+    # @param messages [Array<Hash>] the conversation
+    # @param since [Integer, nil] the run's start
+    # @return [Integer, nil]
+    def run_start(messages, since)
+      return nil if since.nil?
+
+      last_reply = messages.rindex { |m| m[:role].to_s == "model" } || -1
+      query = messages.rindex { |m| m[:role].to_s == "user" || m[:turn_start] == true }
+      query && query > last_reply ? [query + 1, since].max : since
     end
 
     # "drop (models: qwen)", "turn (default)".

@@ -18,6 +18,7 @@ require_relative "thinking"
 require_relative "hooks"
 require_relative "pending_input_queue"
 require_relative "steer"
+require_relative "reasoning_history"
 require_relative "thought_stream_splitter"
 require_relative "tools/builtins"
 require_relative "muted_memories"
@@ -291,7 +292,7 @@ module Samagotchi
     private_constant :Turn, :Request, :Generation
 
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:, reasoning_since: nil)
-      conversation = prepare_conversation(messages, keep_thought_from: thought_floor(messages, reasoning_since))
+      conversation = prepare_conversation(messages, keep_thought_from: ReasoningHistory.run_start(messages, reasoning_since))
       context = ContextStatus.new(conversation: conversation, llm_context: @turn_settings.llm_context)
       emit = ->(event) { emit_stream_event(on_stream_event, event) }
       @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context, emit: emit)
@@ -1017,23 +1018,9 @@ module Samagotchi
     end
 
     # Standard multi-turn compliance: never pass prior raw thought blocks,
-    # but a resumed run's (+keep_thought_from+, #thought_floor): the same
+    # but a resumed run's (+keep_thought_from+, ReasoningHistory.run_start): the same
     # run going on after a step-limit Continue.
     def prepare_conversation(messages, keep_thought_from: nil) = sanitize_history(messages, keep_thought_from: keep_thought_from)
-
-    # Where a resumed run's thought blocks start: its start (+since+). Inside
-    # one native run nothing re-sanitizes, so a user entry the run merged (a
-    # steer, a delegate report, the Qwen recovery prompt) left the thoughts
-    # before it in the prompt: they stay. Only a user or turn_start entry
-    # added after the run ended (after its last model message: a !cmd's
-    # output) starts them again past itself. nil without +since+.
-    def thought_floor(messages, since)
-      return nil if since.nil?
-
-      last_reply = messages.rindex { |m| m[:role].to_s == "model" } || -1
-      query = messages.rindex { |m| m[:role].to_s == "user" || m[:turn_start] == true }
-      query && query > last_reply ? [query + 1, since].max : since
-    end
 
     def duplicate_conversation(messages)
       messages.map(&:dup)
