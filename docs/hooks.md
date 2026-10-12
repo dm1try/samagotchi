@@ -51,7 +51,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 |-------|--------------|---------------|
 | `:session_start` | The first turn this chi process runs for the session (so again after `--resume`, a worker that idle-exited and woke, or a restart) | `{ type: :session_start, session_id: "..." }` |
 | `:before_turn` | Before each turn starts | `{ type: :before_turn, session_id: "...", prompt: "..." (nil on a continue), resumed: true \| false (true on a step-limit Continue, which resumes the run before it; false on every other turn, a reminder's or a wake's too), messages: [...] (the history before this turn) }` |
-| `:after_turn` | After a turn completed or was stopped once the model was asked (not after one that failed, was cut short by an interrupt signal (SIGINT), or was stopped before its `:before_turn` hooks) | `{ type: :after_turn, status: "completed" \| "canceled", present: (see [Presenting the answer](#presenting-the-answer-display-only)), messages: [...] (the conversation the turn stored; a cancelled or empty turn ends it with a `kind: turn_note` system message, and a context line is `kind: context`, see [sessions.md](sessions.md#notes-a-turn-leaves-for-the-model)) }` |
+| `:after_turn` | After a turn completed or was stopped once the model was asked (not after one that failed, was cut short by an interrupt signal (SIGINT), or was stopped before its `:before_turn` hooks) | `{ type: :after_turn, status: "completed" \| "canceled", present: (see [Presenting the answer](#presenting-the-answer-display-only)), refs: (see [Refs on the answer](#refs-on-the-answer-display-only)), messages: [...] (the conversation the turn stored; a cancelled or empty turn ends it with a `kind: turn_note` system message, and a context line is `kind: context`, see [sessions.md](sessions.md#notes-a-turn-leaves-for-the-model)) }` |
 | `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
 | `:after_generation` | After LLM returns (both loops); not after a generation a hook cut (`stop_generation`) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
 | `:generation_progress` | While the response streams, in batches (see [Watching the stream](#watching-the-stream)) | `{ type: :generation_progress, iteration: N, thinking: "..." (new since the last fire), text: "..." (new visible text), thinking_chars: N, text_chars: N (this generation so far), elapsed_ms: N, restarted: true (only on the first fire after a dropped stream was asked again) }` |
@@ -274,6 +274,62 @@ end
   and do not change it; use `event[:notify]` for something they should show.
 
 A plugin gets the same from `chi.on(:after_turn) { |event, ctx| event[:present].call { … } }`.
+
+## Refs on the answer (display only)
+
+`:after_turn` also carries `refs:`, a callable that attaches a **ref** to the
+turn's answer: a thing the answer mentions (an issue, a file, a commit) as
+data, with links to open it. Like `present`, it is display only.
+
+```ruby
+class JiraRefs
+  def call(event)
+    return unless event[:type] == :after_turn
+
+    answer = event[:messages].last
+    return unless answer && answer[:role] == "model"
+
+    answer[:content].to_s.scan(/\b[A-Z][A-Z0-9]+-\d+\b/).uniq.each do |key|
+      event[:refs].call(match: key, kind: "issue", target: { id: key }, label: key,
+                        actions: [{ id: "open", label: "Open in Jira", url: "https://jira.example.com/browse/#{key}" }])
+    end
+  end
+end
+```
+
+- The call: `event[:refs].call(match:, kind:, target:, label: nil, actions: [])`,
+  keywords only (String or Symbol keys inside `target` and `actions`).
+  - `match`: the text in the answer the ref stands for (at most 500 characters).
+  - `kind`: a short lowercase word. `"file"` takes `target: {path:, line:, end_line:}`
+    (the lines optional); a relative path is resolved against the session's
+    folder, an absolute one is kept as given. Any other kind (`"issue"`,
+    `"commit"`, …) takes `target: {id:}`.
+  - `label`: what a UI shows for it (optional, at most 200 characters).
+  - `actions`: links a UI offers on top of the kind's own, each
+    `{id:, label:, url:}`; http(s) URLs only, without userinfo (`user:pass@`),
+    at most 8, opened in a new tab.
+- It returns `true` when the ref is kept (or was there already: a duplicate
+  is kept once), `false` when it is refused, and `nil` when the turn has no
+  answer (as `present`: after a cancelled, failed or empty turn) or the call
+  comes after the hooks ran (a plugin that kept `event[:refs]`: the refs are
+  stored by then).
+- Caps: 200 refs and 256 KiB (the list's JSON) per answer; an action's id
+  at most 64 characters and its label 100; a target id 200, a path 4,096.
+- A refused ref is logged as `refs_rejected` with the hook's label and the
+  reason, each reason once per hook per answer (the same again is logged at
+  debug with its count). The call never raises into the hook.
+- Refs are independent of `present`: a rejected `present` keeps them, and a
+  ref whose `match` isn't in the shown text is still stored (a UI drops it).
+- They are kept as `display_refs` on the answer's model message in the
+  session file, next to `display`, and the `answer_display` event says how
+  many (`refs: N`). The model never sees them (as `display`), and a fork
+  (`chi.sessions.fork(messages: ctx.messages)`) starts without them.
+- **The web** gets them with the answer on a reload, and with the re-read
+  after a changed display; live delivery for a refs-only answer and pairing
+  them with the answer's links and text come in a later release.
+  **Terminals** ignore them.
+
+A plugin gets the same from `chi.on(:after_turn) { |event, ctx| event[:refs].call(…) }`.
 
 ## Settings
 

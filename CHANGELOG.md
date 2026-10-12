@@ -8,6 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Hooks and plugins can attach refs to the answer: `event[:refs].call(match:, kind:, target:, label:, actions:)` on
+  `:after_turn`, stored as `display_refs` on the answer (display only: the model never sees them; the web uses them
+  in a later release). Caps: 200 refs and 256 KiB per answer; a refused ref is logged as `refs_rejected`. See
+  [docs/hooks.md](docs/hooks.md#refs-on-the-answer-display-only).
+
+### Changed
+
+- A ref's values are capped (`Ref`, `RefAction`): a label at most 200 characters, at most 8 actions, a target id
+  200 and a path 4,096 characters; an action's id 64 and label 100. An action URL with userinfo
+  (`https://user:pass@host/`) is refused.
+
 ## [0.60.0] - 2026-10-11
 
 ### Added

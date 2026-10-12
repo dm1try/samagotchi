@@ -56,9 +56,11 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     # end_turn(turn, "completed" | "canceled"): under the event lock the session gets the kept
   │     #   messages, goes IDLE, records last_turn, and :turn_completed {result, turn_summary,
   │     #   display_pending} or :turn_canceled {cancellation_reason, cancelled_by, duration_ms} is emitted
-  │     # then the :after_turn hook (status, messages, present: the AnswerDisplay presenter)
-  │     # store_answer_display (:answer_display to the observers when a hook changed the answer,
-  │     #   or display: nil when the web was told to wait for it)
+  │     # then the :after_turn hook (status, messages, present: the AnswerDisplay presenter,
+  │     #   refs: the AnswerRefs adder)
+  │     # store_answer_display (one replace of the answer: `display` and/or `display_refs`;
+  │     #   :answer_display {display, refs: N} to the observers when a hook changed the answer or
+  │     #   attached refs, or display: nil when the web was told to wait for it)
   │     # then the :session_end hook
   │
   ├── warm_up_next_turn(turn, result)
@@ -352,7 +354,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:turn_completed` | normal end | `{result, turn_summary, display_pending}` |
 | `:turn_canceled` | Stop, hook stop, Ctrl-C | `{cancellation_reason, cancelled_by?, duration_ms}` |
 | `:turn_failed` | an error | `{error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
-| `:answer_display` | after the after_turn hooks (observers only, not the sink) | `{display}` (a string, or nil) |
+| `:answer_display` | after the after_turn hooks (observers only, not the sink) | `{display, refs?}` (display a string, or nil; refs the count of the answer's refs, only when a hook attached some) |
 
 The boundary events (`:turn_started`, `:turn_completed`, `:turn_canceled`, `:turn_failed`) also carry `origin`
 when the turn was queued with one.
@@ -409,6 +411,14 @@ puts the hook runtime on the event: `event[:hook]` (the hook's label) and five h
 | `event[:steer].call(text)` | Queue text for the running turn's next boundary | check-in (nudge mode), skills |
 
 From `:after_turn` and `:session_end` there is no turn left: `stop_turn` and `steer` return false.
+
+`:after_turn` adds two of its own, built by `complete_turn` on the stored conversation's last message when it is the
+model's: `event[:present]` (`AnswerDisplay`, the answer's `display` text) and `event[:refs]` (`AnswerRefs`, refs kept
+as `display_refs`: caps, validation, relative file paths resolved against the session's folder, `refs_rejected`
+logged). Both are display only: `AnswerDisplay::DISPLAY_ONLY` lists `display`, `empty_answer` and `display_refs`, which
+`strip`/`strip_all` drop from every model-facing copy (hooks' `messages:`, the recap, `ctx.messages`,
+after_generation), while `KernelLoop#sanitize_history` and `ChatLoop#plain` copy them so the stored conversation keeps
+them across turns. `Web::App#messages_for_display` sends `display_refs` re-validated (`AnswerRefs.for_display`).
 
 ### Hook lifecycle
 

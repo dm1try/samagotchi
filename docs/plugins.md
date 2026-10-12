@@ -330,7 +330,8 @@ end
 This is a bundle hook, the same as a `hooks/*.rb` file. See
 [hooks.md](hooks.md#hook-events) for the events; on `:after_turn`,
 `event[:present]` sets how the answer is shown in the web
-([Presenting the answer](hooks.md#presenting-the-answer-display-only)). Its label is
+([Presenting the answer](hooks.md#presenting-the-answer-display-only)) and `event[:refs]`
+attaches refs to it ([Refs on the answer](hooks.md#refs-on-the-answer-display-only)). Its label is
 `plugin.rb (bundle my-bundle)`. The block may take only the event. If it
 raises, the error is logged and the hook is skipped.
 
