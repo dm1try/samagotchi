@@ -290,3 +290,54 @@ test("trailMark: a call a Stop cut is ■, not a failure's ✕", () => {
   assert.equal(trailMark("blocked"), "✕");
   assert.equal(trailMark("stopped"), "■");
 });
+
+// The reply that asked: a question or an approval blocks its call, whose
+// row runs in the last gen while the card waits.
+const ASKED = "I found two config files: dev.yml uses 3000.\nprod.yml uses 8080. They disagree.";
+const askingTurn = () => turnOf(
+  { type: "generation_chunk", iteration: 1, thinking: "t.", text: `${ASKED}\n\n` },
+  { type: "generation_completed" },
+  started(1, 1, "ask_user_question", "Which one?"),
+);
+
+test("liveSlots: a blocking card shows the asking reply's whole text (newlines kept, trimmed); the phase waits", () => {
+  const slots = liveSlots(askingTurn(), { narration: "They disagree.", pending: true, blocked: true });
+  assert.equal(slots.asking, ASKED);
+  assert.equal(slots.phase, "waiting for you");
+});
+
+test("liveSlots: no asking text for an action card (pending, not blocked), unblocked, or once the turn has ended", () => {
+  assert.equal(liveSlots(askingTurn(), { pending: true }).asking, "");
+  assert.equal(liveSlots(askingTurn()).asking, "");
+  const ended = askingTurn();
+  applyEvent(ended, { type: "turn_completed" });
+  assert.equal(liveSlots(ended, { pending: true, blocked: true, ended: "completed" }).asking, "");
+});
+
+test("liveSlots: a thinking-only asking step shows no earlier step's text; the headline stays its thinking sentence", () => {
+  const turn = turnOf(
+    { type: "generation_chunk", iteration: 1, text: "Earlier narration." },
+    { type: "generation_completed" },
+    started(1, 1, "read"), done(1, 1, "read"),
+    { type: "generation_started", iteration: 2 },
+    { type: "generation_chunk", iteration: 2, thinking: "Ask them." },
+    { type: "generation_completed" },
+    started(2, 1, "ask_user_question"),
+  );
+  const slots = liveSlots(turn, { thinking: "Ask them.", pending: true, blocked: true });
+  assert.equal(slots.asking, "");
+  assert.deepEqual(slots.headline, { text: "Ask them.", thinking: true });
+  assert.equal(slots.phase, "waiting for you");
+});
+
+test("liveSlots: a hook's question with no running row in the last gen (asked before its call, or between steps) shows no text", () => {
+  const before = turnOf({ type: "generation_chunk", iteration: 1, text: "Let me edit it." }, { type: "generation_completed" });
+  assert.equal(liveSlots(before, { pending: true, blocked: true }).asking, "");
+  const after = turnOf(
+    { type: "generation_chunk", iteration: 1, text: "Reading." }, { type: "generation_completed" },
+    started(1, 1, "read"), done(1, 1, "read"),
+  );
+  const slots = liveSlots(after, { pending: true, blocked: true });
+  assert.equal(slots.asking, "");
+  assert.equal(slots.phase, "waiting for you");
+});

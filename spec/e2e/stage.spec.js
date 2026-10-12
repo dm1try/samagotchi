@@ -32,6 +32,30 @@ async function startSampling(page) {
 }
 const stopSampling = (page) => page.evaluate(() => { clearInterval(window.sampler); return window.samples; });
 
+// Layout shifts (the CLS entries) on this page and after each reload:
+// window.shifts, each {t, v, input (within 500 ms of a click or key), where
+// (where its moved nodes are: "history", "stage", else "other")}.
+function recordShifts() {
+  window.shifts = [];
+  new PerformanceObserver((list) => {
+    const within = (sel, node) => !!document.querySelector(sel)?.contains(node);
+    for (const e of list.getEntries()) {
+      const places = e.sources.map((src) => (within("#history", src.node) ? "history" : within("#turnStage", src.node) ? "stage" : "other"));
+      window.shifts.push({ t: e.startTime, v: e.value, input: e.hadRecentInput, where: [...new Set(places)].join(" ") });
+    }
+  }).observe({ type: "layout-shift", buffered: true });
+}
+async function watchShifts(page) {
+  await page.addInitScript(recordShifts);
+  await page.evaluate(recordShifts);
+}
+// The shifts' sum in [from, to) (page clock, ms), without the ones a click
+// or key caused; +where+ keeps only the shifts of that place.
+const shiftSum = (page, { from = 0, to = 1e12, where = null } = {}) => page.evaluate(([from, to, where]) =>
+  window.shifts.filter((s) => !s.input && s.t >= from && s.t < to && (!where || s.where === where)).reduce((sum, s) => sum + s.v, 0),
+[from, to, where]);
+const pageNow = (page) => page.evaluate(() => performance.now());
+
 test("the stage keeps one height while a multi-step turn runs; nothing moves the history; a scrolled-up reader stays at the hand-off", async ({ page, script }) => {
   script("stage");
   await send(page, "First round");
@@ -103,19 +127,47 @@ test("a turn with no answer ends in the stage as no answer", async ({ page, scri
 
 test("a question card sits in the stage (also after a reload mid-turn), and the answer comes after it", async ({ page, script }) => {
   script("question");
+  // Every frame: whether a card waits and whether the asking text shows. They
+  // land in one frame (no frame with one and not the other).
+  const watchFrames = () => page.evaluate(() => {
+    window.frames2 = [];
+    const tick = () => {
+      const s = document.querySelector("#turnStage");
+      const waits = !!s.querySelector(".ts-extras .bubble.question:not(.answered):not(.cancelled)");
+      window.frames2.push({ waits, asking: !s.querySelector(".ts-asking").hidden, phase: s.dataset.phase, t: performance.now() });
+      window.framesRaf = requestAnimationFrame(tick);
+    };
+    tick();
+  });
+  const frames = () => page.evaluate(() => window.frames2);
+  await watchFrames();
   await send(page, "Read a file of my choice");
   const card = stageEl(page).locator(".ts-extras .bubble.question");
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
   await expect(page.locator("#history .bubble.question")).toHaveCount(0);
+  // The whole reply that asked, in the headline's place (not only its last sentence).
+  const asking = stageEl(page).locator(".ts-asking");
+  await expect(asking).toContainText("I can start from either file: README.md describes the project");
+  await expect(stageEl(page).locator(".ts-headline")).toBeHidden();
+  expect((await frames()).filter((f) => f.waits !== f.asking)).toEqual([]);
   // A reload mid-turn draws the stage again with its card.
   await page.reload();
   await expect(card).toBeVisible();
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
+  await expect(asking).toContainText("I can start from either file: README.md describes the project");
+  // From the answer until the turn is answered nothing moves on its own:
+  // the card's collapse and the slots' swap come with the click.
+  await watchShifts(page);
+  await watchFrames();
+  const submitAt = await pageNow(page);
   await expect(stageEl(page).locator(".ts-prompt .user-message")).toHaveText("Read a file of my choice");
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
+  await expect(asking).toBeHidden();
+  const answeredAt = (await frames()).find((f) => f.phase === "answered").t;
+  expect(await shiftSum(page, { from: submitAt, to: answeredAt })).toBeLessThan(0.01);
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
   // Their classes without the arrival animation's (gone when it ends).

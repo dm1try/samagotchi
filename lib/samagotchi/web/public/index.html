@@ -648,6 +648,10 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-headline.thinking{font-size:13.5px;font-style:italic;color:var(--text-muted)}
 .ts-think-tag{font-style:normal;font-size:12.5px;color:var(--think-text);margin-right:6px}
 .ts-headline.fresh{animation:ts-fade .3s ease}
+/* While a question or approval waits: the whole reply that asked it, raw as a closed step's text, in the headline's
+   place; capped so the card keeps its room, read from the top (stage_view.js drawAsking). */
+.ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
+.turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:32px;display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
 .ts-spin{flex:none;width:11px;height:11px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:init-spin .8s linear infinite}

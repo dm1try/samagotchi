@@ -366,6 +366,8 @@ test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ p
   const card = page.locator(`${H()} .bubble.question.approval`);
   await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
   await expect(card.locator(".approval-why")).toContainText("e2e-ask");
+  // The stage shows the reply that asked for it above the card.
+  if (stage()) await expect(page.locator("#turnStage .ts-asking")).toHaveText("Running the command that needs approval.");
   // Answered from the keyboard: the card took the focus from the empty
   // composer; pick the first option and press Enter.
   const first = card.locator(".question-option input").first();

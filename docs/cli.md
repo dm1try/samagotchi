@@ -689,7 +689,9 @@ the step's reasoning), the running tool with what it does, and the last
 three calls. A plugin's or hook's notice and a plugin's nudge ("check-in
 nudged the model") show ahead of those calls for about 4 s, as their rows
 wait in the closed block. A card that needs you (a question, an approval, check-in)
-sits in the stage too. The chip under it, `N steps · M tool calls` with one
+sits in the stage too. While a question or approval waits, the stage shows
+the whole text of the reply that asked it (in place of its newest
+sentence) above the card, until you answer. The chip under it, `N steps · M tool calls` with one
 tick per call, opens the turn view's block in place (newest step first
 while it runs; a tick opens its step). `▾` folds the stage to its status
 row, remembered in this browser. When the turn ends the answer shows in

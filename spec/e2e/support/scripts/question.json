@@ -2,6 +2,7 @@
   "delay": 0.02,
   "iterations": [
     {"thinking": "I should ask which file to read.",
+     "text": "I can start from either file: README.md describes the project and Gemfile lists its gems. They answer different questions.",
      "tools": [{"name": "ask_user_question", "arguments": {"question": "Which file should I read?", "options": ["README.md", "Gemfile"]}}]},
     {"thinking": "They answered; one read.", "tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 1, "end_line": 2}}]},
     {"text": "Read the file you picked. **Done**."}
