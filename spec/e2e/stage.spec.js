@@ -3,6 +3,7 @@
 // history. The default view: the chromium project runs it, the turn project
 // doesn't.
 import { test, expect } from "./support/fixtures.js";
+import { frames, pageNow, shiftSum, startSampling, stopSampling, watchFrames, watchShifts } from "./support/shifts.js";
 
 const stageEl = (page) => page.locator("#turnStage");
 const handedOff = (page, turns) => expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
@@ -11,50 +12,6 @@ async function send(page, prompt) {
   await page.locator("#prompt").fill(prompt);
   await page.locator("#actionBtn").click();
 }
-
-// Samples the stage's height and the history's scrollTop every 100 ms until
-// stopSampling(): window.samples.
-async function startSampling(page) {
-  await page.evaluate(() => {
-    window.samples = [];
-    window.sampler = setInterval(() => {
-      const s = document.querySelector("#turnStage");
-      window.samples.push({
-        h: s.offsetHeight, hidden: s.hidden, ended: s.classList.contains("ended") || s.classList.contains("leaving"),
-        // The live slots (status, prompt, headline/tool/trail, chip); the
-        // extras (a card: here check-in's, after 3 calls) may add below them.
-        slots: [".ts-status", ".ts-prompt", ".ts-live", ".ts-cloud"].reduce((sum, sel) => sum + s.querySelector(sel).offsetHeight, 0),
-        extras: s.querySelector(".ts-extras").offsetHeight,
-        top: document.querySelector("#history").scrollTop,
-      });
-    }, 100);
-  });
-}
-const stopSampling = (page) => page.evaluate(() => { clearInterval(window.sampler); return window.samples; });
-
-// Layout shifts (the CLS entries) on this page and after each reload:
-// window.shifts, each {t, v, input (within 500 ms of a click or key), where
-// (where its moved nodes are: "history", "stage", else "other")}.
-function recordShifts() {
-  window.shifts = [];
-  new PerformanceObserver((list) => {
-    const within = (sel, node) => !!document.querySelector(sel)?.contains(node);
-    for (const e of list.getEntries()) {
-      const places = e.sources.map((src) => (within("#history", src.node) ? "history" : within("#turnStage", src.node) ? "stage" : "other"));
-      window.shifts.push({ t: e.startTime, v: e.value, input: e.hadRecentInput, where: [...new Set(places)].join(" ") });
-    }
-  }).observe({ type: "layout-shift", buffered: true });
-}
-async function watchShifts(page) {
-  await page.addInitScript(recordShifts);
-  await page.evaluate(recordShifts);
-}
-// The shifts' sum in [from, to) (page clock, ms), without the ones a click
-// or key caused; +where+ keeps only the shifts of that place.
-const shiftSum = (page, { from = 0, to = 1e12, where = null } = {}) => page.evaluate(([from, to, where]) =>
-  window.shifts.filter((s) => !s.input && s.t >= from && s.t < to && (!where || s.where === where)).reduce((sum, s) => sum + s.v, 0),
-[from, to, where]);
-const pageNow = (page) => page.evaluate(() => performance.now());
 
 test("the stage keeps one height while a multi-step turn runs; nothing moves the history; a scrolled-up reader stays at the hand-off", async ({ page, script }) => {
   script("stage");
@@ -152,18 +109,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   script("question");
   // Every frame: whether a card waits and whether the asking text shows. They
   // land in one frame (no frame with one and not the other).
-  const watchFrames = () => page.evaluate(() => {
-    window.frames2 = [];
-    const tick = () => {
-      const s = document.querySelector("#turnStage");
-      const waits = !!s.querySelector(".ts-extras .bubble.question:not(.answered):not(.cancelled)");
-      window.frames2.push({ waits, asking: !s.querySelector(".ts-asking").hidden, phase: s.dataset.phase, t: performance.now() });
-      window.framesRaf = requestAnimationFrame(tick);
-    };
-    tick();
-  });
-  const frames = () => page.evaluate(() => window.frames2);
-  await watchFrames();
+  await watchFrames(page);
   await send(page, "Read a file of my choice");
   const card = stageEl(page).locator(".ts-extras .bubble.question");
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
@@ -173,7 +119,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   const asking = stageEl(page).locator(".ts-asking");
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
   await expect(stageEl(page).locator(".ts-headline")).toBeHidden();
-  expect((await frames()).filter((f) => f.waits !== f.asking)).toEqual([]);
+  expect((await frames(page)).filter((f) => f.waits !== f.asking)).toEqual([]);
   // A reload mid-turn draws the stage again with its card.
   await page.reload();
   await expect(card).toBeVisible();
@@ -182,14 +128,14 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // From the answer until the turn is answered nothing moves on its own:
   // the card's collapse and the slots' swap come with the click.
   await watchShifts(page);
-  await watchFrames();
+  await watchFrames(page);
   const submitAt = await pageNow(page);
   await expect(stageEl(page).locator(".ts-prompt .user-message")).toHaveText("Read a file of my choice");
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
   await expect(asking).toBeHidden();
-  const answeredAt = (await frames()).find((f) => f.phase === "answered").t;
+  const answeredAt = (await frames(page)).find((f) => f.phase === "answered").t;
   expect(await shiftSum(page, { from: submitAt, to: answeredAt })).toBeLessThan(0.01);
   await page.mouse.move(0, 0);
   await handedOff(page, 1);

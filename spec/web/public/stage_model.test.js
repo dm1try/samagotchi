@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
+  flashOf, frameTarget, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
@@ -340,4 +340,8 @@ test("liveSlots: a hook's question with no running row in the last gen (asked be
   const slots = liveSlots(after, { pending: true, blocked: true });
   assert.equal(slots.asking, "");
   assert.equal(slots.phase, "waiting for you");
+});
+
+test("frameTarget: the content's own height (null) for now", () => {
+  assert.equal(frameTarget({ natural: 200, held: null, cap: 400, holding: true, collapsed: false }), null);
 });
