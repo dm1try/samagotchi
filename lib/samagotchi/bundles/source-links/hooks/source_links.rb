@@ -2,6 +2,7 @@
 
 # Loaded through module_eval: it requires what it uses.
 require "open3"
+require "samagotchi/ref"
 
 # An after_turn hook that links the source refs the model's answer
 # mentions — a JIRA ticket, a GitHub issue, an internal wiki page. In the
@@ -27,6 +28,8 @@ require "open3"
 #           pattern: '\bGH-(\d+)\b'   # full form: a regex
 #           url: 'https://github.com/org/repo/issues/{match}'
 #           case_insensitive: false   # optional, default false
+#           kind: issue               # optional: the refs' kind (below),
+#                                     # default issue
 #         - name: Issues              # `#12` → this project's repo,
 #                                     # `owner/repo#12` → that repo
 #           pattern: '(?<![\w/&])(?:(?<repo>[A-Za-z0-9][\w-]*/[\w.-]*\w))?#(?<num>\d+)\b'
@@ -48,6 +51,12 @@ require "open3"
 # link to this checkout's host with someone else's repo. A ref with a
 # placeholder that can't be filled is not linked; a `{word}` that is none
 # of these stays text (warned at load).
+#
+# Each linked ref is also a ref on the answer (event[:refs], chi 0.61.0):
+# its source's `kind:` (a short lowercase word, default "issue"; not
+# "file"), target {id: the ref's text}, label "<name> <ref>", and one
+# action, "Open in <name>", the ref's URL. A URL that isn't http(s) stays a
+# markdown link only. The web's ref menu shows the action.
 #
 # The note is not stored in the conversation: it is an event, replayed by a
 # UI with the session's cards (a reload keeps it, after the worker stopped
@@ -75,6 +84,8 @@ class SourceLinks
   # Placeholders every pattern has: {match} (group 1, else the whole ref),
   # and {repo}/{host} (a named group, else the project's git remote).
   BUILTIN_PLACEHOLDERS = %w[match repo host].freeze
+  # A source's refs' kind, unless its `kind:` says another.
+  DEFAULT_KIND = "issue"
   # `git remote get-url` output: a URL with a scheme, `[user[:pw]@]host[:port]/path`.
   REMOTE_URL = %r{\A(?:https?|ssh|git)://(?:[^/]*@)?(\[[^\]]*\]|[^/:@]+)(?::[^/]*)?(/.*)?\z}i
   # scp-like `[user@]host:path`: a colon before any slash; a leading `/` or
@@ -117,6 +128,7 @@ class SourceLinks
 
     hits = occurrences(text[0, MAX_SCAN])
     linked = present_links(event[:present], text, hits)
+    add_refs(event[:refs], hits)
     return unless @note
 
     found = collect(hits)
@@ -143,6 +155,33 @@ class SourceLinks
     shown = present.call { |display| ours = link(display, display == text ? hits : nil, linked) }
     ours.nil? || shown != ours ? nil : linked
   end
+
+  # Each ref the answer links (#link's rule: not in code, the first source
+  # on a ref) as a ref on the answer, once per text and URL. Independent of
+  # the display (chi pairs it with the shown link by its URL). A URL that
+  # isn't http(s) can't be an action: that ref is left out.
+  def add_refs(refs, hits)
+    return unless refs
+
+    seen = {}
+    pos = 0
+    hits.each do |hit|
+      next if hit[:quiet] || hit[:start] < pos
+
+      pos = hit[:finish]
+      key = [hit[:ref], hit[:url]]
+      next if seen.key?(key) || !Samagotchi::RefAction.http_url?(hit[:url])
+
+      seen[key] = true
+      refs.call(match: hit[:ref], kind: hit[:kind], target: { id: hit[:ref] },
+                label: fit("#{hit[:name]} #{hit[:ref]}", Samagotchi::Ref::MAX_LABEL),
+                actions: [{ id: "open", label: fit("Open in #{hit[:name]}", Samagotchi::RefAction::MAX_LABEL), url: hit[:url] }])
+    end
+  end
+
+  # +text+ cut to +max+ characters with a "…", so a long source name can't
+  # get its refs refused.
+  def fit(text, max) = text.length > max ? "#{text[0, max - 1]}…" : text
 
   # The content of the last `role: "model"` message, or nil. Handles both
   # string- and symbol-keyed messages. A turn that ended without a visible
@@ -188,7 +227,8 @@ class SourceLinks
           next if url.nil?
 
           quiet = inside_any?(code, start, finish) || inside_any?(labels, start, finish)
-          hits << { start: start, finish: finish, name: source[:name], ref: match[0], url: url, quiet: quiet }
+          hits << { start: start, finish: finish, name: source[:name], kind: source[:kind], ref: match[0], url: url,
+                    quiet: quiet }
         end
       rescue Regexp::TimeoutError
         Samagotchi::Log.warn(:hooks, "source_links_timeout",
@@ -407,7 +447,7 @@ class SourceLinks
       name = prefix if name.empty?
       regex = Regexp.new("\\b#{Regexp.escape(prefix)}-(\\d+)\\b", flags, timeout: REGEX_TIMEOUT)
       base = entry["base_url"].to_s
-      { name: name, regex: regex, url: ->(ref, _match) { "#{base}#{ref}" } }
+      { name: name, kind: ref_kind(name, entry["kind"]), regex: regex, url: ->(ref, _match) { "#{base}#{ref}" } }
     elsif !pattern.empty?
       name = "source" if name.empty?
       regex = Regexp.new(pattern, flags, timeout: REGEX_TIMEOUT)
@@ -416,7 +456,7 @@ class SourceLinks
       remote = entry["remote"].to_s.strip
       remote = "origin" if remote.empty?
       hosts = Array(entry["remote_host"]).map { |host| host.to_s.strip.downcase }.reject(&:empty?)
-      source = { name: name, remote: remote, remote_hosts: hosts }
+      source = { name: name, kind: ref_kind(name, entry["kind"]), remote: remote, remote_hosts: hosts }
       source.merge(regex: regex, url: ->(ref, match) { render_url(template, known, match, ref, source) })
     else
       warn_invalid("a source needs a prefix: or a pattern:")
@@ -425,6 +465,21 @@ class SourceLinks
   rescue RegexpError => e
     warn_invalid("its pattern does not compile: #{e.message}")
     nil
+  end
+
+  # A source's `kind:` for its refs: a short lowercase word other than
+  # "file" (a file ref needs a path), else DEFAULT_KIND, with a warning
+  # when one was given.
+  def ref_kind(name, raw)
+    return DEFAULT_KIND if raw.nil? || raw.to_s.strip.empty?
+
+    kind = raw.to_s.strip
+    return kind if Samagotchi::Ref::KIND.match?(kind) && kind != Samagotchi::Ref::FILE
+
+    Samagotchi::Log.warn(:hooks, "source_links_invalid_kind",
+                         echo: "[samagotchi:hooks] source-links: #{name}: kind #{kind.inspect} is not a short " \
+                               "lowercase word (nor file); using #{DEFAULT_KIND}")
+    DEFAULT_KIND
   end
 
   # The placeholders of +template+ this pattern can fill: {match}, {repo},

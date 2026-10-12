@@ -636,6 +636,7 @@ bundles:
         pattern: '\bGH-(\d+)\b'   # full form: a regex
         url: 'https://github.com/org/repo/issues/{match}'
         case_insensitive: false   # optional, default false
+        kind: issue               # optional: the refs' kind, default issue
     max: 10                       # optional: refs per line, default 10
     note: false                   # optional: no sources line, default true
 ```
@@ -653,6 +654,13 @@ answer links every URL it names, since it would only repeat them as plain
 text ([`fallback_for: :display`](#what-a-hook-can-do-the-runtime)); it shows
 when it names one the answer doesn't link (a ref only in code, two sources on
 one ref) and whenever markdown is off. Bundle 0.4.0 needs chi 0.35.0 for that.
+
+Each ref the answer links is also a [ref on the
+answer](#refs-on-the-answer-display-only): kind `issue` (or the source's
+`kind:`, a short lowercase word other than `file`), target `{id: "JIRA-123"}`,
+label `JIRA JIRA-123`, and one action, **Open in JIRA** (the source's name),
+its URL. The web's ref menu on the link shows it. A ref whose URL isn't
+http(s) stays a markdown link only. Bundle 0.5.0 needs chi 0.61.0 for that.
 
 The `prefix:` form compiles to `\b<prefix>-(\d+)\b` and the URL is
 `base_url` + the full ref text (`JIRA-123`). The `pattern:` form takes a

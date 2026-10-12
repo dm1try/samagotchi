@@ -7,6 +7,7 @@ require "fileutils"
 require "digest"
 require "samagotchi/hooks"
 require "samagotchi/answer_display"
+require "samagotchi/answer_refs"
 
 # The source-links bundle (lib/samagotchi/bundles/source-links): an
 # after_turn hook that announces the source refs (JIRA tickets, GitHub
@@ -709,6 +710,72 @@ RSpec.describe "The source-links bundle" do
         expect(notices.size).to eq(1)
         expect(notices.first).not_to have_key(:fallback_for)
       end
+    end
+  end
+
+  describe "the refs on the answer (event[:refs])" do
+    # Fire :after_turn with a presenter and a refs adder, as the Engine
+    # does; the refs stored (the display text in @display).
+    def refs_for(content)
+      messages = [user("q"), model(content)]
+      event = { type: :after_turn, status: "completed", messages: messages }
+      display = Samagotchi::AnswerDisplay.new(messages)
+      event[:present] = display.presenter(event)
+      refs = Samagotchi::AnswerRefs.new(messages, cwd: Dir.pwd)
+      event[:refs] = refs.adder(event)
+      registry.fire(:after_turn, event)
+      @display = display.text
+      refs.to_a
+    end
+
+    def jira_ref(key, kind: "issue")
+      { match: key, kind: kind, target: { id: key }, label: "JIRA #{key}",
+        actions: [{ id: "open", label: "Open in JIRA", url: "https://myjira.com/browse/#{key}" }] }
+    end
+
+    it "adds each linked ref once, an issue with an Open in <source> action; the display is as without refs" do
+      expect(refs_for("See JIRA-1, then JIRA-2 and JIRA-1 again.")).to eq([jira_ref("JIRA-1"), jira_ref("JIRA-2")])
+      expect(@display)
+        .to eq("See [JIRA-1](https://myjira.com/browse/JIRA-1), then [JIRA-2](https://myjira.com/browse/JIRA-2) and " \
+               "[JIRA-1](https://myjira.com/browse/JIRA-1) again.")
+    end
+
+    it "adds none for a ref it doesn't link (in code, in a link, two sources on one ref: the first)" do
+      settings["sources"] << { "name" => "Any", "pattern" => "\\b[A-Z]+-\\d+\\b", "url" => "https://any.test/{match}" }
+      expect(refs_for("`JIRA-2` [JIRA-4](https://x.test/JIRA-4) JIRA-1")).to eq([jira_ref("JIRA-1")])
+    end
+
+    it "takes a source's kind:" do
+      settings["sources"].first["kind"] = "ticket"
+      expect(refs_for("JIRA-1")).to eq([jira_ref("JIRA-1", kind: "ticket")])
+    end
+
+    %w[File file].each do |bad|
+      it "warns and uses issue for a kind: #{bad} (not a short lowercase word, or file)" do
+        settings["sources"].first["kind"] = bad
+        expect { expect(refs_for("JIRA-1")).to eq([jira_ref("JIRA-1")]) }
+          .to output(/source-links: JIRA: kind "#{bad}" is not a short lowercase word/).to_stderr
+      end
+    end
+
+    it "shortens a long source name's labels (with …) to fit the caps, so its refs aren't refused" do
+      name = "N" * 300
+      settings.replace("sources" => [{ "name" => name, "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" }])
+      ref = refs_for("JIRA-1").first
+
+      expect(ref[:actions].first[:label]).to eq("Open in #{"N" * 91}…")
+      expect(ref[:actions].first[:label].length).to eq(Samagotchi::RefAction::MAX_LABEL)
+      expect(ref[:label].length).to eq(Samagotchi::Ref::MAX_LABEL)
+      expect(ref[:label]).to end_with("…")
+    end
+
+    it "never makes an action of a URL that isn't http(s): the ref stays a markdown link only" do
+      settings.replace("sources" => [{ "name" => "Notes", "prefix" => "NOTE", "base_url" => "javascript:alert('" },
+                                     { "name" => "App", "prefix" => "APP", "base_url" => "jira://browse/" },
+                                     { "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" }])
+      expect(refs_for("NOTE-1 APP-2 JIRA-3")).to eq([jira_ref("JIRA-3")])
+      expect(@display).to eq("[NOTE-1](javascript:alert%28'NOTE-1) [APP-2](jira://browse/APP-2) " \
+                             "[JIRA-3](https://myjira.com/browse/JIRA-3)")
     end
   end
 

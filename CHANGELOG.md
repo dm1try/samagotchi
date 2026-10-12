@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
 - github-pr 0.5.0: a `path:line` it links in an answer is also a file ref, so the web's ref menu offers the file in
   this checkout (editor, show in turn, copy) and a "PR diff" (or "File at head") action. Needs chi 0.61.0; run
   `chi update`.
+- source-links 0.5.0: each ref it links in an answer gets an "Open in <source>" action in the web's ref menu; a
+  source's new `kind:` key names its refs' kind (default `issue`). Needs chi 0.61.0; run `chi update`.
 
 ## [0.61.0] - 2026-10-12
 
