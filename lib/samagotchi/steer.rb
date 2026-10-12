@@ -131,6 +131,20 @@ module Samagotchi
       "[Steer #{sender}, #{HEADER_TAIL}"
     end
 
+    # The header of a plugin steer folded into the tool result before it on
+    # the chat wire (LLM::SteerFold): who sent it, and that chi added it
+    # after the result, so the model doesn't take it for the tool's output.
+    FOLD_HEADER = "[Steer %s, added by chi after this tool result (not part of its output), #{HEADER_TAIL}"
+
+    # What a folded steer adds to its tool message's content: a blank line,
+    # FOLD_HEADER, a newline, the steer's text. A pure function of the saved
+    # entry, so every request renders it the same way.
+    def folded_text(message)
+      source = (message[:source] || message["source"]).to_s
+      sender = SENDERS[source] || "from the #{source} plugin"
+      "\n\n#{format(FOLD_HEADER, sender)}\n#{message[:content] || message["content"]}"
+    end
+
     def automatic_header(client_id)
       format(AUTOMATIC_HEADER, client_id.empty? ? "an unnamed client" : client_id)
     end

@@ -211,6 +211,16 @@ RSpec.describe Samagotchi::Steer do
     end
   end
 
+  describe ".folded_text" do
+    it "is a blank line, the fold header naming the plugin and the tool result, then the steer's text" do
+      expect(described_class.folded_text({ kind: "steer", source: "check-in", content: "nudge" }))
+        .to eq("\n\n[Steer from the check-in plugin, added by chi after this tool result (not part of its output), " \
+               "mid-task. Follow it; if it asks for nothing, carry on with the task.]\nnudge")
+      expect(described_class.folded_text({ "kind" => "steer", "source" => "agents-md", "content" => "x" }))
+        .to start_with("\n\n[Steer from the agents-md plugin, added by chi after this tool result")
+    end
+  end
+
   it ".person? is a steer from the user or the parent agent, with either key kind" do
     expect(described_class.person?({ kind: "steer", source: "user" })).to be(true)
     expect(described_class.person?({ "kind" => "steer", "source" => "parent_agent" })).to be(true)
