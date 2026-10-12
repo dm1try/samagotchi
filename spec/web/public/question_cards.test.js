@@ -77,7 +77,7 @@ class FakeEl {
   }
 }
 
-function setup({ near = true, fail = null } = {}) {
+function setup({ near = true, fail = null, page = {} } = {}) {
   const history = new FakeEl("div");
   const calls = [];
   const call = (name) => (...args) => {
@@ -96,7 +96,14 @@ function setup({ near = true, fail = null } = {}) {
     scrollToEnd: () => { scrolled += 1; },
     removeHintIfEmpty: () => { hintDrops += 1; },
     api: { sendAnswer: call("sendAnswer"), dismissQuestion: call("dismissQuestion"), sendCommand: call("sendCommand") },
-    doc: { createElement: (tag) => new FakeEl(tag), createTextNode: (text) => Object.assign(new FakeEl("#text"), { textContent: text }) },
+    doc: {
+      createElement: (tag) => new FakeEl(tag),
+      createTextNode: (text) => Object.assign(new FakeEl("#text"), { textContent: text }),
+      // page: {activeElement, body, prompt} for the focus rule.
+      get activeElement() { return page.activeElement ?? null; },
+      body: page.body ?? null,
+      getElementById: (id) => (id === "prompt" ? page.prompt ?? null : null),
+    },
   });
   return { cards, history, calls, scrolled: () => scrolled, hintDrops: () => hintDrops };
 }
@@ -476,4 +483,97 @@ test("a relayed approval on the parent links its delegate's session", () => {
   assert.equal(link.href, "#/s/cccc2222-0000");
   assert.equal(link.textContent, "cccc2222");
   assert.equal(row.children[2].textContent, " · push it");
+});
+
+// A keydown on an element inside the card, bubbled to the card's listener.
+function press(card, target, key = "Enter", mods = {}) {
+  const e = { key, target, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...mods };
+  (card.listeners.keydown || []).forEach((fn) => fn(e));
+  return e;
+}
+
+test("Enter in the response box submits it", () => {
+  const { cards, calls } = setup();
+  cards.renderQuestion(PQ);
+  const card = cards.questionCard();
+  const box = card.querySelector(".question-freeform");
+  box.value = "the third";
+  const e = press(card, box);
+  assert.equal(e.defaultPrevented, true);
+  assert.deepEqual(calls, [["sendAnswer", "s1", { id: "q1", selected: [], freeform: "the third" }]]);
+});
+
+test("Enter on an option submits the pick; with nothing picked it says so", () => {
+  const { cards, calls } = setup();
+  cards.renderQuestion(PQ);
+  const card = cards.questionCard();
+  const [a, b] = card.querySelectorAll(".question-option input");
+  press(card, a);
+  assert.equal(calls.length, 0);
+  assert.equal(card.querySelector(".question-error").textContent, "Pick an option or enter a response.");
+  b.checked = true;
+  press(card, b);
+  assert.deepEqual(calls, [["sendAnswer", "s1", { id: "q1", selected: ["b"] }]]);
+});
+
+test("Shift+Enter, a composing Enter or another key does not submit", () => {
+  const { cards, calls } = setup();
+  cards.renderQuestion(PQ);
+  const card = cards.questionCard();
+  const box = card.querySelector(".question-freeform");
+  box.value = "x";
+  for (const [key, mods] of [["Enter", { shiftKey: true }], ["Enter", { isComposing: true }], ["Enter", { metaKey: true }], ["a", {}]]) {
+    assert.equal(press(card, box, key, mods).defaultPrevented, false);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("Enter never denies: on the Deny button it does nothing, on an approval's option it submits", () => {
+  const { cards, calls } = setup();
+  cards.renderQuestion(APPROVAL);
+  const card = cards.questionCard();
+  press(card, card.querySelector(".question-dismiss"));
+  assert.equal(calls.length, 0);
+  card.querySelectorAll(".question-option input")[0].checked = true;
+  press(card, card.querySelectorAll(".question-option input")[0]);
+  assert.deepEqual(calls.map((c) => c[0]), ["sendAnswer"]);
+});
+
+test("a new card takes the focus from an empty composer, its first option", async () => {
+  const prompt = { value: "" };
+  const { cards } = setup({ page: { prompt, activeElement: prompt } });
+  cards.renderQuestion(PQ);
+  await flush();
+  const [a, b] = cards.questionCard().querySelectorAll(".question-option input");
+  assert.equal(a.focused, true);
+  assert.equal(b.focused, undefined);
+});
+
+test("with no options the response box takes the focus (the page had it)", async () => {
+  const body = {};
+  const { cards } = setup({ page: { body, activeElement: body, prompt: { value: "" } } });
+  cards.renderQuestion({ id: "q2", question: "Why?", allow_freeform: true });
+  await flush();
+  assert.equal(cards.questionCard().querySelector(".question-freeform").focused, true);
+});
+
+test("a composer with text, or focus elsewhere, keeps the focus", async () => {
+  const prompt = { value: "half a sentence" };
+  const typing = setup({ page: { prompt, activeElement: prompt } });
+  typing.cards.renderQuestion(PQ);
+  const elsewhere = setup({ page: { prompt: { value: "" }, activeElement: { value: "" } } });
+  elsewhere.cards.renderQuestion(PQ);
+  await flush();
+  for (const { cards } of [typing, elsewhere]) {
+    assert.ok(cards.questionCard().querySelectorAll("input").every((i) => !i.focused));
+  }
+});
+
+test("a card drawn already answered (the history replay) does not take the focus", async () => {
+  const prompt = { value: "" };
+  const { cards } = setup({ page: { prompt, activeElement: prompt } });
+  cards.renderQuestion(PQ);
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  await flush();
+  assert.ok(cards.questionCard().querySelectorAll("input").every((i) => !i.focused));
 });

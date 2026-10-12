@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- Web: question and approval cards answer from the keyboard. Enter in the response box or on an option submits
+  (never Deny or Dismiss), and a new card takes the focus when the message box is empty.
+
 ## [0.61.0] - 2026-10-12
 
 ### Added

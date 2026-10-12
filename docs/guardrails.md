@@ -35,7 +35,8 @@ Approve tool call?
 
 In a terminal, answer with a number, the exact label, `y` (Allow once) or `n`
 (Deny); add `; reason` to tell the model why (`n; open a PR instead`). An empty
-answer, Ctrl-C, the web's Deny button or a cancelled turn deny it. The prompt stays open during turns: when the question comes up it turns
+answer, Ctrl-C, the web's Deny button or a cancelled turn deny it (on the web card, Enter in the reason box or
+on an option submits, never denies). The prompt stays open during turns: when the question comes up it turns
 into a yellow `? `, with the call and the options listed under it; only a line
 submitted there answers it (never one typed before), and what you had typed comes back
 once it closes. On a short terminal the list shrinks (the hint row, then the `in`/`why`
