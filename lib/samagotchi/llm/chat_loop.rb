@@ -24,6 +24,7 @@ require_relative "../vision_context"
 require_relative "../log"
 require_relative "../empty_answer_retry"
 require_relative "../steer"
+require_relative "../reasoning_history"
 require_relative "../turn_note"
 require_relative "../thinking"
 
@@ -70,7 +71,7 @@ module Samagotchi
       def provider = :chat
 
       # +reasoning_since+ (ModelBackend#complete): the resumed run's start,
-      # the Run's own start then (#reasoning_boundary).
+      # the Run's own start then (Run#initialize, #reasoning_boundary).
       def complete(messages:, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil,
                    model_name: nil, max_tool_output_chars: nil, pending_input: nil, reasoning_since: nil)
         raise ArgumentError, "ChatLoop has no adapter" unless @adapter
@@ -137,7 +138,8 @@ module Samagotchi
       # A model turn carries its saved reasoning as reasoning_content when
       # +reasoning+ (a ReasoningHistory level; the turn's by default) says
       # so: under turn the running turn's only (#reasoning_boundary, with
-      # +since+ the Run's start), under all every one.
+      # +since+ where the Run's reasoning starts; a steer it merged doesn't
+      # move that), under all every one.
       #
       # The conversation goes through the kernel's LLMContextView first,
       # as the native prompt does (it keeps every entry in place).
@@ -194,19 +196,24 @@ module Samagotchi
       TOOL_IMAGES_TEXT = "[images from tool results]"
 
       # The first index whose model entries carry their reasoning (nil:
-      # none do) under +level+. Under turn: past both the last query (a
-      # user message: a prompt, a steer, merged input, the chat template's
-      # last query; or an entry that starts a turn, turn_start) and +since+
-      # (the Run's start, so a continue turn -- a reminder, a context wake,
-      # a delegate report's wake -- sends none of the run before it; a
-      # step-limit Continue's Run starts where the run it resumes did).
+      # none do) under +level+. Under turn: +since+ when given, where a
+      # Run's reasoning starts (ReasoningHistory.run_start, the native
+      # loop's rule: an entry the run merged -- a person's line, a plugin's
+      # steer, a Continue's text -- keeps the reasoning before it, so the
+      # request after it extends the one before; a continue turn -- a
+      # reminder, a context wake, a delegate report's wake -- starts a Run
+      # of its own and sends none of the run before it). Without +since+,
+      # past the last query (a user message or an entry that starts a turn,
+      # turn_start).
       # @return [Integer, nil]
       def reasoning_boundary(conversation, since: nil, level: reasoning_history)
         case level
         when :all then 0
         when :turn
+          return since if since
+
           query = conversation.rindex { |entry| entry[:role].to_s == "user" || entry[:turn_start] == true }
-          [query ? query + 1 : 0, since.to_i].max
+          query ? query + 1 : 0
         end
       end
 
@@ -417,9 +424,10 @@ module Samagotchi
           @cancel_controller = cancel_controller
           @model_name = model_name
           @pending_input = pending_input
-          # Where this run's entries start: the reasoning it sends back
-          # (ChatLoop#reasoning_boundary) is its own, a resumed run's too.
-          @start = start || conversation.length
+          # Where the reasoning this run sends back starts
+          # (ChatLoop#reasoning_boundary): its own replies', a resumed run's
+          # too, fixed for the run; a steer it merges doesn't move it.
+          @reasoning_start = ReasoningHistory.run_start(conversation, start || conversation.length)
           @tool_activity = []
           @empty_retry = EmptyAnswerRetry.new
           # The empty generations, never saved: the UIs draw the turn's
@@ -596,7 +604,7 @@ module Samagotchi
 
         def request(iteration, retry_generation, streamed, thought, generation_controller, streamed_any = nil)
           @loop.adapter.chat(
-            messages: @loop.wire_messages(@conversation, since: @start, reasoning: reasoning_level), tools: @loop.tool_definitions, model: @model_name,
+            messages: @loop.wire_messages(@conversation, since: @reasoning_start, reasoning: reasoning_level), tools: @loop.tool_definitions, model: @model_name,
             cancel_controller: generation_controller || @cancel_controller, session_id: @loop.session_id,
             options: @loop.request_options(retry_generation: retry_generation, model: @model_name),
             on_delta: lambda { |content:, reasoning:, payload:|
@@ -670,7 +678,7 @@ module Samagotchi
 
         # Whether this step's request sends reasoning back.
         def reasoning_sent?
-          !@without_reasoning && @loop.reasoning_chars(@conversation, since: @start, reasoning: reasoning_level).positive?
+          !@without_reasoning && @loop.reasoning_chars(@conversation, since: @reasoning_start, reasoning: reasoning_level).positive?
         end
 
         # The level this step's request sends reasoning back under: none
@@ -733,7 +741,7 @@ module Samagotchi
         # names and arguments, and the reasoning sent back.
         def prompt_chars
           LLMContextView.chars(@loop.llm_context_view.messages(@conversation)) +
-            @loop.reasoning_chars(@conversation, since: @start, reasoning: reasoning_level)
+            @loop.reasoning_chars(@conversation, since: @reasoning_start, reasoning: reasoning_level)
         end
 
         # The server's counts for this request (prompt + answer): the status

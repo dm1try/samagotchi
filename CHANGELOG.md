@@ -17,6 +17,12 @@ and commands may change between minor versions. How releases are made:
   `chi update`.
 - source-links 0.5.0: each ref it links in an answer gets an "Open in <source>" action in the web's ref menu; a
   source's new `kind:` key names its refs' kind (default `issue`). Needs chi 0.61.0; run `chi update`.
+- Chat hosts (`api: openai`) keep the running turn's reasoning across a mid-turn steer under `reasoning_history:
+  turn`, as native hosts do: a person's line, a plugin's nudge (check-in, agents-md) or a step-limit Continue's text no
+  longer drops the reasoning of the replies before it, so the request after it extends the one before and the
+  server's prompt cache holds. A `!cmd` run while the step-limit question stands still starts past itself. On a stock
+  Qwen template (Splash) the benefit needs `chat_template_kwargs.preserve_thinking: true`; see
+  [docs/configuration.md](docs/configuration.md#reasoning-history).
 
 ### Fixed
 

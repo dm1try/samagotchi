@@ -7,9 +7,9 @@ module Samagotchi
   # Which of its own reasoning a chat host's model gets back
   # (LLM::ChatLoop sends it as reasoning_content on its earlier replies):
   #
-  #   turn  the running turn's replies only (the tool-call rounds since the
-  #         last user message); what Qwen's, Gemma 4's and DeepSeek's
-  #         templates and the hosted APIs expect
+  #   turn  the running turn's replies only (since the turn's start; a
+  #         steer, a plugin's nudge or a Continue's text merged into the
+  #         turn doesn't reset it, as on a native host: .run_start)
   #   drop  none
   #   all   every reply that has reasoning, earlier turns too (a direct
   #         DeepSeek API with tools wants this)

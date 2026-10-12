@@ -1325,13 +1325,61 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["look"]])
       end
 
-      it "starts again after a mid-turn steer (a user message, as the chat template counts it)" do
+      # The run's start fixes where its reasoning starts (ReasoningHistory.run_start,
+      # as KernelLoop does): an entry the run merges -- a person's line, a
+      # plugin's steer, a Continue's text -- doesn't move it, so the request
+      # after it extends the one before (prompt cache).
+      it "keeps it across a mid-turn steer" do
         backend.adapter = adapter = FakeChatAdapter.new(call("c1", "before"), call("c2", "after"), text("done"))
         queue = [[], ["also this"], [], []]
         run(pending_input: -> { queue.shift || [] })
 
         expect(adapter.requests[1][:messages].last).to include(role: "user")
-        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], [], ["after"]])
+        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["before"], %w[before after]])
+      end
+
+      it "keeps it across a plugin's steer" do
+        backend.adapter = adapter = FakeChatAdapter.new(call("c1", "before"), call("c2", "after"), text("done"))
+        queue = [[], [{ text: "check in", source: "check-in" }], [], []]
+        run(pending_input: -> { queue.shift || [] })
+
+        expect(adapter.requests[1][:messages].last[:content].first[:text]).to start_with("[Steer from the check-in plugin")
+        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["before"], %w[before after]])
+      end
+
+      it "sends the request before a steer again, extended, so the server's cache holds" do
+        backend.adapter = adapter = FakeChatAdapter.new(call("c1", "first"), call("c2", "second"), text("done"))
+        queue = [[], [], ["also this"], []]
+        run(pending_input: -> { queue.shift || [] })
+
+        before = adapter.requests[1][:messages]
+        after = adapter.requests[2][:messages]
+        expect(after.first(before.length)).to eq(before)
+        expect(after.drop(before.length).map { |m| m[:role] }).to eq(%w[assistant tool user])
+        expect(after.last[:content].first[:text]).to end_with("also this")
+      end
+
+      it "keeps a text answer's reasoning before the line merged after it" do
+        backend.adapter = adapter = FakeChatAdapter.new(text("first", reasoning: "answer"), text("second"))
+        queue = [[], ["also this"], []]
+        run(pending_input: -> { queue.shift || [] })
+
+        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["answer"]])
+      end
+
+      it "keeps it across an empty answer's retry nudge, without the empty generation's own" do
+        backend.adapter = adapter = FakeChatAdapter.new(call("c1", "before"), text("", reasoning: "empty"), text("done"))
+        run
+
+        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["before"], ["before"]])
+      end
+
+      it "counts the reasoning it keeps across a steer (reasoning_chars from the run's start)" do
+        backend.adapter = FakeChatAdapter.new(call("c1", "before"), call("c2", "after"), text("done"))
+        queue = [[], ["also this"], [], []]
+        conversation = run(pending_input: -> { queue.shift || [] }).conversation
+
+        expect(backend.reasoning_chars(conversation, since: 1, reasoning: :turn)).to eq("beforeafter".length)
       end
 
       it "sends none of the previous run's in a continue turn (a reminder, a context wake)" do
@@ -1388,15 +1436,35 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
           expect(reasoning_sent(adapter.requests.first)).to eq(["woke"])
         end
 
-        # A Continue with text is a steer: a user message, where the chat
-        # template drops the reasoning before it (D5).
-        it "starts after a Continue's text, which comes in as a steer" do
+        # A Continue with text comes in as a steer: the run goes on, so its
+        # replies keep their reasoning past it.
+        it "keeps it past a Continue's text, which comes in as a steer" do
           backend.adapter = adapter = FakeChatAdapter.new(call("c3", "after"), text("done"))
           queue = [["finish and commit"], [], []]
           run(exhausted_run, reasoning_since: 1, pending_input: -> { queue.shift || [] })
 
           expect(adapter.requests.first[:messages].last).to include(role: "user")
-          expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["after"]])
+          expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([%w[plan more], %w[plan more after]])
+        end
+
+        it "keeps the reasoning before a steer the run it resumes merged: the Continue extends its last request" do
+          backend.adapter = adapter = FakeChatAdapter.new(call("c1", "plan"), call("c2", "more"), text("done"))
+          queue = [[], ["also this"], [], []]
+          exhausted = run(pending_input: -> { queue.shift || [] }, max_iterations: 2)
+          run(exhausted.conversation, reasoning_since: 1)
+
+          expect(exhausted).to be_exhausted
+          before = adapter.requests[1][:messages]
+          continued = adapter.requests[2][:messages]
+          expect(continued.first(before.length)).to eq(before)
+          expect(reasoning_sent(adapter.requests[2])).to eq(%w[plan more])
+        end
+
+        it "starts past a user entry added after the run's last reply (a !cmd's output)" do
+          backend.adapter = adapter = FakeChatAdapter.new(text("done"))
+          run(exhausted_run + [{ role: "user", content: "!ls output" }], reasoning_since: 1)
+
+          expect(reasoning_sent(adapter.requests.first)).to eq([])
         end
 
         it "has no effect under drop or all" do
@@ -1425,6 +1493,8 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       conversation = earlier_turn + [{ role: "user", content: "again" }, { role: "model", content: "", thinking: "look" }]
 
       expect(%i[drop turn all].map { |level| backend.reasoning_chars(conversation, reasoning: level) }).to eq([0, 4, 17])
+      # A Run's start (since:) is where its reasoning starts: the one at 6,
+      # after the reply with "look", sends none.
       expect(backend.reasoning_chars(conversation, since: 6, reasoning: :turn)).to eq(0)
     end
 
