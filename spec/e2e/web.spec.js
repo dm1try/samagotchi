@@ -1521,6 +1521,45 @@ test("a notice that stands in for the rendered answer isn't shown, live or after
   await expect(page.locator("#center")).not.toContainText("e2e fallback line");
 });
 
+// Refs a plugin attached to the answer (the e2e-answer-refs test bundle's,
+// refs only: an answer_display with no display): JIRA-7 pairs with its
+// markdown link (the href is its first action's URL), its menu offers both
+// actions, the second opens in a new tab; ABC-3 pairs with its plain text.
+// Live (the stage hands the bound answer off) and after a reload. The
+// pairing may land with the answer_display re-read, after the turn ends.
+test("an answer's plugin refs pair with its link and text: the link's menu opens an action in a new tab; live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
+  const recordOpens = () => page.evaluate(() => {
+    window.__opened = [];
+    window.open = (...args) => { window.__opened.push(args); return null; };
+  });
+  const check = async () => {
+    await recordOpens();
+    const link = page.locator('#history .bubble.output a.ref[data-ref-kind="issue"]');
+    await expect(link).toHaveText("JIRA-7");
+    await expect(link).toHaveAttribute("title", /JIRA-7 Login fails/);
+    const plain = page.locator('#history .bubble.output span.ref[data-ref-kind="issue"]');
+    await expect(plain).toHaveText("ABC-3");
+    await link.hover();
+    await page.locator(".ref-more").click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Open in Jira", "Jira board"]);
+    await page.getByRole("menuitem", { name: "Jira board" }).click();
+    await expect(page.locator(".ref-menu")).toHaveCount(0);
+    // One action: a plain click opens it (no ▾).
+    await plain.click();
+    expect(await page.evaluate(() => window.__opened)).toEqual([
+      ["https://example.test/board/JIRA-7", "_blank", "noopener,noreferrer"],
+      ["https://example.test/ABC-3", "_blank", "noopener,noreferrer"],
+    ]);
+  };
+  script("answer_refs");
+  await send(page, "Name the tickets");
+  await turnEnded(page, 1);
+  await check();
+  await page.reload();
+  await turnEnded(page, 1);
+  await check();
+});
+
 // The github-pr bundle's line links (its gh is support/fake_gh.sh): a
 // `path:line` in the answer links to that line of the PR the prompt names,
 // the Files changed anchor inside a hunk, the file at the PR's head outside.

@@ -179,6 +179,10 @@ export async function startEnv({ lan = false, installed = null } = {}) {
     // and a plain one after an E2E_FALLBACK answer, for that scenario.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-fallback-notice")],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
+    // A test bundle whose plugin attaches refs (no present) to an E2E_REFS
+    // answer, for the answer refs scenario.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-answer-refs")],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     // github-pr (shipped), for the PR line links scenario: its gh is the fake.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "github-pr"],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });

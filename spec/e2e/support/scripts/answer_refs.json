@@ -1,0 +1,6 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"text": "E2E_REFS: see [JIRA-7](https://example.test/JIRA-7) and ABC-3."}
+  ]
+}
