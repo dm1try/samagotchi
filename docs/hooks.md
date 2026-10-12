@@ -324,9 +324,24 @@ end
   session file, next to `display`, and the `answer_display` event says how
   many (`refs: N`). The model never sees them (as `display`), and a fork
   (`chi.sessions.fork(messages: ctx.messages)`) starts without them.
-- **The web** gets them with the answer on a reload, and with the re-read
-  after a changed display; live delivery for a refs-only answer and pairing
-  them with the answer's links and text come in a later release.
+- **The web** pairs each ref with the shown answer (its rendered markdown,
+  or the `present`ed display), live (with the turn-end read when the refs
+  are stored by then, else on the `answer_display` event) and on a reload. It looks, over all the answer's refs, for:
+  1. a link whose href is one of the ref's action URLs;
+  2. else a link whose text is `match`;
+  3. else `match` as a whole word inside one run of plain text (not in a
+     code block or another link), or an inline code that is `match` alone.
+     The word's edges are checked within that run only: text in the next
+     element doesn't count (`JIRA-1<em>2</em>` pairs `JIRA-1`).
+
+  The ref binds every occurrence its first finding step finds (a ref paired
+  with its link leaves a plain mention of the same text alone); a ref
+  nothing pairs is dropped. Markdown changes text: `__init__.py` renders
+  bold, escapes and entities differ, a match across emphasis or code isn't
+  one run, so keep a markdown link to the ref's URL, or match the rendered
+  text. The ref's actions join its menu (a link's own target is labelled by
+  the action with its URL); a `file` ref keeps the editor, show-in-turn and
+  copy targets; `label` is its hover title when it differs from the text.
   **Terminals** ignore them.
 
 A plugin gets the same from `chi.on(:after_turn) { |event, ctx| event[:refs].call(…) }`.

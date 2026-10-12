@@ -318,11 +318,13 @@ it, so the web's info bar updates per generation without parsing chunk payloads.
 
 The page's frequent reads of `GET /api/sessions/:id` stay light too:
 - `?tail=1&recent=1` (each turn's end, a cancel, an answer display): `{tail, session: {id, status,
-  used_memory_names}, messages: [the answer, with its display and display_refs (read live only after a changed display; a refs-only answer's come with a reload until the page handles them)], markdown_warning, timing}`, from the worker's `/tail`
+  used_memory_names}, messages: [the answer, with its display and display_refs (re-read on an `answer_display` with a display or refs)], markdown_warning, timing}`, from the worker's `/tail`
   alone (no session file parsed, no `analytics.json`); `timing` carries the worker's recent records
   and `turn_count` (finished turns). The page merges the records by id (`timing.js mergeTiming`) and
   finishes the ended turn's own line by its `turn_id` (sent as `&turn_id=`, which also picks that
   turn's answer). A plain `?tail=1` (a tab opened before this) gets the whole timing.
+  The page binds an answer's `display_refs` to its bubble (`answer_refs.js`: on a reload's render and on this
+  read's re-render) and pairs them with the bubble's links and text before the `path:line` scan.
 - `?timing=1`: the whole timing (`analytics.json` merged with the worker's `/state`) and
   `turn_count`, when the page's merge came up short.
 - `?cards=1`: the cards, from `/tail`; the session file is only stat'ed for the 404.
