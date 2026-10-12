@@ -16,10 +16,13 @@ No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
 
 The web specs run in plain node. One that loads lit-html (`turn_view.js`, `thinking_chip.js`, `llm_context_chip.js`,
-`info_bar.js`, `lists_view.js`, `vendor/lit-html.js`) needs a DOM: `import "./dom_shim.js";` as its first import (happy-dom, a
+`info_bar.js`, `lists_view.js`, `context_chips.js`, `families_view.js`, `chains.js`, `vendor/lit-html.js`) needs a DOM: `import "./dom_shim.js";` as its first import (happy-dom, a
 devDependency only, never shipped; about 0.3 s per spec file that loads it). The shim's `htmlOf(nodes)` and `canon(html)` compare markup
 without lit's marker comments. happy-dom 20 picks the wrong option of a `<select>` whose options lit inserted with
 `?selected`: read the option marked `selected` (`option[selected]`), not `select.value`; the browser follows the mark.
+A select bound with `.value` instead reads right in both, but lit sets it before the options exist on a first render:
+`llm_context_chip.js`'s `renderForm` draws twice then. Assert a kept node with `assert.ok(a === b)`: a failing
+`assert.equal` on two DOM nodes inspects the whole DOM (huge output, can stall the run).
 
 ## While you work: affected specs
 
