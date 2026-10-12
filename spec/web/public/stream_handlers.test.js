@@ -252,6 +252,21 @@ test("answer_display re-reads the session open at that moment", async () => {
   assert.ok(page.names().includes("liveTurn.releaseDisplay"));
 });
 
+test("answer_display with refs only (no display) re-reads; with neither it doesn't; both release the display wait", async () => {
+  const refsOnly = fakePage();
+  refsOnly.page.open("s7");
+  await refsOnly.handlers.answer_display({ display: null, refs: 2 });
+  assert.ok(refsOnly.page.calls.some((c) => c[0] === "getSession"));
+  assert.ok(refsOnly.page.names().includes("applyFinalMarkdown"));
+  assert.ok(refsOnly.page.names().includes("liveTurn.releaseDisplay"));
+  const none = fakePage();
+  none.page.open("s7");
+  await none.handlers.answer_display({ display: null });
+  assert.equal(none.page.calls.some((c) => c[0] === "getSession"), false);
+  assert.equal(none.page.names().includes("applyFinalMarkdown"), false);
+  assert.ok(none.page.names().includes("liveTurn.releaseDisplay"));
+});
+
 test("reset and card", () => {
   const { page, handlers } = fakePage();
   handlers.reset();
