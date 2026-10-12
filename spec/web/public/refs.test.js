@@ -380,6 +380,22 @@ test("hover: the ▾ shows on a ref with more than one target and opens its menu
   cleanup(page.root);
 });
 
+test("the ▾ sits in room its ref makes after itself, which it gives back when it moves or hides", () => {
+  const page = turnPage();
+  const menu = createRefMenu(document);
+  menu.showMore(page.text, () => {});
+  const more = document.querySelector(".ref-more");
+  assert.equal(page.text.dataset.refMore, "");
+  const title = page.editRow.querySelector(".activity-params");
+  menu.showMore(title, () => {});
+  assert.equal(page.text.dataset.refMore, undefined);
+  assert.equal(title.dataset.refMore, "");
+  menu.hideMore();
+  assert.equal(title.dataset.refMore, undefined);
+  assert.equal(more.hidden, true);
+  cleanup(page.root);
+});
+
 // Rows by the steps they sit in: +rows+ ({path, line}) as edit rows with a
 // diff at their line.
 function stepHtml(text, rows) {
