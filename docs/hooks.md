@@ -145,7 +145,8 @@ On a chat host (`api: openai`) a steer that comes right after tool results
 goes inside the last tool result instead, after a blank line and `[Steer from
 the <bundle> plugin, added by chi after this tool result (not part of its
 output), mid-task. …]`: no new user message, so the turn's reasoning and the
-server's prompt cache survive it (the session still saves it as above).
+server's prompt cache survive it (the session still saves it as above). A
+steer from a hook with no label (an empty `source`) stays its own message.
 Its `source` is the hook's bundle (a config or turn hook's label otherwise).
 Lines typed into a running turn are saved as `{role: "user", kind: "input",
 content: "…"}`: part of that turn, not a turn of their own. They carry a

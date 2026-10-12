@@ -197,7 +197,7 @@ The differences from the native loop:
   in that tool message on the wire: `LLM::SteerFold.plan` (`{steer index => tool index}`, one plan per request on
   the `LLMContextView`'s messages, `ChatLoop#fold_plan`) and `Steer.folded_text` (a blank line, the fold header
   `[Steer from the NAME plugin, added by chi after this tool result (not part of its output), mid-task. …]`, the
-  text). Several steers of one drain chain onto one tool message; a parallel batch's last. Anything else before
+  text). A foldable steer right after a folded one joins the same tool message; a parallel batch's last. Anything else before
   the steer (a user line, a system note or nudge, a reply) leaves it a user message. The plan reads only an entry
   and the ones before it, so the wire stays append-only; the saved conversation keeps the steer as its own
   message. `:generation_completed` carries `steers_folded:` (folds at or after the Run's `@start`), logged.
