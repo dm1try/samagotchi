@@ -12,9 +12,10 @@ RSpec.describe Samagotchi::Ref do
       expect(described_class.new(id: "a", label: "A", url: "http://x.test").url).to eq("http://x.test")
     end
 
-    it "refuses any other scheme, a URL without a host, an unparsable or an over-long one" do
+    it "refuses any other scheme, a URL without a host or with userinfo, an unparsable or an over-long one" do
       ["javascript:alert(1)", "vscode://file/p/a.rb:1", "data:text/html,x", "mailto:a@b.test", "file:///etc/hosts",
-       "/relative", "https://", "https://x.test/a b", "", "https://x.test/#{"a" * 2_000}"].each do |url|
+       "/relative", "https://", "https://x.test/a b", "", "https://x.test/#{"a" * 2_000}",
+       "https://user:tok@host.test/", "https://github.com@evil.example/"].each do |url|
         expect { described_class.new(id: "a", label: "A", url: url) }.to raise_error(ArgumentError), url
       end
     end
@@ -22,6 +23,13 @@ RSpec.describe Samagotchi::Ref do
     it "needs an id and a label" do
       expect { described_class.new(id: "", label: "A", url: "https://x.test") }.to raise_error(ArgumentError, /id/)
       expect { described_class.new(id: "a", label: " ", url: "https://x.test") }.to raise_error(ArgumentError, /label/)
+    end
+
+    it "caps the id at 64 characters and the label at 100" do
+      url = "https://x.test"
+      expect(described_class.new(id: "a" * 64, label: "L" * 100, url: url).id.length).to eq(64)
+      expect { described_class.new(id: "a" * 65, label: "A", url: url) }.to raise_error(ArgumentError, /id is at most 64/)
+      expect { described_class.new(id: "a", label: "L" * 101, url: url) }.to raise_error(ArgumentError, /label is at most 100/)
     end
 
     it "is built from a plugin's hash, with String or Symbol keys" do
@@ -62,5 +70,18 @@ RSpec.describe Samagotchi::Ref do
     expect(described_class.new(kind: "file", target: { path: "/p/a.rb", line: "4", end_line: 9 }).target).to eq(path: "/p/a.rb", line: 4, end_line: 9)
     expect(described_class.new(kind: "file", target: { path: "/p/a.rb", line: 0, end_line: 9 }).target).to eq(path: "/p/a.rb")
     expect(described_class.new(kind: "file", target: { path: "/p/a.rb", line: 9, end_line: 9 }).target).to eq(path: "/p/a.rb", line: 9)
+  end
+
+  it "caps the label at 200, the actions at 8, a target id at 200 and a path at 4,096 characters" do
+    issue = { id: "x" }
+    expect(described_class.new(kind: "issue", target: issue, label: "L" * 200).label.length).to eq(200)
+    expect { described_class.new(kind: "issue", target: issue, label: "L" * 201) }.to raise_error(ArgumentError, /label is at most 200/)
+    expect(described_class.new(kind: "issue", target: issue, actions: [pr_diff] * 8).actions.length).to eq(8)
+    expect { described_class.new(kind: "issue", target: issue, actions: [pr_diff] * 9) }.to raise_error(ArgumentError, /at most 8 actions/)
+    expect(described_class.new(kind: "issue", target: { id: "i" * 200 }).target[:id].length).to eq(200)
+    expect { described_class.new(kind: "issue", target: { id: "i" * 201 }) }.to raise_error(ArgumentError, /id is at most 200/)
+    path = "/#{"p" * 4_095}"
+    expect(described_class.new(kind: "file", target: { path: path }).target[:path]).to eq(path)
+    expect { described_class.new(kind: "file", target: { path: "#{path}p" }) }.to raise_error(ArgumentError, /path is at most 4096/)
   end
 end
