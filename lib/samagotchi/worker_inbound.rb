@@ -201,9 +201,11 @@ module Samagotchi
 
     private
 
-    # +unless_stopped+: not when the session was stopped meanwhile: the stop
-    # (chi stop, from another process) saved its status, and this save
-    # would write the worker's over it.
+    # +unless_stopped+: skipped when the session was stopped meanwhile (chi
+    # sessions stop, from another process: its marker file,
+    # Session.mark_stopped, which a load reads over the saved status). The
+    # save couldn't hide the stop; it is left out so the file stays as the
+    # stop found it, the worker's idle status unwritten.
     def save(at, unless_stopped: false)
       self.class.save_or_log(at) do
         @session.save(state_dir: @state_dir) unless unless_stopped && @stopped.call
