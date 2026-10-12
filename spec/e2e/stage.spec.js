@@ -66,6 +66,7 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   await expect(stageEl(page)).toBeVisible();
   await page.mouse.move(0, 0);
   await page.evaluate(() => { document.querySelector("#history").scrollTop = 120; });
+  await watchShifts(page);
   await startSampling(page);
   await handedOff(page, 2);
   await page.waitForTimeout(600); // the fold and the arrival are over
@@ -77,6 +78,28 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   expect(noCard.length).toBeGreaterThan(5);
   expect([...new Set(noCard.map((s) => s.h))]).toHaveLength(1);
   expect([...new Set(samples.map((s) => s.top))]).toEqual([120]);
+  // A handed-off turn is its outline: open on its narrated steps, each
+  // tool-only (or thinking-only) step behind a fold that shows it; a reload
+  // draws the same.
+  const outline = async () => {
+    const blocks = page.locator("#history .turn-work");
+    await expect(blocks).toHaveCount(2);
+    for (const block of await blocks.all()) {
+      await expect(block).toHaveClass(/outline/);
+      await expect(block).toHaveJSProperty("open", true);
+      await expect(block.locator(":scope > .outline-fold")).toHaveText(["1 step", "1 step"]);
+      await expect(block.locator(":scope > .gen:visible")).toHaveCount(4);
+    }
+  };
+  await outline();
+  // The outline coming into the history moves nothing there.
+  expect(await shiftSum(page, { where: "history" })).toBeLessThan(0.01);
+  await page.locator("#history .turn-work").last().locator(".outline-fold").first().click();
+  await expect(page.locator("#history .turn-work").last().locator(":scope > .gen:visible")).toHaveCount(5);
+  await page.reload();
+  await outline();
+  // Nor does a reload drawing the old turns' outlines open.
+  expect(await shiftSum(page, { where: "history" })).toBeLessThan(0.01);
 });
 
 test("the hand-off waits while the pointer is over the stage, runs about 1.5 s after it leaves; an own send hands off at once", async ({ page, script }) => {

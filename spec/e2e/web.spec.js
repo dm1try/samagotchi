@@ -439,17 +439,17 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
     await diff.locator("summary").click({ force: true });
     await expect(diff.locator(".diff-add")).toHaveText("+font_size 14");
   };
-  // The steps block is open after a live turn; a reload collapses it (and
-  // so does the stage's hand-off).
-  if (stage()) {
-    await page.locator("#history .turn-work > summary").click();
-    await page.locator("#history details.gen").nth(1).locator("> summary").click();
-  }
+  // The steps block is its outline (the write's step said something), open
+  // live and after a reload; the edit's step (tool-only) is behind its fold.
+  const openEditStep = async () => {
+    await page.locator("#history .turn-work.outline[open] > .outline-fold").click();
+    await page.locator("#history .turn-work > details.gen").nth(1).locator("> summary").click();
+  };
+  await openEditStep();
   await check();
   await page.reload();
   await turnEnded(page, 1);
-  await page.locator("#history .turn-work > summary").click();
-  await page.locator("#history details.gen").nth(1).locator("> summary").click();
+  await openEditStep();
   await check();
 });
 
@@ -499,9 +499,13 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
     expect(await opened()).toEqual([expect.stringMatching(url(1)), expect.stringMatching(url(1)), expect.stringMatching(url(2)), expect.stringMatching(url(1))]);
     // The ref's menu (its ▾): "Show in turn" opens the steps and the
     // edit's diff, scrolls to the line and flashes the row.
+    // The edit's step is tool-only: folded in the outline, so the row is
+    // hidden until the reveal unfolds it.
     await page.evaluate(() => {
       for (const details of document.querySelectorAll("#history .turn-work, #history .activity-diff")) details.open = false;
+      for (const fold of document.querySelectorAll("#history .outline-fold.open")) fold.click();
     });
+    expect(await editRow().evaluate((el) => el.checkVisibility())).toBe(false);
     await answer(page).locator(".ref").hover();
     await page.locator(".ref-more").click();
     await expect(page.getByRole("menuitem")).toHaveText(["Open in editor", "Show in turn", "Copy path"]);
@@ -510,14 +514,18 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
     await expect(page.locator("#history .turn-work")).toHaveJSProperty("open", true);
     await expect(editRow().locator(".activity-diff")).toHaveJSProperty("open", true);
     await expect(editRow()).toHaveClass(/\bref-flash\b/);
+    expect(await editRow().evaluate((el) => el.checkVisibility())).toBe(true);
     await expect(editRow().locator('.diff-add[data-line="1"]')).toBeInViewport();
     expect(await opened()).toEqual([]);
   };
-  // The steps block and the edit's step, opened when they are closed.
+  // The steps block, the edit's fold and its step, opened when they are closed.
   const openSteps = async () => {
-    for (const details of [page.locator("#history .turn-work"), page.locator("#history details.gen").nth(1)]) {
-      if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
-    }
+    const block = page.locator("#history .turn-work");
+    if (!(await block.evaluate((el) => el.open))) await block.locator("> summary").click();
+    const fold = block.locator("> .outline-fold");
+    if (!(await fold.evaluate((el) => el.classList.contains("open")))) await fold.click();
+    const step = block.locator("> details.gen").nth(1);
+    if (!(await step.evaluate((el) => el.open))) await step.locator("> summary").click();
   };
   await openSteps();
   await check();

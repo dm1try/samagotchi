@@ -691,10 +691,12 @@ nudged the model") show ahead of those calls for about 4 s, as their rows
 wait in the closed block. A card that needs you (a question, an approval, check-in)
 sits in the stage too. While a question or approval waits, the stage shows
 the whole text of the reply that asked it (in place of its newest
-sentence) above the card, until you answer. Once answered, the card keeps
-that reply: two muted lines under its `question → answer` line (the whole
-text when you open the card), in both views and after a reload. The chip under it, `N steps · M tool calls` with one
-tick per call, opens the turn view's block in place (newest step first
+sentence) above the card, until you answer. Once answered, the model's
+question or its own approval keeps that reply (a delegate's relayed
+approval, a hook's question and the step limit don't): two muted lines
+under its `question → answer` line, the whole text when you open the card,
+in both views and after a reload. The chip under it, `N steps · M tool
+calls` with one tick per call, opens the turn view's block in place (newest step first
 while it runs; a tick opens its step). `▾` folds the stage to its status
 row, remembered in this browser. When the turn ends the answer shows in
 the stage, and the whole turn moves up into the history once you are not
@@ -718,9 +720,14 @@ again). When a step ends its thinking closes to a plain `thinking` line
 (unless you opened it); a step that only thought shows that line alone. The
 live narration is a box of about three lines that fills sentence by
 sentence (a sentence shows once it is complete) and scrolls to the newest
-when full. When the turn ends the block collapses to its summary (`3 steps
-· 8 tool calls · execute ×7 · read ×1`) and the answer expands from the
-box into a normal bubble under it (Markdown, annotate). A plain answer
+when full. When the turn ends the block shows its outline when any of its steps said
+something: it stays open on one line per step that wrote text (that text's
+first line, so a mid-turn note reads without a click), and each run of steps
+that only called tools or thought sits behind one `· N steps` line that
+shows them; old turns open the same way after a reload. A turn whose steps
+said nothing collapses the block to its summary (`3 steps
+· 8 tool calls · execute ×7 · read ×1`). Either way the answer expands from
+the box into a normal bubble under it (Markdown, annotate). A plain answer
 without tools ends exactly as it does today. Rows the code collapses stay
 as you toggled them. A reloaded session shows the same block
 from the saved messages (each step's thinking, narration, tool parameters

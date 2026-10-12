@@ -283,6 +283,15 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .gen details.thinking summary.thinking-fade{animation:thinking-fade 120ms ease-out}
 @keyframes thinking-fade{from{opacity:.4}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.gen details.thinking summary.thinking-fade{animation:none}}
+/* A finished block's outline (turn_view.js outlineBlock): open on its narrated steps' rows; a run of steps that said
+   nothing is one "· N steps" fold, a row like a step's, that shows them. */
+.turn-work.outline{--step-indent:14px}
+.turn-work.outline>.gen.folded:not(.unfolded){display:none}
+.outline-fold{margin-top:8px;padding-top:6px;padding-left:var(--step-indent);border-top:1px solid var(--border);font-size:12px;font-weight:500;color:var(--text-faint);cursor:pointer;user-select:none;border-radius:4px}
+.outline-fold::before{content:"· "}
+.outline-fold.open::before{content:"▾ "}
+.outline-fold:hover{color:var(--text-muted)}
+.turn-work.outline>.gen.folded.unfolded{margin-left:var(--step-indent)}
 .gen-text{margin-top:6px;white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.55}
 /* The live step's narration box: the complete sentences so far, one per line, three visual lines high (3 × the 1.55 line-height), scrolled to the newest; each new line fades in. */
 .gen-text.streaming>.narration{max-height:4.65em;overflow:auto;scrollbar-width:thin;white-space:normal}
@@ -715,6 +724,9 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-cloud-body[hidden]{display:none}
 .turn-stage .turn-work{border:0;background:transparent;padding:0;border-radius:0}
 .turn-stage .turn-work>summary{display:none}
+/* The ended turn's cloud shows every step: no folds there. */
+.turn-stage .outline-fold{display:none}
+.turn-stage .turn-work.outline>.gen.folded{display:block}
 .turn-stage .ts-cloud-body .gen:first-of-type{margin-top:0;border-top:0}
 @media(max-width:600px){
   .ts-status{padding-left:10px}

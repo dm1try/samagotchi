@@ -18,7 +18,9 @@ const timing = normalizeTiming({
 });
 const thumbs = () => "";
 
-test("turnHistoryHtml: a reloaded tool turn is a collapsed block of steps, then the answer with its timing", () => {
+// A block with a narrated step is its outline (P3): open, the narrated
+// step a row, the steps that said nothing behind one fold.
+test("turnHistoryHtml: a reloaded tool turn is its block's outline of steps, then the answer with its timing", () => {
   const items = [
     { role: "user", content: "p" },
     { role: "assistant", content: "Let me <check>." },
@@ -27,10 +29,10 @@ test("turnHistoryHtml: a reloaded tool turn is a collapsed block of steps, then 
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done"><summary>2 steps · 2 tool calls</summary>' +
+    '<details class="turn-work done outline" open=""><summary>2 steps · 2 tool calls</summary>' +
     '<details class="gen"><summary class="repeats"><span class="gen-head">Let me &lt;check&gt;.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><div class="gen-text">Let me &lt;check&gt;.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span><span class="activity-duration">7ms</span></div></div></details>' +
-    '<details class="gen"><summary>working with read · 1 tool call</summary>' +
+    '<div class="outline-fold" role="button" tabindex="0" aria-expanded="false">1 step</div><details class="gen folded"><summary>working with read · 1 tool call</summary>' +
     '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">read</span><span class="activity-duration">1.2s</span></div></div></details>' +
     '</details>' +
     '<div class="bubble output markdown" data-copy-source="Both fine."><p>Both <em>fine</em>.</p></div><div class="turn-timing">turn 1 · 19s</div>');
@@ -76,16 +78,16 @@ test("turnHistoryHtml with parts: each step expands to its thinking, text and ca
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done"><summary>3 steps · 2 tool calls</summary>' +
+    '<details class="turn-work done outline" open=""><summary>3 steps · 2 tool calls</summary>' +
     '<details class="gen"><summary class="repeats"><span class="gen-head">Let me check.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span>' +
     '<span class="activity-params">command="true"</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +
-    '<details class="gen"><summary>working with read · 1 tool call</summary>' +
+    '<div class="outline-fold" role="button" tabindex="0" aria-expanded="false">2 steps</div><details class="gen folded"><summary>working with read · 1 tool call</summary>' +
     '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">read</span>' +
     `<span class="activity-params">path="R.md"</span><span class="activity-duration">1.2s</span><div class="activity-output" title="${"x".repeat(310)}">${"x".repeat(300)}…</div></div></div></details>` +
     // A thinking-only step: one header, the body directly under it (no
     // nested wrap that would repeat "thinking"), as the live view leaves it.
-    '<details class="gen"><summary>thinking</summary><div class="thinking-body">sum up</div></details>' +
+    '<details class="gen folded"><summary>thinking</summary><div class="thinking-body">sum up</div></details>' +
     '</details>' +
     '<div class="bubble output">Both fine.</div><div class="turn-timing">turn 1 · 19s</div>');
 });
@@ -150,7 +152,7 @@ test("turnHistoryHtml: a plugin's steer is the first row of the step that answer
   ];
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.equal((html.match(/bubble user/g) || []).length, 1);
-  assert.match(html, /<details class="gen"><summary>[^<]*<\/summary><details class="steer-row"><summary>check-in nudged the model<\/summary><div class="steer-text">say what &lt;you&gt; found<\/div><\/details><div class="activity-body">.*read/);
+  assert.match(html, /<details class="gen folded"><summary>[^<]*<\/summary><details class="steer-row"><summary>check-in nudged the model<\/summary><div class="steer-text">say what &lt;you&gt; found<\/div><\/details><div class="activity-body">.*read/);
 });
 
 test("turnHistoryHtml: a steer the answer answered is a bubble after the block, before the answer", () => {

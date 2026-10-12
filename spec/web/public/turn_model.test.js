@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { blockSummary, currentGen, generationRestarted, genLabel, genLabelParts, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import * as model from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
@@ -278,4 +279,41 @@ test("a restarted step (a dropped stream asked again) drops its partial thinking
   applyEvent(turn, { type: "generation_chunk", iteration: 2, text: "the whole answer", thinking: "whole" });
   assert.deepEqual(turn.gens.map((gen) => [gen.thinking, gen.text]), [["hmm", "Looking."], ["whole", "the whole answer"]]);
   assert.equal(generationRestarted(turn, 9), null);
+});
+
+// The outline of a finished block (P3, c2): one row per narrated step, the
+// tool-only (or thinking-only) runs between folded into one marker each.
+const g = (text, { tools = 1, thinking = "", answer = false } = {}) =>
+  ({ text, thinking, answer, tools: Array.from({ length: tools }, (_, i) => ({ key: `k${i}`, tool: "read", status: "ok" })) });
+
+test("isNarrated: a step with text that is not the answer", () => {
+  assert.equal(model.isNarrated(g("Let me look.")), true);
+  assert.equal(model.isNarrated(g("  \n")), false);
+  assert.equal(model.isNarrated(g("")), false);
+  assert.equal(model.isNarrated(g("The answer.", { tools: 0, answer: true })), false);
+});
+
+test("outlineRuns: narrated steps one by one, the runs between folded; none without a narrated step", () => {
+  const gens = [g("Start."), g(""), g("", { tools: 0, thinking: "hm" }), g("Middle note."), g("Then."), g(""), g("")];
+  assert.deepEqual(model.outlineRuns(gens), [{ step: 0 }, { fold: [1, 2] }, { step: 3 }, { step: 4 }, { fold: [5, 6] }]);
+  assert.deepEqual(model.outlineRuns([g(""), g("Only this.")]), [{ fold: [0] }, { step: 1 }]);
+  assert.deepEqual(model.outlineRuns([g(""), g("")]), []);
+  assert.deepEqual(model.outlineRuns([]), []);
+});
+
+test("outlineRuns: a last run that is one thinking-only step (the answer's thinking) stays a row, not a '1 step' fold", () => {
+  assert.deepEqual(model.outlineRuns([g("Start."), g(""), g("", { tools: 0, thinking: "sum up" })]), [{ step: 0 }, { fold: [1, 2] }]);
+  assert.deepEqual(model.outlineRuns([g("Start."), g("", { tools: 0, thinking: "sum up" })]), [{ step: 0 }, { step: 1 }]);
+  // Live, the answer's step keeps its text in the model (taken out of the block): the same.
+  assert.deepEqual(model.outlineRuns([g("Start."), g("The answer.", { tools: 0, thinking: "sum up", answer: true })]), [{ step: 0 }, { step: 1 }]);
+  // A tool-only last step still folds; so does a thinking-only one mid-turn.
+  assert.deepEqual(model.outlineRuns([g("Start."), g("")]), [{ step: 0 }, { fold: [1] }]);
+  assert.deepEqual(model.outlineRuns([g("", { tools: 0, thinking: "hm" }), g("Then.")]), [{ fold: [0] }, { step: 1 }]);
+});
+
+test("blockGens: the finished turn's steps as its block holds them (a text-only answer step left it)", () => {
+  const turn = { gens: [g("Start."), g("", { tools: 0, thinking: "hm", answer: true })] };
+  assert.equal(model.blockGens(turn).length, 2);
+  const plainAnswer = { gens: [g("Start."), g("Done.", { tools: 0, answer: true })] };
+  assert.deepEqual(model.blockGens(plainAnswer).map((x) => x.text), ["Start."]);
 });

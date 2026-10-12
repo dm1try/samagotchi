@@ -118,3 +118,88 @@ test("createTurnView: the thinking streams into one text node (a selection in it
   assert.equal(node.data, "abcdef");
   assert.equal([...body.childNodes].filter((n) => n.nodeType === 3).length, 1);
 });
+
+// P3 (c2): a finished turn's block is its outline, the same live as on a
+// reload (turn_view.js outlineBlock on turn_model.js outlineRuns).
+function narratedTurn(view, { newest = false } = {}) {
+  stepOne(view);
+  view.generationStarted({ iteration: 2 });
+  view.toolStarted({ iteration: 2, call_index: 1, tool: "read", params: 'path="A.md"' });
+  view.toolCompleted({ iteration: 2, call_index: 1, tool: "read", status: "ok", output: "ok" });
+  view.generationStarted({ iteration: 3 });
+  view.chunk({ thinking: "Hmm.", iteration: 3 });
+  view.generationCompleted();
+  view.generationStarted({ iteration: 4 });
+  view.chunk({ text: "Middle note: switching to dev.", iteration: 4 });
+  view.flush();
+  view.generationCompleted();
+  view.toolStarted({ iteration: 4, call_index: 1, tool: "edit", params: 'path="B.md"' });
+  view.toolCompleted({ iteration: 4, call_index: 1, tool: "edit", status: "ok", output: "ok" });
+  view.generationStarted({ iteration: 5 });
+  view.chunk({ text: "Done.", iteration: 5 });
+  view.flush();
+  view.generationCompleted();
+  view.turnEnded({ kind: "completed" });
+  if (newest) view.chronological();
+  return view.current().blockEl;
+}
+
+// The block's children as the outline reads: a step's class and head, a fold's text.
+const outlineOf = (block) => [...block.children].filter((el) => !el.matches("summary")).map((el) =>
+  el.matches(".outline-fold") ? `fold ${el.textContent}` : `${el.className} ${el.querySelector(":scope > summary").textContent.split(" · ")[0]}`);
+
+test("createTurnView: a finished turn with narrated steps stays open as its outline, tool-only steps folded", () => {
+  const { view } = liveView();
+  const block = narratedTurn(view);
+  assert.equal(block.open, true);
+  assert.ok(block.classList.contains("outline"));
+  assert.deepEqual(outlineOf(block), [
+    "gen Let me check.", "fold 2 steps", "gen folded working with read", "gen folded thinking", "gen Middle note: switching to dev.",
+  ]);
+  // The fold shows its steps and hides them again.
+  const fold = block.querySelector(".outline-fold");
+  fold.click();
+  assert.equal(fold.getAttribute("aria-expanded"), "true");
+  assert.equal(block.querySelectorAll(".gen.folded.unfolded").length, 2);
+  fold.click();
+  assert.equal(block.querySelectorAll(".gen.folded.unfolded").length, 0);
+});
+
+test("createTurnView: newest first while it ran (the stage's cloud), the outline is still chronological", () => {
+  const historyEl = document.createElement("div");
+  const view = createTurnView({ historyEl, appendToHistory: (el) => historyEl.appendChild(el), isNearBottom: () => false,
+    sawText: () => {}, sessionId: () => "s1", useHold: false, newestFirst: true });
+  const block = narratedTurn(view, { newest: true });
+  assert.deepEqual(outlineOf(block), [
+    "gen Let me check.", "fold 2 steps", "gen folded working with read", "gen folded thinking", "gen Middle note: switching to dev.",
+  ]);
+});
+
+test("createTurnView: a finished turn whose steps said nothing closes as before (no outline)", () => {
+  const { view } = liveView();
+  view.turnStarted({ prompt: "p" });
+  view.generationStarted({ iteration: 1 });
+  view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: 'path="R.md"' });
+  view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "ok" });
+  view.generationStarted({ iteration: 2 });
+  view.chunk({ text: "Done.", iteration: 2 });
+  view.flush();
+  view.generationCompleted();
+  view.turnEnded({ kind: "completed" });
+  const { blockEl } = view.current();
+  assert.equal(blockEl.open, false);
+  assert.equal(blockEl.classList.contains("outline"), false);
+  assert.equal(blockEl.querySelectorAll(".outline-fold").length, 0);
+});
+
+test("createTurnView: a ref's reveal (show in turn) on a row in a folded step unfolds its run", () => {
+  const { view } = liveView();
+  const block = narratedTurn(view);
+  const row = block.querySelector(".gen.folded .activity-row");
+  row.dispatchEvent(new window.CustomEvent("ref:reveal", { bubbles: true }));
+  assert.equal(block.querySelectorAll(".gen.folded.unfolded").length, 2);
+  assert.equal(block.querySelector(".outline-fold").getAttribute("aria-expanded"), "true");
+  // Again: it stays unfolded (a reveal never folds).
+  row.dispatchEvent(new window.CustomEvent("ref:reveal", { bubbles: true }));
+  assert.equal(block.querySelectorAll(".gen.folded.unfolded").length, 2);
+});
