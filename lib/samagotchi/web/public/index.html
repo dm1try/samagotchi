@@ -310,6 +310,12 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .bubble.question>summary::-webkit-details-marker{display:none}
 .bubble.question>summary::before{content:"▸ ";color:var(--warn)}
 .bubble.question[open]>summary::before{content:"▾ "}
+/* An answered card keeps the reply that asked it (question_cards.js): muted under its "Q → A" line, two lines while
+   closed (newlines as spaces); open, the summary's copy goes and the body's starts the card, whole, as written and
+   selectable. */
+.bubble.question>summary .question-said{max-width:72ch;margin:2px 0 1px 1.05em;font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text-muted);white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+.bubble.question[open]>summary .question-said{display:none}
+.question-said-full{margin:4px 0 6px;font-size:13px;line-height:1.55;color:var(--text-muted);white-space:pre-wrap;overflow-wrap:anywhere}
 .bubble.command{border-left:3px solid var(--text-faint);background:var(--bg-panel);font-size:13px}
 .bubble.note{border-left:3px dotted var(--text-faint);background:transparent;font-size:12px;color:var(--text-muted);opacity:.85}
 .note-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-faint);margin-bottom:2px}
@@ -336,7 +342,8 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 .bubble.question.answered{border-left-color:var(--ok)}
 .bubble.question.cancelled{border-left-color:var(--text-muted);opacity:.75}
 /* A settled card stops floating: the highlight stays, the drop shadow goes. */
-.bubble.question.answered,.bubble.question.cancelled{box-shadow:inset 0 1px 0 var(--glass-highlight)}
+/* Closed, it is a bare line (no card to light): wider with its kept reply, a highlight would read as a stray rule. */
+.bubble.question.answered[open],.bubble.question.cancelled[open]{box-shadow:inset 0 1px 0 var(--glass-highlight)}
 .question-text{font-size:14px;color:var(--text);margin-bottom:8px;white-space:pre-wrap}
 .question-options{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
 .question-option{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-2);padding:6px 8px;border:1px solid var(--border);border-radius:8px;cursor:pointer}

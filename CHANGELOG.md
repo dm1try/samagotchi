@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: while a question or approval waits in the stage view, the stage shows the whole text of the reply that asked
   it, not only its last sentence.
+- Web: an answered question or approval card keeps the reply that asked it: two muted lines under its
+  `question → answer` line, the whole text when the card is open, live and after a reload.
 - Web: question and approval cards answer from the keyboard. Enter in the response box or on an option submits
   (never Deny or Dismiss), and a new card takes the focus when the message box is empty.
 - github-pr 0.5.0: a `path:line` it links in an answer is also a file ref, so the web's ref menu offers the file in

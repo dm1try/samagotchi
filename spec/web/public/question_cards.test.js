@@ -46,6 +46,12 @@ class FakeEl {
     other.parent = this.parent;
     this.parent = null;
   }
+  get nextSibling() {
+    const siblings = this.parent?.children || [];
+    return siblings[siblings.indexOf(this) + 1] || null;
+  }
+  setAttribute(name, value) { (this.attrs ||= {})[name] = String(value); }
+  getAttribute(name) { return this.attrs?.[name] ?? null; }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   click() { (this.listeners.click || []).forEach((fn) => fn({})); }
   focus() { this.focused = true; }
@@ -77,7 +83,7 @@ class FakeEl {
   }
 }
 
-function setup({ near = true, fail = null, page = {} } = {}) {
+function setup({ near = true, fail = null, page = {}, asking = "" } = {}) {
   const history = new FakeEl("div");
   const calls = [];
   const call = (name) => (...args) => {
@@ -95,6 +101,7 @@ function setup({ near = true, fail = null, page = {} } = {}) {
     isNearBottom: () => (typeof near === "function" ? near(history) : near),
     scrollToEnd: () => { scrolled += 1; },
     removeHintIfEmpty: () => { hintDrops += 1; },
+    askingText: () => asking,
     api: { sendAnswer: call("sendAnswer"), dismissQuestion: call("dismissQuestion"), sendCommand: call("sendCommand") },
     doc: {
       createElement: (tag) => new FakeEl(tag),
@@ -576,4 +583,63 @@ test("a card drawn already answered (the history replay) does not take the focus
   cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
   await flush();
   assert.ok(cards.questionCard().querySelectorAll("input").every((i) => !i.focused));
+});
+
+// The reply that asked (P2): kept by the answered card, a muted line under
+// its summary (CSS clamps it to two lines; whole when the card is open).
+const SAID = "I found two config files.\nThey disagree on the port.";
+const said = (card) => card.querySelector("summary").querySelector(".question-said");
+
+test("an answered question keeps the reply that asked it under its summary; a pending one shows none yet", () => {
+  const { cards } = setup({ asking: `  ${SAID}\n` });
+  cards.renderQuestion(PQ);
+  const card = cards.questionCard();
+  assert.equal(said(card), null);
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  assert.equal(said(card).textContent, SAID);
+  assert.equal(card.querySelector("summary").textContent, "Which one? → a");
+  // The summary's copy is the closed card's clamp (hidden from screen
+  // readers: not the toggle's label); the whole text, selectable, is in the
+  // body, which shows when the card is open.
+  assert.equal(said(card).getAttribute("aria-hidden"), "true");
+  const full = card.children.find((el) => el.classes.has("question-said-full"));
+  assert.equal(full.textContent, SAID);
+  assert.equal(card.children.indexOf(full), 1);
+});
+
+test("a dismissed question and an own approval keep it too", () => {
+  const dismissed = setup({ asking: SAID });
+  dismissed.cards.renderQuestion(PQ);
+  dismissed.cards.resolveQuestion("q1", { cancelled: true });
+  assert.equal(said(dismissed.cards.questionCard()).textContent, SAID);
+  const own = setup({ asking: SAID });
+  own.cards.renderQuestion(APPROVAL);
+  own.cards.resolveQuestion("a1", { answer: { selected: ["Allow once"] } });
+  assert.equal(said(own.cards.questionCard()).textContent, SAID);
+});
+
+test("no kept text for a relayed approval, a hook's question, the step limit, or an empty reply", () => {
+  const cases = [
+    [{ ...APPROVAL, relay: { id: "r1", child_id: "cccc2222-0000", chain: ["cccc2222"] } }, SAID, { selected: ["Allow once"] }],
+    [{ ...PQ, kind: "hook" }, SAID, { selected: ["a"] }],
+    [{ id: "c1", kind: "continue", question: "Continue?", options: ["Continue", "Stop"] }, SAID, { selected: ["Continue"] }],
+    [PQ, "  \n", { selected: ["a"] }],
+  ];
+  for (const [pq, asking, answer] of cases) {
+    const { cards } = setup({ asking });
+    cards.renderQuestion(pq);
+    cards.resolveQuestion(pq.id, { answer });
+    assert.equal(said(cards.questionCard()), null, pq.kind || "empty");
+  }
+});
+
+test("a reloaded card takes the text it is given (its step's), not the running turn's", () => {
+  const { cards } = setup({ asking: "the running turn's text" });
+  cards.renderQuestion(PQ, { said: SAID });
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  assert.equal(said(cards.questionCard()).textContent, SAID);
+  const none = setup({ asking: "the running turn's text" });
+  none.cards.renderQuestion(PQ, { said: "" });
+  none.cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  assert.equal(said(none.cards.questionCard()), null);
 });

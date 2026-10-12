@@ -1,7 +1,7 @@
 import { canon, htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { stepText, turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { failedTurnText } from "../../../lib/samagotchi/web/public/format.js";
@@ -427,4 +427,20 @@ test("turnHistoryNodes: an answer bubble knows its message's display_refs (no in
   assert.deepEqual(bubbles.map((b) => b.textContent), ["First, JIRA-7.", "Report says ABC-3.", "Plain."]);
   assert.deepEqual(bubbles.map((b) => answerRefsOf(b)), [refs, reply, null]);
   assert.equal(holder.querySelector("[data-answer-at]"), null);
+});
+
+test("stepText: a reloaded block's step text by iteration (1-based), \"\" for a step without text or none at all", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "I found two files.\nThey disagree." },
+    { role: "assistant", content: "" },
+    { role: "assistant", content: "Done." },
+  ];
+  const holder = document.createElement("div");
+  holder.append(turnHistoryNodes(items, timing, { thumbs }));
+  const block = holder.querySelector(".turn-work");
+  assert.equal(stepText(block, 1), "I found two files.\nThey disagree.");
+  assert.equal(stepText(block, 2), "");
+  assert.equal(stepText(block, 7), "");
+  assert.equal(stepText(null, 1), "");
 });

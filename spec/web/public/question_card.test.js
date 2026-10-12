@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isApproval, approvalView, relayView, resultText, approvalAllowed, answerErrorText, nextCardAction, summaryText, truncate } from "../../../lib/samagotchi/web/public/question_card.js";
+import { isApproval, approvalView, relayView, resultText, approvalAllowed, answerErrorText, nextCardAction, summaryText, truncate, keepsAskingText } from "../../../lib/samagotchi/web/public/question_card.js";
 
 const approval = {
   id: "a1",
@@ -216,4 +216,14 @@ test("a relayed card closed without an answer here says where the question went,
 test("a resolved relayed card's summary names the delegate first", () => {
   assert.equal(summaryText(relayed, { answer: { selected: ["Allow once"] } }), "ab12cd34: execute: git push → Allowed: Allow once");
   assert.equal(summaryText(relayed), "Approve delegate ab12cd34's tool call?");
+});
+
+test("keepsAskingText: the model's question and an own approval keep the reply that asked; continue, hook, relayed don't", () => {
+  assert.equal(keepsAskingText({ id: "q", question: "Which?" }), true);
+  assert.equal(keepsAskingText({ id: "q", kind: "question", question: "Which?" }), true);
+  assert.equal(keepsAskingText(approval), true);
+  assert.equal(keepsAskingText({ ...approval, relay: { child_id: "c1" } }), false);
+  assert.equal(keepsAskingText({ id: "c", kind: "continue" }), false);
+  assert.equal(keepsAskingText({ id: "h", kind: "hook" }), false);
+  assert.equal(keepsAskingText(null), false);
 });

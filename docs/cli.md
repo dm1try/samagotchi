@@ -691,7 +691,9 @@ nudged the model") show ahead of those calls for about 4 s, as their rows
 wait in the closed block. A card that needs you (a question, an approval, check-in)
 sits in the stage too. While a question or approval waits, the stage shows
 the whole text of the reply that asked it (in place of its newest
-sentence) above the card, until you answer. The chip under it, `N steps · M tool calls` with one
+sentence) above the card, until you answer. Once answered, the card keeps
+that reply: two muted lines under its `question → answer` line (the whole
+text when you open the card), in both views and after a reload. The chip under it, `N steps · M tool calls` with one
 tick per call, opens the turn view's block in place (newest step first
 while it runs; a tick opens its step). `▾` folds the stage to its status
 row, remembered in this browser. When the turn ends the answer shows in
