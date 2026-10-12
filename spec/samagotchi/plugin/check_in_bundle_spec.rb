@@ -192,6 +192,35 @@ RSpec.describe "The check-in plugin" do
       expect(ctx.cards.last[:body]).to eq("Stopped the turn at 2 tool calls.")
     end
 
+    it "steers once for 12 Nudge clicks on the same check-in; the next check-in can be nudged again" do
+      results = Array.new(12) { checkin(p, "nudge") }
+
+      expect(ctx.steers.size).to eq(1)
+      expect(results.first).to be_nil
+      expect(results.drop(1).uniq).to eq(["check-in: already nudged at 2 tool calls"])
+
+      tools(p, "read", "read", "read")
+      expect(checkin(p, "nudge")).to be_nil
+      expect(checkin(p, "nudge")).to eq("check-in: already nudged at 5 tool calls")
+      expect(ctx.steers.size).to eq(2)
+    end
+
+    it "lets a Nudge that found no turn be clicked again once one runs" do
+      ctx.running = false
+      expect(checkin(p, "nudge")).to eq("check-in: no turn running")
+      ctx.running = true
+      expect(checkin(p, "nudge")).to be_nil
+      expect(ctx.steers.size).to eq(1)
+    end
+
+    it "steers once for a fresh worker's plugin clicked from a stale card (no check-in this turn)" do
+      fresh = plugin("after" => 50).tap { |pl| turn(pl) && tools(pl, "read") }
+      results = Array.new(5) { checkin(fresh, "nudge") }
+
+      expect(ctx.steers.size).to eq(1)
+      expect(results.drop(1).uniq).to eq(["check-in: already nudged at 1 tool calls"])
+    end
+
     it "with no turn running, Nudge and Stop say so and leave the card" do
       ctx.running = false
       cards = ctx.cards.size
@@ -221,6 +250,15 @@ RSpec.describe "The check-in plugin" do
       expect(ctx.notices.map(&:first)).to eq(["1 tool calls in this turn, no answer yet", "2 tool calls in this turn, no answer yet"])
       expect(steered).to be_empty
       expect(ctx.cards).to be_empty
+    end
+
+    it "a Nudge click after the mode's own nudge for that check-in is a repeat" do
+      p = plugin("after" => 2, "mode" => "nudge")
+      turn(p)
+      tools(p, "read", "read")
+
+      expect(checkin(p, "nudge")).to eq("check-in: already nudged at 2 tool calls")
+      expect(ctx.steers).to be_empty
     end
 
     it "nudge says at the turn's end that the nudge wasn't sent when the answer came first" do

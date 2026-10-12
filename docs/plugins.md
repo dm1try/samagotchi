@@ -1128,13 +1128,16 @@ what it has found. check-in counts the turn's tool calls, and when there are
   and its last few tools, and three actions:
   - **Nudge** (`/checkin nudge`): puts `message` into the running turn
     (`ctx.steer`); the model reads it at its next step and answers or says
-    what is left. Every UI shows `check-in> nudged: …`.
+    what is left. Every UI shows `check-in> nudged: …`. One nudge per
+    check-in: another click (or a typed `/checkin nudge`) answers
+    "check-in: already nudged at N tool calls".
   - **Keep going** (`/checkin later`): closes the card until the next
     check-in.
   - **Stop** (`/checkin stop`): stops the turn.
 
   When the turn ends the card loses its actions ("The turn ended after N tool
-  calls"), so no stale buttons stay. In the attached terminal the actions are
+  calls"), so no stale buttons stay; a card left by a worker that exited
+  mid-turn comes back without them too. In the attached terminal the actions are
   `→ /checkin nudge` lines to type; the command runs beside the turn.
 - **`mode: nudge`**: nudges the model by itself, with a notice line.
 - **`mode: notify`**: a notice line only.

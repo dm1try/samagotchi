@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 - A card shown during a turn by a worker that has since exited comes back read-only: no buttons. A stale check-in
   card's Nudge steered the next worker's turn on every click. Cards shown between turns (github-pr's offer, btw,
   coordinator) keep their buttons.
+- check-in nudges once per check-in: repeated Nudge clicks (or `/checkin nudge`) on the same check-in answer
+  "check-in: already nudged at N tool calls" instead of steering the turn again. Run #43 got 12 identical nudges.
 
 ## [0.60.0] - 2026-10-11
 

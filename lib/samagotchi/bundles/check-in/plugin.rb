@@ -11,6 +11,10 @@
 # final answer is dropped: the card's Nudge then says so at the turn's end
 # (after_turn's messages have no steer with its text).
 #
+# One nudge per check-in: a second Nudge (a repeat click, a stale card's
+# button, a typed /checkin nudge) for the same check-in only says it was
+# already nudged; before the turn's first check-in, one nudge in all.
+#
 # The count is per turn: before_turn resets it (and closes a card left open
 # by a turn that failed or was interrupted, where after_turn doesn't fire);
 # steering merged mid-turn does not. The /checkin commands are anytime ones
@@ -76,6 +80,8 @@ class Plugin
     @card_id = nil  # this turn's card, once shown
     @card_open = false
     @nudge = nil    # the card's Nudge this turn: { text:, count: }
+    @checked_in = nil # the count at this turn's latest check-in
+    @nudged_for = nil # the check-in (its count, :none before one) nudged
   end
 
   def before_turn(ctx)
@@ -97,6 +103,7 @@ class Plugin
       next nil unless @enabled && @count >= @next_at
 
       @next_at = @count + @every
+      @checked_in = @count
       [@count, @mode]
     end
     check_in(ctx, *due) if due
@@ -107,7 +114,10 @@ class Plugin
     when "nudge"
       text = message(count)
       if ctx.steer(text)
-        @mutex.synchronize { @nudge = { text: text, count: count } }
+        @mutex.synchronize do
+          @nudge = { text: text, count: count }
+          @nudged_for = count
+        end
         ctx.notify("nudged the model after #{count} tool calls")
       end
     when "notify"
@@ -232,10 +242,24 @@ class Plugin
     "check-in after #{n} tool calls, then every #{n}, for this session"
   end
 
+  # At most one nudge per check-in; the slot is taken before the steer (two
+  # clicks race on the anytime command's threads) and given back when no
+  # turn took it.
   def nudge(ctx)
-    count = calls
+    count, key, earlier = @mutex.synchronize do
+      key = @checked_in || :none
+      next [nil, nil, @nudge&.dig(:count) || @count] if @nudged_for == key
+
+      @nudged_for = key
+      [@count, key, nil]
+    end
+    return "check-in: already nudged at #{earlier} tool calls" if earlier
+
     text = message(count)
-    return "check-in: no turn running" unless ctx.steer(text)
+    unless ctx.steer(text)
+      @mutex.synchronize { @nudged_for = nil if @nudged_for == key }
+      return "check-in: no turn running"
+    end
 
     @mutex.synchronize { @nudge = { text: text, count: count } }
     close_card(ctx, "Nudged the model at #{count} tool calls.")
