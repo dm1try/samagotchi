@@ -1170,6 +1170,135 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  # A plugin's steer right after tool results rides in the last tool message
+  # on the wire (SteerFold); the saved conversation keeps it as its own
+  # message.
+  describe "a plugin steer after tool results" do
+    let(:steer) { { text: "nudge", source: "check-in" } }
+    let(:folded) { Samagotchi::Steer.folded_text({ source: "check-in", content: "nudge" }) }
+
+    def read(id) = tools([id, "read", { "path" => "#{id}.rb" }])
+    def roles(request) = request[:messages].map { |m| m[:role] }
+
+    it "goes in the tool message, not as a user message, and is saved as its own message" do
+      backend.adapter = adapter = FakeChatAdapter.new(read("c1"), text("done"))
+      queue = [[], [steer]]
+
+      result = run(pending_input: -> { queue.shift || [] })
+
+      expect(roles(adapter.requests.last)).to eq(%w[user assistant tool])
+      expect(adapter.requests.last[:messages].last).to eq(role: "tool", content: "[read] done: c1.rb#{folded}", tool_call_id: "c1")
+      expect(result.conversation.map { |m| m.slice(:role, :kind, :source, :content) }.last(2))
+        .to eq([{ role: "user", kind: "steer", source: "check-in", content: "nudge" }, { role: "model", content: "done" }])
+    end
+
+    it "chains one drain's steers into the last tool message of a parallel batch, in order" do
+      backend.adapter = adapter = FakeChatAdapter.new(
+        tools(["c1", "read", { "path" => "a" }], ["c2", "read", { "path" => "b" }]), text("done")
+      )
+      queue = [[], [steer, { text: "read AGENTS.md", source: "agents-md" }]]
+
+      run(pending_input: -> { queue.shift || [] })
+
+      wire = adapter.requests.last[:messages]
+      expect(wire.map { |m| m[:role] }).to eq(%w[user assistant tool tool])
+      expect(wire[2][:content]).to eq("[read] done: a")
+      expect(wire[3][:content])
+        .to eq("[read] done: b#{folded}#{Samagotchi::Steer.folded_text({ source: "agents-md", content: "read AGENTS.md" })}")
+    end
+
+    it "keeps each request's wire a prefix of the next one's, byte for byte" do
+      with_history = fake_kernel.turn_settings.with(reasoning_history: :turn)
+      fake_kernel.turn_settings = with_history
+      backend.adapter = adapter = FakeChatAdapter.new(read("c1").with(reasoning: "a"), read("c2").with(reasoning: "b"),
+                                                      read("c3").with(reasoning: "c"), text("done"))
+      queue = [[], [steer], [], [{ text: "again", source: "skills" }]]
+
+      run(pending_input: -> { queue.shift || [] })
+
+      wires = adapter.requests.map { |r| r[:messages].map { |m| JSON.generate(m) } }
+      expect(wires.length).to eq(4)
+      wires.each_cons(2) { |before, after| expect(after.first(before.length)).to eq(before) }
+      expect(wires.last.count { |m| m.include?('"role":"user"') }).to eq(1)
+    end
+
+    it "folds at an empty answer's retry: the steer goes in place of the nudge, still in the tool message" do
+      backend.adapter = adapter = FakeChatAdapter.new(read("c1"), text(""), text("done"))
+      queue = [[], [], [steer]]
+
+      run(pending_input: -> { queue.shift || [] })
+
+      expect(roles(adapter.requests.last)).to eq(%w[user assistant tool])
+      expect(adapter.requests.last[:messages].last[:content]).to end_with(folded)
+    end
+
+    it "folds at a plugin's cut right after tool results (the steer goes in before any nudge)" do
+      controller = Samagotchi::CancellationController.new
+      cut = lambda do |cancel_controller:, **|
+        cancel_controller.cancel!(:hook, { by: "loop-guard", reason: "loop" })
+        raise Samagotchi::LLM::RequestCancelled, :hook
+      end
+      backend.adapter = adapter = FakeChatAdapter.new(read("c1"), cut, text("done"))
+      queue = [[], [], [steer]]
+
+      result = run(pending_input: -> { queue.shift || [] }, cancel_controller: controller)
+
+      expect(result.text).to eq("done")
+      expect(roles(adapter.requests.last)).to eq(%w[user assistant tool])
+      expect(adapter.requests.last[:messages].last[:content]).to end_with(folded)
+    end
+
+    it "stays a user message when it comes after an empty answer's nudge" do
+      backend.adapter = adapter = FakeChatAdapter.new(read("c1"), text(""), text("done"))
+      queue = [[], [], [], [steer]]
+
+      run(pending_input: -> { queue.shift || [] })
+
+      expect(roles(adapter.requests.last)).to eq(%w[user assistant tool system user])
+      expect(adapter.requests.last[:messages].last[:content].first[:text])
+        .to eq("#{Samagotchi::Steer.header({ kind: "steer", source: "check-in" })}\nnudge")
+    end
+
+    it "folds under drop and all alike" do
+      %i[drop all].each do |level|
+        fake_kernel.turn_settings = fake_kernel.turn_settings.with(reasoning_history: level)
+        backend.adapter = adapter = FakeChatAdapter.new(read("c1"), text("done"))
+        queue = [[], [steer]]
+        run(pending_input: -> { queue.shift || [] })
+
+        expect(adapter.requests.last[:messages].last[:content]).to end_with(folded), level.inspect
+      end
+    end
+
+    it "rides on the forget view's stub of the tool output" do
+      view = Samagotchi::LLMContextView.new
+      allow(view).to receive(:messages) do |conversation|
+        conversation.map { |m| m[:role].to_s == "tool_response" ? m.merge(content: "[output forgotten]") : m }
+      end
+      allow(fake_kernel).to receive(:llm_context_view).and_return(view)
+      backend.adapter = adapter = FakeChatAdapter.new(read("c1"), text("done"))
+      queue = [[], [steer]]
+
+      run(pending_input: -> { queue.shift || [] })
+
+      expect(adapter.requests.last[:messages].last[:content]).to eq("[output forgotten]#{folded}")
+    end
+
+    it "counts the run's folded steers on :generation_completed (steers_folded:), none before" do
+      backend.adapter = FakeChatAdapter.new(read("c1"), read("c2"), text("done"))
+      queue = [[], [steer], []]
+      history = [{ role: "user", content: "old" }, { role: "model", content: "", tool_calls: [{ id: "c0", name: "read" }] },
+                 { role: "tool_response", content: "x", tool_call_id: "c0" },
+                 { role: "user", kind: "steer", source: "check-in", content: "old nudge" },
+                 { role: "model", content: "ok" }, { role: "user", content: "go" }]
+
+      run(history, pending_input: -> { queue.shift || [] })
+
+      completed = events.select { |e| e[:type] == :generation_completed }
+      expect(completed.map { |e| e[:steers_folded] }).to eq([nil, 1, 1])
+    end
+  end
+
   describe "cancel" do
     let(:controller) { Samagotchi::CancellationController.new }
 
@@ -1334,6 +1463,20 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], [], ["after"]])
       end
 
+      it "keeps the reasoning across a plugin steer after tool results: it rides in the tool message" do
+        backend.adapter = adapter = FakeChatAdapter.new(call("c1", "before"), call("c2", "after"), text("done"))
+        queue = [[], [{ text: "nudge", source: "check-in" }], [], []]
+        result = run(pending_input: -> { queue.shift || [] })
+
+        expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["before"], %w[before after]])
+        expect(adapter.requests[1][:messages].map { |m| m[:role] }).to eq(%w[user assistant tool])
+        expect(adapter.requests[1][:messages].last[:content])
+          .to eq("[read] done: c1.rb#{Samagotchi::Steer.folded_text({ source: "check-in", content: "nudge" })}")
+        # The estimate counts what goes out (one plan for the boundary and the wire).
+        expect(backend.reasoning_chars(result.conversation, reasoning: :turn)).to eq("beforeafter".length)
+        expect(result.conversation.map { |m| m[:kind] }.compact).to eq(["steer"])
+      end
+
       it "sends none of the previous run's in a continue turn (a reminder, a context wake)" do
         reminder = { role: "system", content: "[SYSTEM: REMINDERS DUE]\n  r: x\n[END REMINDERS]" }
         wake = { role: "system", content: "[context] new mail", turn_start: true, turn_id: "w1" }
@@ -1396,6 +1539,16 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
           run(exhausted_run, reasoning_since: 1, pending_input: -> { queue.shift || [] })
 
           expect(adapter.requests.first[:messages].last).to include(role: "user")
+          expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["after"]])
+        end
+
+        it "keeps a Continue's text a user message when it comes in as a person's steer, after tool results" do
+          backend.adapter = adapter = FakeChatAdapter.new(call("c3", "after"), text("done"))
+          queue = [[{ text: "finish and commit", source: "user" }], [], []]
+          run(exhausted_run, reasoning_since: 1, pending_input: -> { queue.shift || [] })
+
+          expect(adapter.requests.first[:messages].last)
+            .to eq(role: "user", content: [{ type: "text", text: "#{Samagotchi::Steer::USER_HEADER}\nfinish and commit" }])
           expect(adapter.requests.map { |r| reasoning_sent(r) }).to eq([[], ["after"]])
         end
 

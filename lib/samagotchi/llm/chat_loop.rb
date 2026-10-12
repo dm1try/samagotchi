@@ -24,6 +24,7 @@ require_relative "../vision_context"
 require_relative "../log"
 require_relative "../empty_answer_retry"
 require_relative "../steer"
+require_relative "steer_fold"
 require_relative "../turn_note"
 require_relative "../thinking"
 
@@ -139,16 +140,26 @@ module Samagotchi
       # so: under turn the running turn's only (#reasoning_boundary, with
       # +since+ the Run's start), under all every one.
       #
+      # A plugin's steer right after a paired tool result rides in that
+      # tool message (SteerFold, +fold+: its plan, #fold_plan's by
+      # default), after the result's text, instead of going as a user
+      # message: no new query, so the turn's reasoning and the server's
+      # cache stay.
+      #
       # The conversation goes through the kernel's LLMContextView first,
       # as the native prompt does (it keeps every entry in place).
-      def wire_messages(conversation, since: nil, reasoning: reasoning_history)
+      def wire_messages(conversation, since: nil, reasoning: reasoning_history, fold: nil)
         conversation = llm_context_view.messages(conversation)
         paired = paired_call_ids(conversation)
-        boundary = reasoning_boundary(conversation, since: since, level: reasoning)
+        fold ||= SteerFold.plan(conversation, paired: paired)
+        folded_into = fold.keys.sort.group_by { |steer| fold[steer] }
+        boundary = reasoning_boundary(conversation, since: since, level: reasoning, fold: fold)
         plan = ImagePlan.new(conversation, vision)
         tool_images = []
         wire = []
         conversation.each_with_index do |entry, index|
+          next if fold.key?(index)
+
           items = plan.items(entry, index)
           case entry[:role].to_s
           when "system"
@@ -164,7 +175,9 @@ module Samagotchi
           when "tool_response"
             id = entry[:tool_call_id]
             if id && paired.include?(id)
-              wire << { role: "tool", content: with_placeholders(entry[:content].to_s, items), tool_call_id: id }
+              content = with_placeholders(entry[:content].to_s, items)
+              content += Array(folded_into[index]).map { |steer| Steer.folded_text(conversation[steer]) }.join
+              wire << { role: "tool", content: content, tool_call_id: id }
               tool_images.concat(image_parts(items))
             else
               text = "[tool results]\n#{entry[:content]}"
@@ -199,15 +212,29 @@ module Samagotchi
       # last query; or an entry that starts a turn, turn_start) and +since+
       # (the Run's start, so a continue turn -- a reminder, a context wake,
       # a delegate report's wake -- sends none of the run before it; a
-      # step-limit Continue's Run starts where the run it resumes did).
+      # step-limit Continue's Run starts where the run it resumes did). A
+      # steer the wire folds into a tool result (+fold+, #fold_plan's by
+      # default) is no query.
       # @return [Integer, nil]
-      def reasoning_boundary(conversation, since: nil, level: reasoning_history)
+      def reasoning_boundary(conversation, since: nil, level: reasoning_history, fold: nil)
         case level
         when :all then 0
         when :turn
-          query = conversation.rindex { |entry| entry[:role].to_s == "user" || entry[:turn_start] == true }
+          fold ||= fold_plan(conversation)
+          query = (conversation.length - 1).downto(0).find do |index|
+            entry = conversation[index]
+            (entry[:role].to_s == "user" && !fold.key?(index)) || entry[:turn_start] == true
+          end
           [query ? query + 1 : 0, since.to_i].max
         end
+      end
+
+      # The steers +conversation+'s wire folds into tool results
+      # (SteerFold.plan, on the LLMContextView's messages as #wire_messages
+      # sends them): {steer index => tool result index}.
+      def fold_plan(conversation)
+        viewed = llm_context_view.messages(conversation)
+        SteerFold.plan(viewed, paired: paired_call_ids(viewed))
       end
 
       # The reasoning +conversation+'s wire messages carry from +since+ on
@@ -557,7 +584,8 @@ module Samagotchi
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
                thinking_chars: response.reasoning.to_s.length, served_model: response.model,
                served_provider: response.provider, requested_model: @model_name, finish_reason: response.finish_reason,
-               **(response.usage&.cache_fields || {}), **reprefill_field(response.usage))
+               **(response.usage&.cache_fields || {}), **reprefill_field(response.usage),
+               **(@steers_folded.to_i.positive? ? { steers_folded: @steers_folded } : {}))
           dump_response(response, iteration)
           @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text,
                                                messages: AnswerDisplay.strip_all(@conversation).map(&:dup).freeze })
@@ -594,9 +622,15 @@ module Samagotchi
           [response, nil]
         end
 
+        # The plugin steers the request folds into tool results (SteerFold),
+        # counted from the Run's start, go on :generation_completed as
+        # steers_folded: (an earlier run's folds are on every request too).
         def request(iteration, retry_generation, streamed, thought, generation_controller, streamed_any = nil)
+          fold = @loop.fold_plan(@conversation)
+          @steers_folded = fold.keys.count { |steer| steer >= @start }
           @loop.adapter.chat(
-            messages: @loop.wire_messages(@conversation, since: @start, reasoning: reasoning_level), tools: @loop.tool_definitions, model: @model_name,
+            messages: @loop.wire_messages(@conversation, since: @start, reasoning: reasoning_level, fold: fold),
+            tools: @loop.tool_definitions, model: @model_name,
             cancel_controller: generation_controller || @cancel_controller, session_id: @loop.session_id,
             options: @loop.request_options(retry_generation: retry_generation, model: @model_name),
             on_delta: lambda { |content:, reasoning:, payload:|

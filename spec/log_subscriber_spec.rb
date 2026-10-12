@@ -94,6 +94,15 @@ RSpec.describe Samagotchi::LogSubscriber do
     ])
   end
 
+  it "writes how many plugin steers a generation's request folded into tool results, when any" do
+    feed({ type: :generation_started, iteration: 1 },
+         { type: :generation_completed, iteration: 1, content_length: 4, steers_folded: 1 },
+         { type: :generation_started, iteration: 2 },
+         { type: :generation_completed, iteration: 2, content_length: 4 })
+
+    expect(records.map { |r| r.fields["steers_folded"] }).to eq(["1", nil])
+  end
+
   it "writes an empty-answer retry and a generation's finish reason" do
     feed({ type: :generation_started, iteration: 1 },
          { type: :generation_completed, iteration: 1, content_length: 0, thinking_chars: 240_000, finish_reason: "length" },

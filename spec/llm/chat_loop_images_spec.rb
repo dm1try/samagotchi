@@ -55,6 +55,14 @@ RSpec.describe "ChatLoop images" do
     expect(wire.size).to eq(4)
   end
 
+  it "puts a plugin steer folded into the tool message before the tool results' images" do
+    steer = { role: "user", kind: "steer", source: "check-in", content: "nudge" }
+    wire = loop.wire_messages([{ role: "user", content: "check a.gif" }, *tool_turn([gif]), steer])
+    expect(wire.map { |m| m[:role] }).to eq(%w[user assistant tool user])
+    expect(wire[2][:content]).to eq("[read]\nImage a.gif attached.#{Samagotchi::Steer.folded_text(steer)}")
+    expect(wire[3]).to eq({ role: "user", content: [{ type: "text", text: "[images from tool results]" }, image(gif_uri)] })
+  end
+
   it "puts several tool results' images in one follow-up message after the last result" do
     turn = [{ role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: {} }, { id: "c2", name: "read", arguments: {} }] },
             { role: "tool_response", content: "a", tool_call_id: "c1", images: [gif] },

@@ -109,7 +109,7 @@ module Samagotchi
                                         thinking_chars: event[:thinking_chars], finish_reason: event[:finish_reason],
                                         stopped_by: event[:stopped_by], prompt: event[:prompt_tokens],
                                         cached: event[:cached_tokens], cache_write: event[:cache_write_tokens],
-                                        reprefill: event[:reprefill_tokens])
+                                        reprefill: event[:reprefill_tokens], steers_folded: event[:steers_folded])
       return unless event[:stopped_by]
 
       # A plugin (stop_generation) or a steer (Engine#cut_for_steer, by

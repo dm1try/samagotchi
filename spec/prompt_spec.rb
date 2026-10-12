@@ -45,6 +45,21 @@ RSpec.describe Samagotchi::Prompt do
         expect(result.scan("<|turn>").size).to eq(3) # two user turns and the model cue
       end
 
+      # The native loop doesn't fold (SteerFold is the chat wire's): after a
+      # tool response the steer's user turn only appends, and the turn's
+      # thought before it stays, so the prompt before it is a prefix.
+      it "only appends after a tool response in Gemma: the thought before it stays" do
+        call = { role: "model", content: "<|channel>thought\nplan it<channel|><|tool_call>call:read{path:<|\"|>a<|\"|>}<tool_call|>" }
+        before = [{ role: "user", content: "go" }, call, { role: "tool_response", content: "[read]\na" }]
+        after = before + [Samagotchi::Steer.message(text: "status?", source: "check-in"),
+                          { role: "model", content: "<|channel>thought\nnext<channel|>ok" }, { role: "user", content: "more" }]
+        gemma = Samagotchi::ModelProfile.gemma4
+
+        expect(described_class.format(before, profile: gemma)).to include("plan it")
+        expect(described_class.format(before + [after[3]], profile: gemma)).to start_with(described_class.format(before, profile: gemma))
+        expect(described_class.format(after, profile: gemma)).to start_with(described_class.format(before, profile: gemma))
+      end
+
       it "names the sender of merged input, the user by default; a plain prompt has no header" do
         user = { role: "user", kind: "input", content: "skip the tests" }
         sent = { role: "user", kind: "input", source: "chi_send", content: "line one" }
