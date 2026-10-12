@@ -241,13 +241,22 @@ One iteration with tool calls:
 - Runs the gate first, so `:tool_call_started` shows the call that will run (a before_tool_call hook may
   replace it; known-names corrects a misspelled name this way, and the model gets one line saying what ran).
 - Emits `:tool_call_started` {iteration, call_count, call_index, tool, call, params, label (plugin tools),
-  title, called_as, view, ref}. The row fields (title, called_as, view, ref) come from `ToolRowFields.for`, which the
+  title, called_as, view, ref, refs}. The row fields (title, called_as, view, ref) come from `ToolRowFields.for`, which the
   reload (`Web::MessageParts#tool_part`) calls too. `ToolRowFields::ACTIVITY_KEYS` (title, called_as) travel
-  inside `activity` on the completed event; `EVENT_KEYS` (view, ref) go top-level on both events.
+  inside `activity` on the completed event; `EVENT_KEYS` (view, ref, refs) go top-level on both events.
   `Bridge::TurnAccumulator` (snapshot and replay) and the web (`activity.js` `ACTIVITY_FIELDS` /
   `EVENT_FIELDS`) copy them by these lists, so a new row field is added there. `ref` is `FileRef.for` (a
   read/write/edit's file against the cwd, `{kind: "file", path, line?, end_line?}`); the web opens it in the editor
   that `Web::Editor` (web.editor) names, for a local viewer only (`App#viewer_capabilities`).
+  `refs` is a plugin tool's row refs: its registry entry's `refs` (chi.tool's `refs:` lambda, `Api.per_call`), run
+  once per call by `RowRefs.for` (never raises: a raise or a non-list gives none, `tool_refs_failed`; each entry a
+  `Ref`, a bad one dropped, `tool_refs_rejected`; a relative file resolved against the session's folder
+  (`KernelLoop#session_cwd`, else the process's), one outside it (its spelling or its real path) dropped, a kept one
+  stored under the real path; at most `RowRefs::MAX_REFS` and `MAX_BYTES`). `ToolRowFields.for` can't build it (no plugins on a reload), so the run carries it
+  as `refs:`, saved with the result as `tool_refs` (`ToolResponse::SAVED_KEYS`, never sent), and
+  `MessageParts#tool_part` reads it back through `RowRefs.for_display` (checked again). The page binds them to the
+  row's title (`refs.js bindRowRefs`, from `turn_view.js` live and on a reload): the first ref on it, the rest in its
+  menu.
 - Settles an ask verdict after `:tool_call_started`, so a UI shows the tool line and then the approval.
 - Dispatches through `KernelLoop#dispatch_tool_call`, or writes the denial text. Unknown tools are answered in
   `KernelLoop#dispatch` ("Error: no such tool ...", never repeating the wrong name).

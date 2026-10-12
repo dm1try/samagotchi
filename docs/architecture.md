@@ -326,6 +326,9 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
   turn's answer). A plain `?tail=1` (a tab opened before this) gets the whole timing.
   The page binds an answer's `display_refs` to its bubble (`answer_refs.js`: on a reload's render and on this
   read's re-render) and pairs them with the bubble's links and text before the `path:line` scan.
+  A plugin tool's row refs (`refs`, `RowRefs`) ride its tool events and, on a reload, its part (saved as
+  `tool_refs`); `turn_view.js` binds them to the row's title (`refs.js bindRowRefs`: the first on the title,
+  the others in its menu).
 - `?timing=1`: the whole timing (`analytics.json` merged with the worker's `/state`) and
   `turn_count`, when the page's merge came up short.
 - `?cards=1`: the cards, from `/tail`; the session file is only stat'ed for the 404.
