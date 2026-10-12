@@ -1077,8 +1077,9 @@ module Samagotchi
         # A wake turn starts with its first line, whoever sent it.
         lines[0] = lines[0].with(mark: mark) if mark && lines.any?
         # The turn so far, with what this boundary merges (its input files
-        # are gone now), on disk at most every TurnCheckpoint::INTERVAL.
-        @checkpoint.boundary(@engine.live_conversation, merging: lines, turn_id: @turn_id)
+        # are gone now), on disk at most every TurnCheckpoint::INTERVAL;
+        # its metrics so far with it, so a turn a KILL ends keeps them.
+        @engine.checkpoint_metrics if @checkpoint.boundary(@engine.live_conversation, merging: lines, turn_id: @turn_id)
         lines
       end
     end

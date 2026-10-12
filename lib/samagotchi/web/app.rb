@@ -1696,7 +1696,8 @@ module Samagotchi
         source = if live
                    persisted.merge(live_metrics).merge(
                      "started_at" => persisted["started_at"] || live_metrics["started_at"],
-                     "turn_records" => merge_timing_records(persisted["turn_records"], live_metrics["turn_records"]),
+                     "turn_records" => merge_timing_records(without_running_turn(persisted["turn_records"], live_metrics),
+                                                            live_metrics["turn_records"]),
                      "tool_records" => merge_timing_records(persisted["tool_records"], live_metrics["tool_records"])
                    )
                  else
@@ -1775,6 +1776,18 @@ module Samagotchi
 
       def read_analytics(session_id)
         AnalyticsFile.read(@session_class.session_dir(session_id, state_dir: default_state_dir)) || {}
+      end
+
+      # The saved turn records without the one the live worker is running:
+      # its turn checkpoint saves that turn's record so far as a killed
+      # turn's (canceled, worker_stopped, SessionMetrics#persist's
+      # running_turn), which is only true once the worker is gone.
+      def without_running_turn(records, live_metrics)
+        active = live_metrics["active_turn"]
+        id = active.is_a?(Hash) ? active["id"] || active[:id] : nil
+        return records if id.nil?
+
+        Array(records).reject { |record| record.is_a?(Hash) && (record["id"] || record[:id]) == id }
       end
 
       def merge_timing_records(persisted, live)

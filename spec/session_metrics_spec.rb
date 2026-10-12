@@ -943,6 +943,50 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(metrics.snapshot[:tool_records].map { |r| r[:duration_ms] }).to eq([250, 0])
   end
 
+  # A worker's turn checkpoint (TurnCheckpoint, at most every 10 s) saves
+  # the running turn's record so far, as the turn a SIGKILL now would
+  # leave: the next worker loads it (and settles the turn); the turn's own
+  # end writes over it.
+  describe "persist(running_turn: true)" do
+    let(:state_dir) { Dir.mktmpdir }
+
+    def run_one_generation(collector)
+      collector.state_dir = state_dir
+      collector.call(type: :turn_started, session_id: "killed", prompt: "x", turn_id: "turn-k")
+      collector.call(type: :generation_started, iteration: 1)
+      collector.call(type: :generation_chunk, iteration: 1, content: "some answer",
+                     payload: { "timings" => { "prompt_n" => 20, "predicted_n" => 40, "predicted_per_second" => 50.0, "predicted_ms" => 800 } })
+      collector.call(type: :generation_completed, iteration: 1)
+    end
+
+    it "saves the running turn's record as canceled by worker_stopped, with its tokens and speed; the next collector loads it" do
+      run_one_generation(metrics)
+      expect(metrics.persist(running_turn: true)).to be(true)
+
+      woken = described_class.new
+      woken.state_dir = state_dir
+      woken.session_id = "killed"
+      record = woken.saved_snapshot[:turn_records].last
+      expect(record).to include(id: "turn-k", status: "canceled", cancellation_reason: "worker_stopped",
+                                prompt_tokens_sum: 20, completion_tokens: 40, decode_tps: 50.0, generations: 1)
+      expect(woken.snapshot).to include(turns: 1, cancellations: 1)
+      expect(woken.snapshot[:tokens]).to include(prompt_sum: 20, completion_sum: 40)
+      # The running collector itself still counts the turn as running.
+      expect(metrics.snapshot).to include(turns: 1, cancellations: 0)
+    end
+
+    it "is written over by the turn's own end" do
+      run_one_generation(metrics)
+      metrics.persist(running_turn: true)
+      metrics.call(type: :turn_completed, result: double(respond_to?: false))
+      metrics.persist
+
+      records = JSON.parse(File.read(File.join(Samagotchi::Session.session_dir("killed", state_dir: state_dir), "analytics.json")))
+      expect(records["turn_records"].map { |r| [r["id"], r["status"]] }).to eq([%w[turn-k completed]])
+      expect(records["cancellations"]).to eq(0)
+    end
+  end
+
   it "keeps the earlier records in its state dir when a later worker persists analytics" do
     state_dir = Dir.mktmpdir
     first = described_class.new

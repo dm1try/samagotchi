@@ -416,10 +416,20 @@ module Samagotchi
     # analytics.json in the session directory. Atomic write; failures are
     # swallowed (analytics must never break the running session).
     # @param state_dir [String, nil]
+    # @param running_turn [Boolean] also save the running turn's record so
+    #   far (a worker's turn checkpoint): as the turn a worker killed now
+    #   would leave, canceled with reason worker_stopped (TurnNote's), up to
+    #   its completed_at. The next collector loads it with the others; the
+    #   turn's own end writes over it. Only the file has it.
     # @return [Boolean] true on success
-    def persist(state_dir: nil)
+    def persist(state_dir: nil, running_turn: false)
       sid, data, turn_count = @mutex.synchronize do
-        [@session_id, build_snapshot(:all).merge(active_turn: nil, active_tools: []), @turn_records.size]
+        data = build_snapshot(:all).merge(active_turn: nil, active_tools: [])
+        if running_turn && @turn
+          data[:turn_records] << running_turn_record
+          data[:cancellations] += 1
+        end
+        [@session_id, data, @turn_records.size]
       end
       return false if sid.nil? || sid.to_s.empty?
 
@@ -609,6 +619,18 @@ module Samagotchi
         end
         @turn = nil
       end
+    end
+
+    # The running turn's record so far, as end_turn would make it for a
+    # turn a worker died in (#persist's running_turn). Its open generation
+    # (none at an iteration boundary) and running tool calls are left out.
+    # Caller holds the mutex.
+    def running_turn_record
+      {
+        id: @turn.id, status: "canceled", started_at: @turn.started_at, completed_at: now.iso8601(3),
+        duration_ms: elapsed_ms(@turn.started_monotonic), cancellation_reason: "worker_stopped",
+        continue: @turn.continue, resumed: @turn.resumed
+      }.merge(turn_token_fields(@turn))
     end
 
     # What turn_failed's line is made of (format.js failedTurnText): a

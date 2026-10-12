@@ -1644,6 +1644,29 @@ RSpec.describe Samagotchi::Web::App do
         expect(timing["tool_records"].size).to eq(4)
       end
 
+      # A worker's turn checkpoint saves the running turn's record so far,
+      # as a killed turn's (canceled, worker_stopped): while that worker
+      # runs it, the page must not see it as a finished, canceled turn.
+      it "leaves out the saved record of the turn the live worker is running (its checkpoint's)" do
+        save([1, 2])
+        File.write(File.join(state_dir, "s1", "analytics.json"),
+                   JSON.generate(started_at: "2026-10-03T10:00:00.000Z",
+                                 turn_records: [turn(1), turn(2), turn(3).merge("status" => "canceled",
+                                                                                "cancellation_reason" => "worker_stopped")],
+                                 tool_records: [tool(1, 1), tool(3, 1)]))
+        live_with([2], count: 2, "active_turn" => { "id" => "t3", "started_at" => "2026-10-03T10:09:00.000Z" })
+
+        ["", "?tail=1", "?timing=1"].each do |query|
+          expect(ids(timing(query)["turn_records"])).to eq(%w[t1 t2]), query
+          # The running turn's finished calls stay (the live ones carry them too).
+          expect(ids(timing(query)["tool_records"])).to include("t3:1:1"), query
+        end
+
+        stub_worker(app, nil)
+        allow(app).to receive(:bridge_get_json).with("s1", "state").and_return(nil)
+        expect(ids(timing["turn_records"])).to eq(%w[t1 t2 t3])
+      end
+
       it "counts the finished turns everywhere (turn_count): live, the running one not; on disk, the records" do
         save([1, 2])
         live_with([3], count: 4, "active_turn" => { "id" => "t4", "started_at" => "2026-10-03T10:09:00.000Z" })

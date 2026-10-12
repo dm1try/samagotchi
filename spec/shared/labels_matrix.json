@@ -7,6 +7,7 @@
       { "reason": "ctrl_c", "expected": "Ctrl-C" },
       { "reason": "user", "expected": "stopped" },
       { "reason": "hook", "expected": "by a hook" },
+      { "reason": "worker_stopped", "expected": "worker stopped" },
       { "reason": "shutdown", "expected": "shutdown" },
       { "reason": "", "expected": null }
     ]

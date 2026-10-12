@@ -319,7 +319,10 @@ end
   boundary) copies it, with the lines that boundary merges, into `Session#turn_checkpoint` (`TurnCheckpoint`):
   every save while the turn runs writes that copy with an `interrupted_turn` mark instead of the session's
   messages, written at the first boundary and then at most every 10 s, so a killed worker loses at most that much
-  of its turn. `session.messages` itself is untouched until the turn ends.
+  of its turn. `session.messages` itself is untouched until the turn ends. When the checkpoint writes, the worker
+  also calls `Engine#checkpoint_metrics` (`SessionMetrics#persist(running_turn: true)`): `analytics.json` gets the
+  running turn's record so far as a killed turn's (canceled, `worker_stopped`), which the next worker loads; the
+  turn's end writes over it.
 
 ### GenerationPhase
 

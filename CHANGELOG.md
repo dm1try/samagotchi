@@ -25,6 +25,8 @@ and commands may change between minor versions. How releases are made:
 - A command a signal to chi stopped (a worker's TERM, HUP or INT mid-`execute`) says "stopped by a signal to chi",
   not "stopped by the user"; one it kept from starting says "not run, a signal to chi stopped the turn".
   slow-commands 0.2.1 doesn't count either as slow.
+- A turn whose worker was killed (SIGKILL, a crash) keeps its tokens, speed and timings up to its last checkpoint:
+  the session's stats count it as a canceled turn (`worker_stopped`); before, they lost it.
 
 ## [0.61.0] - 2026-10-12
 

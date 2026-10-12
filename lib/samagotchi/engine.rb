@@ -1340,6 +1340,12 @@ module Samagotchi
 
     def session_state_dir = @session_state_dir || Session.default_state_dir
 
+    # The running turn's metrics so far, saved as a turn a worker died in
+    # would leave them (SessionMetrics#persist's running_turn): a worker's
+    # turn checkpoint (TurnCheckpoint) calls it when it writes.
+    # @return [Boolean] whether they were saved
+    def checkpoint_metrics = @metrics.persist(state_dir: session_state_dir, running_turn: true)
+
     # What a Bridge adds to a plugin's ctx.messages while a turn runs (the
     # turn so far, as messages); nil without a Bridge (the REPL).
     attr_writer :running_turn_messages

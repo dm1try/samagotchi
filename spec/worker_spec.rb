@@ -778,6 +778,20 @@ RSpec.describe Samagotchi::Worker do
         expect(engine.session.turn_checkpoint).to be_nil
       end
 
+      it "saves the turn's metrics so far with the checkpoint (as a killed turn's), its own end's after" do
+        start_worker(poll_interval: 5)
+        post_turn("long task")
+        expect(in_turn.pop(timeout: 2)).to be(true)
+
+        analytics = -> { JSON.parse(File.read(File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), "analytics.json"))) }
+        expect(analytics.call["turn_records"].map { |r| r.slice("status", "cancellation_reason") })
+          .to eq([{ "status" => "canceled", "cancellation_reason" => "worker_stopped" }])
+
+        release << true
+        expect(wait_until { on_disk["status"] == "idle" }).to be(true)
+        expect(wait_until { analytics.call["turn_records"].map { |r| r["status"] } == ["completed"] }).to be(true)
+      end
+
       it "writes at the first boundary, then when due, or at once for a merged line (its input file is gone)" do
         stub_const("Samagotchi::TurnCheckpoint::INTERVAL", 3600)
         @steer_at = 2
