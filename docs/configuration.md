@@ -521,9 +521,10 @@ What each backend gets:
 
 On chat hosts: llama.cpp honours both off switches but ignores the effort (when its `/props` says
 `chat_template_caps.supports_reasoning_effort: false`, chi says so once per session and host, from the `/props`
-answer the turn already fetched for the window); Splash takes `reasoning_effort` (off only
-through `none`) and scales with it; OpenRouter translates `reasoning_effort` per model (some can't turn thinking off:
-Qwen3-30B-A3B thinks anyway, gpt-oss refuses).
+answer the turn already fetched for the window); Splash honours both off switches and passes the effort to the
+model's template, which decides: Qwen3.6's ignores it (`low`, `medium` and `high` think the same), and the server's
+`--default-reasoning-effort` decides what `default` means there; OpenRouter translates `reasoning_effort` per model
+(some can't turn thinking off: Qwen3-30B-A3B thinks anyway, gpt-oss refuses).
 
 When the model thinks although the level is `off`, chi says so once per session and host
 (`thinking> warning: off wasn't honoured by … (N chars of thinking)`) and logs `thinking_not_honoured` each time.
@@ -558,26 +559,39 @@ hosts:
     url: https://api.deepseek.com/v1
     api: openai
     api_key_env: DEEPSEEK_API_KEY
-    reasoning_history: all   # its API wants every earlier reply's reasoning when tools are sent
+    reasoning_history: all   # with tools its API wants every earlier reply's reasoning: under turn, turn 2 fails
 models:
   some-model:
     reasoning_history: drop
 ```
 
-- `turn` (the default) sends the running turn's reasoning: each reply since the last user message carries its
-  reasoning as `reasoning_content`, which is what Qwen's, Gemma 4's and DeepSeek's chat templates and the hosted APIs
-  (OpenRouter takes it for DeepSeek, Qwen and other text-reasoning models) expect. The running turn starts at the
-  last message you sent (a prompt, or a steer: as the chat template counts it) and never before the turn's own start,
-  so a turn that goes on by itself (a reminder, a context wake, a delegate report's wake) sends nothing of the one
-  before it, an interrupted reply's partial thought included. A **step-limit Continue** is the same turn going on: it
-  keeps the reasoning of the run it continues (back to the first run of a chain of Continues), so its first request
-  matches the last one before the limit and the server's prompt cache stays warm. Continue's text, or a `!cmd` run
-  while the step-limit question stands, is a user message: the reasoning before it goes, as for any steer, and that
-  Continue reads the conversation again once (a re-prefill on a local server). After a `/model` change while the
-  question stands the Continue starts afresh (no other model's reasoning is sent).
+- `turn` (the default) sends the running turn's reasoning: each reply since the turn's start carries its reasoning
+  as `reasoning_content` (OpenRouter takes it for DeepSeek, Qwen and other text-reasoning models). A steer, a plugin's
+  nudge (check-in, agents-md) or a Continue's text merged into the turn doesn't reset it, as on a native host: the
+  request after it is the one before plus the steer, so the server's prompt cache holds. A turn that goes on by itself
+  (a reminder, a context wake, a delegate report's wake) sends nothing of the one before it, an interrupted reply's
+  partial thought included. A **step-limit Continue** is the same turn going on: it keeps the reasoning of the run it
+  continues (back to the first run of a chain of Continues), so its first request matches the last one before the
+  limit and the server's prompt cache stays warm; Continue's text keeps it too. A `!cmd` run while the step-limit
+  question stands is a user message added after the run: the reasoning before it goes, and that Continue reads the
+  conversation again once (a re-prefill on a local server). After a `/model` change while the question stands the
+  Continue starts afresh (no other model's reasoning is sent).
+- **A stock Qwen template (Splash, vLLM, SGLang; llama.cpp with Qwen's own template)** renders an earlier reply's
+  reasoning only after the last user message: a steer hides the reasoning before it whatever chi sends, and the
+  prompt changes there. `sampling: {chat_template_kwargs: {preserve_thinking: true}}` on the host renders every
+  reasoning chi sends (a reply sent without any renders an empty think block; adding it restarts the prompt cache
+  once). What it costs by level, with it on: under `turn` a steer no longer re-reads the turn, but each new turn still
+  reads the conversation again from the previous turn's first reply (that turn's reasoning leaves the request); under
+  `all` every request extends the one before (append-only), at the cost of a prompt that keeps the reasoning of every
+  turn. Without it (the template's default) both re-read from the reply before each user message. A strict server
+  that rejects unknown fields ("Unrecognized request argument supplied: chat_template_kwargs": OpenAI proper, some
+  gateways) fails every request with it, so set it only on a host you know takes it.
+- A **direct DeepSeek API** host (`api.deepseek.com`) with tools wants the reasoning of every earlier reply, earlier
+  turns included, and answers HTTP 400 without it: under `turn` every turn after one that thought fails. Set
+  `reasoning_history: all` there (the example above). DeepSeek through OpenRouter takes `turn`.
 - `drop` sends none (what chi did before this setting).
 - `all` sends every reply's reasoning, earlier turns too. It sends only the field: a local template that leaves out
-  earlier turns' reasoning (Qwen's) needs `sampling: {chat_template_kwargs: {preserve_thinking: true}}` as well.
+  earlier turns' reasoning (Qwen's) needs `preserve_thinking` as well (above).
 - Order, first set wins: the session's own level, `SAMAGOTCHI_REASONING_HISTORY` (the whole process; for A/B runs),
   the `models:` entry (found the way `profile:` is), the `hosts:` entry, then `turn`. Anything else than a level warns
   once and counts as unset. A host's level reaches a worker when it starts, as its `sampling:` does.
@@ -597,9 +611,8 @@ models:
   | to or from `all`, once an earlier reply has thinking | every earlier reply gains or loses its reasoning: a server that renders it (hosted APIs, llama.cpp's default template) reads the conversation again from the first earlier thought |
   | nothing thought yet, the same level, or a native host | none |
 
-- The native loop (`/completion`) ignores it: it always keeps the running turn's reasoning, a mid-turn steer included
-  (the chat loop starts again after a steer), and a step-limit Continue keeps the thoughts of the run it continues,
-  a mid-turn steer's earlier ones included.
+- The native loop (`/completion`) ignores it: it always keeps the running turn's reasoning, a mid-turn steer included,
+  and a step-limit Continue keeps the thoughts of the run it continues, a mid-turn steer's earlier ones included.
 - When a host answers a request that sent reasoning back with an HTTP 400 about reasoning, chi asks again without it,
   sends none to that model from then on (until the worker restarts) and says so once. If the request without it is
   refused too, the thinking fields get the same fallback ("Thinking") and the reasoning goes back on the next step.
