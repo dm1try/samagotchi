@@ -133,6 +133,9 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_status(killed, "execute")).to eq("stopped")
       expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_STOP, "execute")).to eq("stopped")
       expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_STOP, "task_create")).to eq("stopped")
+      signalled = "#{Samagotchi::Tools::Execute::STOPPED_BY_SIGNAL} after 3s (killed; rerun it if still needed)"
+      expect(described_class.tool_activity_status(signalled, "execute")).to eq("stopped")
+      expect(described_class.tool_activity_status(Samagotchi::Tools::Execute::NOT_RUN_ON_SIGNAL, "task_create")).to eq("stopped")
       expect(described_class.tool_activity_status("Error: command timed out after 120s", "execute")).to eq("error")
       expect(described_class.tool_activity_status(killed, "read")).to eq("error")
     end

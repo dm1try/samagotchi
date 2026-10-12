@@ -22,6 +22,9 @@ and commands may change between minor versions. How releases are made:
 
 - A turn run in the REPL (`--no-shared`) keeps the answer's display and refs (source-links' and github-pr's links,
   a hook's `present`), so the web shows them when it opens the session; before, the save dropped them.
+- A command a signal to chi stopped (a worker's TERM, HUP or INT mid-`execute`) says "stopped by a signal to chi",
+  not "stopped by the user"; one it kept from starting says "not run, a signal to chi stopped the turn".
+  slow-commands 0.2.1 doesn't count either as slow.
 
 ## [0.61.0] - 2026-10-12
 

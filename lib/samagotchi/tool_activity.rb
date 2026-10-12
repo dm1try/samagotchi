@@ -211,12 +211,16 @@ module Samagotchi
     # "stopped" for a
     # task_wait the user's Stop ended (the task itself runs on), for one
     # whose task was stopped (the stop-task button, or the model's task_stop),
-    # and for a command the user's Stop killed or kept from starting: a
-    # cancel, not a failure (its text still starts "Error:" for the model).
+    # and for a command the user's Stop (or a signal to chi) killed or kept
+    # from starting: a cancel, not a failure (its text still starts "Error:"
+    # for the model).
     def tool_activity_status(result, tool_name = nil, command: nil)
       text = result.to_s
-      return "stopped" if text == Tools::Execute::NOT_RUN_ON_STOP
-      return "stopped" if tool_name == Tools::Execute::NAME && text.start_with?(Tools::Execute::STOPPED_BY_USER)
+      return "stopped" if [Tools::Execute::NOT_RUN_ON_STOP, Tools::Execute::NOT_RUN_ON_SIGNAL].include?(text)
+      if tool_name == Tools::Execute::NAME &&
+         text.start_with?(Tools::Execute::STOPPED_BY_USER, Tools::Execute::STOPPED_BY_SIGNAL)
+        return "stopped"
+      end
       return "error" if text.start_with?("Error:")
       # Still running, as a task: its output tail may hold any "exit: N".
       return "ok" if handed_over?(tool_name, text)

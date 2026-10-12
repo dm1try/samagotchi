@@ -10,11 +10,12 @@ module Samagotchi
     # can't host one), and the model the session runs on (model_ref: the
     # resolved ref, live after /model), and the session's own thinking level
     # (thinking: nil without one) and reasoning_history level
-    # (reasoning_history: nil without one). Engine hands KernelLoop one that follows its current
+    # (reasoning_history: nil without one), and why the turn was canceled
+    # (cancel_reason: :signal, :manual, …; nil while it runs). Engine hands KernelLoop one that follows its current
     # session (Engine::PeerView); this plain one is for specs and a kernel
     # without an Engine.
     Peers = Struct.new(:session_id, :cwd, :state_dir, :cancelled, :relay, :model_ref, :thinking, :reasoning_history,
-                       keyword_init: true) do
+                       :cancel_reason, keyword_init: true) do
       # @return [Boolean] the turn was canceled (:cancelled is a proc or a value)
       def cancelled?
         cancelled.respond_to?(:call) ? !!cancelled.call : !!cancelled

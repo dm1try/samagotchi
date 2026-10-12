@@ -75,7 +75,11 @@ class Plugin
   TIMED_OUT = /\A#{Regexp.escape(Samagotchi::Tools::Execute::TIMEOUT_PREFIX)} (\d+)s/
   # Still running at the limit, handed over as a task (chi >= 0.59.0).
   HANDED_OVER = /\A#{Regexp.escape(Samagotchi::Tools::Execute::HANDED_OVER)} (\d+)s limit/
-  STOPPED = [Samagotchi::Tools::Execute::STOPPED_BY_USER, Samagotchi::Tools::Execute::NOT_RUN_ON_STOP].freeze
+  # A stopped command's first words: the user's Stop, or a signal to chi
+  # (chi >= 0.62.0; an older chi has no such text).
+  STOPPED = %i[STOPPED_BY_USER NOT_RUN_ON_STOP STOPPED_BY_SIGNAL NOT_RUN_ON_SIGNAL].filter_map do |name|
+    Samagotchi::Tools::Execute.const_get(name) if Samagotchi::Tools::Execute.const_defined?(name)
+  end.freeze
   LEX = Samagotchi::Guardrails::ShellLex
   SHORT_CHARS = 60
   WAIT_DEFAULT = 600

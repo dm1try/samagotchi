@@ -77,7 +77,7 @@ module Samagotchi
                     start_line: call[:start_line], end_line: call[:end_line])
         end,
         TaskCreate::NAME => lambda do |call, kctx|
-          next Execute::NOT_RUN_ON_STOP if cancelled_proc(kctx).call
+          next Execute.not_run(stop_reason_proc(kctx)) if cancelled_proc(kctx).call
 
           TaskCreate.call(call[:content], cwd: call[:cwd], env: call[:env],
                           marker_env: task_marker_env(kctx, call[:env]))
@@ -87,7 +87,8 @@ module Samagotchi
                                         done_pattern: call[:done_pattern], cancelled: cancelled_proc(kctx))
         end,
         Execute::NAME => lambda do |call, kctx|
-          Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx), env: parent_env(kctx))
+          Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx), stop_reason: stop_reason_proc(kctx),
+                                       env: parent_env(kctx))
         end,
         RegisterReminder::NAME => lambda do |call, kctx|
           RegisterReminder.call(call[:content], reminder_store: kctx.reminder_store, description: call[:description],
@@ -161,6 +162,12 @@ module Samagotchi
       def cancelled_proc(kctx)
         peers = kctx.peers
         -> { !!peers&.cancelled? }
+      end
+
+      # The running turn's stop reason (:signal, :manual, …), nil without one.
+      def stop_reason_proc(kctx)
+        peers = kctx.peers
+        -> { peers.respond_to?(:cancel_reason) ? peers.cancel_reason : nil }
       end
 
       # @param command_description [Boolean] false: execute declares no

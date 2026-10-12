@@ -15,6 +15,7 @@ module Samagotchi
       def project_root = engine.session&.project_root
       def state_dir = engine.peer_state_dir
       def cancelled? = !!engine.active_cancel_controller&.cancelled?
+      def cancel_reason = engine.active_cancel_controller&.reason
       def relay = engine.relay_peer
       def model_ref = engine.effective_model_ref
       def thinking = engine.thinking_override

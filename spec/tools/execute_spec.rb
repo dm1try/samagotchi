@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "samagotchi/tools/execute"
+require "samagotchi/tools/builtins"
+require "samagotchi/tools/peers"
 require "open3"
 require "tempfile"
 require "tmpdir"
@@ -266,6 +268,26 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(result).to include("stdout:\nbefore")
         expect(result).not_to include("exit:")
         expect(running?("sleep 31.71")).to be(false)
+      end
+
+      it "says a signal stopped it when the stop's reason is :signal (the worker got TERM/HUP/INT)" do
+        started = now
+        result = described_class.call("echo before; sleep 31.75", cancelled: -> { now - started > 0.3 }, stop_reason: -> { :signal })
+
+        expect(result).to match(/\A#{Regexp.escape(described_class::STOPPED_BY_SIGNAL)} after \d+s \(killed; rerun it if still needed\)\n/)
+        expect(result).to include("stdout:\nbefore")
+        expect(described_class.call("true", cancelled: -> { true }, stop_reason: -> { :signal })).to eq(described_class::NOT_RUN_ON_SIGNAL)
+        expect(described_class.call("true", cancelled: -> { true }, stop_reason: -> { :manual })).to eq(described_class::NOT_RUN_ON_STOP)
+        expect(running?("sleep 31.75")).to be(false)
+      end
+
+      it "the builtin execute and task_create take the reason from the turn's peers" do
+        registry = Samagotchi::Tools::Builtins.registry
+        peers = Samagotchi::Tools::Peers.new(session_id: "s1", cancelled: true, cancel_reason: :signal)
+        kctx = Struct.new(:peers).new(peers)
+
+        expect(registry["execute"].handler.call({ content: "true" }, kctx)).to eq(described_class::NOT_RUN_ON_SIGNAL)
+        expect(registry["task_create"].handler.call({ content: "true" }, kctx)).to eq(described_class::NOT_RUN_ON_SIGNAL)
       end
 
       it "doesn't start a command once the turn is stopped" do
