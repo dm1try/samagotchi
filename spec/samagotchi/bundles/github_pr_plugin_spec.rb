@@ -7,6 +7,7 @@ require "samagotchi/plugin/context"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/context_providers"
 require "samagotchi/answer_display"
+require "samagotchi/answer_refs"
 require "digest"
 require_relative "../../support/fake_executables"
 
@@ -446,13 +447,17 @@ RSpec.describe "The github-pr bundle" do
       yield
     end
 
-    # The after_turn hook on an answer; the display text it leaves.
+    # The after_turn hook on an answer; the display text it leaves (the
+    # refs it added in @refs).
     def answer(text, user: "please review #{pr_url}", context: ctx)
       messages = [{ role: "user", content: user }, { role: "model", content: text }]
-      event = { type: :after_turn, status: "completed", messages: messages }
+      event = { type: :after_turn, status: "completed", messages: messages, hook: "plugin.rb (bundle github-pr)" }
       display = Samagotchi::AnswerDisplay.new(messages)
+      refs = Samagotchi::AnswerRefs.new(messages, cwd: tmpdir)
       event[:present] = display.presenter(event)
+      event[:refs] = refs.adder(event)
       plugin.link_answer(event, context)
+      @refs = refs.to_a
       display.text
     end
 
@@ -631,6 +636,63 @@ RSpec.describe "The github-pr bundle" do
                  "[lib/old.rb:12](https://github.com/acme/app/blob/base1/lib/old.rb#L12) " \
                  "[lib/old_name.rb:6](#{anchor("lib/new_name.rb", "R6")}) [lib/new_name.rb:6](#{anchor("lib/new_name.rb", "R6")}) " \
                  "[assets/logo.png:1](https://github.com/acme/app/blob/head1/assets/logo.png#L1)")
+      end
+
+      # The checkout's git remotes (`git remote -v`), as +remotes+ lines.
+      def checkout_with(*remotes)
+        repo = File.join(tmpdir, "repo")
+        FileUtils.mkdir_p(File.join(repo, ".git"))
+        allow(ctx).to receive(:repo_root).and_return(repo)
+        listing = remotes.map { |url| "origin\t#{url} (fetch)" }.join("\n")
+        File.write(File.join(tmpdir, "remotes.txt"), "#{listing}\n")
+        fake("git", <<~SH)
+          case "$*" in
+            "remote -v") cat #{File.join(tmpdir, "remotes.txt")} ;;
+            *) exit 1 ;;
+          esac
+        SH
+        repo
+      end
+
+      it "adds each linked ref as a file ref: the checkout's file, a PR diff or File at head/base action" do
+        repo = checkout_with("git@github.com:Acme/app.git")
+        text = "`lib/foo.rb:28` and lib/foo.rb:30-40, lib/old.rb:12"
+
+        expect(answer(text)).to eq("[`lib/foo.rb:28`](#{anchor("lib/foo.rb", "R28")}) and " \
+                                   "[lib/foo.rb:30-40](https://github.com/acme/app/blob/head1/lib/foo.rb#L30-L40), " \
+                                   "[lib/old.rb:12](https://github.com/acme/app/blob/base1/lib/old.rb#L12)")
+        expect(@refs).to eq(
+          [{ match: "lib/foo.rb:28", kind: "file", target: { path: "#{repo}/lib/foo.rb", line: 28 },
+             actions: [{ id: "pr_diff", label: "PR diff", url: anchor("lib/foo.rb", "R28") }] },
+           { match: "lib/foo.rb:30-40", kind: "file", target: { path: "#{repo}/lib/foo.rb", line: 30, end_line: 40 },
+             actions: [{ id: "blob", label: "File at head", url: "https://github.com/acme/app/blob/head1/lib/foo.rb#L30-L40" }] },
+           { match: "lib/old.rb:12", kind: "file", target: { path: "#{repo}/lib/old.rb", line: 12 },
+             actions: [{ id: "blob", label: "File at base", url: "https://github.com/acme/app/blob/base1/lib/old.rb#L12" }] }]
+        )
+      end
+
+      it "adds file refs for a PR of a repo any remote names (https, ssh: a fork's upstream too)" do
+        %w[https://github.com/acme/app ssh://git@github.com/acme/app.git].each do |url|
+          plugin.instance_variable_set(:@checkout_repos, {})
+          checkout_with("git@github.com:me/fork.git", url)
+          answer("lib/foo.rb:28")
+          expect(@refs.map { |ref| ref[:target][:line] }).to eq([28]), url
+        end
+      end
+
+      it "adds no file ref for another project's PR, or outside a repo: the link stays" do
+        checkout_with("git@github.com:acme/other.git", "https://gitlab.com/acme/app.git")
+        expect(answer("lib/foo.rb:28")).to eq("[lib/foo.rb:28](#{anchor("lib/foo.rb", "R28")})")
+        expect(@refs).to eq([])
+
+        allow(ctx).to receive(:repo_root).and_raise(StandardError, "not a repo")
+        expect(answer("lib/foo.rb:28")).to eq("[lib/foo.rb:28](#{anchor("lib/foo.rb", "R28")})")
+        expect(@refs).to eq([])
+      end
+
+      it "adds no ref for what it doesn't link" do
+        answer("lib/other.rb:3 [lib/foo.rb:28](https://x.test/a) `see lib/foo.rb:28`")
+        expect(@refs).to eq([])
       end
 
       it "links nothing that isn't a PR file (or a path at all)" do

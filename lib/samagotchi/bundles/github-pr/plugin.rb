@@ -20,8 +20,10 @@ require "tmpdir"
 # hunk, else the file at the PR's head. The PRs are the session's attached
 # github-pr sources and the PR URLs in the user's messages (a delegate
 # child's task is its first one). Display only (event[:present]): the
-# model's text stays as it was. The after_turn hook links from a per-PR
-# cache and never runs gh (the web holds the answer until the hooks are
+# model's text stays as it was. Each linked ref is also a file ref on the
+# answer (event[:refs], chi 0.61.0): the file in this checkout, with a "PR
+# diff" (or "File at head") action the web's ref menu offers. The
+# after_turn hook links from a per-PR cache and never runs gh (the web holds the answer until the hooks are
 # done); before_turn, before_generation and the init task fill the cache
 # off the turn's thread (`gh api`), in a session worker only: the REPL and
 # -p --non-interactive show no web page while they run (ctx.frontend; a chi
@@ -50,12 +52,17 @@ class Plugin
   OFFER_LINE = "Not attached: the agent gets nothing until you attach it."
   # first_prompt keeps this much of the prompt.
   FIRST_PROMPT_CHARS = 160
+  # A git remote URL's GitHub owner and repo (https, ssh or scp-like).
+  REMOTE_REPO = %r{github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?\z}i
 
   def initialize
     @cache = PrCache.new
     @generation_checked_at = nil
     @warned_mode = false
     @warned_line_links = false
+    # cwd => the "owner/repo"s (downcased) its git remotes name on
+    # github.com, for the worker's life.
+    @checkout_repos = {}
   end
 
   def register(chi)
@@ -138,7 +145,39 @@ class Plugin
     cached = prs.filter_map { |pr| (data = @cache[pr]) && [pr, data] }
     return if cached.empty?
 
-    event[:present].call { |display| LineLinker.new(cached).link(display) }
+    linker = LineLinker.new(cached)
+    event[:present].call { |display| linker.link(display) }
+    add_refs(event[:refs], linker.found, ctx) unless linker.found.empty?
+  end
+
+  # Each linked `path:line` as a file ref on the answer (event[:refs]): its
+  # target the file in this checkout (its root + the PR path), its action
+  # the link's URL, named by what it opens. Only for a PR of this
+  # checkout's repo (one of its git remotes names it): another project's PR
+  # has its files elsewhere, so its links stay links.
+  def add_refs(refs, found, ctx)
+    return unless refs
+
+    root = project_root(ctx)
+    return unless root
+
+    repos = checkout_repos(ctx)
+    found.each do |hit|
+      next unless repos.include?(hit[:repo].downcase)
+
+      action = hit[:diff] ? { id: "pr_diff", label: "PR diff", url: hit[:url] } : { id: "blob", label: "File at #{hit[:at]}", url: hit[:url] }
+      refs.call(match: hit[:match], kind: "file", label: nil, actions: [action],
+                target: { path: File.join(root, hit[:path]), line: hit[:line], end_line: hit[:end_line] })
+    end
+  end
+
+  # The GitHub "owner/repo"s (downcased) the checkout's git remotes name
+  # (`git remote -v`: a fork's upstream too), asked once per cwd.
+  def checkout_repos(ctx)
+    @checkout_repos[ctx.cwd] ||= run(ctx, "git", "remote", "-v").to_s.each_line.filter_map do |line|
+      match = line.split(/\s+/)[1].to_s.match(REMOTE_REPO)
+      "#{match[1]}/#{match[2]}".downcase if match
+    end.uniq
   end
 
   # Fetches the PRs in +prs+ whose cache entry is missing or old, on this
@@ -580,9 +619,17 @@ class LineLinker
     nil
   end
 
+  # The refs the last #link linked, in order: {match:, url:, diff:, at:,
+  # repo:, path:, line:, end_line:} (+match+ the ref's text, inline code's
+  # without its backticks; +diff+ true for a PR diff URL, else +at+ "head"
+  # or "base", the sha of the file's URL; +repo+ the PR's "owner/repo";
+  # +path+ the PR's path of the file).
+  attr_reader :found
+
   # @param prs [Array<Array(PrRef, PrData)>]
   def initialize(prs)
     @prs = prs
+    @found = []
   end
 
   # +text+ with each ref that names exactly one PR's file as a markdown
@@ -591,8 +638,10 @@ class LineLinker
     head = text[0, MAX_SCAN]
     out = +""
     pos = 0
-    hits(head).each do |start, finish, url|
-      out << head[pos...start] << "[#{head[start...finish]}](#{url})"
+    @found = []
+    hits(head).each do |start, finish, hit|
+      out << head[pos...start] << "[#{head[start...finish]}](#{hit[:url]})"
+      @found << hit
       pos = finish
     end
     return text if pos.zero?
@@ -602,7 +651,11 @@ class LineLinker
 
   # The URL for +path+'s lines +from+..+to+ (+to+ nil: one line), or nil:
   # no PR has the file, or more than one does.
-  def url_for(path, from, to = nil)
+  def url_for(path, from, to = nil) = line_for(path, from, to)&.fetch(:url)
+
+  # {url:, diff:, path:, line:, end_line:} for +path+'s lines (see #url_for),
+  # or nil.
+  def line_for(path, from, to = nil)
     found = @prs.filter_map do |pr, data|
       file = resolve(data.files, path)
       [pr, data, file] if file
@@ -614,7 +667,7 @@ class LineLinker
 
   private
 
-  # [start, finish, url] for each ref to link, by offset.
+  # [start, finish, hit] for each ref to link, by offset (+hit+ as #found's).
   def hits(text)
     fences = fenced_blocks(text)
     skipped = fences + spans(text, URL_SPAN) + spans(text, MARKDOWN_LINK)
@@ -624,7 +677,7 @@ class LineLinker
       next if inside_any?(skipped, start, finish)
 
       match = inner.strip.match(REF_ALONE) or next
-      url = ref_url(match) and found << [start, finish, url]
+      hit = ref_line(match) and found << [start, finish, hit.merge(match: match[0])]
     end
     text.scan(REF) do
       match = Regexp.last_match
@@ -632,20 +685,20 @@ class LineLinker
       finish = match.end(0)
       next if inside_any?(skipped, start, finish) || inside_any?(code, start, finish)
 
-      url = ref_url(match) and found << [start, finish, url]
+      hit = ref_line(match) and found << [start, finish, hit.merge(match: match[0])]
     end
     found.sort_by(&:first)
   end
 
   # A path has a `/` or an extension (`10:30` is a time, `host:8080` a port).
-  def ref_url(match)
+  def ref_line(match)
     path = match[:path]
     return nil unless path.include?("/") || path.match?(/\.[A-Za-z0-9]+\z/)
 
     from = match[:from].to_i
     to = match[:to]&.to_i
     to = nil if to && to <= from
-    from.zero? ? nil : url_for(path, from, to)
+    from.zero? ? nil : line_for(path, from, to)
   end
 
   # The PR file +path+ names: the path (or a rename's old one) exactly,
@@ -687,18 +740,21 @@ class LineLinker
 
   # The PR's Files changed anchor when the lines are inside one hunk (the
   # new side; a removed file's old side), else the file at the PR's head
-  # (a removed one: at its base), which has every line.
+  # (a removed one: at its base), which has every line. As #line_for's
+  # hash.
   def line_url(pr, data, file, from, to)
     last = to || from
+    lines = { path: file.path, line: from, end_line: to, repo: "#{pr.owner}/#{pr.repo}" }
     hunks, side = file.removed? ? [file.old_hunks, "L"] : [file.new_hunks, "R"]
     if hunks.any? { |hunk| hunk.cover?(from) && hunk.cover?(last) }
       anchor = "#{side}#{from}#{"-#{side}#{to}" if to}"
-      return "#{pr.url}/files#diff-#{Digest::SHA256.hexdigest(file.path)}#{anchor}"
+      return { url: "#{pr.url}/files#diff-#{Digest::SHA256.hexdigest(file.path)}#{anchor}", diff: true, at: nil, **lines }
     end
 
     sha = file.removed? ? data.base_sha : data.head_sha
     path = file.path.split("/").map { |segment| segment.gsub(/[^\w.~-]/) { |c| c.bytes.map { |b| format("%%%02X", b) }.join } }
-    "https://github.com/#{pr.owner}/#{pr.repo}/blob/#{sha}/#{path.join("/")}#L#{from}#{"-L#{to}" if to}"
+    { url: "https://github.com/#{pr.owner}/#{pr.repo}/blob/#{sha}/#{path.join("/")}#L#{from}#{"-L#{to}" if to}", diff: false,
+      at: file.removed? ? "base" : "head", **lines }
   end
 
   # [start, finish, inner] for each inline code span outside +fences+: a

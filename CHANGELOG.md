@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - Web: question and approval cards answer from the keyboard. Enter in the response box or on an option submits
   (never Deny or Dismiss), and a new card takes the focus when the message box is empty.
+- github-pr 0.5.0: a `path:line` it links in an answer is also a file ref, so the web's ref menu offers the file in
+  this checkout (editor, show in turn, copy) and a "PR diff" (or "File at head") action. Needs chi 0.61.0; run
+  `chi update`.
 
 ## [0.61.0] - 2026-10-12
 

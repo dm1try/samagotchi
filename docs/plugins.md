@@ -1381,7 +1381,8 @@ and a summary of what changed in counts, authors and states only; it wakes
 the session for a review requesting changes, checks turning red, or the PR
 merged or closed. In the web, a `path:line` in a worker's answer links to
 that line of the session's PR ([Line links](context.md#line-links); `line_links:
-always` for the REPL and `chi -p` too). `auto_attach:
+always` for the REPL and `chi -p` too), and its ref menu offers the file
+here and a "PR diff" action (`event[:refs]`). `auto_attach:
 offer` asks with a card first (`/pr-attach N`, `/pr-decline N`), `off`
 attaches nothing ([Attach, offer or off](context.md#attach-offer-or-off)).
 See [Attached context](context.md#github-prs-the-github-pr-bundle).

@@ -346,6 +346,14 @@ show the answer as it is.
   at the PR's head commit (a removed one: at its base), which has every
   line.
 - Code blocks, markdown links and URLs are left alone.
+- **The ref menu**: each linked reference is also a
+  [file ref](hooks.md#refs-on-the-answer-display-only) on the answer: the
+  file in this checkout (the repository's root + the PR's path), so its
+  menu has the editor, show-in-turn and copy targets, plus **PR diff** (or
+  **File at head**, **File at base** for a removed file), the link's URL.
+  Only for a PR of this checkout's repository (one of its git remotes
+  names it on github.com): another project's PR keeps its links only.
+  Bundle 0.5.0, chi 0.61.0.
 - The PR's files are read with `gh api` in the background when a turn
   starts (and when a PR is attached while it runs), at most once a minute,
   and read again only when the PR's head moved; the answer is linked from
