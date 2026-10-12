@@ -1,6 +1,17 @@
+import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, allViewChains, chainChipHtml, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsHtml, continueRefusal, continuedText, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
+import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+
+// A template's markup as the page gets it (lit's marker comments dropped).
+const markupOf = (template) => {
+  const frag = document.createDocumentFragment();
+  render(template, frag);
+  return htmlOf(frag);
+};
+const chainChipHtml = (f, opts) => markupOf(chainChipTemplate(f, opts));
+const chainRowsHtml = (f, opts) => markupOf(chainRowsTemplate(f, opts));
 import { families, familyWaits, filterFamilies, waitingFirst } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // A chain of three days: d1 ← d2 ← d3 (d3 continues d2, which continues d1).
@@ -133,7 +144,7 @@ test("a chain's card waits (and sorts first) when an earlier link waits on the u
   assert.match(chainChipHtml(chainFam), /1 waiting/);
 });
 
-test("chainChipHtml: 'day N' with the links in its tooltip, its live links, and nothing outside a chain", () => {
+test("chainChipTemplate: 'day N' with the links in its tooltip, its live links, and nothing outside a chain", () => {
   const all = [d3, d2, { ...d1, owner: "worker" }];
   const [f] = foldChains(families([d3]), all);
   const html = chainChipHtml(f, { open: true });
@@ -144,7 +155,7 @@ test("chainChipHtml: 'day N' with the links in its tooltip, its live links, and 
   assert.equal(chainChipHtml(families([lone])[0]), "");
 });
 
-test("chainRowsHtml lists the other links newest first: day, date, recap's first sentence, archived; the open one active", () => {
+test("chainRowsTemplate lists the other links newest first: day, date, recap's first sentence, archived; the open one active", () => {
   const all = [d3, d2, { ...d1, recap: null }];
   const [f] = foldChains(families([d3]), all);
   const html = chainRowsHtml(f, { activeId: "d2", now: Date.parse(at(9, "20")) });
@@ -259,4 +270,22 @@ test("the chain popover's rows without a recap read the chain's title, not the o
   const html = chainRowsHtml(f);
   assert.equal((html.match(/<span class="fr-preview">\/coordinate the daily review<\/span>/g) || []).length, 2);
   assert.doesNotMatch(html, /Continue where we left off/);
+});
+
+test("a link inserted before the focused row of an open chain popover: the focus stays on the same link's row", async () => {
+  const { createFamilyPop } = await import("../../../lib/samagotchi/web/public/families_view.js");
+  const d4 = link("d4", 10, { continues: "d3" });
+  let f = { head: d4, members: [], chain: { links: [d1, d2, d4], at: 2 } };
+  const body = document.createElement("div");
+  document.body.append(body);
+  const chip = { setAttribute() {}, getBoundingClientRect: () => ({ left: 0, top: 0, bottom: 10, width: 10 }), closest: () => null };
+  const pop = createFamilyPop({ id: "chainPopSpec", doc: { body, createElement: (t) => document.createElement(t) }, win: { innerWidth: 1000 },
+                                rowsFor: () => chainRowsTemplate(f), anchorFor: () => chip, onPick() {} });
+  pop.open("d4");
+  body.querySelector('.chain-row[data-id="d2"] .fr-open').focus();
+  f = { ...f, chain: { links: [d1, d2, d3, d4], at: 3 } };
+  pop.refresh();
+  assert.deepEqual([...body.querySelectorAll(".chain-row")].map((r) => r.dataset.id), ["d3", "d2", "d1"]);
+  assert.equal(document.activeElement?.closest(".chain-row")?.dataset.id, "d2");
+  body.remove();
 });

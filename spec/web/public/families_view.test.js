@@ -1,13 +1,24 @@
+import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { familyChipHtml, familyRowsHtml } from "../../../lib/samagotchi/web/public/families_view.js";
+import { familyChipTemplate, familyRowsTemplate } from "../../../lib/samagotchi/web/public/families_view.js";
 import { families } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { html, render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+
+// A template's markup as the page gets it (lit's marker comments dropped).
+const markupOf = (template) => {
+  const frag = document.createDocumentFragment();
+  render(template, frag);
+  return htmlOf(frag);
+};
+const familyChipHtml = (f, opts) => markupOf(familyChipTemplate(f, opts));
+const familyRowsHtml = (f, opts) => markupOf(familyRowsTemplate(f, opts));
 
 const NOW = Date.parse("2026-10-06T12:00:00Z");
 const del = (id, parent, extra = {}) => ({ id, short_id: id.slice(0, 8), parent_id: parent, delegate: true, status: "idle", updated_at: "2026-10-06T11:58:00Z", ...extra });
 const family = (...members) => families([{ id: "p", short_id: "p" }, ...members])[0];
 
-test("familyChipHtml: a button with the count, live and waiting; its open state in aria-expanded", () => {
+test("familyChipTemplate: a button with the count, live and waiting; its open state in aria-expanded", () => {
   const fam = family(del("c1", "p", { owner: "worker", status: "running" }), del("c2", "p", { pending_question: { id: "q" } }));
   const html = familyChipHtml(fam, { open: false });
   assert.match(html, /^<button type="button" class="family-chip waiting" aria-expanded="false"/);
@@ -23,7 +34,7 @@ test("familyChipHtml: a button with the count, live and waiting; its open state 
   assert.equal(familyChipHtml({ head: { id: "x" }, members: [] }, { open: false }), "");
 });
 
-test("familyRowsHtml: one row per member, indented by depth, escaped, with its dot, time and badges", () => {
+test("familyRowsTemplate: one row per member, indented by depth, escaped, with its dot, time and badges", () => {
   const fam = family(
     del("c1", "p", { first_preview: "<b>fix</b> it", owner: "worker", status: "running" }),
     del("g1", "c1", { first_preview: "grand", pending_question: { id: "q", kind: "approval", relayed_to: "c1" } }),
@@ -46,7 +57,7 @@ test("familyRowsHtml: one row per member, indented by depth, escaped, with its d
   assert.doesNotMatch(html, /card-arch/);
 });
 
-test("familyRowsHtml: active, match / dim (a search), archive buttons and the archived badge", () => {
+test("familyRowsTemplate: active, match / dim (a search), archive buttons and the archived badge", () => {
   const fam = family(del("c1", "p"), del("c2", "p", { archived: true }));
   const html = familyRowsHtml(fam, { activeId: "c2", matchIds: new Set(["c1"]), archivable: true, now: NOW });
   assert.match(html, /class="family-row match" data-id="c1"/);
@@ -58,34 +69,35 @@ test("familyRowsHtml: active, match / dim (a search), archive buttons and the ar
   assert.doesNotMatch(familyRowsHtml(fam, { now: NOW }), /match|dim/);
 });
 
-// ── The strip's popover (createFamilyPop) on fake elements ────────────────
+// ── The strip's popover (createFamilyPop) on the shim's document ─────────
+// Its element is a real one (lit draws the rows into it); the chips are
+// fakes with the rect, card and attributes it reads.
 
 import { createFamilyPop } from "../../../lib/samagotchi/web/public/families_view.js";
 
-function fakeEl({ rect = null, parent = null, card = null } = {}) {
+// The same node (assert.equal's message would inspect a whole DOM node).
+const same = (actual, expected, what) => assert.ok(actual === expected, `${what}: not the same node`);
+
+function fakeEl({ rect = null, card = null } = {}) {
   const attrs = new Map();
-  const listeners = new Map();
-  const el = {
-    id: "", className: "", hidden: false, style: {}, children: [], parent, innerHTMLSets: 0, focused: 0,
-    _html: "",
-    get innerHTML() { return this._html; },
-    set innerHTML(v) { this._html = v; this.innerHTMLSets += 1; },
+  return {
+    focused: 0,
     setAttribute: (k, v) => attrs.set(k, String(v)),
     getAttribute: (k) => attrs.get(k) ?? null,
-    addEventListener: (type, fn) => listeners.set(type, fn),
-    fire: (type, e) => listeners.get(type)?.(e),
-    appendChild(c) { this.children.push(c); c.parent = this; },
-    contains(other) { for (let at = other; at; at = at.parent) if (at === this) return true; return false; },
+    contains(other) { return other === this; },
     getBoundingClientRect: () => rect,
     closest: (sel) => (sel === ".card" ? card : null),
     focus() { this.focused += 1; },
   };
-  return el;
 }
 
-function setupPop({ vw = 1440, rows = { p: "<rows p>" }, id } = {}) {
-  const body = fakeEl();
-  const doc = { body, createElement: () => fakeEl() };
+const rowsOf = (text) => html`<div class="family-rows">${text}</div>`;
+const styleOf = (el) => ({ top: el.style.top, left: el.style.left, width: el.style.width });
+
+function setupPop({ vw = 1440, rows = { p: rowsOf("rows p") }, id } = {}) {
+  const body = document.createElement("div");
+  document.body.append(body);
+  const doc = { body, createElement: (tag) => document.createElement(tag) };
   const card = fakeEl({ rect: { left: 100, top: 20, bottom: 120, width: 360 } });
   const chips = { p: fakeEl({ rect: { left: 180, top: 90, bottom: 108, width: 120 }, card }), q: fakeEl({ rect: { left: 500, top: 90, bottom: 108, width: 120 }, card }) };
   const page = { picked: [], closes: 0, rows, chips };
@@ -97,7 +109,7 @@ function setupPop({ vw = 1440, rows = { p: "<rows p>" }, id } = {}) {
     onPick: (id) => page.picked.push(id),
     onClose: () => { page.closes += 1; },
   });
-  return { pop, page, body, el: () => body.children[0] };
+  return { pop, page, body, el: () => body.firstElementChild };
 }
 
 test("familyPop opens under the chip, as wide as its card, in body; toggle closes it", () => {
@@ -107,8 +119,8 @@ test("familyPop opens under the chip, as wide as its card, in body; toggle close
   assert.equal(pop.openHead(), "p");
   assert.equal(el().id, "familyPop");
   assert.equal(el().hidden, false);
-  assert.equal(el().innerHTML, "<rows p>");
-  assert.deepEqual(el().style, { top: "114px", left: "100px", width: "360px" });
+  assert.equal(el().textContent, "rows p");
+  assert.deepEqual(styleOf(el()), { top: "114px", left: "100px", width: "360px" });
   assert.equal(page.chips.p.getAttribute("aria-expanded"), "true");
   pop.toggle("p");
   assert.equal(pop.isOpen(), false);
@@ -117,10 +129,12 @@ test("familyPop opens under the chip, as wide as its card, in body; toggle close
   assert.equal(page.closes, 1);
   // Another family's chip moves it there.
   pop.open("p");
-  page.rows.q = "<rows q>";
+  page.rows.q = rowsOf("rows q");
   pop.toggle("q");
   assert.equal(pop.openHead(), "q");
-  assert.equal(el().innerHTML, "<rows q>");
+  assert.equal(el().textContent, "rows q");
+  pop.close();
+  assert.equal(el().textContent, "");
 });
 
 test("a second popover (a chain's) is an element of its own id", () => {
@@ -148,38 +162,39 @@ test("familyPop: Esc closes it (and stops there, the chip focused), other keys a
 test("familyPop: a pointer down outside closes it; in the popover or on its chip it stays", () => {
   const { pop, page, el } = setupPop();
   pop.open("p");
-  const row = fakeEl({ parent: el() });
-  pop.onPointerDown({ target: row });
+  pop.onPointerDown({ target: el().firstElementChild });
   assert.equal(pop.isOpen(), true);
   pop.onPointerDown({ target: page.chips.p });
   assert.equal(pop.isOpen(), true);
-  pop.onPointerDown({ target: fakeEl() });
+  pop.onPointerDown({ target: document.createElement("div") });
   assert.equal(pop.isOpen(), false);
 });
 
 test("familyPop: a row's click picks that session", () => {
   const { pop, page, el } = setupPop();
   pop.open("p");
-  const row = { dataset: { id: "c1" } };
-  el().fire("click", { target: { closest: (sel) => (sel === ".family-row[data-id]" ? row : null) } });
+  page.rows.p = html`<div class="family-row" data-id="c1"><button class="fr-open">c1</button></div><p>no row</p>`;
+  pop.refresh();
+  el().querySelector(".fr-open").click();
   assert.deepEqual(page.picked, ["c1"]);
-  el().fire("click", { target: { closest: () => null } });
+  el().querySelector("p").click();
   assert.deepEqual(page.picked, ["c1"]);
 });
 
-test("familyPop.refresh re-anchors to the redrawn chip, rewrites rows only when they changed, closes when the family is gone", () => {
+test("familyPop.refresh re-anchors to the redrawn chip, redraws the rows in place, closes when the family is gone", () => {
   const { pop, page, el } = setupPop();
   pop.open("p");
-  const sets = el().innerHTMLSets;
+  const rows = el().firstElementChild;
   // The strip drew again: a new chip element, the same rows.
   page.chips.p = fakeEl({ rect: { left: 40, top: 90, bottom: 130, width: 100 }, card: fakeEl({ rect: { left: 30, width: 320 } }) });
   pop.refresh();
-  assert.equal(el().innerHTMLSets, sets);
-  assert.deepEqual(el().style, { top: "136px", left: "30px", width: "320px" });
+  same(el().firstElementChild, rows, "rows");
+  assert.deepEqual(styleOf(el()), { top: "136px", left: "30px", width: "320px" });
   assert.equal(page.chips.p.getAttribute("aria-expanded"), "true");
-  page.rows.p = "<rows p, a new one>";
+  page.rows.p = rowsOf("rows p, a new one");
   pop.refresh();
-  assert.equal(el().innerHTML, "<rows p, a new one>");
+  same(el().firstElementChild, rows, "rows");
+  assert.equal(el().textContent, "rows p, a new one");
   // Its card left the strip: closed.
   delete page.chips.p;
   pop.refresh();
@@ -192,19 +207,53 @@ test("familyPop.refresh re-anchors to the redrawn chip, rewrites rows only when 
   assert.equal(pop.isOpen(), false);
 });
 
+test("an open family popover drawn again with a row's status changed keeps that row's elements", () => {
+  let fam = family(del("c1", "p", { status: "running", owner: "worker" }), del("c2", "p"));
+  const { pop, page, el } = setupPop({ rows: {} });
+  page.rows = { get p() { return familyRowsTemplate(fam, { now: NOW }); } };
+  pop.open("p");
+  const row = el().querySelector('.family-row[data-id="c1"]');
+  const open = row.querySelector(".fr-open");
+  open.focus();
+  fam = family(del("c1", "p", { status: "idle" }), del("c2", "p"));
+  pop.refresh();
+  same(el().querySelector('.family-row[data-id="c1"]'), row, "row");
+  same(row.querySelector(".fr-open"), open, "row button");
+  same(document.activeElement, open, "focus");
+  assert.match(row.querySelector(".status").className, /status dot idle/);
+  assert.equal(row.querySelector(".owner"), null);
+});
+
 test("familyPop: never narrower than 300 px nor past the window's right edge", () => {
   const narrowCard = fakeEl({ rect: { left: 1300, width: 200 } });
   const { pop, page, el } = setupPop();
   page.chips.p = fakeEl({ rect: { left: 1320, top: 0, bottom: 20, width: 60 }, card: narrowCard });
   pop.open("p");
-  assert.deepEqual(el().style, { top: "26px", left: "1132px", width: "300px" });
+  assert.deepEqual(styleOf(el()), { top: "26px", left: "1132px", width: "300px" });
 });
 
 test("familyPop on a phone (600 px or less): the window's width minus 16 px gutters", () => {
   const { pop, el } = setupPop({ vw: 390 });
   pop.open("p");
-  assert.deepEqual(el().style, { top: "114px", left: "16px", width: "358px" });
+  assert.deepEqual(styleOf(el()), { top: "114px", left: "16px", width: "358px" });
   const edge = setupPop({ vw: 600 });
   edge.pop.open("p");
   assert.equal(edge.el().style.width, "568px");
+});
+
+test("a member inserted before the focused row (a grandchild, depth first): the focus stays on the same session's row", () => {
+  let fam = family(del("c1", "p"), del("c2", "p"));
+  const { pop, page, el } = setupPop({ rows: {} });
+  page.rows = { get p() { return familyRowsTemplate(fam, { now: NOW }); } };
+  pop.open("p");
+  el().querySelector('.family-row[data-id="c2"] .fr-open').focus();
+  fam = family(del("c1", "p"), del("g1", "c1"), del("c2", "p"));
+  pop.refresh();
+  assert.deepEqual([...el().querySelectorAll(".family-row")].map((r) => r.dataset.id), ["c1", "g1", "c2"]);
+  assert.equal(document.activeElement?.closest(".family-row")?.dataset.id, "c2");
+  assert.equal(document.activeElement?.className, "fr-open");
+  // Its session gone: no other row takes the focus.
+  fam = family(del("c1", "p"), del("g1", "c1"));
+  pop.refresh();
+  assert.equal(document.activeElement?.closest?.(".family-row"), null);
 });
