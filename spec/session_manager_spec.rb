@@ -877,7 +877,9 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "starts the worker in its own process group, so a Ctrl-C on `chi web` does not reach it" do
       spawned_opts = nil
-      allow(Process).to receive(:spawn) do |*_args, **opts|
+      spawned_env = nil
+      allow(Process).to receive(:spawn) do |*args, **opts|
+        spawned_env = args.first if args.first.is_a?(Hash)
         spawned_opts = opts
         12_345
       end
@@ -885,6 +887,8 @@ RSpec.describe Samagotchi::SessionManager do
       described_class.spawn_session(prompt: "hello", mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
       expect(spawned_opts).to include(pgroup: true)
+      # A worker process: it traps signals (run_session_loop).
+      expect(spawned_env).to include(described_class::WORKER_PROCESS_ENV => "1")
     end
   end
 
@@ -1157,6 +1161,84 @@ RSpec.describe Samagotchi::SessionManager do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
       end
       expect(described_class).to have_received(:resume_session).once
+    end
+
+    it "exits 0 after a signal stopped the worker, logging stop reason=signal, with no discard, nor a resume with nothing queued" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      log = File.join(tmpdir, "chi.log")
+      Samagotchi::Config.set_cli_overrides("log.file" => log)
+      worker = instance_double(Samagotchi::Worker, run: :signal, discard?: true, wake_due?: true)
+      allow(Samagotchi::Worker).to receive(:new).and_return(worker)
+      allow(described_class).to receive(:resume_session)
+      allow(described_class).to receive(:delete_session)
+
+      expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }
+        .to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+
+      stop = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "stop" } }
+      expect(stop.fields).to include("reason" => "signal")
+      expect(described_class).not_to have_received(:resume_session)
+      expect(described_class).not_to have_received(:delete_session)
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
+    end
+
+    it "wakes a new worker after a signal when input is queued (behind the turn the signal stopped), once the lock is free" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
+      allow(Samagotchi::Worker).to receive(:new).and_return(instance_double(Samagotchi::Worker, run: :signal))
+      owner_at_resume = :unset
+      allow(described_class).to receive(:resume_session) do |id, state_dir:|
+        owner_at_resume = described_class.session_owner(id, state_dir: state_dir)
+      end
+
+      expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }
+        .to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+      expect(described_class).to have_received(:resume_session).with(session.id, state_dir: tmpdir)
+      expect(owner_at_resume).to be_nil
+    end
+
+    it "restores the signal handlers once the worker's loop returned" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      allow(Samagotchi::Worker).to receive(:new)
+        .and_return(instance_double(Samagotchi::Worker, run: :idle_exit, discard?: false, wake_due?: false))
+      allow_any_instance_of(Samagotchi::WorkerSignals).to receive(:install!) { |signals| signals }
+      restored = []
+      allow_any_instance_of(Samagotchi::WorkerSignals).to receive(:restore!) { |signals| restored << signals }
+      ENV[described_class::WORKER_PROCESS_ENV] = "1"
+
+      described_class.run_session_loop(session.id, state_dir: tmpdir)
+
+      expect(restored.size).to eq(1)
+    ensure
+      ENV.delete(described_class::WORKER_PROCESS_ENV)
+    end
+
+    it "traps signals only in a spawned worker (WORKER_PROCESS_ENV, taken out of ENV), never in-process" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      given = []
+      allow(Samagotchi::Worker).to receive(:new) do |**kwargs|
+        given << kwargs[:signals]
+        instance_double(Samagotchi::Worker, run: :idle_exit, discard?: false, wake_due?: false)
+      end
+      installed = []
+      allow_any_instance_of(Samagotchi::WorkerSignals).to receive(:install!) { |signals| (installed << signals).last }
+
+      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      expect(given.last).to be(Samagotchi::WorkerSignals::NONE)
+      expect(installed).to be_empty
+
+      ENV[described_class::WORKER_PROCESS_ENV] = "1"
+      described_class.run_session_loop(session.id, state_dir: tmpdir)
+      expect(ENV).not_to have_key(described_class::WORKER_PROCESS_ENV)
+      expect(installed.size).to eq(1)
+      expect(given.last).to be(installed.first)
+    ensure
+      ENV.delete(described_class::WORKER_PROCESS_ENV)
     end
 
     it "logs a worker crash with its backtrace (its stderr is /dev/null) and re-raises" do

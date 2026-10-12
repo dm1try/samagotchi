@@ -88,7 +88,7 @@ StandardError in run_turn:
      # error_kind, retryable, host and summary.
   → re-raised
 
-Interrupt (Ctrl-C):
+Interrupt (Ctrl-C; the REPL only: a worker traps INT, see the signal row below):
   → if turn.ended: re-raised only
   → turn.controller.cancel!(:ctrl_c)
   → end_turn(turn, "canceled"): ctrl_c_messages keeps turn.messages with TurnNote.cancelled(:ctrl_c)
@@ -103,6 +103,17 @@ A Stop (Engine#cancel_current_turn!, e.g. the Bridge's POST cancel) or a hook's 
   → not an error: the loop returns LLM::ModelResult(canceled: true, conversation: ...)
   → complete_turn keeps the loop's conversation (tool iterations included) with a
      TurnNote.cancelled note; a text streamed before the cancel stays, marked [interrupted]
+
+A worker's TERM, HUP or INT (WorkerSignals, trapped by a spawned worker only):
+  → a Stop with reason :signal (Worker#signalled, off the trap, retried until the loop leaves)
+  → :turn_canceled {cancellation_reason: :signal}, saved by the Worker as after any turn;
+     Worker#run returns :signal (:stopped with the stop marker), takes no new work
+  → not ended within Worker::SIGNAL_GRACE (a turn that ended and runs its after_turn hooks gets
+     SIGNAL_HARD_EXIT more, uncanceled): the session saved as it is, SignalException raised in the
+     loop's thread, only while the loop runs (never into start, serve or the teardown, which runs whole)
+  → the process ends SIGNAL_HARD_EXIT (10 s) after that at the latest (exit!); a signal after the
+     loop left brings only that hard exit, and run_session_loop restores the default handlers
+  → run_session_loop: exit 0, no discard; input queued behind the stopped turn wakes a new worker
 
 Stopped before the model was asked (prepare_turn returned false):
   → stopped_before_model(turn) → end_turn(turn, "canceled")

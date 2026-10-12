@@ -24,6 +24,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A worker that gets TERM, HUP or INT (`chi sessions stop`, a closed terminal, a process-tree teardown) stops its
+  running turn as a Stop with reason `signal` and saves it, then exits; before, the turn and its prompt were lost.
+  A stopped session's worker now saves the turn it kept too.
 - A card shown during a turn by a worker that has since exited comes back read-only: no buttons. A stale check-in
   card's Nudge steered the next worker's turn on every click. Cards shown between turns (github-pr's offer, btw,
   coordinator) keep their buttons.

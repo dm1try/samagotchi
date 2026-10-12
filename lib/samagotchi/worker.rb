@@ -12,6 +12,7 @@ require_relative "steer"
 require_relative "worker_idle_exit"
 require_relative "worker_wakes"
 require_relative "worker_inbound"
+require_relative "worker_signals"
 require_relative "session_manager"
 require_relative "archive_store"
 require_relative "log"
@@ -52,6 +53,13 @@ module Samagotchi
   # /continue) run on the loop between turns, before any queued prompt. One
   # taken while a turn runs (at an iteration boundary, or right after the
   # turn) is refused as busy.
+  #
+  # A TERM, HUP or INT (WorkerSignals, trapped in a spawned worker only)
+  # stops the running turn as a Stop does (reason :signal), the turn's
+  # work is saved as after any Stop, and the worker leaves (:signal) taking
+  # no new work. A turn that hasn't ended SIGNAL_GRACE seconds after the
+  # signal is cut: the session is saved as it is and the signal raised in
+  # the loop's thread, as Ruby's default would (the teardown still runs).
   class Worker
     FALLBACK_TICK_SECONDS = 5
     # A worker just started runs no wake turn for delegate reports this
@@ -64,6 +72,18 @@ module Samagotchi
     BUSY_OUTPUT = "busy: wait for the turn to end"
     # !rollback mid-turn would mean "the turn I'm in".
     ROLLBACK_BUSY_OUTPUT = "busy: Ctrl-C the turn first, then !rollback"
+    # How long a signalled worker's turn has to end (it is canceled at once,
+    # and again every SIGNAL_RETRY until it ends: a signal that lands just
+    # before the turn begins finds none to cancel).
+    SIGNAL_GRACE = 3.0
+    # A second signal, or a TERM after `chi sessions stop` marked the
+    # session stopped (that stop already canceled over the Bridge and waits
+    # only seconds for the lock): this much.
+    SIGNAL_SHORT_GRACE = 0.5
+    SIGNAL_RETRY = 0.1
+    # After the grace ran out and the signal was raised: the process ends
+    # this much later at the latest (a teardown that hangs).
+    SIGNAL_HARD_EXIT = 10.0
 
     # Wakes the worker loop. Whoever queues work writes it first and wakes
     # after, and #wait drains every wake before the loop looks for work: a
@@ -90,7 +110,12 @@ module Samagotchi
 
     # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
     # @param poll_interval [Numeric, nil] seconds between fallback ticks
-    def initialize(session_id:, state_dir:, session_dir:, idle_exit_minutes: nil, poll_interval: nil)
+    # @param signals [WorkerSignals, WorkerSignals::None] the process's
+    #   trapped signals (SessionManager.run_session_loop); none by default
+    # @param signal_grace [Array(Numeric, Numeric, Numeric)] the grace, the
+    #   short grace and the hard exit's delay (specs shorten them)
+    def initialize(session_id:, state_dir:, session_dir:, idle_exit_minutes: nil, poll_interval: nil,
+                   signals: WorkerSignals::NONE, signal_grace: [SIGNAL_GRACE, SIGNAL_SHORT_GRACE, SIGNAL_HARD_EXIT])
       @session_id = session_id
       @state_dir = state_dir
       @session_dir = session_dir
@@ -116,6 +141,20 @@ module Samagotchi
       @asked_parent = false
       @owes_parent = false
       @initial_turn = false
+      @signals = signals
+      @signal_grace, @signal_short_grace, @signal_hard_exit = signal_grace
+      # Set as the loop starts, and as it returns (or raises): a signal's
+      # grace runs out only in between.
+      @loop_started = false
+      @left_loop = false
+      @signal_mutex = Mutex.new
+      @grace_expired = false
+      # The running turn has ended (its end event) and its after_turn hooks
+      # run: a signal's grace waits for them (#signalled).
+      @turn_ending = false
+      # The worker's own saves and a signal's (#signal_grace_expired), one
+      # at a time.
+      @save_mutex = Mutex.new
     end
 
     # Whether the session was empty as the worker left it, so the caller
@@ -135,29 +174,45 @@ module Samagotchi
     # @return [Symbol] :idle_exit, :exit_requested when a client asked it
     #   to exit (Bridge POST /exit), :restart when it asked for a restart
     #   (the caller starts a new worker), :stopped when the session was stopped
-    #   (chi stop), :crashed when the loop raised (the session is marked
-    #   errored); SessionManager.run_session_loop turns it into the exit
+    #   (chi stop), :signal when a signal stopped it (WorkerSignals),
+    #   :crashed when the loop raised (the session is marked errored);
+    #   SessionManager.run_session_loop turns it into the exit
     def run
+      # The thread a signal's expired grace raises in (the main thread in a
+      # worker process).
+      @run_thread = Thread.current
+      @signals.on_signal { |name, count| signalled(name, count) }
       start
       serve
-      begin
-        # A session stopped before this worker took the lock (e.g. a stop
-        # right after create) must not run its initial prompt.
-        return :stopped if stopped_on_disk?
-
-        start_background
-        loop do
-          leaving = pass
-          return leaving if leaving
-        end
+      # That raise lands in the loop only (#signal_grace_expired arms once
+      # it started, and never after it left): the teardown always runs
+      # whole, a raise already on its way waits until it is done.
+      Thread.handle_interrupt(SignalException => :never) do
+        Thread.handle_interrupt(SignalException => :immediate) { run_loop }
       rescue StandardError => e
         crashed(e)
       ensure
+        @signal_mutex.synchronize { @left_loop = true }
         teardown
       end
     end
 
     private
+
+    # @return [Symbol] what #run returns
+    def run_loop
+      @signal_mutex.synchronize { @loop_started = true }
+      # A session stopped before this worker took the lock (e.g. a stop
+      # right after create) must not run its initial prompt.
+      return :stopped if stopped_on_disk?
+      return signal_leave if signalled?
+
+      start_background
+      loop do
+        leaving = pass
+        return leaving if leaving
+      end
+    end
 
     # The session, its Engine and what runs its turns, before anyone can
     # reach it.
@@ -200,8 +255,12 @@ module Samagotchi
         if Events::TURN_END.include?(event[:type])
           @turn_end_seq = event[:event_seq]
           @turn_end_type = event[:type]
+          @turn_ending = true
         end
-        @turn_id = event[:turn_id] if event[:type] == :turn_started
+        if event[:type] == :turn_started
+          @turn_id = event[:turn_id]
+          @turn_ending = false
+        end
         ring_question(event) if event[:type] == :question_requested
       })
       # This session's own delegate children's news (rings in children/).
@@ -268,6 +327,9 @@ module Samagotchi
     # next pass looks again; with none, #idle_pass.
     # @return [Symbol, nil] what #run returns as the worker leaves, nil to go on
     def pass
+      # A signalled worker takes no new work.
+      return signal_leave if signalled?
+
       # Check if the session was externally marked as stopped. Not
       # stopped_on_disk?, which reads a vanished file as "not stopped":
       # a session file deleted under a running worker crashes it here
@@ -316,8 +378,8 @@ module Samagotchi
     # @return [nil]
     def run_input_files(input_files)
       input_files.sort.each do |input_file|
-        # A stop between two queued turns leaves the rest queued.
-        break if stopped_on_disk?
+        # A stop (or a signal) between two queued turns leaves the rest queued.
+        break if signalled? || stopped_on_disk?
 
         # Commands that came before this file (D1: a queued /model X sent
         # before this prompt, a command an earlier file carried) run first.
@@ -572,7 +634,8 @@ module Samagotchi
     # @return [Boolean] whether any command ran
     def run_queued_commands
       ran = false
-      while (command = next_ready_command)
+      # A signalled worker runs no more (a /continue would start a turn).
+      while !signalled? && (command = next_ready_command)
         run_command(command)
         ran = true
       end
@@ -1127,11 +1190,72 @@ module Samagotchi
       SessionManager.stopped_on_disk?(@session_id, state_dir: @state_dir)
     end
 
-    # Save the session unless it was stopped meanwhile: the stop (chi stop,
-    # from another process) saved its status, and this save would write
-    # the worker's over it.
+    # Save the session, a stopped one too: a stop is the marker file
+    # (Session.mark_stopped), which every load reads over the saved status,
+    # so this save can't hide it, and the turn the stop canceled is kept.
     def save_session
-      @session.save(state_dir: @state_dir) unless stopped_on_disk?
+      @save_mutex.synchronize { @session.save(state_dir: @state_dir) }
+    end
+
+    def signalled? = !@signals.signal.nil?
+
+    # @return [Symbol] :stopped when the session was stopped too (chi
+    #   sessions stop TERMs its worker), else :signal
+    def signal_leave
+      Session.stopped_marker?(@session_id, state_dir: @state_dir) ? :stopped : :signal
+    end
+
+    # A signal (WorkerSignals#fire), on a thread of its own: the loop wakes
+    # (an idle worker leaves at once), the running turn is canceled as a
+    # Stop (again every SIGNAL_RETRY, until the loop has left), and when
+    # the grace runs out first, #signal_grace_expired. A turn that has
+    # ended and runs its after_turn hooks (which store the answer's display
+    # and refs) is no longer canceled, and gets until SIGNAL_HARD_EXIT
+    # past the grace. A grace that runs out before the loop started waits
+    # for it (the loop's first look leaves). A signal after the loop left
+    # (the teardown, the caller's last steps) only brings the hard exit.
+    def signalled(name, count)
+      Log.info(:worker, "signal", signal: name, count: count, turn_running: @engine&.turn_running? || false)
+      return signal_hard_exit if @left_loop
+
+      @waker.wake
+      short = count > 1 || Session.stopped_marker?(@session_id, state_dir: @state_dir)
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      deadline = now + (short ? @signal_short_grace : @signal_grace)
+      hooks_deadline = deadline + @signal_hard_exit
+      until @left_loop
+        running = @engine&.turn_running?
+        hooks = running && @turn_ending
+        @engine.cancel_current_turn!(:signal) if running && !hooks
+        break if @loop_started && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= (hooks ? hooks_deadline : deadline)
+
+        sleep(SIGNAL_RETRY)
+      end
+      signal_grace_expired(name) unless @left_loop
+    rescue StandardError => e
+      Log.warn(:worker, "signal_failed", signal: name, error: e.class.name, msg: e.message)
+    end
+
+    # The process ends SIGNAL_HARD_EXIT from now at the latest.
+    def signal_hard_exit
+      sleep(@signal_hard_exit)
+      @signals.hard_exit
+    end
+
+    # The turn didn't end in time (a tool that ignores the cancel, slow
+    # after_turn hooks): the session is saved as it is now (a turn that has
+    # ended: with it), and the signal raised in the loop's thread, so
+    # Worker#run's teardown and the lock's release still run. The process
+    # ends SIGNAL_HARD_EXIT later at the latest. Once, whatever the signals.
+    def signal_grace_expired(name)
+      expired = @signal_mutex.synchronize { !@grace_expired && !@left_loop && (@grace_expired = true) }
+      return unless expired
+
+      Log.warn(:worker, "signal_grace_expired", signal: name, turn_running: @engine&.turn_running? || false)
+      save_or_log(:signal) { save_session }
+      # Not once the loop has left (it may have, during the save).
+      @signal_mutex.synchronize { @run_thread&.raise(SignalException.new(name)) unless @left_loop }
+      signal_hard_exit
     end
   end
 end

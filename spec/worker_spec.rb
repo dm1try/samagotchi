@@ -98,9 +98,9 @@ RSpec.describe Samagotchi::Worker do
     end
 
     # Runs the worker on a thread; what #run returns is the thread's value.
-    def start_worker(poll_interval: 5, idle_exit_minutes: 0)
+    def start_worker(poll_interval: 5, idle_exit_minutes: 0, **signal_args)
       worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
-                                   idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
+                                   idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval, **signal_args)
       @worker = worker
       @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
@@ -423,7 +423,7 @@ RSpec.describe Samagotchi::Worker do
       record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "crashed" } }
       expect(record.to_h).to include(level: "ERROR", tag: "worker")
       expect(record.fields).to include("error" => "JSON::GeneratorError")
-      expect(record.payload).to match(/worker\.rb:\d+:in [`'](Samagotchi::Worker#)?run'/) # 3.3: `run', 3.4+: 'Samagotchi::Worker#run'
+      expect(record.payload).to match(/worker\.rb:\d+:in [`'](Samagotchi::Worker#)?run(_loop)?'/) # 3.3: `run_loop', 3.4+: 'Samagotchi::Worker#run_loop'
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq("error")
     end
 
@@ -469,6 +469,226 @@ RSpec.describe Samagotchi::Worker do
 
       expect(@thread.join(2)&.value).to eq(:idle_exit)
       expect(engine).to have_received(:write_recap_now)
+    end
+
+    # WorkerSignals fired by hand: the rspec process traps nothing.
+    describe "a signal (TERM, HUP, INT)" do
+      let(:kernel) { engine.instance_variable_get(:@kernel) }
+      let(:events) { Queue.new }
+      let(:in_turn) { Queue.new }
+      let(:release) { Queue.new }
+      let(:exits) { [] }
+      let(:signals) { Samagotchi::WorkerSignals.new(hard_exit: -> { exits << :hard_exit }) }
+      let(:steps) do
+        [{ role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: {} }] },
+         { role: "tool_response", content: "[execute]\nstep1", tool_call_id: "c1" }]
+      end
+
+      before do
+        allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+        allow(engine).to receive(:run_turn).and_call_original
+        # One tool step, then the turn runs until it is canceled (or, for
+        # "stubborn", until released: a tool that ignores the cancel).
+        allow(kernel).to receive(:run) do |messages, cancel_controller:, **kwargs|
+          prompt = messages.last[:content]
+          turns << [prompt, mono, kwargs]
+          conversation = messages + steps
+          in_turn << prompt
+          if prompt == "stubborn"
+            release.pop
+          elsif prompt == "answered"
+            next Samagotchi::LLM::ModelResult.new(text: "ANSWER", conversation: conversation + [{ role: "model", content: "ANSWER" }],
+                                                  exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+          else
+            sleep 0.01 until cancel_controller.cancelled?
+          end
+          Samagotchi::LLM::ModelResult.new(text: "", conversation: conversation, exhausted: false, pending_tool_calls: false,
+                                           tool_activity: [], canceled: true, cancellation_reason: cancel_controller.reason)
+        end
+        engine.subscribe(observer: ->(event) { events << event })
+      end
+
+      def seen_events
+        list = []
+        list << events.pop until events.empty?
+        list
+      end
+
+      def saved = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+
+      # What the worker's thread died of (RSpec's raise_error never rescues
+      # a SignalException).
+      # The after hook's join would raise it again: the thread is done with.
+      def death_of(thread)
+        thread.join(3)
+        nil
+      rescue SignalException => e
+        @thread = nil
+        e
+      end
+
+      it "stops the running turn as a Stop with reason signal, saves its work and leaves with :signal" do
+        start_worker(poll_interval: 5, signals: signals)
+        post_turn("long task")
+        expect(in_turn.pop(timeout: 2)).to eq("long task")
+
+        signals.fire("TERM")
+
+        expect(@thread.join(3)&.value).to eq(:signal)
+        canceled = seen_events.find { |e| e[:type] == :turn_canceled }
+        expect(canceled).to include(cancellation_reason: :signal)
+        contents = saved.messages.map { |m| m[:content] }
+        expect(contents).to include("long task", "[execute]\nstep1")
+        expect(contents.last).to include("the previous turn was cancelled (signal")
+        expect(saved.status).to eq("idle")
+        expect(saved.last_turn).to have_attributes(outcome: "canceled", cancel_reason: "signal")
+        expect(exits).to be_empty
+      end
+
+      it "leaves at once when idle" do
+        start_worker(poll_interval: 60, signals: signals)
+
+        signals.fire("HUP")
+
+        expect(@thread.join(2)&.value).to eq(:signal)
+        expect(turns).to be_empty
+      end
+
+      it "takes no new work once signalled: the next queued prompt stays in the inbox" do
+        start_worker(poll_interval: 5, signals: signals)
+        post_turn("first")
+        expect(in_turn.pop(timeout: 2)).to eq("first")
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "second", state_dir: tmpdir,
+                                                                no_interrupt: true)
+
+        signals.fire("TERM")
+
+        expect(@thread.join(3)&.value).to eq(:signal)
+        expect(turns.size).to eq(1)
+        expect(Samagotchi::SessionInbox.find_new_input_files(session_dir).size).to eq(1)
+      end
+
+      it "leaves with :stopped when the session was stopped too (chi sessions stop), its turn saved" do
+        start_worker(poll_interval: 5, signals: signals)
+        post_turn("long task")
+        expect(in_turn.pop(timeout: 2)).to eq("long task")
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+
+        signals.fire("TERM")
+
+        expect(@thread.join(3)&.value).to eq(:stopped)
+        expect(saved.messages.map { |m| m[:content] }).to include("[execute]\nstep1")
+        expect(saved.status).to eq("stopped")
+      end
+
+      it "cuts a turn that hasn't ended within the grace: saves the session, raises the signal in the loop, then the hard exit" do
+        start_worker(poll_interval: 5, signals: signals, signal_grace: [0.3, 0.1, 0.2])
+        post_turn("stubborn")
+        expect(in_turn.pop(timeout: 2)).to eq("stubborn")
+
+        signals.fire("TERM")
+
+        expect(death_of(@thread)&.signm).to eq("SIGTERM")
+        expect(wait_until(timeout: 2) { exits == [:hard_exit] }).to be(true)
+        # Saved as it was: running (P2's checkpoint, when there is one, has
+        # the turn's steps).
+        expect(saved.status).to eq("running")
+      end
+
+      it "lets a turn that ended run its after_turn hooks past the grace (no cancel), its display kept" do
+        engine.instance_variable_get(:@hooks).register(:after_turn) do |event|
+          in_turn << :hook
+          sleep 0.6
+          event[:present].call { |text| "#{text} (shown)" }
+        end
+        start_worker(poll_interval: 5, signals: signals, signal_grace: [0.1, 0.1, 5])
+        post_turn("answered")
+        expect(in_turn.pop(timeout: 2)).to eq("answered")
+        expect(in_turn.pop(timeout: 2)).to eq(:hook)
+
+        signals.fire("TERM")
+
+        expect(death_of(@thread)).to be_nil
+        expect(@thread.value).to eq(:signal) if @thread
+        expect(seen_events.map { |e| e[:type] }).not_to include(:turn_canceled)
+        expect(saved.messages.last).to include(content: "ANSWER", display: "ANSWER (shown)")
+        expect(exits).to be_empty
+      end
+
+      it "never raises into the worker's start: a grace that runs out before the loop starts waits for it" do
+        allow(engine).to receive(:start_idle) do
+          signals.fire("TERM")
+          sleep 0.3
+        end
+        worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir, idle_exit_minutes: 0,
+                                     poll_interval: 5, signals: signals, signal_grace: [0.05, 0.05, 5])
+        @thread = Thread.new { worker.run }
+        @thread.report_on_exception = false
+
+        expect(death_of(@thread)).to be_nil
+        expect(@thread.value).to eq(:signal)
+        expect(exits).to be_empty
+      end
+
+      it "runs its teardown whole even when the signal is raised meanwhile (it comes after)" do
+        torn = []
+        allow(engine).to receive(:shutdown) do
+          run_thread = Thread.current
+          Thread.new { run_thread.raise(SignalException.new("TERM")) }.join
+          sleep 0.05
+          torn << :engine
+        end
+        start_worker(poll_interval: 5, signals: signals)
+
+        signals.fire("TERM")
+
+        expect(death_of(@thread)&.signm).to eq("SIGTERM")
+        expect(torn).to eq([:engine])
+        expect(File.exist?(sidecar)).to be(false) # the Bridge stopped after it
+      end
+
+      it "brings the hard exit for a signal that comes after the loop left" do
+        start_worker(poll_interval: 5, signals: signals, signal_grace: [3, 0.5, 0.1])
+        signals.fire("TERM")
+        expect(@thread.join(2)&.value).to eq(:signal)
+        expect(exits).to be_empty
+
+        signals.fire("TERM")
+
+        expect(wait_until(timeout: 2) { exits == [:hard_exit] }).to be(true)
+      end
+
+      it "saves one at a time: the grace's save waits for the worker's own" do
+        start_worker(poll_interval: 5, signals: signals, signal_grace: [0.2, 0.1, 5])
+        post_turn("stubborn")
+        expect(in_turn.pop(timeout: 2)).to eq("stubborn")
+        inside = 0
+        most = 0
+        lock = Mutex.new
+        allow(engine.session).to receive(:save).and_wrap_original do |original, **kwargs|
+          lock.synchronize { most = [most, inside += 1].max }
+          sleep 0.2
+          original.call(**kwargs).tap { lock.synchronize { inside -= 1 } }
+        end
+        worker_save = Thread.new { @worker.send(:save_session) }
+
+        signals.fire("TERM")
+
+        expect(death_of(@thread)).to be_a(SignalException)
+        worker_save.join(2)
+        expect(most).to eq(1)
+      end
+
+      it "skips most of the grace on a second signal" do
+        start_worker(poll_interval: 5, signals: signals, signal_grace: [30, 0.1, 0.1])
+        post_turn("stubborn")
+        expect(in_turn.pop(timeout: 2)).to eq("stubborn")
+
+        signals.fire("TERM")
+        signals.fire("TERM")
+
+        expect(death_of(@thread)).to be_a(SignalException)
+      end
     end
 
     describe "an exit request (POST /exit)" do

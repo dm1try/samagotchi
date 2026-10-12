@@ -97,7 +97,7 @@ terminal renders the events it gets over the Bridge.
 | Adapters | `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::HTTP` | Raw-prompt servers, the OpenAI chat API, and the HTTP both share. |
 | Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, delegate/delegate_result, ask_user_question, reminders, send_note, list_sessions, context_read, forget_outputs, plus runtime/output-guardrails. |
 | Bundles | `lib/samagotchi/memory_bundle/*`, `BundleCommand` | `chi bundle`: install/upgrade (3-way merge), build, uninstall; the install record under `.bundles/<name>/` that the hook, guardrail and plugin loaders read ([internals/bundles.md](internals/bundles.md)). |
-| Background | `Samagotchi::Worker`, `Samagotchi::SessionManager` | `SessionManager` forks/spawns one worker process per session; its `Worker` builds the `Engine` and `Bridge` (no terminal rendering) and runs queued turns. |
+| Background | `Samagotchi::Worker`, `Samagotchi::SessionManager` | `SessionManager` forks/spawns one worker process per session; its `Worker` builds the `Engine` and `Bridge` (no terminal rendering) and runs queued turns. The spawned process (own process group) forks the worker, which `setsid`s and is reparented to init once its starter exits (it waits until the worker holds `owner.lock`, so the spawner's `Process.detach` waiter tells a starting worker): nothing that walks the spawner's process tree reaches it (`SAMAGOTCHI_WORKER_DETACH=1`, `detach_from_spawner`). The lock's pid is the worker's; `spawn`'s `child_pid` is its starter's. |
 | Web | `Samagotchi::Web::App`, `Samagotchi::Web::Server`, `Samagotchi::Web::SessionHub` | Rack+WEBrick single-port `127.0.0.1:4567` (index.html + `/api/*` + SSE). The hub is chi web's projection of the session list, pushed to every tab over `GET /api/events`. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File `sessions/<uuid>.json` + sidecar `input/`/`output/`; retention 14d/500, `updated_at desc`, lazy sweep. |
 
@@ -454,7 +454,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 
 | Component | Main file(s) | What it is |
 |---|---|---|
-| Worker | `worker.rb` (`worker_idle_exit.rb`, `worker_inbound.rb`) | A session's background process: builds the `Engine` and `Bridge`, runs queued turns, exits when idle. |
+| Worker | `worker.rb` (`worker_idle_exit.rb`, `worker_inbound.rb`, `worker_signals.rb`) | A session's background process: builds the `Engine` and `Bridge`, runs queued turns, exits when idle. A spawned one traps TERM, HUP and INT (`WorkerSignals`, installed by `run_session_loop` when `SAMAGOTCHI_WORKER_PROCESS=1`): the running turn stops as a Stop with reason `signal`, is saved, and the worker leaves (`:signal`, exit 0; a new worker only for input already queued). A running turn is checkpointed at its iteration boundaries (`TurnCheckpoint`, the `interrupted_turn` mark), and the next worker settles a turn its predecessor died in (`TurnCheckpoint.settle`). |
 | Config | `config.rb` | Every setting as an `Entry`: env, config.yml and CLI layers ([configuration.md](configuration.md)). |
 | MemoryBundle | `memory_bundle.rb`, `memory_bundle/{installer,builder,installed_bundle,plugin_ref,bundle_hook}.rb` (`Installer`, `Builder`, `InstalledBundle`, `PluginRef`, `BundleHook`) | Installing, building and reading bundles of memories, hooks and plugins. |
 | Plugin API | `plugin/api.rb` (`Plugin::Api`), `plugin/loader.rb` | What a bundle's plugin registers: tools, commands, hooks, services ([plugins.md](plugins.md)). |

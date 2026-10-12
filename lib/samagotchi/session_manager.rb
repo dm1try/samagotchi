@@ -22,6 +22,7 @@ require_relative "turn_note"
 require_relative "owner_lock"
 require_relative "bridge_client"
 require_relative "worker_sidecar"
+require_relative "worker_signals"
 require_relative "log"
 require_relative "log_path"
 require_relative "model_profile"
@@ -253,6 +254,8 @@ module Samagotchi
       SESSION_MARKER_ENV.each { |key| child_env[key] = nil }
       # A smoke's fake "newest installed" is for this process's notices only.
       child_env[InstalledVersions::ENV_KEY] = nil
+      # A worker process: run_session_loop traps signals.
+      child_env[WORKER_PROCESS_ENV] = "1"
       # A gem-mode worker activates the newest installed chi itself: under
       # `bundle exec` (a Gemfile that has samagotchi) Bundler's RUBYOPT would
       # hold it to the bundle's version, and its badge would never clear.
@@ -688,8 +691,8 @@ module Samagotchi
     # so a resume right after spawns a fresh worker instead of finding the
     # dying one.
     # A turn still running is canceled first (STOP_CANCEL_WAIT), as the
-    # web's Cancel does: its Engine saves the prompt, which the TERM alone
-    # would lose with the worker.
+    # web's Cancel does: its worker saves it. The TERM stops (and saves)
+    # what still runs (WorkerSignals), with a short grace after the marker.
     # @return [Boolean, nil] with +wait+: whether the owner was gone in time
     # @raise [OwnedByTUI] when the interactive TUI owns the session
     def self.stop_session(session_id, state_dir: nil, wait: nil)
@@ -930,7 +933,8 @@ module Samagotchi
     # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
     # @param poll_interval [Numeric, nil] seconds between the loop's fallback
     #   ticks (nil: Worker::FALLBACK_TICK_SECONDS); queued turns wake it at once
-    # A stopped session's worker exits 0 and a crashed one 1, there.
+    # A stopped session's worker exits 0 (a signalled one too) and a
+    # crashed one 1, there.
     # @return [Symbol] :idle_exit, :exit_requested or :restart
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
                               idle_exit_minutes: nil, poll_interval: nil)
@@ -942,6 +946,9 @@ module Samagotchi
       Log.configure(stderr: false)
       Log.session_id = session_id
       session_dir = Session.session_dir(session_id, state_dir: sd)
+      # Read (and taken out of ENV, so nothing the worker runs inherits it)
+      # before anything else: set by spawn_options for a spawned worker.
+      spawned = ENV.delete(WORKER_PROCESS_ENV) == "1"
       # Kept in a class ivar so the lock's File lives as long as the worker.
       @owner_lock = OwnerLock.acquire(session_dir, kind: "worker", wait: owner_wait)
       exit(0) unless @owner_lock
@@ -949,8 +956,11 @@ module Samagotchi
       fallback = ENV.delete(BOOT_FALLBACK_ENV)
       Log.info(:worker, "start", cwd: Dir.pwd, version: VERSION)
       Log.warn(:worker, "boot_fallback", version: VERSION, error: fallback) if fallback
+      # A spawned worker stops its turn on TERM/HUP/INT and saves it; a
+      # loop run in-process (specs) traps nothing.
+      signals = spawned ? WorkerSignals.new.install! : WorkerSignals::NONE
       worker = Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
-                          idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
+                          idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval, signals: signals)
       result = begin
         worker.run
       rescue StandardError, ScriptError => e
@@ -959,11 +969,19 @@ module Samagotchi
         raise
       ensure
         @owner_lock.release
+        # A signal from here on ends the process as Ruby's default does.
+        signals.restore!
       end
       Log.info(:worker, "stop", reason: result)
       # A stopped session is left as it is: no resume for input that came
-      # in, no discard.
+      # in, no discard. One whose worker a signal stopped isn't discarded
+      # either; input that came in (queued behind the turn it stopped)
+      # wakes a new worker, as after an idle exit.
       exit(0) if result == :stopped
+      if result == :signal
+        resume_session(session_id, state_dir: sd) unless SessionInbox.find_new_input_files(session_dir).empty?
+        exit(0)
+      end
       exit(1) if result == :crashed
       # Only after the release: a writer that still saw this worker as the
       # owner may have queued input since the last check. Either it finds no
@@ -1024,6 +1042,9 @@ module Samagotchi
     # format are read by a NEWER chi than the one writing them. Change them
     # only additively (spec/worker_contract_spec.rb).
     BOOT_FALLBACK_ENV = "SAMAGOTCHI_BOOT_FALLBACK"
+    # "1" in a worker spawn_options started: it traps signals (WorkerSignals).
+    # run_session_loop deletes it from ENV as it reads it.
+    WORKER_PROCESS_ENV = "SAMAGOTCHI_WORKER_PROCESS"
 
     def self.worker_command(session_id, state_dir:, gem_spec: InstalledGem.spec)
       boot = "require 'samagotchi/session_manager'; " \

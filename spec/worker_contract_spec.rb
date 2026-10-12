@@ -22,6 +22,7 @@ RSpec.describe "Cross-version worker contract" do
     expect(Samagotchi::Config::ENTRIES.find { |e| e.key == "log.file" }.env_key).to eq("SAMAGOTCHI_LOG_FILE")
     expect(Samagotchi::Config::ENTRIES.find { |e| e.key == "log.disable" }.env_key).to eq("SAMAGOTCHI_LOG_DISABLE")
     expect(Samagotchi::SessionManager::BOOT_FALLBACK_ENV).to eq("SAMAGOTCHI_BOOT_FALLBACK")
+    expect(Samagotchi::SessionManager::WORKER_PROCESS_ENV).to eq("SAMAGOTCHI_WORKER_PROCESS")
     hosts = Samagotchi::ConfigFile.disabled_host_names(env: { "SAMAGOTCHI_HOSTS_JSON" => '{"a":{"enabled":false}}' },
                                                        path: File.join(Dir.tmpdir, "no-such-config.yml"))
     expect(hosts).to eq(["a"])
