@@ -1094,6 +1094,76 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
 
+    describe "an answer's refs (AnswerRefs, attached by an after_turn hook)" do
+      let(:jira) do
+        { "match" => "JIRA-1", "kind" => "issue", "target" => { "id" => "JIRA-1" },
+          "actions" => [{ "id" => "open", "label" => "Open in Jira", "url" => "https://j.test/browse/JIRA-1" }] }
+      end
+      let(:file) { { "match" => "a.rb:3", "kind" => "file", "target" => { "path" => "/p/a.rb", "line" => 3 }, "actions" => [] } }
+      let(:live) do
+        { "snapshot" => { "messages" => [
+          { "role" => "user", "content" => "q", "display_refs" => [jira] },
+          { "role" => "model", "content" => "earlier" },
+          { "role" => "user", "content" => "q2" },
+          { "role" => "model", "content" => "see JIRA-1 in a.rb:3", "display_refs" => [jira, file] }
+        ] }, "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
+      end
+
+      def read(app, query)
+        JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first)["messages"]
+      end
+
+      def live_read(query)
+        app = build_app(state_dir: Dir.mktmpdir)
+        stub_worker(app, live)
+        read(app, query)
+      end
+
+      it "sends them on the answer from a live worker: the tail, the full and the parts read" do
+        ["?tail=1", "", "?parts=1"].each do |query|
+          messages = live_read(query)
+          expect(messages.last["display_refs"]).to eq([jira, file]), query
+        end
+        full = live_read("")
+        expect(full.map { |m| m.key?("display_refs") }).to eq([false, false, false, true])
+      end
+
+      it "sends them from a stopped session's file (symbol keys on top, as Session.load leaves them), full and tail" do
+        refs = [jira, file]
+        loader = Class.new(StubSessionLoader) do
+          define_singleton_method(:load) do |id, state_dir: nil|
+            super(id, state_dir: state_dir).tap do |s|
+              s.messages = [{ role: "user", content: "q" }, { role: "model", content: "see JIRA-1", display_refs: refs }]
+            end
+          end
+        end
+        app = build_app(state_dir: Dir.mktmpdir, session_class: loader)
+
+        expect(read(app, "").last["display_refs"]).to eq(refs)
+        expect(read(app, "?tail=1").last["display_refs"]).to eq(refs)
+      end
+
+      it "drops what isn't valid any more: a script URL, a relative path, the 201st ref" do
+        bad = jira.merge("match" => "x", "actions" => [{ "id" => "a", "label" => "A", "url" => "javascript:alert(1)" }])
+        relative = file.merge("target" => { "path" => "lib/a.rb" })
+        many = Array.new(201) { |i| { "match" => "J-#{i}", "kind" => "issue", "target" => { "id" => "J-#{i}" } } }
+        live["snapshot"]["messages"].last["display_refs"] = [jira, bad, relative]
+        expect(live_read("?tail=1").last["display_refs"]).to eq([jira])
+
+        live["snapshot"]["messages"].last["display_refs"] = many
+        expect(live_read("?tail=1").last["display_refs"].length).to eq(200)
+      end
+
+      it "still shows the conversation when the stored refs are junk (no refs on that message)" do
+        ["junk", [42, { "kind" => nil }]].each do |junk|
+          live["snapshot"]["messages"].last["display_refs"] = junk
+          messages = live_read("")
+          expect(messages.map { |m| m["content"] }).to eq(["q", "earlier", "q2", "see JIRA-1 in a.rb:3"])
+          expect(messages.last).not_to have_key("display_refs")
+        end
+      end
+    end
+
     describe "?tail=1 (the page's re-read at the end of a turn)" do
       let(:live) do
         { "snapshot" => { "messages" => [

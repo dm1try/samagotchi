@@ -13,6 +13,7 @@ require_relative "../analytics_file"
 require_relative "../client_id"
 require_relative "../delivery"
 require_relative "../answer_tail"
+require_relative "../answer_refs"
 require_relative "../bridge_client"
 require_relative "../bridge/bounded_queue"
 require_relative "../bridge/card_store"
@@ -1907,6 +1908,10 @@ module Samagotchi
             message[:display] = shown unless shown.strip.empty?
             rendered = message[:display] || stripped
             message[:html] = @markdown_renderer.render(rendered) if !rendered.empty? && @markdown_renderer.available?
+            # The refs after_turn hooks attached (AnswerRefs), checked again:
+            # a stored file is never trusted. Never raises.
+            refs = Samagotchi::AnswerRefs.for_display(m[:display_refs] || m["display_refs"])
+            message[:display_refs] = refs unless refs.empty?
           end
           message[:parts] = did if did
           filtered << message
