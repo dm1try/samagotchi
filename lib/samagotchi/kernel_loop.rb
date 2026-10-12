@@ -1003,11 +1003,13 @@ module Samagotchi
     def sanitize_history(messages, keep_thought_from: nil)
       messages.each_with_index.map do |m, index|
         if m[:role] == "model" && keep_thought_from && index >= keep_thought_from
-          { role: m[:role], content: m[:content].to_s, display: m[:display] }.compact
+          { role: m[:role], content: m[:content].to_s, display: m[:display], display_refs: m[:display_refs] }.compact
         elsif m[:role] == "model"
-          # `display` rides along so the stored conversation keeps it; the
-          # prompt formatter never reads it (AnswerDisplay).
-          { role: m[:role], content: strip_thought_blocks(m[:content].to_s), display: m[:display] }.compact
+          # `display` and `display_refs` ride along so the stored
+          # conversation keeps them; the prompt formatter never reads them
+          # (AnswerDisplay, AnswerRefs).
+          { role: m[:role], content: strip_thought_blocks(m[:content].to_s), display: m[:display],
+            display_refs: m[:display_refs] }.compact
         else
           m.dup
         end

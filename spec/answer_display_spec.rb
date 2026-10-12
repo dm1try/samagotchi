@@ -212,8 +212,14 @@ end
 
 RSpec.describe "The display field and the model payloads" do
   let(:marker) { "DISPLAY-ONLY-MARKER" }
+  let(:refs_marker) { "REFS-MARKER" }
+  let(:refs) do
+    [{ match: "ok", kind: "issue", target: { id: "J-1" },
+       actions: [{ id: "open", label: "Open", url: "https://example.test/#{refs_marker}" }] }]
+  end
   let(:history) do
-    [{ role: "user", content: "old" }, { role: "model", content: "ok", display: marker }, { role: "user", content: "next" }]
+    [{ role: "user", content: "old" }, { role: "model", content: "ok", display: marker, display_refs: refs },
+     { role: "user", content: "next" }]
   end
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
@@ -230,14 +236,31 @@ RSpec.describe "The display field and the model payloads" do
 
     expect(prompts.join).to include("ok")
     expect(prompts.join).not_to include(marker)
+    expect(prompts.join).not_to include(refs_marker)
     expect(JSON.generate(generation)).not_to include(marker)
-    expect(result.conversation.find { |m| m[:content] == "ok" }).to include(display: marker)
+    expect(JSON.generate(generation)).not_to include(refs_marker)
+    expect(result.conversation.find { |m| m[:content] == "ok" }).to include(display: marker, display_refs: refs)
+  end
+
+  it "a resumed run (its thoughts kept) leaves the refs out of the prompt and keeps them in the conversation" do
+    client = test_client
+    prompts = []
+    allow(client).to receive(:complete) { |prompt, **| prompts << prompt; "fine" }
+    resumed = [{ role: "user", content: "old" }, { role: "model", content: "ok", display: marker, display_refs: refs }]
+
+    result = Samagotchi::KernelLoop.new(client: client).run(resumed.map(&:dup), reasoning_since: 0)
+
+    expect(prompts.join).to include("ok")
+    expect(prompts.join).not_to include(refs_marker)
+    expect(prompts.join).not_to include(marker)
+    expect(result.conversation.find { |m| m[:content] == "ok" }).to include(display: marker, display_refs: refs)
   end
 
   it "every model profile's prompt formatter leaves it out" do
     [Samagotchi::ModelProfile.gemma4, Samagotchi::ModelProfile.qwen36].each do |profile|
       prompt, = Samagotchi::Prompt.format_with_images(history, profile: profile)
       expect(prompt).not_to include(marker), "profile #{profile.name}"
+      expect(prompt).not_to include(refs_marker), "profile #{profile.name}"
     end
   end
 
@@ -255,6 +278,7 @@ RSpec.describe "The display field and the model payloads" do
 
     expect(JSON.generate(sent)).to include("ok")
     expect(JSON.generate(sent)).not_to include(marker)
-    expect(result.conversation.find { |m| m[:content] == "ok" }).to include(display: marker)
+    expect(JSON.generate(sent)).not_to include(refs_marker)
+    expect(result.conversation.find { |m| m[:content] == "ok" }).to include(display: marker, display_refs: refs)
   end
 end

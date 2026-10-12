@@ -11,6 +11,7 @@ require_relative "native_tool_normalizer"
 require_relative "stream_drops"
 require_relative "../kernel_loop"
 require_relative "../answer_display"
+require_relative "../answer_refs"
 require_relative "../cut_policy"
 require_relative "../context_status"
 require_relative "../context_window"
@@ -302,8 +303,9 @@ module Samagotchi
       # refs of a user message or a tool result, a prompt's turn_id (Engine,
       # never sent) and a wake turn's report's turn_start (Steer, never sent), and a plugin tool result's tool_params and tool_labels
       # (the live row's params line and label, never sent back), an
-      # edit/write result's tool_diffs (never sent), and an empty-answer
-      # note's marker (TurnNote.empty, never sent).
+      # edit/write result's tool_diffs (never sent), an empty-answer
+      # note's marker (TurnNote.empty, never sent), and an answer's display
+      # and display_refs (AnswerDisplay, AnswerRefs; never sent).
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -319,6 +321,7 @@ module Samagotchi
           marker = TurnNote.empty_answer(entry)
           message[TurnNote::EMPTY_ANSWER] = marker if marker
           message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
+          message[AnswerRefs::KEY] = entry[AnswerRefs::KEY] if entry[AnswerRefs::KEY]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           message
         end
