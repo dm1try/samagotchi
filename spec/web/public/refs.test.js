@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bindRef, editorUrl, httpUrl, installRefClicks, refActions, refAttrs, refTarget, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
+import { bindRef, bindRowRefs, editorUrl, httpUrl, installRefClicks, refActions, refAttrs, refTarget, rowTitleRef, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
 import { createRefMenu } from "../../../lib/samagotchi/web/public/ref_menu.js";
 import { linkRefs, touchedFiles } from "../../../lib/samagotchi/web/public/ref_scan.js";
 import { pairAnswerRefs, setAnswerRefs } from "../../../lib/samagotchi/web/public/answer_refs.js";
@@ -750,5 +750,87 @@ test("an issue-only answer pairs with nothing touched; its plain click opens the
   installRefClicks(root, () => PHONE, { openLink: (url) => opened.push(url), menu: createRefMenu(document) });
   click(issue);
   assert.deepEqual(opened, [JIRA]);
+  cleanup(root);
+});
+
+// A plugin tool's row refs (traceable refs P5d, D8): the first on the
+// title, the others in the title's menu.
+const ticketRow = {
+  key: "1:3", tool: "ticket", label: "jira: ticket", params: 'id="ABC-12"', status: "ok", output: "[ticket]\nfound",
+  refs: [
+    { kind: "issue", target: { id: "ABC-12" }, label: "ABC-12 Login fails",
+      actions: [{ id: "open", label: "Open in Jira", url: JIRA }, { id: "board", label: "Board", url: "https://jira.test/board" }] },
+    { kind: "pr", target: { id: "4" }, label: "PR #4", actions: [{ id: "open", label: "Open on GitHub", url: PR }, { id: "dup", label: "Board again", url: "https://jira.test/board" }] },
+    { kind: "file", target: { path: "/p/lib/login.rb", line: 7 }, actions: [] },
+    { kind: "Bad Kind", target: { id: "x" }, actions: [{ id: "open", label: "Open", url: "https://x.test/" }] },
+    { kind: "commit", target: { id: "abc123" }, actions: [{ id: "evil", label: "Evil", url: "javascript:alert(1)" }] },
+  ],
+};
+
+test("rowTitleRef: the row's own ref, else its first plugin ref that binds, in refAttrs' shape", () => {
+  assert.deepEqual(rowTitleRef(ticketRow), { kind: "issue", path: undefined, line: undefined, end_line: undefined });
+  assert.deepEqual(rowTitleRef({ refs: [{ kind: "BAD" }, { kind: "file", target: { path: "/p/a.rb", line: 3 } }] }),
+    { kind: "file", path: "/p/a.rb", line: 3, end_line: undefined });
+  assert.equal(rowTitleRef(editRow).path, "/p/lib/a.rb");
+  assert.equal(rowTitleRef({ refs: "junk" }), null);
+  assert.equal(rowTitleRef({}), null);
+  // Escaped like any ref's attributes.
+  const root = mount(toolRowHtml({ ...ticketRow, refs: [{ kind: "file", target: { path: '/p/a"><img src=x onerror=alert(1)>.rb' } }] }));
+  assert.equal(root.querySelector("img"), null);
+  assert.equal(root.querySelector(".activity-params").dataset.refPath, '/p/a"><img src=x onerror=alert(1)>.rb');
+  cleanup(root);
+});
+
+test("bindRowRefs: the title opens the first ref's first action; its menu has the first's actions, then the others' as '<ref> · <action>'", () => {
+  const root = mount(toolRowHtml(ticketRow));
+  const row = root.querySelector(".activity-row");
+  const title = row.querySelector(".activity-params");
+  assert.ok(title.classList.contains("ref"));
+  assert.equal(title.dataset.refKind, "issue");
+  assert.equal(bindRowRefs(row, ticketRow), title);
+  const target = refTarget(title);
+  const labels = (viewer) => refActions(target, viewer).map((action) => action.label(target));
+  // The phone: URL actions only, no editor; a repeated URL once; a bad
+  // kind and a javascript: URL never.
+  assert.deepEqual(labels(PHONE), ["Open in Jira", "Board", "PR #4 · Open on GitHub"]);
+  assert.deepEqual(labels(viewer), ["Open in Jira", "Board", "PR #4 · Open on GitHub", "login.rb:7 · Open in editor"]);
+  assert.equal(refActions(target, viewer).at(-2).hint(target), PR);
+
+  const calls = installed(root, () => viewer);
+  click(title);
+  key(title, "ArrowDown");
+  click(document.querySelector('.ref-menu [data-target="more:0:open"]'));
+  key(title, "ArrowDown");
+  assert.equal(document.querySelector('.ref-menu [data-target="more:0:open"]').title, PR);
+  click(document.querySelector('.ref-menu [data-target="more:1:editor"]'));
+  assert.deepEqual(calls, [["link", JIRA], ["link", PR], ["open", "vscode://file/p/lib/login.rb:7"]]);
+  cleanup(root);
+});
+
+test("bindRowRefs: a file first ref keeps the file's own targets on the title; a lone ref has no menu; none without refs or a title", () => {
+  const fileFirst = { ...ticketRow, refs: [{ kind: "file", target: { path: "/p/lib/login.rb", line: 7 }, actions: [{ id: "pr", label: "PR diff", url: PR }] }, ticketRow.refs[0]] };
+  const root = mount(toolRowHtml(fileFirst) + toolRowHtml({ ...ticketRow, key: "1:4", refs: [ticketRow.refs[2]] }) + toolRowHtml({ ...ticketRow, key: "1:5", params: "", refs: ticketRow.refs }));
+  const [first, lone, untitled] = root.querySelectorAll(".activity-row");
+  const title = bindRowRefs(first, fileFirst);
+  assert.deepEqual(ids(refActions(refTarget(title), viewer)), ["editor", "url:pr", "more:0:open", "more:0:board", "copy"]);
+  assert.equal(refActions(refTarget(title), viewer)[2].label(refTarget(title)), "ABC-12 Login fails · Open in Jira");
+  const loneTitle = bindRowRefs(lone, { refs: [ticketRow.refs[2]] });
+  assert.deepEqual(ids(refActions(refTarget(loneTitle), viewer)), ["editor", "copy"]);
+  assert.deepEqual(refActions(refTarget(loneTitle), PHONE), []);
+  assert.equal(bindRowRefs(untitled, ticketRow), null);
+  assert.equal(bindRowRefs(first, { refs: [] }), null);
+  assert.equal(bindRowRefs(first, editRow), null);
+  cleanup(root);
+});
+
+test("bindRowRefs again after a redraw binds the new title", () => {
+  const root = mount(toolRowHtml(ticketRow));
+  const row = root.querySelector(".activity-row");
+  bindRowRefs(row, ticketRow);
+  row.innerHTML = toolRowHtml({ ...ticketRow, status: "ok" }).replace(/^<div[^>]*>|<\/div>$/g, "");
+  const fresh = row.querySelector(".activity-params");
+  assert.deepEqual(ids(refActions(refTarget(fresh), PHONE)), []);
+  bindRowRefs(row, ticketRow);
+  assert.deepEqual(ids(refActions(refTarget(fresh), PHONE)), ["url:open", "url:board", "more:0:open"]);
   cleanup(root);
 });
