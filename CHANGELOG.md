@@ -27,6 +27,7 @@ and commands may change between minor versions. How releases are made:
   slow-commands 0.2.1 doesn't count either as slow.
 - A turn whose worker was killed (SIGKILL, a crash) keeps its tokens, speed and timings up to its last checkpoint:
   the session's stats count it as a canceled turn (`worker_stopped`); before, they lost it.
+- Web: hovering a ref with a ▾ at the very end of a line no longer pushes it onto the next line.
 
 ## [0.61.0] - 2026-10-12
 

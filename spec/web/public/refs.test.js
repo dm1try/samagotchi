@@ -396,6 +396,35 @@ test("the ▾ sits in room its ref makes after itself, which it gives back when 
   cleanup(page.root);
 });
 
+// The room would wrap a ref that ends its line (layout stubbed: its last
+// box drops a line while it has the room): it makes none, and the ▾ goes
+// past its end instead of into the room.
+test("a ref the room would push onto the next line makes none: the ▾ goes past its end", () => {
+  const page = turnPage();
+  const menu = createRefMenu(document);
+  const box = (el, wraps) => {
+    el.getClientRects = () => {
+      const down = wraps && el.dataset.refMore === "";
+      return [{ top: down ? 120 : 100, height: 20, right: down ? 40 : (el.dataset.refMore === "" ? 219 : 200), left: 0 }];
+    };
+  };
+  box(page.text, true);
+  menu.showMore(page.text, () => {});
+  const more = document.querySelector(".ref-more");
+  assert.equal(page.text.dataset.refMore, "end");
+  assert.equal(more.style.left, "202px");
+  // Shown again for the same ref (the pointer came back): kept as it is.
+  menu.showMore(page.text, () => {});
+  assert.equal(page.text.dataset.refMore, "end");
+
+  box(page.link, false);
+  menu.showMore(page.link, () => {});
+  assert.equal(page.text.dataset.refMore, undefined);
+  assert.equal(page.link.dataset.refMore, "");
+  assert.equal(more.style.left, `${219 - (more.offsetWidth || 16) - 1}px`);
+  cleanup(page.root);
+});
+
 // Rows by the steps they sit in: +rows+ ({path, line}) as edit rows with a
 // diff at their line.
 function stepHtml(text, rows) {
