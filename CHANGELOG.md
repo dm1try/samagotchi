@@ -49,6 +49,8 @@ and commands may change between minor versions. How releases are made:
 - A turn whose worker was killed (SIGKILL, a crash) keeps its tokens, speed and timings up to its last checkpoint:
   the session's stats count it as a canceled turn (`worker_stopped`); before, they lost it.
 - Web: hovering a ref with a ▾ at the very end of a line no longer pushes it onto the next line.
+- Web: a failed `+ URL` attach keeps the "why" you typed (it was emptied), and a context chip with the keyboard
+  focus keeps it when the chips refresh.
 
 ## [0.61.0] - 2026-10-12
 
