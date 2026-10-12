@@ -2,6 +2,7 @@
 // Assertions are on page state only; every wait is on the DOM, no sleeps.
 import { test, expect } from "./support/fixtures.js";
 import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
+import { momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSnaps, watchShifts, watchStage } from "./support/shifts.js";
 
 // The stage view (the default; the turn project runs @turn scenarios again
 // on ?view=turn): a running turn's rows are in #turnStage until the hand-off
@@ -373,20 +374,55 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
 
 test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ page, script }) => {
   script("approval");
+  await watchShifts(page);
+  await watchStage(page);
+  await startSnaps(page);
   await send(page, "Run the command that needs approval");
   const card = page.locator(`${H()} .bubble.question.approval`);
   await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
   await expect(card.locator(".approval-why")).toContainText("e2e-ask");
+  const cardAt = await pageNow(page);
   // The stage shows the reply that asked for it above the card.
   if (stage()) await expect(page.locator("#turnStage .ts-asking")).toHaveText("Running the command that needs approval.");
+  if (stage()) {
+    // The plain flip: the first words stream as the answer, then the tool
+    // starts; the stage holds its height and nothing in it moves. (The
+    // composer card settles into a new session's layout meanwhile.)
+    const marks = await stageMarks(page);
+    const shownAt = momentAt(marks, (m) => !m.hidden);
+    // (A fast stream can start the tool in the first words' frame.)
+    const plainAt = momentAt(marks, (m) => /\bplain\b/.test(m.cls)) ?? shownAt;
+    const waitingAt = momentAt(marks, (m) => /\bwaiting\b/.test(m.cls));
+    expect(plainAt).toBeLessThan(waitingAt);
+    expect(await shiftSum(page, { from: plainAt, to: waitingAt, where: "stage", withInput: true })).toBeLessThan(0.01);
+  }
   // Answered from the keyboard: the card took the focus from the empty
   // composer; pick the first option and press Enter.
   const first = card.locator(".question-option input").first();
   await expect(first).toBeFocused();
   await first.check();
+  const answerAt = await pageNow(page);
   await first.press("Enter");
   await expect(card.locator(".question-result")).toContainText("Allow");
   await expect(answer(page)).toHaveText("The approved command ran.");
+  if (stage()) {
+    // The answer: the stage keeps its height and nothing in it shifts. This
+    // card is taller than its room (its options in sight, its top scrolled
+    // out), so it can't keep its top: its line comes into the stage's view
+    // (the focus may scroll the stage to it). The question test has a card
+    // that keeps it.
+    const endAt = momentAt(await stageMarks(page), (m) => /\bended\b/.test(m.cls), answerAt);
+    expect(await shiftSum(page, { from: answerAt, to: endAt, withInput: true })).toBeLessThan(0.01);
+    expect(await snaps(page, { from: answerAt, to: endAt, keys: ["status", "chip", "composer"] })).toEqual([]);
+    const line = await card.locator("summary").boundingBox();
+    const view = await page.locator("#turnStage .ts-scroll").boundingBox();
+    expect(line.y).toBeGreaterThanOrEqual(view.y);
+    expect(line.y + line.height).toBeLessThanOrEqual(view.y + view.height);
+  } else {
+    // The turn view: the history flows and follows; the composer and the
+    // top bar never move.
+    expect((await shiftSources(page, { from: cardAt })).filter((n) => /#dock|dock-card|#topBar|section#center$/.test(n))).toEqual([]);
+  }
   await turnEnded(page, 1);
   const row = page.locator("#history .activity-row").filter({ hasText: "execute" });
   await expect(row.locator(".activity-status")).toHaveAttribute("aria-label", "done");

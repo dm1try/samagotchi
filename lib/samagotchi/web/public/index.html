@@ -612,6 +612,8 @@ body.has-session #composer .actions-col{flex-wrap:nowrap;flex-shrink:0}
 body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;gap:10px}
 .dock-card{display:flex;flex-direction:column;border-radius:16px;position:relative;transition:border-color .12s ease,box-shadow .12s ease}
 .dock-card:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,transparent);box-shadow:0 0 0 3px var(--accent-ring),var(--glass-shadow)}
+/* The live slots' heights (headline, tool row, trail); --ts-live-h is their running height with the two 8 px gaps. */
+.turn-stage{--ts-head-h:42px;--ts-now-h:32px;--ts-trail-h:18px;--ts-live-h:calc(var(--ts-head-h) + var(--ts-now-h) + var(--ts-trail-h) + 16px)}
 .turn-stage{display:flex;flex-direction:column;min-height:0;max-height:var(--stage-max,60vh);border-left:3px solid var(--accent);border-radius:14px;overflow:hidden}
 /* Out of the dock's flow: it floats 10 px above the composer card, so its rise, growth and leaving never move #dock (a
    bottom-pinned box changing height is a layout shift, animated or not). Painted before .dock-card (no z-index): the command
@@ -662,7 +664,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-prompt:not(.full) .user-message blockquote{display:inline;border:0;padding:0;margin:0}
 /* The live slots: fixed heights (two headline lines, one tool row, one trail line). */
 .ts-live{display:flex;flex-direction:column;gap:8px}
-.ts-headline{height:42px;font-size:14px;line-height:21px;color:var(--narr);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;cursor:pointer;border-radius:6px}
+.ts-headline{height:var(--ts-head-h);font-size:14px;line-height:21px;color:var(--narr);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;cursor:pointer;border-radius:6px}
 .ts-headline:hover{background:var(--bg-hover)}
 .ts-headline:not(.thinking)::before{content:"\203A";color:var(--accent);font-weight:700;margin-right:7px}
 .ts-headline.thinking{font-size:13.5px;font-style:italic;color:var(--text-muted)}
@@ -673,13 +675,13 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
 .turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
-.ts-now{height:32px;display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
+.ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
 .ts-spin{flex:none;width:11px;height:11px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:init-spin .8s linear infinite}
 .ts-idle{flex:none;width:11px;height:11px;border:2px solid var(--border-strong);border-radius:50%}
 .ts-tool{flex:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;color:var(--accent)}
 .ts-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--text-2)}
 .ts-title.quiet{font-family:inherit;font-style:italic;color:var(--text-faint)}
-.ts-trail{height:18px;display:flex;gap:10px;overflow:hidden;font-size:12px;line-height:18px;color:var(--text-faint);white-space:nowrap}
+.ts-trail{height:var(--ts-trail-h);display:flex;gap:10px;overflow:hidden;font-size:12px;line-height:18px;color:var(--text-faint);white-space:nowrap}
 .ts-trail-item{flex:none;max-width:36ch;overflow:hidden;text-overflow:ellipsis}
 .ts-trail-item:is(.error,.blocked){color:var(--danger-text)}
 .ts-trail-item.warn{color:var(--warn-text)}
@@ -690,7 +692,13 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage.waiting .ts-now,.turn-stage.waiting .ts-trail{display:none}
 /* Rows that arrive during the turn (cards, queued prompts, commands, notes) and after its end (the end line): capped, own scroll. */
 .ts-extras,.ts-tail{display:flex;flex-direction:column;gap:8px;max-height:calc(var(--stage-max,60vh) * .4);overflow:auto;scrollbar-width:thin}
-.turn-stage.waiting .ts-extras{max-height:calc(var(--stage-max,60vh) * .7)}
+.turn-stage.held-wait .ts-extras{max-height:calc(var(--stage-max,60vh) * .7)}
+/* The card under the live slots stays put from its arrival to the next step: waiting, the slots keep at least their running
+   height (the asking text sits at its bottom, over the card); answered, the height they had while waiting (stage_view.js). */
+.turn-stage.waiting .ts-live{min-height:var(--ts-live-h);justify-content:flex-end}
+.turn-stage.held-wait:not(.waiting) .ts-live{min-height:max(var(--ts-live-h),var(--live-held,0px))}
+/* A 1 px mark at the tallest content's end, so the scroll extent never drops while a turn runs (stage_view.js fitFrame). */
+.ts-hold{position:absolute;left:0;top:0;width:1px;height:1px;visibility:hidden;pointer-events:none}
 .ts-extras>*,.ts-tail>*{flex-shrink:0}
 .ts-extras>.bubble.user{max-width:none;margin:0;padding:4px 10px;font-size:13px;line-height:1.45;background:transparent;color:var(--text-2)}
 .ts-extras>.bubble.user>.copy-btn{display:none}

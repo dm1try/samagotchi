@@ -342,6 +342,25 @@ test("liveSlots: a hook's question with no running row in the last gen (asked be
   assert.equal(slots.phase, "waiting for you");
 });
 
-test("frameTarget: the content's own height (null) for now", () => {
-  assert.equal(frameTarget({ natural: 200, held: null, cap: 400, holding: true, collapsed: false }), null);
+test("frameTarget: grow-only while holding a turn", () => {
+  const frame = { holding: true, collapsed: false, cap: 400 };
+  assert.equal(frameTarget({ ...frame, natural: 200, held: null }), 200);
+  assert.equal(frameTarget({ ...frame, natural: 260, held: 200 }), 260);
+  // A smaller content keeps the held height.
+  assert.equal(frameTarget({ ...frame, natural: 120, held: 260 }), 260);
+});
+
+test("frameTarget: the cap clamps, and a cap that rises again doesn't bring the old height back", () => {
+  const frame = { holding: true, collapsed: false };
+  assert.equal(frameTarget({ ...frame, natural: 500, held: null, cap: 400 }), 400);
+  const clamped = frameTarget({ ...frame, natural: 300, held: 360, cap: 250 });
+  assert.equal(clamped, 250);
+  assert.equal(frameTarget({ ...frame, natural: 200, held: clamped, cap: 400 }), 250);
+  // New content grows it again.
+  assert.equal(frameTarget({ ...frame, natural: 320, held: clamped, cap: 400 }), 320);
+});
+
+test("frameTarget: collapsed or not holding a turn: the content's own height (null)", () => {
+  assert.equal(frameTarget({ natural: 200, held: 300, cap: 400, holding: true, collapsed: true }), null);
+  assert.equal(frameTarget({ natural: 200, held: 300, cap: 400, holding: false, collapsed: false }), null);
 });

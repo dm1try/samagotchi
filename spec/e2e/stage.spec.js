@@ -3,7 +3,7 @@
 // history. The default view: the chromium project runs it, the turn project
 // doesn't.
 import { test, expect } from "./support/fixtures.js";
-import { frames, momentAt, pageNow, shiftSources, shiftSum, stageMarks, startSampling, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
+import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSampling, startSnaps, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
 const stageEl = (page) => page.locator("#turnStage");
 // A shift's source in the top bar, or the session panel it pushes down.
@@ -36,9 +36,15 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   const running = samples.filter((s) => !s.hidden && !s.ended);
   expect(running.length).toBeGreaterThan(10);
   expect([...new Set(running.map((s) => s.slots))]).toHaveLength(1);
-  const noCard = running.filter((s) => s.extras === 0);
+  // One height before check-in's card, one after its growth (the stage
+  // never shrinks while the turn runs).
+  const cardIndex = running.findIndex((s) => s.extras > 0);
+  const noCard = running.slice(0, cardIndex);
   expect(noCard.length).toBeGreaterThan(5);
   expect([...new Set(noCard.map((s) => s.h))]).toHaveLength(1);
+  const withCard = running.slice(cardIndex + 3);
+  expect(withCard.length).toBeGreaterThan(3);
+  expect([...new Set(withCard.map((s) => s.h))]).toHaveLength(1);
   expect([...new Set(samples.map((s) => s.top))]).toEqual([120]);
   // The moments, by the stage's own marks (page clock).
   const marks = await stageMarks(page);
@@ -152,20 +158,47 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(card).toBeVisible();
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
+  await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0); // its rise is over
+  // A phone's keyboard (the window 420 px tall): the cap drops, the held
+  // stage clamps to it at once and the waiting card stays in sight; when
+  // the keyboard goes the stage grows back only to what its content needs.
+  const inSight = async () => {
+    const [c, v] = [await card.boundingBox(), await stageEl(page).locator(".ts-scroll").boundingBox()];
+    return c.y + Math.min(c.height, 40) <= v.y + v.height && c.y + c.height > v.y;
+  };
+  const before = await stageEl(page).evaluate((el) => el.offsetHeight);
+  await page.setViewportSize({ width: 390, height: 420 });
+  await expect.poll(inSight).toBe(true);
+  expect(await stageEl(page).evaluate((el) => el.offsetHeight)).toBeLessThan(before);
+  await page.setViewportSize({ width: 390, height: 700 });
+  await expect.poll(() => stageEl(page).evaluate((el) => el.offsetHeight)).toBe(before);
+  await expect.poll(inSight).toBe(true);
   // From the answer until the turn is answered nothing moves on its own:
   // the card's collapse and the slots' swap come with the click. (The
   // shifts' recorder came back with the reload.)
   await watchFrames(page);
+  await watchStage(page);
+  await startSnaps(page);
   const submitAt = await pageNow(page);
   await expect(stageEl(page).locator(".ts-prompt .user-message")).toHaveText("Read a file of my choice");
+  const cardTop = (await card.boundingBox()).y;
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
   await expect(asking).toBeHidden();
   const answeredAt = (await frames(page)).find((f) => f.phase === "answered").t;
-  expect(await shiftSum(page, { from: submitAt, to: answeredAt })).toBeLessThan(0.01);
+  expect(await shiftSum(page, { from: submitAt, to: answeredAt, withInput: true })).toBeLessThan(0.01);
+  // The card stays where it was (its collapse and the swap above it happen
+  // inside the held stage).
+  expect(await snaps(page, { from: submitAt, to: answeredAt, keys: ["card"] })).toEqual([]);
+  expect(Math.abs((await card.boundingBox()).y - cardTop)).toBeLessThanOrEqual(2);
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
+  // The turn end with a short answer: the stage keeps its height, nothing
+  // in it moves.
+  const leaveAt = momentAt(await stageMarks(page), (m) => /\bleaving\b/.test(m.cls), answeredAt);
+  expect(await shiftSum(page, { from: answeredAt, to: leaveAt, withInput: true })).toBeLessThan(0.01);
+  expect(await snaps(page, { from: answeredAt, to: leaveAt })).toEqual([]);
   expect((await shiftSources(page, { from: submitAt })).filter((n) => TOP_BAR.test(n))).toEqual([]);
   // Their classes without the arrival animation's (gone when it ends).
   const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>
