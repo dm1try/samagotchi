@@ -1232,7 +1232,8 @@ module Samagotchi
     # the grace runs out first, #signal_grace_expired. A turn that has
     # ended and runs its after_turn hooks (which store the answer's display
     # and refs) is no longer canceled, and gets until SIGNAL_HARD_EXIT
-    # past the grace. A grace that runs out before the loop started waits
+    # past the grace, the worker's own end of the turn (its saves, after
+    # the turn stopped running) too: the loop leaves next. A grace that runs out before the loop started waits
     # for it (the loop's first look leaves). A signal after the loop left
     # (the teardown, the caller's last steps) only brings the hard exit.
     def signalled(name, count)
@@ -1244,11 +1245,12 @@ module Samagotchi
       now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       deadline = now + (short ? @signal_short_grace : @signal_grace)
       hooks_deadline = deadline + @signal_hard_exit
+      ended = false
       until @left_loop
         running = @engine&.turn_running?
-        hooks = running && @turn_ending
-        @engine.cancel_current_turn!(:signal) if running && !hooks
-        break if @loop_started && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= (hooks ? hooks_deadline : deadline)
+        ended ||= running && @turn_ending
+        @engine.cancel_current_turn!(:signal) if running && !ended
+        break if @loop_started && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= (ended ? hooks_deadline : deadline)
 
         sleep(SIGNAL_RETRY)
       end

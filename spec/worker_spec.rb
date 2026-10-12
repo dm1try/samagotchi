@@ -620,6 +620,12 @@ RSpec.describe Samagotchi::Worker do
           sleep 0.6
           event[:present].call { |text| "#{text} (shown)" }
         end
+        # The worker's own end of the turn, past the hooks, outlasts a
+        # SIGNAL_RETRY: the turn no longer runs, the loop hasn't left yet.
+        allow(Samagotchi::SessionInbox).to receive(:write_output).and_wrap_original do |original, *args|
+          sleep 0.3
+          original.call(*args)
+        end
         start_worker(poll_interval: 5, signals: signals, signal_grace: [0.1, 0.1, 5])
         post_turn("answered")
         expect(in_turn.pop(timeout: 2)).to eq("answered")
