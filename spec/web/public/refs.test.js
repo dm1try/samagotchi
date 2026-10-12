@@ -494,6 +494,32 @@ test("httpUrl: an http(s) URL as the page would open it, anything else none", ()
   }
 });
 
+test("httpUrl: no userinfo, a host, at most 2,000 characters (trimmed), as the server's RefAction.http_url?", () => {
+  for (const url of ["https://github.com@evil.example/x", "https://u:p@h.test/", "https://:p@h.test/", "https://u@h.test/"]) {
+    assert.equal(httpUrl(url), null, url);
+  }
+  const base = "https://x.test/";
+  const at2000 = base + "a".repeat(2000 - base.length);
+  assert.equal(httpUrl(at2000), at2000);
+  assert.equal(httpUrl(` ${at2000} `), at2000);
+  assert.equal(httpUrl(at2000 + "a"), null);
+});
+
+test("bindRef drops a userinfo action; a userinfo href doesn't take an action's label", () => {
+  const root = mount(`<p><span>ABC-12</span> <a href="https://jira.test@evil.test/browse/ABC-12">ABC-12</a></p>`);
+  const [span, link] = root.querySelectorAll("span, a");
+  const actions = [{ id: "open", label: "Open in Jira", url: JIRA }, { id: "evil", label: "Evil", url: "https://jira.test@evil.test/browse/ABC-12" }];
+  bindRef(span, { kind: "issue", target: { id: "ABC-12" }, actions });
+  assert.deepEqual(refTarget(span).actions, [{ id: "open", label: "Open in Jira", url: JIRA }]);
+  bindRef(link, { kind: "issue", target: { id: "ABC-12" }, actions });
+  // The link's href isn't an http URL the page opens: no LINK target, the action stays a menu item.
+  const target = refTarget(link);
+  const found = refActions(target, viewer);
+  assert.ok(!found.some((action) => action.id === "link" && action.label(target) === "Evil"));
+  assert.deepEqual(found.filter((a) => a.id !== "link").map((a) => a.id), ["url:open"]);
+  cleanup(root);
+});
+
 test("bindRef: the element carries the kind and the target as a ref does; the data (label, actions) lives off the DOM", () => {
   const root = mount('<p>see <span>lib/a.rb:11</span> and <span>ABC-12</span></p>');
   const [file, issue] = root.querySelectorAll("span");
