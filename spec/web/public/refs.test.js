@@ -280,6 +280,22 @@ test("showInTurn opens the steps, the row's diff at the line, scrolls to it and 
   cleanup(page.root);
 });
 
+test("showInTurn: a view growing for the row (ref:reveal's detail.until) gets the scroll after it", async () => {
+  const page = turnPage();
+  const scrolled = [];
+  let grown;
+  page.root.addEventListener("ref:reveal", (e) => { e.detail.until = new Promise((resolve) => { grown = resolve; }); });
+  window.HTMLElement.prototype.scrollIntoView = function () { scrolled.push(this); };
+  const row = showInTurn(refTarget(page.text), { behavior: "auto" });
+  assert.ok(row.classList.contains("ref-flash"));
+  assert.deepEqual(scrolled, []);
+  grown();
+  await Promise.resolve();
+  assert.equal(scrolled.length, 1);
+  delete window.HTMLElement.prototype.scrollIntoView;
+  cleanup(page.root);
+});
+
 function installed(root, current) {
   const calls = [];
   installRefClicks(root, () => current(), {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shouldFollowScroll, keepFollowing, SCROLL_FOLLOW_PX } from "../../../lib/samagotchi/web/public/scroll.js";
+import { easeScrollTo, shouldFollowScroll, keepFollowing, SCROLL_FOLLOW_PX } from "../../../lib/samagotchi/web/public/scroll.js";
 
 test("follows when pinned to the bottom (gap 0)", () => {
   assert.equal(shouldFollowScroll({ scrollHeight: 1000, scrollTop: 800, clientHeight: 200 }), true);
@@ -49,4 +49,46 @@ test("keepFollowing: a user who scrolled up keeps their position", () => {
 test("keepFollowing returns what the mutation returns", () => {
   const el = scroller({ scrollHeight: 100, scrollTop: 0, clientHeight: 200 });
   assert.equal(keepFollowing(el, () => 42), 42);
+});
+
+test("easeScrollTo: eases to the target, marked data-following until it is there", async () => {
+  const el = { scrollTop: 0, dataset: {} };
+  let clock = 0;
+  const frames = [];
+  const raf = (fn) => frames.push(fn);
+  const done = easeScrollTo(el, 100, { ms: 100, raf, now: () => clock });
+  assert.equal(el.dataset.following, "");
+  clock = 50;
+  frames.shift()();
+  assert.ok(el.scrollTop > 50 && el.scrollTop < 100, `eased: ${el.scrollTop}`);
+  clock = 100;
+  frames.shift()();
+  await done;
+  assert.equal(el.scrollTop, 100);
+  assert.equal(el.dataset.following, undefined);
+});
+
+test("easeScrollTo: a moving target is read each frame; reduce jumps; a newer call takes over", async () => {
+  const el = { scrollTop: 0, dataset: {} };
+  let clock = 0;
+  let end = 100;
+  const frames = [];
+  const raf = (fn) => frames.push(fn);
+  const first = easeScrollTo(el, () => end, { ms: 100, raf, now: () => clock });
+  end = 200;
+  clock = 100;
+  frames.shift()();
+  await first;
+  assert.equal(el.scrollTop, 200);
+  await easeScrollTo(el, 40, { reduce: true });
+  assert.equal(el.scrollTop, 40);
+  const older = easeScrollTo(el, 300, { ms: 100, raf, now: () => clock });
+  const newer = easeScrollTo(el, 0, { ms: 100, raf, now: () => clock });
+  await older;
+  assert.equal(el.dataset.following, "");
+  clock = 300;
+  while (frames.length) frames.shift()();
+  await newer;
+  assert.equal(el.scrollTop, 0);
+  assert.equal(el.dataset.following, undefined);
 });

@@ -24,6 +24,7 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   // A reader scrolled up into the first turn's long answer.
   await watchShifts(page);
   await watchStage(page);
+  await startSnaps(page);
   const sendAt = await pageNow(page);
   await send(page, "Second round");
   await expect(stageEl(page)).toBeVisible();
@@ -57,6 +58,13 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   const endAt = momentAt(marks, (m) => /\bended\b/.test(m.cls), shownAt);
   const leaveAt = momentAt(marks, (m) => /\bleaving\b/.test(m.cls), endAt);
   expect((await shiftSources(page, { from: endAt - 50, to: leaveAt })).filter((n) => /ts-(cloud|foot|chip)/.test(n))).toEqual([]);
+  // Growth is deliberate: check-in's card and the long answer each grow the
+  // stage once, with a short ease (bounded, and no snap).
+  const checkInAt = momentAt(marks, (m) => m.extras > 0, shownAt);
+  expect(await shiftSum(page, { from: checkInAt, to: checkInAt + 600, withInput: true })).toBeLessThan(0.15);
+  expect(await snaps(page, { from: checkInAt, to: checkInAt + 600 })).toEqual([]);
+  expect(await shiftSum(page, { from: endAt, to: leaveAt, withInput: true })).toBeLessThan(0.15);
+  expect(await snaps(page, { from: endAt, to: leaveAt })).toEqual([]);
   // A handed-off turn is its outline: open on its narrated steps, each
   // tool-only (or thinking-only) step behind a fold that shows it; a reload
   // draws the same.

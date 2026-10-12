@@ -699,7 +699,7 @@ in both views and after a reload. The chip at the stage's bottom edge, `N steps 
 calls` with one tick per call, opens the turn view's block right above it (newest step first
 while it runs; a tick opens its step). `▾` folds the stage to its status
 row, remembered in this browser. The stage keeps its height while a turn
-runs: it grows when a card or the answer needs room and gives the room back
+runs: it grows, with a short ease, when a card or the answer needs room and gives the room back
 only when the turn moves into the history. When the turn ends the answer shows in
 the stage, and the whole turn moves up into the history once you are not
 using the stage (the pointer over it, a touch or scroll in the last 4 s,

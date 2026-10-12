@@ -395,6 +395,9 @@ test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ p
     const waitingAt = momentAt(marks, (m) => /\bwaiting\b/.test(m.cls));
     expect(plainAt).toBeLessThan(waitingAt);
     expect(await shiftSum(page, { from: plainAt, to: waitingAt, where: "stage", withInput: true })).toBeLessThan(0.01);
+    // The card's arrival grows the stage once, with a short ease.
+    expect(await shiftSum(page, { from: waitingAt, to: waitingAt + 600, withInput: true })).toBeLessThan(0.15);
+    expect(await snaps(page, { from: waitingAt, to: waitingAt + 600 })).toEqual([]);
   }
   // Answered from the keyboard: the card took the focus from the empty
   // composer; pick the first option and press Enter.
