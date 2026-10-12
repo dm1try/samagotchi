@@ -1,6 +1,8 @@
 {
   "delay": 0.02,
   "iterations": [
+    {"text": "Looking up the ticket.",
+     "tools": [{"name": "e2e_ticket", "arguments": {"id": "JIRA-7"}}]},
     {"text": "E2E_REFS: see [JIRA-7](https://example.test/JIRA-7) and ABC-3."}
   ]
 }

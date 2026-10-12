@@ -286,6 +286,9 @@ end
   the folder's real path.
 - `actions`: up to 8 `{ id:, label:, url: }`, each URL `http(s)` only. A file ref keeps the editor, show in
   turn and copy; its actions add to them.
+- The web puts the row's **first** ref on its title (a click runs its first action) and the others in the
+  title's `▾` menu, each as `<its label> · <action>` with the URL on hover. URL actions show for every viewer,
+  the phone too; a file's "Open in editor" only where the editor opens (this machine).
 - It runs **once per call, on the tool path**, before the call runs: keep it cheap, with no I/O (no
   network, no file reads); build the refs from `args` alone.
 - If it raises or returns something other than a list, the row gets no refs and the tool still runs; a bad

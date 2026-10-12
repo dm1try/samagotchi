@@ -2,7 +2,7 @@
 name: e2e-answer-refs
 version: 0.1.0
 scope: system
-description: "The e2e suite's refs on an answer: a linked JIRA-7 and a plain ABC-3"
+description: "The e2e suite's refs on an answer: a linked JIRA-7 and a plain ABC-3; a tool row with two refs"
 plugin:
   file: plugin.rb
-  sha256: sha256:7d68d79b512ca9417796340e64ea40a59defdb1b97ad8407dfb326889a4439aa
+  sha256: sha256:511bfd885faf2831d6c62cbc1c1fd26b3622d8da2c802e9d57c1b1880a979ae7

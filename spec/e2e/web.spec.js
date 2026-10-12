@@ -1552,7 +1552,9 @@ test("a notice that stands in for the rendered answer isn't shown, live or after
 // actions, the second opens in a new tab; ABC-3 pairs with its plain text.
 // Live (the stage hands the bound answer off) and after a reload. The
 // pairing may land with the answer_display re-read, after the turn ends.
-test("an answer's plugin refs pair with its link and text: the link's menu opens an action in a new tab; live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
+// Its e2e_ticket row's refs (chi.tool refs:, D8): the title opens the
+// first's action, its menu adds the second's, named, its URL on hover.
+test("an answer's plugin refs pair with its link and text, a tool row's with its title and menu; actions open in a new tab; live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
   const recordOpens = () => page.evaluate(() => {
     window.__opened = [];
     window.open = (...args) => { window.__opened.push(args); return null; };
@@ -1574,6 +1576,23 @@ test("an answer's plugin refs pair with its link and text: the link's menu opens
     expect(await page.evaluate(() => window.__opened)).toEqual([
       ["https://example.test/board/JIRA-7", "_blank", "noopener,noreferrer"],
       ["https://example.test/ABC-3", "_blank", "noopener,noreferrer"],
+    ]);
+
+    for (const details of [page.locator("#history .turn-work"), page.locator("#history .turn-work details.gen").first()]) {
+      if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+    }
+    const title = page.locator('#history .activity-row .activity-params.ref[data-ref-kind="issue"]');
+    await expect(title).toHaveText('id="JIRA-7"');
+    await recordOpens();
+    await title.click();
+    await title.hover();
+    await page.locator(".ref-more").click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Open in Jira", "PR #42 · Open on GitHub"]);
+    await expect(page.getByRole("menuitem", { name: "PR #42 · Open on GitHub" })).toHaveAttribute("title", "https://example.test/pull/42");
+    await page.getByRole("menuitem", { name: "PR #42 · Open on GitHub" }).click();
+    expect(await page.evaluate(() => window.__opened)).toEqual([
+      ["https://example.test/JIRA-7", "_blank", "noopener,noreferrer"],
+      ["https://example.test/pull/42", "_blank", "noopener,noreferrer"],
     ]);
   };
   script("answer_refs");

@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Plugins: `chi.tool(…, refs: ->(args) { [...] })` gives a tool call's web row its refs (a ticket, a PR, a file
+  under the session's folder) with their URL actions: the row's title opens the first, its `▾` menu offers the
+  rest, on a phone too. Saved with the result, so a reload shows them. See docs/plugins.md, "Refs on a tool's
+  row".
+
 ### Changed
 
 - Web: while a question or approval waits in the stage view, the stage shows the whole text of the reply that asked
