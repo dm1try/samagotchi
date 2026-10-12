@@ -144,7 +144,7 @@ chi's own, each bundle's with the bundle's name, and the terminal UIs' own
 `attached only`, `repl only`, or `terminal and web only` (`/cut`).
 It works in all three UIs.
 
-### `chi.tool(name, description, params:, schema:, label:, preview:, targets:) { |args, ctx| … }`
+### `chi.tool(name, description, params:, schema:, label:, preview:, targets:, refs:) { |args, ctx| … }`
 
 This adds a tool the model can call. It is declared in the system prompt and
 in the chat path's `tools:`, after chi's own tools.
@@ -166,6 +166,8 @@ in the chat path's `tools:`, after chi's own tools.
   plugins.
 - `targets`: `->(args) { { paths: [...], command: "…", cwd: "…", acts_as: "…", args: {…}, label: "…" } }`,
   each key optional, says what a call acts on, for [guardrails](#guardrails).
+- `refs`: `->(args) { [{ kind:, target:, label:, actions: [] }, …] }`, what the call's row traces to in the web
+  (display only, the model never sees them). See [Refs on a tool's row](#refs-on-a-tools-row).
 
 The block returns the result text. If it starts with `Error:`, it counts as
 a failure. If it raises, the model gets `Error: <message>`. To return images
@@ -174,7 +176,7 @@ too, see [Returning images](#returning-images).
 #### `args`
 
 `args` is a frozen Hash with **string keys**: the arguments the model gave,
-by name (`args["text"]`). The same Hash goes to `preview` and `targets`.
+by name (`args["text"]`). The same Hash goes to `preview`, `targets` and `refs`.
 
 Each parser gives them structured: Gemma's native values (strings, numbers,
 booleans, lists, nested objects), Qwen's `<parameter=…>` text, and the chat
@@ -260,6 +262,39 @@ does loop-guard's `ignore_tools`.
 
 A tool without `targets:` is matched by its name only. A `targets:` that
 raises counts as nothing (it is logged). See [guardrails.md](guardrails.md).
+
+#### Refs on a tool's row
+
+`refs:` gives the call's web row its refs: a ticket the tool looked up, the PR it opened, a file it wrote.
+Each is a ref as on the answer ([Refs on the answer](hooks.md#refs-on-the-answer-display-only), without
+`match:`):
+
+```ruby
+chi.tool "ticket", "Look up a Jira ticket", params: { id: { type: "string", required: true } },
+         refs: ->(args) {
+           [{ kind: "issue", target: { id: args["id"] }, label: "#{args["id"]} in Jira",
+              actions: [{ id: "open", label: "Open in Jira", url: "https://jira.example/browse/#{args["id"]}" }] }]
+         } do |args, ctx|
+  # …
+end
+```
+
+- `kind`: `"file"` with `target: { path:, line:, end_line: }`, or any short lowercase word (`issue`,
+  `commit`, …) with `target: { id: }`.
+- A file's `path` is absolute or relative to the session's folder, and must be **under** it (its own
+  spelling or its real path: `/tmp/x` or `/private/tmp/x`): a file elsewhere is dropped. It is kept under
+  the folder's real path.
+- `actions`: up to 8 `{ id:, label:, url: }`, each URL `http(s)` only. A file ref keeps the editor, show in
+  turn and copy; its actions add to them.
+- It runs **once per call, on the tool path**, before the call runs: keep it cheap, with no I/O (no
+  network, no file reads); build the refs from `args` alone.
+- If it raises or returns something other than a list, the row gets no refs and the tool still runs; a bad
+  ref (an unknown kind, a `javascript:` URL, a file outside the folder) is dropped. Both are logged (tag
+  `plugins`, `tool_refs_failed` / `tool_refs_rejected`).
+- At most 20 refs per row (64 KiB of them). They are saved with the result (`tool_refs`), so a reload shows them without the
+  plugin, checked again.
+- `chi.replace_tools` swaps a kept tool's block, `preview:`, `targets:` and `refs:` in place: none of them is a
+  change to the prompt.
 
 #### Returning images
 

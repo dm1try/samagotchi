@@ -1558,7 +1558,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       Samagotchi::Tools::Builtins.registry.tap do |r|
         r.register("save_note", schema: { parameters: { properties: {} } }, handler: ->(*) { "ok" },
                                 source: "sample-plugin", preview: ->(call) { "#{call[:args]["path"]} (saved)" },
-                                label: "notes: save")
+                                label: "notes: save", refs: ->(_call) { [{ kind: "issue", target: { id: "NOTE-7" } }] })
       end
     end
 
@@ -1569,15 +1569,19 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       result = run
 
       expect(result.conversation[2]).to include(role: "tool_response", tool_call_id: "c1", tool_params: "w.md (saved)",
-                                                tool_labels: "notes: save")
+                                                tool_labels: "notes: save",
+                                                tool_refs: [{ kind: "issue", target: { id: "NOTE-7" }, actions: [] }])
       run(result.conversation + [{ role: "user", content: "again" }])
-      adapter.requests.each { |request| request[:messages].each { |m| expect(m.keys).not_to include(:tool_params, :tool_labels) } }
+      adapter.requests.each do |request|
+        request[:messages].each { |m| expect(m.keys).not_to include(:tool_params, :tool_labels, :tool_refs) }
+        expect(JSON.generate(request[:messages])).not_to include("NOTE-7")
+      end
     end
 
     it "is not added for a built-in's result" do
       allow(fake_kernel).to receive(:tools).and_return(registry)
       backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "echo hi" }]), text("done"))
-      expect(run.conversation[2].keys).not_to include(:tool_params, :tool_labels)
+      expect(run.conversation[2].keys).not_to include(:tool_params, :tool_labels, :tool_refs)
     end
   end
 

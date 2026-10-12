@@ -9,11 +9,11 @@ module Samagotchi
   # (max_tool_output_chars).
   module ToolResponse
     SEPARATOR = "\n\n---\n\n"
-    # Saved with a result for the web's reload (a plugin tool's params line
-    # and label, an edit/write's diff) and for the LLMContextView (each
+    # Saved with a result for the web's reload (a plugin tool's params line,
+    # label and row refs, an edit/write's diff) and for the LLMContextView (each
     # run's chi-owned id, ToolIds, and a strategy's edits by id,
     # LLMContextEdit); the prompt never renders them.
-    SAVED_KEYS = %i[tool_params tool_labels tool_diffs tool_ids edits].freeze
+    SAVED_KEYS = %i[tool_params tool_labels tool_diffs tool_refs tool_ids edits].freeze
     # A run's "[name]" lead: the name, then a newline, a space or the end.
     LEAD = /\A\[([^\]\s]+)\](?:\n| |\z)/
 
@@ -60,7 +60,7 @@ module Samagotchi
         entry[:image_counts] = runs.map { |run| Array(run[:images]).size }
       end
       saved = { tool_params: runs.map { |run| run[:shown_params] }, tool_labels: runs.map { |run| run[:shown_label] },
-                tool_diffs: runs.map { |run| run[:diff] } }
+                tool_diffs: runs.map { |run| run[:diff] }, tool_refs: runs.map { |run| run[:refs] } }
       saved.each { |key, values| entry[key] = values if values.any? }
       entry[:tool_ids] = ids
       entry
@@ -75,6 +75,7 @@ module Samagotchi
       entry[:tool_params] = run[:shown_params] if run[:shown_params]
       entry[:tool_labels] = run[:shown_label] if run[:shown_label]
       entry[:tool_diffs] = run[:diff] if run[:diff]
+      entry[:tool_refs] = run[:refs] if run[:refs]
       entry[:tool_ids] = ids
       entry
     end

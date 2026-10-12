@@ -173,6 +173,10 @@ module Samagotchi
     #   too); the thinking level is its own field, since the native path
     #   sends the sampling as is.
     attr_accessor :turn_settings
+    # The session's working directory (a callable → String or nil), which
+    # a plugin tool's row refs resolve their files against (ToolRunner,
+    # RowRefs); the Engine sets it. nil: the process's own (Dir.pwd).
+    attr_accessor :session_cwd
     # Tools::Peers (or the Engine's live view of it): the session
     # list_sessions and send_note speak for; nil outside a session.
     attr_accessor :peers

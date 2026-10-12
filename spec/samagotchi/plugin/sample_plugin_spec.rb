@@ -226,6 +226,73 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
   end
 
+  describe "chi.tool refs: (a row's refs)" do
+    before do
+      install_source("ticket-tools", <<~RUBY)
+        class Plugin
+          def register(chi)
+            chi.tool("ticket", "Look up a ticket", params: { id: { type: "string", required: true } },
+                     refs: lambda { |args|
+                       [{ kind: "issue", target: { id: args["id"] }, label: "\#{args["id"]} Login fails",
+                          actions: [{ id: "open", label: "Open in Jira", url: "https://jira.test/\#{args["id"]}" }] },
+                        { kind: "file", target: { path: "lib/login.rb", line: 4 } }]
+                     }) { |args| "ticket \#{args["id"]}" }
+            chi.tool("flaky", "Refs that raise", refs: ->(_args) { raise "no refs today" }) { "flaky ran" }
+          end
+        end
+      RUBY
+    end
+
+    def run_tool(call)
+      events = []
+      run = Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+                                                         on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
+      [run, events]
+    end
+
+    it "puts the lambda's refs (checked, a relative file resolved against the cwd) on both events and the run" do
+      run, events = run_tool(name: "ticket", args: { "id" => "JIRA-7" })
+      refs = [{ kind: "issue", target: { id: "JIRA-7" }, label: "JIRA-7 Login fails",
+                actions: [{ id: "open", label: "Open in Jira", url: "https://jira.test/JIRA-7" }] },
+              { kind: "file", target: { path: File.join(Dir.pwd, "lib/login.rb"), line: 4 }, actions: [] }]
+
+      expect(run[:output]).to eq("[ticket]\nticket JIRA-7")
+      expect(events.map { |e| [e[:type], e[:refs]] }).to eq([[:tool_call_started, refs], [:tool_call_completed, refs]])
+      expect(run[:refs]).to eq(refs)
+    end
+
+    it "runs a tool whose lambda raises, with no refs (logged)" do
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      run, events = run_tool(name: "flaky", args: {})
+
+      expect(run[:output]).to eq("[flaky]\nflaky ran")
+      expect(run).not_to have_key(:refs)
+      expect(events).to all(satisfy { |e| !e.key?(:refs) })
+      expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_refs_failed", tool: "flaky", error: "RuntimeError: no refs today")
+    end
+
+    it "resolves a file against the session's folder (its real path), not the process's" do
+      engine.session = session
+      run, = run_tool(name: "ticket", args: { "id" => "JIRA-7" })
+
+      expect(run[:refs].last[:target]).to eq(path: File.join(File.realpath(tmpdir), "lib/login.rb"), line: 4)
+    end
+
+    it "gives a built-in's row none" do
+      _run, events = run_tool(name: "list", args: { "path" => "." })
+      expect(events).to all(satisfy { |e| !e.key?(:refs) })
+    end
+
+    it "is a load error when refs: isn't callable" do
+      install_source("bad-refs", <<~RUBY)
+        class Plugin
+          def register(chi) = chi.tool("bad_refs", "x", refs: [1]) { "" }
+        end
+      RUBY
+      expect(engine.plugin_failures.message).to include("tool bad_refs: refs must respond to #call")
+    end
+  end
+
   describe "returning images (Plugin::ToolResult)" do
     let(:png_path) { File.expand_path("../../fixtures/images/tiny.png", __dir__) }
     let(:session_dir) { File.join(tmpdir, "session") }
@@ -344,6 +411,35 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       commands.run("/set late_a")
       expect(engine.apply_staged_tools!).to be(false)
       expect(tools["late_a"]).to equal(entry)
+    end
+
+    it "swaps a kept tool's refs:, block, preview: and targets: in place: the prompts aren't built again" do
+      install_source("late-refs", <<~RUBY)
+        class Plugin
+          def register(chi)
+            @chi = chi
+            chi.tool("late_r", "r") { "r" }
+            chi.command("/refs", "") do |id|
+              @chi.replace_tools do |set|
+                set.tool("late_r", "r", refs: ->(_a) { [{ kind: "issue", target: { id: id } }] },
+                                        preview: ->(_a) { "p \#{id}" }, targets: ->(_a) { { command: id } }) { "r \#{id}" }
+              end
+              nil
+            end
+          end
+        end
+      RUBY
+      entry = tools["late_r"]
+      commands.run("/refs A-1")
+      expect(engine.apply_staged_tools!).to be(false)
+      expect(tools["late_r"]).to equal(entry)
+      expect(entry.refs.call({ name: "late_r", args: {} })).to eq([{ kind: "issue", target: { id: "A-1" } }])
+      commands.run("/refs B-2")
+      engine.apply_staged_tools!
+      expect(entry.refs.call({ name: "late_r", args: {} })).to eq([{ kind: "issue", target: { id: "B-2" } }])
+      expect(entry.handler.call({ name: "late_r", args: {} }, nil)).to eq("r B-2")
+      expect(entry.preview.call({ name: "late_r", args: {} })).to eq("p B-2")
+      expect(entry.targets.call({ name: "late_r", args: {} })).to eq(command: "B-2")
     end
 
     it "leaves out a name another source has, with a notice" do

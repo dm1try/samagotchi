@@ -189,6 +189,27 @@ RSpec.describe Samagotchi::Web::MessageParts do
         .to include(tool: "echo_args", label: "echo: args")
     end
 
+    it "gives the part the refs saved with the result (tool_refs), checked again: a file outside the cwd is dropped" do
+      ticket = { "kind" => "issue", "target" => { "id" => "T-1" }, "label" => "T-1",
+                 "actions" => [{ "id" => "open", "label" => "Open", "url" => "https://t.test/T-1" }] }
+      file = { "kind" => "file", "target" => { "path" => "/proj/a.rb", "line" => 2 } }
+      outside = { "kind" => "file", "target" => { "path" => "/etc/hosts" } }
+      content = qwen_call("execute", command: "ls") + qwen
+      saved = [{ content: "[execute]\nok\n\n---\n\n#{output.first[:content]}", tool_refs: [nil, [ticket, outside, file]] }]
+      tools = described_class.for_message({ content: content }, saved, cwd: "/proj")[:tools]
+      expect(tools.first).not_to have_key(:refs)
+      expect(tools.last[:refs]).to eq([
+        { kind: "issue", target: { id: "T-1" }, label: "T-1",
+          actions: [{ id: "open", label: "Open", url: "https://t.test/T-1" }] },
+        { kind: "file", target: { path: "/proj/a.rb", line: 2 }, actions: [] }
+      ])
+      chat = { content: "", tool_calls: [{ id: "c1", name: "echo_args", arguments: {} }] }
+      expect(described_class.for_message(chat, [{ "content" => "x", "tool_call_id" => "c1", "tool_refs" => [ticket] }],
+                                         cwd: "/proj")[:tools].first[:refs].map { |ref| ref[:target] }).to eq([{ id: "T-1" }])
+      expect(described_class.for_message(chat, [{ "content" => "x", "tool_call_id" => "c1", "tool_refs" => "junk" }])[:tools].first)
+        .not_to have_key(:refs)
+    end
+
     it "ignores a saved list whose length doesn't match the calls" do
       saved = [{ content: output.first[:content], tool_params: %w[a b] }]
       expect(described_class.for_message({ content: qwen }, saved)[:tools].first[:params]).to eq('text="BANANA42" times="3"')

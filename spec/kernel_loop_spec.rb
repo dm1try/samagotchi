@@ -198,7 +198,8 @@ RSpec.describe Samagotchi::KernelLoop do
       registry = Samagotchi::Tools::Builtins.registry
       registry.register("save_note", schema: { parameters: { properties: {} } }, handler: ->(*) { "saved" },
                                      source: "sample-plugin", preview: ->(call) { "PREVIEW:#{call[:args]["path"]}" },
-                                     label: "notes: save")
+                                     label: "notes: save",
+                                     refs: ->(_call) { [{ kind: "issue", target: { id: "NOTE-7" } }] })
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
@@ -210,8 +211,10 @@ RSpec.describe Samagotchi::KernelLoop do
       tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
       expect(tool_response[:tool_params]).to eq([nil, "PREVIEW:w.md"])
       expect(tool_response[:tool_labels]).to eq([nil, "notes: save"])
+      expect(tool_response[:tool_refs]).to eq([nil, [{ kind: "issue", target: { id: "NOTE-7" }, actions: [] }]])
       expect(prompts[1]).not_to include("PREVIEW")
       expect(prompts[1]).not_to include("notes: save")
+      expect(prompts[1]).not_to include("NOTE-7")
     end
 
     it "saves what an edit/write changed on its result (tool_diffs, one per call), read back after a reload" do

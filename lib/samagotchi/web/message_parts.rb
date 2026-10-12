@@ -9,6 +9,7 @@ require_relative "../tools/builtins"
 require_relative "../image_store"
 require_relative "../llm_context_edit"
 require_relative "../token_usage"
+require_relative "../row_refs"
 
 module Samagotchi
   module Web
@@ -37,7 +38,8 @@ module Samagotchi
     # A plugin tool's params are what its live row showed (its preview),
     # saved with the result as tool_params (native: one per call, chat: one
     # per result); its label ("chrome: screenshot") likewise as tool_labels,
-    # the part's label:. The web server has no Engine and runs no plugins, so a
+    # the part's label:, and its row refs as tool_refs (RowRefs, checked
+    # again here), the part's refs:. The web server has no Engine and runs no plugins, so a
     # result without them (older sessions) falls back to the given
     # registry: the built-ins', and a plugin tool's arguments as key="value"
     # from the parsers' args:, as the live row shows them for a tool
@@ -106,11 +108,12 @@ module Samagotchi
         shown = saved_list(responses, :tool_params, calls.length)
         labels = saved_list(responses, :tool_labels, calls.length)
         diffs = saved_list(responses, :tool_diffs, calls.length)
+        refs = saved_list(responses, :tool_refs, calls.length)
         ids = saved_list(responses, :tool_ids, calls.length)
         images = split_images(responses, calls.length)
         calls.each_with_index.map do |call, i|
-          tool_part(call, outputs[i], registry, shown[i], images[i], label: labels[i], diff: diffs[i], cwd: cwd,
-                                                                     tool_id: ids[i], marks: marks)
+          tool_part(call, outputs[i], registry, shown[i], images[i], label: labels[i], diff: diffs[i], refs: refs[i],
+                                                                     cwd: cwd, tool_id: ids[i], marks: marks)
         end
       end
 
@@ -144,7 +147,8 @@ module Samagotchi
           response = by_id[field(raw, :id).to_s] || (responses[i] && !unique.call(ids[i]) ? responses[i] : nil)
           tool_part(call, response && field(response, :content).to_s, registry, field(response, :tool_params),
                     response && field(response, :images), label: field(response, :tool_labels),
-                                                          diff: field(response, :tool_diffs), cwd: cwd,
+                                                          diff: field(response, :tool_diffs),
+                                                          refs: field(response, :tool_refs), cwd: cwd,
                                                           tool_id: Array(field(response, :tool_ids)).first, marks: marks)
         end
       end
@@ -224,10 +228,12 @@ module Samagotchi
 
       # +shown+ is the saved params line, when it is a String.
       # +diff+ is what an edit/write changed (EditPreview.change), saved as
-      # tool_diffs. +cwd+: the session's working directory, for the title.
+      # tool_diffs. +refs+: a plugin tool's row refs, saved as tool_refs
+      # (RowRefs.for_display checks them again against +cwd+). +cwd+: the
+      # session's working directory, for the title.
       # +tool_id+: its output's ToolIds id, with its ✂ mark in +marks+.
-      def tool_part(call, output, registry, shown = nil, images = nil, label: nil, diff: nil, cwd: nil, tool_id: nil,
-                    marks: {})
+      def tool_part(call, output, registry, shown = nil, images = nil, label: nil, diff: nil, refs: nil, cwd: nil,
+                    tool_id: nil, marks: {})
         name = call[:name].to_s
         params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
         part = { tool: name, params: params.to_s }
@@ -240,9 +246,11 @@ module Samagotchi
           part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output
           part[:output_truncated] = true if output.length > OUTPUT_MAX
         end
-        refs = Array(images).select { |ref| ref.is_a?(Hash) }
-        part[:images] = refs.map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } unless refs.empty?
+        shots = Array(images).select { |image| image.is_a?(Hash) }
+        part[:images] = shots.map { |image| ImageStore.symbolize(image).slice(:file, :name, :width, :height) } unless shots.empty?
         part[:diff] = diff if diff.is_a?(Hash)
+        row_refs = RowRefs.for_display(refs, cwd: cwd)
+        part[:refs] = row_refs unless row_refs.empty?
         if tool_id
           part[:tool_id] = tool_id.to_s
           mark = mark_of(tool_id.to_s, marks, output)

@@ -2,6 +2,7 @@
 
 require_relative "tool_activity"
 require_relative "tool_row_fields"
+require_relative "row_refs"
 require_relative "guardrails"
 require_relative "vision_context"
 require_relative "log"
@@ -41,7 +42,8 @@ module Samagotchi
     #   shown_params: the params line the live row showed, and shown_label:
     #   its label ("chrome: screenshot"), only for a tool that isn't built in
     #   (the loops save them with the result, so a reload without the plugin
-    #   shows the same row), and diff: what an edit/write changed in its
+    #   shows the same row), refs: its row's refs (a plugin tool's refs:,
+    #   RowRefs; saved likewise), and diff: what an edit/write changed in its
     #   file (EditPreview.change; also on tool_call_completed, never in the
     #   model's output)
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
@@ -55,9 +57,12 @@ module Samagotchi
       started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
                   tool: call[:name], call: call.dup, params: params }
       started[:label] = label if label
-      # Its row fields (ToolRowFields: title, called_as, view, ref); the worker runs in
-      # its session's working directory.
+      # Its row fields (ToolRowFields: title, called_as, view, ref, and a
+      # plugin tool's refs); the worker runs in its session's working
+      # directory.
       fields = ToolRowFields.for(call[:name], call, cwd: Dir.pwd)
+      refs = RowRefs.for(tools && !call[:name].nil? ? tools[call[:name]]&.refs : nil, call, cwd: session_cwd)
+      fields[:refs] = refs unless refs.empty?
       started.merge!(fields)
       emit(on_stream_event, started)
 
@@ -121,6 +126,7 @@ module Samagotchi
       run[:images] = images if images&.any?
       run[:shown_params] = params if params && plugin_tool?(call[:name])
       run[:shown_label] = label if label
+      run[:refs] = refs unless refs.empty?
       run[:diff] = diff if diff
       run
     end
@@ -247,6 +253,13 @@ module Samagotchi
       return "[#{call[:name]}]\n#{notes.first}" if result[:image_only]
 
       [result[:output], *notes].join("\n")
+    end
+
+    # The session's folder (the Engine's, KernelLoop#session_cwd), else the
+    # process's: a bare kernel (specs) has none.
+    def session_cwd
+      cwd = @kernel.respond_to?(:session_cwd) && @kernel.session_cwd&.call
+      cwd.to_s.empty? ? Dir.pwd : cwd
     end
 
     # The kernel's tools, for the activity line of a tool that isn't built in.

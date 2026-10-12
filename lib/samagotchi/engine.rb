@@ -288,6 +288,9 @@ module Samagotchi
       self.guardrail_state_dir = Session.default_state_dir
       # list_sessions and send_note speak for whichever session runs now.
       @kernel.peers = PeerView.new(self)
+      # A plugin tool's row refs resolve against the session's folder, as
+      # answer refs do (AnswerRefs), not the process's.
+      @kernel.session_cwd = -> { @session&.working_directory }
       @kernel.guardrail_gate = @guardrail_wiring.gate
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
       @prompt_warmup = PromptWarmup.new

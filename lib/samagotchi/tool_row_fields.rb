@@ -16,13 +16,15 @@ module Samagotchi
   #   tool_call_completed (ToolActivity.tool_activity_event builds that
   #   activity itself, for the TUI and the metrics);
   # * EVENT_KEYS: top-level on both, so a UI that missed the start (a
-  #   replay gap) builds its row from the completed event.
+  #   replay gap) builds its row from the completed event. +refs+ (a
+  #   plugin tool's, RowRefs) is one, but ToolRunner adds it: #for has no
+  #   plugins, so a reload reads the saved tool_refs instead.
   #
   # params and label stay where they are: their sources differ per path
   # (the registry's preview, a plugin's label, the saved shown params).
   module ToolRowFields
     ACTIVITY_KEYS = %i[title called_as].freeze
-    EVENT_KEYS = %i[view ref].freeze
+    EVENT_KEYS = %i[view ref refs].freeze
     KEYS = (ACTIVITY_KEYS + EVENT_KEYS).freeze
 
     module_function

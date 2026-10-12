@@ -79,6 +79,9 @@ module Samagotchi
       # @param targets [#call, nil] args → what guardrail rules match: a Hash
       #   with paths: (absolute or relative to the cwd), command: (a shell
       #   command) and cwd:, each optional
+      # @param refs [#call, nil] args → the call's row's refs, display only:
+      #   a list of {kind:, target:, label:, actions:} (RowRefs, Ref). Run
+      #   once per call on the tool path, so it must be cheap (no I/O)
       def tool(name, description, **, &)
         spec = Api.tool_spec(name, description, **, &)
         if (taken = @registries.tools[spec[:name]])
@@ -249,33 +252,42 @@ module Samagotchi
 
       # A checked tool declaration (#tool's arguments: Api#tool and
       # ToolSet#tool pass theirs on, so a new keyword is added here).
-      # @return [Hash] {name:, schema:, label:, preview:, targets:, block:}
-      def self.tool_spec(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
+      # @return [Hash] {name:, schema:, label:, preview:, targets:, refs:, block:}
+      def self.tool_spec(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, refs: nil,
+                         &block)
         raise ArgumentError, "tool #{name.inspect} needs a block" unless block
 
         name = name.to_s
         raise ArgumentError, "tool name #{name.inspect} must be a-z, 0-9 and _ (at most 48)" unless name.match?(TOOL_NAME)
         raise ArgumentError, "tool #{name}: preview must respond to #call" if preview && !preview.respond_to?(:call)
         raise ArgumentError, "tool #{name}: targets must respond to #call" if targets && !targets.respond_to?(:call)
+        raise ArgumentError, "tool #{name}: refs must respond to #call" if refs && !refs.respond_to?(:call)
 
         parameters = schema ? schema_parameters(name, schema) : params_schema(name, params)
         { name: name, schema: { name: name, description: description.to_s, parameters: parameters },
-          label: label&.to_s, preview: preview, targets: targets, block: block }
+          label: label&.to_s, preview: preview, targets: targets, refs: refs, block: block }
       end
 
       # Make +bundle+'s tools in +registry+ the +specs+: its tools not in
       # them go; a new one, or one whose schema or label changed, is
       # registered (a changed one again, in its place: Tools::Registry
       # orders bundle tools by bundle and name); an unchanged one is kept
-      # as it is. A name another source has is left out. Called on
-      # the turn thread (Engine#apply_staged_tools!).
+      # as it is, but for its block, preview:, targets: and refs:, swapped
+      # in place: none of them reaches the prompt, so not a change (that
+      # would build the prompts again). A name
+      # another source has is left out. Called on the turn thread
+      # (Engine#apply_staged_tools!).
       # @return [Hash] {changed: Boolean, skipped: [String] (why)}
       def self.apply_tools(registry, bundle, specs, context)
         wanted = specs.to_h { |spec| [spec[:name], spec] }
         changed = false
         registry.entries.each do |entry|
           next unless entry.source == bundle
-          next if (spec = wanted[entry.name]) && spec[:schema] == entry.schema && spec[:label] == entry.label
+
+          if (spec = wanted[entry.name]) && spec[:schema] == entry.schema && spec[:label] == entry.label
+            entry_fields(spec, context).slice(:handler, :preview, :targets, :refs).each { |key, value| entry[key] = value }
+            next
+          end
 
           registry.unregister(entry.name)
           changed = true
@@ -294,7 +306,7 @@ module Samagotchi
       end
 
       # Registry#register's keywords for a tool declaration: its block
-      # wrapped as a handler (typed args, the Context), preview, targets.
+      # wrapped as a handler (typed args, the Context), preview, targets, refs.
       def self.entry_fields(spec, context)
         block = spec[:block]
         parameters = spec[:schema][:parameters]
@@ -306,7 +318,8 @@ module Samagotchi
             Api.result_text(result)
           },
           preview: preview && ->(call) { preview.call(call)&.to_s },
-          targets: per_call(spec[:targets], parameters)
+          targets: per_call(spec[:targets], parameters),
+          refs: per_call(spec[:refs], parameters)
         }
       end
 

@@ -20,11 +20,13 @@ module Samagotchi
       #   tool" when nil); ToolActivity knows the built-ins' own
       # @!attribute preview [#call, nil] call → the activity line's params
       # @!attribute targets [#call, nil] call → what guardrail rules match
+      # @!attribute refs [#call, nil] call → the row's refs (a plugin's
+      #   refs:, RowRefs checks what it gives)
       # @!attribute source [String] "core", or the bundle that added it
       # @!attribute layer [Symbol, nil] the LLM context layer the tool
       #   belongs to (LLMContextStrategy): offered only in a turn running
       #   under it (forget_outputs, :forget); nil: always
-      Entry = Struct.new(:name, :schema, :handler, :label, :preview, :targets, :source, :layer, keyword_init: true) do
+      Entry = Struct.new(:name, :schema, :handler, :label, :preview, :targets, :refs, :source, :layer, keyword_init: true) do
         def core? = source == "core"
 
         # Offered in a turn under +layers+ (the turn's LLM context layers).
@@ -36,11 +38,11 @@ module Samagotchi
       end
 
       # @return [Entry]
-      def register(name, schema:, handler:, label: nil, preview: nil, targets: nil, source: "core", layer: nil)
+      def register(name, schema:, handler:, label: nil, preview: nil, targets: nil, refs: nil, source: "core", layer: nil)
         raise ArgumentError, "tool #{name} is already registered" if @entries.key?(name)
 
         @entries[name] = Entry.new(name: name, schema: schema, handler: handler, label: label, preview: preview,
-                                   targets: targets, source: source, layer: layer)
+                                   targets: targets, refs: refs, source: source, layer: layer)
       end
 
       # Remove a tool (a plugin's tool set changed after load).
