@@ -49,7 +49,9 @@ right-hand column happens.
 │                         ◄── remote Claude: breakpoint #2 on the last     │  the image cut moving
 │                             non-system message                           │  a batch, history
 ├──────────────────────────────────────────────────────────────────────────┤  sanitizing (thinking
-│ tail notes   reminders, turn notes, steers (system/user messages)        │  stripped per spec)
+│ tail notes   reminders, turn notes, steers (system/user messages; on the │  stripped per spec)
+│              chat wire a plugin steer after tool results rides in the    │
+│              last tool message: LLM::SteerFold)                          │
 │ new prompt   this turn's user message                                    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -127,7 +129,10 @@ is prefilled once. The native and the chat loop use the same plan.
    a per-session value in the stable part. A guard spec checks that model, location and session are the last
    sections (`spec/system_prompt_model_spec.rb`).
 2. **History is append-only.** Never rewrite an earlier message. Add a note at the tail instead. If a model's
-   spec forces a rewrite (e.g. stripping previous-turn thinking), accept the re-prefill and note it. A worker's
+   spec forces a rewrite (e.g. stripping previous-turn thinking), accept the re-prefill and note it. A new query
+   counts too: a `user` message mid-turn makes `reasoning_history: turn` (and Qwen-style templates) drop the
+   turn's reasoning before it, so a plugin's steer after tool results rides in the last tool message on the chat
+   wire instead (`LLM::SteerFold`, a pure function of the saved prefix, so it renders the same on every request). A worker's
    mid-turn checkpoint (`TurnCheckpoint`) is append-only too (the history plus what the loop appended) and
    never changes the request bytes.
 3. **Deterministic order.** Tools, memory lists and anything else that's rendered from a hash or a set needs a

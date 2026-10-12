@@ -8,7 +8,9 @@ module Samagotchi
   # String (a user line, as ever) or {text:, source:} (a steer). The user
   # lines merge into one user message as before; each steer follows it as its
   # own user message marked kind: "steer" and source: (the ContextNote keys,
-  # which every message copy keeps). The model reads it as user text.
+  # which every message copy keeps). The model reads it as user text; on the
+  # chat wire a plugin's steer right after a tool result rides in that tool
+  # message instead (LLM::SteerFold, .folded_text).
   #
   # The user's own lines merged into a running turn are marked kind:
   # "input": they are part of that turn, not a turn of their own, so a

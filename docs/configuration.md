@@ -575,6 +575,9 @@ models:
   while the step-limit question stands, is a user message: the reasoning before it goes, as for any steer, and that
   Continue reads the conversation again once (a re-prefill on a local server). After a `/model` change while the
   question stands the Continue starts afresh (no other model's reasoning is sent).
+  A plugin's steer (check-in's nudge, agents-md, skills) is no message of yours: right after tool results it goes to
+  the model inside the last tool result, under a line saying chi added it there, so the reasoning before it stays
+  (under every level; the saved session still has it as its own message).
 - `drop` sends none (what chi did before this setting).
 - `all` sends every reply's reasoning, earlier turns too. It sends only the field: a local template that leaves out
   earlier turns' reasoning (Qwen's) needs `sampling: {chat_template_kwargs: {preserve_thinking: true}}` as well.
@@ -598,7 +601,7 @@ models:
   | nothing thought yet, the same level, or a native host | none |
 
 - The native loop (`/completion`) ignores it: it always keeps the running turn's reasoning, a mid-turn steer included
-  (the chat loop starts again after a steer), and a step-limit Continue keeps the thoughts of the run it continues,
+  (the chat loop starts again after your steer, not after a plugin's that follows tool results), and a step-limit Continue keeps the thoughts of the run it continues,
   a mid-turn steer's earlier ones included.
 - When a host answers a request that sent reasoning back with an HTTP 400 about reasoning, chi asks again without it,
   sends none to that model from then on (until the worker restarts) and says so once. If the request without it is

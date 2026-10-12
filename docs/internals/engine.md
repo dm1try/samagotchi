@@ -193,17 +193,26 @@ The differences from the native loop:
   as `stable_length:`), where the prompt's stable part ends. For remote Claude, `LLM::PromptCache` puts the
   first cache breakpoint there; see prompt-caching.md.
 - Each call's result is its own tool message, paired by `tool_call_id`.
+- A plugin's steer (`kind: "steer"`, a source `Steer.cuts?` doesn't name) right after a paired tool message rides
+  in that tool message on the wire: `LLM::SteerFold.plan` (`{steer index => tool index}`, one plan per request on
+  the `LLMContextView`'s messages, `ChatLoop#fold_plan`) and `Steer.folded_text` (a blank line, the fold header
+  `[Steer from the NAME plugin, added by chi after this tool result (not part of its output), mid-task. …]`, the
+  text). Several steers of one drain chain onto one tool message; a parallel batch's last. Anything else before
+  the steer (a user line, a system note or nudge, a reply) leaves it a user message. The plan reads only an entry
+  and the ones before it, so the wire stays append-only; the saved conversation keeps the steer as its own
+  message. `:generation_completed` carries `steers_folded:` (folds at or after the Run's `@start`), logged.
 - A model turn's saved reasoning (`thinking:`) goes back as `reasoning_content` per the turn's
   `TurnSettings#reasoning_history` (`ReasoningHistory.resolve`, the session's own level first:
   `Session#reasoning_history`, `/reasoning-history`): `all` on every model message, `turn` past
   `ChatLoop#reasoning_boundary`: the later of the last query (a `role: "user"` entry: a prompt, a steer, merged input,
-  the chat template's `last_query_index`; or a `turn_start` entry) and the Run's start (`Run`'s `@start`, the
+  the chat template's `last_query_index`, but not a plugin steer the wire folds into a tool result (the same
+  `SteerFold` plan); or a `turn_start` entry) and the Run's start (`Run`'s `@start`, the
   conversation length at `#complete`), so a continue turn (reminder, context wake, delegate report wake) replays
   nothing of the run before. A step-limit Continue's Run starts where the run it resumes did: `#complete`'s
   `reasoning_since:` (the Engine's `resume_from`, checked against the messages' length in `#resumed_run_start`) is
-  the Run's `@start`. `Run#prompt_chars` counts it (`#reasoning_chars`). The native loop differs on a steer:
-  `KernelLoop#inject_pending_input!` doesn't re-sanitize, so native keeps the turn's reasoning across a mid-turn
-  steer, where the chat loop starts again (as the template does).
+  the Run's `@start`. `Run#prompt_chars` counts it (`#reasoning_chars`). The native loop differs on a person's steer
+  or input line: `KernelLoop#inject_pending_input!` doesn't re-sanitize, so native keeps the turn's reasoning
+  across it, where the chat loop starts again (as the template does). A folded plugin steer keeps it on both.
 - A 400 about reasoning (`BadRequest#reasoning_refused?`) for a request that sent reasoning back asks the step again
   without it; when that goes through, `#reasoning_history_refused!` marks the model (worker lifetime) and
   `:reasoning_history_refused` goes out. When it is refused too, the thinking-fields fallback (`#thinking_refused!`,
@@ -511,7 +520,9 @@ Both loops:
 - **A cut generation** (`after_cut`): a generation a plugin cut (`stop_generation`) spends the same retry budget
   with its own nudge; when it is used up, the turn ends cancelled (`:hook`). A steer's cut asks again with the
   steer and spends nothing.
-- **Steering**: queued input goes in at iteration boundaries (`Steer.inject!`, `:pending_input_merged`).
+- **Steering**: queued input goes in at iteration boundaries (`Steer.inject!`, `:pending_input_merged`). On the
+  chat wire a plugin's steer right after tool results rides in the last tool message (`LLM::SteerFold`); native
+  renders it as a user turn, which only appends there.
 - **Context status**: an estimate of the window's fill before each request,
   emitted on every request (`:context_status`) so the UI always has a current
   number, with a guidance line on the tail only when it rises far enough.
@@ -548,6 +559,7 @@ Paths are under `lib/samagotchi/`.
 | `turn_state.rb` | Cross-thread turn state (running, controller, sink, steers, activity clock) |
 | `generation_phase.rb`, `waiting_steer.rb` | Whether a steer may cut the running generation, and the steer that waits to |
 | `steer.rb` | Queued input and steers at iteration boundaries |
+| `llm/steer_fold.rb` | Which plugin steers ride in the tool result before them on the chat wire |
 | `kernel_loop.rb` | Native loop: `#run` (format, generate, parse, dispatch, iterate) |
 | `llm/chat_loop.rb` | Chat loop: `#complete` (tool schemas per request, wire conversion) |
 | `llm/backend.rb` | The `LLM::ModelBackend` contract (`#complete(...)`) |

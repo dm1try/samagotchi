@@ -28,6 +28,10 @@ and commands may change between minor versions. How releases are made:
 - A turn whose worker was killed (SIGKILL, a crash) keeps its tokens, speed and timings up to its last checkpoint:
   the session's stats count it as a canceled turn (`worker_stopped`); before, they lost it.
 - Web: hovering a ref with a ▾ at the very end of a line no longer pushes it onto the next line.
+- On chat hosts (`api: openai`) a plugin's steer (check-in's nudge, agents-md, skills) that comes right after tool
+  results goes to the model inside the last tool result, not as a new user message: the turn's reasoning and the
+  server's prompt cache survive it. Saved sessions are unchanged; a resumed session with such a steer is read again
+  once.
 
 ## [0.61.0] - 2026-10-12
 
