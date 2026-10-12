@@ -432,6 +432,23 @@ RSpec.describe "Cards" do
       expect(JSON.parse(File.read(path))["entries"].size).to eq(2)
     end
 
+    it "seeds an earlier in-turn card without its actions; a between-turns card keeps them" do
+      nudge = [{ label: "Nudge", command: "/checkin nudge" }]
+      offer = [{ label: "Attach", command: "/pr-attach 1" }]
+      store = Samagotchi::Bridge::CardStore.new(path: path)
+      store.call({ type: :turn_started })
+      store.call(card("check").merge(actions: nudge))
+      store.call({ type: :turn_completed })
+      store.call(card("offer").merge(actions: offer, in_turn: false))
+
+      expect(store.list.to_h { |entry| [entry[:id], entry[:actions]] }).to eq("check" => nudge, "offer" => offer)
+      later = Samagotchi::Bridge::CardStore.new(path: path)
+      expect(later.list.to_h { |entry| [entry[:id], entry[:actions]] })
+        .to eq("check" => [], "offer" => offer)
+      expect(Samagotchi::Bridge::CardStore.saved(dir).to_h { |entry| [entry[:id], entry[:actions]] })
+        .to eq("check" => [], "offer" => offer)
+    end
+
     it "starts empty from a missing, broken or foreign file" do
       expect(Samagotchi::Bridge::CardStore.saved(dir)).to eq([])
       File.write(path, "{not json")

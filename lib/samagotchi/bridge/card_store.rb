@@ -45,7 +45,11 @@ module Samagotchi
     # its own), and a question still open when the worker went waits for no
     # one: neither is saved or seeded. Same caps as in memory. An entry from
     # an earlier worker lists with +earlier+: true (an attached TUI's resync
-    # onto a new worker doesn't print those again).
+    # onto a new worker doesn't print those again). An earlier card shown
+    # during a turn (+in_turn+) comes back without its actions: they belong
+    # to a turn no worker runs any more (check-in's Nudge would steer the
+    # new worker's turn). A card shown between turns (github-pr's offer,
+    # btw, coordinator) keeps its buttons.
     class CardStore
       CAPACITY = 20
       NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry steer_cut].freeze
@@ -137,6 +141,7 @@ module Samagotchi
           next unless entry.is_a?(Hash) && entry[:type].is_a?(String) && entry[:turns].is_a?(Integer)
 
           entry = entry.merge(type: entry[:type].to_sym, earlier: true)
+          entry = entry.merge(actions: []) if entry[:type] == :card && entry[:in_turn] && entry.key?(:actions)
           entry unless entry[:type] == :guardrail_warning || open_question?(entry)
         end
         settle_during(after_turn: false)

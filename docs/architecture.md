@@ -297,7 +297,8 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   (`GET /api/sessions/:id`, `?parts=1`) and the plugin's `list_sessions`; every message is copied.
 - `GET  /session/:id/tail` — the page's light re-read (`Bridge#tail_frame`): `session_state_snapshot`,
   `answer` (the last message a UI shows as an answer, `AnswerTail`: the one message, copied alone),
-  `cards` (`CardStore#list`), `event_seq`, `event_id`, all taken in one event-log hold; no message
+  `cards` (`CardStore#list`; a card an earlier worker showed during a turn comes back read-only, with no
+  actions: its turn no longer runs), `event_seq`, `event_id`, all taken in one event-log hold; no message
   list, so it costs the same however long the session is. `?turn_id=` answers that turn's answer
   (an unknown or missing id: the newest); the only route that reads its query.
 - `OPTIONS *` — CORS preflight (`Access-Control-Allow-Origin: *`).

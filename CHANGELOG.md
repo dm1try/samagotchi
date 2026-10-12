@@ -22,6 +22,12 @@ and commands may change between minor versions. How releases are made:
   200 and a path 4,096 characters; an action's id 64 and label 100. An action URL with userinfo
   (`https://user:pass@host/`) is refused, and the web page refuses one too.
 
+### Fixed
+
+- A card shown during a turn by a worker that has since exited comes back read-only: no buttons. A stale check-in
+  card's Nudge steered the next worker's turn on every click. Cards shown between turns (github-pr's offer, btw,
+  coordinator) keep their buttons.
+
 ## [0.60.0] - 2026-10-11
 
 ### Added
