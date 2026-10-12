@@ -67,6 +67,13 @@ RSpec.describe Samagotchi::AnswerDisplay do
     expect(described_class.strip(note)).to eq(note.except(:empty_answer))
     expect(described_class.strip(note.transform_keys(&:to_s))).not_to have_key("empty_answer")
   end
+
+  it ".strip drops the answer's refs (display_refs, either key type)" do
+    refs = [{ match: "JIRA-1", kind: "issue", target: { id: "JIRA-1" }, actions: [] }]
+
+    expect(described_class.strip(answer.merge(display: "d", display_refs: refs))).to eq(answer)
+    expect(described_class.strip({ "role" => "model", "content" => "c", "display_refs" => refs })).to eq({ "role" => "model", "content" => "c" })
+  end
 end
 
 RSpec.describe "Presenting the answer from after_turn" do
