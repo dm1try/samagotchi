@@ -127,7 +127,9 @@ is prefilled once. The native and the chat loop use the same plan.
    a per-session value in the stable part. A guard spec checks that model, location and session are the last
    sections (`spec/system_prompt_model_spec.rb`).
 2. **History is append-only.** Never rewrite an earlier message. Add a note at the tail instead. If a model's
-   spec forces a rewrite (e.g. stripping previous-turn thinking), accept the re-prefill and note it.
+   spec forces a rewrite (e.g. stripping previous-turn thinking), accept the re-prefill and note it. A worker's
+   mid-turn checkpoint (`TurnCheckpoint`) is append-only too (the history plus what the loop appended) and
+   never changes the request bytes.
 3. **Deterministic order.** Tools, memory lists and anything else that's rendered from a hash or a set needs a
    fixed sort. Plugin tools are sorted by (bundle, name) whatever order their plugins finished starting in
    (R5a).

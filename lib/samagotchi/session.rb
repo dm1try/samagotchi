@@ -6,6 +6,7 @@ require "securerandom"
 require "time"
 require_relative "atomic_file"
 require_relative "context_note"
+require_relative "interrupted_turn"
 require_relative "last_turn"
 require_relative "llm_context_override"
 require_relative "session_setup"
@@ -107,6 +108,26 @@ module Samagotchi
     def last_turn=(value)
       @last_turn = LastTurn.from_file(value)
     end
+
+    # The mark of a turn a worker checkpointed and never finished
+    # (InterruptedTurn), as loaded; the next worker settles it and sets it
+    # to nil. While a turn runs, #turn_checkpoint's marker is saved instead.
+    attr_reader :interrupted_turn
+
+    # @param value [InterruptedTurn, Hash, nil]
+    def interrupted_turn=(value)
+      @interrupted_turn = InterruptedTurn.from_file(value)
+    end
+
+    # The running turn's checkpoint (TurnCheckpoint): {messages:, marker:}
+    # (marker an InterruptedTurn). While +status+ is running, every save
+    # writes these messages and the marker instead of #messages and
+    # #interrupted_turn, so a save in the middle of the turn (a question
+    # asked, the checkpoint's own) keeps the turn so far on disk; #messages
+    # itself is never touched. The turn's end sets status idle before it
+    # saves, so that save writes the real messages, without a marker. Not
+    # saved; the worker clears it after each turn.
+    attr_accessor :turn_checkpoint
     # The session's own llm_context values (LLMContextOverride: strategy,
     # apply rule, budget), before the model's; nil when it has none.
     # Saved, so a --resume and a respawned worker keep them; a plugin's
@@ -191,7 +212,8 @@ module Samagotchi
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
-                   continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [])
+                   continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
+                   interrupted_turn: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -220,6 +242,8 @@ module Samagotchi
       self.thinking = thinking
       self.reasoning_history = reasoning_history
       self.appended_prompt_files = appended_prompt_files
+      self.interrupted_turn = interrupted_turn
+      @turn_checkpoint = nil
       @archived = false
     end
 
@@ -363,7 +387,8 @@ module Samagotchi
       "continues" => nil,
       "thinking" => nil,
       "reasoning_history" => nil,
-      "appended_prompt_files" => []
+      "appended_prompt_files" => [],
+      "interrupted_turn" => nil
     }.freeze
 
     # A session from a parsed session file. +messages+ false leaves the
@@ -475,11 +500,15 @@ module Samagotchi
       self
     end
 
-    # The session as #save writes it (FIELDS, in their order).
+    # The session as #save writes it (FIELDS, in their order); a running
+    # turn's checkpoint (#turn_checkpoint) in place of its messages.
     def to_h
+      checkpoint = checkpointed
       FIELDS.keys.to_h do |key|
         value = case key
-                when "messages" then @messages.map { |msg| scrub_utf8(stringify_message_keys(msg)) }
+                when "messages"
+                  (checkpoint ? checkpoint[:messages] : @messages).map { |msg| scrub_utf8(stringify_message_keys(msg)) }
+                when "interrupted_turn" then (checkpoint ? checkpoint[:marker] : @interrupted_turn)&.to_file
                 when "pending_question" then @pending_question && scrub_utf8(stringify_message_keys(@pending_question))
                 when "test_run" then !!@test_run
                 when "delegate" then @delegate
@@ -495,6 +524,13 @@ module Samagotchi
         [key, value]
       end
     end
+
+    # The running turn's checkpoint, while the turn runs (#turn_checkpoint).
+    def checkpointed
+      checkpoint = @turn_checkpoint
+      checkpoint if checkpoint && @status == STATUS_RUNNING
+    end
+    private :checkpointed
 
     # Mark a session as errored.
     def self.mark_error(session_id, reason:, state_dir: default_state_dir)

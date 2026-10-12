@@ -3,6 +3,7 @@
 require "samagotchi/engine"
 require "samagotchi/session"
 require "support/test_kernel"
+require_relative "support/fake_chat_adapter"
 
 # The turn's cross-thread state as other threads see it: the turn flag,
 # the cancel controller, the turn's sink, the steers and the activity
@@ -171,6 +172,50 @@ RSpec.describe Samagotchi::Engine, "turn state" do
       expect(events).to include(:turn_started, :turn_failed)
       expect_idle
       expect(engine.send(:turn_state).in_turn_sink).to eq([false, nil])
+    end
+  end
+
+  # The running turn's conversation as its loop builds it (TurnCheckpoint
+  # copies it at the boundaries).
+  describe "#live_conversation" do
+    it "is nil before and after a turn, though the kernel still holds the last turn's conversation" do
+      allow(client).to receive(:complete).and_return("done")
+      expect(engine.live_conversation).to be_nil
+
+      engine.run_turn(session, "hi")
+
+      expect(kernel.llm_context_turn&.conversation).to be_an(Array)
+      expect(engine.live_conversation).to be_nil
+    end
+
+    it "is the native loop's own array mid-turn, with the prompt" do
+      seen = []
+      allow(client).to receive(:complete) do |*|
+        seen << engine.live_conversation
+        "done"
+      end
+
+      engine.run_turn(session, "hi native")
+
+      expect(seen.first).to equal(kernel.llm_context_turn.conversation)
+      expect(seen.first.map { |m| m[:content] }).to include("hi native")
+    end
+
+    it "is the chat loop's own array mid-turn, with the tool results so far" do
+      seen = []
+      adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "no_such_tool", {}]),
+                                    lambda { |**|
+                                      seen << engine.live_conversation.dup
+                                      FakeChatAdapter.text("done")
+                                    })
+      allow(engine).to receive(:backend_for).and_return(Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter))
+
+      engine.run_turn(session, "hi chat")
+
+      roles = seen.first.map { |m| m[:role] }
+      expect(seen.first.map { |m| m[:content] }).to include("hi chat")
+      expect(roles.last).to eq("tool_response").or eq("tool")
+      expect(engine.live_conversation).to be_nil
     end
   end
 end

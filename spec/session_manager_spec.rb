@@ -1876,7 +1876,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     it "announces who sent input merged into a running turn" do
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, "running_turn_messages=": nil, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, "next_turn_waiting=": nil, due_reminder_names: [], "session=": nil, live_conversation: nil)
       announced = []
       allow(engine).to receive(:announce) { |event| announced << event }
       drained = nil

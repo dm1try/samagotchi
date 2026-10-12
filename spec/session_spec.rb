@@ -369,6 +369,41 @@ RSpec.describe Samagotchi::Session do
       expect(top.delegate?).to be(false)
     end
 
+    it "round-trips interrupted_turn (InterruptedTurn), nil by default" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      mark = { "id" => "t1", "started_at" => "2026-10-12T10:00:00.000+02:00", "at" => "2026-10-12T10:00:42.500+02:00", "iteration" => 7 }
+      session.interrupted_turn = mark
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.interrupted_turn).to eq(Samagotchi::InterruptedTurn.new(id: "t1", started_at: mark["started_at"], at: mark["at"], iteration: 7))
+      expect(loaded.interrupted_turn.seconds).to eq(42.5)
+      expect(loaded.interrupted_turn.to_file).to eq(mark)
+      plain = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").save(state_dir: tmpdir)
+      expect(described_class.load(plain.id, state_dir: tmpdir).interrupted_turn).to be_nil
+    end
+
+    it "saves a running turn's checkpoint in place of the messages (unknown keys kept), only while running" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages = [{ role: "user", content: "earlier" }, { role: "model", content: "ok", display_refs: [{ "kind" => "file" }] }]
+      session.status = described_class::STATUS_RUNNING
+      session.turn_checkpoint = { messages: session.messages + [{ role: "user", content: "task" }],
+                                  marker: Samagotchi::InterruptedTurn.new(id: "t1", iteration: 1) }
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.messages.map { |m| m[:content] }).to eq(%w[earlier ok task])
+      expect(loaded.messages[1][:display_refs]).to eq([{ "kind" => "file" }])
+      expect(loaded.interrupted_turn).to have_attributes(id: "t1", iteration: 1)
+      expect(session.messages.size).to eq(2)
+
+      session.status = described_class::STATUS_IDLE
+      session.save(state_dir: tmpdir)
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.messages.map { |m| m[:content] }).to eq(%w[earlier ok])
+      expect(loaded.interrupted_turn).to be_nil
+    end
+
     it "round-trips last_turn and reads the pending question in the summary too" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       last = { "outcome" => "failed", "ended_at" => "2026-09-28T10:00:00.000+02:00", "seconds" => 12.5, "origin" => "client" }

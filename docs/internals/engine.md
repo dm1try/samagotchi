@@ -312,6 +312,14 @@ end
   turn through the Bridge (`POST cancel` → `Engine#cancel_current_turn!`).
 - `on_event` is the turn's sink.
 - `ended` is set by `end_turn`.
+- The live conversation: both loops register the array they append to on the kernel
+  (`KernelLoop#llm_context_turn`, `LLMContextForget::Turn#conversation`; `KernelLoop#start_turn`,
+  `ChatLoop::Run#initialize`). `Engine#live_conversation` returns it while a turn runs (nil otherwise: the kernel
+  never clears it). A worker's drain (`Worker#pending_input_drain`, on the turn's thread at every iteration
+  boundary) copies it, with the lines that boundary merges, into `Session#turn_checkpoint` (`TurnCheckpoint`):
+  every save while the turn runs writes that copy with an `interrupted_turn` mark instead of the session's
+  messages, written at the first boundary and then at most every 10 s, so a killed worker loses at most that much
+  of its turn. `session.messages` itself is untouched until the turn ends.
 
 ### GenerationPhase
 

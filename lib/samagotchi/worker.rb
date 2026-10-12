@@ -17,6 +17,7 @@ require_relative "session_manager"
 require_relative "archive_store"
 require_relative "log"
 require_relative "turn_flow"
+require_relative "turn_checkpoint"
 require_relative "llm/errors"
 require_relative "continue_offer"
 require_relative "iteration_limit"
@@ -226,6 +227,8 @@ module Samagotchi
       ChildMove.adopt(@session_id, state_dir: @state_dir)
       @session = Session.load(@session_id, state_dir: @state_dir)
       drop_dead_question
+      # The running turn, on disk at its iteration boundaries.
+      @checkpoint = TurnCheckpoint.new(session: @session, state_dir: @state_dir)
       @engine = build_engine
       # Before the Bridge serves anything: a UI joining a resumed worker's
       # stream gets the session's history and status in its snapshot, not
@@ -885,6 +888,7 @@ module Samagotchi
       @reporting_turn = reports_to_parent?(turn_args[:origin])
       restores = @turn_flow.restores
       begin
+        @checkpoint.begin_turn(prompt: prompt)
         @session.status = Session::STATUS_RUNNING
         # A continue that moved this session to the chain's new link wrote
         # the new parent beside it (Session::PARENT_FILE): this turn's
@@ -903,6 +907,8 @@ module Samagotchi
           Log.warn(:worker, "turn_not_begun", error: e.class.name, msg: e.message)
         end
       ensure
+        # Ended (or never begun): the saves write the session's own messages.
+        @checkpoint.end_turn
         refuse_queued_commands
       end
       yield result, error
@@ -1058,6 +1064,9 @@ module Samagotchi
                 reports.map(&:line)
         # A wake turn starts with its first line, whoever sent it.
         lines[0] = lines[0].with(mark: mark) if mark && lines.any?
+        # The turn so far, with what this boundary merges (its input files
+        # are gone now), on disk at most every TurnCheckpoint::INTERVAL.
+        @checkpoint.boundary(@engine.live_conversation, merging: lines, turn_id: @turn_id)
         lines
       end
     end

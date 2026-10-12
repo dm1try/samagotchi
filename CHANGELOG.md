@@ -27,6 +27,13 @@ and commands may change between minor versions. How releases are made:
 - A worker that gets TERM, HUP or INT (`chi sessions stop`, a closed terminal, a process-tree teardown) stops its
   running turn as a Stop with reason `signal` and saves it, then exits; before, the turn and its prompt were lost.
   A stopped session's worker now saves the turn it kept too.
+- A worker killed mid-turn (SIGKILL, a crash) no longer loses the whole turn: the worker writes the turn so far to
+  the session file with an `interrupted_turn` mark (the prompt as the turn starts, then its iteration boundaries,
+  at most every 10 s), so it loses only what came after its last written boundary. The next worker (or a `--no-shared` REPL resuming the session) ends
+  that turn as canceled with a note the model reads (`cancelled (worker-stopped)`), so the session is idle again.
+- Workers outlive whoever spawned them: a worker leaves the spawner's process tree (forked again, `setsid`,
+  reparented to init), so a tool tearing down a background `chi send --wait`, or a closing terminal, no longer
+  kills it mid-turn (run #43 lost a 169-step turn that way).
 - A card shown during a turn by a worker that has since exited comes back read-only: no buttons. A stale check-in
   card's Nudge steered the next worker's turn on every click. Cards shown between turns (github-pr's offer, btw,
   coordinator) keep their buttons.

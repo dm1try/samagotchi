@@ -590,9 +590,11 @@ RSpec.describe Samagotchi::Worker do
 
         expect(death_of(@thread)&.signm).to eq("SIGTERM")
         expect(wait_until(timeout: 2) { exits == [:hard_exit] }).to be(true)
-        # Saved as it was: running (P2's checkpoint, when there is one, has
-        # the turn's steps).
+        # Saved as it was: running, with the turn's checkpoint (here, before
+        # any boundary: the prompt, marked at iteration 0).
         expect(saved.status).to eq("running")
+        expect(saved.messages.last).to include(role: "user", content: "stubborn")
+        expect(saved.interrupted_turn).to have_attributes(iteration: 0)
       end
 
       it "lets a turn that ended run its after_turn hooks past the grace (no cancel), its display kept" do
@@ -688,6 +690,87 @@ RSpec.describe Samagotchi::Worker do
         signals.fire("TERM")
 
         expect(death_of(@thread)).to be_a(SignalException)
+      end
+    end
+
+    describe "the running turn's checkpoint (TurnCheckpoint)" do
+      let(:kernel) { engine.instance_variable_get(:@kernel) }
+      let(:in_turn) { Queue.new }
+      let(:release) { Queue.new }
+      let(:earlier) { [{ role: "system", content: "sys" }, { role: "user", content: "earlier", display_refs: [{ "kind" => "file" }] }, { role: "model", content: "ok" }] }
+
+      def step(n) = [{ role: "model", content: "", tool_calls: [{ id: "c#{n}", name: "execute", arguments: {} }] },
+                     { role: "tool_response", content: "[execute]\nstep#{n}", tool_call_id: "c#{n}" }]
+
+      before do
+        stub_const("Samagotchi::TurnCheckpoint::INTERVAL", 0)
+        allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+        allow(engine).to receive(:run_turn).and_call_original
+        # A loop: its conversation registered on the kernel, a boundary
+        # (the drain) before each step, then it waits to be released.
+        allow(kernel).to receive(:run) do |messages, pending_input:, **|
+          conversation = messages.map(&:dup)
+          kernel.llm_context_turn = Samagotchi::LLMContextForget::Turn.new(conversation: conversation, context: nil, emit: nil)
+          [1, 2].each do |n|
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer me", client_id: "web:x") if n == @steer_at
+            Samagotchi::Steer.inject!(conversation, pending_input, iteration: n, emit: ->(_) {}, cancel_controller: nil)
+            conversation.concat(step(n))
+          end
+          Samagotchi::Steer.inject!(conversation, pending_input, iteration: 3, emit: ->(_) {}, cancel_controller: nil)
+          in_turn << true
+          release.pop
+          conversation << { role: "model", content: "DONE" }
+          Samagotchi::LLM::ModelResult.new(text: "DONE", conversation: conversation, exhausted: false, pending_tool_calls: false,
+                                           tool_activity: [], canceled: false)
+        end
+        session.messages = earlier
+        session.save(state_dir: tmpdir)
+      end
+
+      def on_disk = JSON.parse(File.read(Samagotchi::Session.session_file(session.id, state_dir: tmpdir)))
+
+      it "keeps the turn so far on disk with an interrupted_turn mark, and the real messages once it ends" do
+        start_worker(poll_interval: 5)
+        post_turn("long task")
+        expect(in_turn.pop(timeout: 2)).to be(true)
+
+        # What a KILL now would leave: the prompt and both steps, marked.
+        file = on_disk
+        expect(file["status"]).to eq("running")
+        expect(file["messages"].map { |m| m["content"] }.drop(1).grep_v(/\A\[SYSTEM: /))
+          .to eq(["earlier", "ok", "long task", "", "[execute]\nstep1", "", "[execute]\nstep2"])
+        expect(file["messages"][1]["display_refs"]).to eq([{ "kind" => "file" }])
+        expect(file["interrupted_turn"]).to include("iteration" => 3, "started_at" => a_kind_of(String), "at" => a_kind_of(String))
+        # The session in memory is untouched (the Bridge's snapshot shows
+        # the turn in progress, not in the messages).
+        expect(engine.session.messages.map { |m| m[:content] }).not_to include("long task")
+        # Another save in the turn (a question asked: QuestionDesk) writes the checkpoint too.
+        engine.session.save(state_dir: tmpdir)
+        expect(on_disk["interrupted_turn"]).to include("iteration" => 3)
+        expect(on_disk["messages"].map { |m| m["content"] }).to include("[execute]\nstep2")
+
+        release << true
+        expect(wait_until { on_disk["status"] == "idle" && on_disk["messages"].last["content"] == "DONE" }).to be(true)
+        expect(on_disk["interrupted_turn"]).to be_nil
+        expect(engine.session.turn_checkpoint).to be_nil
+      end
+
+      it "writes at the first boundary, then when due, or at once for a merged line (its input file is gone)" do
+        stub_const("Samagotchi::TurnCheckpoint::INTERVAL", 3600)
+        @steer_at = 2
+        start_worker(poll_interval: 5)
+        post_turn("long task")
+        expect(in_turn.pop(timeout: 2)).to be(true)
+
+        # Boundary 1 wrote (the prompt), boundary 2 merged a line (written
+        # with it), boundary 3 was not due.
+        contents = on_disk["messages"].map { |m| m["content"] }
+        expect(contents).to include("long task", "[execute]\nstep1", "steer me")
+        expect(contents).not_to include("[execute]\nstep2")
+        expect(on_disk["interrupted_turn"]).to include("iteration" => 2)
+
+        release << true
+        expect(wait_until { on_disk["status"] == "idle" }).to be(true)
       end
     end
 
