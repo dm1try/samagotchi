@@ -50,15 +50,31 @@ RSpec.describe Samagotchi::ReplyWait do
     sleep(0.002)
   end
 
-  def later(delay = 0.1, &)
+  # Runs the block on a thread once the wait has looked (+delay+ nil), or
+  # after +delay+ seconds when the time itself matters.
+  def later(delay = nil, &)
     threads << Thread.new do
-      sleep(delay)
+      delay ? sleep(delay) : looked(1)
       yield
     end
   end
 
-  def wait(cursor: nil, timeout: 5, **opts)
-    described_class.call(session.id, state_dir: tmpdir, cursor: cursor, timeout: timeout, poll_interval: 0.02, **opts)
+  # The looks the example's waits made: each poll calls its interject.
+  def polls = (@polls ||= [0])
+
+  # Blocks until the waits made +count+ more looks: 2 is a whole look at
+  # what the caller set just before.
+  def looked(count)
+    start = polls[0]
+    wait_until { polls[0] >= start + count }
+  end
+
+  def wait(cursor: nil, timeout: 5, interject: nil, **opts)
+    counting = lambda do
+      interject&.call
+      polls[0] += 1
+    end
+    described_class.call(session.id, state_dir: tmpdir, cursor: cursor, timeout: timeout, poll_interval: 0.02, interject: counting, **opts)
   end
 
   describe "the session it hands back (a caller's next baseline)" do
@@ -107,7 +123,7 @@ RSpec.describe Samagotchi::ReplyWait do
     set(status: "idle")
     later do
       set(status: "running")
-      sleep(0.1)
+      looked(2)
       write_reply("late")
       set(status: "idle")
     end
@@ -302,7 +318,7 @@ RSpec.describe Samagotchi::ReplyWait do
         end_turn("r0")
         claim("q1")
         set(status: "running")
-        sleep(0.1)
+        looked(2)
         write_turn_reply("answer to q1", "q1")
         end_turn("q1")
       end
@@ -337,7 +353,7 @@ RSpec.describe Samagotchi::ReplyWait do
       base = baseline
       later do
         end_turn("r0") # the running turn ends: not this wait's
-        sleep(0.1)
+        looked(2)
         claim("q1")
         end_turn("q1", outcome: "canceled", cancel_reason: "user")
       end
@@ -391,7 +407,7 @@ RSpec.describe Samagotchi::ReplyWait do
         end_turn("r0")
         claim("q1")
         set(status: "running")
-        sleep(0.05)
+        looked(2)
         set(pending_question: { id: "mine", kind: "approval", question: "Run ls?" })
       end
 
@@ -441,7 +457,7 @@ RSpec.describe Samagotchi::ReplyWait do
         base = baseline
         later do
           absorb("y1", by: "a1")
-          sleep(0.1)
+          looked(2)
           set(pending_question: { id: "theirs", kind: "ask", question: "Which?" })
         end
 
@@ -464,7 +480,7 @@ RSpec.describe Samagotchi::ReplyWait do
         base = baseline
         later do
           absorb("y1", by: nil)
-          sleep(0.1)
+          looked(2)
           write_reply("wake answer")
           end_turn(nil)
         end
@@ -489,7 +505,7 @@ RSpec.describe Samagotchi::ReplyWait do
           write_turn_reply("x answer", "x0")
           end_turn("x0")
           claim("q1")
-          sleep(0.3) # the look between the claim and the turn's running save sees idle, last_turn x0
+          looked(2) # the look between the claim and the turn's running save sees idle, last_turn x0
           run_q1 = Samagotchi::Session.load(session.id, state_dir: tmpdir)
           run_q1.status = "running"
           run_q1.interrupted_turn = { "iteration" => 1, "enqueued_id" => "q1" }
@@ -585,7 +601,7 @@ RSpec.describe Samagotchi::ReplyWait do
         base = described_class.baseline_of(loaded, question_id: "cont")
         later do
           run("x1", pending_question: nil)
-          sleep(0.1)
+          looked(2)
           write_turn_reply("continued", "x1")
           end_turn("x1")
         end
