@@ -72,6 +72,22 @@ RSpec.describe "The loop-guard bundle" do
     expect(run(find.dup)[:output]).to eq("[execute]\nexit: 0 (no output)")
   end
 
+  # The REPL prints events in order: the stop card goes under the denied
+  # call's row, not before it.
+  it "posts its stop card after the denied call's row" do
+    find = { name: "execute", content: "find . -name 'config.yml' 2>/dev/null" }
+    seen = []
+    engine.subscribe(observer: ->(event) { seen << [:card, event[:title]] if event[:type] == :card })
+    hooks.fire(:before_turn, { type: :before_turn, prompt: "update my config" })
+
+    6.times do |i|
+      runner.run(find.dup, iteration: i + 1, call_index: 1, call_count: 1, max_tool_output_chars: nil,
+                           on_stream_event: ->(event) { seen << [:row, i + 1] if event[:type] == :tool_call_completed })
+    end
+
+    expect(seen.last(2)).to eq([[:row, 6], [:card, "loop-guard stopped the turn"]])
+  end
+
   it "keys an edit by its old and new text: different edits to one file are not repeats" do
     gemma = Samagotchi::ToolCallParser::Gemma.new(Samagotchi::ModelProfile.gemma4)
     d = '<|"|>'

@@ -297,7 +297,7 @@ class Plugin
   def register(chi)
     chi.on(:before_turn) { |_event| reset }
     chi.on(:before_tool_call) { |event, ctx| before(event, ctx) }
-    chi.on(:after_tool_call) { |event| after(event) }
+    chi.on(:after_tool_call) { |event, ctx| after(event, ctx) }
     return unless @thinking["watch"]
 
     chi.on(:before_generation) do |_event|
@@ -377,6 +377,7 @@ class Plugin
     @warned = {}       # key => true once notified this turn
     @denials = 0
     @pending = nil
+    @stop_card = nil   # the stop's card, posted after the denied call
     @thinking_loops = 0
     @good_steps = 0
     @watch = nil
@@ -412,7 +413,8 @@ class Plugin
   # A call's result, paired with the before_tool_call that keyed it. A call
   # that was denied (by us or another voter) ran nothing: no result, or the
   # deny text would become the key's result and the next call would pass.
-  def after(event)
+  def after(event, ctx)
+    post_stop_card(ctx)
     pending = @pending
     @pending = nil
     return unless pending && event[:tool].to_s == pending[:key].first
@@ -426,16 +428,25 @@ class Plugin
     @previews[key] = preview(output)
   end
 
+  # The turn stops now; its card waits for the denied call's
+  # after_tool_call (#post_stop_card), so a UI that prints events in order
+  # shows it under that call's row, not before it.
   def stop(ctx)
     ctx.stop_turn("the model kept repeating the same calls")
     repeated = @attempts.select { |key, n| n > 1 && @last_result[key] && @results[[key, @last_result[key]]] >= @deny_after }
     lines = repeated.map do |key, n|
       "- `#{short_key(key)}`: #{n} times, the same result each time (#{@previews[key]})"
     end
-    ctx.card(title: "loop-guard stopped the turn",
-             body: "The model kept repeating these calls:\n\n#{lines.join("\n")}\n\n" \
-                   "Tell it what to try instead, or where to look.",
-             level: :warn)
+    @stop_card = { title: "loop-guard stopped the turn",
+                   body: "The model kept repeating these calls:\n\n#{lines.join("\n")}\n\n" \
+                         "Tell it what to try instead, or where to look.",
+                   level: :warn }
+  end
+
+  def post_stop_card(ctx)
+    card = @stop_card
+    @stop_card = nil
+    ctx.card(**card) if card
   end
 
   def warn(ctx, key, what)
