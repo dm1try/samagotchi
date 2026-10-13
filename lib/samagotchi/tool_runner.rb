@@ -49,8 +49,11 @@ module Samagotchi
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       # The gate runs first, so tool_call_started shows the call that runs.
+      # A tool the session's toolkit leaves out skips it: no before_tool_call
+      # hook, no approval card for a call that can't run (KernelLoop#dispatch
+      # answers it with the not-loaded error).
       original = call.dup
-      verdict = evaluate(call, iteration, params)
+      verdict = left_out?(call) ? Guardrails::Verdict.new(call: call) : evaluate(call, iteration, params)
       call = verdict.call
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       label = plugin_label(call[:name])
@@ -264,6 +267,15 @@ module Samagotchi
 
     # The kernel's tools, for the activity line of a tool that isn't built in.
     def tools = @kernel.tools
+
+    # A real tool the session's toolkit leaves out of this turn.
+    def left_out?(call)
+      registry = tools
+      return false unless registry.respond_to?(:left_out) && !call[:name].nil?
+
+      layers = @kernel.respond_to?(:llm_context_layers) ? @kernel.llm_context_layers : []
+      !registry.left_out(call[:name], layers: layers).nil?
+    end
 
     # A tool the registry has from a plugin (not core, not unknown).
     def plugin_tool?(name)

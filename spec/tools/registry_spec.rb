@@ -172,6 +172,9 @@ RSpec.describe Samagotchi::Tools::Registry do
     names = ->(loop) { loop.tool_definitions.map { |tool| tool[:function][:name] } }
 
     expect(names.call(Samagotchi::LLM::ChatLoop.new(kernel: kernel)).last).to eq("echo")
+    kernel.tools.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
+    expect(names.call(Samagotchi::LLM::ChatLoop.new(kernel: kernel))).to eq(kernel.tools.names)
+    expect(names.call(Samagotchi::LLM::ChatLoop.new(kernel: kernel))).not_to include("delegate")
   end
 
   it "an Engine gives a kernel it is given its own registry" do

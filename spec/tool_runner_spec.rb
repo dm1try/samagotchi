@@ -6,6 +6,9 @@ require "samagotchi/tools/builtins"
 require "samagotchi/tools/edit"
 require "samagotchi/tools/write"
 require "tmpdir"
+require "samagotchi/kernel_loop"
+require "samagotchi/toolkit"
+require "support/test_kernel"
 
 # ToolRunner's per-call contract around the before_tool_call veto. The loop
 # level (text the model gets, both loops) is in
@@ -617,6 +620,54 @@ RSpec.describe Samagotchi::ToolRunner do
       hooks.register(:before_tool_call) { |e| e[:blocked] = true if e[:call][:name] == "edit" }
       expect(run({ name: "edit", path: path, old_text: "a", new_text: "b" })).not_to have_key(:diff)
       expect(run).not_to have_key(:diff)
+    end
+  end
+
+  # A tool the session's toolkit leaves out is refused before the gate: no
+  # before_tool_call hook, no approval card for a call that can't run.
+  describe "a call to a tool the toolkit leaves out" do
+    let(:asked) { [] }
+    let(:before_calls) { [] }
+    let(:after_calls) { [] }
+    let(:real_kernel) do
+      test_kernel(hooks: hooks).tap do |k|
+        k.tools = Samagotchi::Tools::Builtins.registry
+        k.tools.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
+        approver = lambda do |verdict|
+          asked << verdict.call[:name]
+          verdict.settle!(:allow)
+        end
+        gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver)
+        k.define_singleton_method(:guardrail_gate) { gate }
+      end
+    end
+
+    before do
+      hooks.register(:before_tool_call) do |e|
+        before_calls << e[:call][:name]
+        e[:guardrail].ask!("sure?")
+      end
+      hooks.register(:after_tool_call) { |e| after_calls << [e[:tool], e[:status]] }
+    end
+
+    it "gets the not-loaded error naming it, with no hook or card" do
+      result = described_class.new(real_kernel).run({ name: "delegate", task: "x" }, iteration: 1, call_index: 1, call_count: 1,
+                                                                           on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
+
+      expect(result[:output]).to start_with("Error: delegate isn't loaded in this session (toolkit lean) and can't be " \
+                                            "loaded from here; only the user can (/toolkit add delegate). Available: execute, read")
+      expect(before_calls).to eq([])
+      expect(asked).to eq([])
+      expect(after_calls).to eq([%w[delegate error]])
+      expect(events.map { |e| e[:type] }).to eq(%i[tool_call_started tool_call_completed])
+    end
+
+    it "leaves an unknown name's error as it was (never echoed)" do
+      result = described_class.new(real_kernel).run({ name: "nope" }, iteration: 1, call_index: 1, call_count: 1,
+                                                            on_stream_event: nil, max_tool_output_chars: nil)
+      expect(result[:output]).to start_with("Error: no such tool. Available: execute")
+      expect(result[:output]).not_to include("delegate")
+      expect(before_calls).to eq(["nope"])
     end
   end
 end

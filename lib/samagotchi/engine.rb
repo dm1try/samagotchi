@@ -31,6 +31,7 @@ require_relative "llm/backend"
 require_relative "llm/openai_chat"
 require_relative "llm/turn_settings"
 require_relative "session"
+require_relative "toolkit"
 require_relative "answer_tail"
 require_relative "archive_store"
 require_relative "session_observer"
@@ -184,6 +185,9 @@ module Samagotchi
       # plugins' tool sets from chi.replace_tools until the turn thread
       # applies them (#apply_staged_tools!). Built before the plugins load.
       @plugin_tasks = build_plugin_tasks
+      # The toolkits plugins declare (chi.toolkit), beside the built-in and
+      # config ones (#toolkit_kits).
+      @plugin_kits = []
       @lifecycle_mutex = Mutex.new
       @shut_down = false
       load_plugins if plugins
@@ -2019,8 +2023,11 @@ module Samagotchi
       # at its first request).
       start_init_tasks!
       await_init_tasks(turn.controller, turn.on_event)
-      # Plugins' tool sets that changed since the last turn.
+      # Plugins' tool sets that changed since the last turn, then the
+      # session's toolkit (a /toolkit change since the last turn): what the
+      # prompt built next declares, unchanged until the next turn's start.
       apply_staged_tools!
+      apply_toolkit!(session, turn.on_event)
       # A Stop during the wait above: the turn ends here,
       # before the hooks run or a reminder is used up.
       return false if turn.controller.cancelled?
@@ -2688,6 +2695,60 @@ module Samagotchi
       @plugin_tasks.apply_staged_tools!
     end
     public :apply_staged_tools!
+
+    # The kits a session's toolkit resolves against: the built-ins, config's
+    # toolkit.kits, the plugins' (Toolkit.kits). Config's are read once per
+    # process, like the plugins': an edit to toolkit.kits never changes a
+    # live session's tools mid-session (a new worker reads it).
+    # @param errors [Array<String>] gets a line per config kit left out
+    # @return [Hash{String => Toolkit::Kit}]
+    def toolkit_kits(errors = [])
+      @config_kits = Toolkit.config_kits unless defined?(@config_kits)
+      Toolkit.kits(config: @config_kits, plugins: @plugin_kits, errors: errors)
+    end
+
+    # The session's toolkit resolved (Toolkit::Resolved): what its next
+    # turn declares. A plain full toolkit is nil, the Registry's "every tool".
+    def resolved_toolkit(session, errors = [])
+      resolved = Toolkit.of(session&.toolkit).resolve(toolkit_kits(errors))
+      resolved.everything? ? nil : resolved
+    end
+
+    # Resolve the session's toolkit into the Registry, on the turn thread at
+    # a turn's start (before its prompt is built), and build the prompts
+    # again when what it declares changed. A name that doesn't resolve (a
+    # typo, an uninstalled bundle) declares everything for now and says so
+    # once; the saved toolkit stays as it is.
+    # @return [Boolean] whether the declared tools changed
+    def apply_toolkit!(session, on_event = nil)
+      errors = []
+      resolved = Toolkit.of(session&.toolkit).resolve(toolkit_kits(errors))
+      warn_toolkit(session, resolved, errors, on_event)
+      resolved = nil if resolved.everything?
+      return false if resolved == @tools.toolkit
+
+      @tools.toolkit = resolved
+      @prompt_builder&.reset!
+      true
+    end
+    private :apply_toolkit!
+
+    # The toolkit's load warnings, each once per process: a name that
+    # didn't resolve, config kits left out.
+    def warn_toolkit(session, resolved, errors, on_event)
+      lines = errors.dup
+      if resolved.fallback
+        lines << "#{Toolkit.of(session&.toolkit).label}: #{resolved.fallback}; this session declares every tool (full) " \
+                 "until it resolves"
+      end
+      @toolkit_warned ||= []
+      (lines - @toolkit_warned).each do |line|
+        @toolkit_warned << line
+        Log.warn(:config, "toolkit_unresolved", message: line)
+        emit_event(on_event, { type: :guardrail_warning, message: line, label: "toolkit" })
+      end
+    end
+    private :warn_toolkit
 
     # The tools changed (a plugin's chi.tools_changed!): the system prompts,
     # which declare them, are built again on the next turn.

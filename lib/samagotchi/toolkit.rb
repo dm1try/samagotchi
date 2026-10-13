@@ -106,6 +106,9 @@ module Samagotchi
               removed: removed.dup.freeze, fallback: fallback)
       end
 
+      # Every built-in and nothing removed: what no toolkit declares.
+      def everything? = all_core && removed.empty?
+
       # @param entry [Tools::Registry::Entry]
       def declares?(entry)
         return false if removed.include?(entry.name)
@@ -143,6 +146,15 @@ module Samagotchi
     def self.configured(delegate: false)
       name = Config.get(delegate ? "toolkit.child" : "toolkit.default").to_s.strip
       new(name: name.empty? ? FULL : name)
+    end
+
+    # config.yml's toolkit.kits (a map of name => {base:, add:, remove:}),
+    # nil when it has none.
+    def self.config_kits
+      section = ConfigFile.section("toolkit")
+      section.is_a?(Hash) ? section["kits"] : nil
+    rescue StandardError
+      nil
     end
 
     # The toolkit a session is on: its own, or FULL without one.

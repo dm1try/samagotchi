@@ -189,6 +189,22 @@ RSpec.describe "Full system prompt snapshots" do
     end
   end
 
+  # A session on lean: the left-out tools' declarations go, and one line
+  # after the base prompt names them. A full session's snapshots above
+  # don't change.
+  it "qwen36 on a native host, a session on the lean toolkit" do
+    with_rg(true)
+    e = engine("box:qwen-small", "qwen36")
+    s = session
+    s.toolkit = Samagotchi::Toolkit.new(name: "lean")
+    e.session = s
+    expect(e.send(:apply_toolkit!, s)).to be(true)
+    prompt = e.system_prompt
+    expect(prompt).not_to include('"name": "delegate"')
+    expect_snapshot("qwen36_native_lean.txt", normalized(prompt, s))
+    expect(e.send(:apply_toolkit!, s)).to be(false)
+  end
+
   it "a scratch session (no delegate tools)" do
     with_rg(true)
     e = engine("box:gemma-small", "gemma4", scratch: true)

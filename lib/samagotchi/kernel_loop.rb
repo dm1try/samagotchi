@@ -1067,9 +1067,17 @@ module Samagotchi
     # The error an unknown tool name gets back. A shell-like name with
     # `execute` offered this turn points at `execute`; every other unknown
     # name lists what is offered. Neither echoes the wrong name.
+    #
+    # A tool the session's toolkit leaves out is a real one, so its error
+    # does name it (deliberately, against the rule above): the model learns
+    # it exists and that only the user can load it.
     def unknown_tool_error(name, layers)
       names = @tools.names(layers: layers)
-      if SHELL_LIKE_TOOL_NAMES.include?(name.to_s.downcase) && names.include?("execute")
+      if @tools.respond_to?(:left_out) && @tools.left_out(name, layers: layers)
+        toolkit = @tools.toolkit&.name
+        "Error: #{name} isn't loaded in this session#{" (toolkit #{toolkit})" if toolkit} and can't be loaded from " \
+          "here; only the user can (/toolkit add #{name}). Available: #{names.join(", ")}"
+      elsif SHELL_LIKE_TOOL_NAMES.include?(name.to_s.downcase) && names.include?("execute")
         "Error: no such tool. Shell commands run with `execute` (same arguments)."
       else
         "Error: no such tool. Available: #{names.join(", ")}"

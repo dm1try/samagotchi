@@ -317,7 +317,7 @@ module Samagotchi
         "Project memories:\n#{indexes[:project]}",
         "System memories:\n#{indexes[:system]}"
       ].join("\n\n")
-      stable = [thinking_token + base, rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
+      stable = [thinking_token + base, not_loaded_line(layers), rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
                 project_specific_description, appended_section, memory_sections]
       stable_text = stable.compact.join("\n")
       volatile = [current_model, project_location, current_session].compact
@@ -326,6 +326,21 @@ module Samagotchi
       prompt = "#{stable_text}\n#{volatile.join("\n")}"
       (@stable_lengths ||= {})[prompt] = stable_text.length + 1 if chat
       with_tail_declarations(prompt, chat: chat, layers: layers)
+    end
+
+    # The tools the session's toolkit leaves out, named once right after the
+    # base prompt: sessions on another toolkit already differ at the tools,
+    # and nothing later (a memory write) moves it. nil when none are (full):
+    # the prompt is what it was before toolkits.
+    def not_loaded_line(layers)
+      registry = @tools_lookup.call
+      return nil unless registry.respond_to?(:left_out_names)
+
+      names = registry.left_out_names(layers: layers)
+      return nil if names.empty?
+
+      "Not loaded in this session (toolkit #{registry.toolkit&.name}): #{names.join(", ")}. " \
+        "Only the user can load one (/toolkit add <name>)."
     end
 
     def with_tail_declarations(prompt, chat:, layers:)
