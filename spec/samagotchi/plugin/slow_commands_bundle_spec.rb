@@ -280,6 +280,8 @@ RSpec.describe "The slow-commands bundle" do
       call(hooks, "rspec", result: "Error: command stopped by the user after 130s (killed; rerun it if still needed)", elapsed_s: 130)
       call(hooks, "rspec", result: "Error: command stopped by a signal to chi after 130s (killed; rerun it if still needed)",
                            elapsed_s: 130)
+      call(hooks, "rspec", result: "Error: command stopped as the session was stopped after 130s (killed; rerun it if still needed)",
+                           elapsed_s: 130)
       c = execute("rspec")
       fire(hooks, { type: :after_tool_call, tool: "execute", call: c, elapsed_ms: nil, result: timed_out })
       expect(File.exist?(File.join(data_dir, "commands.json"))).to be false

@@ -694,7 +694,7 @@ module Samagotchi
     # so a resume right after spawns a fresh worker instead of finding the
     # dying one.
     # A turn still running is canceled first (STOP_CANCEL_WAIT), as the
-    # web's Cancel does: its worker saves it. The TERM stops (and saves)
+    # web's Cancel does, with reason STOP_CANCEL_REASON: its worker saves it. The TERM stops (and saves)
     # what still runs (WorkerSignals), with a short grace after the marker.
     # @return [Boolean, nil] with +wait+: whether the owner was gone in time
     # @raise [OwnedByTUI] when the interactive TUI owns the session
@@ -715,6 +715,9 @@ module Samagotchi
     end
 
     STOP_CANCEL_WAIT = 3.0
+    # The cancel reason of a turn a session stop cancels (Bridge::CANCEL_REASONS):
+    # not the user's Stop, which only ends the turn ("user").
+    STOP_CANCEL_REASON = "session_stopped"
 
     # Cancel the session's running turn over its Bridge and wait (up to
     # STOP_CANCEL_WAIT) for the worker to save it. Best effort: without a
@@ -723,7 +726,7 @@ module Samagotchi
       return unless Session.load(session_id, state_dir: state_dir).status == Session::STATUS_RUNNING
 
       client = BridgeClient.discover(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
-      return unless client && client.cancel(reason: "user").status == 202
+      return unless client && client.cancel(reason: STOP_CANCEL_REASON).status == 202
 
       BridgeClient.poll(STOP_CANCEL_WAIT) do
         Session.load(session_id, state_dir: state_dir).status != Session::STATUS_RUNNING

@@ -52,8 +52,9 @@ module Samagotchi
     DEFAULT_RING_CAPACITY = 256
     DEFAULT_HEARTBEAT_INTERVAL = 15.0
     # Cancel reasons a client may name (the web sends user, an attached TUI
-    # ctrl_c); anything else is :manual, so client input never mints symbols.
-    CANCEL_REASONS = %w[manual user ctrl_c].freeze
+    # ctrl_c, a session stop session_stopped: SessionManager.stop_session);
+    # anything else is :manual, so client input never mints symbols.
+    CANCEL_REASONS = %w[manual user ctrl_c session_stopped].freeze
     # How long #stop waits for requests it is answering (not open streams).
     REQUEST_GRACE_SECONDS = 1.0
     # How long #stop waits for each killed RelayWatcher thread to end.

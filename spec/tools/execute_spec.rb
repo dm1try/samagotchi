@@ -322,6 +322,17 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(running?("sleep 31.75")).to be(false)
       end
 
+      it "says the session was stopped when the stop's reason is :session_stopped (chi sessions stop)" do
+        started = now
+        result = described_class.call("echo before; sleep 31.77", cancelled: -> { now - started > 0.3 },
+                                                                  stop_reason: -> { :session_stopped })
+
+        expect(result).to match(/\A#{Regexp.escape(described_class::STOPPED_BY_SESSION_STOP)} after \d+s \(killed; rerun it if still needed\)\n/)
+        expect(described_class.call("true", cancelled: -> { true }, stop_reason: -> { :session_stopped }))
+          .to eq(described_class::NOT_RUN_ON_SESSION_STOP)
+        expect(running?("sleep 31.77")).to be(false)
+      end
+
       it "the builtin execute and task_create take the reason from the turn's peers" do
         registry = Samagotchi::Tools::Builtins.registry
         peers = Samagotchi::Tools::Peers.new(session_id: "s1", cancelled: true, cancel_reason: :signal)

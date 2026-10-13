@@ -509,8 +509,10 @@ RSpec.describe Samagotchi::Bridge do
     it "passes a reason the clients send" do
       cancel_with("ctrl_c")
       cancel_with("user")
+      cancel_with("session_stopped")
       expect(engine).to have_received(:cancel_current_turn!).with(:ctrl_c)
       expect(engine).to have_received(:cancel_current_turn!).with(:user)
+      expect(engine).to have_received(:cancel_current_turn!).with(:session_stopped)
     end
 
     it "turns any other reason into :manual instead of a new symbol" do

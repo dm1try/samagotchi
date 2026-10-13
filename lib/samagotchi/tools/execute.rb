@@ -32,6 +32,10 @@ module Samagotchi
       # stopped the turn: its cancel reason is :signal.
       NOT_RUN_ON_SIGNAL = "Error: not run, a signal to chi stopped the turn"
       STOPPED_BY_SIGNAL = "Error: command stopped by a signal to chi"
+      # The same two when a session stop (chi sessions stop, the web's stop,
+      # a parent stopping its delegate) canceled the turn: :session_stopped.
+      NOT_RUN_ON_SESSION_STOP = "Error: not run, the session was stopped"
+      STOPPED_BY_SESSION_STOP = "Error: command stopped as the session was stopped"
       # The first words of a command killed at the limit in kill mode (hooks
       # match on it).
       TIMEOUT_PREFIX = "Error: command timed out after"
@@ -79,7 +83,8 @@ module Samagotchi
       # @param cancelled [#call] true once the user stopped the turn: the
       #   command is killed (or not started) and its output so far returned
       # @param stop_reason [#call] the stop's reason (:signal: a signal to
-      #   chi, which the result then names instead of the user)
+      #   chi, :session_stopped: a session stop, which the result then names
+      #   instead of the user)
       # @param env [Hash, nil] added to the command's environment
       # @param on_timeout [Symbol, String, nil] :task or :kill (ON_TIMEOUT);
       #   nil reads execute.on_timeout
@@ -116,16 +121,18 @@ module Samagotchi
         # a long command, and return whatever it printed before it was killed.
         stopped_result("#{TIMEOUT_PREFIX} #{timeout_sec}s\n#{TIMEOUT_HINT}", e)
       rescue CommandCancelled => e
-        first = signal?(stop_reason) ? STOPPED_BY_SIGNAL : STOPPED_BY_USER
+        first = STOPPED_BY.fetch(stop_reason.call, STOPPED_BY_USER)
         stopped_result("#{first} after #{e.elapsed.round}s (killed; rerun it if still needed)", e)
       rescue StandardError => e
         "Error: #{e.message}"
       end
 
       # What a command the turn's stop kept from starting returns.
-      def self.not_run(stop_reason) = signal?(stop_reason) ? NOT_RUN_ON_SIGNAL : NOT_RUN_ON_STOP
+      def self.not_run(stop_reason) = NOT_RUN.fetch(stop_reason.call, NOT_RUN_ON_STOP)
 
-      def self.signal?(stop_reason) = stop_reason.call == :signal
+      # The texts above by the stop's reason; any other is the user's Stop.
+      NOT_RUN = { signal: NOT_RUN_ON_SIGNAL, session_stopped: NOT_RUN_ON_SESSION_STOP }.freeze
+      STOPPED_BY = { signal: STOPPED_BY_SIGNAL, session_stopped: STOPPED_BY_SESSION_STOP }.freeze
 
       # execute.on_timeout, or the caller's: :task (the default) or :kill.
       def self.on_timeout_mode(value)

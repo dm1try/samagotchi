@@ -346,7 +346,8 @@ module Samagotchi
 
       # A cancel's reason as the UIs name it (anything else as it is);
       # spec/shared/labels_matrix.json pins it for both.
-      CANCEL_REASONS = { "ctrl_c" => "Ctrl-C", "user" => "stopped", "hook" => "by a hook", "worker_stopped" => "worker stopped" }.freeze
+      CANCEL_REASONS = { "ctrl_c" => "Ctrl-C", "user" => "stopped", "hook" => "by a hook", "worker_stopped" => "worker stopped",
+                         "session_stopped" => "session stopped" }.freeze
       # A canceled turn's mark: a stop someone chose (Ctrl-C, Stop, a hook),
       # not an error's ✕ (timing.js STOP_MARK; the labels matrix pins it).
       STOP_MARK = "■"

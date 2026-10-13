@@ -121,7 +121,7 @@ RSpec.describe Samagotchi::SessionManager do
 
         described_class.stop_session(session.id, state_dir: tmpdir, wait: 1)
 
-        expect(calls).to eq([[:cancel, "user", Samagotchi::Session::STATUS_RUNNING]])
+        expect(calls).to eq([[:cancel, "session_stopped", Samagotchi::Session::STATUS_RUNNING]])
         expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
       end
 
