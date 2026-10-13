@@ -62,7 +62,7 @@ module Samagotchi
       # Messages adapter takes a dialect.
       @chat = LLM::Adapters.build(api: api, base_url: base_url.to_s, host_name: purpose, api_key_env: api_key_env,
                                   auth: auth, stream: false, retries: false, timeout: timeout, env: env, purpose: purpose,
-                                  **({ dialect: dialect } if dialect))
+                                  **(dialect ? { dialect: dialect } : {}))
     end
 
     # A client for +target+ (an IdleTarget: a recap's, ctx.ask_model's, a

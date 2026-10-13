@@ -210,11 +210,11 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
   end
 
   it "passes a refusal's category to the no-answer notice" do
-    view.define_singleton_method(:format_empty_answer_line) { |retries, refusal = nil| "no answer #{retries} #{refusal}" }
+    view.define_singleton_method(:format_empty_answer_line) { |retries, refusal = nil| "no answer #{retries} #{refusal[:category]}" }
     renderer.call(type: :turn_completed, turn_summary: { tool_activity: [], output: "", resumable: false,
                                                          empty_answer: { retries: 0, refusal: { category: "cyber" } } })
 
-    expect(view.lines).to eq(["no answer 0 {category: \"cyber\"}"])
+    expect(view.lines).to eq(["no answer 0 cyber"])
   end
 
   it "adds the iteration-limit notice to a resumable summary" do
