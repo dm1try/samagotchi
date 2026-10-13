@@ -102,9 +102,11 @@ module Samagotchi
       end
 
       # The usage so far as an OpenAI-shaped `usage` object, nil when the
-      # server sent no counts.
+      # server sent no counts, or only zeros (Fireworks' message_start: its
+      # counts come in the last message_delta; a 0 read as an empty context
+      # in the web's ctx meter while the answer streamed).
       def usage_payload
-        return nil if @usage.empty?
+        return nil if @usage.values.none?(&:positive?)
 
         read = @usage["cache_read_input_tokens"].to_i
         write = @usage["cache_creation_input_tokens"].to_i

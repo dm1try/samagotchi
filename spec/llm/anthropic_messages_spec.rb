@@ -343,6 +343,17 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
                                                               cached_tokens: 640, cache_write_tokens: 0))
     end
 
+    # The web's ctx meter (ctx.js) reads a chunk's usage.prompt_tokens as it
+    # comes: a 0 there read as an empty context while the answer streamed.
+    it "hands on_delta no usage for Fireworks' all-zero message_start, the counts with its message_delta" do
+      stream("fireworks_text_stream.hand-written.sse")
+
+      payloads = deltas.map(&:last)
+      expect(payloads.find { |payload| payload["type"] == "message_start" }).not_to have_key("usage")
+      expect(payloads.find { |payload| payload["type"] == "message_delta" }["usage"])
+        .to include("prompt_tokens" => 812, "completion_tokens" => 9)
+    end
+
     it "assembles thinking with its signature and a tool call from input_json_delta, and marks tool-call events" do
       response = stream("thinking_tool_use_stream.hand-written.sse")
 

@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `dialect: fireworks` hosts: the web's ctx meter no longer reads 0% while an answer streams (Fireworks' first stream
+  event carries all-zero usage; its counts come at the end).
+
 ## [0.65.0] - 2026-10-13
 
 ### Added
