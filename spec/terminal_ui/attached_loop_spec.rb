@@ -271,6 +271,23 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       end
     end
 
+    # The web sends "[image: name]" as an image-only turn's text: the
+    # prompt line names the image already, as the recap does it.
+    it "names an image-only turn's image once" do
+      image = { file: "images/0123456789abcdef.png", mime: "image/png", width: 1280, height: 800, name: "shot.png" }
+      feed(snapshot(messages: [{ role: "user", content: "[image: shot.png]", images: [image] }, { role: "model", content: "A cat." }]))
+
+      expect(screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") }).to eq(["user> [image: shot.png]", "A cat."])
+    end
+
+    it "still shows the image lines of a turn with words" do
+      image = { file: "images/0123456789abcdef.png", mime: "image/png", width: 1280, height: 800, name: "shot.png" }
+      feed(snapshot(messages: [{ role: "user", content: "what is it?", images: [image] }, { role: "model", content: "A cat." }]))
+
+      expect(screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") })
+        .to eq(["user> what is it?", "[image shot.png 1280×800 · ~1.3k tokens]", "A cat."])
+    end
+
     context "with the session's saved turn record" do
       def save_analytics(turn_records: [], tool_records: [])
         dir = Samagotchi::Session.session_dir("s-1234")

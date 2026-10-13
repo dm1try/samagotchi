@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   push asks to (`"wake": true`); before, only later pushes could.
 - Plugins: `ctx.context.list` returns `[]` for a new session whose file isn't saved yet (a plugin command before
   the first turn) instead of raising "Session not found".
+- Attached TUI: joining a session whose last turn was images alone (sent from the web) names each image once, not
+  twice.
 - Attached TUI: text you had typed when the step-limit question opened comes back at the prompt once you answer
   it, instead of being lost.
 - `chi -p … --non-interactive` says so on stderr and exits 1 when the iteration limit cuts the turn short, instead

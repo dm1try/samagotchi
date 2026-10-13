@@ -159,6 +159,14 @@ module Samagotchi
   # One-line texts about an image ref ({file:, mime:, width:, height:,
   # bytes:, name:, source:}).
   module ImageRef
+    # The text the web sends for a turn of images alone (images.js
+    # turnText): "[image: name]" per image, nothing else.
+    PLACEHOLDER_ONLY_RE = /\A\s*(?:\[image: [^\]\n]*\]\s*)+\z/
+
+    # Whether +text+ is only that placeholder: the images' own lines would
+    # name them a second time.
+    def self.placeholder_only?(text) = PLACEHOLDER_ONLY_RE.match?(text.to_s)
+
     # Claude's rule of thumb (28×28 px per token). About 30% over on the
     # local Qwen, close enough for a label and the context estimate.
     def self.estimated_tokens(ref)

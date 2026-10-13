@@ -7,6 +7,7 @@ require "time"
 
 require_relative "idle_client"
 require_relative "idle_target"
+require_relative "image_store"
 require_relative "output_formatter"
 require_relative "steer"
 require_relative "recap_store"
@@ -53,8 +54,6 @@ module Samagotchi
       # separator, while the chat loop writes one message per call.
       TOOL_OUTPUT_SEPARATOR = "\n\n---\n\n"
       TOOL_OUTPUT_HEADER_RE = /\A\[([\w.:-]+)\]/
-      # The text the web sends for a turn of images alone (images.js turnText).
-      IMAGE_ONLY_RE = /\A\s*(?:\[image: [^\]\n]*\]\s*)+\z/
       DELEGATE_REPORT_LINE = "(a delegate session's report, delivered by chi; not the user's words)"
 
       module_function
@@ -76,7 +75,7 @@ module Samagotchi
             # A delegate child's report (ChildReports) is chi's news, not
             # what the user said.
             content = "#{DELEGATE_REPORT_LINE}\n#{content}" if message["source"].to_s == Steer::DELEGATE_REPORT
-            images = IMAGE_ONLY_RE.match?(content) ? [] : image_lines(message["images"])
+            images = ImageRef.placeholder_only?(content) ? [] : image_lines(message["images"])
             [content, *images].reject(&:empty?).join("\n")
           when "model", "assistant"
             strip_thought(message["content"].to_s.gsub(TOOL_CALL_RE, ""))

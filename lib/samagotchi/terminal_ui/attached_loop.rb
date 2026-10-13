@@ -1205,7 +1205,10 @@ module Samagotchi
         return unless last_user
 
         @screen.commit(join_prompt_line(exchange[last_user]))
-        Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
+        # An image-only turn's text names its images already.
+        unless ImageRef.placeholder_only?(exchange[last_user][:content])
+          Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
+        end
         from = messages.index { |m| m.equal?(exchange[last_user]) }
         render_join_steps(messages, from, durations: join_tool_records(exchange[last_user]))
         failed = join_failed_record(exchange[last_user])
