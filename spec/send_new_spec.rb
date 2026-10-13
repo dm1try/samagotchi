@@ -161,6 +161,49 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(third.last_prompt).to eq("day three")
     end
 
+    it "starts the next link on a model given with --model" do
+      expect(run("--new", "--continues", previous.id, "--model", "main:other-model", "-m", "start the day")).to eq(0), err.string
+
+      expect(links.first).to have_attributes(continues: previous.id, model_name: "main:other-model")
+      expect(err.string).to be_empty
+    end
+
+    it "refuses a --model whose host config.yml doesn't have, archiving nothing" do
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+
+      expect(run("--new", "--continues", previous.id, "--model", "gone:org/model", "-m", "x")).to eq(1)
+      expect(err.string).to start_with("chi send: could not start a session: unknown host 'gone'")
+      expect(links).to be_empty
+      expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(previous.id, state_dir: tmpdir))).to be(false)
+    end
+
+    it "warns when the previous link's host is gone and the link starts on the default model" do
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+      previous.model_name = "gone:org/model"
+      previous.save(state_dir: tmpdir)
+
+      expect(run("--new", "--continues", previous.id, "-m", "start the day")).to eq(0), err.string
+      expect(err.string).to match(%r{\Achi send: warning: gone:org/model can't run \(unknown host 'gone'.*\); started on spec-model\n\z})
+      expect(links.first.model_name).to eq(Samagotchi::ConfigFile.model_ref("spec-model").ref)
+    end
+
+    it "judges images by the model the link will run: the given one, or the default it falls back to" do
+      allow(described_class).to receive(:vision_answer)
+        .and_return(Samagotchi::VisionSupport::Answer.new(value: false, reason: "text only"))
+      png = File.expand_path("fixtures/images/tiny.png", __dir__)
+
+      expect(run("--new", "--continues", previous.id, "--model", "main:blind", "--image", png, "-m", "x")).to eq(1)
+      expect(err.string).to include("chi send: refused: main:blind can't take images (text only)")
+      expect(described_class).to have_received(:vision_answer).with("main:blind", typed: nil)
+
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+      previous.model_name = "gone:org/model"
+      previous.save(state_dir: tmpdir)
+      expect(run("--new", "--continues", previous.id, "--image", png, "-m", "x")).to eq(1)
+      expect(described_class).to have_received(:vision_answer).with("spec-model", typed: nil)
+      expect(links).to be_empty
+    end
+
     it "refuses a link continued already, naming the next one, and an unknown session" do
       run("--new", "--continues", previous.id)
       following = links.first
@@ -172,12 +215,13 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(links.size).to eq(1)
     end
 
-    it "is a usage error without --new, beside --dir, --model or --llm-context, or with --wait and no message" do
+    it "is a usage error without --new, beside --dir or --llm-context, or with --wait and no message" do
       expect(run("--continues", previous.id, "-m", "x", "3fa2")).to eq(2)
       expect(err.string).to include("--continues needs --new")
-      expect(run("--new", "--continues", previous.id, "--model", "M", "--llm-context", "stale", "-m", "x")).to eq(2)
-      expect(err.string).to include("--continues takes the previous session's folder, model, LLM context, thinking level and " \
-                                    "toolkit; leave out --model, --llm-context")
+      expect(run("--new", "--continues", previous.id, "--dir", folder, "--model", "M", "--llm-context", "stale",
+                 "-m", "x")).to eq(2)
+      expect(err.string).to include("--continues takes the previous session's folder, LLM context, thinking level and " \
+                                    "toolkit; leave out --dir, --llm-context")
       expect(run("--new", "--continues", previous.id, "--thinking", "low", "-m", "x")).to eq(2)
       expect(err.string).to include("leave out --thinking")
       expect(run("--new", "--continues", previous.id, "--toolkit", "lean", "--tool", "delegate", "-m", "x")).to eq(2)

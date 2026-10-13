@@ -40,7 +40,7 @@ module Samagotchi
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
              chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [-m TEXT] [--image PATH]...
-             chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT] [--image PATH]...
+             chi send --new --continues (ID|PREFIX|last:ID) [--model M] [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --queue --wait [--timeout S] [--format json] [-m TEXT] ID
              chi send --wait [--timeout S] [--format json] ID
@@ -63,9 +63,11 @@ module Samagotchi
                     the current one
         --continues ID
                     (--new) start the next link of that session's chain:
-                    in its folder, on its model, LLM context,
-                    thinking level and toolkit, with a note carrying its recap; it
-                    is archived. last:ID names the chain's latest link.
+                    in its folder, on its model (or --model's; one whose
+                    host is gone falls back to the default, with a
+                    warning), LLM context, thinking level and toolkit,
+                    with a note carrying its recap; it is archived.
+                    last:ID names the chain's latest link.
                     Without -m the new session waits idle. Refused for a
                     session continued already (naming the next link) or
                     with delegates still open
@@ -289,11 +291,11 @@ module Samagotchi
       return usage_error("--new takes no session ids: it starts one session") unless options[:ids].empty?
 
       if options[:continues]
-        taken = [("--dir" if options[:dir]), ("--model" if options[:model])] +
+        taken = [("--dir" if options[:dir])] +
                 LLM_CONTEXT_FLAGS.filter_map { |key, flag| flag if options[key] } + [("--thinking" if options[:thinking])] +
                 [("--toolkit" if options[:toolkit])] + TOOLKIT_FLAGS.filter_map { |key, flag| flag unless Array(options[key]).empty? }
         unless taken.compact.empty?
-          return usage_error("--continues takes the previous session's folder, model, LLM context, thinking level and " \
+          return usage_error("--continues takes the previous session's folder, LLM context, thinking level and " \
                              "toolkit; " \
                              "leave out #{taken.compact.join(", ")}")
         end
@@ -358,7 +360,8 @@ module Samagotchi
       begin
         start = through_worker ? { prompt: nil, title: prompt } : { prompt: prompt }
         session = if options[:continues]
-                    SessionManager.continue_session(options[:continues], **start, state_dir: @state_dir)
+                    SessionManager.continue_session(options[:continues], **start, model: options[:model],
+                                                                             state_dir: @state_dir)
                   else
                     SessionManager.spawn_session(**start, working_directory: options[:dir],
                                                           model_name: options[:model],
@@ -388,15 +391,22 @@ module Samagotchi
                                  timeout: options[:timeout])
     end
 
-    # --continues: the model the new link will run (the previous link's),
-    # for the images check; [nil, nil] without --continues.
+    # The model the new session will run, for the images check: --model
+    # (nil: the default), or with --continues the one the new link will run
+    # (SessionContinue.model_for: --model's, else the previous link's, else
+    # the default it falls back to).
     # @return [Array, false] [model_name, model_typed], or false after the
-    #   error line (no such session)
+    #   error line (no such session, a model it can't start on)
     def continued_model(options)
       return [options[:model], nil] unless options[:continues]
 
       previous = Session.load(SessionChain.resolve(options[:continues], state_dir: @state_dir), state_dir: @state_dir)
-      [previous.model_name, previous.model_typed]
+      choice = SessionContinue.model_for(previous, options[:model])
+      inherited = options[:model].to_s.strip.empty? && choice.warning.nil?
+      inherited ? [previous.model_name, previous.model_typed] : [choice.model, nil]
+    rescue ModelProfile::MissingModel => e
+      error_line("chi send: could not start a session: #{e.message}")
+      false
     rescue ArgumentError => e
       error_line("chi send: #{e.message}")
       false
