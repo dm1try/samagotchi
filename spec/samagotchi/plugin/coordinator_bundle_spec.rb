@@ -16,8 +16,8 @@ RSpec.describe "The coordinator plugin" do
   let(:source) { File.join(dir, "plugin.rb") }
   let(:ctx) do
     Class.new do
-      attr_reader :cards, :sent, :stopped, :children_asked
-      attr_accessor :session_id, :children, :send_error, :stop_error, :cwd
+      attr_reader :cards, :sent, :stopped, :children_asked, :toolkits_asked
+      attr_accessor :session_id, :children, :send_error, :stop_error, :cwd, :toolkit, :toolkit_refused, :declared_tools
 
       def initialize
         @cards = []
@@ -26,6 +26,17 @@ RSpec.describe "The coordinator plugin" do
         @children_asked = []
         @children = []
         @session_id = "aaaabbbb-1111-2222-3333-444455556666"
+        @toolkit = "full"
+        @declared_tools = %w[execute delegate]
+        @toolkits_asked = []
+      end
+
+      def use_toolkit(name)
+        @toolkits_asked << name
+        return false if toolkit_refused
+
+        @toolkit = name
+        true
       end
 
       def card(title:, body: "", actions: [], level: :info, id: nil)
@@ -58,6 +69,7 @@ RSpec.describe "The coordinator plugin" do
   end
 
   let(:inits) { [] }
+  let(:toolkits) { [] }
   # The plugin as the loader builds it: its file in a module of its own,
   # register(chi) collecting the commands and init tasks.
   let(:commands) do
@@ -65,7 +77,9 @@ RSpec.describe "The coordinator plugin" do
     mod.module_eval(File.read(source), source)
     found = {}
     tasks = inits
+    kits = toolkits
     chi = Object.new
+    chi.define_singleton_method(:toolkit) { |name, base:, add: [], remove: []| kits << [name, base, add, remove] }
     chi.define_singleton_method(:command) { |name, _description, anytime: false, &block| found[name] = [block, anytime] }
     chi.define_singleton_method(:init) { |label, quiet: false, **, &block| tasks << [label, quiet, block] }
     mod::Plugin.new({}).register(chi)
@@ -188,6 +202,36 @@ RSpec.describe "The coordinator plugin" do
     it "warns about nothing and checks nothing at load, without the guardrails bundle in auto mode (chi asks a child itself)" do
       expect(run("/coordinate", "do x")).to eq("asked chi to coordinate it; a running turn gets it at its next step")
       expect(inits).to be_empty
+    end
+
+    it "declares the coordinator toolkit: lean and the tools that run children" do
+      commands
+      expect(toolkits).to eq([["coordinator", "lean", %w[delegate delegate_result list_sessions], []]])
+    end
+
+    it "puts the session on the coordinator toolkit before it asks the model" do
+      expect(run("/coordinate", "do x")).to eq("asked chi to coordinate it; a running turn gets it at its next step")
+      expect(ctx.toolkits_asked).to eq(["coordinator"])
+      expect(ctx.toolkit).to eq("coordinator")
+      run("/coordinate", "end")
+      expect(ctx.toolkits_asked).to eq(["coordinator"])
+    end
+
+    it "says to run /toolkit coordinator when chi refused and the session has no delegate, and still asks" do
+      ctx.toolkit_refused = true
+      # A kit on full declares delegate whatever its name.
+      ctx.toolkit = "mine"
+      expect(run("/coordinate", "do x")).to eq("asked chi to coordinate it; a running turn gets it at its next step")
+      # full -delegate doesn't.
+      ctx.toolkit = "full"
+      ctx.declared_tools = %w[execute]
+      expect(run("/coordinate", "do y")).to start_with("This session's toolkit (full) has no delegate")
+      ctx.toolkit = "lean"
+      expect(run("/coordinate", "do y")).to eq(
+        "This session's toolkit (lean) has no delegate: run /toolkit coordinator to give it the coordinator's tools.\n" \
+        "asked chi to coordinate it; a running turn gets it at its next step"
+      )
+      expect(ctx.sent.size).to eq(3)
     end
 
     it "needs a goal" do

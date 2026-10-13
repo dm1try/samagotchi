@@ -564,6 +564,21 @@ end
 - Each task runs once per session start. A `-p … --non-interactive` run
   starts them with its turn and shows nothing but the answer.
 
+### `chi.toolkit(name, base:, add: [], remove: [])`
+
+A toolkit sessions can be put on: `base`'s tools (`full`, `lean`, `child`, a
+config or bundle toolkit) with `add` declared and `remove` left out. Users pick
+it like chi's own (`chi --toolkit NAME`, `toolkit.default`, `/toolkit NAME`),
+and the plugin with `ctx.use_toolkit` (below). Names are `a-z`, `0-9`, `_` and
+`-`; one chi has (`full`, `lean`, `child`) or another bundle declared is a
+load error. A session saved on a toolkit whose bundle is gone declares every
+tool (full) until it comes back, with a warning at its first turn. See
+[Toolkits](configuration.md#toolkits).
+
+```ruby
+chi.toolkit "review", base: "lean", add: %w[delegate delegate_result]
+```
+
 ### `chi.ctx`
 
 The plugin's context (the `ctx` its handlers get), for `register` itself:
@@ -616,6 +631,9 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
+| `ctx.toolkit` | the name of the session's toolkit (`full` for a session from before toolkits); nil with no session |
+| `ctx.declared_tools` | the tool names the session's next turn declares (its toolkit resolved, with its own adds and removes): ask this, not the name, whether a tool is there |
+| `ctx.use_toolkit(name)` | put the session on toolkit `name` (yours from `chi.toolkit`, or chi's): saved, applied at the next turn's start and announced (`toolkit> toolkit: NAME from the next turn's start`, the web's tools chip follows). Only before the session's first model reply and outside a turn (the declared tools start every request, and a plugin doesn't ask first); otherwise it returns false and changes nothing: tell the user to run `/toolkit NAME`. An unknown name raises ArgumentError. Needs chi 0.66.0 |
 | `ctx.context` | attach outside text to this session and list it: see [Attached context](#attached-context-ctxcontext) |
 
 The Engine itself is never handed to a plugin.
@@ -1538,6 +1556,13 @@ by themselves there.
   report ending with the `/coordinate resume <slug>` to pick it up next
   time. It starts, merges and stops nothing: running children stay running
   and are named in the report.
+- **The coordinator toolkit.** The bundle declares `coordinator`: `lean`
+  plus `delegate`, `delegate_result` and `list_sessions`
+  ([Toolkits](configuration.md#toolkits)). `/coordinate` puts a fresh session
+  on it before it asks the model (`ctx.use_toolkit`). When chi refuses (a reply
+  or a turn already there) and the session's toolkit has no `delegate`, the
+  reply says to run `/toolkit coordinator`. A continue of a coordinator link
+  keeps the toolkit.
 - **`/children [all]`** shows the session's children as a card, newest first,
   one line each: `` `ab12cd34` · running · fix/flaky · "fix the flaky spec" ``,
   `` `9a8b7c6d` · done · feat/x · reported · "All 12 specs pass" `` (`not

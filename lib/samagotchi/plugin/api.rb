@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../toolkit"
 require_relative "../log"
 require_relative "../hooks/registry"
 require_relative "../tools/args"
@@ -36,6 +37,7 @@ module Samagotchi
         @tools = []
         @services = []
         @inits = []
+        @toolkits = []
         @committed = false
       end
 
@@ -248,6 +250,29 @@ module Samagotchi
         nil
       end
 
+      TOOLKIT_NAME = /\A[a-z][a-z0-9_-]{0,31}\z/
+
+      # A named toolkit sessions can be put on (/toolkit NAME, chi --toolkit,
+      # toolkit.default, ctx.use_toolkit): +base+'s tools (a toolkit chi or
+      # a bundle has) with +add+ declared and +remove+ left out. A name chi
+      # (full, lean, child) or another bundle has is a load error; a base
+      # that doesn't resolve leaves the sessions on it with every tool
+      # (Toolkit#resolve).
+      def toolkit(name, base:, add: [], remove: [])
+        name = name.to_s
+        raise ArgumentError, "toolkit name #{name.inspect} must be a-z, 0-9, _ and -" unless name.match?(TOOLKIT_NAME)
+        raise ArgumentError, "this chi has no toolkits (plugins: false)" unless @registries.toolkits
+        if Toolkit::BUILTIN_KITS.key?(name)
+          raise ArgumentError, "toolkit #{name} is chi's own"
+        elsif (taken = @registries.toolkits.find { |kit| kit.name == name })
+          raise ArgumentError, "toolkit #{name} is already declared (#{taken.source})"
+        end
+        raise ArgumentError, "toolkit #{name} is declared twice" if @toolkits.any? { |kit| kit.name == name }
+
+        @toolkits << Toolkit::Kit.new(name: name, base: base, add: add, remove: remove, source: @bundle)
+        nil
+      end
+
       # Register what was staged. Called by Loader after #register. What
       # can only be checked now (an annotation's command) is checked before
       # anything is registered: a raise here leaves the registries as they were.
@@ -281,12 +306,13 @@ module Samagotchi
             block.call(context)
           end
         end
+        @registries.toolkits&.concat(@toolkits)
         @committed = true
       end
 
       # @return [Hash] how many of each it registered (for the log)
       def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,
-                     services: @services.size, inits: @inits.size }
+                     services: @services.size, inits: @inits.size, toolkits: @toolkits.size }
 
       # Each annotation's command is one #command staged.
       def check_annotations!

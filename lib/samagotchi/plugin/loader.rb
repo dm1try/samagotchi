@@ -16,9 +16,10 @@ module Samagotchi
     # (the Engine's system prompts); +services+ (Plugin::Services) is what
     # Engine#shutdown stops; +stage_tools+ is (bundle, specs, context),
     # chi.replace_tools' set, which the Engine applies on its turn thread;
-    # +init+ adds a chi.init task (Engine#add_init_task).
+    # +init+ adds a chi.init task (Engine#add_init_task); +toolkits+ is the
+    # Engine's list of the plugins' toolkits (chi.toolkit: Toolkit::Kit).
     Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, :services, :stage_tools, :init,
-                            keyword_init: true)
+                            :toolkits, keyword_init: true)
 
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})
     # into an Engine's registries (docs/plugins.md).

@@ -1,8 +1,8 @@
 ---
 name: coordinator
-version: 0.3.0
+version: 0.4.0
 scope: system
-description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, ask before each merge, a handoff memory to resume from), /coordinate <goal>, /coordinate resume, /coordinate end and /children"
+description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, ask before each merge, a handoff memory to resume from), /coordinate <goal>, /coordinate resume, /coordinate end and /children; the coordinator toolkit (lean + delegate, delegate_result, list_sessions)"
 trust_level: reviewed
 files:
   skill_coordinator.md:
@@ -10,6 +10,6 @@ files:
     description: "Coordinate parallel work: split it, delegate each task wait:false in its own worktree (cwd:), check each report, ask the user before each merge; resume from a handoff_* memory"
 plugin:
   file: plugin.rb
-  sha256: sha256:cc2986da0e734d2a5d6da2def682cc558c63c16e47b3605d55c597414027497d
-# the handoff memory needs memory_write's description-only form and remove: (0.36.0)
-requires_chi: ">= 0.36.0"
+  sha256: sha256:caaddd24fbec2c66fa0e88937478b7ec7799bac7c98d5dc7f71ffc3fc227953a
+# the coordinator toolkit needs chi.toolkit and ctx.use_toolkit (0.66.0)
+requires_chi: ">= 0.66.0"

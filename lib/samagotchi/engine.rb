@@ -1568,11 +1568,12 @@ module Samagotchi
     # (Web::Capabilities#editor), for a UI or a viewer that can't. A UI that
     # does leaves the line out; the others, the log among them, show it. An
     # unknown value is dropped, so the line shows everywhere.
-    def hook_notify(text, level, hook, fallback_for: nil)
+    # +extra+: more fields for the UIs (a toolkit change's summary).
+    def hook_notify(text, level, hook, fallback_for: nil, extra: {})
       level = (level || :info).to_sym
       level = :info unless %i[info warn].include?(level)
       notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level,
-                 fallback_for: notice_fallback(fallback_for, hook) }.compact
+                 fallback_for: notice_fallback(fallback_for, hook) }.compact.merge(extra)
       return @extension_load.hold(notice) && nil if @extension_load.loading?
 
       in_turn, sink = @turn_state.in_turn_sink
@@ -2674,7 +2675,8 @@ module Samagotchi
         init: lambda { |bundle, label, plugin_label, provides_tools:, quiet:, timeout:, failed: nil, &block|
           add_init_task(bundle: bundle, label: label, plugin_label: plugin_label, provides_tools: provides_tools,
                         quiet: quiet, timeout: timeout, failed: failed, &block)
-        }
+        },
+        toolkits: @plugin_kits
       )
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
@@ -2735,6 +2737,26 @@ module Samagotchi
       @session && toolkit_explained.summary
     end
     public :tools, :toolkit_kits, :resolved_toolkit, :toolkit_explained, :toolkit_summary
+
+    # A plugin's ctx.use_toolkit: put the session on toolkit +name+, saved,
+    # when it has no model reply yet and no turn runs (D3: no confirm from
+    # plugins), and tell the user as /toolkit would; it applies at the next
+    # turn's start.
+    # @return [Boolean] whether it was staged
+    # @raise [ArgumentError] an unknown toolkit
+    def use_toolkit(name)
+      raise ArgumentError, "no toolkit named #{name}" unless toolkit_kits.key?(name)
+      return false if @session.nil? || turn_running? || history?
+
+      toolkit = Toolkit.new(name: name)
+      return true if @session.toolkit == toolkit
+
+      @session.toolkit = toolkit
+      @session.save(state_dir: session_state_dir)
+      hook_notify("toolkit: #{name} from the next turn's start", :info, "toolkit", extra: { toolkit: toolkit_summary })
+      true
+    end
+    public :use_toolkit
 
     # Resolve the session's toolkit into the Registry, on the turn thread at
     # a turn's start (before its prompt is built), and build the prompts
@@ -2798,6 +2820,9 @@ module Samagotchi
         steer: ->(text, label) { steer(text, source: hook_source(label)) },
         stop_turn: ->(reason, label) { hook_stop_turn(reason, label) },
         stop_generation: ->(reason, label) { hook_stop_generation(reason, label) },
+        toolkit: -> { @session && Toolkit.of(@session.toolkit).name },
+        declared_tools: -> { toolkit_explained.declared.map(&:name) },
+        use_toolkit: ->(name) { use_toolkit(name) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
         },

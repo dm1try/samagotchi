@@ -31,6 +31,13 @@
 #
 # A child is asked before it changes anything outside its worktree by chi
 # itself (the core child-boundary guardrail), in every mode: nothing to set up.
+#
+# The coordinator toolkit is lean plus the tools that run children
+# (delegate, delegate_result, list_sessions). /coordinate puts the session
+# on it before it asks the model (ctx.use_toolkit), which chi allows only
+# before the session's first model reply and outside a turn: otherwise it
+# says to run /toolkit coordinator, unless the session declares delegate
+# anyway.
 class Plugin
   CARD_ID = "children"
   # A card takes 6 actions: Refresh and up to 5 Stops.
@@ -47,7 +54,11 @@ class Plugin
 
   def initialize(_settings = {}); end
 
+  TOOLKIT = "coordinator"
+  TOOLKIT_TOOLS = %w[delegate delegate_result list_sessions].freeze
+
   def register(chi)
+    chi.toolkit TOOLKIT, base: "lean", add: TOOLKIT_TOOLS
     chi.command "/children", "this session's child sessions: state, branch, last reply; all, stop <id>",
                 anytime: true do |args, ctx|
       children_command(args.to_s.strip, ctx)
@@ -179,12 +190,23 @@ class Plugin
   end
 
   def ask(ctx, request, done)
+    note = toolkit_note(ctx)
     begin
       ctx.sessions.send(ctx.session_id, request)
     rescue Samagotchi::Plugin::Sessions::Error => e
-      return "/coordinate: #{e.message}. Send this yourself:\n\n#{request}"
+      return [note, "/coordinate: #{e.message}. Send this yourself:\n\n#{request}"].compact.join("\n")
     end
-    done
+    [note, done].compact.join("\n")
+  end
+
+  # Puts the session on the coordinator toolkit (ctx.use_toolkit); nil when
+  # it is on it now, or chi refused but the session declares delegate
+  # anyway (its toolkit resolved: full, a kit on full), else the line that
+  # says how.
+  def toolkit_note(ctx)
+    return nil if ctx.toolkit == TOOLKIT || ctx.use_toolkit(TOOLKIT) || ctx.declared_tools.include?("delegate")
+
+    "This session's toolkit (#{ctx.toolkit}) has no delegate: run /toolkit #{TOOLKIT} to give it the coordinator's tools."
   end
 
   def quote(text)

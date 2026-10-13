@@ -29,9 +29,13 @@ module Samagotchi
     # (reason, label), each true when it acted on a running turn.
     # +frontend+ returns the Engine's interface (:repl, :worker,
     # :non_interactive), which ctx.frontend names for plugins.
+    # +toolkit+ returns the session's toolkit name, +declared_tools+ the
+    # tool names its next turn declares, +use_toolkit+ takes a name and
+    # returns whether it staged it (Engine#use_toolkit).
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
-                      :steer, :stop_turn, :stop_generation, :frontend, keyword_init: true)
+                      :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit,
+                      keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -108,6 +112,23 @@ module Samagotchi
       #   (`<name>.<key>.md`, ModelOverlay.key_for), as memory_write
       #   current_model_only names it
       def model_key = @host.model_key&.call
+
+      # @return [String, nil] the name of the session's toolkit ("full" for
+      #   one from before toolkits; nil with no session)
+      def toolkit = @host.toolkit&.call
+
+      # @return [Array<String>] the tools the session's next turn declares
+      #   (its toolkit resolved: a kit name says less than this)
+      def declared_tools = Array(@host.declared_tools&.call)
+
+      # Put the session on toolkit +name+ (a plugin's chi.toolkit, or
+      # chi's): only before the session's first model reply and never while
+      # a turn runs, since the declared tools start every request; it then
+      # applies at the next turn's start, and the user is told. Otherwise
+      # nothing changes and the plugin can say to run /toolkit NAME.
+      # @return [Boolean] whether it was staged
+      # @raise [ArgumentError] a toolkit no one declared
+      def use_toolkit(name) = !!@host.use_toolkit&.call(name.to_s)
 
       # Whether the session is a `chi scratch` one (deleted when it ends).
       def scratch? = !!@host.scratch&.call
