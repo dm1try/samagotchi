@@ -176,4 +176,86 @@ RSpec.describe Samagotchi::LLM::ProviderError do
         .to eq("unexpected response from host fw: malformed stream chunk: x")
     end
   end
+
+  describe "Anthropic error objects (by error.type, without a numeric code)" do
+    def anthropic(name) = File.read(File.expand_path("../fixtures/providers/anthropic/#{name}", __dir__))
+
+    def from_json(raw) = Samagotchi::LLM::ProviderErrors.from_error_json(raw, host: "msg")
+
+    def typed(type) = JSON.generate(type: "error", error: { type: type, message: "words" })
+
+    it "maps each Anthropic error type to its status and kind" do
+      expected = {
+        "invalid_request_error" => [400, Samagotchi::LLM::BadRequest],
+        "authentication_error" => [401, Samagotchi::LLM::AuthError],
+        "billing_error" => [402, Samagotchi::LLM::OutOfCredits],
+        "permission_error" => [403, Samagotchi::LLM::AuthError],
+        "not_found_error" => [404, Samagotchi::LLM::BadRequest],
+        "request_too_large" => [413, Samagotchi::LLM::BadRequest],
+        "rate_limit_error" => [429, Samagotchi::LLM::RateLimited],
+        "api_error" => [500, Samagotchi::LLM::ServerError],
+        "overloaded_error" => [529, Samagotchi::LLM::ServerError]
+      }
+
+      expected.each do |type, (status, klass)|
+        error = from_json(typed(type))
+        expect([type, error.status, error.class]).to eq([type, status, klass])
+      end
+    end
+
+    it "retries only the rate limit and the server's own failures" do
+      retried = %w[rate_limit_error api_error overloaded_error]
+      %w[invalid_request_error authentication_error billing_error permission_error not_found_error
+         request_too_large].each { |type| expect(from_json(typed(type))).not_to be_retryable, type }
+      retried.each { |type| expect(from_json(typed(type))).to be_retryable, type }
+    end
+
+    it "classifies a mid-stream error event by its type (overloaded: a retryable server error)" do
+      line = anthropic("stream_error.hand-written.sse").lines.find { |l| l.start_with?("data:") && l.include?('"error"') }
+      error = Samagotchi::LLM::ProviderErrors.from_sse_line(line.chomp, host: "msg")
+
+      expect(error).to be_a(Samagotchi::LLM::ServerError)
+      expect(error.status).to eq(529)
+      expect(error).to be_retryable
+      expect(error.summary).to eq("server error from host msg: HTTP 529: Overloaded")
+    end
+
+    it "maps Splash's unknown model (404 not_found_error) to a bad request, not retried, with or without the status" do
+      body = anthropic("splash_error_404_unknown_model.json")
+      by_status = Samagotchi::LLM::ProviderErrors.from_response(status: 404, body: body, host: "splash")
+
+      [by_status, from_json(body)].each do |error|
+        expect(error).to be_a(Samagotchi::LLM::BadRequest)
+        expect(error.status).to eq(404)
+        expect(error).not_to be_retryable
+        expect(error).not_to be_reasoning_refused
+      end
+      expect(by_status.summary).to eq("host splash rejected the request: HTTP 404: model no-such-model-p2b not found")
+    end
+
+    it "no longer retries an OpenAI-shaped invalid request whose code is not a number" do
+      raw = JSON.generate(error: { message: "Invalid value for 'n'", type: "invalid_request_error", param: "n", code: nil })
+      named = JSON.generate(error: { message: "bad", type: "invalid_request_error", code: "invalid_value" })
+
+      [raw, named].each do |body|
+        error = from_json(body)
+        expect(error).to be_a(Samagotchi::LLM::BadRequest)
+        expect(error.status).to eq(400)
+        expect(error).not_to be_retryable
+      end
+    end
+
+    it "keeps a numeric code first, and an unknown or missing type a retryable 500" do
+      expect(from_json(JSON.generate(error: { code: 503, type: "invalid_request_error", message: "x" })).status).to eq(503)
+      expect(from_json(JSON.generate(error: { code: "429", type: "api_error", message: "x" })).status).to eq(429)
+
+      [JSON.generate(error: { type: "server_error", code: nil, message: "x" }), JSON.generate(error: { message: "x" })]
+        .each do |body|
+          error = from_json(body)
+          expect(error).to be_a(Samagotchi::LLM::ServerError)
+          expect(error.status).to eq(500)
+          expect(error).to be_retryable
+        end
+    end
+  end
 end

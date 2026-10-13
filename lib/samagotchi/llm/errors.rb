@@ -28,7 +28,8 @@ module Samagotchi
     #   OverBudget       402 metadata.reason weight_exceeds_budget: the
     #                    request alone exceeds the key's budget; an
     #                    OutOfCredits, never retried
-    #   ServerError      5xx or a server's error event mid-stream
+    #   ServerError      5xx, or a mid-stream error event with no status or
+    #                    Anthropic error.type
     #   AuthError        401/403, or an API key variable that is not set
     #   BadRequest       other 4xx (a context overflow is one, whatever status;
     #                    so is a model that can't take tools)
@@ -294,6 +295,14 @@ module Samagotchi
       # Seconds to wait before retrying a CreditsHeld without a Retry-After.
       CREDITS_SETTLE_DELAY = 20.0
       RETRYABLE_SERVER_STATUSES = [500, 502, 503, 504, 529].freeze
+      # The HTTP status an Anthropic error.type stands for, for an error
+      # object that carries no numeric code (a Messages stream's error event,
+      # an OpenAI error whose code is null or a name).
+      ERROR_TYPE_STATUS = {
+        "invalid_request_error" => 400, "authentication_error" => 401, "billing_error" => 402,
+        "permission_error" => 403, "not_found_error" => 404, "request_too_large" => 413,
+        "rate_limit_error" => 429, "api_error" => 500, "overloaded_error" => 529
+      }.freeze
 
       module_function
 
@@ -360,14 +369,16 @@ module Samagotchi
       end
 
       # The ProviderError for a JSON error object, by its error.code (an HTTP
-      # status); 500 when it has none.
+      # status), else by its error.type (ERROR_TYPE_STATUS); 500 when it has
+      # neither.
       def from_error_json(raw, host:)
         parsed = parse_json(raw)
         error = parsed.is_a?(Hash) && parsed["error"].is_a?(Hash) ? parsed["error"] : parsed
         code = error.is_a?(Hash) ? error["code"] : nil
         code = code.to_i if code.is_a?(String) && code.match?(/\A\d{3}\z/)
-        status = code.is_a?(Integer) && code.between?(400, 599) ? code : 500
-        from_response(status: status, body: raw, host: host)
+        status = code if code.is_a?(Integer) && code.between?(400, 599)
+        status ||= ERROR_TYPE_STATUS[error["type"]] if error.is_a?(Hash)
+        from_response(status: status || 500, body: raw, host: host)
       end
 
       # The human part of an error body: error.message, message, error (a

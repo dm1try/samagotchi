@@ -28,6 +28,13 @@ and commands may change between minor versions. How releases are made:
 - Web: a message queued for after the running turn (and a command queued for its end) sits below the running turn's
   card instead of among its rows, and moves into the history after the turn's answer, also after a reload.
 
+### Fixed
+
+- A server error event or error body without a numeric code is classified by its `error.type`: an
+  `invalid_request_error` (with a null or named code, as OpenAI sends) fails at once instead of being retried as a
+  server error, and a `rate_limit_error` or `overloaded_error` keeps its kind. See docs/configuration.md, "Server
+  errors".
+
 ## [0.64.0] - 2026-10-13
 
 ### Added
