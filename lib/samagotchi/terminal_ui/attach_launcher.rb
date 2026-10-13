@@ -46,17 +46,23 @@ module Samagotchi
       # @param thinking [String, nil] --thinking as typed: a new session
       #   starts with it as its own level; a resumed or attached one's
       #   worker gets a /thinking, after those
+      # @param toolkit [Toolkit, nil] --toolkit/--tool/--no-tool: a new
+      #   session's toolkit (config's toolkit.default without); an existing
+      #   session keeps its own
+      # @param toolkit_flags [Array<String>] which of those were given, for
+      #   the line an existing session's run prints
       # @param state_dir [String, nil] where the sessions are (the default
       #   state dir by default): the worker's, for the attached loop too
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
-              memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], state_dir: nil)
+              memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
+              toolkit_flags: [], state_dir: nil)
         state_dir ||= Session.default_state_dir
         client = connect(attach: attach, shared: shared, resume: resume, model: model, state_dir: state_dir,
                          memories: memories, muted_memories: muted_memories, llm_context: llm_context, thinking: thinking,
-                         appended_prompt_files: appended_prompt_files)
+                         appended_prompt_files: appended_prompt_files, toolkit: toolkit, toolkit_flags: toolkit_flags)
         commands = []
         commands << "/model #{model}" if model && (attach || resume)
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
@@ -123,10 +129,12 @@ module Samagotchi
       # @return [BridgeClient] a client for the live Bridge of the session
       # @raise [Error]
       def connect(attach: nil, shared: false, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
-                  memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], err: $stderr)
+                  memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
+                  toolkit_flags: [], err: $stderr)
         sd = state_dir || Session.default_state_dir
         if attach || resume
-          warn_memory_flags_ignored(attach || resume, memories, muted_memories, err, appended_prompt_files: appended_prompt_files)
+          warn_memory_flags_ignored(attach || resume, memories, muted_memories, err, appended_prompt_files: appended_prompt_files,
+                                                                                     toolkit_flags: toolkit_flags)
         end
         if attach
           live = connect_existing(attach, sd)
@@ -143,7 +151,8 @@ module Samagotchi
                                                  memories: memories, muted_memories: muted_memories,
                                                  setup: SessionSetup.new(llm_context: llm_context.empty? ? nil : LLMContextOverride.update(nil, llm_context),
                                                                          thinking: Thinking.session_level(thinking),
-                                                                         appended_prompt_files: appended_prompt_files))
+                                                                         appended_prompt_files: appended_prompt_files,
+                                                                         toolkit: toolkit))
                   end
         client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
         client || raise(Error, "the worker for session #{session.id} did not start its Bridge in time")
@@ -159,14 +168,15 @@ module Samagotchi
       end
 
       # An existing session's prompt is built from its own session fields:
-      # --memory/--mute/--append-system-prompt given with --attach or
-      # --resume are ignored, with a line saying so (printed before the live
-      # region opens).
-      def warn_memory_flags_ignored(session_id, memories, muted_memories, err, appended_prompt_files: [])
+      # --memory/--mute/--append-system-prompt and the toolkit flags given
+      # with --attach or --resume are ignored, with a line saying so (printed
+      # before the live region opens).
+      def warn_memory_flags_ignored(session_id, memories, muted_memories, err, appended_prompt_files: [], toolkit_flags: [])
         flags = []
         flags << "--memory" unless Array(memories).empty?
         flags << "--mute" unless Array(muted_memories).empty?
         flags << "--append-system-prompt" unless Array(appended_prompt_files).empty?
+        flags.concat(toolkit_flags)
         return if flags.empty?
 
         verb = flags.size == 1 ? "applies" : "apply"

@@ -104,4 +104,13 @@ RSpec.describe Samagotchi::Toolkit do
     expect(described_class.cache_cost(%w[a b], %w[a b])).to be_nil
     expect(described_class.cache_cost(%w[a b], %w[a])).to eq(:full)
   end
+
+  it "builds a new session's toolkit from the flags, on config's default without --toolkit" do
+    expect(described_class.from_flags).to be_nil
+    expect(described_class.from_flags(name: "lean", add: ["delegate,send_note"], remove: ["send_note"]))
+      .to eq(described_class.new(name: "lean", add: ["delegate"], remove: ["send_note"]))
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("child")
+    expect(described_class.from_flags(add: ["delegate"])).to eq(described_class.new(name: "child", add: ["delegate"]))
+  end
 end

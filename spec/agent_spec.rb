@@ -304,6 +304,20 @@ file2.rb")
       expect(flagged.engine.session.toolkit).to eq(toolkit)
     end
 
+    it "keeps a resumed session's toolkit, with a line naming the toolkit flags given" do
+      stored = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd,
+                                               setup: Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "lean")))
+      stored.save
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(client).to receive(:complete).and_return("ok")
+      agent = described_class.new(prompt: "hi", client: client, session_id: stored.id, non_interactive: true,
+                                  toolkit: Samagotchi::Toolkit.new(name: "full", remove: ["web_fetch"]), toolkit_flags: ["--no-tool"])
+      expect { agent.run }.to output(a_string_including("(--no-tool applies to a new session; #{stored.id}'s prompt is already built)\n")).to_stderr
+      expect(Samagotchi::Session.load(stored.id).toolkit).to eq(Samagotchi::Toolkit.new(name: "lean"))
+    ensure
+      agent&.instance_variable_get(:@owner_lock)&.release
+    end
+
     it "gives the Engine a resumed session's appended files first, then the flag's, without saving the merge" do
       stored = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd,
                                                setup: Samagotchi::SessionSetup.new(appended_prompt_files: ["/r/a.md"]))

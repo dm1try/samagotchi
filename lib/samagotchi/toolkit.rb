@@ -157,6 +157,22 @@ module Samagotchi
       nil
     end
 
+    # A new session's toolkit from chi --toolkit NAME / --tool / --no-tool
+    # (each repeatable, a comma list too): NAME (config's toolkit.default
+    # without one) with those tools added and left out; nil when none was
+    # given. A tool in both is left out.
+    def self.from_flags(name: nil, add: [], remove: [])
+      add = split_names(add)
+      remove = split_names(remove)
+      return nil if name.to_s.strip.empty? && add.empty? && remove.empty?
+
+      base = name.to_s.strip.empty? ? configured.name : name
+      new(name: base, add: add - remove, remove: remove)
+    end
+
+    def self.split_names(values) = tool_names(Array(values).flat_map { |value| value.to_s.split(",") })
+    private_class_method :split_names
+
     # The toolkit a session is on: its own, or FULL without one.
     def self.of(toolkit) = toolkit || new(name: FULL)
 

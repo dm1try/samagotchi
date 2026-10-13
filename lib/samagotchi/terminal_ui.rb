@@ -99,12 +99,13 @@ module Samagotchi
     #   first, and the merge goes only to the Engine (as --memory's does)
     # @param toolkit [Toolkit, nil] --toolkit/--tool/--no-tool: a new
     #   session's toolkit (config's toolkit.default without); a resumed one
-    #   keeps its own
+    #   keeps its own, with a line naming +toolkit_flags+ (the flags given)
     def initialize(prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
                    spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {}, thinking: nil,
-                   appended_prompt_files: [], toolkit: nil)
+                   appended_prompt_files: [], toolkit: nil, toolkit_flags: [])
       @scratch        = scratch
       @toolkit        = toolkit
+      @toolkit_flags  = toolkit_flags
       @thinking_word  = thinking
       @prompt         = prompt
       @llm_context_words = llm_context
@@ -283,6 +284,7 @@ module Samagotchi
         session.thinking = Thinking.session_level(@thinking_word) if @thinking_word
         session.save if @resume_session
       end
+      warn_toolkit_flags_ignored(session) if @resume_session
       claim_session!(session.id) unless @owner_lock
       # A turn a worker died in (TurnCheckpoint): ended as canceled, with its
       # note, before this REPL's first turn appends after it.
@@ -717,6 +719,16 @@ module Samagotchi
       else :keep
       end
     end
+
+    # The toolkit flags are a new session's: a resumed one keeps its own
+    # toolkit (as attached mode says it, AttachLauncher).
+    def warn_toolkit_flags_ignored(session)
+      return if @toolkit_flags.empty?
+
+      names = @toolkit_flags.size > 1 ? "#{@toolkit_flags[0..-2].join(", ")} and #{@toolkit_flags.last}" : @toolkit_flags.first
+      warn "(#{names} #{@toolkit_flags.size == 1 ? "applies" : "apply"} to a new session; #{session.id}'s prompt is already built)"
+    end
+    private :warn_toolkit_flags_ignored
 
     private
 

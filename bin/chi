@@ -82,7 +82,7 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --memory --mute --append-system-prompt --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --memory --mute --append-system-prompt --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -119,6 +119,12 @@ parser = OptionParser.new do |opts|
   opts.on("--thinking LEVEL", Samagotchi::Thinking::LEVELS.map(&:to_s), "This session's own thinking level: off|low|medium|high|default (saved in the session, " \
                               "before the model's; default unsets it; /thinking changes it). With chi web: the default for the sessions " \
                               "its workers run, below a session's own [env SAMAGOTCHI_THINKING_LEVEL]") { |l| options[:thinking] = l }
+  opts.on("--toolkit NAME", "This session's toolkit, the tools its prompts declare: full|lean|child|a config or bundle one " \
+                           "(saved in the session; config toolkit.default; /toolkit changes it)") { |n| options[:toolkit] = n }
+  opts.on("--tool NAME", "Also declare this tool on top of the toolkit (repeatable; a comma list too)") { |t| (options[:tools] ||= []) << t }
+  # --no-tool is taken out of ARGV before parse! (OptionParser would read it
+  # as --tool's negation); this is its help line.
+  opts.separator "        --no-tool NAME               Leave this tool out of the toolkit (repeatable; a comma list too)"
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; a comma list too)") { |m| (options[:memories] ||= []) << m }
   opts.on("--append-system-prompt FILE", "Put FILE's text into the system prompt, after AGENTS.md (repeatable; saved in the session; " \
                                         "config append_system_prompt: is the baseline)") { |f| (options[:append_system_prompt] ||= []) << f }
@@ -170,6 +176,34 @@ parser = OptionParser.new do |opts|
   # Strict underscore rejection: --recap_base_url etc. are not registered and will raise OptionParser::InvalidOption
   opts.on("--version", "Print chi's version") { puts "chi #{Samagotchi::VERSION}"; exit }
   opts.on("-h", "--help", "Show help") { puts opts; exit }
+end
+# --no-tool NAME (or --no-tool=NAME), up to a "--". A flag that takes a
+# value (-p, --model …: the parser's own list) keeps its next word, so
+# `chi -p "--no-tool=x is broken"` is a prompt. A tool name never starts
+# with "-": `--no-tool --` or `--no-tool --model` is a missing argument.
+takes_value = parser.instance_variable_get(:@stack).flat_map do |list|
+  list.list.select { |switch| switch.is_a?(OptionParser::Switch::RequiredArgument) }.flat_map { |switch| switch.long + switch.short }
+end
+missing_no_tool = lambda do
+  warn "Error: missing argument: --no-tool (see chi --help)"
+  exit 1
+end
+index = 0
+while index < ARGV.size && ARGV[index] != "--"
+  arg = ARGV[index]
+  if arg == "--no-tool"
+    value = ARGV[index + 1]
+    missing_no_tool.call if value.nil? || value.start_with?("-")
+    (options[:no_tools] ||= []) << ARGV.delete_at(index + 1)
+    ARGV.delete_at(index)
+  elsif arg.start_with?("--no-tool=")
+    value = arg.delete_prefix("--no-tool=")
+    missing_no_tool.call if value.empty? || value.start_with?("-")
+    options[:no_tools] = (options[:no_tools] || []) << value
+    ARGV.delete_at(index)
+  else
+    index += takes_value.include?(arg) ? 2 : 1
+  end
 end
 begin
   parser.parse!
@@ -327,6 +361,17 @@ if options[:append_system_prompt]
   end.uniq
 end
 
+# --toolkit/--tool/--no-tool: a new session's toolkit, as named (the
+# worker resolves it; a bundle's toolkit isn't known here).
+if options[:toolkit] || options[:tools] || options[:no_tools]
+  require "samagotchi/toolkit"
+  # The flags as given, for the line an existing session's run prints.
+  options[:toolkit_flags] = [("--toolkit" if options[:toolkit]), ("--tool" if options[:tools]),
+                             ("--no-tool" if options[:no_tools])].compact
+  options[:toolkit_value] = Samagotchi::Toolkit.from_flags(name: options[:toolkit], add: options[:tools],
+                                                           remove: options[:no_tools])
+end
+
 chi_update_hint.call
 require "samagotchi/launch_mode"
 launch, launch_note = if scratch
@@ -361,7 +406,9 @@ if launch == :attached
                                                        muted_memories: options[:muted] || [],
                                                        llm_context: options[:llm_context] || {},
                                                        thinking: options[:thinking],
-                                                       appended_prompt_files: options[:appended_prompt_files] || [])
+                                                       appended_prompt_files: options[:appended_prompt_files] || [],
+                                                       toolkit: options[:toolkit_value],
+                                                       toolkit_flags: options[:toolkit_flags] || [])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1
@@ -381,6 +428,8 @@ begin
     llm_context: options[:llm_context] || {},
     thinking: options[:thinking],
     appended_prompt_files: options[:appended_prompt_files] || [],
+    toolkit: options[:toolkit_value],
+    toolkit_flags: options[:toolkit_flags] || [],
     non_interactive: options[:non_interactive],
     model_name: options[:model],
     scratch: scratch

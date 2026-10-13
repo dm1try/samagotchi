@@ -48,6 +48,18 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     end
   end
 
+  it "starts the session on --toolkit with --tool / --no-tool on top, and refuses them without --new" do
+    expect(run("--new", "--toolkit", "lean", "--tool", "delegate,list_sessions", "--no-tool", "web_fetch", "-m", "hi")).to eq(0), err.string
+    expect(spawned.last[:setup].toolkit)
+      .to eq(Samagotchi::Toolkit.new(name: "lean", add: %w[delegate list_sessions], remove: ["web_fetch"]))
+    expect(run("--new", "-m", "hi")).to eq(0), err.string
+    expect(spawned.last[:setup].toolkit).to be_nil
+    expect(run("--toolkit", "lean", "-m", "hi", "abcd")).to eq(2)
+    expect(err.string).to include("--toolkit needs --new")
+    expect(run("--no-tool", "web_fetch", "-m", "hi", "abcd")).to eq(2)
+    expect(err.string).to include("--no-tool needs --new")
+  end
+
   it "starts the session with its own --thinking level, none for default, and refuses one that isn't a level" do
     expect(run("--new", "--thinking", "Low", "-m", "hi")).to eq(0), err.string
     expect(spawned.last[:setup]).to eq(Samagotchi::SessionSetup.new(thinking: :low))
@@ -164,10 +176,12 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(run("--continues", previous.id, "-m", "x", "3fa2")).to eq(2)
       expect(err.string).to include("--continues needs --new")
       expect(run("--new", "--continues", previous.id, "--model", "M", "--llm-context", "stale", "-m", "x")).to eq(2)
-      expect(err.string).to include("--continues takes the previous session's folder, model, LLM context and thinking level; " \
-                                    "leave out --model, --llm-context")
+      expect(err.string).to include("--continues takes the previous session's folder, model, LLM context, thinking level and " \
+                                    "toolkit; leave out --model, --llm-context")
       expect(run("--new", "--continues", previous.id, "--thinking", "low", "-m", "x")).to eq(2)
       expect(err.string).to include("leave out --thinking")
+      expect(run("--new", "--continues", previous.id, "--toolkit", "lean", "--tool", "delegate", "-m", "x")).to eq(2)
+      expect(err.string).to include("leave out --toolkit, --tool")
       expect(run("--new", "--continues", previous.id, "--wait")).to eq(2)
       expect(err.string).to include("--wait needs a message to wait for")
       expect(links).to be_empty

@@ -108,6 +108,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
         .with(hash_including(setup: Samagotchi::SessionSetup.new(appended_prompt_files: ["/r/a.md"])))
     end
 
+    it "starts a new session on its --toolkit, and ignores it for an existing one with a line" do
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
+      allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      toolkit = Samagotchi::Toolkit.new(name: "lean", add: ["delegate"])
+      err = StringIO.new
+
+      connect(shared: true, toolkit: toolkit, toolkit_flags: %w[--toolkit --tool])
+      connect(attach: session.id, toolkit: toolkit, toolkit_flags: %w[--toolkit --tool], err: err)
+      connect(attach: session.id, toolkit: toolkit, toolkit_flags: %w[--no-tool], err: err)
+
+      expect(Samagotchi::SessionManager).to have_received(:spawn_session)
+        .with(hash_including(setup: Samagotchi::SessionSetup.new(toolkit: toolkit))).once
+      expect(err.string).to eq("(--toolkit and --tool apply to a new session; #{session.id}'s prompt is already built)\n" \
+                               "(--no-tool applies to a new session; #{session.id}'s prompt is already built)\n")
+    end
+
     it "ignores --append-system-prompt for an existing session, with --memory and --mute's line" do
       allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
       allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
@@ -175,7 +193,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
     allow(described_class).to receive(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [],
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil, toolkit_flags: [],
             state_dir: Samagotchi::Session.default_state_dir)
       .and_return(client)
     allow(described_class).to receive(:open_surface).and_return(surface)
@@ -243,7 +261,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     # Only a new session with no -p gets the default input.
     expect(default_inputs).to eq([false, false, true])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [],
+      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil, toolkit_flags: [],
             state_dir: Samagotchi::Session.default_state_dir)
   end
 
@@ -265,7 +283,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     expect(commands).to eq([["/model qwen_moe", "/llm-context strategy stale,forget budget 64k"],
                             "/llm-context apply turn_end", nil])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words, thinking: nil, appended_prompt_files: [],
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words, thinking: nil, appended_prompt_files: [], toolkit: nil, toolkit_flags: [],
             state_dir: Samagotchi::Session.default_state_dir)
   end
 end
@@ -288,7 +306,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, "--thinking" do
     # --yes: the flag is the user's choice, so a costly change doesn't ask (and the launch doesn't wait on it).
     expect(commands).to eq([["/model qwen_moe", "/llm-context apply turn_end", "/thinking low --yes"], "/thinking default --yes", nil])
     expect(described_class).to have_received(:connect)
-      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: "high", appended_prompt_files: [],
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: "high", appended_prompt_files: [], toolkit: nil, toolkit_flags: [],
             state_dir: Samagotchi::Session.default_state_dir)
   end
 

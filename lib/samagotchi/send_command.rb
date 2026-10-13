@@ -39,7 +39,7 @@ module Samagotchi
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
-             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [-m TEXT] [--image PATH]...
+             chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [--toolkit NAME] [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --queue --wait [--timeout S] [--format json] [-m TEXT] ID
@@ -63,8 +63,8 @@ module Samagotchi
                     the current one
         --continues ID
                     (--new) start the next link of that session's chain:
-                    in its folder, on its model, LLM context and
-                    thinking level, with a note carrying its recap; it
+                    in its folder, on its model, LLM context,
+                    thinking level and toolkit, with a note carrying its recap; it
                     is archived. last:ID names the chain's latest link.
                     Without -m the new session waits idle. Refused for a
                     session continued already (naming the next link) or
@@ -77,6 +77,11 @@ module Samagotchi
                     (--new) its own thinking level (off, low, medium,
                     high; default: none of its own), above a process
                     default such as SAMAGOTCHI_THINKING_LEVEL
+        --toolkit NAME, --tool NAME, --no-tool NAME
+                    (--new) its toolkit, the tools its prompts declare
+                    (full, lean, child, a config or bundle one; default
+                    config's toolkit.default), and tools declared on top
+                    of it or left out (repeatable, a comma list too)
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
                     answer from you: the question, its options and the
@@ -126,6 +131,9 @@ module Samagotchi
       f.value "--llm-context-apply", key: :llm_apply
       f.value "--llm-context-budget", key: :llm_budget
       f.value "--thinking"
+      f.value "--toolkit"
+      f.value "--tool", key: :tools, repeat: true
+      f.value "--no-tool", key: :no_tools, repeat: true
       f.value "--image", key: :images, repeat: true
       f.switch "--wait"
       f.switch "--cut"
@@ -262,7 +270,8 @@ module Samagotchi
       return usage_error("at most #{MAX_IMAGES} images") if options[:images].size > MAX_IMAGES
       return new_options(options) if options[:new]
 
-      %i[dir model continues thinking].each { |key| return usage_error("--#{key} needs --new") if options[key] }
+      %i[dir model continues thinking toolkit].each { |key| return usage_error("--#{key} needs --new") if options[key] }
+      TOOLKIT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") unless Array(options[key]).empty? }
       LLM_CONTEXT_FLAGS.each { |key, flag| return usage_error("#{flag} needs --new") if options[key] }
       return usage_error("give session ids") if options[:ids].empty?
 
@@ -273,15 +282,19 @@ module Samagotchi
     LLM_CONTEXT_FLAGS = { llm_strategy: "--llm-context", llm_apply: "--llm-context-apply",
                           llm_budget: "--llm-context-budget" }.freeze
     LLM_CONTEXT_FIELDS = { llm_strategy: :strategy, llm_apply: :apply, llm_budget: :budget_tokens }.freeze
+    # --tool / --no-tool's option keys.
+    TOOLKIT_FLAGS = { tools: "--tool", no_tools: "--no-tool" }.freeze
 
     def new_options(options)
       return usage_error("--new takes no session ids: it starts one session") unless options[:ids].empty?
 
       if options[:continues]
         taken = [("--dir" if options[:dir]), ("--model" if options[:model])] +
-                LLM_CONTEXT_FLAGS.filter_map { |key, flag| flag if options[key] } + [("--thinking" if options[:thinking])]
+                LLM_CONTEXT_FLAGS.filter_map { |key, flag| flag if options[key] } + [("--thinking" if options[:thinking])] +
+                [("--toolkit" if options[:toolkit])] + TOOLKIT_FLAGS.filter_map { |key, flag| flag unless Array(options[key]).empty? }
         unless taken.compact.empty?
-          return usage_error("--continues takes the previous session's folder, model, LLM context and thinking level; " \
+          return usage_error("--continues takes the previous session's folder, model, LLM context, thinking level and " \
+                             "toolkit; " \
                              "leave out #{taken.compact.join(", ")}")
         end
       end
@@ -301,6 +314,8 @@ module Samagotchi
 
         options[:thinking] = Thinking.session_level(word)
       end
+      toolkit = Toolkit.from_flags(name: options[:toolkit], add: options[:tools], remove: options[:no_tools])
+      options[:toolkit_value] = toolkit if toolkit
 
       if options[:dir]
         options[:dir] = File.expand_path(options[:dir])
@@ -348,7 +363,8 @@ module Samagotchi
                     SessionManager.spawn_session(**start, working_directory: options[:dir],
                                                           model_name: options[:model],
                                                           setup: SessionSetup.new(llm_context: options[:llm_context],
-                                                                                  thinking: options[:thinking]),
+                                                                                  thinking: options[:thinking],
+                                                                                  toolkit: options[:toolkit_value]),
                                                           state_dir: @state_dir)
                   end
       rescue SessionContinue::Refused, SessionManager::ArchiveRefused, SessionManager::OwnedByTUI => e
