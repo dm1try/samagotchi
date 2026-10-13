@@ -28,6 +28,9 @@ and commands may change between minor versions. How releases are made:
 - Web: a switch starts the open session's page state over: a "copied ✓" on the info bar no longer carries into the
   next session, a Restart under way in one session no longer blocks Restart in another, and a worker woken after a
   failed load streams from its start, not from the previous session's cursor.
+- Web: a send stays with the session it was sent from: switching sessions while its images upload no longer sends the
+  prompt into the other session, and an image whose send failed in one session is uploaded again when it is sent to
+  another (it was refused there as an unknown image).
 
 ## [0.66.0] - 2026-10-14
 

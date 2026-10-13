@@ -2,7 +2,7 @@ import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipName, chipsTemplate, imageFiles, imageUrl, restoredChips, thumbsTemplate, turnRefs, turnText,
+  chipName, chipsTemplate, imageFiles, imageUrl, restoredChips, thumbsTemplate, turnRefs, turnText, uploadChips,
 } from "../../../lib/samagotchi/web/public/images.js";
 import { createIdleSession, sendTurn, uploadImage } from "../../../lib/samagotchi/web/public/data.js";
 import { promptOps, snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
@@ -80,7 +80,7 @@ test("a failed prompt of this tab gives its images back as chips", () => {
   const event = { type: "prompt_restored", prompt: "look", images: [REF], origin: { client_id: ME, enqueued_id: "e1" } };
   const action = restoreAction(event, { myId: ME, sentIds: new Set(["e1"]), composerEmpty: true });
   assert.deepEqual(action.images, [REF]);
-  assert.deepEqual(restoredChips("s1", action.images), [{ name: "shot.png", ref: REF, src: "/api/sessions/s1/images/0123456789abcdef.png" }]);
+  assert.deepEqual(restoredChips("s1", action.images), [{ name: "shot.png", ref: REF, session: "s1", src: "/api/sessions/s1/images/0123456789abcdef.png" }]);
   const other = restoreAction({ ...event, origin: { client_id: "tui:1" } }, { myId: ME, sentIds: new Set(), composerEmpty: true });
   assert.equal(other.images, undefined);
 });
@@ -110,4 +110,61 @@ test("chipsTemplate drawn again after a chip is removed: the rest, numbered from
   assert.deepEqual([...el.querySelectorAll(".chip")].map((c) => [c.dataset.index, c.querySelector(".chip-name").textContent, c.querySelector("img").getAttribute("src")]),
     [["0", "a.png", "blob:a"], ["1", "c.png", "blob:c"]]);
   assert.deepEqual([...el.querySelectorAll(".chip-remove")].map((b) => [b.dataset.index, b.getAttribute("aria-label")]), [["0", "remove a.png"], ["1", "remove c.png"]]);
+});
+
+// A chip's upload is a ref into one session's image store: sending it to
+// another (the page switched since a failed send) uploads it there again.
+function uploader() {
+  const calls = [];
+  let n = 0;
+  const upload = async (id, file, name) => {
+    calls.push([id, file, name]);
+    n += 1;
+    return { file: `images/${id}-${n}.png`, name };
+  };
+  return { calls, upload };
+}
+
+test("uploadChips uploads the new chips to the session it sends to", async () => {
+  const u = uploader();
+  const chips = [{ file: "F1", name: "a.png" }];
+  await uploadChips(chips, "s1", { upload: u.upload });
+  assert.deepEqual(u.calls, [["s1", "F1", "a.png"]]);
+  assert.deepEqual(chips[0].ref, { file: "images/s1-1.png", name: "a.png" });
+  assert.equal(chips[0].session, "s1");
+});
+
+test("uploadChips keeps a ref of the same session (no second upload)", async () => {
+  const u = uploader();
+  const chips = [{ file: "F1", name: "a.png", ref: REF, session: "s1" }];
+  await uploadChips(chips, "s1", { upload: u.upload });
+  assert.deepEqual(u.calls, []);
+  assert.equal(chips[0].ref, REF);
+});
+
+test("uploadChips uploads a chip of another session again, to this one", async () => {
+  const u = uploader();
+  const chips = [{ file: "F1", name: "a.png", ref: REF, session: "s1" }];
+  await uploadChips(chips, "s2", { upload: u.upload });
+  assert.deepEqual(u.calls, [["s2", "F1", "a.png"]]);
+  assert.deepEqual(chips[0].ref, { file: "images/s2-1.png", name: "a.png" });
+  assert.equal(chips[0].session, "s2");
+  assert.deepEqual(turnRefs(chips), [{ file: "images/s2-1.png", name: "a.png" }]);
+});
+
+test("uploadChips fetches a restored chip's image (it has no file) to upload it to another session", async () => {
+  const u = uploader();
+  const fetched = [];
+  const fetchFile = async (src, name) => {
+    fetched.push([src, name]);
+    return "FETCHED";
+  };
+  const chips = restoredChips("s1", [REF]);
+  assert.equal(chips[0].session, "s1");
+  await uploadChips(chips, "s1", { upload: u.upload, fetchFile });
+  assert.deepEqual(u.calls, []);
+  await uploadChips(chips, "s2", { upload: u.upload, fetchFile });
+  assert.deepEqual(fetched, [["/api/sessions/s1/images/0123456789abcdef.png", "shot.png"]]);
+  assert.deepEqual(u.calls, [["s2", "FETCHED", "shot.png"]]);
+  assert.equal(chips[0].session, "s2");
 });
