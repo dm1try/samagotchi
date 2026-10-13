@@ -191,6 +191,25 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
       expect(names).to eq(["get_weather___parameter"] * 2)
     end
 
+    it "maps a saved tool_use block's id the way its tool_result's is (a provider's id may be invalid to send)" do
+      answer
+      messages = [
+        { role: "user", content: "go" },
+        { role: "assistant", content: nil,
+          anthropic_content: [{ "type" => "thinking", "thinking" => "t", "signature" => "" },
+                              { "type" => "tool_use", "id" => "functions.get_weather:0", "name" => "get_weather",
+                                "input" => { "city" => "Paris" } }] },
+        { role: "tool", content: "12C", tool_call_id: "functions.get_weather:0" }
+      ]
+
+      chat(messages)
+
+      used = sent["messages"][1]["content"].last["id"]
+      expect(used).to match(/\A[a-zA-Z0-9_-]+\z/)
+      expect(sent["messages"][2]["content"].first["tool_use_id"]).to eq(used)
+      expect(sent["messages"][1]["content"].first).to eq("type" => "thinking", "thinking" => "t", "signature" => "")
+    end
+
     it "splits the system prompt at cache_split (the breakpoint on its stable part) and follows cache.ttl" do
       answer
       allow(Samagotchi::Config).to receive(:get).and_call_original

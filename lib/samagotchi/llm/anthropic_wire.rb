@@ -134,7 +134,7 @@ module Samagotchi
       # text, then the calls.
       def assistant_blocks(message)
         saved = message[:anthropic_content]
-        return saved.map { |block| valid_name(block) } if saved.is_a?(Array) && !saved.empty?
+        return saved.map { |block| valid_tool_use(block) } if saved.is_a?(Array) && !saved.empty?
 
         blocks = content_blocks(message[:content])
         Array(message[:tool_calls]).each do |raw|
@@ -146,13 +146,16 @@ module Samagotchi
         blocks
       end
 
-      # A saved block as it came, but a tool_use's name made valid.
-      def valid_name(block)
+      # A saved block as it came, but a tool_use's name made valid and its
+      # id mapped as its tool_result's is (#tool_id: a provider may answer
+      # an id such as "functions.get_weather:0", which Messages refuses
+      # sent back, and the result would name another id).
+      def valid_tool_use(block)
         return block.dup unless block.is_a?(Hash) && type_of(block) == "tool_use"
 
-        key = block.key?("name") ? "name" : :name
-        name = block[key].to_s
-        name.match?(TOOL_NAME) ? block.dup : block.merge(key => tool_name(name))
+        name_key = block.key?("name") ? "name" : :name
+        id_key = block.key?("id") ? "id" : :id
+        block.merge(name_key => tool_name(block[name_key]), id_key => tool_id(block[id_key]))
       end
 
       # A tool call's arguments as the input object: ChatLoop sends a JSON
@@ -229,7 +232,7 @@ module Samagotchi
       def scrub(text) = Utf8Scrub.call(text)
 
       private_class_method :append, :system_blocks, :assistant_blocks, :input_of, :warn_arguments, :tool_result,
-                           :content_blocks, :image_block, :mark_last, :valid_name, :type_of, :text_block, :blank?, :scrub
+                           :content_blocks, :image_block, :mark_last, :valid_tool_use, :type_of, :text_block, :blank?, :scrub
     end
   end
 end
