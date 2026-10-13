@@ -30,6 +30,7 @@ module Samagotchi
 
       API_VERSION = "2023-06-01"
       DEFAULT_MODELS_TTL = 60
+      MAX_MODEL_PAGES = 20
       # How much of a 200's non-stream body is read as a possible JSON error.
       PLAIN_ERROR_LIMIT = 64 * 1024
       # max_tokens when default.max_tokens is unset and the model list names
@@ -108,14 +109,34 @@ module Samagotchi
         end
       end
 
-      # @return [Array<ModelInfo>] the host's models
+      # The host's models, every page: GET {base}/v1/models with
+      # limit=1000 and after_id paging (has_more/last_id). Anthropic's shape
+      # (max_input_tokens, max_tokens, capabilities) and the OpenAI shape a
+      # gateway or Splash serves here are both read (ModelListing).
+      # @return [Array<ModelInfo>]
       def list_models
-        uri = URI("#{@base_url}/v1/models")
-        body = parse_json(@http.fetch(uri, Net::HTTP::Get.new(uri), log_fields: { purpose: "models" }).body, "model list")
-        model_entries(body).map { |raw| model_info(raw) }
+        models = []
+        after = nil
+        MAX_MODEL_PAGES.times do
+          query = URI.encode_www_form({ limit: 1000, after_id: after }.compact)
+          uri = URI("#{@base_url}/v1/models?#{query}")
+          body = parse_json(@http.fetch(uri, Net::HTTP::Get.new(uri), log_fields: { purpose: "models" }).body, "model list")
+          models.concat(model_entries(body).map { |raw| model_info(raw) })
+          break unless body.is_a?(Hash) && body["has_more"] && body["last_id"]
+
+          after = body["last_id"].to_s
+        end
+        models
       end
 
       private
+
+      # Anthropic lists the window as max_input_tokens; else the fields an
+      # OpenAI-shaped list carries.
+      def window_of(raw)
+        window = raw["max_input_tokens"]
+        window.is_a?(Integer) && window.positive? ? window : super
+      end
 
       def timeouts(timeout, open_limit = nil)
         open_timeout = Samagotchi::Config.positive_seconds("server.open_timeout")

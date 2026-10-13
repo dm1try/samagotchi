@@ -426,6 +426,37 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
     end
   end
 
+  describe "#list_models" do
+    it "reads Anthropic's list page by page (limit, after_id), its window, max_tokens and image input" do
+      server.enqueue("/v1/models", json: fixture("models_page1.hand-written.json"))
+      server.enqueue("/v1/models", json: fixture("models_page2.hand-written.json"))
+
+      models = adapter.list_models
+
+      expect(models.map(&:id)).to eq(%w[claude-opus-5-5 claude-sonnet-5-5 claude-haiku-4-5-20251001])
+      expect(models.map(&:context_window)).to eq([1_000_000, 1_000_000, 200_000])
+      expect(models.map(&:image_input)).to eq([true, true, true])
+      expect(models.last.raw["max_tokens"]).to eq(64_000)
+      queries = server.requests.select { |r| r.path == "/v1/models" }.map { |r| r.query_string }
+      expect(queries).to eq(["limit=1000", "limit=1000&after_id=claude-sonnet-5-5"])
+    end
+
+    it "reads Splash's OpenAI-shaped list (context_length, input_modalities), and answers the window and vision" do
+      server.default("/v1/models", json: fixture("splash_models.json"))
+      id = "mlx-community/Qwen3.6-35B-A3B-4bit"
+
+      expect(adapter.list_models.map(&:id)).to eq([id])
+      expect(adapter.context_window(model: id)).to eq(262_144)
+      expect(adapter.image_input(model: id)).to be(true)
+    end
+
+    it "says image input false when Anthropic's capabilities say so" do
+      server.default("/v1/models", json: { data: [{ id: "txt", max_input_tokens: 9, capabilities: { image_input: { supported: false } } }] })
+
+      expect(adapter.image_input(model: "txt")).to be(false)
+    end
+  end
+
   describe "#thinking_fields" do
     it "maps chi's levels: default nothing, off disabled, an effort adaptive + summarized at that effort" do
       expect(adapter.thinking_fields(:default)).to eq({})

@@ -4,15 +4,22 @@ module Samagotchi
   module LLM
     # A model a host lists. Unknown fields are nil.
     ModelInfo = Data.define(:id, :context_window, :supports_tools, :raw) do
-      # true when the list says the model takes images (OpenRouter's
-      # architecture.input_modalities, llama.cpp's "multimodal" capability),
-      # false when it lists input modalities without "image", else nil.
+      # true when the list says the model takes images, false when it says
+      # it doesn't, else nil: OpenRouter's architecture.input_modalities,
+      # Anthropic's capabilities.image_input.supported, Splash's top-level
+      # input_modalities or vision, llama.cpp's "multimodal" capability.
       def image_input
         return nil unless raw.is_a?(Hash)
 
         modalities = raw.dig("architecture", "input_modalities")
         return modalities.include?("image") if modalities.is_a?(Array)
-        return true if Array(raw["capabilities"]).include?("multimodal")
+
+        capabilities = raw["capabilities"]
+        supported = capabilities.dig("image_input", "supported") if capabilities.is_a?(Hash)
+        return supported if [true, false].include?(supported)
+        return raw["input_modalities"].include?("image") if raw["input_modalities"].is_a?(Array)
+        return raw["vision"] if [true, false].include?(raw["vision"])
+        return true if capabilities.is_a?(Array) && capabilities.include?("multimodal")
 
         nil
       end

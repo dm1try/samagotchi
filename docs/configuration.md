@@ -326,6 +326,10 @@ cache reads and writes into the prompt (so `/stats` shows them). Without `defaul
 model list's `max_tokens` capped at 64000, else 64000 (Messages requires one). chi's OpenAI-only request fields are
 never sent there; `sampling:` passes as written.
 
+Its model list is `GET {url}/v1/models` (every page): Anthropic's shape (the window from `max_input_tokens`, images
+from `capabilities.image_input`) or the OpenAI shape a gateway or Splash serves there. A gateway whose list lacks an
+id (a high-availability alias) takes it from the host's declared `models:`, as on any host.
+
 To manually verify a live chat-loop tool round trip, run the gated integration
 spec. It requires the model to call `execute` and return the current UTC date:
 

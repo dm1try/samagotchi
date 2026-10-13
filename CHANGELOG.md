@@ -34,6 +34,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- A Splash model's vision comes from its model list (`vision`, top-level `input_modalities`) instead of reading
+  "unknown", on `api: openai` and `api: anthropic` hosts.
+
 - Web: a message queued for after the running turn (and a command queued for its end) sits below the running turn's
   card instead of among its rows, and moves into the history after the turn's answer, also after a reload.
 

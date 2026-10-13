@@ -22,7 +22,7 @@ class FakeProviderServer
   # One directory per api (openai, llamacpp, ...).
   FIXTURES_ROOT = File.expand_path("../fixtures/providers", __dir__)
 
-  Request = Struct.new(:method, :path, :headers, :body, keyword_init: true) do
+  Request = Struct.new(:method, :path, :headers, :body, :query_string, keyword_init: true) do
     def json
       JSON.parse(body.to_s)
     end
@@ -176,7 +176,8 @@ class FakeProviderServer
 
   def record(req)
     headers = req.header.transform_values { |values| values.join(", ") }
-    request = Request.new(method: req.request_method, path: req.path, headers: headers, body: req.body.to_s)
+    request = Request.new(method: req.request_method, path: req.path, headers: headers, body: req.body.to_s,
+                          query_string: req.query_string)
     @mutex.synchronize { @requests << request }
   end
 end

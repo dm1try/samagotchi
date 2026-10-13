@@ -55,10 +55,13 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
         { id: "vis", architecture: { input_modalities: %w[text image] } },
         { id: "txt", architecture: { input_modalities: %w[text] } },
         { id: "local", capabilities: %w[completion multimodal] },
-        { id: "plain" }
+        { id: "plain" },
+        { id: "splash", vision: true, input_modalities: %w[text image pdf] },
+        { id: "splash-txt", vision: false }
       ] })
 
-      expect(%w[vis txt local plain nope].map { |m| adapter.image_input(model: m) }).to eq([true, false, true, nil, nil])
+      expect(%w[vis txt local plain nope splash splash-txt].map { |m| adapter.image_input(model: m) })
+        .to eq([true, false, true, nil, nil, true, false])
     end
 
     it "answers nil when the listing fails" do
