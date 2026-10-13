@@ -235,6 +235,13 @@ RSpec.describe Samagotchi::SelfReport do
       expect(@probed).to eq([])
     end
 
+    it "names a Messages host's dialect on the loop line" do
+      write_config("#{two_hosts}  fw:\n    url: https://fw.example.test/inference\n    api: anthropic\n    dialect: fireworks\n")
+      env.merge!("SAMAGOTCHI_SESSION_MODEL" => "fw:kimi", "SAMAGOTCHI_PARENT_SESSION" => "abcd1234ef")
+
+      expect(field("loop")).to eq("chat (api: anthropic, dialect: fireworks)")
+    end
+
     it "says when the session runs the default" do
       env.merge!("SAMAGOTCHI_SESSION_MODEL" => "main:spec-model", "SAMAGOTCHI_PARENT_SESSION" => "abcd1234ef")
       expect(field("model")).to eq("main:spec-model (this session abcd1234, the default)")

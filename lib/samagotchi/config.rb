@@ -279,7 +279,7 @@ module Samagotchi
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
-      "hosts" => %w[host port url transport api api_key_env auth profile first_token_timeout vision sampling thinking
+      "hosts" => %w[host port url transport api api_key_env auth dialect profile first_token_timeout vision sampling thinking
                     reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
       "models" => %w[profile vision sampling thinking reasoning_history window_tokens steer_cut_after llm_context_strategy llm_context_apply
                      llm_context_budget_tokens].freeze

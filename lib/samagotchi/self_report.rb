@@ -269,7 +269,9 @@ module Samagotchi
       entry = HostRegistry.new(env: env).resolve(model).entry
       return "-" unless entry
 
-      entry.chat? ? "chat (api: #{entry.api})" : "native (raw prompt)"
+      return "native (raw prompt)" unless entry.chat?
+
+      entry.dialect ? "chat (api: #{entry.api}, dialect: #{entry.dialect})" : "chat (api: #{entry.api})"
     end
 
     NO_PROPS = "reported per turn (the server has no /props)"

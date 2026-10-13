@@ -4,6 +4,7 @@ require "uri"
 require_relative "config"
 require_relative "host_model"
 require_relative "llm_context_strategy"
+require_relative "llm/dialect"
 require_relative "reasoning_history"
 
 module Samagotchi
@@ -16,10 +17,11 @@ module Samagotchi
   # name: the lowercased entry name; host, port, scheme: where it is (from
   # url: when given); url: the configured url, nil when host/port; transport,
   # api: symbols, nil when unset; auth: the header the API key goes in
-  # (LLM::ApiKey::SCHEMES), nil when unset; the rest as
+  # (LLM::ApiKey::SCHEMES), nil when unset; dialect: an api: anthropic
+  # host's LLM::Dialect name, nil when unset; the rest as
   # HostRegistry::HostEntry describes them, nil when unset; models:
   # {downcased id => HostModel}.
-  HostConfig = Data.define(:name, :host, :port, :scheme, :url, :transport, :api, :api_key_env, :auth, :profile,
+  HostConfig = Data.define(:name, :host, :port, :scheme, :url, :transport, :api, :api_key_env, :auth, :dialect, :profile,
                            :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models) do
@@ -86,6 +88,7 @@ module Samagotchi
 
       kinds = parse_kinds(name, value.call(:transport), value.call(:api)) or return nil
       location = parse_location(name, value, api: kinds[:api]) or return nil
+      fields[:dialect] = LLM::Dialect.parse(value.call(:dialect), where, api: kinds[:api])
       new(name: name.downcase, **location, **kinds, **fields)
     rescue StandardError => e
       # One entry that trips a reader is dropped on its own, and said so;
@@ -185,7 +188,7 @@ module Samagotchi
     def to_env_h
       location = url ? { "url" => url } : { "host" => host, "port" => port }
       location.merge("transport" => transport&.to_s, "api" => api&.to_s, "api_key_env" => api_key_env,
-                     "auth" => (AUTH_SCHEMES.key(auth) if auth),
+                     "auth" => (AUTH_SCHEMES.key(auth) if auth), "dialect" => dialect,
                      "profile" => profile, "first_token_timeout" => first_token_timeout,
                      "vision" => vision, "sampling" => sampling, "thinking" => thinking&.to_s,
                      "reasoning_history" => reasoning_history&.to_s, "remote" => remote, "window_tokens" => window_tokens,

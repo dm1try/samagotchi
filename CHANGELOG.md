@@ -23,6 +23,10 @@ and commands may change between minor versions. How releases are made:
   shown summarized at that effort, `default` nothing. A model that refuses adaptive thinking gets the budget form
   (2048/8192/24576 tokens, `max_tokens` kept above it); a host that refuses `cache_control` loses the breakpoints; an
   over-cap `max_tokens` is retried at the limit the host names. See docs/configuration.md, "Thinking".
+- `dialect: fireworks` on an `api: anthropic` host, for Fireworks' Messages API directly or behind a gateway: the key
+  goes as Bearer (unless `auth:` says otherwise), thinking levels send no `display` field, chat requests carry no
+  `cache_control`, and the session id also goes as `x-session-affinity`. Recaps, `ctx.ask_model` and broadcast triage
+  on such a host follow it too, and `chi self` names it. See docs/configuration.md, "Anthropic Messages hosts".
 
 - While a turn runs, the terminal's status row (REPL and attached) ends in `· typing goes in at the next step (/cut,
   /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".

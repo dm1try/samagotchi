@@ -72,13 +72,28 @@ RSpec.describe Samagotchi::LLM::Adapters do
       entries = Samagotchi::HostRegistry.new(hosts_config: {
         "msg" => { host: "box.lan", port: 8082, api: :anthropic, api_key_env: "K" },
         "msgb" => { host: "box.lan", port: 8082, api: :anthropic, api_key_env: "K", auth: :bearer },
+        "fw" => { host: "box.lan", port: 8082, api: :anthropic, api_key_env: "K", dialect: "fireworks" },
+        "fwk" => { host: "box.lan", port: 8082, api: :anthropic, api_key_env: "K", dialect: "fireworks", auth: :x_api_key },
         "oai" => { host: "box.lan", port: 8081, api: :openai, api_key_env: "K" }
       }, env: {}).entries
       schemes = entries.transform_values do |entry|
         [entry.auth_scheme, entry.client.instance_variable_get(:@http).instance_variable_get(:@api_key).scheme]
       end
 
-      expect(schemes).to eq("msg" => %i[x_api_key x_api_key], "msgb" => %i[bearer bearer], "oai" => %i[bearer bearer])
+      expect(schemes).to eq("msg" => %i[x_api_key x_api_key], "msgb" => %i[bearer bearer], "fw" => %i[bearer bearer],
+                            "fwk" => %i[x_api_key x_api_key], "oai" => %i[bearer bearer])
+    end
+
+    it "builds a fireworks host's Messages adapter with its dialect (Bearer unless auth: says)" do
+      entries = Samagotchi::HostRegistry.new(hosts_config: {
+        "fw" => { host: "box.lan", port: 8082, api: :anthropic, api_key_env: "K", dialect: "fireworks" },
+        "msg" => { host: "box.lan", port: 8082, api: :anthropic, api_key_env: "K" }
+      }, env: {}).entries
+      fw = described_class.for(entries["fw"])
+      msg = described_class.for(entries["msg"])
+
+      expect([fw.dialect, msg.dialect]).to eq([Samagotchi::LLM::Dialect::FIREWORKS, Samagotchi::LLM::Dialect::STANDARD])
+      expect(fw.instance_variable_get(:@http).instance_variable_get(:@api_key).scheme).to eq(:bearer)
     end
 
     it "names the API root without /v1 for api: anthropic (a url ending in /v1 loses it)" do

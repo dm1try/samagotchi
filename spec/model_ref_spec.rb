@@ -247,7 +247,7 @@ RSpec.describe Samagotchi::ModelRef do
     it "#7 recap.model: box:x without host_ref recaps on box", :recap, step: :F4 do
       e = engine(model_name: "box:m", recap: { model: "box:x" })
       expect(e.recap.target.to_h).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "x", label: "box:x",
-                                        api: :openai, auth: nil)
+                                        api: :openai, auth: nil, dialect: nil)
     end
 
     it "#7 recap.model: tiny (an alias for box:gemma-small) recaps on box", :recap, step: :F4 do

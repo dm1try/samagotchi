@@ -7,6 +7,7 @@ require_relative "model_ref"
 require_relative "client"
 require_relative "model_list_store"
 require_relative "llm/adapters"
+require_relative "llm/dialect"
 
 module Samagotchi
   # HostRegistry manages multiple model hosts (llama.cpp / mlx / oMLX) and
@@ -31,6 +32,7 @@ module Samagotchi
     # url: the configured url, when the entry has one (host, port and scheme
     # come from it); api_key_env: the variable holding the host's API key;
     # auth: the header it goes in (LLM::ApiKey::SCHEMES), nil for the api's own default;
+    # dialect: an api: anthropic host's LLM::Dialect name (#dialect_profile), nil when unset;
     # profile: the configured prompt profile name, if any;
     # first_token_timeout: the configured first-token limit (see #first_token_limit);
     # vision: the configured true/false (VisionSupport), nil when unset;
@@ -44,8 +46,8 @@ module Samagotchi
     # llm_context_apply: the configured apply rule (LLMContextStrategy), nil when unset;
     # llm_context_budget_tokens: the configured context budget (LLMContextStrategy), nil when unset;
     # models: the ids the host serves whatever it lists, {downcased id => HostModel} ({} when none).
-    HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :auth, :profile,
-                           :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
+    HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :auth, :dialect,
+                           :profile, :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models, keyword_init: true) do
       # Talks a chat API through an adapter (LLM::Adapters: the chat loop);
@@ -70,8 +72,13 @@ module Samagotchi
       end
 
       # The header the host's key goes in: auth: when set, else the api's
-      # own (x-api-key for api: anthropic, Bearer for every other).
-      def auth_scheme = auth || (api&.to_sym == :anthropic ? :x_api_key : :bearer)
+      # own (for api: anthropic its dialect's, x-api-key unless the dialect
+      # says otherwise; Bearer for every other api).
+      def auth_scheme = auth || (api&.to_sym == :anthropic ? dialect_profile.auth : :bearer)
+
+      # The LLM::Dialect an api: anthropic host's requests follow (STANDARD
+      # when it names none).
+      def dialect_profile = LLM::Dialect.for(dialect)
 
       # A provider on the network rather than a local server: hosts.<name>.remote
       # when set, else by its address (HostRegistry.remote_address?). An API

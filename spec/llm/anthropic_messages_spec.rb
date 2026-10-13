@@ -315,6 +315,15 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
       expect(Samagotchi::TokenUsage.from_payload(last)).to have_attributes(prompt_tokens: prompt, completion_tokens: 12)
     end
 
+    it "reads Fireworks' usage: zeros in message_start, every count in the one message_delta" do
+      response = stream("fireworks_text_stream.hand-written.sse")
+
+      expect(response).to have_attributes(text: "Hello from Fireworks.", finish_reason: "stop",
+                                          model: "accounts/fireworks/models/kimi-k2p5")
+      expect(response.usage).to eq(Samagotchi::LLM::Usage.new(prompt_tokens: 812, completion_tokens: 9, source: :server,
+                                                              cached_tokens: 640, cache_write_tokens: 0))
+    end
+
     it "assembles thinking with its signature and a tool call from input_json_delta, and marks tool-call events" do
       response = stream("thinking_tool_use_stream.hand-written.sse")
 
@@ -423,6 +432,76 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
 
       expect(response.text).to eq("Hello! How can I help you today?")
       expect(waits.sum).to eq(3.0)
+    end
+  end
+
+  describe "the fireworks dialect" do
+    let(:env) { { "FW_KEY" => "fw-key" } }
+    let(:options) { { dialect: "fireworks", api_key_env: "FW_KEY" } }
+
+    def bodies = server.requests.select { |r| r.path == "/v1/messages" }.map(&:json)
+
+    it "sends each level without display (effort carries it), no cache_control anywhere" do
+      5.times { answer }
+
+      %i[default off low medium high].each do |level|
+        chat([{ role: "system", content: "stable|tail", cache_split: 7 }, { role: "user", content: "hi" }],
+             options: { max_tokens: 100, **adapter.thinking_fields(level) })
+      end
+
+      expect(bodies.map { |body| body.slice("thinking", "output_config") }).to eq([
+        {}, { "thinking" => { "type" => "disabled" } },
+        { "thinking" => { "type" => "adaptive" }, "output_config" => { "effort" => "low" } },
+        { "thinking" => { "type" => "adaptive" }, "output_config" => { "effort" => "medium" } },
+        { "thinking" => { "type" => "adaptive" }, "output_config" => { "effort" => "high" } }
+      ])
+      expect(bodies.first).to eq(
+        "model" => "m", "max_tokens" => 100, "stream" => false,
+        "system" => [{ "type" => "text", "text" => "stable|" }, { "type" => "text", "text" => "tail" }],
+        "messages" => [{ "role" => "user", "content" => [{ "type" => "text", "text" => "hi" }] }]
+      )
+      expect(bodies.to_s).not_to include("cache_control")
+      expect(bodies.to_s).not_to include("display")
+    end
+
+    it "sends the budget form without display to a model that refused adaptive" do
+      server.enqueue("/v1/messages", status: 400, json: { type: "error", error: { type: "invalid_request_error",
+                                                                                  message: "adaptive thinking is not supported" } })
+      answer
+
+      chat([{ role: "user", content: "hi" }], options: { max_tokens: 64_000, **adapter.thinking_fields(:medium) })
+
+      expect(bodies.last["thinking"]).to eq("type" => "enabled", "budget_tokens" => 8192)
+    end
+
+    it "sends the key as Bearer only, and the session id as x-session-affinity beside Session-Id" do
+      answer
+
+      chat([{ role: "user", content: "hi" }], session_id: "sess-9")
+
+      request = server.requests.last
+      expect([request.header("authorization"), request.header("x-api-key")]).to eq(["Bearer fw-key", nil])
+      expect([request.header("x-session-affinity"), request.header("session-id")]).to eq(%w[sess-9 sess-9])
+    end
+
+    it "sends no affinity header without a session id" do
+      answer
+
+      chat([{ role: "user", content: "hi" }])
+
+      expect(server.requests.last.header("x-session-affinity")).to be_nil
+    end
+
+    context "with auth: x-api-key" do
+      let(:options) { { dialect: "fireworks", api_key_env: "FW_KEY", auth: :x_api_key } }
+
+      it "sends the key the way auth: says" do
+        answer
+
+        chat([{ role: "user", content: "hi" }])
+
+        expect([server.requests.last.header("x-api-key"), server.requests.last.header("authorization")]).to eq(["fw-key", nil])
+      end
     end
   end
 

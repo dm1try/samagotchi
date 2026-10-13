@@ -12,6 +12,7 @@ require_relative "openai_chat"
 require_relative "prompt_cache"
 require_relative "anthropic_assembly"
 require_relative "anthropic_wire"
+require_relative "dialect"
 
 module Samagotchi
   module LLM
@@ -21,6 +22,10 @@ module Samagotchi
     # messages are translated here (AnthropicWire), and the answer comes back
     # as a ChatResponse whose provider_content holds the content blocks to
     # send back verbatim (#replays_content?).
+    #
+    # A host's dialect (LLM::Dialect, `dialect:`) overrides parts of the
+    # standard wire: its default auth header, the thinking `display`, the
+    # cache breakpoints and a session-affinity header.
     #
     # Nothing here keys on a model id: fields are sent explicitly, read
     # leniently, and a host's 400 for a field it refuses is what changes a
@@ -58,21 +63,23 @@ module Samagotchi
       DROPPED_OPTIONS = %i[reasoning_effort chat_template_kwargs stream_options prompt_cache_key logprobs top_logprobs
                            max_completion_tokens].freeze
 
-      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout
+      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout, :dialect
 
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **)
         new(base_url: entry.api_base_url, host_name: entry.name, api_key_env: entry.api_key_env, auth: entry.auth,
-            remote: entry.remote?, **)
+            dialect: entry.dialect, remote: entry.remote?, **)
       end
 
       # @param base_url [String] the API root without /v1 (HostEntry#api_base_url)
       # @param auth [Symbol, nil] the header the key goes in (ApiKey::SCHEMES);
-      #   nil: x-api-key
+      #   nil: the dialect's (x-api-key on the standard one)
+      # @param dialect [String, nil] the host's dialect: name (Dialect.for)
       # The rest as OpenAIChat#initialize takes them.
-      def initialize(base_url:, host_name:, api_key_env: nil, auth: nil, stream: true, retries: true, timeout: nil,
-                     env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
+      def initialize(base_url:, host_name:, api_key_env: nil, auth: nil, dialect: nil, stream: true, retries: true,
+                     timeout: nil, env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
                      first_token_timeout: nil, purpose: "chat", open_timeout: nil)
+        @dialect = Dialect.for(dialect)
         @remote = remote
         @purpose = purpose
         @first_token_timeout = first_token_timeout
@@ -88,7 +95,7 @@ module Samagotchi
         policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
         @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
                          retry_policy: policy, sleeper: sleeper, first_token_timeout: first_token_timeout,
-                         api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth || :x_api_key))
+                         api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth || @dialect.auth))
       end
 
       # The same contract as OpenAIChat#chat; +messages+ are ChatLoop's
@@ -126,14 +133,16 @@ module Samagotchi
 
       # The request fields a thinking +level+ (Thinking::LEVELS) adds on this
       # wire: default nothing (the provider's own default), off
-      # `thinking: disabled`, low/medium/high adaptive thinking shown
-      # summarized at that effort.
+      # `thinking: disabled`, low/medium/high adaptive thinking at that
+      # effort, shown the dialect's way (summarized; no display field on a
+      # dialect that has none).
       # @return [Hash] frozen
       def thinking_fields(level)
         case level
         when :off then { thinking: { type: "disabled" }.freeze }.freeze
         when *Thinking::EFFORTS
-          { thinking: { type: "adaptive", display: "summarized" }.freeze, output_config: { effort: level.to_s }.freeze }.freeze
+          thinking = { type: "adaptive", display: @dialect.thinking_display }.compact.freeze
+          { thinking: thinking, output_config: { effort: level.to_s }.freeze }.freeze
         else {}.freeze
         end
       end
@@ -186,7 +195,7 @@ module Samagotchi
       def request_body(messages, tools, model, options)
         options = (options || {}).to_h.transform_keys(&:to_sym).except(*DROPPED_OPTIONS)
         options = budget_form(options) if budget_form?(model)
-        cache = PromptCache.control if @purpose == "chat" && !@cache_control_refused
+        cache = PromptCache.control if @purpose == "chat" && @dialect.cache_breakpoints && !@cache_control_refused
         translated = AnthropicWire.translate(messages, cache: cache)
         max_tokens = options.delete(:max_tokens) || default_max_tokens(model)
         max_tokens = [max_tokens, @output_caps[model.to_s]].min if @output_caps[model.to_s]
@@ -202,8 +211,9 @@ module Samagotchi
       end
 
       # Adaptive thinking at a level as the budget form: thinking enabled
-      # with BUDGETS' budget (medium without an effort), shown as asked, and
-      # no effort (a model without adaptive thinking may take none).
+      # with BUDGETS' budget (medium without an effort), shown as asked (no
+      # display when it asked none), and no effort (a model without
+      # adaptive thinking may take none).
       def budget_form(options)
         thinking = options[:thinking].is_a?(Hash) ? options[:thinking].transform_keys(&:to_sym) : nil
         return options unless thinking && thinking[:type].to_s == "adaptive"
@@ -211,7 +221,7 @@ module Samagotchi
         config = options[:output_config].is_a?(Hash) ? options[:output_config].transform_keys(&:to_sym) : {}
         budget = BUDGETS.fetch(config[:effort].to_s.to_sym, BUDGETS[:medium])
         config = config.except(:effort)
-        options.merge(thinking: { type: "enabled", budget_tokens: budget, display: thinking[:display] || "summarized" },
+        options.merge(thinking: { type: "enabled", budget_tokens: budget, display: thinking[:display] }.compact,
                       output_config: config.empty? ? nil : config)
       end
 
@@ -360,7 +370,10 @@ module Samagotchi
         Net::HTTP::Post.new(URI(url)).tap do |request|
           request["Content-Type"] = "application/json"
           request["anthropic-version"] = API_VERSION
-          request["Session-Id"] = session_id.to_s unless session_id.to_s.empty?
+          unless session_id.to_s.empty?
+            request["Session-Id"] = session_id.to_s
+            request[@dialect.session_header] = session_id.to_s if @dialect.session_header
+          end
           request.body = JSON.generate(body)
         end
       end

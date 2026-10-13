@@ -330,6 +330,45 @@ Its model list is `GET {url}/v1/models` (every page): Anthropic's shape (the win
 from `capabilities.image_input`) or the OpenAI shape a gateway or Splash serves there. A gateway whose list lacks an
 id (a high-availability alias) takes it from the host's declared `models:`, as on any host.
 
+**Dialects.** A provider whose `/v1/messages` departs from Anthropic's gets `dialect:` on its host (only on
+`api: anthropic`; an unknown value, or a dialect on another api, warns once and is ignored). `chi self` names it on
+its `loop` line. `dialect: standard` is the default written out. There is one other dialect today, `fireworks` (Fireworks' Anthropic-compatible API, directly or behind a gateway):
+
+- the key goes as `Authorization: Bearer` (an explicit `auth:` still wins);
+- thinking at `low`/`medium`/`high` is `{type: "adaptive"}` with `output_config.effort`, without `display` (Fireworks'
+  schema has none and refuses unknown fields; it returns thinking by default); a model switched to the budget form gets
+  none either;
+- no `cache_control` breakpoints (Fireworks caches prompt prefixes by itself);
+- `x-session-affinity: <session id>` beside `Session-Id`, so a session stays on one replica, where its cache is.
+
+A host without `dialect:` is standard Anthropic (Claude, Splash). Give each upstream kind its own host entry: when a
+gateway serves both Fireworks models and Claude ids on one url, the Claude ids go on a second entry with the same url
+and no `dialect:` (Claude wants `display: summarized` and the breakpoints).
+
+```yaml
+hosts:
+  work-msg:                               # the work gateway's Messages route, Fireworks behind it
+    url: https://gateway.example.com      # the API root, no /v1 (chi adds /v1/messages)
+    api: anthropic
+    dialect: fireworks                    # Bearer auth, no thinking display, no cache_control, x-session-affinity
+    api_key_env: WORK_API_KEY
+    # auth: x-api-key                     # only if the gateway itself wants that header
+    thinking: medium                      # low|medium|high → output_config.effort; off → thinking disabled
+    models:
+      accounts/fireworks/models/kimi-k2p5:
+        price: {input: 0.6, cache_read: 0.1, output: 2.5}    # example rates: put the gateway's (no cache writes on Fireworks)
+  work-claude:                            # the same gateway's Claude ids: standard Messages
+    url: https://gateway.example.com
+    api: anthropic
+    api_key_env: WORK_API_KEY
+    auth: bearer                          # if the gateway wants Bearer for Claude ids too
+  fireworks:                              # Fireworks directly
+    url: https://api.fireworks.ai/inference
+    api: anthropic
+    dialect: fireworks
+    api_key_env: FIREWORKS_API_KEY
+```
+
 To manually verify a live chat-loop tool round trip, run the gated integration
 spec. It requires the model to call `execute` and return the current UTC date:
 
@@ -560,6 +599,7 @@ What each backend gets:
 | native, `gemma4` | no `<\|think\|>` token at the start of the system prompt | no knob, one notice |
 | chat host (`api: openai`) | `chat_template_kwargs: {enable_thinking: false}` and `reasoning_effort: "none"` | `reasoning_effort: <level>` |
 | Messages host (`api: anthropic`) | `thinking: {type: "disabled"}` | `thinking: {type: "adaptive", display: "summarized"}` and `output_config: {effort: <level>}` |
+| Messages host, `dialect: fireworks` | `thinking: {type: "disabled"}` | `thinking: {type: "adaptive"}` and `output_config: {effort: <level>}` (no `display`) |
 
 On a Messages host `default` sends nothing: the provider's own default, which differs by model (some Claude models
 think adaptively but show no thinking text, their blocks still going back; others, and Splash, don't think at all). A model that refuses `disabled` (current

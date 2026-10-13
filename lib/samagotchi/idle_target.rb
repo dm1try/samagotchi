@@ -12,12 +12,17 @@ module Samagotchi
   #   a chat host's api, else :openai (a raw host's server, or a bare url)
   # @!attribute auth [Symbol, nil] the header its key goes in (the host's
   #   auth:, LLM::ApiKey::SCHEMES); nil: the api's own default
-  IdleTarget = Data.define(:base_url, :api_key_env, :model, :label, :api, :auth) do
-    def initialize(api: :openai, auth: nil, **) = super
+  # @!attribute dialect [String, nil] an api: anthropic host's dialect:
+  #   (LLM::Dialect), so a side request gets its auth and fields
+  IdleTarget = Data.define(:base_url, :api_key_env, :model, :label, :api, :auth, :dialect) do
+    def initialize(api: :openai, auth: nil, dialect: nil, **) = super
 
     # The api a side request to +entry+ talks: a chat host's own, else the
     # OpenAI API (a raw host's llama.cpp serves /v1 too).
     def self.api_of(entry) = entry.chat? ? entry.api : :openai
+
+    # The dialect a side request to +entry+ talks (only a chat host has one).
+    def self.dialect_of(entry) = entry.chat? ? entry.dialect : nil
 
     # A configured side model can't be resolved.
     # @!attribute reason [Symbol] :host_ref_unknown (no such host),
@@ -44,7 +49,7 @@ module Samagotchi
       resolved = host_registry.resolve(name)
       entry = resolved.entry
       new(base_url: entry.api_base_url, api_key_env: entry.api_key_env, model: resolved.bare_model,
-          label: name.to_s.strip, api: api_of(entry), auth: entry.auth)
+          label: name.to_s.strip, api: api_of(entry), auth: entry.auth, dialect: dialect_of(entry))
     end
 
     # A side model's settings (recap.*, broadcast.triage_*) as a target:
@@ -68,6 +73,7 @@ module Samagotchi
       api_key_env = nil
       api = :openai
       auth = nil
+      dialect = nil
       if host_ref
         entry = host_registry.find_entry(host_ref)
         raise self::Unresolved.new(:host_ref_unknown, model: model, host_ref: host_ref) unless entry
@@ -76,6 +82,7 @@ module Samagotchi
         api_key_env = entry.api_key_env
         api = api_of(entry)
         auth = entry.auth
+        dialect = dialect_of(entry)
         named = parsed&.host_conflict || parsed&.host_name
         if named && named != entry.name
           raise self::Unresolved.new(:model_host_mismatch, model: model, host_ref: host_ref, named: named)
@@ -87,7 +94,8 @@ module Samagotchi
       end
       raise self::Unresolved.new(:incomplete, model: model, host_ref: host_ref) if blank(base_url).nil? || blank(model).nil?
 
-      new(base_url: base_url.to_s.strip, api_key_env: api_key_env, model: model.to_s.strip, label: label.strip, api: api, auth: auth)
+      new(base_url: base_url.to_s.strip, api_key_env: api_key_env, model: model.to_s.strip, label: label.strip, api: api, auth: auth,
+          dialect: dialect)
     end
 
     # Whether the settings fix a host (+base_url+, +host_ref+, or a model

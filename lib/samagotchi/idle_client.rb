@@ -48,13 +48,16 @@ module Samagotchi
     #   lines and error messages ("recap", "broadcast")
     # @param api [Symbol] the wire to talk (LLM::Adapters; IdleTarget#api)
     # @param auth [Symbol, nil] the header the key goes in (IdleTarget#auth)
+    # @param dialect [String, nil] a Messages host's dialect (IdleTarget#dialect)
     def initialize(model:, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV, purpose: "recap",
-                   api: :openai, auth: nil)
+                   api: :openai, auth: nil, dialect: nil)
       @model = model
       # A recap is best-effort: one short attempt, no retries. The idle job
-      # tries again after the next activity, never on its own.
+      # tries again after the next activity, never on its own. Only the
+      # Messages adapter takes a dialect.
       @chat = LLM::Adapters.build(api: api, base_url: base_url.to_s, host_name: purpose, api_key_env: api_key_env,
-                                  auth: auth, stream: false, retries: false, timeout: timeout, env: env, purpose: purpose)
+                                  auth: auth, stream: false, retries: false, timeout: timeout, env: env, purpose: purpose,
+                                  **({ dialect: dialect } if dialect))
     end
 
     # A client for +target+ (an IdleTarget: a recap's, ctx.ask_model's, a
@@ -62,7 +65,7 @@ module Samagotchi
     # @return [IdleClient]
     def self.for(target, **)
       new(model: target.model, base_url: target.base_url, api_key_env: target.api_key_env, api: target.api,
-          auth: target.auth, **)
+          auth: target.auth, dialect: target.dialect, **)
     end
 
     THINK_RE = /<\|think\|.*?\|think\|>/m

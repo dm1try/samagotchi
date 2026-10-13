@@ -246,6 +246,24 @@ RSpec.describe Samagotchi::IdleClient do
     end
   end
 
+  describe "on a fireworks Messages host" do
+    let(:target) do
+      Samagotchi::IdleTarget.new(base_url: server.root_url, api_key_env: "FW_KEY", model: "fw-model", label: "fw-model",
+                                 api: :anthropic, dialect: "fireworks")
+    end
+
+    it "builds the Messages adapter with the dialect: Bearer, no cache_control" do
+      server.enqueue("/v1/messages", json: FakeProviderServer.fixture("splash_text_sync.json", api: "anthropic"))
+      client = described_class.for(target, env: { "FW_KEY" => "fw-key" })
+
+      expect(client.summarize("summarize this").text).to eq("PONG")
+      request = server.requests.last
+      expect([request.header("authorization"), request.header("x-api-key")]).to eq(["Bearer fw-key", nil])
+      expect(request.json).to include("thinking" => { "type" => "disabled" })
+      expect(request.json.to_s).not_to include("cache_control")
+    end
+  end
+
   describe "request budget" do
     it "uses its own timeout, one attempt, no stream" do
       expect(Samagotchi::LLM::OpenAIChat).to receive(:new)

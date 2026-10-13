@@ -88,6 +88,25 @@ RSpec.describe Samagotchi::HostConfig do
     end
   end
 
+  describe "dialect" do
+    it "reads a known dialect on an api: anthropic entry, nil when unset" do
+      expect(described_class.parse("fw", { "api" => "anthropic", "url" => "https://fw.test", "dialect" => "Fireworks" }).dialect)
+        .to eq("fireworks")
+      expect(described_class.parse("claude", { "api" => "anthropic" }).dialect).to be_nil
+    end
+
+    it "keeps the entry and ignores the dialect, warning once, when unknown or on another api" do
+      expect { expect(described_class.parse("odd", { "api" => "anthropic", "dialect" => "splash" }).dialect).to be_nil }
+        .to output(/hosts entry 'odd': dialect must be one of standard, fireworks; ignored/).to_stderr
+      expect { expect(described_class.parse("oai", { "api" => "openai", "host" => "h", "dialect" => "fireworks" }).dialect).to be_nil }
+        .to output(/hosts entry 'oai': dialect has no effect on api: openai; ignored/).to_stderr
+    end
+
+    it "is a known hosts key (no unknown-key warning)" do
+      expect(Samagotchi::Config::MAP_ENTRY_KEYS["hosts"]).to include("dialect")
+    end
+  end
+
   describe "config" do
     it "knows steer_cut_after as a host and model key (no unknown-key warning)" do
       data = { "hosts" => { "w" => { "host" => "h", "steer_cut_after" => 0 } },
@@ -110,7 +129,7 @@ RSpec.describe Samagotchi::HostConfig do
   # round trip).
   describe "#to_env_h" do
     let(:full) do
-      { "url" => "https://gw.example.test/v1/", "api" => "openai", "transport" => "omlx",
+      { "url" => "https://gw.example.test/v1/", "api" => "anthropic", "dialect" => "fireworks", "transport" => "omlx",
         "api_key_env" => "GW_KEY", "auth" => "x-api-key", "profile" => "Qwen36", "first_token_timeout" => 90, "vision" => true,
         "sampling" => { "temperature" => 0.6, "chat_template_kwargs" => { "enable_thinking" => false } },
         "thinking" => "off", "reasoning_history" => "all", "remote" => false, "window_tokens" => 65_536,
