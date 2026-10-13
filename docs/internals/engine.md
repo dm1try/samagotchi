@@ -72,7 +72,7 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │
   └── ensure: release_turn(probe_cancel_before)
         # TurnState#finish! (turn flag off, controller, sink and steers cleared)
-        # GenerationPhase#finished!, WaitingSteer#clear!
+        # SteerCut#finished! (its GenerationPhase finished, its WaitingSteer cleared)
         # probe cancel swapped back
         # the context window cache dropped, so the next turn asks the server again
         # steers left logged as dropped, activity recorded, turn-scoped hooks cleared
@@ -135,7 +135,8 @@ Engine#backend → backend_for(@host_registry.resolve(@effective_model_name))
 ```
 
 Both implement the `LLM::ModelBackend` contract (`#complete(messages:, max_iterations:, on_stream_event:,
-cancel_controller:, model_name:, max_tool_output_chars:, pending_input:)`). `NativeBackend#complete` only calls
+cancel_controller:, model_name:, max_tool_output_chars:, pending_input:, reasoning_since:)`; `reasoning_since:` is
+where the run a step-limit Continue resumes started, the Engine's `resume_from`). `NativeBackend#complete` only calls
 `KernelLoop#run` with the same arguments. `ChatLoop` runs its own loop but is built with the same KernelLoop,
 whose tools, hooks, gate and dispatch it uses.
 
@@ -172,17 +173,21 @@ KernelLoop#run(messages, max_iterations:, on_stream_event:, cancel_controller:,
 `turn.conversation` is the loop's own copy, not the Engine's `turn.messages`. A failure attaches it to the error
 (`LLM::FailedTurn.attach`), so `Engine#failed_messages` can keep it; a Ctrl-C does not (see Error paths).
 
-### ChatLoop (the OpenAI chat API)
+### ChatLoop (the chat APIs)
 
-Runs hosts with `api: openai`: remote providers such as OpenRouter (Claude and others) and any OpenAI-compatible
-chat server. The model gets the tools as JSON schemas and returns structured tool calls.
+Runs hosts whose api has a chat adapter (`LLM::Adapters::BY_API`): `api: openai` on `LLM::OpenAIChat` (remote
+providers such as OpenRouter, Claude among others, and any OpenAI-compatible chat server) and `api: anthropic` on
+`LLM::AnthropicMessages` (Anthropic's Messages API; [anthropic.md](anthropic.md)). The Engine sets the adapter per
+turn for the effective model's host (`HostRegistry#adapter_for`). The model gets the tools as JSON schemas and returns
+structured tool calls.
 
 ```
 ChatLoop#complete(messages:, max_iterations:, on_stream_event:, cancel_controller:,
-                  model_name:, max_tool_output_chars:, pending_input:)
+                  model_name:, max_tool_output_chars:, pending_input:, reasoning_since:)
   │
   │ conversation = Array(messages).map(&:dup)   # a shallow copy of each message
-  │ Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input)
+  │ Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input,
+  │         start: reasoning_since)
   │    .call(max_iterations: max_iterations || 1, cap: KernelLoop.resolve_output_char_cap(max_tool_output_chars))
   │
   └──→ LLM::ModelResult(text, conversation, exhausted, canceled, tool_activity, ...)
@@ -191,10 +196,13 @@ ChatLoop#complete(messages:, max_iterations:, on_stream_event:, cancel_controlle
 The differences from the native loop:
 
 - The tools go in each request's `tools` field (`tool_definitions`), not in the system prompt.
-- The conversation is converted to the OpenAI wire format (`wire_messages`).
+- The conversation is converted to the OpenAI wire format (`wire_messages`), for every chat host;
+  `AnthropicMessages` translates that again into Messages' `system` and content blocks (`LLM::AnthropicWire`).
 - The first system message carries `cache_split:` (from `SystemPrompt#stable_length`, which the Engine passes in
-  as `stable_length:`), where the prompt's stable part ends. For remote Claude, `LLM::PromptCache` puts the
-  first cache breakpoint there; see prompt-caching.md.
+  as `stable_length:`), where the prompt's stable part ends. The adapter puts the first cache breakpoint there:
+  `OpenAIChat` for a Claude model on a remote host (`LLM::PromptCache.mark`), `AnthropicMessages` on every chat
+  request unless its dialect has no breakpoints or the host refused `cache_control` (`AnthropicWire.translate`,
+  `Dialect#cache_breakpoints`); see prompt-caching.md and anthropic.md.
 - Each call's result is its own tool message, paired by `tool_call_id`.
 - A model turn's saved reasoning (`thinking:`) goes back as `reasoning_content` per the turn's
   `TurnSettings#reasoning_history` (`ReasoningHistory.resolve`, the session's own level first:
@@ -208,8 +216,14 @@ The differences from the native loop:
   in `#resumed_run_start`), past a user entry added after that run's last reply (a `!cmd`'s output). Without
   `since:` (`#reasoning_chars` from outside a Run) the boundary is the last query (a `role: "user"` or `turn_start`
   entry). `Run#prompt_chars` counts it (`#reasoning_chars`).
+- On an adapter that sends its blocks back (`#replays_content?`: `AnthropicMessages`), a model turn's saved blocks
+  (`anthropic_content`, the response's `provider_content`, saved by `Run#with_thinking`) go back verbatim, thinking
+  blocks with their signatures (`#replay_blocks`): not for an interrupted entry or one with an unpaired call, and
+  without the thinking blocks before the reasoning boundary (the last model entry with tool calls keeps them).
+  `#reasoning_history` floors `drop` at `turn` there, since Messages needs the running run's thinking blocks.
 - A 400 about reasoning (`BadRequest#reasoning_refused?`) for a request that sent reasoning back asks the step again
-  without it; when that goes through, `#reasoning_history_refused!` marks the model (worker lifetime) and
+  without it (not on a replaying adapter, where the body would be the same); when that goes through,
+  `#reasoning_history_refused!` marks the model (worker lifetime) and
   `:reasoning_history_refused` goes out. When it is refused too, the thinking-fields fallback (`#thinking_refused!`,
   `:thinking_refused`) runs on it, still without reasoning. Up to three requests per step. A 400 about a thinking
   block's signature (`BadRequest#thinking_signature?`) or a refused binding control
@@ -317,7 +331,8 @@ The turn as the Engine sees it (the KernelLoop has its own `Turn` struct):
 
 ```ruby
 Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                  :settings, :id, :limit) do
+                  :settings, :id, :limit, :resumed, :resume_from) do
+  def resumed? = resumed ? true : false                           # a step-limit Continue
   def tag(event) = origin ? event.merge(origin: origin) : event   # boundary events carry the origin
   def elapsed = ...                                               # seconds since started_at
 end
@@ -342,10 +357,14 @@ end
   running turn's record so far as a killed turn's (canceled, `worker_stopped`), which the next worker loads; the
   turn's end writes over it.
 
-### GenerationPhase
+### SteerCut, GenerationPhase and WaitingSteer
 
-What the running generation streams, fed by the Engine's stream handler: whether a steer sent as a cut (delivery
-`cut`: `/cut TEXT`, `chi send --cut`) may cut it. `SteerCut#cut_for_steer` answers `:now`, `:waits` or `:off`; the
+The Engine holds one `SteerCut` (`@steer_cut`), which owns a `GenerationPhase` and a `WaitingSteer`: the Bridge and
+the TUI ask it (`Engine#cut_for_steer`, `#input_epoch`, `#generation_snapshot`), the Engine's stream handler feeds it
+(`SteerCut#observe`), a drain that took input calls `#delivered!`, and `release_turn` calls `#finished!`.
+
+`GenerationPhase` is what the running generation streams, fed through `SteerCut#observe`: whether a steer sent as a
+cut (delivery `cut`: `/cut TEXT`, `chi send --cut`) may cut it. `SteerCut#cut_for_steer` answers `:now`, `:waits` or `:off`; the
 Bridge acks it as `cut`.
 A generation is cuttable while it has streamed only thinking, is still thinking, and has thought for at least
 the model's cut wait (`SteerCutAfter.resolve`: `steer_cut_after` per models:/hosts: entry, else `steer.cut_after`) seconds (`cuttable?(min_age)`). It has `started!`, `chunk!`, `retrying!` and `finished!`.
@@ -357,8 +376,8 @@ line and tell whether "cut in now" can land.
 ### WaitingSteer
 
 A message that may cut the generation but came too early (the generation hadn't been thinking long enough). It
-waits until the thinking passes the model's cut wait (the Engine checks on each thinking chunk), until a drain hands
-the message to the model at a boundary, or until the turn ends (`clear!` in `release_turn`).
+waits until the thinking passes the model's cut wait (`SteerCut#observe` rechecks it on each thinking chunk), until a
+drain hands the message to the model at a boundary, or until the turn ends (`SteerCut#finished!` clears it).
 
 ## Events
 
@@ -414,7 +433,7 @@ hook registry (`@hooks.fire`), not on the sink or the observers. The other hook 
 
 ```
 Engine initialization (in this order, among other things):
-  @turn_state, @generation_phase, @waiting_steer
+  @turn_state, @steer_cut (SteerCut: its GenerationPhase and WaitingSteer)
   @host_registry, @effective_model_name; @client = @host_registry.resolve(...).client
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
   @guardrail_wiring, @question_desk
@@ -551,8 +570,10 @@ Both loops:
 - **The same events**: generation events, tool dispatch and tool call events, and the before/after generation
   and tool call hooks.
 
-Native loop only: the Qwen open-block recovery, and the thinking prefill (Qwen with thinking off gets an empty
-thought after the cue, kept in the model message so the next prompt starts with what the server has cached).
+Native loop only: the Qwen open-block recovery, and the thinking prefill (`Thinking.native`: with thinking off, Qwen
+gets an empty thought after the cue, `QWEN_EMPTY_THOUGHT`, and Gemma 4 its empty thought channel,
+`GEMMA_EMPTY_THOUGHT`, with no `<|think|>` token before the system prompt; kept in the model message so the next
+prompt starts with what the server has cached).
 
 ## Key design principles
 
@@ -566,8 +587,9 @@ thought after the cue, kept in the model message so the next prompt starts with 
    persistent.
 5. **A stable system prompt for the cache.** `SystemPrompt#build` caches the prompt per Engine, keyed by
    `[chat, thinking, layers]` (chat/native, the thinking level, the turn's LLM context layers), and is reset
-   only on a model switch, a tools change or a profile change. The stable part (base prompt, identity,
-   memories, AGENTS.md, memory indexes) comes before the volatile tail (model, working directory, session).
+   only on a model switch, a tools change, a profile change or a toolkit change (`Engine#apply_toolkit!`). The
+   stable part (base prompt, the toolkit's not-loaded line, rg guidance, identity, model notes, preloaded memories,
+   AGENTS.md, appended files, memory indexes) comes before the volatile tail (model, working directory, session).
    prompt-caching.md covers this in detail.
 
 ## Key files
@@ -578,10 +600,19 @@ Paths are under `lib/samagotchi/`.
 |---|---|
 | `engine.rb` | Engine: turn lifecycle, event emission, hooks runtime, plugins, model switching |
 | `turn_state.rb` | Cross-thread turn state (running, controller, sink, steers, activity clock) |
+| `steer_cut.rb` | `SteerCut`: the Engine's seam for a message cutting the generation |
 | `generation_phase.rb`, `waiting_steer.rb` | Whether a steer may cut the running generation, and the steer that waits to |
+| `steer_cut_after.rb`, `cut_policy.rb` | The model's cut wait (`SteerCutAfter.resolve`); the loops' cut path (`CutPolicy`) |
 | `steer.rb` | Queued input and steers at iteration boundaries |
 | `kernel_loop.rb` | Native loop: `#run` (format, generate, parse, dispatch, iterate) |
-| `llm/chat_loop.rb` | Chat loop: `#complete` (tool schemas per request, wire conversion) |
+| `llm/chat_loop.rb` | Chat loop: `#complete` (tool schemas per request, wire conversion, block replay) |
+| `llm/adapters.rb` | `LLM::Adapters::BY_API`: which chat adapter a host's api gets |
+| `llm/openai_chat.rb` | `LLM::OpenAIChat`, the `/v1/chat/completions` adapter |
+| `llm/anthropic_messages.rb`, `llm/anthropic_wire.rb`, `llm/anthropic_assembly.rb`, `llm/dialect.rb` | The `/v1/messages` adapter, its wire translation, its response, its dialects ([anthropic.md](anthropic.md)) |
+| `llm/prompt_cache.rb` | Cache breakpoints on the OpenAI path, and the `cache_control` both adapters send |
+| `llm/turn_settings.rb` | `LLM::TurnSettings`, what a turn runs under (vision, sampling, thinking, reasoning history, …) |
+| `llm/native_tool_normalizer.rb`, `llm/stream_drops.rb` | A chat adapter's tool calls as chi's call hashes (`Tools::BuiltinCalls`); asking again for a step whose stream dropped (both loops) |
+| `reasoning_history.rb` | `ReasoningHistory`: the levels, `.resolve`, `.run_start` |
 | `llm/backend.rb` | The `LLM::ModelBackend` contract (`#complete(...)`) |
 | `llm/native_backend.rb` | Wraps KernelLoop as a backend (`#complete` calls `#run`) |
 | `llm/model_result.rb` | `LLM::ModelResult`, what a backend returns |
@@ -591,6 +622,8 @@ Paths are under `lib/samagotchi/`.
 | `prompt_warmup.rb` | The turn-end warm-up |
 | `tools/registry.rb` | The tools a session offers: schemas, handlers, order |
 | `system_prompt.rb` | System prompt construction (stable part, volatile tail) |
+| `prompt_files.rb`, `model_notes.rb` | The AGENTS.md chain and appended files; the model notes the prompt loads |
+| `toolkit.rb`, `toolkit_command.rb` | A session's toolkit (`Toolkit#resolve`, what `Registry` declares); `/toolkit` |
 | `hooks/registry.rb` | Hook registry, fire order, `Hooks::Runtime` |
 | `extension_load.rb` | What an Engine loads at start: config.yml and bundle hooks, plugins, `bundles:` settings; events held while plugins load |
 | `guardrail_wiring.rb`, `guardrails/gate.rb` | The gate's context and approvals; the verdict per call |
