@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - While a turn runs, the terminal's status row (REPL and attached) ends in `· typing goes in at the next step (/cut,
   /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".
+- A worker's snapshot (`GET /session/:id/snapshot`, `?snapshot=1`) says the running generation's phase as
+  `current_turn.generation: {thinking_only, age}`, so a page joining mid-turn can clock what a message would wait
+  for. See docs/internals/engine.md, "GenerationPhase".
 
 ## [0.64.0] - 2026-10-13
 

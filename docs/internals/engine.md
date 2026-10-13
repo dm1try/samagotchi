@@ -343,6 +343,10 @@ What the running generation streams, fed by the Engine's stream handler: whether
 Bridge acks it as `cut`.
 A generation is cuttable while it has streamed only thinking, is still thinking, and has thought for at least
 the model's cut wait (`SteerCutAfter.resolve`: `steer_cut_after` per models:/hosts: entry, else `steer.cut_after`) seconds (`cuttable?(min_age)`). It has `started!`, `chunk!`, `retrying!` and `finished!`.
+`snapshot` is the running generation as `GenerationPhase::Snapshot` `{thinking_only, age}` (nil with none running;
+`age`: its thinking's seconds, nil before any): `SteerCut#generation_snapshot` → `Engine#generation_snapshot`, which
+`Bridge#snapshot` merges into `current_turn.generation`, so a web page joining mid-generation can clock its delivery
+line and tell whether "cut in now" can land.
 
 ### WaitingSteer
 

@@ -164,6 +164,36 @@ RSpec.describe Samagotchi::SteerCut do
   # The Engine passes the model's own SteerCutAfter as a lambda: the value
   # is read on every check, so a per-host/model setting applies to the
   # running turn, over the global.
+  describe "#generation_snapshot" do
+    it "is nil with no generation running, before and after one" do
+      expect(steer_cut.generation_snapshot).to be_nil
+      in_generation { thinking(3) }
+      steer_cut.observe({ type: :generation_completed })
+      expect(steer_cut.generation_snapshot).to be_nil
+    end
+
+    it "says a thinking-only generation and its thinking's age, rounded to a tenth" do
+      in_generation do
+        thinking(12.34)
+        expect(steer_cut.generation_snapshot).to eq(Samagotchi::GenerationPhase::Snapshot.new(thinking_only: true, age: 12.3))
+      end
+    end
+
+    it "is not thinking-only once text or a tool call streamed, and has no age before any thinking" do
+      in_generation do
+        expect(steer_cut.generation_snapshot.to_h).to eq(thinking_only: false, age: nil)
+        thinking(4)
+        steer_cut.observe({ type: :generation_chunk, content: "A" })
+        expect(steer_cut.generation_snapshot.to_h).to eq(thinking_only: false, age: 4.0)
+      end
+      in_generation do
+        thinking(2)
+        steer_cut.observe({ type: :generation_chunk, thinking: "", tool_call: true }, { thinking: "", text: "" })
+        expect(steer_cut.generation_snapshot.thinking_only).to be(false)
+      end
+    end
+  end
+
   describe "with a per-host/model cut_after lambda" do
     let(:cut_after) { [60] }
     let(:steer_cut) { described_class.new(clock: -> { now.first }, controller: -> { running.first }, cut_after: -> { cut_after.first }) }

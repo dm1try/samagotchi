@@ -14,6 +14,12 @@ module Samagotchi
     # A thinking delta this recent means the model is still thinking.
     FRESH_SECONDS = 2.0
 
+    # What a page joining mid-generation needs for its delivery line
+    # (Bridge#snapshot's current_turn.generation): whether it has streamed
+    # only thinking so far (thinking, no text, no tool call; freshness
+    # aside) and its thinking's #age (nil before any thinking).
+    Snapshot = Data.define(:thinking_only, :age)
+
     # @param clock [#call] monotonic seconds
     def initialize(clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @clock = clock
@@ -69,6 +75,17 @@ module Samagotchi
     # with none.
     def age
       @mutex.synchronize { @running && @thinking_since ? @clock.call - @thinking_since : nil }
+    end
+
+    # The running generation as a Snapshot, its age rounded to a tenth;
+    # nil with none running.
+    def snapshot
+      @mutex.synchronize do
+        next nil unless @running
+
+        age = @thinking_since && (@clock.call - @thinking_since).round(1)
+        Snapshot.new(thinking_only: !@thinking_since.nil? && !@text && !@tool_call, age: age)
+      end
     end
 
     private

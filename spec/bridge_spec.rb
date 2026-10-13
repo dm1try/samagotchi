@@ -998,6 +998,23 @@ RSpec.describe Samagotchi::Bridge do
         expect(missing).to be_nil
       end
 
+      it "says the running generation's phase in current_turn.generation (SteerCut#generation_snapshot), none after it" do
+        start_bridge
+        release = hold_turn_after({ type: :generation_started, iteration: 1 },
+                                  { type: :generation_chunk, iteration: 1, thinking: "hm", content: "" },
+                                  conversation: [{ role: "model", content: "done" }])
+        turn = Thread.new { run_turn_sync(@engine, @session, "thinking one") }
+        wait_until { @bridge.snapshot.dig(:current_turn, :generation) }
+
+        live = @bridge.snapshot[:current_turn][:generation]
+        release << true
+        turn.join
+
+        expect(live).to include(thinking_only: true)
+        expect(live[:age]).to be_a(Float)
+        expect(@engine.generation_snapshot).to be_nil
+      end
+
       describe "GET /session/:id/tail" do
         def tail(session_id = @session.id)
           Samagotchi::BridgeClient.new(session_id: session_id, port: @bridge_port).get_json("tail")

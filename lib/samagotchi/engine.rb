@@ -405,6 +405,10 @@ module Samagotchi
     # for #cut_for_steer.
     def input_epoch = @steer_cut.input_epoch
 
+    # The running generation's phase (SteerCut#generation_snapshot): what
+    # Bridge#snapshot puts in current_turn.generation.
+    def generation_snapshot = @steer_cut.generation_snapshot
+
     # Like #steer, for the turn that begins next (a continue turn answered
     # with a text): it joins that turn at its first boundary. Callable from
     # any thread; a turn that never begins keeps it for the next one, unless

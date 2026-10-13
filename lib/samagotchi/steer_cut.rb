@@ -82,6 +82,10 @@ module Samagotchi
       @waiting.epoch
     end
 
+    # The running generation's phase (GenerationPhase::Snapshot), nil with
+    # none running.
+    def generation_snapshot = @phase.snapshot
+
     # The turn's stream: the generation's phase follows it, and a thinking
     # chunk rechecks a waiting message. +progress+: a chunk's lanes
     # (.lanes), read from it when not given.

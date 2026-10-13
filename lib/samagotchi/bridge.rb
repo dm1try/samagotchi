@@ -254,7 +254,7 @@ module Samagotchi
         seq = @engine.event_count
         {
           messages: @engine.messages_checkpoint,
-          current_turn: @accumulator.current_turn,
+          current_turn: current_turn_with_generation,
           queued: @accumulator.queued,
           queued_commands: @accumulator.queued_commands,
           recap: @accumulator.recap,
@@ -315,6 +315,16 @@ module Samagotchi
     end
 
     private
+
+    # The turn in progress (TurnAccumulator#current_turn) with the running
+    # generation's phase as generation: {thinking_only:, age:}
+    # (Engine#generation_snapshot), so a page joining mid-generation can
+    # clock its delivery line and say whether a cut can land.
+    def current_turn_with_generation
+      turn = @accumulator.current_turn
+      gen = turn && @engine.generation_snapshot
+      gen ? turn.merge(generation: gen.to_h) : turn
+    end
 
     # The Engine's commands: the built-ins and its plugins'.
     def command_registry
