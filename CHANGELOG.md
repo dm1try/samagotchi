@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
   `x-api-key`. A new host key `auth: bearer|x-api-key` picks the header the key goes in (any host). Such a host runs
   the chat loop through a new Messages adapter: streamed text and thinking, native tool use, images, usage with
   cache reads and writes. See docs/configuration.md, "Anthropic Messages hosts".
+- On an `api: anthropic` host a reply's content blocks are saved with it and go back verbatim (thinking blocks with
+  their signatures), also after `--resume`. `reasoning_history` defaults to `all` there, and `drop` counts as `turn`.
+  See docs/configuration.md, "Reasoning history".
 
 - While a turn runs, the terminal's status row (REPL and attached) ends in `· typing goes in at the next step (/cut,
   /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".

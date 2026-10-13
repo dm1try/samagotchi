@@ -208,6 +208,10 @@ module Samagotchi
       # A provider on the network: no llama.cpp /props to ask for the window.
       def remote? = @remote
 
+      # Model entries go back as text, tool_calls and reasoning_content,
+      # never as saved provider blocks (AnthropicMessages does).
+      def replays_content? = false
+
       # true when a streamed chunk's +payload+ (as #chat's on_delta gets it)
       # carries part of a tool call (ChatLoop marks the chunk's event).
       def tool_call_delta?(payload) = Assembly.tool_call_delta?(payload)

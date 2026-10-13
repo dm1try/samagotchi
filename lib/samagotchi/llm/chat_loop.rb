@@ -147,6 +147,11 @@ module Samagotchi
         conversation = llm_context_view.messages(conversation)
         paired = paired_call_ids(conversation)
         boundary = reasoning_boundary(conversation, since: since, level: reasoning)
+        # The last reply with tool calls keeps its thinking blocks past the
+        # boundary: a run stopped between steps (Stop, the step limit) left
+        # its tool_use last, and Messages wants the thinking before it.
+        last_calls = conversation.rindex { |entry| entry[:role].to_s == "model" }
+        last_calls = nil unless last_calls && !Array(conversation[last_calls][:tool_calls]).empty?
         plan = ImagePlan.new(conversation, vision)
         tool_images = []
         wire = []
@@ -162,6 +167,8 @@ module Samagotchi
           when "model"
             message = assistant_message(entry, paired)
             message[:reasoning_content] = entry[:thinking] if boundary && index >= boundary && thought?(entry)
+            blocks = replay_blocks(entry, paired, keep_thinking: (boundary && index >= boundary) || index == last_calls)
+            message[:anthropic_content] = blocks if blocks
             wire << message
           when "tool_response"
             id = entry[:tool_call_id]
@@ -226,12 +233,19 @@ module Samagotchi
 
       # The turn's ReasoningHistory level (the kernel's turn_settings); drop
       # without settings, and for a +model+ whose host refused it
-      # (#reasoning_history_refused!).
+      # (#reasoning_history_refused!). An adapter that sends its blocks back
+      # (#replays_content?) is floored at turn: the running run's thinking
+      # blocks always go back (a tool loop with thinking needs the last
+      # assistant turn's), whatever the level says.
       def reasoning_history(model = nil)
-        return :drop if model && @reasoning_history_refused&.include?(model)
-
-        @kernel.turn_settings&.reasoning_history || :drop
+        level = model && @reasoning_history_refused&.include?(model) ? :drop : @kernel.turn_settings&.reasoning_history
+        level ||= :drop
+        level == :drop && replays_content? ? :turn : level
       end
+
+      # Whether the adapter sends a model entry's saved blocks back verbatim
+      # (AnthropicMessages); the OpenAI wire doesn't.
+      def replays_content? = @adapter.respond_to?(:replays_content?) && @adapter.replays_content?
 
       # The host refused +model+'s reasoning sent back: send none from now on
       # (this worker's lifetime, as #thinking_refused!).
@@ -324,6 +338,7 @@ module Samagotchi
           message[:turn_id] = entry[:turn_id] if entry[:turn_id]
           message[:turn_start] = true if entry[:turn_start] == true
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
+          message[:anthropic_content] = entry[:anthropic_content] if entry[:anthropic_content].is_a?(Array)
           ToolResponse::SAVED_KEYS.each { |key| message[key] = entry[key] if entry[key] }
           message[TurnNote::RETRY_NUDGE] = true if TurnNote.retry_nudge?(entry)
           marker = TurnNote.empty_answer(entry)
@@ -408,6 +423,24 @@ module Samagotchi
       end
 
       def thought?(entry) = entry[:thinking].is_a?(String) && !entry[:thinking].strip.empty?
+
+      THINKING_BLOCKS = %w[thinking redacted_thinking].freeze
+
+      # A model entry's saved blocks (anthropic_content) to send back
+      # verbatim, for an adapter that replays them: nil when there are none,
+      # for an interrupted entry (its partial blocks have no signature), and
+      # for one with unpaired calls (it goes as flattened text: a tool_use
+      # without its tool_result would fail every later request). Before the
+      # reasoning boundary (+keep_thinking+ false) the thinking blocks are
+      # left out, which removes them only from the front of the history.
+      def replay_blocks(entry, paired, keep_thinking:)
+        blocks = entry[:anthropic_content]
+        return nil unless replays_content? && blocks.is_a?(Array) && !blocks.empty? && !entry[:interrupted]
+        return nil unless Array(entry[:tool_calls]).all? { |call| paired.include?(call[:id]) }
+
+        blocks = blocks.reject { |block| block.is_a?(Hash) && THINKING_BLOCKS.include?((block["type"] || block[:type]).to_s) } unless keep_thinking
+        blocks.empty? ? nil : blocks
+      end
 
       def scrub(text)
         text.encoding == Encoding::UTF_8 && !text.valid_encoding? ? text.scrub("?") : text
@@ -522,10 +555,14 @@ module Samagotchi
         # The host's reasoning, kept on the model message as +thinking+ for
         # the web turn view's reload (the whole of it, as the live view
         # shows), and sent back to the model as ChatLoop#wire_messages says
-        # (reasoning_history).
+        # (reasoning_history). A wire that sends its blocks back keeps them
+        # as +anthropic_content+ (ChatResponse#provider_content: string
+        # keys, as received, so a resumed session sends the same bytes).
         def with_thinking(message, response)
           reasoning = response.reasoning.to_s
-          reasoning.strip.empty? ? message : message.merge(thinking: reasoning)
+          message = message.merge(thinking: reasoning) unless reasoning.strip.empty?
+          blocks = response.provider_content
+          blocks.is_a?(Array) && !blocks.empty? ? message.merge(anthropic_content: blocks) : message
         end
 
         # One streamed request. Returns [response, nil], or [reason, partial
@@ -552,7 +589,10 @@ module Samagotchi
             begin
               ask.call
             rescue BadRequest => e
-              if refused?(e) && reasoning_sent? then without_reasoning(iteration, e, ask)
+              # A wire that replays its blocks sends them under the turn
+              # floor anyway: asking again without reasoning would resend
+              # the same body.
+              if refused?(e) && reasoning_sent? && !@loop.replays_content? then without_reasoning(iteration, e, ask)
               elsif thinking_refused?(e) then without_thinking(iteration, e, ask)
               else raise
               end

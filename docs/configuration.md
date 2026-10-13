@@ -627,10 +627,17 @@ models:
   turns included, and answers HTTP 400 without it: under `turn` every turn after one that thought fails. Set
   `reasoning_history: all` there (the example above). DeepSeek through OpenRouter takes `turn`.
 - `drop` sends none (what chi did before this setting).
+- **On an `api: anthropic` host** the reasoning goes back as the answer's own content blocks, verbatim (thinking
+  blocks with their signatures, in their order among text and `tool_use`), not as `reasoning_content`. The default
+  there is `all`: Claude keeps earlier turns' thinking in context, and leaving it out would rewrite the cached prefix
+  each turn (a Qwen template on Splash drops earlier turns' reasoning itself, so `all` costs nothing there). `turn`
+  leaves earlier turns' thinking blocks out (their text and calls stay), and `drop` counts as `turn`: the running
+  turn's thinking blocks always go back (a tool loop with thinking needs the last reply's). An interrupted reply, or
+  one whose tool calls never got their results, goes back as plain text without its blocks.
 - `all` sends every reply's reasoning, earlier turns too. It sends only the field: a local template that leaves out
   earlier turns' reasoning (Qwen's) needs `preserve_thinking` as well (above).
 - Order, first set wins: the session's own level, `SAMAGOTCHI_REASONING_HISTORY` (the whole process; for A/B runs),
-  the `models:` entry (found the way `profile:` is), the `hosts:` entry, then `turn`. Anything else than a level warns
+  the `models:` entry (found the way `profile:` is), the `hosts:` entry, then `turn` (`all` on `api: anthropic`). Anything else than a level warns
   once and counts as unset. A host's level reaches a worker when it starts, as its `sampling:` does.
 - **A session's own level** (`drop`, `turn` or `all`; an explicit `turn` counts as its own) is saved in the session
   (its file's `"reasoning_history"`), so a `--resume`, a respawned worker, a continue and `/model` keep it; a plugin's

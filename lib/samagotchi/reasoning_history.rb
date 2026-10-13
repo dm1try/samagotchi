@@ -16,12 +16,17 @@ module Samagotchi
   #
   # Order (#resolve): the session's own level (/reasoning-history), then
   # SAMAGOTCHI_REASONING_HISTORY, models.<key>.reasoning_history,
-  # hosts.<name>.reasoning_history, then turn. Native hosts ignore it:
+  # hosts.<name>.reasoning_history, then the host's api default: all for
+  # api: anthropic (its thinking blocks go back verbatim, and removing
+  # earlier turns' would rewrite the cached prefix every turn; ChatLoop
+  # floors drop at turn there), turn elsewhere. Native hosts ignore it:
   # KernelLoop keeps the running turn's reasoning on its own, from the
   # run's start (.run_start).
   module ReasoningHistory
     LEVELS = %i[drop turn all].freeze
     DEFAULT = :turn
+    # The default for a host's api when it isn't DEFAULT.
+    API_DEFAULTS = { anthropic: :all }.freeze
     KEY = "reasoning_history"
     ENV_NAME = "SAMAGOTCHI_REASONING_HISTORY"
     # The source a session's own level reads as.
@@ -82,7 +87,7 @@ module Samagotchi
       host = target.entry&.reasoning_history
       return [host, "hosts.#{target.entry.name}"] if host
 
-      [DEFAULT, nil]
+      [API_DEFAULTS.fetch(target.entry&.api&.to_sym, DEFAULT), nil]
     end
 
     # #resolve, as a SettingExplained with the session's own level beside it.
@@ -112,10 +117,15 @@ module Samagotchi
     end
 
     # Whether +conversation+ has a model entry with thinking (what all
-    # sends back as reasoning_content; LLM::ChatLoop#thought?).
+    # sends back as reasoning_content; LLM::ChatLoop#thought?), or with a
+    # saved thinking block (a Messages host's, which may carry no text:
+    # Claude's omitted display).
     def earlier_thought?(conversation)
       Array(conversation).any? do |entry|
-        entry[:role].to_s == "model" && entry[:thinking].is_a?(String) && !entry[:thinking].strip.empty?
+        next false unless entry[:role].to_s == "model"
+
+        (entry[:thinking].is_a?(String) && !entry[:thinking].strip.empty?) ||
+          Array(entry[:anthropic_content]).any? { |block| block.is_a?(Hash) && %w[thinking redacted_thinking].include?(block["type"].to_s) }
       end
     end
 

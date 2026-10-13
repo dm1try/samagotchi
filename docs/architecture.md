@@ -450,7 +450,10 @@ ChatLoop builds the same OpenAI-shaped wire messages for every chat host, and th
 (`LLM::AnthropicWire`: the head system message becomes the top-level `system` blocks, tool calls `tool_use` blocks,
 tool messages `tool_result` blocks in one user message, image parts `image` blocks, later system messages user
 text; empty text blocks are never sent). Its answer (`LLM::AnthropicAssembly`) is a `ChatResponse` whose
-`provider_content` holds the content blocks as received, which ChatLoop can send back verbatim (thinking blocks
+`provider_content` holds the content blocks as received, which ChatLoop saves on the model entry as
+`anthropic_content` (string keys, so a resumed session sends the same bytes) and sends back verbatim when the
+adapter `replays_content?` (only for entries whose calls are all paired, never for an interrupted one; earlier
+entries' thinking blocks left out under `reasoning_history: turn`) (thinking blocks
 need their signature and their order among text and `tool_use`). Usage is normalized to the OpenAI shape the rest
 of chi reads (the prompt is input + cache reads + cache writes), stop reasons to the loop's finish reasons
 (`max_tokens` → `length`, `tool_use` → `tool_calls`, `end_turn` → `stop`). A stream is read by content-block index

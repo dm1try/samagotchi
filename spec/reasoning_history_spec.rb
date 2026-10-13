@@ -90,6 +90,13 @@ RSpec.describe Samagotchi::ReasoningHistory do
           other:
             host: o
             api: openai
+          msg:
+            host: m
+            api: anthropic
+          msgturn:
+            host: n
+            api: anthropic
+            reasoning_history: turn
         models:
           qwen:
             reasoning_history: drop
@@ -103,6 +110,14 @@ RSpec.describe Samagotchi::ReasoningHistory do
         expect(resolve(path, dir, "work:qwen")).to eq([:drop, "models: qwen"])
         expect(resolve(path, dir, "work:gemma")).to eq([:all, "hosts.work"])
         expect(resolve(path, dir, "other:gemma")).to eq([:turn, nil])
+      end
+    end
+
+    it "defaults to all on an api: anthropic host, which a setting still overrides" do
+      with_config(yaml) do |path, dir|
+        expect(resolve(path, dir, "msg:claude")).to eq([:all, nil])
+        expect(resolve(path, dir, "msgturn:claude")).to eq([:turn, "hosts.msgturn"])
+        expect(resolve(path, dir, "msg:qwen")).to eq([:drop, "models: qwen"])
       end
     end
 
@@ -163,6 +178,14 @@ RSpec.describe Samagotchi::ReasoningHistory do
         expect(described_class.cache_cost(other, :all, target: target, conversation: thought)).to eq(:history)
         expect(described_class.cache_cost(:all, other, target: target, conversation: thought)).to eq(:history)
       end
+    end
+
+    it "counts a saved thinking block with no text (Claude's omitted display) as earlier thought" do
+      blocks = [{ role: "model", content: "x", anthropic_content: [{ "type" => "thinking", "thinking" => "", "signature" => "s" }] }]
+      text_only = [{ role: "model", content: "x", anthropic_content: [{ "type" => "text", "text" => "x" }] }]
+
+      expect(described_class.earlier_thought?(blocks)).to be(true)
+      expect(described_class.earlier_thought?(text_only)).to be(false)
     end
 
     it "is nothing between drop and turn, for no change, with nothing thought yet, or on a native host" do
