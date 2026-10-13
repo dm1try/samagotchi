@@ -8,10 +8,20 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- **Plugin annotation actions** (web): `chi.annotation(label, command:, template:, send:)` adds a pill to the
+  selection bar that prepares a command line of the plugin from the selected text (`{quote}`, `{text}`, `{source}`):
+  it fills the composer (an earlier draft stays under the quote), or with `send: true` sends at once. Up to 3 inline,
+  the rest behind `⋯`. See docs/plugins.md, `chi.annotation`.
+- claude-peer 0.2.0: **Confirm with Claude** in the web's selection bar fills `/claude validate` with the quote;
+  `/claude validate|context` titles a quote by its first quoted line, not its `From …:` label.
+
 ### Changed
 
 - A command's name may be followed by any whitespace, a newline too: `/foo` on its own line with text under it
   runs `/foo` with that text, in the terminals and the web (before, only a space did).
+- Web: a command refused as busy mid-turn comes back into the composer (it was cleared when sent).
 
 ### Fixed
 

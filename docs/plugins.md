@@ -92,10 +92,14 @@ A line that is not a known command keeps its old meaning: in the terminal
 UIs `/foo` goes to the model as a prompt; the web refuses it and names the
 commands it knows.
 
+Any whitespace may follow the name, a newline too: `/hello` on its own line
+with text under it runs `/hello` with that text as `args` (its inner lines,
+blank lines and indentation as typed; only the ends are stripped).
+
 #### `anytime: true`
 
 A plugin's normal command waits for its turn: typed while a turn runs, it is
-refused as busy (the REPL puts it back into the prompt; a plugin command can't
+refused as busy (the REPL puts it back into the prompt, the web into an empty composer; a plugin command can't
 ask to run after the turn, as the built-in `/model X` does). An `anytime: true` command
 runs **at once, on its own thread, beside the running turn**, and the turn
 goes on:
@@ -143,6 +147,54 @@ chi's own, each bundle's with the bundle's name, and the terminal UIs' own
 (`/stats`, `/exit`, `/detach` …), marked where they run: `terminal only`,
 `attached only`, `repl only`, or `terminal and web only` (`/cut`).
 It works in all three UIs.
+
+### `chi.annotation(label, command:, template: "{quote}", send: false)`
+
+This adds a pill to the web's selection bar. Selecting text in an answer, a
+thinking block, a step, a tool row or your own message shows
+`[ Annotate | <presets> ┊ <plugin pills> ]`; a plugin pill prepares a command
+line of the plugin from the selection:
+
+```ruby
+chi.command "/claude", "…", anytime: true do |args, ctx| … end
+chi.annotation "Confirm with Claude", command: "/claude validate"
+```
+
+Clicking it on a thinking line fills the composer with
+
+```
+/claude validate
+From your thinking:
+> the quoted line
+
+```
+
+and the caret goes under the quote, for your note; Send runs `/claude` with
+everything after the name as `args`.
+
+- `label`: the pill's text, 1–40 characters. Its tooltip adds the bundle.
+- `command:`: `/name` or `/name words`, and `/name` must be a command **this
+  plugin** registers (checked once `register` returns, so the order of the
+  calls doesn't matter; another one's is a load error). At most 5 per plugin.
+- `template:` goes on the lines under the command line, filled in the
+  browser: `{quote}` the labelled quote block Annotate makes, `{text}` the
+  selection alone, `{source}` where it came from (`answer`, `thinking`,
+  `step`, `tool`, `user`). Another `{x}` stays as written. Each line's
+  trailing blanks and the blank lines at either end are dropped, and
+  indentation is kept (code stays indented).
+- **Fill** (the default) never sends: an empty composer gets the line; a
+  composer that already starts with the same command line gets the quote
+  appended (several selections collect under one command); any other draft
+  stays, under the command line and the quote.
+- `send: true` sends the line at once (the pill is marked ↗). While a turn
+  runs, such a pill is disabled unless its command is `anytime`: it would
+  come back busy. A fill pill always works; a typed command refused as busy
+  comes back into the composer.
+
+Pills ride on their command's listing (the worker's snapshot): a muted
+bundle's go with its command, and a session's pills need a worker started
+after the bundle was installed. Up to 3 show inline, the rest behind `⋯`.
+Web only: the terminals type the command (`/claude validate <text>`).
 
 ### `chi.tool(name, description, params:, schema:, label:, preview:, targets:, refs:) { |args, ctx| … }`
 
@@ -1566,7 +1618,13 @@ Claude pairs; without one the bundle costs one tool declaration.
     file is there (it goes when that Claude session ends), the last send, and
     Claude's last answer (the `claude-review` summary).
   - `/claude validate <text>` and `/claude context <text>` send the text as it
-    is, titled by its first line: paste a selection after them.
+    is, titled by its first line (past a web quote's `From …:` label and a
+    quoted line's `> `): paste a selection after them.
+  - In the web, selecting text offers **Confirm with Claude**
+    ([`chi.annotation`](#chiannotationlabel-command-template-quote-send-false)):
+    it fills the composer with `/claude validate` and the quote, for you to
+    add what needs confirming. On a chi without `chi.annotation` (0.62–0.65)
+    the bundle loads without the pill.
   - `/claude last` sends the model's last completed answer as context. Mid-turn
     it is the answer before the running turn, never the turn's partial text;
     a cancelled or failed turn has no answer, so the one before it goes.
