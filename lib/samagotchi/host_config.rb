@@ -15,12 +15,19 @@ module Samagotchi
   #
   # name: the lowercased entry name; host, port, scheme: where it is (from
   # url: when given); url: the configured url, nil when host/port; transport,
-  # api: symbols, nil when unset; the rest as HostRegistry::HostEntry
-  # describes them, nil when unset; models: {downcased id => HostModel}.
-  HostConfig = Data.define(:name, :host, :port, :scheme, :url, :transport, :api, :api_key_env, :profile,
+  # api: symbols, nil when unset; auth: the header the API key goes in
+  # (LLM::ApiKey::SCHEMES), nil when unset; the rest as
+  # HostRegistry::HostEntry describes them, nil when unset; models:
+  # {downcased id => HostModel}.
+  HostConfig = Data.define(:name, :host, :port, :scheme, :url, :transport, :api, :api_key_env, :auth, :profile,
                            :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models) do
+    # An api: anthropic host without url/host talks to Anthropic's own API.
+    ANTHROPIC_URL = "https://api.anthropic.com"
+    # auth: as written => the LLM::ApiKey scheme.
+    AUTH_SCHEMES = { "bearer" => :bearer, "x-api-key" => :x_api_key }.freeze
+
     # Every field but name may be left out: nil, models {}.
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, models: {}, **fields)
@@ -69,8 +76,16 @@ module Samagotchi
         return invalid(name, "api_key_env must be an environment variable name")
       end
 
-      location = parse_location(name, value) or return nil
+      auth = value.call(:auth).to_s.strip.downcase
+      fields[:auth] = AUTH_SCHEMES[auth] unless auth.empty?
+      return invalid(name, "auth must be one of #{AUTH_SCHEMES.keys.join(", ")}") if !auth.empty? && fields[:auth].nil?
+
+      if fields[:auth] && fields[:api_key_env].nil?
+        ConfigFile.warn_once "Warning: #{where}: auth has no effect without api_key_env (no key is sent)"
+      end
+
       kinds = parse_kinds(name, value.call(:transport), value.call(:api)) or return nil
+      location = parse_location(name, value, api: kinds[:api]) or return nil
       new(name: name.downcase, **location, **kinds, **fields)
     rescue StandardError => e
       # One entry that trips a reader is dropped on its own, and said so;
@@ -99,11 +114,13 @@ module Samagotchi
     end
 
     # host/port/scheme/url from url:, or from host: and port:; nil (warned)
-    # when they are wrong.
-    def self.parse_location(name, value)
+    # when they are wrong. An api: anthropic entry with neither has
+    # ANTHROPIC_URL.
+    def self.parse_location(name, value, api: nil)
       host = value.call(:host)
       port = value.call(:port)
       url = value.call(:url).to_s.strip
+      url = ANTHROPIC_URL if url.empty? && api == :anthropic && host.to_s.strip.empty? && port.to_s.strip.empty?
       scheme = "http"
       unless url.empty?
         return invalid(name, "give url or host/port, not both") unless host.to_s.strip.empty? && port.to_s.strip.empty?
@@ -168,6 +185,7 @@ module Samagotchi
     def to_env_h
       location = url ? { "url" => url } : { "host" => host, "port" => port }
       location.merge("transport" => transport&.to_s, "api" => api&.to_s, "api_key_env" => api_key_env,
+                     "auth" => (AUTH_SCHEMES.key(auth) if auth),
                      "profile" => profile, "first_token_timeout" => first_token_timeout,
                      "vision" => vision, "sampling" => sampling, "thinking" => thinking&.to_s,
                      "reasoning_history" => reasoning_history&.to_s, "remote" => remote, "window_tokens" => window_tokens,

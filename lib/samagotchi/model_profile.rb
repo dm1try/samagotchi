@@ -484,7 +484,7 @@ module Samagotchi
     private_class_method :configured
 
     # Only a native llama.cpp host has /props with a chat template; a chat
-    # host (api: openai) barely uses a profile, and mlx/oMLX expose none.
+    # host (api: openai or anthropic) barely uses a profile, and mlx/oMLX expose none.
     def self.probe?(entry, client)
       return false if client.nil? || !client.respond_to?(:server_props)
       return false if entry&.chat?

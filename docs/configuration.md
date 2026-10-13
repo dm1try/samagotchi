@@ -231,7 +231,8 @@ hosts:
 
 `chi self` shows the variable and whether it is set (`api key  FIREWORKS_API_KEY (set)`).
 
-Every host with `api_key_env:` sends `Authorization: Bearer <key>` on each request,
+Every host with `api_key_env:` sends `Authorization: Bearer <key>` on each request (`api: anthropic`:
+`x-api-key: <key>`, see [Anthropic Messages hosts](#anthropic-messages-hosts)),
 chat or raw-prompt alike, so a llama.cpp started with `--api-key` works as a native
 host too (`chi bootstrap --key-env VAR` writes such an entry). An unset variable
 fails the turn before any request (`set VAR`); a 401/403 names the variable to
@@ -291,6 +292,32 @@ bodies are not logged. The interactive REPL, `--prompt`,
 workers, and resumed sessions all use the loop of the model's host. Hosts without
 `api: openai` keep using the native `/completion`, `/v1/completions`, or oMLX
 transport path.
+
+### Anthropic Messages hosts
+
+`api: anthropic` makes a host talk Anthropic's Messages API (`POST {url}/v1/messages`) through the same chat loop:
+Anthropic's own API, a gateway that serves `/v1/messages`, or a local server that does (Splash). The url is the API
+root **without** `/v1`, as `ANTHROPIC_BASE_URL` takes it (a url that ends in `/v1` is accepted: no second `/v1` is
+added); an entry with neither `url:` nor `host:` talks to `https://api.anthropic.com`. The key goes in the
+`x-api-key` header; `auth: bearer` sends it as `Authorization: Bearer` instead (a gateway or provider that wants
+that), `auth: x-api-key` is the default spelled out. Exactly one of the two headers is sent.
+
+```yaml
+hosts:
+  claude:
+    api: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+  gateway:
+    url: https://gateway.example.com
+    api: anthropic
+    api_key_env: GATEWAY_KEY
+    auth: bearer
+  splash-msg:
+    url: http://192.0.2.10:8000
+    api: anthropic
+```
+
+`auth:` works on any host (`bearer` is the default everywhere but `api: anthropic`).
 
 To manually verify a live chat-loop tool round trip, run the gated integration
 spec. It requires the model to call `execute` and return the current UTC date:

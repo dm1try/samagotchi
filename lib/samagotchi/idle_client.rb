@@ -47,20 +47,22 @@ module Samagotchi
     # @param purpose [String] what the requests are for, in the HTTP log
     #   lines and error messages ("recap", "broadcast")
     # @param api [Symbol] the wire to talk (LLM::Adapters; IdleTarget#api)
+    # @param auth [Symbol, nil] the header the key goes in (IdleTarget#auth)
     def initialize(model:, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV, purpose: "recap",
-                   api: :openai)
+                   api: :openai, auth: nil)
       @model = model
       # A recap is best-effort: one short attempt, no retries. The idle job
       # tries again after the next activity, never on its own.
       @chat = LLM::Adapters.build(api: api, base_url: base_url.to_s, host_name: purpose, api_key_env: api_key_env,
-                                  stream: false, retries: false, timeout: timeout, env: env, purpose: purpose)
+                                  auth: auth, stream: false, retries: false, timeout: timeout, env: env, purpose: purpose)
     end
 
     # A client for +target+ (an IdleTarget: a recap's, ctx.ask_model's, a
     # broadcast's triage model), on its api's adapter.
     # @return [IdleClient]
     def self.for(target, **)
-      new(model: target.model, base_url: target.base_url, api_key_env: target.api_key_env, api: target.api, **)
+      new(model: target.model, base_url: target.base_url, api_key_env: target.api_key_env, api: target.api,
+          auth: target.auth, **)
     end
 
     THINK_RE = /<\|think\|.*?\|think\|>/m

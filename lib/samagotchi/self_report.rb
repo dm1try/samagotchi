@@ -269,7 +269,7 @@ module Samagotchi
       entry = HostRegistry.new(env: env).resolve(model).entry
       return "-" unless entry
 
-      entry.chat? ? "chat (api: openai)" : "native (raw prompt)"
+      entry.chat? ? "chat (api: #{entry.api})" : "native (raw prompt)"
     end
 
     NO_PROPS = "reported per turn (the server has no /props)"
@@ -277,7 +277,7 @@ module Samagotchi
     # chi self's one server call: a single-model llama.cpp answers any name
     # with the model it loaded, and its /props names it (model_alias). One
     # GET with the probe's short timeouts; a remote host isn't asked. A local
-    # chat host (api: openai) has no /props, so it gets a GET <base>/models
+    # chat host (api: openai or anthropic) has no /props, so it gets its model list
     # with the same timeouts: up/down and the ids it serves.
     def served_model_for(model, env)
       registry = HostRegistry.new(env: env)

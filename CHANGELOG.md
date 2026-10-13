@@ -10,6 +10,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- `api: anthropic` hosts: config for Anthropic's Messages API. The url is the API root without `/v1` (a trailing
+  `/v1` is dropped), an entry without `url:`/`host:` talks to `https://api.anthropic.com`, and the key goes in
+  `x-api-key`. A new host key `auth: bearer|x-api-key` picks the header the key goes in (any host). See
+  docs/configuration.md, "Anthropic Messages hosts".
+
 - While a turn runs, the terminal's status row (REPL and attached) ends in `· typing goes in at the next step (/cut,
   /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".
 - The web composer has a row above the text field in a session: the keys while idle, and while a turn runs a

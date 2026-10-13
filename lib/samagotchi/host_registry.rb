@@ -30,6 +30,7 @@ module Samagotchi
 
     # url: the configured url, when the entry has one (host, port and scheme
     # come from it); api_key_env: the variable holding the host's API key;
+    # auth: the header it goes in (LLM::ApiKey::SCHEMES), nil for the api's own default;
     # profile: the configured prompt profile name, if any;
     # first_token_timeout: the configured first-token limit (see #first_token_limit);
     # vision: the configured true/false (VisionSupport), nil when unset;
@@ -43,7 +44,7 @@ module Samagotchi
     # llm_context_apply: the configured apply rule (LLMContextStrategy), nil when unset;
     # llm_context_budget_tokens: the configured context budget (LLMContextStrategy), nil when unset;
     # models: the ids the host serves whatever it lists, {downcased id => HostModel} ({} when none).
-    HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :profile,
+    HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :auth, :profile,
                            :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models, keyword_init: true) do
@@ -58,9 +59,19 @@ module Samagotchi
       # configured, else the root's /v1.
       def openai_base_url = url || "#{root_url}/v1"
 
-      # The API base the host's chat adapter talks to (LLM::Adapters); for
-      # api: openai the OpenAI-compatible base.
-      def api_base_url = openai_base_url
+      # The API base the host's chat adapter talks to (LLM::Adapters): for
+      # api: openai the OpenAI-compatible base; for api: anthropic the API
+      # root without /v1 (as ANTHROPIC_BASE_URL; a url that ends in /v1
+      # loses it, so requests never go to /v1/v1).
+      def api_base_url
+        return openai_base_url unless api&.to_sym == :anthropic
+
+        (url || root_url).chomp("/").delete_suffix("/v1")
+      end
+
+      # The header the host's key goes in: auth: when set, else the api's
+      # own (x-api-key for api: anthropic, Bearer for every other).
+      def auth_scheme = auth || (api&.to_sym == :anthropic ? :x_api_key : :bearer)
 
       # A provider on the network rather than a local server: hosts.<name>.remote
       # when set, else by its address (HostRegistry.remote_address?). An API
@@ -110,7 +121,7 @@ module Samagotchi
         entry = HostEntry.new(**fields)
         entry.client = Client.new(host: cfg.host, port: cfg.port, transport: cfg.transport, scheme: cfg.scheme,
                                   first_token_timeout: entry.first_token_limit, name: entry.name,
-                                  api_key_env: entry.api_key_env, env: env)
+                                  api_key_env: entry.api_key_env, auth: entry.auth_scheme, env: env)
         @entries[entry.name] = entry
       end
       # Fallback single entry (should already be synthesized by hosts_config, but guard)

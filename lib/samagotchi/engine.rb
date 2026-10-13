@@ -299,7 +299,7 @@ module Samagotchi
       # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
       @hooks.runtime = hook_runtime
       # The loop follows the effective model's host (its api:): the raw-prompt
-      # NativeBackend, or the chat backend for openai hosts.
+      # NativeBackend, or the chat backend for chat hosts (openai, anthropic).
       @native_backend = LLM::NativeBackend.new(kernel: @kernel)
     end
     private :wire_kernel
@@ -1086,7 +1086,7 @@ module Samagotchi
       @last_context_status = saved_context_status(@metrics.snapshot[:context]) || @last_context_status if @last_context_status
     end
 
-    # The effective model is on a chat host (api: openai), whose loop uses
+    # The effective model is on a chat host (api: openai or anthropic), whose loop uses
     # no prompt profile.
     def chat_model? = @host_registry.resolve(@effective_model_name).entry.chat?
 

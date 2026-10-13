@@ -7,6 +7,8 @@ RSpec.describe Samagotchi::LLM::Adapters do
   let(:registry) do
     Samagotchi::HostRegistry.new(hosts_config: {
       "oai" => { host: "10.0.0.5", port: 8082, api: "openai" },
+      "msg" => { host: "box.lan", port: 8082, scheme: "http", api: :anthropic, url: "http://box.lan:8082/v1/" },
+      "msg2" => { host: "gw.example.test", port: 443, scheme: "https", api: :anthropic, url: "https://gw.example.test/llm" },
       "raw" => { host: "localhost", port: 8080 }
     }, env: {})
   end
@@ -51,6 +53,24 @@ RSpec.describe Samagotchi::LLM::Adapters do
     it "names the API base its adapter talks to (the OpenAI base for api: openai)" do
       expect(registry.entries["oai"].api_base_url).to eq("http://10.0.0.5:8082/v1")
       expect(registry.entries["oai"].api_base_url).to eq(registry.entries["oai"].openai_base_url)
+    end
+
+    it "sends the key in the api's header unless auth: says, the raw-prompt client's probes too" do
+      entries = Samagotchi::HostRegistry.new(hosts_config: {
+        "msg" => { host: "box.lan", port: 8082, api: :anthropic, api_key_env: "K" },
+        "msgb" => { host: "box.lan", port: 8082, api: :anthropic, api_key_env: "K", auth: :bearer },
+        "oai" => { host: "box.lan", port: 8081, api: :openai, api_key_env: "K" }
+      }, env: {}).entries
+      schemes = entries.transform_values do |entry|
+        [entry.auth_scheme, entry.client.instance_variable_get(:@http).instance_variable_get(:@api_key).scheme]
+      end
+
+      expect(schemes).to eq("msg" => %i[x_api_key x_api_key], "msgb" => %i[bearer bearer], "oai" => %i[bearer bearer])
+    end
+
+    it "names the API root without /v1 for api: anthropic (a url ending in /v1 loses it)" do
+      expect(registry.entries["msg"].api_base_url).to eq("http://box.lan:8082")
+      expect(registry.entries["msg2"].api_base_url).to eq("https://gw.example.test/llm")
     end
   end
 

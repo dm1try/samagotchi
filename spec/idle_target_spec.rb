@@ -27,11 +27,12 @@ RSpec.describe Samagotchi::IdleTarget do
   it "pins a host by host_ref, by the model's own host prefix or by base_url" do
     expect(resolve(model: "small", host_ref: "fw").to_h)
       .to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY", model: "small", label: "small",
-             api: :openai)
+             api: :openai, auth: nil)
     expect(resolve(model: "box:small").to_h)
-      .to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "box:small", api: :openai)
+      .to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "box:small", api: :openai,
+             auth: nil)
     expect(resolve(model: "m", base_url: "http://other.test/v1 ").to_h)
-      .to eq(base_url: "http://other.test/v1", api_key_env: nil, model: "m", label: "m", api: :openai)
+      .to eq(base_url: "http://other.test/v1", api_key_env: nil, model: "m", label: "m", api: :openai, auth: nil)
   end
 
   # The api picks the side client's adapter (LLM::Adapters.build): a chat
@@ -49,6 +50,15 @@ RSpec.describe Samagotchi::IdleTarget do
 
       expect(resolve(model: "small", host_ref: "fw")).to have_attributes(api: :wire, base_url: "https://api.example.test/wire")
       expect(resolve(model: "small", host_ref: "box")).to have_attributes(api: :openai, base_url: "http://box.test:8081/v1")
+    end
+
+    it "carries the host's auth: with its api, by host_ref and in of_model" do
+      fw = registry.entries["fw"]
+      allow(fw).to receive_messages(api: :wire, chat?: true, auth: :x_api_key)
+
+      expect(resolve(model: "small", host_ref: "fw")).to have_attributes(api: :wire, auth: :x_api_key)
+      expect(described_class.of_model(registry, "fw:small")).to have_attributes(api: :wire, auth: :x_api_key)
+      expect(described_class.of_model(registry, "box:small").auth).to be_nil
     end
 
     it "comes from the model's host in of_model" do

@@ -91,7 +91,7 @@ module Samagotchi
 
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **)
-        new(base_url: entry.api_base_url, host_name: entry.name, api_key_env: entry.api_key_env,
+        new(base_url: entry.api_base_url, host_name: entry.name, api_key_env: entry.api_key_env, auth: entry.auth,
             remote: entry.remote?, default_max_tokens: (OPENROUTER_MAX_TOKENS if openrouter?(entry.api_base_url)),
             **)
       end
@@ -132,6 +132,8 @@ module Samagotchi
       # @param host_name [String] names the host in errors
       # @param api_key_env [String, nil] the variable holding the API key;
       #   nil sends no Authorization header (a local server)
+      # @param auth [Symbol, nil] the header the key goes in
+      #   (ApiKey::SCHEMES); nil: Authorization: Bearer
       # @param stream [Boolean] stream the reply (false: one JSON body)
       # @param retries [Boolean] false: one attempt
       # @param timeout [Numeric, nil] read timeout in seconds (default
@@ -144,7 +146,7 @@ module Samagotchi
       #   may take to show something (LLM::HTTP); nil: no limit
       # @param default_max_tokens [Integer, nil] max_tokens for a request
       #   whose options name none (OPENROUTER_MAX_TOKENS); nil sends none
-      def initialize(base_url:, host_name:, api_key_env: nil, stream: true, retries: true, timeout: nil,
+      def initialize(base_url:, host_name:, api_key_env: nil, auth: nil, stream: true, retries: true, timeout: nil,
                      env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
                      first_token_timeout: nil, purpose: "chat", default_max_tokens: nil, open_timeout: nil)
         @remote = remote
@@ -162,7 +164,7 @@ module Samagotchi
         policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
         @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
                          retry_policy: policy, sleeper: sleeper, first_token_timeout: first_token_timeout,
-                         api_key: ApiKey.for(api_key_env, host: @host_name, env: env))
+                         api_key: ApiKey.for(api_key_env, host: @host_name, env: env, scheme: auth))
       end
 
       # @param messages [Array<Hash>] wire messages (role, content, tool_calls,

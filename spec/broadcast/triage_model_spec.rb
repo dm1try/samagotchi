@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::Broadcast::TriageModel do
 
     expect(resolve(all)).to have_attributes(setting: "broadcast.triage_model", problem: nil)
     expect(resolve(all).target.to_h).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
-                                           model: "small", label: "small", api: :openai)
+                                           model: "small", label: "small", api: :openai, auth: nil)
     expect(resolve(all.except("broadcast.triage_model", "broadcast.triage_host_ref")).target)
       .to have_attributes(base_url: "http://box.test:8081/v1", model: "recap")
     expect(resolve({ "default.model" => "box:big" })).to have_attributes(setting: "default.model")

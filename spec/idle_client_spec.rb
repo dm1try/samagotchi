@@ -233,15 +233,16 @@ RSpec.describe Samagotchi::IdleClient do
   end
 
   describe ".for" do
-    it "builds its adapter for the target's api, url and key" do
-      target = Samagotchi::IdleTarget.new(base_url: "http://x/v1", api_key_env: "X_KEY", model: "m", label: "m")
+    it "builds its adapter for the target's api, url, key and auth" do
+      target = Samagotchi::IdleTarget.new(base_url: "http://x/v1", api_key_env: "X_KEY", model: "m", label: "m",
+                                          auth: :x_api_key)
       allow(Samagotchi::LLM::Adapters).to receive(:build).and_call_original
 
       described_class.for(target, timeout: 3, purpose: "broadcast")
 
       expect(Samagotchi::LLM::Adapters).to have_received(:build)
-        .with(api: :openai, base_url: "http://x/v1", host_name: "broadcast", api_key_env: "X_KEY", stream: false,
-              retries: false, timeout: 3, env: ENV, purpose: "broadcast")
+        .with(api: :openai, base_url: "http://x/v1", host_name: "broadcast", api_key_env: "X_KEY", auth: :x_api_key,
+              stream: false, retries: false, timeout: 3, env: ENV, purpose: "broadcast")
     end
   end
 

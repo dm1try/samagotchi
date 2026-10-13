@@ -195,9 +195,11 @@ module Samagotchi
     # @param api_key_env [String, nil] the variable holding the host's API
     #   key (llama.cpp's --api-key), sent as a bearer token on every request;
     #   nil sends no Authorization header
+    # @param auth [Symbol, nil] the header the key goes in (LLM::ApiKey::SCHEMES;
+    #   HostEntry#auth_scheme), nil: Bearer
     # @param env [Hash] where the key variable is read
     def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil, scheme: nil,
-                   first_token_timeout: nil, name: nil, api_key_env: nil, env: ENV)
+                   first_token_timeout: nil, name: nil, api_key_env: nil, auth: nil, env: ENV)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
       @host          = host || Samagotchi::Config.get("server.host")
       @port          = (port || Samagotchi::Config.get("server.port")).to_i
@@ -217,7 +219,7 @@ module Samagotchi
       @label = name.to_s.empty? ? @transport.label : name.to_s
       @http = LLM::HTTP.new(label: @label, open_timeout: @open_timeout, read_timeout: @read_timeout,
                             sleeper: sleeper, first_token_timeout: first_token_timeout,
-                            api_key: LLM::ApiKey.for(api_key_env, host: @label, env: env))
+                            api_key: LLM::ApiKey.for(api_key_env, host: @label, env: env, scheme: auth))
     end
 
     # Seconds a completion may take to stream its first text, or nil.

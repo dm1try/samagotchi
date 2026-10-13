@@ -279,7 +279,7 @@ module Samagotchi
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
-      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking
+      "hosts" => %w[host port url transport api api_key_env auth profile first_token_timeout vision sampling thinking
                     reasoning_history enabled remote window_tokens steer_cut_after llm_context_strategy llm_context_apply llm_context_budget_tokens models].freeze,
       "models" => %w[profile vision sampling thinking reasoning_history window_tokens steer_cut_after llm_context_strategy llm_context_apply
                      llm_context_budget_tokens].freeze
@@ -851,9 +851,10 @@ module Samagotchi
 
     HOSTS_KEY = "hosts"
     VALID_TRANSPORTS_FOR_CONFIG = %w[llama_cpp mlx omlx].freeze
-    # How chi talks to a host: a raw-prompt api (also the Client transport) or
-    # openai, the chat loop against <host>/v1.
-    VALID_APIS_FOR_CONFIG = (VALID_TRANSPORTS_FOR_CONFIG + %w[openai]).freeze
+    # How chi talks to a host: a raw-prompt api (also the Client transport),
+    # or a chat api the chat loop talks (LLM::Adapters): openai (Chat
+    # Completions against <host>/v1) or anthropic (Messages).
+    VALID_APIS_FOR_CONFIG = (VALID_TRANSPORTS_FOR_CONFIG + %w[openai anthropic]).freeze
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
     ENV_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
