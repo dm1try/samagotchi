@@ -327,7 +327,8 @@ model list's `max_tokens` capped at 64000, else 64000 (Messages requires one). c
 never sent there; `sampling:` passes as written.
 
 Its model list is `GET {url}/v1/models` (every page): Anthropic's shape (the window from `max_input_tokens`, images
-from `capabilities.image_input`) or the OpenAI shape a gateway or Splash serves there. A gateway whose list lacks an
+from `capabilities.image_input`) or the OpenAI shape a gateway, Splash or Fireworks serves there (images from
+`input_modalities`, `vision` or `supports_image_input`). A gateway whose list lacks an
 id (a high-availability alias) takes it from the host's declared `models:`, as on any host.
 
 **Dialects.** A provider whose `/v1/messages` departs from Anthropic's gets `dialect:` on its host (only on

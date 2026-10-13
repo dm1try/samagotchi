@@ -7,7 +7,8 @@ module Samagotchi
       # true when the list says the model takes images, false when it says
       # it doesn't, else nil: OpenRouter's architecture.input_modalities,
       # Anthropic's capabilities.image_input.supported, Splash's top-level
-      # input_modalities or vision, llama.cpp's "multimodal" capability.
+      # input_modalities or vision, Fireworks' supports_image_input,
+      # llama.cpp's "multimodal" capability.
       def image_input
         return nil unless raw.is_a?(Hash)
 
@@ -19,6 +20,7 @@ module Samagotchi
         return supported if [true, false].include?(supported)
         return raw["input_modalities"].include?("image") if raw["input_modalities"].is_a?(Array)
         return raw["vision"] if [true, false].include?(raw["vision"])
+        return raw["supports_image_input"] if [true, false].include?(raw["supports_image_input"])
         return true if capabilities.is_a?(Array) && capabilities.include?("multimodal")
 
         nil
@@ -78,7 +80,12 @@ module Samagotchi
         nil
       end
 
+      # Whether the list says the model takes tools: OpenRouter's
+      # supported_parameters or llama.cpp's capabilities naming "tools"
+      # (true, else nil), or Fireworks' supports_tools (true or false).
       def tools_support(raw)
+        return raw["supports_tools"] if [true, false].include?(raw["supports_tools"])
+
         listed = raw["supported_parameters"] || raw["capabilities"]
         return nil unless listed.is_a?(Array)
 

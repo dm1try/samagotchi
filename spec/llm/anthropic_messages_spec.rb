@@ -557,6 +557,17 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
       expect(adapter.image_input(model: id)).to be(true)
     end
 
+    it "reads Fireworks' OpenAI-shaped list: supports_image_input and supports_tools" do
+      server.default("/v1/models", json: fixture("fireworks_models.hand-written.json"))
+
+      models = adapter.list_models
+
+      expect(models.map { |m| [m.id, m.context_window, m.image_input, m.supports_tools] }).to eq([
+        ["accounts/fireworks/models/kimi-k2p5", 262_144, true, true],
+        ["accounts/fireworks/models/glm-4p6", 202_752, false, false]
+      ])
+    end
+
     it "says image input false when Anthropic's capabilities say so" do
       server.default("/v1/models", json: { data: [{ id: "txt", max_input_tokens: 9, capabilities: { image_input: { supported: false } } }] })
 
