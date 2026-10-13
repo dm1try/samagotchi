@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: a step that only called plugin tools with a verb label is titled by the label ("echoing"), not "working
   with echoing"; among other tools such a call is named by its tool ("working with read, echo").
+- Web: a send from a stale tab into a session deleted meanwhile goes back to the start page with a "was not
+  found" notice, the line kept in the composer, instead of an alert.
 
 ## [0.63.0] - 2026-10-13
 
