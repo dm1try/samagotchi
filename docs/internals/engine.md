@@ -210,7 +210,10 @@ The differences from the native loop:
 - A 400 about reasoning (`BadRequest#reasoning_refused?`) for a request that sent reasoning back asks the step again
   without it; when that goes through, `#reasoning_history_refused!` marks the model (worker lifetime) and
   `:reasoning_history_refused` goes out. When it is refused too, the thinking-fields fallback (`#thinking_refused!`,
-  `:thinking_refused`) runs on it, still without reasoning. Up to three requests per step.
+  `:thinking_refused`) runs on it, still without reasoning. Up to three requests per step. A 400 about a thinking
+  block's signature (`BadRequest#thinking_signature?`) or a refused binding control
+  (`#thinking_binding_unsupported?`) is not one: `ProviderErrors` leaves `reasoning_refused?` false for them, so one
+  bad block never turns reasoning off for the model.
 
 ### Shared: ToolResponse (per batch) and ToolRunner (per call)
 

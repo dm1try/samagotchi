@@ -137,11 +137,13 @@ module Samagotchi
       TOOLS_HINT = "this model can't use tools, and chi needs them: pick another model (/model) or host"
 
       # @param hint [String, nil] what to try, added to the summary
-      def initialize(message = nil, context_overflow: false, tools_unsupported: false, reasoning_refused: false, hint: nil,
-                     **)
+      def initialize(message = nil, context_overflow: false, tools_unsupported: false, reasoning_refused: false,
+                     thinking_signature: false, thinking_binding_unsupported: false, hint: nil, **)
         @context_overflow = context_overflow
         @tools_unsupported = tools_unsupported
         @reasoning_refused = reasoning_refused
+        @thinking_signature = thinking_signature
+        @thinking_binding_unsupported = thinking_binding_unsupported
         @hint = hint
         super(message, **)
       end
@@ -158,6 +160,17 @@ module Samagotchi
       # A 400 about reasoning or thinking: the request's thinking fields may
       # be what the host refuses (gpt-oss: "Reasoning is mandatory").
       def reasoning_refused? = @reasoning_refused
+
+      # A 400 about a replayed thinking block's signature (Anthropic: "Invalid
+      # `signature` in `thinking` block", bound to a different conversation
+      # or unreadable). The block is what's wrong, not the thinking fields:
+      # never #reasoning_refused?.
+      def thinking_signature? = @thinking_signature
+
+      # A 400 refusing the thinking binding controls: the
+      # thinking.block_binding field ("Extra inputs are not permitted") or
+      # the thinking-binding-controls beta header. Never #reasoning_refused?.
+      def thinking_binding_unsupported? = @thinking_binding_unsupported
 
       def kind = :bad_request
 
@@ -292,8 +305,15 @@ module Samagotchi
       TOOLS_UNSUPPORTED_RE = /support tool use|(does not|doesn't) support tools|tool choice requires --enable-auto-tool-choice/i
       # A model or server that can't take images (see VisionUnsupported).
       VISION_UNSUPPORTED_RE = /support image input|image input is not supported|mmproj/i
-      # A 400 about the thinking fields chi sent (Thinking.chat_fields).
+      # A 400 about the thinking fields chi sent (Thinking.chat_fields). Broad;
+      # a signature or binding-control 400 (below) is not one.
       REASONING_REFUSED_RE = /reasoning|thinking/i
+      # A 400 about a thinking block's signature (BadRequest#thinking_signature?).
+      THINKING_SIGNATURE_RE = /invalid `?signature`? in `?thinking`? block|bound to a different conversation/i
+      # A 400 refusing the binding controls (BadRequest#thinking_binding_unsupported?):
+      # the field without the beta header, or the beta header itself.
+      THINKING_BINDING_UNSUPPORTED_RE = Regexp.union(/block_binding:? extra inputs are not permitted/i,
+                                                     /unexpected value\(s\) `?thinking-binding-controls/i)
       # A 402 about credit held by in-flight requests (see CreditsHeld).
       CREDITS_HELD_RE = /in-flight requests/i
       # A 402's error.metadata.reason when the request can never fit the
@@ -338,10 +358,7 @@ module Samagotchi
           else
             OutOfCredits.new(text, **options)
           end
-        when 400..499
-          tools = TOOLS_UNSUPPORTED_RE.match?(message)
-          BadRequest.new(text, tools_unsupported: tools,
-                               reasoning_refused: status == 400 && !tools && REASONING_REFUSED_RE.match?(message), **options)
+        when 400..499 then bad_request(text, status, message, options)
         when 500..599
           ServerError.new(text, retryable: RETRYABLE_SERVER_STATUSES.include?(status),
                                 retry_after: parse_retry_after(retry_after), **options)
@@ -373,6 +390,16 @@ module Samagotchi
         return nil unless parsed.is_a?(Hash) && parsed.key?("error")
 
         from_error_json(body.to_s, host: host)
+      end
+
+      # A BadRequest for a 4xx, with its predicates from +message+.
+      def bad_request(text, status, message, options)
+        tools = TOOLS_UNSUPPORTED_RE.match?(message)
+        signature = THINKING_SIGNATURE_RE.match?(message)
+        binding = !signature && THINKING_BINDING_UNSUPPORTED_RE.match?(message)
+        refused = status == 400 && !tools && !signature && !binding && REASONING_REFUSED_RE.match?(message)
+        BadRequest.new(text, tools_unsupported: tools, thinking_signature: signature, thinking_binding_unsupported: binding,
+                             reasoning_refused: refused, **options)
       end
 
       # The ProviderError for a JSON error object, by its error.code (an HTTP

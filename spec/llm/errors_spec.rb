@@ -266,6 +266,49 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(from(400, "max_tokens exceed context limit for this plan")).not_to be_context_overflow
     end
 
+    it "tells a thinking block's signature 400 (bound elsewhere, or unreadable) apart, without refusing reasoning" do
+      %w[error_400_signature_other_conversation.hand-written.json error_400_signature_invalid.hand-written.json]
+        .each do |name|
+          error = Samagotchi::LLM::ProviderErrors.from_response(status: 400, body: anthropic(name), host: "msg")
+
+          expect(error).to be_a(Samagotchi::LLM::BadRequest)
+          expect(error).to be_thinking_signature, name
+          expect(error).not_to be_thinking_binding_unsupported, name
+          expect(error).not_to be_reasoning_refused, name
+          expect(error).not_to be_retryable
+        end
+      expect(from_json(anthropic("error_400_signature_other_conversation.hand-written.json"))).to be_thinking_signature
+    end
+
+    it "tells a refused binding control (the block_binding field or the beta header) apart, without refusing reasoning" do
+      %w[error_400_block_binding_extra.hand-written.json error_400_binding_beta_unknown.hand-written.json].each do |name|
+        error = Samagotchi::LLM::ProviderErrors.from_response(status: 400, body: anthropic(name), host: "msg")
+
+        expect(error).to be_thinking_binding_unsupported, name
+        expect(error).not_to be_thinking_signature, name
+        expect(error).not_to be_reasoning_refused, name
+      end
+    end
+
+    it "still marks the thinking configs a model refuses as refused reasoning, and sets neither predicate" do
+      %w[error_400_disabled_refused.hand-written.json error_400_budget_tokens_refused.hand-written.json
+         splash_error_400_between_tools.json].each do |name|
+        error = Samagotchi::LLM::ProviderErrors.from_response(status: 400, body: anthropic(name), host: "msg")
+
+        expect(error).to be_reasoning_refused, name
+        expect(error).not_to be_thinking_signature, name
+        expect(error).not_to be_thinking_binding_unsupported, name
+      end
+    end
+
+    it "sets neither predicate on other errors" do
+      [from(400, "invalid temperature"), from(400, "Reasoning is mandatory for this endpoint and cannot be disabled."),
+       from(404, "model not found"), from_json(typed("invalid_request_error"))].each do |error|
+        expect(error).not_to be_thinking_signature
+        expect(error).not_to be_thinking_binding_unsupported
+      end
+    end
+
     it "keeps a numeric code first, and an unknown or missing type a retryable 500" do
       expect(from_json(JSON.generate(error: { code: 503, type: "invalid_request_error", message: "x" })).status).to eq(503)
       expect(from_json(JSON.generate(error: { code: "429", type: "api_error", message: "x" })).status).to eq(429)
