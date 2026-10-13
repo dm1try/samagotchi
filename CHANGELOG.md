@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-10-13
+
 ### Added
 
 - The claude-peer bundle (in the dev profile): pair a chi session with a Claude Code session you work with, and
@@ -2748,7 +2750,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.62.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.63.0...HEAD
+[0.63.0]: https://github.com/dm1try/samagotchi/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/dm1try/samagotchi/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/dm1try/samagotchi/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/dm1try/samagotchi/compare/v0.59.0...v0.60.0
