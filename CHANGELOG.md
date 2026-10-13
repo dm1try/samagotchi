@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-10-14
+
 ### Added
 
 - **Plugin annotation actions** (web): `chi.annotation(label, command:, template:, send:)` adds a pill to the
@@ -45,6 +47,12 @@ and commands may change between minor versions. How releases are made:
 
 - `dialect: fireworks` hosts: the web's ctx meter no longer reads 0% while an answer streams (Fireworks' first stream
   event carries all-zero usage; its counts come at the end).
+
+**Still open:** the Claude 5.x "bound to a different conversation" 400 on Anthropic Messages hosts (see 0.65.0); its
+recovery comes in a later release.
+
+Update with `chi update` (the system bundle moves with the gem; claude-peer 0.2.0, coordinator 0.4.0, and the dev
+profile 0.5.0 with the new codex-peer 0.1.0).
 
 ## [0.65.0] - 2026-10-13
 
@@ -2871,7 +2879,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.65.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.66.0...HEAD
+[0.66.0]: https://github.com/dm1try/samagotchi/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/dm1try/samagotchi/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/dm1try/samagotchi/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/dm1try/samagotchi/compare/v0.62.0...v0.63.0
