@@ -468,10 +468,10 @@ module Samagotchi
     # would keep the hub's "needs you" badge on for good. Dropped and saved
     # before the Engine and the Bridge exist (no question lock, no events).
     def drop_dead_question
-      return unless @session.pending_question
+      id = @session.drop_dead_question
+      return unless id
 
-      Log.info(:worker, "dead_question_dropped", id: @session.pending_question[:id])
-      @session.pending_question = nil
+      Log.info(:worker, "dead_question_dropped", id: id)
       save_or_log(:dead_question) { @session.save(state_dir: @state_dir) }
     end
 

@@ -121,6 +121,7 @@ module Samagotchi
 
       claim_session!(session_id) if session_id
       @resume_session = session_id ? Session.load(session_id) : nil
+      drop_dead_question(@resume_session) if @resume_session
       if @resume_session
         # --model overrides resumed session's model (runtime only, default unchanged)
         if flag_model_name
@@ -516,6 +517,17 @@ module Samagotchi
       pending = Bridge::PendingCard.new(Session.session_dir(session.id))
       pending.clear
       @pending_card_handle = @engine.subscribe(observer: pending)
+    end
+
+    # A question the session's last owner saved and died with (a worker's,
+    # or another REPL's): this TUI owns the session now, so nobody waits on
+    # it. Dropped and saved, as the worker does (Worker#drop_dead_question).
+    def drop_dead_question(session)
+      id = session.drop_dead_question
+      return unless id
+
+      Log.info(:repl, "dead_question_dropped", id: id)
+      session.save
     end
 
     # Take the session's OwnerLock for this process's lifetime: the TUI runs

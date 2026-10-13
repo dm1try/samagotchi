@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   push asks to (`"wake": true`); before, only later pushes could.
 - Plugins: `ctx.context.list` returns `[]` for a new session whose file isn't saved yet (a plugin command before
   the first turn) instead of raising "Session not found".
+- `chi --no-shared --resume` drops a question the session's last worker saved and died with, as an attached resume
+  does, instead of keeping it in the session file.
 
 ## [0.62.0] - 2026-10-13
 

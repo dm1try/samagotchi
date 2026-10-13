@@ -50,6 +50,17 @@ RSpec.describe "TerminalUI session ownership" do
     expect(ui).to be_a(Samagotchi::TerminalUI)
   end
 
+  # A worker that died while it waited left its question in the file; this
+  # TUI owns the session now, so nobody can answer it (Worker#drop_dead_question).
+  it "drops a question a dead worker saved, on resume" do
+    session.pending_question = { id: "q1", question: "Which?", options: %w[a b] }
+    session.save
+
+    Samagotchi::TerminalUI.new(client: client, session_id: session.id)
+
+    expect(Samagotchi::Session.load(session.id).pending_question).to be_nil
+  end
+
   describe "/exit --delete, after the loop" do
     let(:surface) { RecordingSurface.new }
 

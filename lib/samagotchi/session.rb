@@ -275,6 +275,18 @@ module Samagotchi
       { id: pending[:id], kind: %w[approval hook continue].include?(kind) ? kind : "question", relayed_to: relayed_to }.compact
     end
 
+    # A question saved by a process that no longer runs this session (the
+    # one that loads it now owns it): nobody waits on its answer, so it is
+    # dropped. Unsaved; the caller saves.
+    # @return [String, nil] the dropped question's id, nil with none
+    def drop_dead_question
+      pending = pending_question
+      return nil unless pending
+
+      @pending_question = nil
+      pending[:id].to_s
+    end
+
     # The stored project root, else (a file from before the field) the
     # project of the working directory now: nil when that is in no repo or
     # gone. +cache+ is ProjectScope.root_for's, shared across one listing.
