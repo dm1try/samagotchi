@@ -14,8 +14,10 @@ and commands may change between minor versions. How releases are made:
   `/v1` is dropped), an entry without `url:`/`host:` talks to `https://api.anthropic.com`, and the key goes in
   `x-api-key`. A new host key `auth: bearer|x-api-key` picks the header the key goes in (any host). Such a host runs
   the chat loop through a new Messages adapter: streamed text and thinking, native tool use, images, usage with
-  cache reads and writes. See docs/configuration.md, "Anthropic Messages hosts". Claude 5.x models also need the
-  thinking-block binding controls, which come in the next release: until then an edited history can fail a turn there.
+  cache reads and writes. See docs/configuration.md, "Anthropic Messages hosts". **Known limit until the next
+  release:** Claude 5.x models (Opus, Sonnet and Haiku 5.5, Fable 5.1) may stop a turn with a 400 "… bound to a
+  different conversation" after the history changed under their thinking blocks (a worker restart, a model or tool
+  set switch, the forget layer); the next release adds the binding controls and the recovery.
 - On an `api: anthropic` host a reply's content blocks are saved with it and go back verbatim (thinking blocks with
   their signatures; one that came without a signature gets an empty one; a call id Messages wouldn't take back,
   such as `functions.get_weather:0`, is mapped the same way in the call and its result), also after `--resume`. `reasoning_history` defaults to `all` there, and `drop` counts as `turn`.

@@ -319,6 +319,13 @@ hosts:
 
 `auth:` works on any host (`bearer` is the default everywhere but `api: anthropic`).
 
+**Known limit (until the next release):** Claude 5.x models (Opus, Sonnet and Haiku 5.5, Fable 5.1) bind each
+thinking block to the request it came from. When the history before a block changes (the system prompt rebuilt after a
+worker restart or a `/model` switch, a changed tool set, the forget layer's edits), such a model may answer HTTP 400
+"… bound to a different conversation" and the turn fails with that error; `/reasoning-history turn` makes it rarer.
+The next release sends Anthropic's binding controls and recovers from that 400. Fireworks, Splash and other
+non-Claude models are not affected.
+
 The loop, tools, events, hooks and UIs are the chat loop's, as for `api: openai`; only the wire differs: the
 system prompt goes as the request's `system` (later system notes as user text), tool calls as `tool_use` blocks,
 results as `tool_result` blocks, images as `image` blocks; thinking streams into the thinking lane; usage counts
