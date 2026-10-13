@@ -53,6 +53,51 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
                             "status" => "idle", "first_preview" => "you are coordinator again")
     expect(archived?(previous.id)).to be(true)
     expect(archived?(body["id"])).to be(false)
+    expect(body).to include("model_warning" => nil)
+  end
+
+  it "starts the next link on a model given beside continues (model or model_name)" do
+    previous = previous_link
+
+    status, body = create(continues: previous.id, idle: true, model: "main:other-model")
+
+    expect(status).to eq(201), body.inspect
+    expect(body).to include("continues" => previous.id, "model_name" => "main:other-model", "model_warning" => nil)
+
+    status, body = create(continues: body["id"], idle: true, model_name: "main:third-model")
+    expect(status).to eq(201), body.inspect
+    expect(body["model_name"]).to eq("main:third-model")
+  end
+
+  context "with config.yml's hosts" do
+    before do
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+    end
+
+    it "answers 400 invalid_model for a given model whose host config.yml doesn't have, archiving nothing" do
+      previous = previous_link
+
+      status, body = create(continues: previous.id, idle: true, model: "gone:org/model")
+
+      expect(status).to eq(400)
+      expect(body).to include("error" => "invalid_model")
+      expect(body["detail"]).to include("unknown host 'gone'")
+      expect(archived?(previous.id)).to be(false)
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "falls back to the default model when the previous link's host is gone, with model_warning saying so" do
+      previous = previous_link
+      previous.model_name = "gone:org/model"
+      previous.save(state_dir: state_dir)
+
+      status, body = create(continues: previous.id, idle: true)
+
+      expect(status).to eq(201), body.inspect
+      expect(body["model_name"]).to eq(Samagotchi::ConfigFile.model_ref("spec-model").ref)
+      expect(body["model_warning"]).to match(%r{\Agone:org/model can't run \(unknown host 'gone'.*\); started on spec-model\z})
+      expect(archived?(previous.id)).to be(true)
+    end
   end
 
   it "answers a continued link with 409 continued and the link that continues it, so the page opens that one" do
@@ -66,12 +111,13 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
     expect(body["detail"]).to include("continued already, by #{first["id"][0, 8]}")
   end
 
-  it "refuses dir, model, llm_context or thinking beside continues, a continues that is no id, and an unknown session" do
+  it "refuses dir, llm_context or thinking beside continues, a continues that is no id, and an unknown session" do
     previous = previous_link
 
-    expect(create(continues: previous.id, idle: true, model: "x", dir: folder))
+    expect(create(continues: previous.id, idle: true, model: "x", dir: folder, llm_context: {}))
       .to eq([400, { "error" => "invalid_continues",
-                     "detail" => "continues takes the previous session's folder, model, llm_context and thinking; leave out dir, model" }])
+                     "detail" => "continues takes the previous session's folder, llm_context and thinking; " \
+                                 "leave out dir, llm_context" }])
     expect(create(continues: previous.id, idle: true, thinking: "low").last["detail"]).to end_with("leave out thinking")
     expect(create(continues: 7, idle: true).first).to eq(400)
     expect(create(continues: "feedbeef", idle: true)).to eq([404, { "error" => "not_found", "detail" => "no session feedbeef" }])

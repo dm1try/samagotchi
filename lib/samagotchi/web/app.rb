@@ -719,9 +719,13 @@ module Samagotchi
 
       # POST /api/sessions with continues: <id, prefix or last:id>: the next
       # link of that session's chain (SessionManager.continue_session), in its
-      # folder, on its model and with its own setup (SessionSetup: llm_context,
-      # thinking and reasoning_history levels), so dir, model, llm_context and
-      # thinking are refused beside it (a create takes no reasoning_history).
+      # folder and with its own setup (SessionSetup: llm_context, thinking
+      # and reasoning_history levels), so dir, llm_context and thinking are
+      # refused beside it (a create takes no reasoning_history). It runs on
+      # model (or model_name) when given, else on the previous link's: one
+      # whose host is gone falls back to the default, and the 201's
+      # model_warning (null when none) says so. A model it can't start on is
+      # 400 invalid_model, nothing archived.
       # 409 continued (with next_id, the link that continues it already: the
       # page opens that one), open_children (ids), folder_gone, busy, scratch
       # or owned_by_tui.
@@ -730,14 +734,16 @@ module Samagotchi
         unless given.is_a?(String) && !given.strip.empty?
           return error_response(400, "invalid_continues", "continues is a session id")
         end
-        if (fields = %w[dir model model_name llm_context thinking].select { |key| body.key?(key) }).any?
+        if (fields = %w[dir llm_context thinking].select { |key| body.key?(key) }).any?
           return error_response(400, "invalid_continues",
-                                "continues takes the previous session's folder, model, llm_context and thinking; " \
+                                "continues takes the previous session's folder, llm_context and thinking; " \
                                 "leave out #{fields.join(", ")}")
         end
 
         preview = idle ? body["preview"].to_s.strip : ""
-        session, error = continue_from(given, prompt: idle ? nil : prompt.to_s, title: preview.empty? ? nil : preview)
+        model = (body["model"] || body["model_name"]).to_s.strip
+        session, error = continue_from(given, prompt: idle ? nil : prompt.to_s, title: preview.empty? ? nil : preview,
+                                              model: model.empty? ? nil : model)
         return error if error
 
         port = await_bridge_port(session.id)
@@ -745,14 +751,15 @@ module Samagotchi
         # The moved delegates' cards fold under the new link now.
         [session.continues, session.id, *moved].each { |sid| @hub&.touch(sid) }
         record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
-        json_response(201, session_to_json(session).merge(bridge_port: port, moved: moved))
+        json_response(201, session_to_json(session).merge(bridge_port: port, moved: moved,
+                                                          model_warning: session.model_warning))
       end
 
       # SessionManager.continue_session, its refusals as responses: [session,
       # nil] or [nil, the response]. Only its own errors: what fails after
       # the new link started is not a refusal of it.
-      def continue_from(given, prompt:, title:)
-        [@manager.continue_session(given, prompt: prompt, title: title, state_dir: @state_dir), nil]
+      def continue_from(given, prompt:, title:, model:)
+        [@manager.continue_session(given, prompt: prompt, title: title, model: model, state_dir: @state_dir), nil]
       rescue SessionContinue::Refused => e
         extra = e.reason == :continued ? { next_id: e.ids.first } : { ids: e.ids }
         [nil, json_response(409, { error: e.reason.to_s, detail: e.message, **extra })]
