@@ -1,6 +1,6 @@
 ---
 name: dev
-version: 0.4.0
+version: 0.5.0
 scope: system
 description: "Developer tools"
 trust_level: reviewed
@@ -14,3 +14,4 @@ includes:
 - github-pr
 - coordinator
 - claude-peer
+- codex-peer
