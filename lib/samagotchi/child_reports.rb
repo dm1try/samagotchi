@@ -231,11 +231,16 @@ module Samagotchi
       return nil unless child.parent_id == @session_id
 
       before = @taken[child_id]&.after || Tools::DelegateCursors.get(@session_id, child_id, state_dir: @state_dir)
+      # A follow-up's turn (DelegateCursor#turn) is reported by its own
+      # reply, as delegate_result takes it, not a newer queued turn's.
       wait = ReplyWait.call(child_id, state_dir: @state_dir, cursor: before.reply_file, baseline: before.baseline,
-                                      timeout: 0)
+                                      timeout: 0, turn: before.turn)
       return nil unless reportable?(wait)
 
-      after = before.with(reply_file: wait.status == :done ? wait.file : before.reply_file)
+      # A reported end is the follow-up turn's too (DelegateCursor#turn):
+      # a later wait on it would repeat its reply.
+      after = before.with(reply_file: wait.status == :done ? wait.file : before.reply_file,
+                          turn: wait.status == :waiting_for_answer ? before.turn : nil)
                     .with_baseline(ReplyWait.baseline_of(wait.session))
       text = Tools::DelegateWait.finish(wait, child_id, timeout: 0, report: true)
       Report.new(child_id: child_id, text: text, before: before, after: after, rings: rings)

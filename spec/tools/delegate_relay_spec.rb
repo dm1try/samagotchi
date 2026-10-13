@@ -105,6 +105,26 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     relay.answer = ->(_fields, _watch) { { id: "pq", selected: [label], freeform: freeform, selected_indices: [index] } }
   end
 
+  it "keeps waiting on the follow-up's turn (DelegateCursor#turn) through the relay, and clears it at the end" do
+    described_class.mark_turn(parent.id, child.id, "x1", state_dir: tmpdir)
+    turns = []
+    allow(Samagotchi::ReplyWait).to receive(:call).and_wrap_original do |original, *args, **options|
+      turns << options[:turn]
+      original.call(*args, **options)
+    end
+    update(child, pending_question: approval, interrupted_turn: { "enqueued_id" => "x1" })
+    user_answers("Allow once", 0)
+    client.on_answered = lambda do
+      update(child, pending_question: nil)
+      Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), "pushed", enqueued_id: "x1")
+      update(child, status: "idle", interrupted_turn: nil)
+    end
+
+    expect(wait).to end_with("---\npushed")
+    expect(turns).to eq(%w[x1 x1])
+    expect(Samagotchi::Tools::DelegateCursors.get(parent.id, child.id, state_dir: tmpdir).turn).to be_nil
+  end
+
   it "relays the approval to the parent's user and returns the child's reply with the outcome line" do
     update(child, pending_question: approval)
     user_answers("Allow once", 0)

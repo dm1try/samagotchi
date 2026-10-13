@@ -72,7 +72,8 @@ module Samagotchi
           started = monotonic
           wait = ReplyWait.call(child_id, state_dir: sd, cursor: cursor.reply_file, timeout: [left, 0].max,
                                           poll_interval: poll_interval, cancelled: cancelled, baseline: baseline,
-                                          owner_grace: owner_grace, interject: others && -> { others.poll })
+                                          owner_grace: owner_grace, interject: others && -> { others.poll },
+                                          turn: cursor.turn)
           left -= monotonic - started
           unless wait.status == :waiting_for_answer && DelegateRelay.relayable?(relay, wait.question)
             outcomes.concat(relayed_outcomes.delete(key) || [])
@@ -143,7 +144,9 @@ module Samagotchi
       # gave, and the child as that same look loaded it (a fresh load could
       # swallow a turn that ended in between), so a later wait looks for a
       # later turn and a question already reported isn't reported again.
-      # Nothing moves on a timeout or a cancel.
+      # The follow-up's turn (DelegateCursor#turn) is done with once its end
+      # was reported; a question keeps it. Nothing moves on a timeout or a
+      # cancel.
       # @param wait [ReplyWait::Result]
       # @return [DelegateCursor, nil] the new cursor
       def advance(parent_id, child_id, wait, state_dir:)
@@ -151,6 +154,7 @@ module Samagotchi
 
         DelegateCursors.update(parent_id, child_id, state_dir: state_dir) do |cursor|
           cursor = cursor.with(reply_file: wait.file) if wait.status == :done
+          cursor = cursor.with(turn: nil) unless wait.status == :waiting_for_answer
           cursor.with_baseline(ReplyWait.baseline_of(wait.session))
         end
       end
@@ -187,20 +191,28 @@ module Samagotchi
 
       # Point the cursor at the newest reply now, so only a later one counts
       # (a follow-up sent to a child that already answered), and take the
-      # child's baseline before the follow-up goes in.
+      # child's baseline before the follow-up goes in. No turn yet
+      # (#mark_turn, once it went in).
       # @param child [Session] the child as loaded before sending
       def mark_seen(parent_id, child, state_dir:)
         newest = ReplyWait.newest_reply(child.id, state_dir: state_dir)
         DelegateCursors.update(parent_id, child.id, state_dir: state_dir) do |cursor|
-          cursor.with(reply_file: newest).with_baseline(ReplyWait.baseline_of(child))
+          cursor.with(reply_file: newest, turn: nil).with_baseline(ReplyWait.baseline_of(child))
         end
+      end
+
+      # The follow-up went in: the child's turn it joins, whose reply the
+      # wait takes (DelegateCursor#turn).
+      # @param turn [String, nil]
+      def mark_turn(parent_id, child_id, turn, state_dir:)
+        DelegateCursors.update(parent_id, child_id, state_dir: state_dir) { |cursor| cursor.with(turn: turn) }
       end
 
       # A new child's baseline: as spawned, before its first turn ran.
       # @param child [Session] the session spawn_session returned
       def mark_started(parent_id, child, state_dir:)
         DelegateCursors.update(parent_id, child.id, state_dir: state_dir) do |cursor|
-          cursor.with_baseline(ReplyWait.baseline_of(child, question_id: nil))
+          cursor.with(turn: nil).with_baseline(ReplyWait.baseline_of(child, question_id: nil))
         end
       end
 

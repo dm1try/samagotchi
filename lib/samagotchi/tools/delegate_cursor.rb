@@ -10,9 +10,14 @@ module Samagotchi
     # What a parent was already told about one delegate child: the newest
     # reply it was given (+reply_file+, ReplyWait's cursor) and the child as
     # it was then (+messages+, +question_id+, +last_turn+: ReplyWait's
-    # baseline). nil +messages+ means no baseline.
-    DelegateCursor = Data.define(:reply_file, :last_turn, :question_id, :messages) do
-      def self.empty = new(reply_file: nil, last_turn: nil, question_id: nil, messages: nil)
+    # baseline). nil +messages+ means no baseline. +turn+: the enqueued_id
+    # of the child's turn the last follow-up went to (Delegate.follow_up),
+    # whose own reply a wait takes (ReplyWait's turn:); nil once that turn
+    # was reported, or when unknown (a new child, an older worker).
+    DelegateCursor = Data.define(:reply_file, :last_turn, :question_id, :messages, :turn) do
+      def initialize(reply_file: nil, last_turn: nil, question_id: nil, messages: nil, turn: nil) = super
+
+      def self.empty = new
 
       # @param baseline [Hash, nil] ReplyWait.baseline_of's
       def with_baseline(baseline)
@@ -93,7 +98,7 @@ module Samagotchi
         return DelegateCursor.empty unless data.is_a?(Hash)
 
         DelegateCursor.new(reply_file: data["reply_file"], last_turn: data["last_turn"],
-                           question_id: data["question_id"], messages: data["messages"])
+                           question_id: data["question_id"], messages: data["messages"], turn: data["turn"])
       end
 
       def path(parent_id, state_dir:)

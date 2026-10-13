@@ -45,8 +45,8 @@ and commands may change between minor versions. How releases are made:
 - `chi send`, the web composer and a plugin's `ctx.sessions.send` now report a message the session's worker refuses
   (a 4xx answer such as a delivery it doesn't run) instead of writing it as an input file the worker would merge
   anyway; a body over the worker's size limit still goes in as a file, as before.
-- `chi answer` and `chi send --wait ID` (no message) wait for the reply of the turn they are about (the answered
-  turn, the running turn), not a newer one queued behind it; a Continue of the step-limit question gets the continued
+- `chi answer`, `chi send --wait ID` (no message) and `delegate_result` wait for the reply of the turn they are about
+  (the answered turn, the running turn, the follow-up's turn), not a newer one queued behind it; a Continue of the step-limit question gets the continued
   turn's reply, and a Stop ends the wait as `not_continued`. Workers older than this keep the old behaviour.
 
 ## [0.63.0] - 2026-10-13

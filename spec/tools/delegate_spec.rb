@@ -405,6 +405,98 @@ RSpec.describe "delegate tools" do
         expect(out).to eq("session: #{child.id}\nstatus: answered\n---\nthe second answer")
       end
 
+      # The child's turn the follow-up joins (DelegateCursor#turn): its own
+      # reply comes back, not a newer one of a turn queued behind it.
+      describe "the follow-up's turn (turn_ids)" do
+        let(:child_dir) { Samagotchi::Session.session_dir(child.id, state_dir: tmpdir) }
+
+        def sidecar(features) = Samagotchi::WorkerSidecar.new(port: 1, features: features).write(child_dir)
+
+        def run_turn(id)
+          s = Samagotchi::Session.load(child.id, state_dir: tmpdir)
+          s.status = "running"
+          s.interrupted_turn = { "iteration" => 1, "enqueued_id" => id }.compact
+          s.save(state_dir: tmpdir)
+        end
+
+        def end_turn(id)
+          s = Samagotchi::Session.load(child.id, state_dir: tmpdir)
+          s.status = "idle"
+          s.interrupted_turn = nil
+          s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: id)
+          s.save(state_dir: tmpdir)
+        end
+
+        def turn_reply(text, id)
+          Samagotchi::SessionInbox.write_output(child_dir, text, enqueued_id: id)
+          sleep(0.002)
+        end
+
+        def cursor = Samagotchi::Tools::DelegateCursors.get(parent.id, child.id, state_dir: tmpdir)
+
+        def deliver_acking(id)
+          allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: { "enqueued_id" => id } })
+        end
+
+        it "is the running turn's (the follow-up merges into it), whose reply the wait takes over a queued turn's newer one" do
+          sidecar(%w[delivery turn_ids])
+          run_turn("x1")
+          deliver_acking("f1")
+
+          expect(described_class.call("and this", session: child.id, wait: false, peers: peers)).to include("status: running")
+          expect(cursor.turn).to eq("x1")
+
+          turn_reply("x1 with the follow-up", "x1")
+          end_turn("x1")
+          turn_reply("queued answer", "q1")
+          out = Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 2, peers: peers)
+          expect(out).to end_with("---\nx1 with the follow-up")
+          # Reported: the next wait looks for a later turn, the reply not repeated.
+          expect(cursor.turn).to be_nil
+        end
+
+        it "is the ack's id when the child is idle (the follow-up runs as its own turn)" do
+          sidecar(%w[delivery turn_ids])
+          deliver_acking("f1")
+
+          described_class.call("and this", session: child.id, wait: false, peers: peers)
+
+          expect(cursor.turn).to eq("f1")
+        end
+
+        it "is none from a worker without turn_ids, or a running turn with no id (a delegate's first)" do
+          sidecar(%w[delivery])
+          deliver_acking("f1")
+          described_class.call("and this", session: child.id, wait: false, peers: peers)
+          expect(cursor.turn).to be_nil
+
+          sidecar(%w[delivery turn_ids])
+          run_turn(nil)
+          described_class.call("and that", session: child.id, wait: false, peers: peers)
+          expect(cursor.turn).to be_nil
+        end
+
+        it "is kept through a question the turn asks, and cleared once its end is reported" do
+          own(child)
+          sidecar(%w[delivery turn_ids])
+          run_turn("x1")
+          deliver_acking("f1")
+          described_class.call("and this", session: child.id, wait: false, peers: peers)
+          set_status(child, "running", pending_question: { id: "q9", question: "Which one?", options: %w[A B] })
+
+          expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 2, peers: peers)).to include("status: question")
+          expect(cursor.turn).to eq("x1")
+
+          set_status(child, "running", pending_question: nil)
+          later do
+            turn_reply("x1 done", "x1")
+            end_turn("x1")
+          end
+          expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 2, peers: peers)).to end_with("---\nx1 done")
+          expect(cursor.turn).to be_nil
+        end
+      end
+
       it "reports a follow-up that failed fast after an earlier failure, not a timeout" do
         fail_turn(child, at: "2026-09-30T10:00:01.000+02:00")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn) do
@@ -654,6 +746,16 @@ RSpec.describe "delegate tools" do
         own(idle)
         expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: question")
         expect(described_class.call(idle.id, peers: peers, timeout: 0)).to include("status: running\nno reply yet")
+      end
+
+      it "reads a delegates.json from before turns (no turn) as none, and leaves it out when there is none" do
+        FileUtils.mkdir_p(Samagotchi::Session.session_dir(parent.id, state_dir: tmpdir))
+        File.write(File.join(Samagotchi::Session.session_dir(parent.id, state_dir: tmpdir), "delegates.json"),
+                   JSON.generate(idle.id => { "reply_file" => "a.txt", "messages" => 1 }))
+        expect(Samagotchi::Tools::DelegateCursors.get(parent.id, idle.id, state_dir: tmpdir))
+          .to have_attributes(reply_file: "a.txt", turn: nil)
+        expect(Samagotchi::Tools::DelegateCursor.empty.with(turn: "x1").to_json_hash).to include("turn" => "x1")
+        expect(Samagotchi::Tools::DelegateCursor.empty.to_json_hash).not_to have_key("turn")
       end
 
       it "moves nothing on a timeout" do

@@ -230,6 +230,57 @@ RSpec.describe "delegate reports" do
       expect(Samagotchi::Tools::DelegateWait.call(child.id, peers: peers, timeout: 0)).to include("no reply yet")
     end
 
+    it "clears the follow-up's turn (DelegateCursor#turn) with the end it reports, so a later wait doesn't repeat it" do
+      Samagotchi::Tools::DelegateWait.mark_turn(parent.id, child.id, "x1", state_dir: tmpdir)
+      Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(child.id, state_dir: tmpdir), "found it",
+                                            enqueued_id: "x1")
+      end_turn(child)
+      ring
+
+      box = reports
+      box.take
+      box.commit
+      expect(cursor.turn).to be_nil
+      expect(Samagotchi::Tools::DelegateWait.call(child.id, peers: peers, timeout: 0)).to include("no reply yet")
+    end
+
+    it "reports the follow-up turn's own reply, not a newer one of a turn queued behind it, then the queued one" do
+      dir = Samagotchi::Session.session_dir(child.id, state_dir: tmpdir)
+      Samagotchi::Tools::DelegateWait.mark_turn(parent.id, child.id, "x1", state_dir: tmpdir)
+      Samagotchi::SessionInbox.write_output(dir, "follow-up answer", enqueued_id: "x1")
+      sleep(0.002)
+      Samagotchi::SessionInbox.write_output(dir, "queued answer", enqueued_id: "q1")
+      end_turn(child)
+      ring
+
+      box = reports
+      expect(box.take.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nfollow-up answer"])
+      box.commit
+      ring
+      expect(reports.take.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nqueued answer"])
+    end
+
+    # The follow-up y1 was merged as a steer into a turn starting as it
+    # went in (its own turn never comes): that turn's reply is its report,
+    # once, whether the absorbing turn has an id or none.
+    [["with an id", "a1"], ["with no id (a wake or reminder turn)", nil]].each do |shape, absorbing|
+      it "reports a follow-up merged into another turn #{shape} once, with that turn's reply" do
+        dir = Samagotchi::Session.session_dir(child.id, state_dir: tmpdir)
+        Samagotchi::WorkerSidecar.new(port: 1, features: %w[turn_ids]).write(dir)
+        Samagotchi::Tools::DelegateWait.mark_turn(parent.id, child.id, "y1", state_dir: tmpdir)
+        Samagotchi::SessionInbox.write_output(dir, "absorbing answer", enqueued_id: absorbing)
+        end_turn(child)
+        ring
+
+        box = reports
+        expect(box.take.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\nabsorbing answer"])
+        box.commit
+        expect(cursor.turn).to be_nil
+        ring
+        expect(reports.take).to eq([])
+      end
+    end
+
     it "has nothing to report after delegate_result (or wait: true) gave the reply; the ring goes" do
       write_reply(child, "found it")
       end_turn(child)
