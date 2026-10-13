@@ -1,0 +1,252 @@
+{
+  "path": "/v1/chat/completions",
+  "headers": {
+    "content-type": "application/json",
+    "session-id": "sess-golden"
+  },
+  "body": {
+    "model": "box-model",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi. Use tools when needed."
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "What is in notes.txt?"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "c0",
+            "type": "function",
+            "function": {
+              "name": "read",
+              "arguments": "{\"path\":\"notes.txt\"}"
+            }
+          }
+        ],
+        "reasoning_content": "read it first"
+      },
+      {
+        "role": "tool",
+        "content": "[read]\n1: buy milk",
+        "tool_call_id": "c0"
+      },
+      {
+        "role": "assistant",
+        "content": "It says to buy milk.",
+        "reasoning_content": "summarise"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "List the files, then say done."
+          }
+        ]
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "tools": [
+      "execute",
+      {
+        "type": "function",
+        "function": {
+          "name": "read",
+          "description": "Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range. An image file (png, jpeg, gif, webp) comes back as the picture itself: read it to see it.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Path to the file"
+              },
+              "start_line": {
+                "type": "integer",
+                "description": "Optional start line (1-based, inclusive). Without end_line, reads to the end of the file."
+              },
+              "end_line": {
+                "type": "integer",
+                "description": "Optional end line (1-based, inclusive). Without start_line, reads from line 1."
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "write",
+      "edit",
+      "memory_read",
+      "memory_write",
+      "task_create",
+      "task_get",
+      "task_list",
+      "task_stop",
+      "task_wait",
+      "web_fetch",
+      "register_reminder",
+      "cancel_reminder",
+      "list_reminders",
+      "list_sessions",
+      "send_note",
+      "context_read",
+      "delegate",
+      "delegate_result",
+      "ask_user_question"
+    ],
+    "tool_choice": "auto",
+    "reasoning_effort": "low",
+    "temperature": 0.6
+  }
+}
+{
+  "path": "/v1/chat/completions",
+  "headers": {
+    "content-type": "application/json",
+    "session-id": "sess-golden"
+  },
+  "body": {
+    "model": "box-model",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are chi. Use tools when needed."
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "What is in notes.txt?"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "c0",
+            "type": "function",
+            "function": {
+              "name": "read",
+              "arguments": "{\"path\":\"notes.txt\"}"
+            }
+          }
+        ],
+        "reasoning_content": "read it first"
+      },
+      {
+        "role": "tool",
+        "content": "[read]\n1: buy milk",
+        "tool_call_id": "c0"
+      },
+      {
+        "role": "assistant",
+        "content": "It says to buy milk.",
+        "reasoning_content": "summarise"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "List the files, then say done."
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "The command to list files is `ls`.\n\n",
+        "tool_calls": [
+          {
+            "id": "YzsGQt3eBTPGdZrpS8gLbfW0ESnr3gX4",
+            "type": "function",
+            "function": {
+              "name": "execute",
+              "arguments": "{\"command\":\"ls\"}"
+            }
+          }
+        ],
+        "reasoning_content": "The user wants me to list files. The command to list files is `ls`.\n"
+      },
+      {
+        "role": "tool",
+        "content": "[execute] done",
+        "tool_call_id": "YzsGQt3eBTPGdZrpS8gLbfW0ESnr3gX4"
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "tools": [
+      "execute",
+      {
+        "type": "function",
+        "function": {
+          "name": "read",
+          "description": "Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range. An image file (png, jpeg, gif, webp) comes back as the picture itself: read it to see it.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Path to the file"
+              },
+              "start_line": {
+                "type": "integer",
+                "description": "Optional start line (1-based, inclusive). Without end_line, reads to the end of the file."
+              },
+              "end_line": {
+                "type": "integer",
+                "description": "Optional end line (1-based, inclusive). Without start_line, reads from line 1."
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "write",
+      "edit",
+      "memory_read",
+      "memory_write",
+      "task_create",
+      "task_get",
+      "task_list",
+      "task_stop",
+      "task_wait",
+      "web_fetch",
+      "register_reminder",
+      "cancel_reminder",
+      "list_reminders",
+      "list_sessions",
+      "send_note",
+      "context_read",
+      "delegate",
+      "delegate_result",
+      "ask_user_question"
+    ],
+    "tool_choice": "auto",
+    "reasoning_effort": "low",
+    "temperature": 0.6
+  }
+}
