@@ -2,7 +2,7 @@ import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipName, chipsHtml, imageFiles, imageUrl, restoredChips, thumbsTemplate, turnRefs, turnText,
+  chipName, chipsTemplate, imageFiles, imageUrl, restoredChips, thumbsTemplate, turnRefs, turnText,
 } from "../../../lib/samagotchi/web/public/images.js";
 import { createIdleSession, sendTurn, uploadImage } from "../../../lib/samagotchi/web/public/data.js";
 import { promptOps, snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
@@ -43,7 +43,7 @@ test("turnText sends the typed text, or names the images when there is none", ()
 
 test("chips render escaped, with a remove button each; turnRefs names the uploaded ones", () => {
   const chips = [{ name: "<b>.png", src: "blob:1", ref: { file: "images/aaaaaaaaaaaaaaaa.png" } }, { name: "c.png", src: "blob:2" }];
-  const html = chipsHtml(chips);
+  const html = markupOf(chipsTemplate(chips));
   assert.match(html, /&lt;b&gt;\.png/);
   assert.equal((html.match(/chip-remove/g) || []).length, 2);
   assert.deepEqual(turnRefs(chips), [{ file: "images/aaaaaaaaaaaaaaaa.png", name: "<b>.png" }]);
@@ -99,4 +99,15 @@ test("a tool row keeps the image its tool read", () => {
   const model = newActivity();
   const row = addCompleted(model, { iteration: 1, call_index: 1, tool: "read", output: "[read]\nImage", images: [REF], activity: { status: "ok" } });
   assert.deepEqual(row.images, [REF]);
+});
+
+test("chipsTemplate drawn again after a chip is removed: the rest, numbered from 0", async () => {
+  const { render } = await import("../../../lib/samagotchi/web/public/vendor/lit-html.js");
+  const el = document.createElement("div");
+  const chips = [{ name: "a.png", src: "blob:a" }, { name: "b.png", src: "blob:b" }, { name: "c.png", src: "blob:c" }];
+  render(chipsTemplate(chips), el);
+  render(chipsTemplate([chips[0], chips[2]]), el);
+  assert.deepEqual([...el.querySelectorAll(".chip")].map((c) => [c.dataset.index, c.querySelector(".chip-name").textContent, c.querySelector("img").getAttribute("src")]),
+    [["0", "a.png", "blob:a"], ["1", "c.png", "blob:c"]]);
+  assert.deepEqual([...el.querySelectorAll(".chip-remove")].map((b) => [b.dataset.index, b.getAttribute("aria-label")]), [["0", "remove a.png"], ["1", "remove c.png"]]);
 });

@@ -1,7 +1,7 @@
 import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, openChildrenHtml } from "../../../lib/samagotchi/web/public/chains.js";
+import { CONTINUE_OPENER, allViewChains, chainChipTemplate, chainTitle, chainDate, chainLinks, chainNeighbours, chainRowsTemplate, continueRefusal, continuedText, foldChains, openChildrenTemplate } from "../../../lib/samagotchi/web/public/chains.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 // A template's markup as the page gets it (lit's marker comments dropped).
@@ -12,6 +12,7 @@ const markupOf = (template) => {
 };
 const chainChipHtml = (f, opts) => markupOf(chainChipTemplate(f, opts));
 const chainRowsHtml = (f, opts) => markupOf(chainRowsTemplate(f, opts));
+const openChildrenHtml = (...args) => markupOf(openChildrenTemplate(...args));
 import { families, familyWaits, filterFamilies, waitingFirst } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // A chain of three days: d1 ← d2 ← d3 (d3 continues d2, which continues d1).
