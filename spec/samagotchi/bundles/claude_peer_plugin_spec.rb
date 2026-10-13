@@ -239,6 +239,17 @@ RSpec.describe "The claude-peer plugin" do
       expect(fake_chi.hooks.keys).to contain_exactly(:before_turn, :after_turn)
     end
 
+    it "adds a Confirm with Claude pill (a fill, the quote) on a chi with chi.annotation, and loads without it" do
+      annotations = []
+      newer = fake_chi.dup
+      newer.define_singleton_method(:annotation) { |label, **opts| annotations << [label, opts] }
+      plugin.register(newer)
+
+      expect(annotations).to eq([["Confirm with Claude", { command: "/claude validate" }]])
+      expect(fake_chi).not_to respond_to(:annotation)
+      expect(fake_chi.commands).to have_key("/claude")
+    end
+
     describe "alone: the status card" do
       it "says how to pair when no Claude is paired; no text of its own" do
         expect(run).to be_nil
@@ -284,6 +295,20 @@ RSpec.describe "The claude-peer plugin" do
 
       _, content = sent_content("context we chose Redis")
       expect(content).to eq("chi #{short} · context · we chose Redis\nwe chose Redis")
+    end
+
+    it "titles a pill's quote by its first quoted line, not the From …: label" do
+      pair
+
+      result, content = sent_content("validate\nFrom your thinking:\n>   the key stays\n> two\n\nis it?")
+      expect(result).to start_with("sent to Claude: validate · the key stays;")
+      expect(content).to eq("chi #{short} · validate · the key stays\nFrom your thinking:\n>   the key stays\n> two\n\nis it?")
+
+      _, content = sent_content("validate\n> an answer line\n\nok?")
+      expect(content.lines.first).to eq("chi #{short} · validate · an answer line\n")
+
+      _, content = sent_content("validate From now on we use Redis:\n- lib/a.rb")
+      expect(content.lines.first).to eq("chi #{short} · validate · From now on we use Redis:\n")
     end
 
     it "says why a send failed, and gives usage for nothing to send or an unknown verb" do

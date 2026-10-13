@@ -42,6 +42,12 @@ require "time"
 # being the user's consent: the copy happens in-process, where no guardrail
 # sees it. The skill is scripts/chi-peer-SKILL.md beside this file, with the
 # installed scripts/pair path and the payload folder written in.
+#
+# In the web, selecting text offers "Confirm with Claude" (chi.annotation;
+# skipped on a chi without it, 0.62–0.65): it fills the composer with
+# `/claude validate` and the quote, for the user to add what to confirm.
+# Such a text is titled by its first quoted line, not the quote's
+# `From your thinking:` label.
 class Plugin
   INBOX = "claude-inbox"
   REVIEW = "claude-review"
@@ -70,6 +76,8 @@ class Plugin
   PAIR_PLACEHOLDER = "__CHI_PEER_PAIR__"
   PAYLOADS_PLACEHOLDER = "__CHI_PEER_PAYLOADS__"
   DIFF_LINES = 20
+  # The label line a web quote starts with (annotations.js sourceLabel).
+  QUOTE_LABEL = /\AFrom (?:your thinking|your earlier step|the .+ call|my earlier message):\z/
 
   TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the " \
                      "Claude Code session paired with it (the claude-inbox context), for Claude to validate, to take " \
@@ -111,6 +119,8 @@ class Plugin
                            "install-skill: install Claude's chi-peer skill", anytime: true do |args, ctx|
       claude(args.to_s.strip, ctx)
     end
+    # A chi without chi.annotation (0.62–0.65) loads the bundle without the pill.
+    chi.annotation "Confirm with Claude", command: "/claude validate" if chi.respond_to?(:annotation)
     chi.on(:before_turn) do |event|
       @lock.synchronize { @before_turn = Array(event[:messages]) }
     end
@@ -167,10 +177,17 @@ class Plugin
   end
 
   def send_text(ctx, kind, text)
-    "#{deliver(ctx, kind: kind, title: text.strip.lines.first.to_s, text: text)}; Claude's answer comes as the " \
+    "#{deliver(ctx, kind: kind, title: text_title(text), text: text)}; Claude's answer comes as the " \
       "claude-review context"
   rescue SendError => e
     "/claude: #{e.message}"
+  end
+
+  # A typed text's title: its first line, past a web quote's label line
+  # (`From your thinking:`) and the `> ` of a quoted line.
+  def text_title(text)
+    lines = text.strip.lines.map(&:strip).reject { |line| line.match?(QUOTE_LABEL) }
+    lines.map { |line| line.sub(/\A>\s*/, "") }.find { |line| !line.empty? }.to_s
   end
 
   def send_last(ctx)

@@ -1,6 +1,6 @@
 ---
 name: claude-peer
-version: 0.1.0
+version: 0.2.0
 scope: system
 description: "Pair this session with a Claude Code session you work with: the claude_send tool and /claude send it a part of the work (a plan step, a diff, a finding) to validate or as context, and Claude's answer comes back as the claude-review context; /claude install-skill installs Claude's chi-peer skill, which pairs"
 trust_level: reviewed
@@ -10,7 +10,7 @@ files:
     description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks; validate, context or question; Claude's answer comes as the claude-review context"
 plugin:
   file: plugin.rb
-  sha256: sha256:bf5a95eb125ba4831466e177295bdaba1f625e255b027cea1e59992310d8300e
+  sha256: sha256:ee44f119d6f8c6cb25917a0f3fb2cfd1fbca424d537ee5fa7043594a9eb04098
 scripts:
   pair: sha256:033f1fc6a644950b57e71865253526a0a487bb4c9fd5a61bb89d031b65f40417
   chi-peer-SKILL.md: sha256:f35f726b1a86091ff69d289e8dd58794ac6f44879a63630fcc88d69867c56e20
