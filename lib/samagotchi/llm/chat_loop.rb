@@ -285,12 +285,24 @@ module Samagotchi
       # under the sampling (a sampling key wins, chat_template_kwargs merges
       # per sub-key), the empty-answer retry's temperature on top, then every
       # null dropped at any depth (a sampling null means "don't send it").
+      # A +model+ whose host refused a sampling field (#sampling_refused!)
+      # gets none of SAMPLING_KEYS.
       def request_options(retry_generation: false, model: nil)
         max_tokens = Samagotchi::Config.max_tokens
         options = deep_merge(thinking_fields(model), sampling)
         options = { max_tokens: max_tokens }.merge(options) if max_tokens
         options = EmptyAnswerRetry.sampling(options) if retry_generation
+        options = options.except(*SAMPLING_KEYS) if model && @sampling_refused&.include?(model)
         deep_compact(options)
+      end
+
+      # The fields a sampling refusal (BadRequest#sampling_refused?) drops.
+      SAMPLING_KEYS = %i[temperature top_p top_k].freeze
+
+      # The host refused a sampling field for +model+: send none of
+      # SAMPLING_KEYS from now on (this worker's lifetime, as #thinking_refused!).
+      def sampling_refused!(model)
+        (@sampling_refused ||= Set.new) << model
       end
 
       def strip_model_thought(text) = @kernel.strip_model_thought(text)
@@ -592,7 +604,8 @@ module Samagotchi
               # A wire that replays its blocks sends them under the turn
               # floor anyway: asking again without reasoning would resend
               # the same body.
-              if refused?(e) && reasoning_sent? && !@loop.replays_content? then without_reasoning(iteration, e, ask)
+              if e.sampling_refused? && sampling_sent?(retry_generation) then without_sampling(iteration, e, ask)
+              elsif refused?(e) && reasoning_sent? && !@loop.replays_content? then without_reasoning(iteration, e, ask)
               elsif thinking_refused?(e) then without_thinking(iteration, e, ask)
               else raise
               end
@@ -747,6 +760,21 @@ module Samagotchi
           response
         ensure
           @without_reasoning = false
+        end
+
+        # Whether this step's request sends a sampling field.
+        def sampling_sent?(retry_generation)
+          options = @loop.request_options(retry_generation: retry_generation, model: @model_name)
+          SAMPLING_KEYS.any? { |key| options.key?(key) }
+        end
+
+        # Once per model: asked again without the sampling fields (the
+        # thinking fields stay: an effort level with the empty-answer
+        # retry's temperature keeps thinking on).
+        def without_sampling(iteration, error, ask)
+          @loop.sampling_refused!(@model_name)
+          emit(type: :sampling_refused, iteration: iteration, model: @model_name, detail: error.detail)
+          ask.call
         end
 
         # Once per model: asked again without the thinking fields.

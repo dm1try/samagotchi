@@ -322,4 +322,31 @@ RSpec.describe Samagotchi::LLM::ProviderError do
         end
     end
   end
+
+  describe "a sampling field refused" do
+    it "is sampling_refused?, not reasoning_refused?, though Claude's message says thinking" do
+      error = Samagotchi::LLM::ProviderErrors.from_response(
+        status: 400, host: "h",
+        body: { type: "error", error: { type: "invalid_request_error",
+                                        message: "temperature may only be set to 1 when thinking is enabled" } }.to_json
+      )
+
+      expect(error).to have_attributes(sampling_refused?: true, reasoning_refused?: false)
+      other = Samagotchi::LLM::ProviderErrors.from_response(status: 400, host: "h", body: '{"error":{"message":"reasoning is mandatory"}}')
+      expect(other).to have_attributes(sampling_refused?: false, reasoning_refused?: true)
+    end
+  end
+
+  describe "an assistant turn sent back without its thinking block" do
+    it "is not reasoning_refused? (the history is wrong, thinking isn't refused)" do
+      message = "messages.1.content.0.type: Expected `thinking` or `redacted_thinking`, but found `tool_use`. When " \
+                "`thinking` is enabled, a final `assistant` message must start with a thinking block."
+      error = Samagotchi::LLM::ProviderErrors.from_response(
+        status: 400, host: "h", body: { type: "error", error: { type: "invalid_request_error", message: message } }.to_json
+      )
+
+      expect(error).to be_a(Samagotchi::LLM::BadRequest)
+      expect(error).to have_attributes(reasoning_refused?: false, sampling_refused?: false)
+    end
+  end
 end

@@ -24,13 +24,30 @@ module Samagotchi
     #
     # Nothing here keys on a model id: fields are sent explicitly, read
     # leniently, and a host's 400 for a field it refuses is what changes a
-    # request.
+    # request. Those 400s are handled here, once per request, and
+    # remembered for the adapter's life (a host's worker), so ChatLoop's
+    # broader refusal paths never see them:
+    # - adaptive thinking (or output_config.effort) refused: the model gets
+    #   the budget form instead (#budget_form), per model;
+    # - cache_control refused (Fireworks lists it unsupported): no
+    #   breakpoints for the host;
+    # - max_tokens over the model's output limit: the limit the message
+    #   names, per model.
     class AnthropicMessages
       include ModelListing
 
       API_VERSION = "2023-06-01"
       DEFAULT_MODELS_TTL = 60
       MAX_MODEL_PAGES = 20
+      # The budget form's budget_tokens per level (a model that takes no
+      # adaptive thinking), and Messages' smallest budget.
+      BUDGETS = { low: 2048, medium: 8192, high: 24_576 }.freeze
+      MIN_BUDGET = 1024
+      # A 400 refusing adaptive thinking or its effort.
+      ADAPTIVE_REFUSED_RE = /adaptive|output_config|effort/i
+      CACHE_CONTROL_RE = /cache_control/i
+      # "max_tokens: 200000 > 128000, which is the maximum allowed number of output tokens for …"
+      OUTPUT_CAP_RE = /max_tokens`?:?\s*\d+\s*>\s*(\d+)/i
       # How much of a 200's non-stream body is read as a possible JSON error.
       PLAIN_ERROR_LIMIT = 64 * 1024
       # max_tokens when default.max_tokens is unset and the model list names
@@ -64,6 +81,9 @@ module Samagotchi
         @api_key_env = api_key_env
         @stream = stream
         init_model_listing(models_ttl)
+        @thinking_form_refused = Set.new
+        @output_caps = {}
+        @cache_control_refused = false
         open_timeout, read_timeout = timeouts(timeout, open_timeout)
         policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
         @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
@@ -76,12 +96,21 @@ module Samagotchi
       # @return [ChatResponse]
       def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {},
                session_id: nil)
-        body = request_body(messages, tools, model, options)
-        request = post_request("#{@base_url}/v1/messages", body, session_id: session_id)
-        log_fields = { model: model, purpose: @purpose, sampling: sampling_summary(body), cache: cache_summary(body) }
-        return chat_once(request, cancel_controller, log_fields) unless @stream
+        fixed = []
+        begin
+          body = request_body(messages, tools, model, options)
+          request = post_request("#{@base_url}/v1/messages", body, session_id: session_id)
+          log_fields = { model: model, purpose: @purpose, sampling: sampling_summary(body), cache: cache_summary(body) }
+          return chat_once(request, cancel_controller, log_fields) unless @stream
 
-        chat_streamed(request, cancel_controller, on_delta, on_retry, log_fields)
+          chat_streamed(request, cancel_controller, on_delta, on_retry, log_fields)
+        rescue BadRequest => e
+          fix = refusal_fix(e, body, model)
+          raise if fix.nil? || fixed.include?(fix)
+
+          fixed << fix
+          retry
+        end
       end
 
       # A provider on the network: no llama.cpp /props to ask for the window.
@@ -113,6 +142,9 @@ module Samagotchi
       # limit=1000 and after_id paging (has_more/last_id). Anthropic's shape
       # (max_input_tokens, max_tokens, capabilities) and the OpenAI shape a
       # gateway or Splash serves here are both read (ModelListing).
+      # Whether +model+ gets the budget form (it refused adaptive thinking).
+      def budget_form?(model) = @thinking_form_refused.include?(model.to_s)
+
       # @return [Array<ModelInfo>]
       def list_models
         models = []
@@ -153,8 +185,12 @@ module Samagotchi
       # dropped; a null drops a field).
       def request_body(messages, tools, model, options)
         options = (options || {}).to_h.transform_keys(&:to_sym).except(*DROPPED_OPTIONS)
-        translated = AnthropicWire.translate(messages, cache: (PromptCache.control if @purpose == "chat"))
-        body = { model: model, max_tokens: options.delete(:max_tokens) || default_max_tokens(model) }
+        options = budget_form(options) if budget_form?(model)
+        cache = PromptCache.control if @purpose == "chat" && !@cache_control_refused
+        translated = AnthropicWire.translate(messages, cache: cache)
+        max_tokens = options.delete(:max_tokens) || default_max_tokens(model)
+        max_tokens = [max_tokens, @output_caps[model.to_s]].min if @output_caps[model.to_s]
+        body = { model: model, max_tokens: max_tokens }
         body[:system] = translated.system unless translated.system.empty?
         body[:messages] = translated.messages
         body[:stream] = @stream
@@ -162,7 +198,65 @@ module Samagotchi
           body[:tools] = AnthropicWire.tools(tools)
           body[:tool_choice] = { type: "auto" }
         end
-        body.merge(options).compact
+        with_budget_room(body.merge(options).compact)
+      end
+
+      # Adaptive thinking at a level as the budget form: thinking enabled
+      # with BUDGETS' budget (medium without an effort), shown as asked, and
+      # no effort (a model without adaptive thinking may take none).
+      def budget_form(options)
+        thinking = options[:thinking].is_a?(Hash) ? options[:thinking].transform_keys(&:to_sym) : nil
+        return options unless thinking && thinking[:type].to_s == "adaptive"
+
+        config = options[:output_config].is_a?(Hash) ? options[:output_config].transform_keys(&:to_sym) : {}
+        budget = BUDGETS.fetch(config[:effort].to_s.to_sym, BUDGETS[:medium])
+        config = config.except(:effort)
+        options.merge(thinking: { type: "enabled", budget_tokens: budget, display: thinking[:display] || "summarized" },
+                      output_config: config.empty? ? nil : config)
+      end
+
+      # Messages wants max_tokens > budget_tokens (and a budget of at least
+      # MIN_BUDGET): a budget without that room is lowered to leave
+      # MIN_BUDGET for the answer; below MIN_BUDGET itself, max_tokens is
+      # raised to 2 * MIN_BUDGET with the smallest budget.
+      def with_budget_room(body)
+        thinking = body[:thinking]
+        return body unless thinking.is_a?(Hash) && thinking[:budget_tokens].is_a?(Integer)
+
+        budget = thinking[:budget_tokens]
+        max_tokens = body[:max_tokens].to_i
+        return body if max_tokens > budget + MIN_BUDGET
+
+        budget = max_tokens - MIN_BUDGET
+        if budget < MIN_BUDGET
+          budget = MIN_BUDGET
+          max_tokens = 2 * MIN_BUDGET
+        end
+        body.merge(max_tokens: max_tokens, thinking: thinking.merge(budget_tokens: budget))
+      end
+
+      # What a 400 for +body+ changes (remembered), or nil: the error goes
+      # on as it is.
+      def refusal_fix(error, body, model)
+        return nil if error.context_overflow? || error.status != 400 || body.nil?
+        # Those are the loop's (a sampling field) or P3's (signatures,
+        # binding controls): a mention of "effort" in them is no form refusal.
+        return nil if error.sampling_refused? || error.thinking_signature? || error.thinking_binding_unsupported?
+
+        detail = error.detail.to_s
+        if body.dig(:thinking, :type) == "adaptive" && ADAPTIVE_REFUSED_RE.match?(detail)
+          @thinking_form_refused << model.to_s
+          Log.info(:http, "thinking_form_switched", host: @host_name, model: model.to_s, to: "budget", detail: detail[0, 200])
+          :thinking_form
+        elsif !@cache_control_refused && CACHE_CONTROL_RE.match?(detail) && cache_summary(body)
+          @cache_control_refused = true
+          Log.info(:http, "cache_control_refused", host: @host_name, detail: detail[0, 200])
+          :cache_control
+        elsif (cap = detail[OUTPUT_CAP_RE, 1]&.to_i) && cap.positive? && body[:max_tokens].to_i > cap
+          @output_caps[model.to_s] = cap
+          Log.info(:http, "output_cap", host: @host_name, model: model.to_s, max_tokens: cap)
+          :max_tokens
+        end
       end
 
       # The model list's max_tokens for +model+ (capped), else the cap.

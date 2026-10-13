@@ -559,6 +559,18 @@ What each backend gets:
 | native (`/completion`), `qwen36` | an empty thought after the assistant cue, and no turn preamble | no knob: thinking stays as the model has it, one notice |
 | native, `gemma4` | no `<\|think\|>` token at the start of the system prompt | no knob, one notice |
 | chat host (`api: openai`) | `chat_template_kwargs: {enable_thinking: false}` and `reasoning_effort: "none"` | `reasoning_effort: <level>` |
+| Messages host (`api: anthropic`) | `thinking: {type: "disabled"}` | `thinking: {type: "adaptive", display: "summarized"}` and `output_config: {effort: <level>}` |
+
+On a Messages host `default` sends nothing: the provider's own default, which differs by model (some Claude models
+think adaptively but show no thinking text, their blocks still going back; others, and Splash, don't think at all). A model that refuses `disabled` (current
+Claude models) gets the request again without it, as on any chat host. A model that refuses adaptive thinking
+(older Claude: Haiku 4.5) is switched, once and for the worker's life, to the budget form: `thinking: {type:
+"enabled", budget_tokens: B}` with B 2048 / 8192 / 24576 for low / medium / high and no effort; `max_tokens` always
+stays above the budget (the budget is lowered to leave 1024 for the answer, or `max_tokens` raised to 2048). A
+host that refuses `cache_control` gets no cache breakpoints from then on, and a `max_tokens` over the model's output
+limit is sent again with the limit the host names. On any chat host, a model that refuses a sampling field
+(`temperature`, `top_p`, `top_k`; Claude refuses the empty-answer retry's temperature while thinking) gets the
+request again without them, and none of them after.
 
 On chat hosts: llama.cpp honours both off switches but ignores the effort (when its `/props` says
 `chat_template_caps.supports_reasoning_effort: false`, chi says so once per session and host, from the `/props`

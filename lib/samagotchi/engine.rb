@@ -2486,6 +2486,15 @@ module Samagotchi
       nil
     end
 
+    # The host refused a sampling field (the empty-answer retry's
+    # temperature on a model that takes none) and the chat loop asked again
+    # without them, as it will for the model from now on: a log line.
+    def sampling_refused(event)
+      Log.info(:model, "sampling_refused", model: event[:model], detail: event[:detail])
+    rescue StandardError
+      nil
+    end
+
     # The host refused the model's reasoning sent back (reasoning_history)
     # and the chat loop asked the step again without it, as it will from
     # now on: logged, and said once per session and host.
@@ -2817,6 +2826,7 @@ module Samagotchi
         # reasoning sent back: a notice, not an event of its own.
         next thinking_refused(event) if event[:type] == :thinking_refused
         next reasoning_history_refused(event) if event[:type] == :reasoning_history_refused
+        next sampling_refused(event) if event[:type] == :sampling_refused
 
         event = with_generation_report(event) if event[:type] == :generation_completed
         emit_event(on_event, event)

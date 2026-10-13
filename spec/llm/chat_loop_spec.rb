@@ -171,7 +171,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     it "doesn't ask again for a 400 about something else, or with no thinking fields sent" do
-      other = Samagotchi::LLM::ProviderErrors.from_response(status: 400, host: "h", body: JSON.generate(error: { message: "bad temperature" }))
+      other = Samagotchi::LLM::ProviderErrors.from_response(status: 400, host: "h", body: JSON.generate(error: { message: "bad stop sequence" }))
       backend.adapter = FakeChatAdapter.new(other)
       expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
       expect(backend.adapter.requests.size).to eq(1)
@@ -180,6 +180,45 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       backend.adapter = FakeChatAdapter.new(refused)
       expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
       expect(backend.adapter.requests.size).to eq(1)
+    end
+  end
+
+  # Claude refuses the empty-answer retry's temperature with a 400 that says
+  # "thinking": the step goes again without the sampling fields, before the
+  # reasoning/thinking fallbacks look at it, and the thinking fields stay.
+  describe "a host that refuses a sampling field" do
+    let(:refused) do
+      Samagotchi::LLM::ProviderErrors.from_response(
+        status: 400, host: "claude",
+        body: JSON.generate(type: "error", error: { type: "invalid_request_error",
+                                                    message: "temperature may only be set to 1 when thinking is enabled" })
+      )
+    end
+
+    it "asks the empty answer's retry again without temperature, keeps the effort level, and sends none after" do
+      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: :high)
+      backend.adapter = FakeChatAdapter.new(text(""), refused, text("done"), text("again"))
+
+      expect(run.text).to eq("done")
+      run
+
+      options = backend.adapter.requests.map { |r| r[:options] }
+      expect(options[1]).to include(:temperature, reasoning_effort: "high")
+      expect(options.drop(2)).to all(eq(reasoning_effort: "high"))
+      expect(events.select { |e| e[:type] == :sampling_refused })
+        .to eq([{ type: :sampling_refused, iteration: 2, model: "m",
+                  detail: "HTTP 400: temperature may only be set to 1 when thinking is enabled" }])
+      expect(events.map { |e| e[:type] }).not_to include(:thinking_refused, :reasoning_history_refused)
+    end
+
+    it "drops a configured temperature for the model after the refusal" do
+      fake_kernel.turn_settings = fake_kernel.turn_settings.with(sampling: { temperature: 0.6, top_p: 0.9, min_p: 0.1 })
+      backend.adapter = FakeChatAdapter.new(refused, text("done"))
+
+      run
+
+      expect(backend.adapter.requests.map { |r| r[:options] })
+        .to eq([{ temperature: 0.6, top_p: 0.9, min_p: 0.1 }, { min_p: 0.1 }])
     end
   end
 
@@ -255,7 +294,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     it "doesn't ask again for a 400 about something else" do
-      other = Samagotchi::LLM::ProviderErrors.from_response(status: 400, host: "h", body: JSON.generate(error: { message: "bad temperature" }))
+      other = Samagotchi::LLM::ProviderErrors.from_response(status: 400, host: "h", body: JSON.generate(error: { message: "bad stop sequence" }))
       backend.adapter = FakeChatAdapter.new(call("c1", "first"), other)
 
       expect { run }.to raise_error(Samagotchi::LLM::BadRequest)

@@ -457,6 +457,87 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
     end
   end
 
+  describe "a field the host refuses (in the adapter, once per request, remembered)" do
+    def refuse(message)
+      server.enqueue("/v1/messages", status: 400, json: { type: "error", error: { type: "invalid_request_error", message: message } })
+    end
+
+    def ask(level, max_tokens: 64_000, model: "old")
+      chat([{ role: "user", content: "hi" }], model: model, options: { max_tokens: max_tokens, **adapter.thinking_fields(level) })
+    end
+
+    def thinking_sent = bodies.map { |body| [body["max_tokens"], body["thinking"], body["output_config"]] }
+
+    def bodies = server.requests.select { |r| r.path == "/v1/messages" }.map(&:json)
+
+    it "switches a model that refuses adaptive thinking to the budget form, per level, and keeps it" do
+      refuse("thinking.type: adaptive thinking is not supported on this model")
+      4.times { answer }
+
+      %i[medium low high].each { |level| ask(level) }
+      chat([{ role: "user", content: "hi" }], model: "new", options: { max_tokens: 64_000, **adapter.thinking_fields(:low) })
+
+      summarized = ->(budget) { { "type" => "enabled", "budget_tokens" => budget, "display" => "summarized" } }
+      expect(thinking_sent).to eq([
+        [64_000, { "type" => "adaptive", "display" => "summarized" }, { "effort" => "medium" }],
+        [64_000, summarized.call(8192), nil],
+        [64_000, summarized.call(2048), nil],
+        [64_000, summarized.call(24_576), nil],
+        [64_000, { "type" => "adaptive", "display" => "summarized" }, { "effort" => "low" }]
+      ])
+      expect(adapter.budget_form?("old")).to be(true)
+      expect(adapter.budget_form?("new")).to be(false)
+    end
+
+    it "keeps max_tokens above the budget: the budget lowered, or max_tokens raised to 2048 with the smallest budget" do
+      refuse("adaptive thinking is not supported")
+      3.times { answer }
+
+      ask(:high, max_tokens: 30_000)
+      ask(:high, max_tokens: 10_000)
+      ask(:low, max_tokens: 1500)
+
+      expect(thinking_sent.drop(1).map { |max, thinking, _| [max, thinking["budget_tokens"]] })
+        .to eq([[30_000, 24_576], [10_000, 8976], [2048, 1024]])
+    end
+
+    it "drops the cache breakpoints for the host once it refuses cache_control" do
+      refuse("cache_control: Extra inputs are not permitted")
+      2.times { answer }
+
+      2.times { chat([{ role: "system", content: "sys" }, { role: "user", content: "hi" }], options: { max_tokens: 9 }) }
+
+      expect(bodies.map { |body| body.to_s.include?("cache_control") }).to eq([true, false, false])
+    end
+
+    it "retries over-cap max_tokens with the limit the message names, and keeps it for the model" do
+      refuse("max_tokens: 100000 > 64000, which is the maximum allowed number of output tokens for old")
+      2.times { answer }
+
+      2.times { ask(:default, max_tokens: 100_000) }
+
+      expect(bodies.map { |body| body["max_tokens"] }).to eq([100_000, 64_000, 64_000])
+    end
+
+    it "doesn't switch the form for a sampling 400 that mentions effort (the loop's to handle)" do
+      refuse("temperature is not supported with adaptive thinking at this effort")
+
+      expect { chat([{ role: "user", content: "hi" }], options: { max_tokens: 9, temperature: 0.7, **adapter.thinking_fields(:low) }) }
+        .to raise_error(Samagotchi::LLM::BadRequest) { |e| expect(e.sampling_refused?).to be(true) }
+      expect(bodies.size).to eq(1)
+      expect(adapter.budget_form?("m")).to be(false)
+    end
+
+    it "leaves any other 400 to the loop (one request): off refused, a context overflow" do
+      server.enqueue("/v1/messages", status: 400, json: fixture("error_400_disabled_refused.hand-written.json"))
+      server.enqueue("/v1/messages", status: 400, json: fixture("error_400_prompt_too_long.hand-written.json"))
+
+      expect { ask(:off) }.to raise_error(Samagotchi::LLM::BadRequest) { |e| expect(e.reasoning_refused?).to be(true) }
+      expect { ask(:low) }.to raise_error(Samagotchi::LLM::BadRequest) { |e| expect(e.context_overflow?).to be(true) }
+      expect(bodies.size).to eq(2)
+    end
+  end
+
   describe "#thinking_fields" do
     it "maps chi's levels: default nothing, off disabled, an effort adaptive + summarized at that effort" do
       expect(adapter.thinking_fields(:default)).to eq({})

@@ -138,7 +138,8 @@ module Samagotchi
 
       # @param hint [String, nil] what to try, added to the summary
       def initialize(message = nil, context_overflow: false, tools_unsupported: false, reasoning_refused: false,
-                     thinking_signature: false, thinking_binding_unsupported: false, hint: nil, **)
+                     thinking_signature: false, thinking_binding_unsupported: false, sampling_refused: false, hint: nil, **)
+        @sampling_refused = sampling_refused
         @context_overflow = context_overflow
         @tools_unsupported = tools_unsupported
         @reasoning_refused = reasoning_refused
@@ -171,6 +172,13 @@ module Samagotchi
       # thinking.block_binding field ("Extra inputs are not permitted") or
       # the thinking-binding-controls beta header. Never #reasoning_refused?.
       def thinking_binding_unsupported? = @thinking_binding_unsupported
+
+      # A 400 that refuses a sampling field (temperature, top_p, top_k):
+      # Claude's "temperature may only be set to 1 when thinking is
+      # enabled" for the empty-answer retry's temperature. Not
+      # reasoning_refused? although it says "thinking": ChatLoop asks again
+      # without those fields instead.
+      def sampling_refused? = @sampling_refused
 
       def kind = :bad_request
 
@@ -308,6 +316,12 @@ module Samagotchi
       # A 400 about the thinking fields chi sent (Thinking.chat_fields). Broad;
       # a signature or binding-control 400 (below) is not one.
       REASONING_REFUSED_RE = /reasoning|thinking/i
+      # Messages' 400 for an assistant turn sent back without its thinking
+      # block before tool_use: about the history sent, not a refusal of
+      # reasoning (it would turn thinking off for the model).
+      THINKING_BLOCK_MISSING_RE = /expected `?thinking`? or `?redacted_thinking`?|must start with a thinking block/i
+      # A 400 about a sampling field (BadRequest#sampling_refused?).
+      SAMPLING_REFUSED_RE = /\b(temperature|top_p|top_k)\b/i
       # A 400 about a thinking block's signature (BadRequest#thinking_signature?).
       THINKING_SIGNATURE_RE = /invalid `?signature`? in `?thinking`? block|bound to a different conversation/i
       # A 400 refusing the binding controls (BadRequest#thinking_binding_unsupported?):
@@ -397,9 +411,12 @@ module Samagotchi
         tools = TOOLS_UNSUPPORTED_RE.match?(message)
         signature = THINKING_SIGNATURE_RE.match?(message)
         binding = !signature && THINKING_BINDING_UNSUPPORTED_RE.match?(message)
-        refused = status == 400 && !tools && !signature && !binding && REASONING_REFUSED_RE.match?(message)
+        sampling = status == 400 && !tools && !signature && !binding && SAMPLING_REFUSED_RE.match?(message)
+        missing = THINKING_BLOCK_MISSING_RE.match?(message)
+        refused = status == 400 && !tools && !signature && !binding && !sampling && !missing &&
+                  REASONING_REFUSED_RE.match?(message)
         BadRequest.new(text, tools_unsupported: tools, thinking_signature: signature, thinking_binding_unsupported: binding,
-                             reasoning_refused: refused, **options)
+                             sampling_refused: sampling, reasoning_refused: refused, **options)
       end
 
       # The ProviderError for a JSON error object, by its error.code (an HTTP
