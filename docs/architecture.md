@@ -444,6 +444,17 @@ message (docs/internals/context-telemetry.md).
 output) and cancel. Cancel closes the in-flight socket from the
 `CancellationController` listener, so it works on any thread.
 
+`LLM::AnthropicMessages` talks Anthropic's Messages API (`POST {root}/v1/messages`) for the same chat loop:
+ChatLoop builds the same OpenAI-shaped wire messages for every chat host, and the adapter translates them
+(`LLM::AnthropicWire`: the head system message becomes the top-level `system` blocks, tool calls `tool_use` blocks,
+tool messages `tool_result` blocks in one user message, image parts `image` blocks, later system messages user
+text; empty text blocks are never sent). Its answer (`LLM::AnthropicAssembly`) is a `ChatResponse` whose
+`provider_content` holds the content blocks as received, which ChatLoop can send back verbatim (thinking blocks
+need their signature and their order among text and `tool_use`). Usage is normalized to the OpenAI shape the rest
+of chi reads (the prompt is input + cache reads + cache writes), stop reasons to the loop's finish reasons
+(`max_tokens` → `length`, `tool_use` → `tool_calls`, `end_turn` → `stop`). Both adapters share their model-list
+cache (`LLM::ModelListing`).
+
 **Errors.** A failed request raises an `LLM::ProviderError` of one kind:
 `ConnectionError` (`RetryExhausted`), `RateLimited` (`CreditsHeld`: a 402 about
 credit held by in-flight requests, retried after 20 s), `OutOfCredits` (any other

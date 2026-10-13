@@ -29,9 +29,13 @@ module Samagotchi
     # +top_logprobs+: the first answer token's likeliest alternatives
     # (TokenLogprob) when the request asked for logprobs and the server
     # sent them (a non-streamed answer only); [] otherwise.
+    # +provider_content+: the response's content blocks in order, as the
+    # server sent them (string keys), for a wire that sends them back
+    # verbatim (AnthropicMessages: thinking blocks with their signatures);
+    # nil on the OpenAI wire.
     ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model, :provider, :cut,
-                               :top_logprobs) do
-      def initialize(model: nil, provider: nil, cut: nil, top_logprobs: [].freeze, **fields) = super
+                               :top_logprobs, :provider_content) do
+      def initialize(model: nil, provider: nil, cut: nil, top_logprobs: [].freeze, provider_content: nil, **fields) = super
     end
 
     # One alternative for an answer token: its text and log probability.
