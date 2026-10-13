@@ -260,13 +260,17 @@ module Samagotchi
           take_session_state(event[:session_state_snapshot] || {})
           return render_snapshot(event[:snapshot] || {}, reset: event[:type] == :reset)
         when :turn_enqueued then show_enqueued(event)
-        when :turn_started then start_turn(event)
+        when :turn_started
+          @status.take_event(event)
+          start_turn(event)
         when :turn_completed
+          @status.take_event(event)
           complete_turn(event)
           refresh_children
           own_turn_ended(event)
         # The renderer says how it ended (the REPL's words too).
         when :turn_canceled, :turn_failed
+          @status.take_event(event)
           @renderer.call(event)
           end_turn
           refresh_children
@@ -1379,6 +1383,8 @@ module Samagotchi
       def render_current_turn(turn)
         @running = !turn.nil?
         @joined_mid_turn = @running
+        # A turn running at the join: the status row's steer hint.
+        @status.update(running: @running)
         return unless turn
 
         continues = turn[:prompt].nil?

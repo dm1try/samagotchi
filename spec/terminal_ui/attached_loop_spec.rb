@@ -1982,6 +1982,27 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     expect(status).to eq("status> model=m1 | ctx=12.5% (low) | mem: notes")
   end
 
+  it "trails the steer hint while a turn runs, and drops it when the turn ends" do
+    hint = " · typing goes in at the next step (/cut, /queue)"
+    feed(join, { type: :turn_started, prompt: "p", origin: { client_id: "web:1" } })
+    expect(status).to eq("status> model=m1#{hint}")
+
+    feed({ type: :turn_completed, origin: { client_id: "web:1" } })
+    expect(status).to eq("status> model=m1")
+
+    feed({ type: :turn_started, prompt: "q", origin: { client_id: "web:1" } }, { type: :turn_canceled })
+    expect(status).to eq("status> model=m1")
+
+    feed({ type: :turn_started, prompt: "r", origin: { client_id: "web:1" } }, { type: :turn_failed, error: "boom" })
+    expect(status).to eq("status> model=m1")
+  end
+
+  it "shows the steer hint when it joins a running turn" do
+    feed(join.tap { |event| event[:snapshot][:current_turn] = { prompt: "go", parts: [] } })
+
+    expect(status).to eq("status> model=m1 · typing goes in at the next step (/cut, /queue)")
+  end
+
   describe "the children segment" do
     let(:counts) { [] }
     let(:asked) { [] }

@@ -129,9 +129,58 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
       row.take_event({ type: :used_memories_updated, used_memory_names: %w[notes] })
       row.take_event({ type: :generation_completed, served_model: "ornith", requested_model: "m1" })
       row.take_event({ type: :generation_completed })
-      row.take_event({ type: :turn_started })
 
       expect(surface.slots[:status]).to eq(["status> model=ornith (served; asked m1) | ctx=40.0% (under60) | mem: notes"])
+    end
+  end
+
+  describe "the steer hint" do
+    let(:hint) { " · typing goes in at the next step (/cut, /queue)" }
+
+    it "trails the row while a turn runs" do
+      row.update(model: "m1", context: { est_pct: 12.34, bucket: "under20" })
+      row.take_event({ type: :turn_started })
+
+      expect(surface.slots[:status]).to eq(["status> model=m1 | ctx=12.3% (under20)#{hint}"])
+    end
+
+    %i[turn_completed turn_canceled turn_failed].each do |end_type|
+      it "goes when the turn ends (#{end_type})" do
+        row.update(model: "m1")
+        row.take_event({ type: :turn_started })
+        row.take_event({ type: end_type })
+
+        expect(surface.slots[:status]).to eq(["status> model=m1"])
+      end
+    end
+
+    it "is not shown between turns" do
+      row.update(model: "m1", used_memories: %w[notes])
+      row.take_event({ type: :context_status, usage: { estimated_pct: 1.0 }, bucket: "under20" })
+
+      expect(surface.slots[:status]).to eq(["status> model=m1 | ctx=1.0% (under20) | mem: notes"])
+    end
+
+    it "shows for a turn running when the state is taken (an attached TUI joining mid-turn)" do
+      row.update(model: "m1", running: true)
+
+      expect(surface.slots[:status]).to eq(["status> model=m1#{hint}"])
+    end
+
+    it "is dropped whole first on a narrow terminal, keeping the model and ctx" do
+      row.update(model: "m1", context: { est_pct: 12.34, bucket: "under20" })
+      row.take_event({ type: :turn_started })
+      base = "status> model=m1 | ctx=12.3% (under20)"
+
+      expect(row.rows(base.length + hint.length)).to eq(["#{base}#{hint}"])
+      expect(row.rows(base.length + hint.length - 1)).to eq([base])
+      expect(row.rows(base.length)).to eq([base])
+    end
+
+    it "says nothing on its own with nothing else to show" do
+      row.take_event({ type: :turn_started })
+
+      expect(row.rows(120)).to eq([])
     end
   end
 

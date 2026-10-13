@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- While a turn runs, the terminal's status row (REPL and attached) ends in `· typing goes in at the next step (/cut,
+  /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".
+
 ## [0.64.0] - 2026-10-13
 
 ### Added

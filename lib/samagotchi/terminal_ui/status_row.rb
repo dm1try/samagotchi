@@ -28,7 +28,15 @@ module Samagotchi
       #   preloaded             its --memory list (shown until a turn
       #                         records them as used)
       #   muted                 its --mute list
-      FIELDS = %i[model default_model served parent_id children context used_memories preloaded muted].freeze
+      #   running               a turn runs: the row trails STEER_HINT
+      FIELDS = %i[model default_model served parent_id children context used_memories preloaded muted running].freeze
+
+      # The tail while a turn runs: where a typed line goes (the next step)
+      # and the two other choices. Dropped whole first when the row is cut.
+      STEER_HINT = " · typing goes in at the next step (/cut, /queue)"
+
+      # The turn events that end a turn (the hint goes).
+      TURN_END_EVENTS = %i[turn_completed turn_canceled turn_failed].freeze
 
       # @param surface [Surface] with #columns
       def initialize(surface)
@@ -77,13 +85,16 @@ module Samagotchi
 
       # Take what a turn event says about the row (the Engine's events in
       # the REPL, the Bridge's in attached mode): ctx, the memories used,
-      # the model the server served. Other events change nothing.
+      # the model the server served, whether a turn runs (the steer
+      # hint). Other events change nothing.
       def take_event(event)
         case event[:type]
         when :context_status then update(context: { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] })
         when :used_memories_updated then update(used_memories: Array(event[:used_memory_names]))
         when :generation_completed
           update(served: [event[:served_model], event[:requested_model], event[:served_expected_by]]) if event[:served_model]
+        when :turn_started then update(running: true)
+        when *TURN_END_EVENTS then update(running: false)
         end
       end
 
@@ -119,10 +130,20 @@ module Samagotchi
                     status_context_text(estimate: @values[:context]),
                     status_memory_text(Array(@values[:used_memories]) | Array(@values[:preloaded]), MEMORY_LIMIT),
                     status_memory_text(@values[:muted], MEMORY_LIMIT, label: "muted")].reject(&:empty?)
-        status_rows(segments, width)
+        status_rows(with_steer_hint(segments, width), width)
       end
 
       private
+
+      # +segments+ with STEER_HINT after the last while a turn runs, when
+      # the whole row fits +width+ with it: on a narrow terminal the hint
+      # goes first, whole, before anything else is cut.
+      def with_steer_hint(segments, width)
+        return segments unless @values[:running] && segments.any?
+        return segments if "status> #{segments.join(" | ")}#{STEER_HINT}".length > width
+
+        segments[0..-2] + ["#{segments.last}#{STEER_HINT}"]
+      end
 
       # `⑂ 2 running · 1 waiting`, the counts there are; "" with neither (no
       # children, or all ended). Not "not reported": a REPL parent is never

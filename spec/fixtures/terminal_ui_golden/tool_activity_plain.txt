@@ -1,5 +1,6 @@
 Session: <session-id>
 status> model=Qwen3-14B
+status> model=Qwen3-14B · typing goes in at the next step (/cut, /queue)
 status> model=Qwen3-14B | mem: notes
 tool> loading memory (memory_read name="notes"): ok (<elapsed>)
 tool> running command (execute command="false"): error

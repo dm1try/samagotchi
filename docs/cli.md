@@ -953,6 +953,8 @@ status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | ctx=8.1% (under20) | me
   report none, `api: openai`, at the turn's end).
 - `mem:`: the memories the session read, with its `--memory` list; `muted:` its `--mute` list.
   Up to 8 names each, then `+N`.
+- While a turn runs it ends in `· typing goes in at the next step (/cut, /queue)`; the hint is the first thing dropped
+  on a narrow terminal.
 - The row is cut to the terminal's width. Without a live region (output or input not a terminal,
   `TERM=dumb`) it prints as a line when it changes.
 - `SAMAGOTCHI_STATUS_LINE` / `status.line` (default `on`): `off`, `false` or `0` hides it.
