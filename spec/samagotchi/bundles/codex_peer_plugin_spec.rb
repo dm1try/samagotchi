@@ -294,6 +294,31 @@ RSpec.describe "The codex-peer plugin" do
       expect(queued_message).to eq("chi #{short} · context · we chose Redis\nwe chose Redis")
     end
 
+    it "adds a Confirm with Codex pill (a fill, the quote) on a chi with chi.annotation, and loads without it" do
+      annotations = []
+      newer = fake_chi.dup
+      newer.define_singleton_method(:annotation) { |label, **opts| annotations << [label, opts] }
+      plugin.register(newer)
+
+      expect(annotations).to eq([["Confirm with Codex", { command: "/codex validate" }]])
+      expect(fake_chi).not_to respond_to(:annotation)
+      expect(fake_chi.commands).to have_key("/codex")
+    end
+
+    it "titles a pill's quote by its first quoted line, not the From …: label" do
+      pair
+
+      result = run("validate\nFrom your thinking:\n>   the key stays\n> two\n\nis it?")
+      expect(result).to start_with("sent to Codex: validate · the key stays;")
+      expect(queued_message).to eq("chi #{short} · validate · the key stays\nFrom your thinking:\n>   the key stays\n> two\n\nis it?")
+
+      run("validate\n> an answer line\n\nok?")
+      expect(queued_message.lines.first).to eq("chi #{short} · validate · an answer line\n")
+
+      run("validate From now on we use Redis:\n- lib/a.rb")
+      expect(queued_message.lines.first).to eq("chi #{short} · validate · From now on we use Redis:\n")
+    end
+
     it "says why a send failed, and gives usage for nothing to send or an unknown verb" do
       expect(run("validate x")).to start_with("/codex: no codex-inbox: pair from Codex")
       expect(run("validate")).to start_with("usage: /codex")
