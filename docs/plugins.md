@@ -1521,7 +1521,28 @@ Claude pairs; without one the bundle costs one tool declaration.
 - **Pairing is Claude's.** chi can't see Claude's inbox, so Claude attaches
   two pushed sources to the chi session: `claude-inbox`, whose hint is its
   per-session inbox socket (`CLAUDE_CODE_MESSAGING_SOCKET`, Claude Code
-  2.1.224 or later), and `claude-review`, where its answers come.
+  2.1.224 or later), and `claude-review`, where its answers come. You never
+  run that yourself:
+  1. `/claude install-skill` (once) shows a card with the target,
+     `$CLAUDE_CONFIG_DIR/skills/chi-peer/SKILL.md` (else `~/.claude/…`),
+     whether one is there and, when it differs, a short diff; its Install (or
+     Replace) button runs `/claude install-skill --yes`, which copies the
+     bundle's `scripts/chi-peer-SKILL.md` there with the installed
+     `scripts/pair` path written in. The copy happens inside chi, where no
+     guardrail sees it: the button is your consent. The card also offers the
+     Claude Code permission rule `Read(~/.local/state/samagotchi/plugins/claude-peer/**)`
+     (your state folder), so Claude isn't asked before reading a long part's
+     file; chi never writes Claude's settings.
+  2. In Claude Code you say "pair with chi <id or chi web URL>". The skill runs
+     `sh <bundle>/scripts/pair <id or URL>`, which attaches `claude-inbox` (the
+     socket as its hint, pushed as JSON so a re-pair after a Claude restart
+     refreshes it) and `claude-review`, and lists the session's context. Until
+     chi wakes on a pushed source's first text, `pair` pushes a placeholder to
+     `claude-review` (only when it has no text yet), so Claude's first real
+     answer wakes chi.
+  3. Claude answers a validate or a question with a JSON push to
+     `claude-review` (`text`, `summary`, `wake: true`), which wakes chi; the
+     model reads it with `context_read claude-review`.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
   starts with a header, `chi <id> · <kind> · <title>`. A text up to 4,000
@@ -1532,6 +1553,16 @@ Claude pairs; without one the bundle costs one tool declaration.
   change the prompt. Its errors say what to do: no `claude-inbox` (pair from
   Claude), the socket gone or refusing (that Claude session ended or
   restarted: pair again), a text over 200,000 characters.
+- **`/claude`** (an anytime command, so it works mid-turn) sends without
+  the model:
+  - `/claude` alone shows a card: paired or not, the socket and whether its
+    file is there (it goes when that Claude session ends), the last send, and
+    Claude's last answer (the `claude-review` summary).
+  - `/claude validate <text>` and `/claude context <text>` send the text as it
+    is, titled by its first line: paste a selection after them.
+  - `/claude last` sends the model's last completed answer as context. Mid-turn
+    it is the answer before the running turn, never the turn's partial text;
+    a cancelled or failed turn has no answer, so the one before it goes.
 - **The skill.** `skill_claude_peer` (system scope) tells the model to send
   only when you ask, to pick the part rather than the session, not to wait
   or poll, and how to read the `claude-review` answer (a validate ends with

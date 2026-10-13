@@ -201,4 +201,184 @@ RSpec.describe "The claude-peer plugin" do
       end
     end
   end
+
+  describe "/claude" do
+    def run(args = "") = fake_chi.commands.fetch("/claude").last.call(args, ctx)
+    def hook(event, payload) = fake_chi.hooks.fetch(event).last.call(payload)
+
+    def sent_content(args)
+      server, thread, received = listen
+      result = run(args)
+      thread.join(5)
+      server.close
+      File.unlink(socket)
+      [result, received.empty? ? nil : JSON.parse(received.pop).dig("message", "content")]
+    end
+
+    def review(text, summary)
+      own.add(Samagotchi::ContextSources::Source.new(name: "claude-review", cmd: nil, every_seconds: nil, why: "answers",
+                                                     hint: "latest Claude reply", scope: "session", added_by: "cli",
+                                                     created_at: Time.now.utc.iso8601))
+      own.record_text("claude-review", Samagotchi::ContextSources::Fetched.new(text: text, summary: summary, wake: true,
+                                                                               hint: nil))
+    end
+
+    it "is an anytime command, and the plugin watches turns start and end" do
+      expect(fake_chi.commands.fetch("/claude").first).to be(true)
+      expect(fake_chi.hooks.keys).to contain_exactly(:before_turn, :after_turn)
+    end
+
+    describe "alone: the status card" do
+      it "says how to pair when no Claude is paired; no text of its own" do
+        expect(run).to be_nil
+
+        card = cards.last
+        expect(card).to include(id: "claude", title: "claude-peer: not paired")
+        expect(card[:body]).to include("**not paired.**", "\"pair with chi #{short}\"", "checked on Claude Code 2.1.296")
+        expect(card[:actions]).to eq([{ label: "Refresh", command: "/claude" },
+                                      { label: "Install skill", command: "/claude install-skill" }])
+      end
+
+      it "shows the socket and that it is there, the last send and Claude's last answer" do
+        pair
+        received_lines(kind: "validate", title: "step 2", text: "check it")
+        review("VERDICT: OK", "validate step 2: VERDICT OK")
+        server = UNIXServer.new(socket)
+
+        run
+
+        card = cards.last
+        expect(card[:title]).to eq("claude-peer: paired")
+        expect(card[:body]).to include("socket: `#{socket}` (there)", "last send: just now · validate · step 2 (8 chars, inline)",
+                                       "last answer (claude-review): validate step 2: VERDICT OK · just now")
+      ensure
+        server&.close
+      end
+
+      it "says the socket is missing when Claude's session is gone" do
+        pair
+
+        run
+
+        expect(cards.last[:body]).to include("(**missing**: that Claude session ended or restarted, pair again)")
+      end
+    end
+
+    it "validate and context send the text as it is, titled by its first line" do
+      pair
+
+      result, content = sent_content("validate Step 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
+      expect(result).to eq("sent to Claude: validate · Step 3 keeps the old key; Claude's answer comes as the claude-review context")
+      expect(content).to eq("chi #{short} · validate · Step 3 keeps the old key\nStep 3 keeps the old key\n\n- lib/a.rb:12\n- lib/b.rb:40")
+
+      _, content = sent_content("context we chose Redis")
+      expect(content).to eq("chi #{short} · context · we chose Redis\nwe chose Redis")
+    end
+
+    it "says why a send failed, and gives usage for nothing to send or an unknown verb" do
+      expect(run("validate x")).to start_with("/claude: no claude-inbox: pair from Claude")
+      expect(run("validate")).to start_with("usage: /claude")
+      expect(run("frob")).to start_with("usage: /claude")
+      expect(run("last now")).to start_with("usage: /claude")
+    end
+
+    describe "last" do
+      let(:history) do
+        [{ role: "user", content: "plan it" }, { role: "model", content: "<think>hmm</think>The plan: three steps." }]
+      end
+
+      before { pair }
+
+      it "sends the last completed answer as context, without its thinking" do
+        hook(:before_turn, { messages: [] })
+        hook(:after_turn, { status: "completed", messages: history })
+
+        result, content = sent_content("last")
+
+        expect(result).to eq("sent to Claude: context · chi's last answer: The plan: three steps.")
+        expect(content).to eq("chi #{short} · context · chi's last answer: The plan: three steps.\nThe plan: three steps.")
+      end
+
+      it "mid-turn, sends the answer before the running turn, not the turn's partial text" do
+        hook(:after_turn, { status: "completed", messages: history })
+        hook(:before_turn, { messages: history })
+        messages.replace(history + [{ role: "user", content: "now do it" }, { role: "model", content: "Doing step one, then" }])
+
+        _, content = sent_content("last")
+
+        expect(content).to end_with("\nThe plan: three steps.")
+      end
+
+      it "after a restart (no turn seen), reads the conversation" do
+        messages.replace(history + [{ role: "system", kind: "context", content: "[CONTEXT NOTE …]" }])
+
+        _, content = sent_content("last")
+
+        expect(content).to end_with("\nThe plan: three steps.")
+      end
+
+      it "keeps the last completed answer when a later turn was cancelled" do
+        hook(:after_turn, { status: "completed", messages: history })
+        hook(:before_turn, { messages: history })
+        hook(:after_turn, { status: "canceled", messages: history + [{ role: "user", content: "more" },
+                                                                     { role: "model", content: "Half" },
+                                                                     { role: "system", kind: "turn_note", content: "[SYSTEM: …]" }] })
+
+        _, content = sent_content("last")
+
+        expect(content).to end_with("\nThe plan: three steps.")
+      end
+
+      it "says so when there is no completed answer" do
+        messages.replace([{ role: "user", content: "go" }, { role: "system", kind: "turn_note", content: "[SYSTEM: …]" }])
+
+        expect(run("last")).to start_with("/claude last: no completed answer to send yet")
+      end
+    end
+
+    describe "install-skill" do
+      let(:claude_dir) { File.join(tmpdir, "claude") }
+      let(:target) { File.join(claude_dir, "skills", "chi-peer", "SKILL.md") }
+
+      around { |example| with_env("CLAUDE_CONFIG_DIR" => claude_dir) { example.run } }
+
+      it "shows a card with the target, an Install action and the Read rule to offer, writing nothing" do
+        expect(run("install-skill")).to be_nil
+
+        card = cards.last
+        expect(card).to include(id: "claude-skill", title: "Claude's chi-peer skill",
+                                actions: [{ label: "Install", command: "/claude install-skill --yes" }])
+        expect(card[:body]).to include("target: `#{target}`", "Not installed yet.", "Read(#{data_dir}/**)",
+                                       "chi doesn't change Claude's settings")
+        expect(File.exist?(target)).to be(false)
+      end
+
+      it "--yes installs it with this bundle's pair script and payload folder written in; then it is up to date" do
+        expect(run("install-skill --yes")).to be_nil
+
+        text = File.read(target)
+        expect(text).to start_with("---\nname: chi-peer\n")
+        expect(text).to include("sh \"#{File.join(shipped, "scripts", "pair")}\" <chi session id or URL>",
+                                "Read(#{data_dir}/**)")
+        expect(text).not_to include("__CHI_PEER")
+        expect(cards.last[:body]).to include("Installed `#{target}`")
+
+        run("install-skill")
+        expect(cards.last).to include(actions: [])
+        expect(cards.last[:body]).to include("Installed and up to date.")
+      end
+
+      it "shows a short diff when the installed skill differs, and Replace" do
+        FileUtils.mkdir_p(File.dirname(target))
+        File.write(target, "---\nname: chi-peer\n---\nmy own version\n")
+
+        run("install-skill")
+
+        card = cards.last
+        expect(card[:actions]).to eq([{ label: "Replace", command: "/claude install-skill --yes" }])
+        expect(card[:body]).to include("Installed, and different from this bundle's", "```diff\n--- installed\n+++ this bundle's",
+                                       "-my own version", "more lines")
+      end
+    end
+  end
 end

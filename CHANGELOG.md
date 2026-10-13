@@ -12,7 +12,9 @@ and commands may change between minor versions. How releases are made:
 
 - The claude-peer bundle (in the dev profile): pair a chi session with a Claude Code session you work with, and
   the `claude_send` tool sends Claude a part of the work (a plan step, a diff, a finding) to validate, as context or
-  with a question; Claude's answer comes back as the `claude-review` context. See docs/plugins.md, "The claude-peer
+  with a question; Claude's answer comes back as the `claude-review` context. `/claude validate|context <text>` and
+  `/claude last` send without the model, `/claude` shows whether a Claude is paired, and `/claude install-skill`
+  installs Claude's `chi-peer` skill, which pairs ("pair with chi <id>"). See docs/plugins.md, "The claude-peer
   bundle".
 - Plugins: `ctx.context.list` gives each source's last `summary:` too. See docs/plugins.md, "Attached context".
 

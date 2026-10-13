@@ -1,0 +1,75 @@
+#!/bin/sh
+# pair: pair this Claude Code session with a chi session (chi's claude-peer
+# bundle). Run from Claude Code, which sets CLAUDE_CODE_MESSAGING_SOCKET:
+#
+#   sh <bundle dir>/scripts/pair <chi session id, prefix or chi web URL>
+#
+# It attaches two pushed sources to the chi session: claude-inbox, whose hint
+# is this session's inbox socket (chi's claude_send tool writes there), and
+# claude-review, where Claude's answers go. Again after a Claude restart, it
+# only refreshes the socket: the push carries the new hint. CHI names the chi
+# command (default: chi on the PATH).
+set -eu
+
+usage() {
+  echo "usage: pair <chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>" >&2
+  exit 2
+}
+
+[ $# -eq 1 ] || usage
+case "$1" in
+  -h | --help) usage ;;
+  http://* | https://*)
+    id=$(printf '%s\n' "$1" | sed -n 's|.*/s/\([0-9A-Za-z-][0-9A-Za-z-]*\).*|\1|p')
+    [ -n "$id" ] || { echo "pair: no session id in $1 (a chi web URL ends in #/s/<id>)" >&2; exit 2; }
+    ;;
+  *) id=$1 ;;
+esac
+
+sock=${CLAUDE_CODE_MESSAGING_SOCKET:-}
+if [ -z "$sock" ]; then
+  echo "pair: CLAUDE_CODE_MESSAGING_SOCKET isn't set: run this from a Claude Code session (2.1.224 or later)" >&2
+  exit 2
+fi
+chi=${CHI:-chi}
+
+# A JSON string: backslashes, quotes, tabs and newlines escaped.
+json() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' |
+    awk 'BEGIN { ORS = ""; printf "\"" } NR > 1 { print "\\n" } { print } END { printf "\"" }'
+}
+
+# Attaches a pushed source, unless the session has one of that name already.
+attach() {
+  name=$1
+  shift
+  if ! out=$($chi context add "$name" --push "$@" "$id" 2>&1); then
+    if ! $chi context show "$name" --json "$id" >/dev/null 2>&1; then
+      printf '%s\n' "$out" >&2
+      exit 1
+    fi
+  fi
+}
+
+attach claude-inbox --why "the Claude Code session paired with you: send it parts with claude_send" --hint "$sock"
+text="Claude Code peer inbox
+socket: $sock
+claude cwd: $PWD
+paired: $(date '+%Y-%m-%d %H:%M')
+Send to it with the claude_send tool (your skill_claude_peer memory); its answers come as the claude-review context."
+printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$sock")" \
+  "$(json "Claude Code paired from $PWD")" | $chi context push claude-inbox "$id" >/dev/null
+
+attach claude-review --why "Claude's answers to what you sent it (claude-peer)" --hint "latest Claude reply"
+# A source's first text never wakes chi (it arrives as an "Attached" note),
+# so a placeholder goes first and Claude's first real answer wakes it. Only
+# when there is no text yet: a re-pair keeps Claude's last answer.
+# TODO(context-first-push-wake): remove this placeholder push once chi wakes
+# on a pushed source's first text (~/.claude/plans/context-first-push-wake.md).
+if ! $chi context show claude-review "$id" >/dev/null 2>&1; then
+  printf '%s\n' '{"text":"(no reply from Claude yet)","summary":"no reply from Claude yet"}' |
+    $chi context push claude-review "$id" >/dev/null
+fi
+
+echo "paired with chi $id (socket $sock)"
+$chi context ls "$id"

@@ -10,7 +10,10 @@ files:
     description: "Send a part of the work to the paired Claude Code session (claude_send): only when the user asks; validate, context or question; Claude's answer comes as the claude-review context"
 plugin:
   file: plugin.rb
-  sha256: sha256:0a808ab18d3ef03edd751f72ce0862e28ed6e1270c6b6ee9b7c442951f3b93f4
+  sha256: sha256:ef957a1331263465f0836f326596a405f5cb5250c43ccd75a93586872118a155
+scripts:
+  pair: sha256:07baf5730f45f1733ec73e99ec8a7a0fb2fff65961ebe9ae2ac86180fd45bfb0
+  chi-peer-SKILL.md: sha256:f35f726b1a86091ff69d289e8dd58794ac6f44879a63630fcc88d69867c56e20
 # ctx.context.list's summary: (the /claude card's last answer) is chi 0.63.0;
 # without it the card leaves that line out.
 requires_chi: ">= 0.62.0"
