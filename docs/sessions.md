@@ -135,7 +135,8 @@ system message marked `kind: turn_note` (the UIs don't show it; they showed the 
 - cancelled (Ctrl-C, the web's stop): `[SYSTEM: the previous turn was cancelled (ctrl-c) after 12s; the reply
   above ends where it was cut off.]` (an answer or only narration had streamed), or `…; no answer had been shown.]` when only thinking had streamed;
 - ended with nothing visible: `[SYSTEM: the previous turn ended with no visible answer (thinking only, or
-  nothing). The user's last message is still unanswered.]`.
+  nothing). The user's last message is still unanswered.]`, or `[SYSTEM: the previous turn's answer was refused by
+  the provider (cyber). …]` when the provider refused it.
 
 When the context window fills past 40% (then 60%, 80%), the native loop leaves a similar line (`kind: context`):
 `[CONTEXT: about 55% of the context window is in use (estimated; bucket=40plus). context moderate — prefer targeted

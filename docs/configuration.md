@@ -996,6 +996,12 @@ many times per turn; `0` ends the turn at the empty answer as before. An answer 
 (90 % or more) is not retried. When the retries run out the turn ends with no answer: every UI shows one muted line,
 `no answer: the model returned nothing (after 1 retry)`, and the model is told on its next turn with a hidden note;
 no made-up answer is saved.
+A provider that refuses the answer (a Messages host's `stop_reason: refusal`, or an OpenAI-compatible host's
+`finish_reason: content_filter` with no text) is not asked again: the turn ends with no answer (text streamed before
+a Messages refusal is not kept), every UI shows `no answer: refused by the provider (cyber)` (the category from
+`stop_details`, when there is one), and the hidden note says the answer was refused. A `content_filter` stop after
+some text keeps that text as the answer, followed by `[cut off by the provider's content filter]`, and is not asked
+again either. Tool calls that come with either are not run.
 A generation a plugin cuts while it streams (loop-guard's thinking watch, or any `stop_generation`,
 [hooks.md](hooks.md#watching-the-stream)) uses the same budget: `↻ cut by loop-guard, asking again (1/1)`, and with
 none left the turn ends as cancelled (hook).

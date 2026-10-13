@@ -84,11 +84,13 @@
     ]
   },
   "empty_answer_lines": {
-    "note": "The one muted line every UI shows for a turn that ended with no answer (TurnNote.empty_answer_line, Formatting#format_empty_answer_line; turn_events.js emptyAnswerLine).",
+    "note": "The one muted line every UI shows for a turn that ended with no answer (TurnNote.empty_answer_line, Formatting#format_empty_answer_line; turn_events.js emptyAnswerLine); a provider's refusal names its category when it has one.",
     "cases": [
       { "retries": 0, "expected": "no answer: the model returned nothing" },
       { "retries": 1, "expected": "no answer: the model returned nothing (after 1 retry)" },
-      { "retries": 3, "expected": "no answer: the model returned nothing (after 3 retries)" }
+      { "retries": 3, "expected": "no answer: the model returned nothing (after 3 retries)" },
+      { "retries": 0, "refusal": { "category": "cyber" }, "expected": "no answer: refused by the provider (cyber)" },
+      { "retries": 0, "refusal": {}, "expected": "no answer: refused by the provider" }
     ]
   },
   "retry_lines": {

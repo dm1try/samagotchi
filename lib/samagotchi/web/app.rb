@@ -1944,7 +1944,8 @@ module Samagotchi
           did = step.is_a?(Hash) ? MessageParts.for_message(step, [], cwd: cwd) : nil
           { role: "assistant", content: "", parts: did } if did
         end
-        items << { role: "empty_answer", content: "", retries: (marker[:retries] || marker["retries"]).to_i }
+        refusal = marker[:refusal] || marker["refusal"]
+        items << { role: "empty_answer", content: "", retries: (marker[:retries] || marker["retries"]).to_i, refusal: refusal }.compact
       end
 
       # The last turn failed and its prompt went back to the user: the

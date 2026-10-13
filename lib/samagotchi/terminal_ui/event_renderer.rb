@@ -179,7 +179,8 @@ module Samagotchi
         end
         # No answer: chi's muted notice, never an empty answer line.
         if summary[:empty_answer]
-          @view.print_line(@view.format_empty_answer_line(summary.dig(:empty_answer, :retries)))
+          empty = summary[:empty_answer]
+          @view.print_line(@view.format_empty_answer_line(empty[:retries], empty[:refusal]))
         else
           @view.print_line(summary[:output])
         end

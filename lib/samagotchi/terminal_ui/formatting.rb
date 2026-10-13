@@ -135,9 +135,10 @@ module Samagotchi
       end
 
       # "no answer: the model returned nothing (after 1 retry)", dim like the
-      # retry row: a turn that ended with no answer (TurnNote.empty_answer_line).
-      def format_empty_answer_line(retries)
-        paint(TurnNote.empty_answer_line(retries), 90)
+      # retry row: a turn that ended with no answer, or "no answer: refused
+      # by the provider (cyber)" for a +refusal+ (TurnNote.empty_answer_line).
+      def format_empty_answer_line(retries, refusal = nil)
+        paint(TurnNote.empty_answer_line(retries, refusal: refusal), 90)
       end
 
       # "↻ retrying (503) in 4.0s, 2/5": the live status while the provider

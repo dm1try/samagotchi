@@ -73,7 +73,7 @@ test("steer senders per the shared labels matrix (row, flash, reload all agree)"
 
 test("no-answer notices per the shared labels matrix", () => {
   for (const entry of cases("empty_answer_lines")) {
-    assert.equal(emptyAnswerLine({ retries: entry.retries }), expected(entry));
+    assert.equal(emptyAnswerLine({ retries: entry.retries, refusal: entry.refusal }), expected(entry));
   }
 });
 

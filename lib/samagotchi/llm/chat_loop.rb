@@ -49,6 +49,10 @@ module Samagotchi
     class ChatLoop < ModelBackend
       include LLM::StreamDrops
 
+      # The line after an answer an OpenAI-compatible host's content filter
+      # cut (finish_reason content_filter with text): kept, not asked again.
+      FILTERED_MARK = "[cut off by the provider's content filter]"
+
       attr_accessor :adapter
       # The session every request is for; Engine sets it with the adapter.
       # Goes out as a Session-Id header (OpenAIChat#chat).
@@ -461,6 +465,11 @@ module Samagotchi
       # One turn's state: the conversation, the stream sink and tool
       # activity.
       class Run
+        # Messages' refusal; OpenAI's content filter, a refusal only when
+        # it left no text (else the text stays, marked FILTERED_MARK).
+        REFUSAL = "refusal"
+        FILTERED = "content_filter"
+
         # +start+: where the run a step-limit Continue resumes started (nil:
         # this run starts at the conversation's end).
         def initialize(loop, conversation, on_stream_event, cancel_controller, model_name, pending_input, start: nil)
@@ -503,13 +512,22 @@ module Samagotchi
             end
 
             last_text = @loop.strip_model_thought(response.text)
-            if response.tool_calls.empty?
+            # A provider's refusal (or its content filter) ends the turn here:
+            # tool calls that came with it are not run.
+            @refusal = refusal_of(response, last_text)
+            stopped = @refusal || response.finish_reason.to_s == FILTERED
+            if response.tool_calls.empty? || stopped
+              # A refusal is no answer, never asked again; text it streamed
+              # before is not kept as one. A filtered answer's text stays,
+              # marked as cut by the filter.
+              last_text = "" if @refusal
+              last_text = "#{last_text}\n#{FILTERED_MARK}" if !@refusal && response.finish_reason.to_s == FILTERED
               # Only whitespace is no answer either (as in the native loop).
               empty = last_text.strip.empty?
               # Kept before a merge too: the model answers the merged line
               # knowing what it just said.
               @conversation << with_thinking({ role: "model", content: last_text }, response) unless empty
-              retry_empty = empty &&
+              retry_empty = empty && !stopped &&
                             @empty_retry.retry_empty?(iteration: iteration, cancelled: @cancel_controller&.cancelled?,
                                                       finish_reason: response.finish_reason,
                                                       used_tokens: response.usage&.total_tokens, window_tokens: @window&.tokens)
@@ -540,6 +558,18 @@ module Samagotchi
         end
 
         private
+
+        # A provider's refusal as ModelResult#refusal ({category:} when its
+        # stop_details name one): finish reason refusal, or content_filter
+        # with no visible +text+.
+        def refusal_of(response, text)
+          reason = response.finish_reason.to_s
+          return nil unless reason == REFUSAL || (reason == FILTERED && text.strip.empty?)
+
+          details = response.stop_details
+          category = details["category"] || details[:category] if details.is_a?(Hash)
+          category.to_s.strip.empty? ? {} : { category: category.to_s }
+        end
 
         # The hidden nudge before the next generation (EmptyAnswerRetry),
         # which runs at the retry temperature. Returns true.
@@ -883,7 +913,7 @@ module Samagotchi
           @loop.apply_llm_context!(@conversation, moment: :turn_end, emit: method(:emit)) unless exhausted
           ModelResult.new(text: text, conversation: @loop.plain(@conversation), exhausted: exhausted,
                           tool_activity: @tool_activity, empty_steps: @empty_steps, empty_retries: @empty_retry.attempts,
-                          context_status: @context.display)
+                          context_status: @context.display, refusal: (@refusal unless exhausted))
         end
 
         def emit(event)

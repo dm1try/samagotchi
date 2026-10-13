@@ -83,6 +83,7 @@ test("stateBadgeTemplate: only the named states", () => {
 test("emptyAnswerTemplate: the muted notice with its retries, live (turn_summary) and reloaded alike", () => {
   assert.equal(emptyAnswerHtml({ retries: 1 }), '<div class="bubble hook-notice empty-answer">no answer: the model returned nothing (after 1 retry)</div>');
   assert.equal(emptyAnswerHtml({ role: "empty_answer" }), '<div class="bubble hook-notice empty-answer">no answer: the model returned nothing</div>');
+  assert.equal(emptyAnswerHtml({ retries: 0, refusal: { category: "cyber" } }), '<div class="bubble hook-notice empty-answer">no answer: refused by the provider (cyber)</div>');
 });
 
 test("statusParts: a row's status as a class, a label and the word only exceptions show", () => {

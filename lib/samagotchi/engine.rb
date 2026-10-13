@@ -2290,7 +2290,7 @@ module Samagotchi
       # A retry's nudge at the tail goes: this note says it all. An earlier
       # turn's note stays: it says why that turn ended.
       if result.empty_answer?
-        note = TurnNote.empty(retries: result.empty_retries, steps: result.empty_steps)
+        note = TurnNote.empty(retries: result.empty_retries, steps: result.empty_steps, refusal: result.refusal)
         conversation&.replace(TurnNote.without_trailing_nudge(conversation))
         saved = TurnNote.without_trailing_nudge(conversation || turn.session.messages)
         conversation << note if conversation
@@ -2563,7 +2563,7 @@ module Samagotchi
         context_status: result.context_status&.dup
       }
       # No answer: every UI shows its notice (TurnNote.empty_answer_line).
-      summary[:empty_answer] = { retries: result.empty_retries.to_i } if result.empty_answer?
+      summary[:empty_answer] = { retries: result.empty_retries.to_i, refusal: result.refusal }.compact if result.empty_answer?
       summary
     end
 

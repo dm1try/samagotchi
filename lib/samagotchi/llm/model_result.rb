@@ -15,17 +15,24 @@ module Samagotchi
     # conversation) and .empty_retries (the retries spent): the Engine saves
     # them on the turn's note for the UIs (TurnNote.empty).
     #
+    # .refusal is set when the provider refused the answer (Messages'
+    # stop_reason refusal, OpenAI's content_filter): {category:} as the
+    # provider names it, {} without one; nil otherwise. Such a turn is an
+    # empty answer the loop never asked again.
+    #
     # .run_start is where the turn's run started in the conversation (the
     # length of the messages the loop got), set by the Engine after the loop
     # returns; nil from a loop called directly. A step-limit offer keeps it
     # (TurnFlow), so a Continue resumes that run (Engine#run_turn resume_from:).
     class ModelResult
       attr_reader :text, :conversation, :canceled, :cancellation_reason, :exhausted,
-                  :tool_activity, :context_status, :pending_tool_calls, :empty_steps, :empty_retries
+                  :tool_activity, :context_status, :pending_tool_calls, :empty_steps, :empty_retries, :refusal
       attr_accessor :run_start
 
       def initialize(text:, conversation: nil, canceled: false, cancellation_reason: nil, exhausted: false,
-                     tool_activity: [], context_status: nil, pending_tool_calls: false, empty_steps: [], empty_retries: 0)
+                     tool_activity: [], context_status: nil, pending_tool_calls: false, empty_steps: [], empty_retries: 0,
+                     refusal: nil)
+        @refusal = refusal
         @empty_steps = Array(empty_steps)
         @empty_retries = empty_retries.to_i
         @text = text

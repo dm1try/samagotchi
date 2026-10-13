@@ -35,6 +35,12 @@ and commands may change between minor versions. How releases are made:
   goes as Bearer (unless `auth:` says otherwise), thinking levels send no `display` field, chat requests carry no
   `cache_control`, and the session id also goes as `x-session-affinity`. Recaps, `ctx.ask_model` and broadcast triage
   on such a host follow it too, and `chi self` names it. See docs/configuration.md, "Anthropic Messages hosts".
+- A provider's refusal (a Messages host's `stop_reason: refusal`, an OpenAI-compatible host's `finish_reason:
+  content_filter` with no text) ends the turn with one line in every UI, `no answer: refused by the provider (cyber)`
+  (the category when the provider names one), is never asked again as an empty answer, and the model's next turn is
+  told. A `content_filter` stop after some text keeps the text, marked `[cut off by the provider's content filter]`,
+  and isn't asked again; tool calls that come with either aren't run. See docs/configuration.md, "Llama Network
+  Retry Behavior".
 
 - While a turn runs, the terminal's status row (REPL and attached) ends in `· typing goes in at the next step (/cut,
   /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".

@@ -527,6 +527,11 @@ Both loops:
   The retry request runs at temperature 0.6 when the configured sampling sets no temperature; a configured one
   is kept. A length stop with the context at least 90% full is not retried. When the retries run out, the
   Engine keeps a `TurnNote.empty` note as the turn's end.
+- **A refusal** (chat loop only): a finish reason `refusal` (Messages), or `content_filter` (OpenAI) with no text, is
+  an empty answer never retried; text streamed before a refusal is not kept, and tool calls with it are not run. A
+  `content_filter` with text keeps it, marked `ChatLoop::FILTERED_MARK`, also never retried. `ModelResult#refusal` is `{category:}` (from the response's
+  `stop_details`) or `{}`, and goes on the `TurnNote.empty` marker and `turn_summary.empty_answer` as `refusal`, so
+  every UI words the notice `no answer: refused by the provider (cyber)`.
 - **A cut generation** (`after_cut`): a generation a plugin cut (`stop_generation`) spends the same retry budget
   with its own nudge; when it is used up, the turn ends cancelled (`:hook`). A steer's cut asks again with the
   steer and spends nothing.

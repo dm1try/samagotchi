@@ -181,6 +181,20 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect_released
   end
 
+  it "3b. chat refusal: the note and the summary carry the refusal, no retry" do
+    chat(Samagotchi::LLM::ChatResponse.new(text: "", reasoning: "", tool_calls: [], usage: Samagotchi::LLM::Usage.none,
+                                           finish_reason: "refusal", stop_details: { "category" => "cyber" }))
+    summary = nil
+    engine.subscribe(observer: ->(e) { summary = e[:turn_summary] if e[:type] == :turn_completed })
+
+    run
+
+    expect(summary).to include(output: "", empty_answer: { retries: 0, refusal: { category: "cyber" } })
+    expect(session.messages.last).to include(kind: "turn_note", empty_answer: include(refusal: { category: "cyber" }))
+    expect(session.messages.last[:content]).to include("refused by the provider (cyber)")
+    expect(timeline).not_to include("empty_answer_retry")
+  end
+
   it "4. resumable: ends at its tool results, no note" do
     native do |messages, **|
       kernel_result(messages + [reply("calling"), { role: "tool_response", content: "r" }],

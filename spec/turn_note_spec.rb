@@ -45,6 +45,20 @@ RSpec.describe Samagotchi::TurnNote do
       expect(described_class.empty_answer(nil)).to be_nil
     end
 
+    it "says a refused turn was refused, with the refusal on its marker" do
+      note = described_class.empty(refusal: { category: "cyber" })
+
+      expect(note[:empty_answer]).to eq(retries: 0, refusal: { category: "cyber" })
+      expect(note[:content]).to include("refused by the provider (cyber)", "The user's last message is still unanswered.")
+      expect(described_class.empty(refusal: {})[:content]).to include("refused by the provider.")
+    end
+
+    it "words a refusal's notice with its category when it has one (either key type)" do
+      expect(described_class.empty_answer_line(0, refusal: { category: "cyber" })).to eq("no answer: refused by the provider (cyber)")
+      expect(described_class.empty_answer_line(0, refusal: { "category" => "bio" })).to eq("no answer: refused by the provider (bio)")
+      expect(described_class.empty_answer_line(0, refusal: {})).to eq("no answer: refused by the provider")
+    end
+
     it "words the notice the UIs show, with the retries when there were any" do
       expect(described_class.empty_answer_line(0)).to eq("no answer: the model returned nothing")
       expect(described_class.empty_answer_line(1)).to eq("no answer: the model returned nothing (after 1 retry)")

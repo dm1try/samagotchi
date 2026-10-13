@@ -33,9 +33,13 @@ module Samagotchi
     # server sent them (string keys), for a wire that sends them back
     # verbatim (AnthropicMessages: thinking blocks with their signatures);
     # nil on the OpenAI wire.
+    # +stop_details+: why the provider stopped, when it says more than the
+    # finish reason (Messages' stop_details on a refusal: type, category,
+    # explanation; string keys); nil otherwise.
     ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model, :provider, :cut,
-                               :top_logprobs, :provider_content) do
-      def initialize(model: nil, provider: nil, cut: nil, top_logprobs: [].freeze, provider_content: nil, **fields) = super
+                               :top_logprobs, :provider_content, :stop_details) do
+      def initialize(model: nil, provider: nil, cut: nil, top_logprobs: [].freeze, provider_content: nil, stop_details: nil,
+                     **fields) = super
     end
 
     # One alternative for an answer token: its text and log probability.

@@ -993,6 +993,86 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  # A provider's refusal (Messages stop_reason refusal, OpenAI's
+  # content_filter): the turn ends with no answer and the refusal on the
+  # result, never asked again.
+  describe "a refusal" do
+    def refused(text, finish_reason, stop_details: nil)
+      Samagotchi::LLM::ChatResponse.new(text: text, reasoning: "", tool_calls: [], usage: Samagotchi::LLM::Usage.none,
+                                        finish_reason: finish_reason, stop_details: stop_details)
+    end
+
+    it "ends the turn with no answer and the category, no retry, the partial text not kept" do
+      backend.adapter = adapter = FakeChatAdapter.new(refused("Sure, here is", "refusal",
+                                                              stop_details: { "type" => "refusal", "category" => "cyber" }),
+                                                      text("late"))
+
+      result = run([{ role: "user", content: "hi" }])
+
+      expect(result).to be_empty_answer
+      expect(result.refusal).to eq(category: "cyber")
+      expect(result.text).to eq("")
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+      expect(adapter.requests.length).to eq(1)
+      expect(events.map { |e| e[:type] }).not_to include(:empty_answer_retry)
+    end
+
+    it "takes an empty content_filter answer (OpenAI) the same way, without a category" do
+      backend.adapter = FakeChatAdapter.new(refused("", "content_filter"))
+
+      result = run([{ role: "user", content: "hi" }])
+
+      expect(result).to be_empty_answer
+      expect(result.refusal).to eq({})
+    end
+
+    it "keeps a content_filter answer's text, marked as cut by the filter, never asked again" do
+      backend.adapter = adapter = FakeChatAdapter.new(refused("Here is the first part", "content_filter"), text("late"))
+
+      result = run([{ role: "user", content: "hi" }])
+
+      answer = "Here is the first part\n#{described_class::FILTERED_MARK}"
+      expect(result).not_to be_empty_answer
+      expect([result.text, result.refusal]).to eq([answer, nil])
+      expect(result.conversation.last).to eq(role: "model", content: answer)
+      expect(adapter.requests.length).to eq(1)
+    end
+
+    it "ends the turn at a refusal that came with tool calls: none dispatched, nothing kept" do
+      calls = [Samagotchi::LLM::ToolCall.new(id: "c1", name: "read", arguments: { "path" => "a" })]
+      refusal = Samagotchi::LLM::ChatResponse.new(text: "Let me read", reasoning: "", tool_calls: calls,
+                                                  usage: Samagotchi::LLM::Usage.none, finish_reason: "refusal",
+                                                  stop_details: { "category" => "cyber" })
+      backend.adapter = adapter = FakeChatAdapter.new(refusal, text("late"))
+
+      result = run([{ role: "user", content: "hi" }])
+
+      expect(result).to be_empty_answer
+      expect(result.refusal).to eq(category: "cyber")
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+      expect(result.tool_activity).to eq([])
+      expect(adapter.requests.length).to eq(1)
+      expect(events.map { |e| e[:type] }).not_to include(:tool_call_started)
+    end
+
+    it "doesn't dispatch the calls of a content_filter answer either (its text kept)" do
+      calls = [Samagotchi::LLM::ToolCall.new(id: "c1", name: "read", arguments: { "path" => "a" })]
+      filtered = Samagotchi::LLM::ChatResponse.new(text: "Reading", reasoning: "", tool_calls: calls,
+                                                   usage: Samagotchi::LLM::Usage.none, finish_reason: "content_filter")
+      backend.adapter = adapter = FakeChatAdapter.new(filtered, text("late"))
+
+      result = run([{ role: "user", content: "hi" }])
+
+      expect(result.text).to eq("Reading\n#{described_class::FILTERED_MARK}")
+      expect(result.conversation.last).not_to have_key(:tool_calls)
+      expect(adapter.requests.length).to eq(1)
+    end
+
+    it "is no refusal for any other end" do
+      expect(run([{ role: "user", content: "hi" }]).refusal).to be_nil
+    end
+  end
+
   describe "empty answer retry" do
     let(:nudge) { Samagotchi::TurnNote.empty_retry }
 

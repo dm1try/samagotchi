@@ -202,11 +202,19 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
   end
 
   it "shows a turn with no answer as the muted notice, never as an (empty) answer" do
-    view.define_singleton_method(:format_empty_answer_line) { |retries| "no answer after #{retries}" }
+    view.define_singleton_method(:format_empty_answer_line) { |retries, refusal = nil| "no answer after #{retries}#{refusal}" }
     renderer.call(type: :turn_completed, turn_summary: { tool_activity: [], output: "", resumable: false,
                                                          empty_answer: { retries: 1 } })
 
     expect(view.lines).to eq(["no answer after 1"])
+  end
+
+  it "passes a refusal's category to the no-answer notice" do
+    view.define_singleton_method(:format_empty_answer_line) { |retries, refusal = nil| "no answer #{retries} #{refusal}" }
+    renderer.call(type: :turn_completed, turn_summary: { tool_activity: [], output: "", resumable: false,
+                                                         empty_answer: { retries: 0, refusal: { category: "cyber" } } })
+
+    expect(view.lines).to eq(["no answer 0 {category: \"cyber\"}"])
   end
 
   it "adds the iteration-limit notice to a resumable summary" do

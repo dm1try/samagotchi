@@ -370,6 +370,20 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
       expect(response.usage).to have_attributes(prompt_tokens: 1210, completion_tokens: 38)
     end
 
+    it "takes a streamed refusal's stop_details from message_delta" do
+      sse = [{ type: "message_start", message: { model: "m", usage: { input_tokens: 3 } } },
+             { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+             { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Sure, here" } },
+             { type: "content_block_stop", index: 0 },
+             { type: "message_delta", delta: { stop_reason: "refusal", stop_details: { type: "refusal", category: "bio" } },
+               usage: { output_tokens: 4 } }].map { |event| "event: #{event[:type]}\ndata: #{JSON.generate(event)}\n\n" }.join
+      server.enqueue("/v1/messages", sse: sse)
+
+      response = streamed.chat(messages: [{ role: "user", content: "hi" }], model: "m", options: { max_tokens: 100 })
+
+      expect(response).to have_attributes(finish_reason: "refusal", stop_details: { "type" => "refusal", "category" => "bio" })
+    end
+
     it "keeps interleaved blocks in their order: thinking, text, tool_use, thinking, tool_use" do
       response = stream("interleaved_stream.hand-written.sse")
 
@@ -718,6 +732,15 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
   end
 
   describe "the response (not streamed)" do
+    it "gives a refusal's finish reason and its stop_details" do
+      answer("refusal.hand-written.json")
+
+      response = chat([{ role: "user", content: "hi" }])
+
+      expect(response).to have_attributes(text: "", finish_reason: "refusal")
+      expect(response.stop_details).to include("category" => "cyber")
+    end
+
     it "gives a thinking block without a signature an empty one, and leaves a signed one as it is" do
       server.enqueue("/v1/messages", json: { type: "message", role: "assistant", model: "m", stop_reason: "end_turn",
                                              content: [{ type: "thinking", thinking: "hm" },

@@ -75,8 +75,8 @@ RSpec.describe "Shared labels matrix (TUI side)" do
   end
 
   cases(matrix, "empty_answer_lines").each do |entry|
-    it "words the no-answer notice after #{entry["retries"]} retries" do
-      expect(fmt.format_empty_answer_line(entry["retries"])).to eq(expected(entry))
+    it "words the no-answer notice after #{entry["retries"]} retries#{" (refused)" if entry["refusal"]}" do
+      expect(fmt.format_empty_answer_line(entry["retries"], entry["refusal"])).to eq(expected(entry))
     end
   end
 

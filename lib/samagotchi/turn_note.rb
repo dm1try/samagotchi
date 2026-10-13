@@ -136,11 +136,25 @@ module Samagotchi
     # text cut to its last STEP_CHARS. Never
     # sent: the payload builders send a system message's content, and the
     # copies for hooks, plugins and the recap drop it (AnswerDisplay.strip).
-    def empty(retries: 0, steps: [])
+    # +refusal+: the provider refused the answer (ModelResult#refusal:
+    # {category:} or {}), kept on the marker and said in the note.
+    def empty(retries: 0, steps: [], refusal: nil)
       marker = { retries: retries.to_i }
       marker[:steps] = steps.map { |step| capped_step(step) } unless steps.empty?
-      message("the previous turn ended with no visible answer (thinking only, or nothing). The user's last message is still unanswered.")
+      marker[:refusal] = refusal if refusal
+      what = if refusal
+               "the previous turn's answer was refused by the provider#{refusal_category(refusal)}"
+             else
+               "the previous turn ended with no visible answer (thinking only, or nothing)"
+             end
+      message("#{what}. The user's last message is still unanswered.")
         .merge(EMPTY_ANSWER => marker)
+    end
+
+    # " (cyber)" for a refusal that names its category (either key type), else "".
+    def refusal_category(refusal)
+      category = (refusal[:category] || refusal["category"] if refusal.is_a?(Hash)).to_s.strip
+      category.empty? ? "" : " (#{one_line(category)})"
     end
 
     def capped_step(step)
@@ -167,9 +181,12 @@ module Samagotchi
     end
 
     # The notice every UI shows for a turn that ended with no answer:
-    # "no answer: the model returned nothing (after 1 retry)" (turn_events.js
-    # emptyAnswerLine words it the same).
-    def empty_answer_line(retries)
+    # "no answer: the model returned nothing (after 1 retry)", or for a
+    # +refusal+ (the marker's) "no answer: refused by the provider (cyber)"
+    # (turn_events.js emptyAnswerLine words it the same).
+    def empty_answer_line(retries, refusal: nil)
+      return "no answer: refused by the provider#{refusal_category(refusal)}" if refusal
+
       count = retries.to_i
       after = if count.positive?
                 " (after #{count} #{count == 1 ? "retry" : "retries"})"

@@ -1243,7 +1243,7 @@ module Samagotchi
         # A turn that ended with no answer: its notice, as live.
         empty = messages.drop(from + 1).filter_map { |m| TurnNote.empty_answer(m) }.last
         if empty
-          @screen.commit(format_empty_answer_line(empty[:retries] || empty["retries"]))
+          @screen.commit(format_empty_answer_line(empty[:retries] || empty["retries"], empty[:refusal] || empty["refusal"]))
         elsif failed
           # A failed turn whose steps stayed: the line the live view left,
           # and no step text as if it were the answer (the web keeps a

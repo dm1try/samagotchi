@@ -42,6 +42,7 @@ module Samagotchi
         @json = {}
         @usage = {}
         @stop_reason = nil
+        @stop_details = nil
         @model = nil
       end
 
@@ -52,6 +53,7 @@ module Samagotchi
         @model = served(message["model"]) || @model
         merge_usage(message["usage"])
         @stop_reason = message["stop_reason"] if message["stop_reason"]
+        @stop_details = message["stop_details"] if message["stop_details"].is_a?(Hash)
         Array(message["content"]).each { |block| @blocks << block.dup if block.is_a?(Hash) }
       end
 
@@ -59,7 +61,7 @@ module Samagotchi
       # content_block_start (text / thinking / redacted_thinking / tool_use),
       # content_block_delta (text_delta, thinking_delta, signature_delta,
       # input_json_delta), content_block_stop, message_delta (stop reason,
-      # usage); ping, message_stop and anything else change nothing.
+      # stop_details, usage); ping, message_stop and anything else change nothing.
       # @return [Array(String, String)] the event's text and reasoning
       def add(event)
         case event["type"]
@@ -67,7 +69,10 @@ module Samagotchi
         when "content_block_start" then start_block(event["index"], event["content_block"])
         when "content_block_delta" then add_delta(@by_index[event["index"]], event["index"], event["delta"])
         when "message_delta"
-          @stop_reason = event.dig("delta", "stop_reason") || @stop_reason if event["delta"].is_a?(Hash)
+          if event["delta"].is_a?(Hash)
+            @stop_reason = event.dig("delta", "stop_reason") || @stop_reason
+            @stop_details = event.dig("delta", "stop_details") if event.dig("delta", "stop_details").is_a?(Hash)
+          end
           merge_usage(event["usage"])
           ["", ""]
         else ["", ""]
@@ -111,7 +116,7 @@ module Samagotchi
         blocks = content
         ChatResponse.new(text: joined(blocks, TEXT, "text"), reasoning: joined(blocks, THINKING, "thinking"),
                          tool_calls: tool_calls, usage: usage, finish_reason: self.class.finish_reason(@stop_reason),
-                         model: @model, provider_content: blocks)
+                         model: @model, provider_content: blocks, stop_details: @stop_details)
       end
 
       private

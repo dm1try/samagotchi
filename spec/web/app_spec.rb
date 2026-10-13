@@ -1510,6 +1510,18 @@ RSpec.describe Samagotchi::Web::App do
         expect(chat).to eq([{ "role" => "user", "content" => "hi" }, { "role" => "empty_answer", "content" => "", "retries" => 1 }])
       end
 
+      it "hands a refused turn's notice item its refusal" do
+        note = JSON.parse(JSON.generate(Samagotchi::TurnNote.empty(refusal: { category: "cyber" })))
+        refused = { "snapshot" => { "messages" => [{ "role" => "user", "content" => "hi" }, note] },
+                    "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
+        app = build_app(state_dir: Dir.mktmpdir)
+        stub_worker(app, refused)
+
+        chat = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"]
+
+        expect(chat.last).to eq("role" => "empty_answer", "content" => "", "retries" => 0, "refusal" => { "category" => "cyber" })
+      end
+
       it "hands out the thinking an api: openai step saved; the chat view's messages don't carry it" do
         openai = { "snapshot" => { "messages" => [
           { "role" => "user", "content" => "check" },
