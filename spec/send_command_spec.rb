@@ -311,6 +311,78 @@ RSpec.describe Samagotchi::SendCommand do
     end
   end
 
+  describe "--queue" do
+    # The Bridge's turn running (its accumulator), so a queue acks queue.
+    def running_turn!
+      bridges.last.instance_variable_get(:@accumulator).call(type: :turn_started, prompt: "long one")
+    end
+
+    it "is refused beside --cut (usage, exit 2)" do
+      expect(run("--cut", "--queue", "-m", "x", "abcd")).to eq(2)
+      expect(err.string).to include("--cut and --queue: choose one")
+    end
+
+    it "posts delivery queue to a running turn: the file waits for the turn's end, the line says so" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      events = serve(a)
+      running_turn!
+
+      expect(run("--queue", "-m", "then the docs", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
+      expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
+      expect(events.last).to include(type: :turn_enqueued, delivery: "queue")
+    end
+
+    it "says it runs now when the turn ended before it went in (the ack's next_step)" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a)
+
+      expect(run("--queue", "-m", "then the docs", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (the running turn had ended: it runs now)\n")
+    end
+
+    it "to an idle session still sends a queue (the Bridge acks next_step: it runs now), and says so" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("--queue", "-m", "hello", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (nothing running: it runs now)\n")
+      expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
+    end
+
+    it "stays a queue when another client's turn started after chi read the session idle (the race)" do
+      a = make(owner: "worker")
+      serve(a)
+      running_turn!
+
+      expect(run("--queue", "-m", "hello", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
+      expect(inputs_of(a).map { |i| i["delivery"] }).to eq(["queue"])
+    end
+
+    it "keeps the queue in the input file when the Bridge goes away" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a)
+      allow_any_instance_of(Samagotchi::BridgeClient).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+
+      expect(run("--queue", "-m", "later", a.id)).to eq(0), err.string
+      expect(out.string).to eq("#{short(a)}  sent (queued: runs after the current turn)\n")
+      expect(inputs_of(a)).to contain_exactly(include("delivery" => "queue", "enqueued_id" => a_string_matching(/\A\h{8}-/)))
+    end
+
+    it "is refused for a worker older than queueing (it would steer): nothing sent, exit 1" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      events = serve(a)
+      sidecar = Samagotchi::WorkerSidecar.read(dir_of(a))
+      sidecar.with(features: sidecar.features - [Samagotchi::Delivery::QUEUE_FEATURE]).write(dir_of(a))
+
+      expect(run("--queue", "-m", "later", a.id)).to eq(1)
+      expect(out.string).to start_with("#{short(a)}  refused: this session's worker predates queueing")
+      expect(inputs_of(a)).to be_empty
+      expect(events).to be_empty
+    end
+  end
+
   it "falls back to the input file when the Bridge goes away mid-send" do
     a = make(owner: "worker")
     serve(a)

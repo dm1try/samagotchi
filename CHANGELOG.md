@@ -14,6 +14,10 @@ and commands may change between minor versions. How releases are made:
   plain REPL: TEXT runs as a turn of its own after the running one, instead of merging into it (`(queued: runs after
   this turn)`). A session whose worker is older than this says to restart it rather than steering the turn. See
   docs/cli.md, "Typing during a turn".
+- `chi send --queue`: the message runs as a turn of its own after the running turn instead of merging into it, and
+  `chi send --queue --wait` waits for that turn's own answer (a running turn no longer refuses it; the running turn's
+  reply, end and questions are not the answer). Each turn's reply file now carries its message's id. See
+  docs/sessions.md, "Sending a message", and docs/sub-agent.md.
 
 ### Changed
 

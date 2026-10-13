@@ -414,6 +414,106 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(delivered).to be_empty
   end
 
+  describe "--queue (the message's own turn, after the running one)" do
+    def queue_ack(id, enqueued_id, delivery: "queue")
+      { status: :accepted, ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => id,
+                                  "delivery" => delivery } }
+    end
+
+    def end_turn(session, enqueued_id, outcome: "completed")
+      update(session, status: "idle", last_turn: Samagotchi::LastTurn.new(outcome: outcome, ended_at: Time.now.iso8601(3),
+                                                                          enqueued_id: enqueued_id))
+    end
+
+    def write_turn_reply(session, text, enqueued_id)
+      Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text,
+                                            enqueued_id: enqueued_id)
+      sleep(0.002)
+    end
+
+    it "is not refused for a running turn: it sends a queue and prints its own turn's reply, not the running one's" do
+      busy = make(status: "running")
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, delivery: nil, **|
+        delivered << [id, prompt, delivery]
+        later do
+          write_turn_reply(busy, "the running turn's answer", "r0")
+          end_turn(busy, "r0")
+          update(busy, status: "running")
+          sleep(0.05)
+          write_turn_reply(busy, "the queued answer", "q1")
+          end_turn(busy, "q1")
+        end
+        queue_ack(id, "q1")
+      end
+
+      expect(run("--queue", "--wait", "-m", "and then the docs", busy.id)).to eq(0), err.string
+      expect(delivered).to eq([[busy.id, "and then the docs", "queue"]])
+      expect(out.string).to eq("the queued answer\n")
+      expect(err.string).to eq("#{busy.id[0, 8]}  sent (queued: runs after the current turn)\n")
+    end
+
+    it "ties --format json to its turn, also when the running turn ended before it went in (ack next_step)" do
+      busy = make(status: "running")
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
+        later do
+          write_turn_reply(busy, "an earlier turn's answer", "r0")
+          sleep(0.05)
+          write_turn_reply(busy, "mine", "q1")
+          end_turn(busy, "q1")
+        end
+        queue_ack(id, "q1", delivery: "next_step")
+      end
+
+      expect(run("--queue", "--wait", "--format", "json", "-m", "go", busy.id)).to eq(0), err.string
+      expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "mine", "delivery" => "next_step")
+      expect(err.string).to eq("#{busy.id[0, 8]}  sent (the running turn had ended: it runs now)\n")
+    end
+
+    it "ends with its own turn's outcome when that turn leaves no reply" do
+      busy = make(status: "running")
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, **|
+        later do
+          end_turn(busy, "r0") # the running turn's end is not this wait's
+          sleep(0.1)
+          update(busy, status: "running")
+          end_turn(busy, "q1", outcome: "canceled")
+        end
+        queue_ack(id, "q1")
+      end
+
+      expect(run("--queue", "--wait", "--format", "json", "-m", "go", busy.id)).to eq(1)
+      expect(JSON.parse(out.string)).to include("status" => "canceled", "delivery" => "queue")
+    end
+
+    it "sends a queue to a session idle on disk too, and waits for its own turn past one another client started" do
+      idle = make(status: "idle")
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, delivery: nil, **|
+        delivered << [id, prompt, delivery]
+        later do
+          update(idle, status: "running") # another client's turn, started first
+          write_turn_reply(idle, "the other turn's answer", "w1")
+          end_turn(idle, "w1")
+          sleep(0.05)
+          write_turn_reply(idle, "mine", "q1")
+          end_turn(idle, "q1")
+        end
+        queue_ack(id, "q1")
+      end
+
+      expect(run("--queue", "--wait", "-m", "go", idle.id)).to eq(0), err.string
+      expect(delivered).to eq([[idle.id, "go", "queue"]])
+      expect(out.string).to eq("mine\n")
+    end
+
+    it "still refuses a session waiting for an answer" do
+      waiting = make(status: "running", pending_question: { id: "q1", question: "Which?" })
+
+      expect(run("--queue", "--wait", "-m", "later", waiting.id)).to eq(1)
+      expect(err.string).to include("waiting for an answer: chi answer #{waiting.id} --question q1")
+      expect(delivered).to be_empty
+    end
+  end
+
   it "points a session waiting for an answer to chi answer, not busy" do
     waiting = make(status: "running", pending_question: { id: "q1", question: "Which?" })
 

@@ -38,10 +38,11 @@ module Samagotchi
     CUT_OUTCOMES = %w[now waits off].freeze
 
     USAGE = <<~TEXT
-      Usage: chi send [-m TEXT] [--image PATH]... [--cut] (ID|PREFIX)...
+      Usage: chi send [-m TEXT] [--image PATH]... [--cut | --queue] (ID|PREFIX)...
              chi send --new [--dir DIR] [--model M] [--llm-context LAYERS] [--thinking LEVEL] [-m TEXT] [--image PATH]...
              chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT] [--image PATH]...
              chi send --wait [--timeout S] [--format json] [-m TEXT] [--image PATH]... (--new | ID)
+             chi send --queue --wait [--timeout S] [--format json] [-m TEXT] ID
              chi send --wait [--timeout S] [--format json] ID
         Sends a message to each session, as if typed in it: a turn starts,
         or a running one takes it at its next step. A stopped session's
@@ -92,6 +93,12 @@ module Samagotchi
                     next step and cuts nothing. To an idle session it
                     sends normally. Refused with --wait into a running
                     turn (the steer's turn is the running one)
+        --queue     run the message as a turn of its own after the running
+                    turn ends, instead of merging it at its next step. To
+                    an idle session it runs at once. With --wait it
+                    waits for that turn's own answer, so a running turn
+                    is fine. Not with --cut. Refused for a worker older
+                    than queueing (it would steer; restart it)
         --timeout S (--wait) give up after S seconds, exit 4 (the turn
                     goes on); default no limit
         --format json
@@ -99,8 +106,9 @@ module Samagotchi
                     status answered (text), question (question,
                     answer_with), running, or failed, canceled,
                     limit, no_answer, error, worker_gone, stopped,
-                    command (detail); with --cut also delivery (what
-                    the worker applied) and cut (now, waits, off)
+                    command (detail); with --cut or --queue also
+                    delivery (what the worker applied: next_step, cut,
+                    queue), with --cut also cut (now, waits, off)
         Exit with --wait: 0 answered, 1 failed or gone, 2 usage, 3 a
         question waits, 4 still running (--timeout), 130 Ctrl-C.
         Only sessions on this machine. Answers show in the attached TUI
@@ -121,6 +129,7 @@ module Samagotchi
       f.value "--image", key: :images, repeat: true
       f.switch "--wait"
       f.switch "--cut"
+      f.switch "--queue"
       f.value "--timeout"
       f.value "--format"
       # Starting a turn in every live session at once is too easy to do
@@ -181,6 +190,7 @@ module Samagotchi
       # With --wait stdout is the answer alone.
       @info = options[:wait] ? @stderr : @stdout
       @cut = options[:cut] == true
+      @queue = options[:queue] == true
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
       # Before the wait-only case, which would drop the images.
       return usage_error("--image needs a message: pass -m TEXT or pipe it in") if prompt.nil? && !options[:images].empty?
@@ -236,6 +246,8 @@ module Samagotchi
       return parsed if parsed.is_a?(Integer)
 
       options = parsed.options.merge(ids: parsed.args)
+      return usage_error("--cut and --queue: choose one") if options[:cut] && options[:queue]
+
       if options[:format]
         return usage_error("--format needs --wait") unless options[:wait]
         return usage_error("--format takes text or json") unless FORMATS.include?(options[:format])
@@ -385,12 +397,15 @@ module Samagotchi
     # are taken before the message goes in, so neither an older reply nor a
     # turn that ends before the first look is mistaken for the answer. A
     # running turn is refused: a message that misses it runs next, and the
-    # running one's reply would come back as the answer.
+    # running one's reply would come back as the answer. Not with --queue:
+    # the message's own turn is waited for (ReplyWait's turn:, its
+    # enqueued_id), whatever runs before it.
     # @return [Integer] the exit status
     def run_wait(prompt, options)
       id = resolve(options[:ids].first) or return 1
       session = Session.load(id, state_dir: @state_dir)
-      if session.status == Session::STATUS_RUNNING && (owner = SessionManager.session_owner(id, state_dir: @state_dir))
+      if session.status == Session::STATUS_RUNNING && (owner = SessionManager.session_owner(id, state_dir: @state_dir)) &&
+         (!@queue || session.waiting_question(live: owner.worker?))
         # The turn waits on a question: the message would only queue
         # behind it, and the answer goes in with chi answer.
         if (waiting = session.waiting_question(live: owner.worker?))
@@ -412,7 +427,11 @@ module Samagotchi
       return 1 unless deliver(id, prompt)
       return report_command(id) if @sent_command
 
-      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout])
+      # The ack's id names the queued message's turn, also when the turn
+      # running at the check ended before it went in (an idle worker's ack
+      # says next_step, and the file still runs as that turn).
+      turn = @queue ? @sent_enqueued_id : nil
+      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn)
     end
 
     # --wait with no message: the session's next reply, sending nothing,
@@ -535,13 +554,21 @@ module Samagotchi
       owner = SessionManager.session_owner(id, state_dir: @state_dir)
       running = owner && session.status == Session::STATUS_RUNNING
       refs = copy_images(Session.session_dir(id, state_dir: @state_dir))
-      # --cut asks the running turn for a cut; to an idle session it is an
-      # ordinary message (there is nothing to cut).
-      delivery = @cut && running ? Delivery::CUT : nil
+      # --cut asks the running turn for a cut (to an idle session an
+      # ordinary message: nothing to cut). --queue always goes as a queue,
+      # idle or not: the Bridge acks next_step to an idle worker and the
+      # file still carries it, so a turn another client starts first never
+      # merges it, and its turn and reply carry its enqueued_id (the
+      # --wait's turn:); a worker older than queueing is refused.
+      delivery = if @queue then Delivery::QUEUE
+                 elsif @cut && running then Delivery::CUT
+                 end
       result = SessionManager.deliver_turn(id, prompt: prompt, client_id: CLIENT_ID, images: refs, state_dir: @state_dir,
                                                delivery: delivery)
       unless result[:status] == :accepted
-        @info.puts("#{short}  failed: #{result.dig(:ack, "detail") || "could not queue it"}")
+        # A worker older than queueing would steer it: refused, not sent.
+        word = result.dig(:ack, "error") == Delivery::QUEUE_UNAVAILABLE["error"] ? "refused" : "failed"
+        @info.puts("#{short}  #{word}: #{result.dig(:ack, "detail") || "could not queue it"}")
         return false
       end
 
@@ -556,6 +583,7 @@ module Samagotchi
       # (next_step for an idle session) and a cut's outcome.
       @sent_delivery = ack["delivery"] || delivery
       @sent_cut = ack["cut"]
+      @sent_enqueued_id = (ack["enqueued_id"] || ack[:enqueued_id])&.to_s
       @info.puts("#{short}  sent#{with_images}#{delivery_note(ack, delivery: delivery, running: running, owner: owner)}")
       true
     rescue SessionManager::OwnedByTUI
@@ -568,12 +596,14 @@ module Samagotchi
 
     # What the line says became of the message: a plain one goes in at the
     # running turn's next step (nothing cuts by default); a --cut one names
-    # the outcome from the ack (now, waits, off); images keep their own
-    # wording; an idle session's turn simply runs.
+    # the outcome from the ack (now, waits, off); a --queue one runs after
+    # the turn (or now, when the turn ended before it went in); images keep
+    # their own wording; an idle session's turn simply runs.
     # @param ack [Hash] the Bridge's 202 body ({} for the input file)
     # @return [String] "" or " (...)"
     def delivery_note(ack, delivery:, running:, owner:)
       return " (started its worker)" if owner.nil?
+      return queue_note(ack, running: running) if Delivery.queue?(delivery)
       return "" unless running
 
       # A busy worker runs a message with images as its own next turn
@@ -589,12 +619,23 @@ module Samagotchi
       " #{TerminalUI::Formatting.steer_cut_note(outcome.to_sym, ack["cut_after"])}"
     end
 
-    # More keys for --format json, with --cut only (the line is unchanged
-    # otherwise): the delivery the worker applied (next_step to an idle
-    # session) and a cut's outcome (now, waits, off). In P1 --cut --wait is
-    # refused for a running turn, so the json line says next_step.
+    # A --queue, worded from the Bridge's ack: queue when a turn ran as it
+    # went in (one another client started too), next_step when none did
+    # (it runs now). The input file (no Bridge) carries the queue to
+    # whichever turn runs: worded from the session as chi read it.
+    def queue_note(ack, running:)
+      queued = ack.key?("delivery") ? ack["delivery"] == Delivery::QUEUE : running
+      return " (queued: runs after the current turn)" if queued
+
+      running ? " (the running turn had ended: it runs now)" : " (nothing running: it runs now)"
+    end
+
+    # More keys for --format json, with --cut or --queue only (the line is
+    # unchanged otherwise): the delivery the worker applied (next_step to
+    # an idle session) and a cut's outcome (now, waits, off). --cut --wait
+    # is refused for a running turn, so its json line says next_step.
     def report_extra
-      return {} unless @cut
+      return {} unless @cut || @queue
 
       extra = { delivery: @sent_delivery || Delivery::NEXT_STEP }
       extra[:cut] = @sent_cut if @sent_cut

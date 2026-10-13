@@ -24,6 +24,7 @@ and Claude's answer comes back as attached context.
 ```sh
 chi send --new --wait --format json [--dir D] [--model M] [--timeout S] -m "task"
 chi send --wait --format json [--timeout S] [-m "follow-up"] ID
+chi send --queue --wait --format json [--timeout S] -m "follow-up" ID
 chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--format json]
 chi answer ID --question QID --dismiss [--timeout S] [--format json]
 ```
@@ -139,6 +140,13 @@ answers from any local process.
   isn't sent: it exits 1 with the `chi answer` command for the question. The
   step-limit question is the exception: it waits between turns, so a message
   goes in, drops it and starts a new turn.
+- A follow-up to a session whose turn still runs (`busy: a turn is running`,
+  exit 1, say you waited on with `--timeout` and got exit 4) goes in with
+  `chi send --queue --wait -m "…" ID`: it runs as a turn of its own after the
+  running one, and the wait is for that turn's answer alone, never the running
+  turn's (`--format json` adds `"delivery": "queue"`). A question the running
+  turn asks meanwhile isn't yours: the wait goes on through it (until your
+  `--timeout`); one the queued turn asks comes back as exit 3.
 - `chi send --wait ID` with no message waits past a question already reported
   (the step-limit question too), until someone answers it.
 - An answer to a question that is no longer open (you answered it in the web
@@ -187,6 +195,8 @@ Start a task: `chi send --new --wait --format json --timeout 500 -m "<task>"`
 Run each chi command on its own, nothing chained after it: the exit code comes
 back with the output. Talk to chi only through these commands; never call its
 Bridge or web API directly. Follow-ups in the same session:
-`chi send --wait --format json --timeout 500 -m "…" <session_id>`.
+`chi send --wait --format json --timeout 500 -m "…" <session_id>`; if that says
+`busy` (a turn still runs), add `--queue`: the follow-up runs after that turn
+and you get its own answer.
 Keep `--timeout` under your shell tool's limit (Claude Code: 600 s per call).
 ```
