@@ -6,7 +6,7 @@ require_relative "log"
 require_relative "model_ref"
 require_relative "client"
 require_relative "model_list_store"
-require_relative "llm/openai_chat"
+require_relative "llm/adapters"
 
 module Samagotchi
   # HostRegistry manages multiple model hosts (llama.cpp / mlx / oMLX) and
@@ -47,9 +47,9 @@ module Samagotchi
                            :first_token_timeout, :vision, :sampling, :thinking, :reasoning_history, :remote,
                            :window_tokens, :steer_cut_after, :llm_context_strategy, :llm_context_apply, :llm_context_budget_tokens,
                            :models, keyword_init: true) do
-      # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
-      # raw-prompt loop.
-      def chat? = api == :openai
+      # Talks a chat API through an adapter (LLM::Adapters: the chat loop);
+      # nil and raw apis use the raw-prompt loop.
+      def chat? = LLM::Adapters.chat_api?(api)
 
       # The server root, e.g. for llama.cpp's own endpoints and recap.
       def root_url = "#{scheme || "http"}://#{host}:#{port}"
@@ -57,6 +57,10 @@ module Samagotchi
       # The OpenAI-compatible API base the chat loop talks to: the url as
       # configured, else the root's /v1.
       def openai_base_url = url || "#{root_url}/v1"
+
+      # The API base the host's chat adapter talks to (LLM::Adapters); for
+      # api: openai the OpenAI-compatible base.
+      def api_base_url = openai_base_url
 
       # A provider on the network rather than a local server: hosts.<name>.remote
       # when set, else by its address (HostRegistry.remote_address?). An API
@@ -217,12 +221,13 @@ module Samagotchi
     end
 
     # The chat adapter for a host (one per host, so its cached model list
-    # serves the context window). Only chat hosts use it for turns.
+    # serves the context window), as LLM::Adapters builds it for the host's
+    # api. Only chat hosts use it for turns.
     # @return [LLM::OpenAIChat]
     def adapter_for(entry)
       @mutex.synchronize do
-        @adapters[entry.name] ||= LLM::OpenAIChat.for(entry, models_ttl: entry.models_ttl,
-                                                             first_token_timeout: entry.first_token_limit)
+        @adapters[entry.name] ||= LLM::Adapters.for(entry, models_ttl: entry.models_ttl,
+                                                           first_token_timeout: entry.first_token_limit)
       end
     end
 
@@ -390,7 +395,7 @@ module Samagotchi
     # the registry).
     def inspect
       hosts = @entries.values.map do |entry|
-        parts = [entry.openai_base_url]
+        parts = [entry.api_base_url]
         parts << "key=#{entry.api_key_env}" if entry.api_key_env
         parts << "models=#{entry.models.values.map(&:id).join(",")}" unless entry.models.empty?
         "#{entry.name}(#{parts.join(" ")})"

@@ -438,8 +438,8 @@ threshold puts the model's own `[CONTEXT: …]` line on the tail as a system
 message (docs/internals/context-telemetry.md).
 
 **Adapters.** `Client` (raw-prompt servers) and `LLM::OpenAIChat` (one per host,
-`HostRegistry#adapter_for`) share `LLM::HTTP`: timeouts, TLS for https, a line
-reader for streamed bodies, the retry loop (`retry.*`; network errors, 429 and
+`HostRegistry#adapter_for`, built by `LLM::Adapters` from the host's api) share
+`LLM::HTTP`: timeouts, TLS for https, a line reader for streamed bodies, the retry loop (`retry.*`; network errors, 429 and
 500/502/503/504/529, honouring `Retry-After`; never after a stream has produced
 output) and cancel. Cancel closes the in-flight socket from the
 `CancellationController` listener, so it works on any thread.

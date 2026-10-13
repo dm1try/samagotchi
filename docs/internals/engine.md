@@ -129,8 +129,8 @@ The Engine does not talk to models directly. `Engine#backend` picks the loop the
 
 ```
 Engine#backend → backend_for(@host_registry.resolve(@effective_model_name))
-  → host entry chat? (api: openai): LLM::ChatLoop (one per Engine, built on first use)
-  → else:                           LLM::NativeBackend wrapping the Engine's KernelLoop
+  → host entry chat? (an api in LLM::Adapters::BY_API: openai): LLM::ChatLoop (one per Engine, built on first use)
+  → else:                                                     LLM::NativeBackend wrapping the Engine's KernelLoop
 ```
 
 Both implement the `LLM::ModelBackend` contract (`#complete(messages:, max_iterations:, on_stream_event:,

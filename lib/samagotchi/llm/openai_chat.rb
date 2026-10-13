@@ -90,8 +90,8 @@ module Samagotchi
 
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **)
-        new(base_url: entry.openai_base_url, host_name: entry.name, api_key_env: entry.api_key_env,
-            remote: entry.remote?, default_max_tokens: (OPENROUTER_MAX_TOKENS if openrouter?(entry.openai_base_url)),
+        new(base_url: entry.api_base_url, host_name: entry.name, api_key_env: entry.api_key_env,
+            remote: entry.remote?, default_max_tokens: (OPENROUTER_MAX_TOKENS if openrouter?(entry.api_base_url)),
             **)
       end
 
