@@ -184,6 +184,16 @@ test("genLabelParts: the head repeats the body's first words when it is the narr
   assert.deepEqual(genLabelParts(gen({ thinking: "t" })), { head: "thinking", calls: "", repeats: false });
 });
 
+test("genLabel: a plugin's verb label is the head, not \"working with echoing\"", () => {
+  const gen = (o) => ({ iteration: 1, thinking: "", text: "", tools: [], ...o });
+  assert.equal(genLabel(gen({ tools: [{ tool: "echo", label: "echoing" }] })), "echoing · 1 tool call");
+  assert.equal(genLabel(gen({ tools: [{ tool: "echo", label: "echoing" }, { tool: "x", label: "calling tool" }] })),
+    "echoing, calling tool · 2 tool calls");
+  assert.equal(genLabel(gen({ tools: [{ tool: "read" }, { tool: "echo", label: "echoing" }] })), "working with read, echo · 2 tool calls");
+  assert.equal(genLabel(gen({ tools: [{ tool: "mcp_chrome_screenshot", label: "chrome: screenshot" }] })),
+    "working with chrome: screenshot · 1 tool call");
+});
+
 test("genLabel: a step whose calls failed says how many, as the block's tally does (error only)", () => {
   const gen = (o) => ({ iteration: 1, thinking: "", text: "", tools: [], ...o });
   const tools = [{ tool: "read", title: "a.conf", status: "ok" }, { tool: "execute", status: "error" }, { tool: "execute", status: "error" }];

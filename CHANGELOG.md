@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: a step that only called plugin tools with a verb label is titled by the label ("echoing"), not "working
+  with echoing"; among other tools such a call is named by its tool ("working with read, echo").
+
 ## [0.63.0] - 2026-10-13
 
 ### Added
