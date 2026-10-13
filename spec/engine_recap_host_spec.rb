@@ -37,7 +37,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
     engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                                     recap: { host_ref: "fw", model: "fw:small" })
     expect(engine.recap.target.to_h).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
-                                           model: "small", label: "fw:small")
+                                           model: "small", label: "fw:small", api: :openai)
   end
 
   describe "with no recap config" do
@@ -45,7 +45,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
       engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")
       expect(engine.recap).not_to be_nil
       expect(engine.recap.target.to_h).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
-                                             model: "big", label: "fw:big")
+                                             model: "big", label: "fw:big", api: :openai)
     end
 
     it "follows a /model switch at the next attempt" do
@@ -114,7 +114,8 @@ RSpec.describe "Engine recap on a configured host", :recap do
       expect do
         engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big", recap: { model: "small" })
       end.not_to output.to_stderr
-      expect(engine.recap.target.to_h).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "small")
+      expect(engine.recap.target.to_h).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "small",
+                                             api: :openai)
     end
 
     it "takes recap.model from the environment the same way" do

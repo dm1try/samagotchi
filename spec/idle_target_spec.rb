@@ -26,11 +26,39 @@ RSpec.describe Samagotchi::IdleTarget do
 
   it "pins a host by host_ref, by the model's own host prefix or by base_url" do
     expect(resolve(model: "small", host_ref: "fw").to_h)
-      .to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY", model: "small", label: "small")
+      .to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY", model: "small", label: "small",
+             api: :openai)
     expect(resolve(model: "box:small").to_h)
-      .to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "box:small")
+      .to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "small", label: "box:small", api: :openai)
     expect(resolve(model: "m", base_url: "http://other.test/v1 ").to_h)
-      .to eq(base_url: "http://other.test/v1", api_key_env: nil, model: "m", label: "m")
+      .to eq(base_url: "http://other.test/v1", api_key_env: nil, model: "m", label: "m", api: :openai)
+  end
+
+  # The api picks the side client's adapter (LLM::Adapters.build): a chat
+  # host's own, else the OpenAI API a raw host's server also serves.
+  describe "the api" do
+    it "defaults to openai, so a target built from a url and a model keeps working" do
+      target = described_class.new(base_url: "http://x/v1", api_key_env: nil, model: "m", label: "m")
+
+      expect(target.api).to eq(:openai)
+    end
+
+    it "is the host entry's for a chat host, openai for a raw one" do
+      fw = registry.entries["fw"]
+      allow(fw).to receive_messages(api: :wire, chat?: true, api_base_url: "https://api.example.test/wire")
+
+      expect(resolve(model: "small", host_ref: "fw")).to have_attributes(api: :wire, base_url: "https://api.example.test/wire")
+      expect(resolve(model: "small", host_ref: "box")).to have_attributes(api: :openai, base_url: "http://box.test:8081/v1")
+    end
+
+    it "comes from the model's host in of_model" do
+      fw = registry.entries["fw"]
+      allow(fw).to receive_messages(api: :wire, chat?: true, api_base_url: "https://api.example.test/wire")
+
+      expect(described_class.of_model(registry, "fw:small"))
+        .to have_attributes(api: :wire, base_url: "https://api.example.test/wire", model: "small", label: "fw:small")
+      expect(described_class.of_model(registry, "box:small")).to have_attributes(api: :openai)
+    end
   end
 
   it "says which setting is wrong when it can't be resolved" do

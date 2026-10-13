@@ -2,13 +2,21 @@
 
 module Samagotchi
   # Where a side request goes (a recap, a plugin's ctx.ask_model, a
-  # broadcast's triage): a model on a host's OpenAI API, asked through its
+  # broadcast's triage): a model on a host's chat API, asked through its
   # own IdleClient (IdleClient.for), apart from the session's turns.
-  # @!attribute base_url [String] the host's OpenAI API base
+  # @!attribute base_url [String] the host's API base (HostEntry#api_base_url)
   # @!attribute api_key_env [String, nil] the variable holding its key
   # @!attribute model [String] the model id sent to the server
   # @!attribute label [String] the model as configured, for logs
-  IdleTarget = Data.define(:base_url, :api_key_env, :model, :label) do
+  # @!attribute api [Symbol] the wire the side client talks (LLM::Adapters):
+  #   a chat host's api, else :openai (a raw host's server, or a bare url)
+  IdleTarget = Data.define(:base_url, :api_key_env, :model, :label, :api) do
+    def initialize(api: :openai, **) = super
+
+    # The api a side request to +entry+ talks: a chat host's own, else the
+    # OpenAI API (a raw host's llama.cpp serves /v1 too).
+    def self.api_of(entry) = entry.chat? ? entry.api : :openai
+
     # A configured side model can't be resolved.
     # @!attribute reason [Symbol] :host_ref_unknown (no such host),
     #   :model_host_mismatch (the model names another host than host_ref)
@@ -32,8 +40,9 @@ module Samagotchi
     # @return [IdleTarget]
     def self.of_model(host_registry, name)
       resolved = host_registry.resolve(name)
-      new(base_url: resolved.openai_base_url, api_key_env: resolved.entry.api_key_env, model: resolved.bare_model,
-          label: name.to_s.strip)
+      entry = resolved.entry
+      new(base_url: entry.api_base_url, api_key_env: entry.api_key_env, model: resolved.bare_model,
+          label: name.to_s.strip, api: api_of(entry))
     end
 
     # A side model's settings (recap.*, broadcast.triage_*) as a target:
@@ -55,12 +64,14 @@ module Samagotchi
 
       host_ref ||= parsed.host_name if parsed && base_url.nil?
       api_key_env = nil
+      api = :openai
       if host_ref
         entry = host_registry.find_entry(host_ref)
         raise self::Unresolved.new(:host_ref_unknown, model: model, host_ref: host_ref) unless entry
 
-        base_url = entry.openai_base_url
+        base_url = entry.api_base_url
         api_key_env = entry.api_key_env
+        api = api_of(entry)
         named = parsed&.host_conflict || parsed&.host_name
         if named && named != entry.name
           raise self::Unresolved.new(:model_host_mismatch, model: model, host_ref: host_ref, named: named)
@@ -72,7 +83,7 @@ module Samagotchi
       end
       raise self::Unresolved.new(:incomplete, model: model, host_ref: host_ref) if blank(base_url).nil? || blank(model).nil?
 
-      new(base_url: base_url.to_s.strip, api_key_env: api_key_env, model: model.to_s.strip, label: label.strip)
+      new(base_url: base_url.to_s.strip, api_key_env: api_key_env, model: model.to_s.strip, label: label.strip, api: api)
     end
 
     # Whether the settings fix a host (+base_url+, +host_ref+, or a model

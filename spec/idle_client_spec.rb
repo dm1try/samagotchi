@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/idle_client"
+require "samagotchi/idle_target"
 require "samagotchi/cancellation_controller"
 require "samagotchi/log"
 require "fileutils"
@@ -228,6 +229,19 @@ RSpec.describe Samagotchi::IdleClient do
       reply(content: "", reasoning_content: "")
       expect { client.summarize("summarize this") }
         .to raise_error(described_class::SummarizeError, /no parseable/)
+    end
+  end
+
+  describe ".for" do
+    it "builds its adapter for the target's api, url and key" do
+      target = Samagotchi::IdleTarget.new(base_url: "http://x/v1", api_key_env: "X_KEY", model: "m", label: "m")
+      allow(Samagotchi::LLM::Adapters).to receive(:build).and_call_original
+
+      described_class.for(target, timeout: 3, purpose: "broadcast")
+
+      expect(Samagotchi::LLM::Adapters).to have_received(:build)
+        .with(api: :openai, base_url: "http://x/v1", host_name: "broadcast", api_key_env: "X_KEY", stream: false,
+              retries: false, timeout: 3, env: ENV, purpose: "broadcast")
     end
   end
 

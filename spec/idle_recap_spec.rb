@@ -307,7 +307,8 @@ RSpec.describe Samagotchi::IdleRecap do
       allow(Samagotchi::IdleClient).to receive(:new).and_return(double(summarize: "recap"))
       idle = described_class.new(engine: engine, model: model, base_url: base_url, timeout: 7.0)
       idle.send(:client_for, idle.target)
-      expect(Samagotchi::IdleClient).to have_received(:new).with(model: model, base_url: base_url, api_key_env: nil, timeout: 7.0)
+      expect(Samagotchi::IdleClient).to have_received(:new).with(model: model, base_url: base_url, api_key_env: nil, timeout: 7.0,
+                                                                 api: :openai)
     end
 
     it "resolves the target at each attempt and rebuilds the client only when it changes" do

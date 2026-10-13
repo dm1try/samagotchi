@@ -1,14 +1,15 @@
 # frozen_string_literal: true
 
 require "json"
-require_relative "llm/openai_chat"
+require_relative "llm/adapters"
 require_relative "log"
 
 module Samagotchi
   # Standalone summarizer for the idle session-recap feature.
   #
   # Asks an OpenAI-compatible /chat/completions endpoint (the local llama.cpp,
-  # or a recap host's) through its own OpenAIChat: one plain request, no
+  # or a recap host's) through its own adapter (LLM::Adapters.build, by the
+  # target's api; OpenAIChat today): one plain request, no
   # tools, no retries, its own timeout. It is NEVER wired into the Engine's
   # kernel/backend, so it shares no engine concurrency. The Engine's idle
   # detector only snapshots session.messages and calls #summarize; this object
@@ -45,19 +46,21 @@ module Samagotchi
     #   summarize thread can't outlive the recap attempt by minutes.
     # @param purpose [String] what the requests are for, in the HTTP log
     #   lines and error messages ("recap", "broadcast")
-    def initialize(model:, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV, purpose: "recap")
+    # @param api [Symbol] the wire to talk (LLM::Adapters; IdleTarget#api)
+    def initialize(model:, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV, purpose: "recap",
+                   api: :openai)
       @model = model
       # A recap is best-effort: one short attempt, no retries. The idle job
       # tries again after the next activity, never on its own.
-      @chat = LLM::OpenAIChat.new(base_url: base_url.to_s, host_name: purpose, api_key_env: api_key_env,
+      @chat = LLM::Adapters.build(api: api, base_url: base_url.to_s, host_name: purpose, api_key_env: api_key_env,
                                   stream: false, retries: false, timeout: timeout, env: env, purpose: purpose)
     end
 
     # A client for +target+ (an IdleTarget: a recap's, ctx.ask_model's, a
-    # broadcast's triage model).
+    # broadcast's triage model), on its api's adapter.
     # @return [IdleClient]
     def self.for(target, **)
-      new(model: target.model, base_url: target.base_url, api_key_env: target.api_key_env, **)
+      new(model: target.model, base_url: target.base_url, api_key_env: target.api_key_env, api: target.api, **)
     end
 
     THINK_RE = /<\|think\|.*?\|think\|>/m

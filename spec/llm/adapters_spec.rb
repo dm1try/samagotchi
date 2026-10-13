@@ -33,6 +33,15 @@ RSpec.describe Samagotchi::LLM::Adapters do
     expect { described_class.for(registry.entries["raw"]) }.to raise_error(ArgumentError, /no chat adapter/)
   end
 
+  it "builds an adapter by api from a base url, a name and a key (a side request's)" do
+    adapter = described_class.build(api: :openai, base_url: "http://x.test/v1", host_name: "recap", api_key_env: "X_KEY",
+                                    stream: false, retries: false)
+
+    expect(adapter).to be_a(Samagotchi::LLM::OpenAIChat)
+    expect([adapter.base_url, adapter.host_name, adapter.api_key_env]).to eq(["http://x.test/v1", "recap", "X_KEY"])
+    expect { described_class.build(api: :raw, base_url: "http://x", host_name: "h") }.to raise_error(ArgumentError)
+  end
+
   describe "the host entry" do
     it "is a chat host when its api is one of the adapters'" do
       expect(registry.entries["oai"].chat?).to be(true)

@@ -22,6 +22,15 @@ module Samagotchi
         adapter_class(entry.api).for(entry, **)
       end
 
+      # An adapter by api, for a side request that has a url rather than a
+      # host entry (IdleClient: a recap, ctx.ask_model, a broadcast's triage).
+      # @param api [Symbol, String] a key of BY_API
+      # @param options [Hash] more adapter options (stream:, retries:, timeout:, ...)
+      # @raise [ArgumentError] +api+ has no chat adapter
+      def self.build(api:, base_url:, host_name:, api_key_env: nil, **)
+        adapter_class(api).new(base_url: base_url, host_name: host_name, api_key_env: api_key_env, **)
+      end
+
       def self.adapter_class(api)
         BY_API.fetch(api&.to_sym) { raise ArgumentError, "no chat adapter for api #{api.inspect}" }
       end
