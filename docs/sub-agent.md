@@ -13,6 +13,12 @@ worker keeps the turn paused. The parent answers with `chi answer`, from what it
 knows or after asking its own user, and chi goes on from there. The model gets
 the answer as its tool result, as if you had answered in the web.
 
+The other direction, chi sending a part of its work to a Claude Code session
+you already work with (to validate, as context, or with a question), is the
+[claude-peer bundle](plugins.md#the-claude-peer-bundle): Claude pairs with the
+chi session, chi's `claude_send` tool or `/claude` writes to Claude's inbox,
+and Claude's answer comes back as attached context.
+
 ## The commands
 
 ```sh

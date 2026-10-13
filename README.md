@@ -150,7 +150,10 @@ task to a child session that runs in parallel and reports back only its final
 reply (a normal session: `chi --attach <id>` steers it). With the `coordinator`
 bundle (in `dev`), `/coordinate <goal>` has chi split the work into tasks, each
 in a child session in its own git worktree, check each report and ask you
-before each merge; `/children` shows the children and their state.
+before each merge; `/children` shows the children and their state. With the
+`claude-peer` bundle (in `dev`), chi sends a part of its work to a Claude Code
+session you pair it with, to validate or as context, and Claude answers back
+into chi (`/claude`).
 
 `chi send` is the other half: the text goes in as your message, the same as
 typing it in the attached terminal or the web composer, and a turn runs. Piped
