@@ -1,8 +1,8 @@
-import { htmlOf } from "./dom_shim.js";
+import { htmlOf, markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createTurnView, stepTemplate } from "../../../lib/samagotchi/web/public/turn_view.js";
-import { toolRowHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
+import { toolRowTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 // A live turn view on a detached history, no hold (no layout under node).
@@ -22,7 +22,7 @@ function liveView() {
 // A step's markup as stepTemplate draws it with a reload's defaults.
 function reloadStepHtml(gen, rows = []) {
   const frag = document.createDocumentFragment();
-  const items = rows.length ? [document.createRange().createContextualFragment(rows.map((r) => toolRowHtml(r)).join(""))] : [];
+  const items = rows.length ? [document.createRange().createContextualFragment(rows.map((r) => markupOf(toolRowTemplate(r))).join(""))] : [];
   render(stepTemplate(gen, { items }), frag);
   return htmlOf(frag);
 }
@@ -202,4 +202,61 @@ test("createTurnView: a ref's reveal (show in turn) on a row in a folded step un
   // Again: it stays unfolded (a reveal never folds).
   row.dispatchEvent(new window.CustomEvent("ref:reveal", { bubbles: true }));
   assert.equal(block.querySelectorAll(".gen.folded.unfolded").length, 2);
+});
+
+// A row whose command the user switched to raw and whose diff they opened.
+function editedRow(view) {
+  const steps = [{ text: "ruby a.rb" }, { op: "&&", text: "git diff" }];
+  view.turnStarted({ prompt: "p" });
+  view.generationStarted({ iteration: 1 });
+  view.toolStarted({ iteration: 1, call_index: 1, tool: "execute", params: 'command="ruby a.rb && git diff"', title: "ruby a.rb",
+    view: { command: "ruby a.rb && git diff", steps } });
+  const done = { iteration: 1, call_index: 1, tool: "execute", output: "[execute]\nok", diff: { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1 },
+    activity: { status: "ok", params: 'command="ruby a.rb && git diff"', title: "ruby a.rb" } };
+  view.toolCompleted(done);
+  return done;
+}
+
+test("createTurnView: a live row drawn again keeps its elements, the raw command and the diff the user opened", () => {
+  const { view } = liveView();
+  const done = editedRow(view);
+  const row = view.step(0).el.querySelector(".activity-row");
+  const [title, command, diff, mark] = [".activity-params", ".activity-command", ".activity-diff", ".activity-status"].map((s) => row.querySelector(s));
+  row.querySelector(".activity-command-raw input").checked = true;
+  diff.open = true;
+  // The same call's result again (a re-dispatched event), its output changed.
+  view.toolCompleted({ ...done, output: "[execute]\nok again", duration_ms: 1500 });
+  assert.equal(view.step(0).el.querySelector(".activity-row"), row);
+  // Booleans: a failed deepEqual over happy-dom elements takes minutes to print.
+  assert.deepEqual([".activity-params", ".activity-command", ".activity-diff", ".activity-status"].map((s, i) => row.querySelector(s) === [title, command, diff, mark][i]), [true, true, true, true]);
+  assert.equal(row.querySelector(".activity-command-raw input").checked, true);
+  assert.equal(diff.open, true);
+  assert.equal(row.querySelector(".activity-output").textContent, "ok again");
+  assert.equal(row.querySelector(".activity-duration").textContent, "1.5s");
+});
+
+test("createTurnView: a live row is the reloaded row's markup", () => {
+  const { view } = liveView();
+  editedRow(view);
+  const { turn } = view.current();
+  const row = turn.gens[0].tools[0];
+  assert.equal(htmlOf(view.step(0).el.querySelector(".activity-row")), markupOf(toolRowTemplate(row)));
+});
+
+test("createTurnView: a running task_wait's row has its stop-task button after its title, the same one across redraws, gone once done", () => {
+  const historyEl = document.createElement("div");
+  const taskStop = { target: (row) => (row.status === "running" && row.tool === "task_wait" ? "t1" : null), busy: () => false, stop: () => Promise.resolve() };
+  const view = createTurnView({ historyEl, appendToHistory: (el) => historyEl.appendChild(el), isNearBottom: () => false, sawText: () => {},
+    sessionId: () => "s1", useHold: false, taskStop });
+  view.turnStarted({ prompt: "p" });
+  view.generationStarted({ iteration: 1 });
+  const started = { iteration: 1, call_index: 1, tool: "task_wait", params: 'task_id="t1"', title: "t1" };
+  view.toolStarted(started);
+  const row = view.step(0).el.querySelector(".activity-row");
+  const btn = row.querySelector(".task-stop");
+  assert.ok(btn.previousElementSibling === row.querySelector(".activity-params"));
+  view.toolStarted(started);
+  assert.ok(row.querySelector(".task-stop") === btn);
+  view.toolCompleted({ iteration: 1, call_index: 1, tool: "task_wait", output: "[task_wait]\ndone", activity: { status: "ok", title: "t1" } });
+  assert.ok(row.querySelector(".task-stop") === null);
 });

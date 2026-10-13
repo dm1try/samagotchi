@@ -1,6 +1,9 @@
+import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readLines, readLinesHtml } from "../../../lib/samagotchi/web/public/read_view.js";
+import { readLines, readLinesTemplate } from "../../../lib/samagotchi/web/public/read_view.js";
+
+const readLinesHtml = (row) => markupOf(readLinesTemplate(row));
 
 const ref = { kind: "file", path: "/p/a.rb" };
 const row = (output, extra = {}) => ({ key: "1:1", tool: "read", status: "ok", title: "a.rb", ref, output, ...extra });
@@ -68,7 +71,7 @@ test("readLines: none for the head/tail preview, an error, an image, a row witho
   assert.equal(readLines(row("[read] x")), null);
 });
 
-test("readLinesHtml: a closed toggle naming the lines, each numbered line with its data-line", () => {
+test("readLinesTemplate: a closed toggle naming the lines, each numbered line with its data-line", () => {
   assert.equal(readLinesHtml(row("[read]\n<a>\nb\n[cut: 4 of 9 chars; read it in parts]", { ref: { ...ref, line: 7 } })),
     '<details class="activity-read"><summary>lines 7–8</summary><pre class="read-lines"><code>' +
     '<span class="read-line" data-line="7">&lt;a&gt;</span><span class="read-line" data-line="8">b</span>' +
@@ -77,7 +80,7 @@ test("readLinesHtml: a closed toggle naming the lines, each numbered line with i
   assert.equal(readLinesHtml(row("[read]\nError: no")), "");
 });
 
-test("readLinesHtml draws a blank line of the file as a <br>, not a space", () => {
+test("readLinesTemplate draws a blank line of the file as a <br>, not a space", () => {
   const html = readLinesHtml(row("[read]\n\nx\n\ny\n"));
   assert.match(html, /<summary>lines 1–4<\/summary>/);
   assert.match(html, /<span class="read-line" data-line="1"><br><\/span><span class="read-line" data-line="2">x<\/span>/);

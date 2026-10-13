@@ -1,6 +1,11 @@
+import { markupOf } from "./dom_shim.js";
+import { html as lit } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { commandBubbleHtml, emptyAnswerHtml, shellCommandMessage, stateBadgeHtml, statusParts, toolRowHtml, userBubbleHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
+import { commandBubbleHtml, emptyAnswerHtml, shellCommandMessage, stateBadgeHtml, statusParts, toolRowTemplate, userBubbleHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
+
+// A row's markup as a reload renders it.
+const toolRowHtml = (row, opts) => markupOf(toolRowTemplate(row, opts));
 
 test("userBubbleHtml: a plain prompt keeps its text as the copy source, its `>` lines as quotes", () => {
   assert.equal(userBubbleHtml({ content: "> quoted\nask" }),
@@ -78,42 +83,44 @@ test("statusParts: a row's status as a class, a label and the word only exceptio
   assert.deepEqual(statusParts("blocked"), { cls: "blocked", label: "blocked", word: "blocked" });
 });
 
-test("toolRowHtml: a running row is its mark, tool and title, the command block, no output yet", () => {
+test("toolRowTemplate: a running row is its mark, tool and title, the command block, no output yet", () => {
   const row = { key: "1:1", tool: "execute", status: "running", params: 'command="ls"', title: "List", view: { command: "ls" }, output: "[execute]\nold" };
   const html = toolRowHtml(row);
   assert.match(html, /^<div class="activity-row" data-key="1:1"><span class="activity-status running" role="img" aria-label="running" title="running"><\/span><span class="activity-tool">execute<\/span><span class="activity-params" title="ls">List<\/span><div class="activity-command code-wrap">/);
   assert.doesNotMatch(html, /activity-output|activity-duration|activity-state/);
 });
 
-test("toolRowHtml: a call the model made under an alias's name says so, dim, after its title", () => {
+test("toolRowTemplate: a call the model made under an alias's name says so, dim, after its title", () => {
   const html = toolRowHtml({ key: "1:1", tool: "execute", status: "ok", params: 'command="ls"', title: "List", called_as: "bash" });
   assert.match(html, /<span class="activity-params" title="command=&quot;ls&quot;">List<\/span><span class="activity-alias">\(called as bash\)<\/span>/);
   assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "List" }), /called as/);
 });
 
-test("toolRowHtml: a read row with a ref adds its numbered lines under the preview, closed", () => {
+test("toolRowTemplate: a read row with a ref adds its numbered lines under the preview, closed", () => {
   const html = toolRowHtml({ key: "2:2", tool: "read", status: "ok", title: "a.rb", ref: { kind: "file", path: "/p/a.rb" }, output: "[read]\n  x\n" });
   assert.match(html, /<div class="activity-output" title="x\n">x\n<\/div><details class="activity-read"><summary>line 1<\/summary>/);
   assert.match(html, /<span class="read-line" data-line="1">  x<\/span>/);
 });
 
-test("toolRowHtml: a done row has its duration, its output without the tool tag, cut at 300 with the rest on hover", () => {
+test("toolRowTemplate: a done row has its duration, its output without the tool tag, cut at 300 with the rest on hover", () => {
   const out = `[read] ${"y".repeat(310)}`;
   const html = toolRowHtml({ key: "2:1", tool: "read", status: "ok", params: 'path="a"', output: out, duration_ms: 1200 });
   assert.equal(html,
     '<div class="activity-row" data-key="2:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span>' +
-    '<span class="activity-tool">read</span><span class="activity-params">path=&quot;a&quot;</span><span class="activity-duration">1.2s</span>' +
+    '<span class="activity-tool">read</span><span class="activity-params">path="a"</span><span class="activity-duration">1.2s</span>' +
     `<div class="activity-output" title="${"y".repeat(310)}">${"y".repeat(300)}…</div></div>`);
 });
 
-test("toolRowHtml: a call with no params has no empty title part; an error says so; images and a diff close the row", () => {
+test("toolRowTemplate: a call with no params has no empty title part; an error says so; images and a diff close the row", () => {
   const html = toolRowHtml({ key: "1:2", tool: "screenshot", label: "chrome: screenshot", status: "error", output: "", images: [{ file: "a.png" }], diff: { text: "@@", added: 1, removed: 0 } },
-    { thumbs: (images) => `<div class="thumbs">${images.length}</div>` });
+    { thumbs: (images) => lit`<div class="thumbs">${images.length}</div>` });
   assert.match(html, /<span class="activity-tool">chrome: screenshot<\/span><span class="activity-state error">error<\/span><div class="thumbs">1<\/div><details class="activity-diff">/);
   assert.doesNotMatch(html, /activity-params|activity-output/);
 });
 
-import { llmEditLine, toolRowInnerHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
+import { llmEditLine, toolRowInnerTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
+
+const toolRowInnerHtml = (row, opts) => markupOf(toolRowInnerTemplate(row, opts));
 
 test("llmEditLine: a reloaded row's ✂ mark for each kind of LLM context edit", () => {
   assert.equal(llmEditLine({ kind: "stale", note: "superseded by a later read", tokens: 1002 }), "✂ stubbed: superseded by a later read · ~1.0k tokens");
@@ -125,10 +132,10 @@ test("llmEditLine: a reloaded row's ✂ mark for each kind of LLM context edit",
   assert.equal(llmEditLine({ kind: "file" }), "");
 });
 
-test("toolRowInnerHtml: the ✂ mark goes above the output, its hover naming the output's id", () => {
+test("toolRowInnerTemplate: the ✂ mark goes above the output, its hover naming the output's id", () => {
   const html = toolRowInnerHtml({ key: "1:1", tool: "read", title: "a.rb", status: "ok", output: "[read]\nx", tool_id: "t1",
     edit: { kind: "forget", note: "a <b>" } });
-  assert.match(html, /<div class="activity-edit" title="t1: ✂ forgotten: a &lt;b&gt;\nThe model is sent this instead of the output; the session keeps it.">✂ forgotten: a &lt;b&gt;<\/div><div class="activity-output"/);
+  assert.match(html, /<div class="activity-edit" title="t1: ✂ forgotten: a <b>\nThe model is sent this instead of the output; the session keeps it.">✂ forgotten: a &lt;b&gt;<\/div><div class="activity-output"/);
   assert.doesNotMatch(toolRowInnerHtml({ key: "1:1", tool: "read", status: "ok" }), /activity-edit/);
 });
 

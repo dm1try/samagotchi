@@ -1,3 +1,4 @@
+import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createStreamHandlers } from "../../../lib/samagotchi/web/public/stream_handlers.js";

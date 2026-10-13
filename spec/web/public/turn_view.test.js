@@ -1,11 +1,12 @@
-import { canon, htmlOf } from "./dom_shim.js";
+import { htmlOf, markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stepText, turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
 import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { failedTurnText } from "../../../lib/samagotchi/web/public/format.js";
-import { commandBlockHtml } from "../../../lib/samagotchi/web/public/command_view.js";
+import { commandBlockTemplate } from "../../../lib/samagotchi/web/public/command_view.js";
+import { html as lit, nothing } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 const turnHistoryHtml = (...args) => htmlOf(turnHistoryNodes(...args));
 
@@ -137,7 +138,7 @@ test("turnHistoryHtml with parts: a call's images are thumbs on its reloaded row
     { role: "assistant", content: "A page." },
   ];
   const seen = [];
-  const html = turnHistoryHtml(items, normalizeTiming({}), { thumbs: (images) => { if (!images?.length) return ""; seen.push(images); return `<div class="thumbs">${images.map((i) => i.name).join(",")}</div>`; } });
+  const html = turnHistoryHtml(items, normalizeTiming({}), { thumbs, rowThumbs: (images) => { if (!images?.length) return nothing; seen.push(images); return lit`<div class="thumbs">${images.map((i) => i.name).join(",")}</div>`; } });
   assert.deepEqual(seen, [[{ file: "images/aa.png", name: "s.png" }]]);
   assert.match(html, /<span class="activity-tool">mcp_chrome_screenshot<\/span>.*\/tmp\/s\.png<\/div><div class="thumbs">s\.png<\/div><\/div>/);
   assert.equal(html.match(/class="thumbs"/g).length, 1);
@@ -324,7 +325,7 @@ test("turnHistoryHtml with parts: an execute's reloaded row shows its full comma
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.ok(html.includes(
     '<span class="activity-params" title="cd /p &amp;&amp; rg -n foo lib |\n  head -5">rg -n foo lib |</span><span class="activity-duration">7ms</span>' +
-    `${canon(commandBlockHtml(view))}<div class="activity-output" title="a">a</div>`), html);
+    `${markupOf(commandBlockTemplate(view))}<div class="activity-output" title="a">a</div>`), html);
 });
 
 test("turnHistoryHtml with parts: a failed call's row keeps its word after the params; its step is marked failed", () => {

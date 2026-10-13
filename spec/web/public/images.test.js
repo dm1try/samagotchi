@@ -1,7 +1,8 @@
+import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipName, chipsHtml, imageFiles, imageUrl, restoredChips, thumbsHtml, turnRefs, turnText,
+  chipName, chipsHtml, imageFiles, imageUrl, restoredChips, thumbsHtml, thumbsTemplate, turnRefs, turnText,
 } from "../../../lib/samagotchi/web/public/images.js";
 import { createIdleSession, sendTurn, uploadImage } from "../../../lib/samagotchi/web/public/data.js";
 import { promptOps, snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
@@ -48,12 +49,15 @@ test("chips render escaped, with a remove button each; turnRefs names the upload
   assert.deepEqual(turnRefs(chips), [{ file: "images/aaaaaaaaaaaaaaaa.png", name: "<b>.png" }]);
 });
 
-test("thumbsHtml points at the session's image route and escapes names", () => {
+test("thumbsTemplate (and thumbsHtml, the same markup) points at the session's image route and escapes names", () => {
   assert.equal(imageUrl("s-1", REF), "/api/sessions/s-1/images/0123456789abcdef.png");
-  const html = thumbsHtml("s-1", [REF, { src: "blob:x", name: 'a"b' }]);
+  const images = [REF, { src: "blob:x", name: 'a"b' }];
+  const html = markupOf(thumbsTemplate("s-1", images));
   assert.match(html, /src="\/api\/sessions\/s-1\/images\/0123456789abcdef\.png"/);
   assert.match(html, /title="shot\.png 1280×800"/);
   assert.match(html, /alt="a&quot;b"/);
+  assert.equal(html, thumbsHtml("s-1", images));
+  assert.equal(markupOf(thumbsTemplate("s-1", [])), "");
   assert.equal(thumbsHtml("s-1", []), "");
 });
 

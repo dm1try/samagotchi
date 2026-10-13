@@ -1,12 +1,17 @@
-import "./dom_shim.js";
+import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { bindRef, bindRowRefs, editorUrl, httpUrl, installRefClicks, refActions, refAttrs, refTarget, rowTitleRef, showInTurn, syncRefTabs, turnRowFor } from "../../../lib/samagotchi/web/public/refs.js";
 import { createRefMenu } from "../../../lib/samagotchi/web/public/ref_menu.js";
 import { linkRefs, touchedFiles } from "../../../lib/samagotchi/web/public/ref_scan.js";
 import { pairAnswerRefs, setAnswerRefs } from "../../../lib/samagotchi/web/public/answer_refs.js";
-import { toolRowHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
-import { diffHtml } from "../../../lib/samagotchi/web/public/diff_view.js";
+import { toolRowInnerTemplate, toolRowTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
+import { diffTemplate } from "../../../lib/samagotchi/web/public/diff_view.js";
+import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+
+// The templates' markup as a reload renders it.
+const toolRowHtml = (row, opts) => markupOf(toolRowTemplate(row, opts));
+const diffHtml = (diff) => markupOf(diffTemplate(diff));
 import { createQuestionCards } from "../../../lib/samagotchi/web/public/question_cards.js";
 
 const VSCODE = "vscode://file{path}:{line}";
@@ -803,7 +808,7 @@ test("bindRowRefs: the title opens the first ref's first action; its menu has th
   const title = row.querySelector(".activity-params");
   assert.ok(title.classList.contains("ref"));
   assert.equal(title.dataset.refKind, "issue");
-  assert.equal(bindRowRefs(row, ticketRow), title);
+  assert.ok(bindRowRefs(row, ticketRow) === title);
   const target = refTarget(title);
   const labels = (viewer) => refActions(target, viewer).map((action) => action.label(target));
   // The phone: URL actions only, no editor; a repeated URL once; a bad
@@ -839,14 +844,18 @@ test("bindRowRefs: a file first ref keeps the file's own targets on the title; a
   cleanup(root);
 });
 
-test("bindRowRefs again after a redraw binds the new title", () => {
-  const root = mount(toolRowHtml(ticketRow));
-  const row = root.querySelector(".activity-row");
-  bindRowRefs(row, ticketRow);
-  row.innerHTML = toolRowHtml({ ...ticketRow, status: "ok" }).replace(/^<div[^>]*>|<\/div>$/g, "");
-  const fresh = row.querySelector(".activity-params");
-  assert.deepEqual(ids(refActions(refTarget(fresh), PHONE)), []);
-  bindRowRefs(row, ticketRow);
-  assert.deepEqual(ids(refActions(refTarget(fresh), PHONE)), ["url:open", "url:board", "more:0:open"]);
+test("bindRowRefs: a live row redrawn (its status changed) keeps its title and the plugin refs bound to it", () => {
+  const root = mount("");
+  const row = document.createElement("div");
+  row.className = "activity-row";
+  root.append(row);
+  render(toolRowInnerTemplate({ ...ticketRow, status: "running" }), row);
+  const title = bindRowRefs(row, ticketRow);
+  render(toolRowInnerTemplate({ ...ticketRow, status: "ok" }), row);
+  assert.ok(row.querySelector(".activity-params") === title);
+  assert.ok(row.querySelector(".activity-status.ok"));
+  assert.deepEqual(ids(refActions(refTarget(title), PHONE)), ["url:open", "url:board", "more:0:open"]);
+  assert.ok(bindRowRefs(row, ticketRow) === title);
+  assert.deepEqual(ids(refActions(refTarget(title), PHONE)), ["url:open", "url:board", "more:0:open"]);
   cleanup(root);
 });

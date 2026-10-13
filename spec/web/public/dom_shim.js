@@ -22,3 +22,13 @@ export function canon(markup) {
   t.innerHTML = markup;
   return htmlOf(t.content);
 }
+
+// lit reads document as it loads: imported once the globals are set.
+const { render } = await import("../../../lib/samagotchi/web/public/vendor/lit-html.js");
+
+// A lit template's markup as the page gets it (lit's marker comments dropped).
+export function markupOf(template) {
+  const frag = document.createDocumentFragment();
+  render(template, frag);
+  return htmlOf(frag);
+}

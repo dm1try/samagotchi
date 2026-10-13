@@ -1,3 +1,4 @@
+import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createQuestionCards } from "../../../lib/samagotchi/web/public/question_cards.js";
