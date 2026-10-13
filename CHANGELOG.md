@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A message with images sent during a running turn no longer holds back the text lines sent after it: they go in at
+  the turn's next step as usual, and the image message still runs as a turn of its own after it.
+
 ### Fixed
 
 - Web: a step that only called plugin tools with a verb label is titled by the label ("echoing"), not "working

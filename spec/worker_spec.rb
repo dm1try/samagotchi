@@ -389,6 +389,53 @@ RSpec.describe Samagotchi::Worker do
         expect(conversation).to eq([{ role: "user", kind: "input", source: "chi_send", content: "line 0" }])
       end
 
+      it "skips a queued line without stopping at it: a later line merges, the queued one runs after as its own turn" do
+        merged = Queue.new
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          if prompt == "task"
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "later one", client_id: "web:x", delivery: "queue")
+            sleep(0.002)
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "later two", client_id: "cli:send", delivery: "queue")
+            sleep(0.002)
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "now please", client_id: "web:x")
+            merged << kwargs[:pending_input].call
+          end
+          turns << [prompt, mono]
+          result
+        end
+        start_worker(poll_interval: 0.2)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "web:x", state_dir: tmpdir)
+
+        expect(merged.pop(timeout: 3)&.map(&:text)).to eq(["now please"])
+        expect(Array.new(3) { next_turn&.first }).to eq(["task", "later one", "later two"])
+      end
+
+      it "never puts a skipped queued line into the checkpoint" do
+        merging = []
+        allow_any_instance_of(Samagotchi::TurnCheckpoint).to receive(:boundary).and_wrap_original do |original, conversation, **kwargs|
+          merging << kwargs[:merging].map(&:text)
+          original.call(conversation, **kwargs)
+        end
+        merged = Queue.new
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          if prompt == "task"
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "queued", delivery: "queue")
+            sleep(0.002)
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer")
+            merged << kwargs[:pending_input].call
+          end
+          turns << [prompt, mono]
+          result
+        end
+        start_worker(poll_interval: 0.2)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", state_dir: tmpdir)
+
+        expect(merged.pop(timeout: 3)&.map(&:text)).to eq(["steer"])
+        expect(merging).to include(["steer"])
+        expect(merging.flatten).not_to include("queued")
+        expect(Array.new(2) { next_turn&.first }).to eq(%w[task queued])
+      end
+
       # A reminder turn that is the worker's first turn: no prompt turn set
       # up the merge list before it, and the drain must still hand the line
       # over (it claims and deletes the input file first).

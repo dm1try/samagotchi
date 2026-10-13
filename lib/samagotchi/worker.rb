@@ -1045,10 +1045,12 @@ module Samagotchi
       @pending_input_drain ||= lambda do
         # An iteration boundary: tell whoever sent a command now that it waits.
         refuse_queued_commands(mid_turn: true)
-        # A line with images runs as its own next turn (steering merges text
-        # only), and so does anything queued after it, to keep the order.
+        # A queued line or one with images runs as its own turn after this
+        # one (steering merges text only): skipped here, not a barrier, so a
+        # line sent after it still goes in at this boundary. Only the files
+        # claimed below reach @merged_this_turn and the checkpoint.
         files = SessionInbox.find_new_input_files(@session_dir).sort
-                            .take_while { |input_file| !SessionInbox.waits_for_turn_end?(input_file) }
+                            .reject { |input_file| SessionInbox.waits_for_turn_end?(input_file) }
         merged = files.filter_map do |input_file|
           claimed_file = SessionInbox.claim_input_file(input_file)
           next unless claimed_file

@@ -69,12 +69,16 @@ RSpec.describe Samagotchi::SessionInbox do
     end
 
     describe ".waits_for_turn_end?" do
-      it "answers true for an image message, the one thing a drain leaves today" do
+      it "answers true for an image message and a queued one, false for a plain or cut line" do
         with_images = described_class.write_input(session_dir, prompt: "look", images: [{ file: "a.png", name: "a" }])
+        queued = described_class.write_input(session_dir, prompt: "later", delivery: Samagotchi::Delivery::QUEUE)
         text = described_class.write_input(session_dir, prompt: "hi")
+        cut = described_class.write_input(session_dir, prompt: "now", delivery: Samagotchi::Delivery::CUT)
 
         expect(described_class.waits_for_turn_end?(with_images)).to be(true)
+        expect(described_class.waits_for_turn_end?(queued)).to be(true)
         expect(described_class.waits_for_turn_end?(text)).to be(false)
+        expect(described_class.waits_for_turn_end?(cut)).to be(false)
       end
 
       it "answers false for a file it cannot read" do

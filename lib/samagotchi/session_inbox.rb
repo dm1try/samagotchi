@@ -218,12 +218,16 @@ module Samagotchi
     end
 
     # Whether a mid-turn drain leaves this unclaimed input file for a turn
-    # of its own instead of merging it at a step boundary. Today that is an
-    # image message (steering merges text only); the drain's file filter
-    # reads this one predicate, so what a boundary refuses changes in one
-    # place.
+    # of its own instead of merging it at a step boundary: a queued message
+    # (`delivery: queue`) or an image message (steering merges text only).
+    # The drain skips such a file without stopping at it, so a later text
+    # line still merges; the drain's file filter reads this one predicate,
+    # so what a boundary leaves changes in one place.
     def self.waits_for_turn_end?(input_file)
-      input_has_images?(input_file)
+      data = JSON.parse(File.read(input_file))
+      data.is_a?(Hash) && (Array(data["images"]).any? || Delivery.queue?(data["delivery"]))
+    rescue JSON::ParserError, SystemCallError
+      false
     end
 
     def self.claim_input_file(input_file)

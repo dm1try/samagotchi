@@ -133,6 +133,8 @@ RSpec.describe "Images in transport" do
       sleep(0.002) # distinct timestamps keep the files in order
     end
 
+    # D11: an image line is skipped like a queued one, not a barrier, so a
+    # text line sent after it still merges into the running turn.
     it "runs a queued image turn with its refs, and leaves image lines out of a mid-turn merge" do
       merged = Queue.new
       allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
@@ -148,9 +150,10 @@ RSpec.describe "Images in transport" do
       start_worker
       queue_input("first")
 
-      expect(merged.pop(timeout: 3)&.map(&:text)).to eq(["steer"])
-      runs = Array.new(3) { turns.pop(timeout: 3) }
-      expect(runs).to eq([["first", []], ["look", [wire_ref]], ["after", []]])
+      expect(merged.pop(timeout: 3)&.map(&:text)).to eq(%w[steer after])
+      runs = Array.new(2) { turns.pop(timeout: 3) }
+      expect(runs).to eq([["first", []], ["look", [wire_ref]]])
+      expect(turns.pop(timeout: 0.3)).to be_nil
     end
 
     it "gives a failed image turn's refs back with its prompt" do

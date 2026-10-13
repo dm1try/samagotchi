@@ -521,7 +521,12 @@ Both loops:
 - **A cut generation** (`after_cut`): a generation a plugin cut (`stop_generation`) spends the same retry budget
   with its own nudge; when it is used up, the turn ends cancelled (`:hook`). A steer's cut asks again with the
   steer and spends nothing.
-- **Steering**: queued input goes in at iteration boundaries (`Steer.inject!`, `:pending_input_merged`).
+- **Steering**: queued input goes in at iteration boundaries (`Steer.inject!`, `:pending_input_merged`). A
+  worker's drain (`Worker#pending_input_drain`) takes every input file in name order except the ones
+  `SessionInbox.waits_for_turn_end?` leaves for a turn of their own (`delivery: queue`, or images): those are
+  skipped, not a barrier, so a line sent after them still merges. Only the files it claims reach
+  `:input_merged`, the failure hand-back (`@merged_this_turn`) and the checkpoint; the skipped ones run after the
+  turn, one turn each, in name order (`Worker#run_input_files`).
 - **Context status**: an estimate of the window's fill before each request,
   emitted on every request (`:context_status`) so the UI always has a current
   number, with a guidance line on the tail only when it rises far enough.
