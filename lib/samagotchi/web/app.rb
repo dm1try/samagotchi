@@ -566,6 +566,14 @@ module Samagotchi
         LLMContextStrategy.for_session(session, registry: host_registry)
       end
 
+      # A session's toolkit as its file names it ({name:, label:}), nil on
+      # full: without a worker nothing resolves it (a bundle's kits load in
+      # the worker), so the tools it leaves out aren't known here.
+      def toolkit_for(session)
+        toolkit = session.toolkit
+        toolkit && !toolkit.full? ? { name: toolkit.name, label: toolkit.label } : nil
+      end
+
       # A session's thinking level with where it came from and its own
       # (SettingExplained#summary), as its worker would resolve it; nil
       # when it can't be. Config and the registry only: no network.
@@ -848,6 +856,10 @@ module Samagotchi
         # native host), else the server's reading (an older worker, none).
         history = snapshot&.key?("reasoning_history") ? snapshot["reasoning_history"] : reasoning_history_for(session)
         session_json = session_json.merge(reasoning_history: history)
+        # Its toolkit when it isn't full (the tools chip): the worker's, which
+        # resolved it, else the name saved in the session file.
+        toolkit = snapshot&.key?("toolkit") ? snapshot["toolkit"] : toolkit_for(session)
+        session_json = session_json.merge(toolkit: toolkit)
         raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
         timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"], persisted: persisted)
         json_response(200, {

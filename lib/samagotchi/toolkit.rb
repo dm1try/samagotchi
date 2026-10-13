@@ -64,6 +64,26 @@ module Samagotchi
     # A name that can't be resolved (unknown, a cycle).
     class Unresolved < StandardError; end
 
+    # A toolkit as a session's next turn would declare it (Engine
+    # #toolkit_explained): +toolkit+ as saved, +resolved+, the Registry
+    # +declared+ entries and the names it leaves out (+left_out+), and
+    # whether that isn't what the Registry declares now (+pending+: it
+    # applies at the next turn's start).
+    Explained = Data.define(:toolkit, :resolved, :declared, :left_out, :pending) do
+      # What the prompt carries of it: the declared names and, when it
+      # leaves tools out, the kit name the not-loaded line gives. Two equal
+      # keys build the same prompt (/toolkit's "no change", its cost).
+      def prompt_key = [declared.map(&:name), left_out.empty? ? nil : resolved.name]
+
+      # What the UIs show (the snapshot, command_ran): nil when it declares
+      # every tool on full (full, full +delegate), which has no chip.
+      def summary
+        return nil if toolkit.name == Toolkit::FULL && left_out.empty? && resolved.fallback.nil?
+
+        { name: toolkit.name, label: toolkit.label, left_out: left_out, fallback: resolved.fallback }
+      end
+    end
+
     # Tool names as a list of unique, stripped strings.
     def self.tool_names(names) = Array(names).map { |tool| tool.to_s.strip }.reject(&:empty?).uniq
 
@@ -178,9 +198,9 @@ module Samagotchi
 
     # What a toolkit change costs the prompt cache (CacheConfirm): the
     # declared tools are the front of every request, so any change to them
-    # is :full; nil when the names stay the same.
-    # @param before [Array<String>] the declared names now
-    # @param after [Array<String>] the ones the change would declare
+    # (or to the not-loaded line) is :full; nil when they stay the same.
+    # @param before [Object] what the prompt carries now (Explained#prompt_key)
+    # @param after [Object] what it would carry after the change
     def self.cache_cost(before, after) = before == after ? nil : :full
 
     # @return [Resolved] +name+'s kit through its bases

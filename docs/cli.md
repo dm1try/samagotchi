@@ -514,7 +514,16 @@ reasoning of the turn it continues. `/stats` shows it on its `reasoning history:
 line, the web as the `reasoning` chip. See "Reasoning history" in
 [configuration.md](configuration.md).
 
-A `/thinking` or `/reasoning-history` change that restarts the prompt cache
+`/toolkit` lists the tools the next turn declares (each with its estimated
+tokens), the session's toolkit and the tools it leaves out. `/toolkit NAME` puts
+the session on another toolkit (dropping its own adds and removes); `/toolkit
+add TOOL` and `/toolkit remove TOOL` change one tool (a tool's name keeps its
+case). The change is saved at once and applies from the next turn's start; a
+running turn keeps its tools. `/toolkit` alone answers mid-turn too; a change
+sent while a turn runs waits for the turn's end. The web shows a session that
+isn't on `full` as the `tools` chip. See [Toolkits](configuration.md#toolkits).
+
+A `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
 asks first: the reply says what it costs, changes nothing, and names the line
 that applies it (`/thinking low --yes`). `--yes` (or `-y`) applies it at once.
 The terminal puts that line in the next input (Enter applies it); the web's

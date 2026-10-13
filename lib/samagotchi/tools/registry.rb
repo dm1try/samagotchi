@@ -77,9 +77,12 @@ module Samagotchi
         entry if entry&.offered?(layers) && !declared?(entry)
       end
 
-      # The tools the toolkit leaves out of a turn under +layers+.
+      # The tools +toolkit+ (the session's by default) leaves out of a turn
+      # under +layers+.
       # @return [Array<String>] in declaration order
-      def left_out_names(layers: []) = ordered(@entries.values.select { |entry| entry.offered?(layers) && !declared?(entry) }).map(&:name)
+      def left_out_names(layers: [], toolkit: @toolkit)
+        ordered(@entries.values.select { |entry| entry.offered?(layers) && !declared?(entry, toolkit) }).map(&:name)
+      end
 
       # Every tool +source+ registered, declared or not (a plugin's tool set
       # changing: Plugin::Api.apply_tools).
@@ -90,12 +93,13 @@ module Samagotchi
       # context layers (LLMContextStrategy), adds the tools gated by them.
       # Without layers (none, the default) the list is what it always was.
       # @return [Array<String>] in declaration order
-      def names(layers: []) = entries(layers: layers).map(&:name)
+      def names(layers: [], toolkit: @toolkit) = entries(layers: layers, toolkit: toolkit).map(&:name)
 
       # @return [Array<Entry>] in declaration order: the ones the turn's
       #   layers offer and the session's toolkit declares
-      def entries(layers: [])
-        ordered(@entries.values.select { |entry| entry.offered?(layers) && declared?(entry) })
+      #   (+toolkit+: another one's, for what a change would declare)
+      def entries(layers: [], toolkit: @toolkit)
+        ordered(@entries.values.select { |entry| entry.offered?(layers) && declared?(entry, toolkit) })
       end
 
       # @return [Array<Hash>] the schemas, in declaration order
@@ -108,7 +112,7 @@ module Samagotchi
 
       private
 
-      def declared?(entry) = @toolkit.nil? || @toolkit.declares?(entry)
+      def declared?(entry, toolkit = @toolkit) = toolkit.nil? || toolkit.declares?(entry)
 
       def ordered(entries)
         core, added = entries.partition(&:core?)

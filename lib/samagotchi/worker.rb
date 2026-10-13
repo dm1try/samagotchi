@@ -878,6 +878,8 @@ module Samagotchi
       # /reasoning-history or /model: the level the next turn runs under
       # (the web's chip); nil on a native host, which ignores it.
       event[:reasoning_history] = @engine.reasoning_history_explained&.summary if changed.intersect?(%i[reasoning_history model])
+      # /toolkit: what the next turn declares (the web's chip; nil on full).
+      event[:toolkit] = @engine.toolkit_summary if changed.include?(:toolkit)
       event[:confirm] = confirm.to_h if confirm
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)

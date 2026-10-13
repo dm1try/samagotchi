@@ -25,12 +25,15 @@ module Samagotchi
 
     # A command's argument words with --yes / -y (anywhere) taken out.
     # @param args [String] what follows the command name
-    # @return [Array(String, Boolean)] the rest, stripped and downcased, and
-    #   whether --yes was there
-    def split(args)
-      words = args.to_s.strip.downcase.split
-      yes = words.any? { |word| YES_FLAGS.include?(word) }
-      [(words - YES_FLAGS).join(" "), yes]
+    # @param downcase [Boolean] false keeps the words' case (/toolkit: a
+    #   plugin's or MCP server's tool names can be mixed case)
+    # @return [Array(String, Boolean)] the rest, stripped (and downcased),
+    #   and whether --yes was there
+    def split(args, downcase: true)
+      text = args.to_s.strip
+      words = (downcase ? text.downcase : text).split
+      flags, rest = words.partition { |word| YES_FLAGS.include?(word.downcase) }
+      [rest.join(" "), !flags.empty?]
     end
 
     # Whether a change must ask first: the effective level changes, the

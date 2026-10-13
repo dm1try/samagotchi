@@ -7,6 +7,7 @@ test("starts every field empty", () => {
   const s = emptySessionState();
   assert.equal(s.parentId, null);
   assert.equal(s.continues, null);
+  assert.equal(s.toolkit, null);
   assert.equal(s.owner, null);
   assert.equal(s.ctxPct, null);
   assert.equal(s.ctxWindow, null);
@@ -52,6 +53,7 @@ test("sessionStateFrom reads the session's fields, with the empty defaults for m
   assert.equal(st.llmContext, null);
   assert.equal(st.thinking, null);
   assert.equal(st.reasoningHistory, null);
+  assert.equal(st.toolkit, null);
   assert.equal(st.parentId, null);
   assert.equal(st.continues, null);
   assert.deepEqual(st.usedMemories, []);
@@ -70,7 +72,7 @@ test("sessionStateFrom copies the lists, owner, links and served model", () => {
       served_model: "srv", served_model_for: "m",
       used_memory_names: ["a"], preloaded_memory_names: ["b"], muted_memory_names: ["c"],
       prompt_notes: notes, llm_context: { strategy: "none" }, thinking: { level: "high" }, reasoning_history: { level: "drop" },
-      parent_id: "p1", continues: "c1",
+      toolkit: { name: "lean", label: "lean" }, parent_id: "p1", continues: "c1",
     },
     commands: [{ name: "/x" }],
   }));
@@ -83,6 +85,7 @@ test("sessionStateFrom copies the lists, owner, links and served model", () => {
   assert.deepEqual(st.llmContext, { strategy: "none" });
   assert.deepEqual(st.thinking, { level: "high" });
   assert.deepEqual(st.reasoningHistory, { level: "drop" });
+  assert.deepEqual(st.toolkit, { name: "lean", label: "lean" });
   assert.equal(st.parentId, "p1");
   assert.equal(st.continues, "c1");
   assert.deepEqual(st.commands, [{ name: "/x" }]);

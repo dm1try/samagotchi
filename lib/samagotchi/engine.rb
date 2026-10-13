@@ -1299,6 +1299,7 @@ module Samagotchi
         llm_context: llm_context_summary,
         thinking: thinking_explained&.summary,
         reasoning_history: reasoning_history_explained&.summary,
+        toolkit: toolkit_summary,
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
         recap_inactivity_seconds: @recap&.inactivity&.to_i
@@ -2713,6 +2714,27 @@ module Samagotchi
       resolved = Toolkit.of(session&.toolkit).resolve(toolkit_kits(errors))
       resolved.everything? ? nil : resolved
     end
+
+    # The tools this session registered (Tools::Registry), declared or not.
+    attr_reader :tools
+
+    # +toolkit+ (the session's by default) as its next turn would declare
+    # it (/toolkit, the UIs' chip).
+    # @return [Toolkit::Explained]
+    def toolkit_explained(toolkit = nil)
+      toolkit ||= Toolkit.of(@session&.toolkit)
+      resolved = toolkit.resolve(toolkit_kits)
+      filter = resolved.everything? ? nil : resolved
+      Toolkit::Explained.new(toolkit: toolkit, resolved: resolved, declared: @tools.entries(toolkit: filter),
+                             left_out: @tools.left_out_names(toolkit: filter), pending: filter != @tools.toolkit)
+    end
+
+    # The session's toolkit for the UIs (the snapshot, command_ran): nil on
+    # full, or with no session.
+    def toolkit_summary
+      @session && toolkit_explained.summary
+    end
+    public :tools, :toolkit_kits, :resolved_toolkit, :toolkit_explained, :toolkit_summary
 
     # Resolve the session's toolkit into the Registry, on the turn thread at
     # a turn's start (before its prompt is built), and build the prompts

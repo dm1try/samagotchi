@@ -3,13 +3,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { chainLinkTemplate, infoBarHtml, memoriesTooltip, NEXT, PREV, renderInfoBar } from "../../../lib/samagotchi/web/public/info_bar.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
+import { emptySessionState } from "../../../lib/samagotchi/web/public/session_state.js";
 
 const ID = "0123456789abcdef";
 
 // A bar with only what every open session has.
 const bare = {
   id: ID, copied: false, status: "idle", model: { text: "qwen", title: "qwen", mismatch: false },
-  chain: { prev: null, next: null }, parent: null, kids: null, llmContext: null, thinking: null, reasoningHistory: null, notes: null,
+  chain: { prev: null, next: null }, parent: null, kids: null, llmContext: null, thinking: null, reasoningHistory: null, toolkit: null, notes: null,
   memories: [], dir: "/p", ctx: { text: "ctx ?", tip: "no request yet" }, speed: null, clock: "", worker: null,
 };
 
@@ -38,6 +39,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
                   apply_where: "llm_context.apply", budget_where: "llm_context.budget_tokens" },
     thinking: { level: "low", source: "session", own: "low" },
     reasoningHistory: { level: "all", source: "session", own: "all" },
+    toolkit: { name: "lean", label: "lean", left_out: ["delegate"] },
     notes: { text: "notes 1", title: "deepseek" },
     memories: ["a", "b"],
     speed: { text: "30 t/s", tip: "Decode speed of the last generation" },
@@ -49,7 +51,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
   const classes = [...div.querySelector(".meta").children].map((el) => el.className);
   assert.deepEqual(classes, [
     "id", "copy-attach", "status running", "model served-mismatch", "model chain-link", "model chain-link", "model parent",
-    "model children-chip waiting", "model llmctx-chip own", "model think-chip own", "model rh-chip own", "model notes-chip", "model mem-chip",
+    "model children-chip waiting", "model llmctx-chip own", "model think-chip own", "model rh-chip own", "model tools-chip", "model notes-chip", "model mem-chip",
     "dir", "model ctx", "model speed", "model session-time", "worker-badge",
   ]);
   assert.equal(div.querySelector(".copy-attach").textContent, "copied ✓");
@@ -98,4 +100,13 @@ test("chainLinkTemplate: the short id when the link has no date", () => {
   assert.equal(markupOf(chainLinkTemplate({ id: "cccccccc3" }, PREV, "Prev")),
                canon('<a class="model chain-link" href="#/s/cccccccc3" title="Prev: cccccccc">← cccccccc</a>'));
   assert.match(markupOf(chainLinkTemplate({ id: "cccccccc3", date: "10-10" }, NEXT, "Next")), />10-10 →</);
+});
+
+test("infoBarHtml: the tools chip follows the bar's own toolkit, so a switch to a full session drops it", () => {
+  const div = document.createElement("div");
+  render(infoBarHtml({ ...bare, toolkit: { name: "lean", label: "lean +delegate" } }), div);
+  assert.equal(div.querySelector(".tools-chip").textContent, "tools lean +delegate");
+  // Another session opened (app.js resets its state to emptySessionState: toolkit null).
+  render(infoBarHtml({ ...bare, id: "fedcba9876543210", toolkit: emptySessionState().toolkit }), div);
+  assert.equal(div.querySelector(".tools-chip"), null);
 });

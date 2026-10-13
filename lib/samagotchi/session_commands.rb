@@ -12,6 +12,7 @@ require_relative "tools/peers"
 require_relative "commands/registry"
 require_relative "llm_context_command"
 require_relative "thinking_command"
+require_relative "toolkit_command"
 require_relative "reasoning_history_command"
 
 module Samagotchi
@@ -32,6 +33,7 @@ module Samagotchi
     HELP_COMMAND = "/help"
     LLM_CONTEXT_COMMAND = LLMContextCommand::NAME
     THINKING_COMMAND = ThinkingCommand::NAME
+    TOOLKIT_COMMAND = ToolkitCommand::NAME
     REASONING_HISTORY_COMMAND = ReasoningHistoryCommand::NAME
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
@@ -48,7 +50,7 @@ module Samagotchi
 
     # The commands that ask before a change that restarts the prompt cache
     # (CacheConfirm): #run passes them its confirm flag.
-    CONFIRMING = %i[thinking reasoning_history].freeze
+    CONFIRMING = %i[thinking reasoning_history toolkit].freeze
 
     # @!attribute status [Symbol] :ok, or :error when the line was refused
     # @!attribute output [String, nil] what to tell the user
@@ -103,6 +105,9 @@ module Samagotchi
       registry.register(REASONING_HISTORY_COMMAND, "show or set which of its reasoning this session's model gets back (drop|turn|all|default)",
                         id: :reasoning_history, mid_turn: show_mid_turn(REASONING_HISTORY_COMMAND),
                         match: ->(text) { text.match?(%r{\A/reasoning-history(?:\s+.*)?\z}) }) { |text| reasoning_history(text) }
+      registry.register(TOOLKIT_COMMAND, "show or change the tools this session declares (NAME, add TOOL, remove TOOL)",
+                        id: :toolkit, mid_turn: show_mid_turn(TOOLKIT_COMMAND),
+                        match: ->(text) { text.match?(%r{\A/toolkit(?:\s+.*)?\z}) }) { |text| toolkit(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
@@ -463,6 +468,16 @@ module Samagotchi
                                                     .run(text.delete_prefix(REASONING_HISTORY_COMMAND),
                                                          confirm: confirm)
       reply(output, changed: changed ? [:reasoning_history] : [], confirm: ask)
+    rescue ArgumentError => e
+      reply(e.message, status: :error)
+    end
+
+    # /toolkit (ToolkitCommand); :toolkit in changed when it set the
+    # session's toolkit.
+    def toolkit(text, confirm: true)
+      output, changed, ask = ToolkitCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                           .run(text.delete_prefix(TOOLKIT_COMMAND), confirm: confirm)
+      reply(output, changed: changed ? [:toolkit] : [], confirm: ask)
     rescue ArgumentError => e
       reply(e.message, status: :error)
     end

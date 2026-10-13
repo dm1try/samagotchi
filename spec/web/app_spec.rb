@@ -985,6 +985,28 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["session"]).to include("reasoning_history" => nil)
     end
 
+    it "names the session's toolkit unless it is full: the live worker's, else the name its file saved" do
+      state_dir = Dir.mktmpdir
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      session.toolkit = Samagotchi::Toolkit.new(name: "lean", add: ["delegate"])
+      session.save(state_dir: state_dir)
+      full = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
+      full.save(state_dir: state_dir)
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, session_class: Samagotchi::Session)
+
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload.dig("session", "toolkit")).to eq("name" => "lean", "label" => "lean +delegate")
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{full.id}"))[2].first)
+      expect(payload["session"]).to include("toolkit" => nil)
+
+      summary = { "name" => "lean", "label" => "lean +delegate", "left_out" => ["send_note"], "fallback" => nil }
+      live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
+               "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "toolkit" => summary } }
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload.dig("session", "toolkit")).to eq(summary)
+    end
+
     it "uses the bridge event_seq when a live bridge reports it" do
       app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
       allow(app).to receive(:bridge_event_seq).and_return(12)

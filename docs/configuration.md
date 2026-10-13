@@ -739,10 +739,10 @@ models:
 
 ## Changes that restart the prompt cache
 
-`/thinking` and `/reasoning-history` ask before a change that makes the server read the conversation again: Gemma's
-thinking switch, a remote chat host's thinking fields ("Thinking"), and a change to or from `all` once an earlier reply
-has thinking ("Reasoning history"). They ask only when the level the next turn runs under really changes and the
-session has a model reply.
+`/thinking`, `/reasoning-history` and `/toolkit` ask before a change that makes the server read the conversation again:
+Gemma's thinking switch, a remote chat host's thinking fields ("Thinking"), a change to or from `all` once an earlier
+reply has thinking ("Reasoning history"), and any change to the declared tools, which start every request
+("Toolkits"). They ask only when what the next turn runs under really changes and the session has a model reply.
 
 - The reply says what it costs and changes nothing yet: `Nothing changed yet: send /thinking low --yes to apply.`
 - `--yes` (or `-y`, anywhere after the command) applies it at once.

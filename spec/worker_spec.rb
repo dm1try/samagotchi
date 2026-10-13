@@ -1410,6 +1410,22 @@ RSpec.describe Samagotchi::Worker do
         expect(switched[:thinking]).to include(level: "low", source: "session")
       end
 
+      it "runs /toolkit: saved in the session, and the command_ran carries the chip's summary (nil on full)" do
+        start_worker(poll_interval: 5)
+
+        done = ran(JSON.parse(post_command("/toolkit lean").body)["command_id"])
+
+        expect(done).to include(status: "ok", changed: ["toolkit"])
+        expect(done[:toolkit]).to include(name: "lean", label: "lean", fallback: nil)
+        expect(done[:toolkit][:left_out]).to include("delegate", "list_sessions")
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).toolkit).to eq(Samagotchi::Toolkit.new(name: "lean"))
+        shown = ran(JSON.parse(post_command("/toolkit").body)["command_id"])
+        expect(shown).not_to have_key(:toolkit)
+        back = ran(JSON.parse(post_command("/toolkit full").body)["command_id"])
+        expect(back).to have_key(:toolkit)
+        expect(back[:toolkit]).to be_nil
+      end
+
       it "runs /reasoning-history: the session keeps its own level, and the command_ran carries the level (nil on a native host)" do
         start_worker(poll_interval: 5)
 
