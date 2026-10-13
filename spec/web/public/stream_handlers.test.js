@@ -185,6 +185,23 @@ test("command_ran: a /model run sets the open session's model and draws its bubb
   assert.deepEqual(page.names(), ["updateInfoBar", "addCommandBubble"]);
 });
 
+test("command_ran: this tab's busy command comes back into an empty composer, not another tab's or over a draft", async () => {
+  const busy = { line: "/foo\n> q\n\nmy note", status: "busy", output: "busy: wait for the turn to end" };
+  const { page, handlers } = fakePage();
+  await handlers.command_ran({ ...busy, client_id: ME });
+  assert.equal(page.composerText, "/foo\n> q\n\nmy note");
+  const other = fakePage();
+  await other.handlers.command_ran({ ...busy, client_id: "tab-other" });
+  assert.equal(other.page.composerText, "");
+  const drafted = fakePage();
+  drafted.page.composerText = "new draft";
+  await drafted.handlers.command_ran({ ...busy, client_id: ME });
+  assert.equal(drafted.page.composerText, "new draft");
+  const ran = fakePage();
+  await ran.handlers.command_ran({ line: "/foo x", status: "ok", client_id: ME });
+  assert.equal(ran.page.composerText, "");
+});
+
 test("command_ran: /llm-context and /thinking refresh their chips", async () => {
   const { page, handlers } = fakePage();
   await handlers.command_ran({ line: "/thinking low", llm_context: { strategy: "stale" }, thinking: { level: "low" } });
