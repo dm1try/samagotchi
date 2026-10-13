@@ -12,8 +12,9 @@ require_relative "support/fake_provider_server"
 # drain, its Bridge), a real KernelLoop streaming a long thinking generation
 # from a fake model server, and `chi send` posting to the Bridge. A plain
 # message goes in at the turn's next step boundary and never cuts the
-# thinking; one sent with --cut cuts it (`steer_cut`). The one e2e for
-# steer delivery (P1); bridge_spec and send_command_spec cover the variants.
+# thinking; one sent with --cut cuts it (`steer_cut`); one queued waits for
+# the turn's end and runs as its own turn. The one e2e for steer delivery;
+# bridge_spec, worker_spec and send_command_spec cover the variants.
 RSpec.describe "steering a running turn (chi send)" do
   around do |example|
     env = { "SAMAGOTCHI_DEFAULT_MODEL" => "Qwen3.6", "SAMAGOTCHI_STEER_CUT_AFTER" => "1" }
@@ -129,5 +130,30 @@ RSpec.describe "steering a running turn (chi send)" do
     # The cut's step starts again with the message.
     expect(merged("drop the tests")).to be_truthy
     expect(types.index(:steer_cut)).to be < types.index(:pending_input_merged)
+  end
+
+  # P3a: a queued message is skipped by the drain, a next_step one sent
+  # after it still merges, and the queued one is its own turn after.
+  it "runs a queued message as its own turn after the running one, while a later plain one still merges" do
+    stream_thinking
+    run_turn("have a long think")
+    start_worker
+    expect(wait_until(timeout: 10) { events.any? { |e| e[:type] == :generation_chunk } }).to be_truthy
+
+    queued = Samagotchi::SessionManager.deliver_turn(session.id, prompt: "later please", client_id: "web:x",
+                                                                 delivery: "queue", state_dir: tmpdir)
+    expect(queued).to include(status: :accepted)
+    expect(queued[:ack]).to include("delivery" => "queue")
+    sleep(0.01)
+    plain = Samagotchi::SessionManager.deliver_turn(session.id, prompt: "mind the typos", client_id: "web:x", state_dir: tmpdir)
+    expect(plain[:ack]).to include("delivery" => "next_step")
+
+    expect(merged("mind the typos")).to be_truthy, "events: #{types.tally}"
+    started = wait_until(timeout: 15) { events.find { |e| e[:type] == :turn_started && e[:prompt] == "later please" } }
+    expect(started).to be_truthy, "events: #{types.tally}"
+    expect(started.dig(:origin, :enqueued_id)).to eq(queued[:ack]["enqueued_id"])
+    first_end = events.index { |e| e[:type] == :turn_completed }
+    expect(first_end).to be < events.index(started)
+    expect(events.select { |e| e[:type] == :pending_input_merged }.map { |e| e[:content].to_s }.join).not_to include("later please")
   end
 end
