@@ -27,6 +27,12 @@ A select bound with `.value` instead reads right in both, but lit sets it before
 `llm_context_chip.js`'s `renderForm` draws twice then. Assert a kept node with `assert.ok(a === b)`: a failing
 `assert.equal` on two DOM nodes inspects the whole DOM (huge output, can stall the run).
 
+Where a composer line goes is decided twice, in Ruby (`ComposerRoute`, both terminals) and in the web
+(`composer.js#routeComposerLine`). `spec/fixtures/composer_routes.json` holds the cases both answer: rspec
+(`spec/composer_route_spec.rb`) and `npm test` (`spec/web/public/composer.test.js`) run every row. A change to
+either router adds its row there; a row where a UI differs on purpose (or a found divergence) carries a `web` or
+`repl` override and a `note`.
+
 ## While you work: affected specs
 
 ```sh

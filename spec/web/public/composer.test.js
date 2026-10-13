@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createComposerCommands, routeComposerLine, routeSessionLine } from "../../../lib/samagotchi/web/public/composer.js";
 import { QUEUE_UNAVAILABLE_WEB, STEER_CHOICE_USAGE, webLocalReply } from "../../../lib/samagotchi/web/public/commands.js";
 
@@ -67,6 +68,41 @@ test("a typo of a command gets the hint, not a turn", () => {
 test("with images a line is a message: no command, reply or hint", () => {
   for (const text of ["/model", "!ls", "/stats", "/modle"]) {
     assert.deepEqual(routeComposerLine(text, inSession({ images: 1 })), { send: text, delivery: null }, text);
+  }
+});
+
+// ── The golden table, shared with ComposerRoute (rspec) ─────────────────
+
+// spec/fixtures/composer_routes.json: each row through routeComposerLine in
+// a session, its answer as ComposerRoute's kind. text is compared trimmed
+// (the page sends the line as typed; the terminals strip it); local is
+// Ruby's only.
+const GOLDEN = JSON.parse(readFileSync(new URL("../../fixtures/composer_routes.json", import.meta.url), "utf8"));
+
+function routeKind(route) {
+  if (route.reply !== undefined) {
+    if (route.reply === STEER_CHOICE_USAGE) return { kind: "usage", delivery: null };
+    if (route.reply === QUEUE_UNAVAILABLE_WEB) return { kind: "unavailable", delivery: null };
+    const kind = webLocalReply(route.line) ? "local" : "typo";
+    return { kind, text: route.line.trim(), delivery: null };
+  }
+  if (route.command !== undefined) return { kind: "command", text: route.command.trim(), delivery: null };
+  const text = route.send.trim();
+  if (route.delivery) return { kind: "deliver", text, delivery: route.delivery };
+  return { kind: text ? "prompt" : "empty", text, delivery: null };
+}
+
+test("the golden table: a line in a session goes where the terminals send it", () => {
+  for (const row of GOLDEN.rows) {
+    const expected = row.web || row.expect;
+    const got = routeKind(routeComposerLine(row.text, {
+      session: true, running: row.running, images: row.images || 0,
+      commands: (row.commands || GOLDEN.commands).map((name) => ({ name })),
+    }));
+    const label = `${JSON.stringify(row.text)} running: ${row.running}`;
+    assert.equal(got.kind, expected.kind, label);
+    if ("text" in expected) assert.equal(got.text, expected.text, label);
+    assert.equal(got.delivery, expected.delivery ?? null, label);
   }
 });
 
