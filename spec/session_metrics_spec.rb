@@ -542,12 +542,13 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(metrics.snapshot[:turn_records].last).to include(cost: 0.25, cost_source: "reported", reasoning_tokens: 12)
     end
 
+    # The loop marks a tool call's chunk (tool_call: true) whatever the
+    # wire's shape: ChatLoop asks its adapter, KernelLoop its native split.
     it "starts the clock on a tool call delta too" do
       start_turn
       metrics.call(type: :generation_started, iteration: 1)
       tick(1.0)
-      metrics.call(type: :generation_chunk, iteration: 1, content: "",
-                   payload: { "choices" => [{ "delta" => { "tool_calls" => [{ "index" => 0 }] } }] })
+      metrics.call(type: :generation_chunk, iteration: 1, content: "", tool_call: true, payload: {})
       tick(0.25)
       metrics.call(router_chunk("", 20))
       metrics.call(type: :generation_completed, iteration: 1)

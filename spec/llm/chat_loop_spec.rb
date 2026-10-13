@@ -1246,6 +1246,44 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  # A streaming tool call is marked on its chunk (a steer doesn't cut it);
+  # the adapter says which chunks are, in its own wire shape.
+  describe "a tool call's chunks" do
+    it "carry tool_call: true when the adapter says the payload is a tool-call delta" do
+      backend.adapter = FakeChatAdapter.new(text("done"))
+      allow(backend.adapter).to receive(:tool_call_delta?).and_return(true)
+
+      run
+
+      chunk = events.find { |e| e[:type] == :generation_chunk }
+      expect(chunk[:tool_call]).to be(true)
+      expect(backend.adapter).to have_received(:tool_call_delta?).with(chunk[:payload])
+    end
+
+    it "carry none otherwise" do
+      run
+
+      expect(events.select { |e| e[:type] == :generation_chunk }).to all(satisfy { |e| !e.key?(:tool_call) })
+    end
+
+    it "are marked from a real OpenAI stream" do
+      FakeProviderServer.without_webmock do
+        server = FakeProviderServer.start
+        server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("tool_call_stream.sse"))
+        server.default("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
+        backend.adapter = Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box", env: {})
+
+        run
+
+        marked = events.select { |e| e[:type] == :generation_chunk && e[:tool_call] }
+        expect(marked).not_to be_empty
+        expect(marked.map { |e| e[:payload].dig("choices", 0, "delta", "tool_calls") }).to all(be_an(Array))
+      ensure
+        server&.stop
+      end
+    end
+  end
+
   describe "a failed turn" do
     it "hands the conversation built so far back on the error" do
       backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "true" }]),

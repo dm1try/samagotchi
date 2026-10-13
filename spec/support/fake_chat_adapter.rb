@@ -32,6 +32,9 @@ class FakeChatAdapter
   # llama.cpp chat host (OpenAIChat#remote?).
   def remote? = false
 
+  # Its one delta per step carries no tool call (OpenAIChat#tool_call_delta?).
+  def tool_call_delta?(_payload) = false
+
   def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {},
            session_id: nil)
     @requests << { messages: messages, model: model, tools: tools, options: options, session_id: session_id }

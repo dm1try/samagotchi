@@ -95,9 +95,6 @@ module Samagotchi
             **)
       end
 
-      # true when a streamed +payload+ carries a tool-call delta.
-      def self.tool_call_delta?(payload) = Assembly.tool_call_delta?(payload)
-
       # true when +url+ is OpenRouter's API (openrouter.ai or a subdomain).
       def self.openrouter?(url)
         host = URI(url.to_s).host.to_s.downcase
@@ -215,6 +212,10 @@ module Samagotchi
 
       # A provider on the network: no llama.cpp /props to ask for the window.
       def remote? = @remote
+
+      # true when a streamed chunk's +payload+ (as #chat's on_delta gets it)
+      # carries part of a tool call (ChatLoop marks the chunk's event).
+      def tool_call_delta?(payload) = Assembly.tool_call_delta?(payload)
 
       # @return [Array<ModelInfo>] the host's models (every page)
       def list_models

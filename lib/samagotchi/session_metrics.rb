@@ -883,7 +883,7 @@ module Samagotchi
       payload = event[:payload]
       payload = {} unless payload.is_a?(Hash)
 
-      @mutex.synchronize { note_first_chunk(payload, event) }
+      @mutex.synchronize { note_first_chunk(event) }
       usage = TokenUsage.from_payload(payload)
       if usage
         @mutex.synchronize { note_server_usage(usage) if @turn }
@@ -915,19 +915,14 @@ module Samagotchi
       turn.gen_had_server = true
     end
 
-    # The first chunk with content, reasoning or a tool call starts the
-    # generation's decode clock (an estimated speed runs from it). Caller
-    # holds the mutex.
-    def note_first_chunk(payload, event)
+    # The first chunk with content, reasoning or a tool call (the loop marks
+    # its event tool_call: true, whatever the wire) starts the generation's
+    # decode clock (an estimated speed runs from it). Caller holds the mutex.
+    def note_first_chunk(event)
       return unless @turn && @turn.gen_open && @turn.gen_first_chunk_at.nil?
-      return unless !event[:content].to_s.empty? || tool_call_delta?(payload)
+      return unless !event[:content].to_s.empty? || event[:tool_call]
 
       @turn.gen_first_chunk_at = monotonic_time
-    end
-
-    def tool_call_delta?(payload)
-      choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
-      choice.is_a?(Hash) && choice["delta"].is_a?(Hash) && !Array(choice["delta"]["tool_calls"]).empty?
     end
 
     def event_content_chars(payload, event)

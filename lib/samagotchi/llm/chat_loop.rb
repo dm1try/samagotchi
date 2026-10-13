@@ -613,7 +613,7 @@ module Samagotchi
               event = { type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,
                         thinking: reasoning, payload: payload }
               # A tool call streaming: a steer doesn't cut it (Engine#cut_for_steer).
-              tool_call = OpenAIChat.tool_call_delta?(payload)
+              tool_call = @loop.adapter.tool_call_delta?(payload)
               event[:tool_call] = true if tool_call
               streamed_any&.call if !content.to_s.empty? || !reasoning.to_s.empty? || tool_call
               emit(event)
