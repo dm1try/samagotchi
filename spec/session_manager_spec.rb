@@ -1789,6 +1789,53 @@ RSpec.describe Samagotchi::SessionManager do
       expect(input_files).to be_empty
     end
 
+    # A P0-P2 worker answers a queue with 400 delivery_unavailable: a file
+    # would merge at its next step, a silent steer. Any 4xx with an error
+    # is a refusal; the 408 deadline_passed above stays a timeout.
+    it "refuses on any 4xx the Bridge answers with an error, writing no file" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      reply = Samagotchi::BridgeClient::Response.new(status: 400, body: '{"error":"delivery_unavailable","detail":"old"}')
+      allow(bridge).to receive(:post_turn).and_return(reply)
+
+      result = described_class.deliver_turn(session.id, prompt: "later", delivery: "queue", state_dir: tmpdir,
+                                                        bridge: -> { bridge })
+
+      expect(result).to eq(status: :refused, code: 400, ack: { "error" => "delivery_unavailable", "detail" => "old" })
+      expect(input_files).to be_empty
+    end
+
+    it "keeps the file fallback for a 5xx" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 500, body: '{"error":"internal"}')
+      )
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { bridge })
+
+      expect(result[:status]).to eq(:accepted)
+      expect(input_files.size).to eq(1)
+    end
+
+    # A prompt over the Bridge's body limit (chi send ID < big.log) still
+    # goes in as a file, its delivery with it.
+    it "keeps the file fallback for a 413 too_large, a queue's delivery kept in the file" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 413, body: '{"error":"too_large","detail":"over"}')
+      )
+
+      plain = described_class.deliver_turn(session.id, prompt: "big", state_dir: tmpdir, bridge: -> { bridge })
+      queued = described_class.deliver_turn(session.id, prompt: "big later", delivery: "queue", state_dir: tmpdir,
+                                                        bridge: -> { bridge })
+
+      expect([plain[:status], queued[:status]]).to eq(%i[accepted accepted])
+      expect(input_files.sort.map { |path| JSON.parse(File.read(path)).values_at("prompt", "delivery") })
+        .to eq([["big", nil], ["big later", "queue"]])
+    end
+
     it "reports a timeout and queues nothing when the Bridge takes the request but never answers" do
       own("worker")
       server = TCPServer.new("127.0.0.1", 0)

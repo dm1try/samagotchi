@@ -19,6 +19,9 @@ and commands may change between minor versions. How releases are made:
   with echoing"; among other tools such a call is named by its tool ("working with read, echo").
 - Web: a send from a stale tab into a session deleted meanwhile goes back to the start page with a "was not
   found" notice, the line kept in the composer, instead of an alert.
+- `chi send`, the web composer and a plugin's `ctx.sessions.send` now report a message the session's worker refuses
+  (a 4xx answer such as a delivery it doesn't run) instead of writing it as an input file the worker would merge
+  anyway; a body over the worker's size limit still goes in as a file, as before.
 
 ## [0.63.0] - 2026-10-13
 

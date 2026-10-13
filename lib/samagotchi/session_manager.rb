@@ -1167,9 +1167,11 @@ module Samagotchi
     #   the session's sidecar, waiting TURN_BRIDGE_WAIT for a new worker's
     # @return [Hash] {status: :accepted, ack: Hash} (the Bridge's reply, or
     #   {status:, enqueued_id:, session_id:} for a file), {status: :refused,
-    #   code:, ack:} when the Bridge refused the images, {status: :timeout,
-    #   ack:} when it took the request but never answered (no file then), or
-    #   {status: :failed} when the input file couldn't be written
+    #   code:, ack:} when the Bridge refused the request (any 4xx with an
+    #   error: bad images, a delivery it doesn't run; no file then),
+    #   {status: :timeout, ack:} when it took the request but never answered
+    #   (no file then), or {status: :failed} when the input file couldn't be
+    #   written
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [ArgumentError] no such session
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, state_dir: nil, manager: self,
@@ -1181,17 +1183,21 @@ module Samagotchi
         begin
           options = { prompt: prompt, client_id: client_id }
           options[:images] = images unless images.empty?
-          # An old worker ignores the field: it cuts anyway (its own default)
-          # and its file never carries a queue, so a queue would steer there.
+          # An old worker ignores the field: it cuts anyway (its own default).
           options[:delivery] = delivery unless Delivery.next_step?(delivery)
           reply = client.post_turn(**options)
           ack = reply.json
           return { status: :accepted, ack: ack } if reply.status == 202 && ack.is_a?(Hash)
-          if ack.is_a?(Hash) && ack["error"] == "bad_images"
-            return { status: :refused, code: reply.status, ack: ack }
-          end
           # Read after its deadline and dropped: a file would run it after all.
           return turn_timeout if ack.is_a?(Hash) && ack["error"] == "deadline_passed"
+          # Any other 4xx with an error is a refusal (bad images, a delivery
+          # it doesn't run, a client bug): a file would bypass it, and a
+          # refused queue would steer. A 413 (a body over the Bridge's
+          # limit, a big piped chi send) and a 5xx keep the file fallback
+          # below, which carries the delivery (a queue too).
+          if (400..499).cover?(reply.status) && reply.status != 413 && ack.is_a?(Hash) && ack["error"]
+            return { status: :refused, code: reply.status, ack: ack }
+          end
         rescue Errno::ETIMEDOUT
           # The Bridge drops a turn it reads after the request's deadline
           # (BridgeClient#post_turn), so a worker that wakes later won't run
