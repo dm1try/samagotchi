@@ -145,7 +145,16 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
   it "lists the session's sources" do
     ctx.context.attach(name: "date", cmd: "date", why: "the time")
     expect(ctx.context.list).to eq([{ name: "date", scope: "session", why: "the time", hint: nil, fetched_at: nil,
-                                      error: nil, provider: nil }])
+                                      error: nil, provider: nil, summary: nil }])
+  end
+
+  it "lists a source's last summary and the hint its text gave" do
+    ctx.context.attach(name: "date", cmd: "date", why: "the time", hint: "first hint")
+    own.record_text("date", Samagotchi::ContextSources::Fetched.new(text: "noon", summary: "it is noon", wake: false,
+                                                                    hint: "pushed hint"))
+
+    expect(ctx.context.list.first).to include(hint: "pushed hint", summary: "it is noon")
+    expect(ctx.context.list.first[:fetched_at]).not_to be_nil
   end
 
   it "says why it can't attach" do

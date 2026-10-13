@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Plugins: `ctx.context.list` gives each source's last `summary:` too. See docs/plugins.md, "Attached context".
+
 ### Fixed
 
 - Attached context: a source added with `chi context add NAME --push` now wakes an idle session when its first

@@ -722,7 +722,7 @@ ctx.sessions.stop(id)      # one of this session's own children
 ```ruby
 ctx.context.attach(url: "https://github.com/acme/app/pull/42", why: "branch feat/x has open PR #42")
 ctx.context.attach(name: "ci", cmd: "bin/ci-status", why: "this branch's CI", every_seconds: 120)
-ctx.context.list  # => [{name:, scope:, why:, hint:, fetched_at:, error:, provider:}]
+ctx.context.list  # => [{name:, scope:, why:, hint:, fetched_at:, error:, provider:, summary:}]
 ctx.context.decline(url: "https://github.com/acme/app/pull/42")    # => "pr-42"
 ctx.context.mark_offered("pr-42", "https://github.com/acme/app/pull/42", why: "branch feat/x has open PR #42")
 ctx.context.offered("pr-42")  # => #<data Offer name="pr-42", hint="https://…", why="branch…", at="2026-10-08T…Z">, or nil
@@ -756,7 +756,9 @@ gets a note when its text changes.
 - The source is the session's (not the project's), marked
   `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
   the agent's `chi context add --cmd` is.
-- `list` gives the session's sources, its own then its project's.
+- `list` gives the session's sources, its own then its project's. `hint` is the
+  one the last text gave (else the source's), `summary` that text's summary
+  (nil before any text; chi 0.63.0).
 - Two attaches of one source at once (a double click) both return its
   name.
 - `attach`, `decline` and `mark_offered` raise

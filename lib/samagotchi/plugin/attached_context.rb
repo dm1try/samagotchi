@@ -95,7 +95,8 @@ module Samagotchi
       end
 
       # This session's sources (its own, then its project's).
-      # @return [Array<Hash>] {name:, scope:, why:, hint:, fetched_at:, error:, provider:}
+      # +summary+ is the last text's summary (nil before any text).
+      # @return [Array<Hash>] {name:, scope:, why:, hint:, fetched_at:, error:, provider:, summary:}
       def list
         id = @host.session_id.call
         return [] unless id
@@ -105,7 +106,7 @@ module Samagotchi
           snapshot = attached.snapshot
           { name: attached.name, scope: attached.location.scope, why: attached.source.why,
             hint: snapshot.hint || attached.source.hint, fetched_at: snapshot.fetched_at, error: snapshot.error,
-            provider: attached.source.provider }
+            provider: attached.source.provider, summary: snapshot.summary }
         end
       end
 
