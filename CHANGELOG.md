@@ -8,79 +8,44 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-10-13
+
 ### Added
 
-- `api: anthropic` hosts: config for Anthropic's Messages API. The url is the API root without `/v1` (a trailing
-  `/v1` is dropped), an entry without `url:`/`host:` talks to `https://api.anthropic.com`, and the key goes in
-  `x-api-key`. A new host key `auth: bearer|x-api-key` picks the header the key goes in (any host). Such a host runs
-  the chat loop through a new Messages adapter: streamed text and thinking, native tool use, images, usage with
-  cache reads and writes. See docs/configuration.md, "Anthropic Messages hosts". **Known limit until the next
-  release:** Claude 5.x models (Opus, Sonnet and Haiku 5.5, Fable 5.1) may stop a turn with a 400 "… bound to a
-  different conversation" after the history changed under their thinking blocks (a worker restart, a model or tool
-  set switch, the forget layer); the next release adds the binding controls and the recovery.
-- On an `api: anthropic` host a reply's content blocks are saved with it and go back verbatim (thinking blocks with
-  their signatures; one that came without a signature gets an empty one; a call id Messages wouldn't take back,
-  such as `functions.get_weather:0`, is mapped the same way in the call and its result), also after `--resume`. `reasoning_history` defaults to `all` there, and `drop` counts as `turn`.
-  See docs/configuration.md, "Reasoning history".
-- Thinking levels on `api: anthropic` hosts: `off` sends `thinking: disabled`, `low`/`medium`/`high` adaptive thinking
-  shown summarized at that effort, `default` nothing. A model that refuses adaptive thinking gets the budget form
-  (2048/8192/24576 tokens, `max_tokens` kept above it); a host that refuses the thinking `display` field loses only
-  that field; a host that refuses `cache_control` loses the breakpoints; an over-cap `max_tokens` is retried at the
-  limit the host names. See docs/configuration.md, "Thinking".
-- Recaps, plugins' `ctx.ask_model` and broadcast triage work on `api: anthropic` hosts (`recap.host_ref`,
-  `broadcast.triage_*` may name one). They ask with thinking disabled; a model that refuses that (always-thinking
-  models) is asked with adaptive thinking at low effort and at least 4096 tokens, so a recap doesn't come back empty,
-  and one that refuses that too gets no thinking fields. A recap and `ctx.ask_model` send the session id as turns do.
-  `ctx.ask_model`'s logprobs options aren't sent there (no alternatives come back). See docs/configuration.md,
-  "Thinking".
-- `dialect: fireworks` on an `api: anthropic` host, for Fireworks' Messages API directly or behind a gateway: the key
-  goes as Bearer (unless `auth:` says otherwise), thinking levels send no `display` field, chat requests carry no
-  `cache_control`, and the session id also goes as `x-session-affinity`. Recaps, `ctx.ask_model` and broadcast triage
-  on such a host follow it too, and `chi self` names it. See docs/configuration.md, "Anthropic Messages hosts".
-- A provider's refusal (a Messages host's `stop_reason: refusal`, an OpenAI-compatible host's `finish_reason:
-  content_filter` with no text) ends the turn with one line in every UI, `no answer: refused by the provider (cyber)`
-  (the category when the provider names one), is never asked again as an empty answer, and the model's next turn is
-  told. A `content_filter` stop after some text keeps the text, marked `[cut off by the provider's content filter]`,
-  and isn't asked again; tool calls that come with either aren't run. See docs/configuration.md, "Llama Network
-  Retry Behavior".
-
-- While a turn runs, the terminal's status row (REPL and attached) ends in `· typing goes in at the next step (/cut,
-  /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".
-- The web composer has a row above the text field in a session: the keys while idle, and while a turn runs a
-  delivery line: where a message sent now goes in (after this thinking
-  step, with its clock and size; after this tool call; after this answer), with `cut in now` (enabled while the step
-  has only been thinking and cutting is on for the model) and `queue for after the turn` links. Alt+Enter
-  (Option+Enter) queues; a link clicked with an empty composer arms that choice for the next Enter (Esc lets go). The
-  sent bubble says what it waits for (`waits for the next step`, `cutting in…`, a dashed `after this turn`). See
-  docs/cli.md, "Typing during a turn".
-- A worker's snapshot (`GET /session/:id/snapshot`, `?snapshot=1`) says the running generation's phase as
-  `current_turn.generation: {thinking_only, age}`, so a page joining mid-turn can clock what a message would wait
-  for; a joined page also clocks a running tool call from its start. See docs/internals/engine.md, "GenerationPhase".
+- **Anthropic Messages hosts** (`api: anthropic`): streamed text and thinking, native tool use, images, usage with
+  cache reads and writes, thinking blocks replayed verbatim (also after `--resume`; `reasoning_history` defaults to
+  `all` there). A new host key `auth: bearer|x-api-key` (any host) picks the header the key goes in. Thinking levels
+  map to Messages' thinking (`off` disabled, `low`/`medium`/`high` adaptive at that effort, `default` nothing), with
+  fallbacks when a host refuses a field. Recaps, `ctx.ask_model` and broadcast triage work there too. See
+  docs/configuration.md, "Anthropic Messages hosts". **Known limit until the next release:** Claude 5.x models
+  (Opus, Sonnet and Haiku 5.5, Fable 5.1) may stop a turn with a 400 "… bound to a different conversation" after the
+  history changed under their thinking blocks; the next release adds the recovery.
+- `dialect: fireworks` on an `api: anthropic` host, for Fireworks directly or behind a gateway: Bearer auth, no
+  thinking `display`, no `cache_control`, and `x-session-affinity` for cache routing. `chi self` names it.
+- A provider's refusal (Messages `stop_reason: refusal`, or an empty `content_filter` stop) ends the turn with
+  `no answer: refused by the provider (category)` in every UI and isn't retried. A `content_filter` stop after some
+  text keeps the text, marked `[cut off by the provider's content filter]`.
+- Web composer: a row above the text field shows the keys while idle and, while a turn runs, where a message sent now
+  goes in (after this thinking step, tool call or answer, with its clock), with `cut in now` and `queue for after the
+  turn` links. Alt+Enter (Option+Enter) queues. See docs/cli.md, "Typing during a turn".
+- Terminal: while a turn runs, the status row ends in `· typing goes in at the next step (/cut, /queue)`.
 
 ### Changed
 
-- A chat host that refuses a sampling field (`temperature`, `top_p`, `top_k`; e.g. the empty-answer retry's
-  temperature on a thinking Claude model) gets the step again without them, and none for that model after, instead
-  of the turn failing or thinking being turned off. This also changes `api: openai` hosts: a 400 naming one of those
-  fields is no longer taken as the host refusing reasoning (which turned thinking or reasoning history off).
-
-- A Splash or Fireworks model's vision comes from its model list (`vision`, top-level `input_modalities`,
-  `supports_image_input`) instead of reading "unknown", on `api: openai` and `api: anthropic` hosts.
-
-- Web: a message queued for after the running turn (and a command queued for its end) sits below the running turn's
-  card instead of among its rows, and moves into the history after the turn's answer, also after a reload.
+- Web: a message queued for after the running turn sits below the running turn's card, not among its rows, also
+  after a reload.
+- A chat host that refuses a sampling field (`temperature`, `top_p`, `top_k`) gets the step again without it instead
+  of the turn failing; on `api: openai` hosts such a 400 no longer turns reasoning off.
+- A Splash or Fireworks model's vision comes from its model list instead of reading "unknown".
 
 ### Fixed
 
-- A server error event or error body without a numeric code is classified by its `error.type`: an
-  `invalid_request_error` (with a null or named code, as OpenAI sends) fails at once instead of being retried as a
-  server error, a `rate_limit_error` or `overloaded_error` keeps its kind, and a `timeout_error` is a 504. A
-  Google-style code (`NOT_FOUND`, `INVALID_ARGUMENT`, `UNAUTHENTICATED`, `PERMISSION_DENIED`, `RESOURCE_EXHAUSTED`,
-  as Fireworks answers an unknown model) stands for its status: an unknown model is no longer retried. See
-  docs/configuration.md, "Server errors".
-- Anthropic's context overflow 400s ("prompt is too long: N tokens > M maximum", "input length and `max_tokens`
-  exceed context limit") count as a context overflow, also from a gateway that passes them through on the OpenAI
-  path: the turn is rolled back and reported as too long for the context window.
+- A server error without a numeric code is classified by its type: an invalid request fails at once instead of being
+  retried, an unknown model (404, `NOT_FOUND`) is no longer retried, a `timeout_error` is a 504.
+- Anthropic's context-overflow 400s ("prompt is too long", "input length and `max_tokens` exceed context limit")
+  roll the turn back and report it as too long for the context window, also through a gateway on the OpenAI path.
+
+Update with `chi update` (the system bundle moves with the gem).
 
 ## [0.64.0] - 2026-10-13
 
@@ -2868,7 +2833,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.64.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.65.0...HEAD
+[0.65.0]: https://github.com/dm1try/samagotchi/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/dm1try/samagotchi/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/dm1try/samagotchi/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/dm1try/samagotchi/compare/v0.61.0...v0.62.0
