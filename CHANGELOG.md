@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   push asks to (`"wake": true`); before, only later pushes could.
 - Plugins: `ctx.context.list` returns `[]` for a new session whose file isn't saved yet (a plugin command before
   the first turn) instead of raising "Session not found".
+- Attached TUI: text you had typed when the step-limit question opened comes back at the prompt once you answer
+  it, instead of being lost.
 - `chi -p … --non-interactive` says so on stderr and exits 1 when the iteration limit cuts the turn short, instead
   of exiting 0 with the partial text as if it were the answer.
 - `chi --no-shared --resume` drops a question the session's last worker saved and died with, as an attached resume

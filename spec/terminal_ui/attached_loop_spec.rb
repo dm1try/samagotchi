@@ -972,6 +972,30 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     expect(prefills.last).to eq("half typed")
   end
 
+  # The step-limit question closes before its offer resolves: the prompt
+  # stays ? meanwhile, so the text set aside waits for the > prompt.
+  it "puts the text set aside back once a continue offer the question stood for resolves" do
+    allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+    # What the open read holds: the text, moved into the offer's ? read,
+    # until the question takes it aside; then the empty answer line.
+    buffer = "half typed"
+    allow_any_instance_of(Samagotchi::TerminalUI::LineReader).to receive(:typed_text) { buffer }
+    start
+    push("type" => "continue_offered", "context" => { "original_prompt" => "task" }, "no_interrupt" => false)
+    push("type" => "question_requested", "pending_question" => { "id" => "c1", "kind" => "continue", "options" => %w[Continue Stop],
+                                                                 "question" => "Continue it?", "allow_freeform" => true })
+    wait_for { screen.slots[:notes]&.any? { |line| line.include?("Continue it?") } }
+    buffer = ""
+    typed << ""
+    wait_for { screen.lines.any? { |line| line.include?("→ Continue") } }
+    push("type" => "question_answered", "id" => "c1", "answer" => { "selected" => ["Continue"] })
+    push("type" => "continue_resolved", "decision" => "resume", "client_id" => "tui:1")
+    wait_for { prompts.last == "> " }
+    finish
+
+    expect(prefills.last).to eq("half typed")
+  end
+
   describe "an approval" do
     let(:approval) do
       { "id" => "a1", "kind" => "approval", "header" => "Approve tool call?",

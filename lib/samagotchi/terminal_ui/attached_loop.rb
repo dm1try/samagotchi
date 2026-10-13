@@ -683,7 +683,11 @@ module Samagotchi
                   end
         @continue_answer = nil
         @screen.commit(QuestionSlot.continue_summary(outcome, paint: method(:paint))) if outcome && !asked
-        sync_prompt
+        # Back to the > prompt: with the text a question set aside meanwhile
+        # (#close_question), else what the ? read holds.
+        set_aside = @set_aside
+        @set_aside = nil
+        set_aside ? sync_prompt(keep_text: false, prefill: set_aside) : sync_prompt
       end
 
       # The notes slot shows the offer's choices while it waits (a question
@@ -865,7 +869,9 @@ module Samagotchi
 
         @view.finish_thinking_spinner
         # What was typed at the prompt waits for the question to close.
-        @set_aside = @reader&.typed_text unless @question
+        # Not over text already set aside (a question that closed while a
+        # continue offer waits): the ? read holds an answer then, if anything.
+        @set_aside = @reader&.typed_text.to_s.then { |typed| typed.empty? ? nil : typed } unless @question || @set_aside
         @question = QuestionPrompt.new(pending)
         @question_pending = pending
         # The step-limit question stands for the continue offer's own slot
@@ -987,10 +993,14 @@ module Samagotchi
         @screen.clear_slot(:notes)
         @screen.commit(@question.summary(outcome, paint: method(:paint))) if outcome
         @question = nil
+        # A continue offer still waiting keeps the ? prompt (the step-limit
+        # question closes before its offer resolves): the text set aside
+        # waits for the > prompt (#continue_resolved).
+        return sync_continue_slot if @continue_offer
+
         set_aside = @set_aside
         @set_aside = nil
         sync_prompt(keep_text: false, prefill: set_aside)
-        sync_continue_slot if @continue_offer
       end
 
       # Restart the open read when its prompt no longer fits (a question or a
