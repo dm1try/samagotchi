@@ -546,7 +546,7 @@ file2.rb")
     end
 
     # A /cut TEXT / /queue TEXT one-shot prompt runs its text as the turn's
-    # prompt, the same as the idle REPL does (Formatting#steer_choice): the
+    # prompt, the same as the idle REPL does (ComposerRoute.steer_choice): the
     # model sees only the text, never the /cut / /queue words.
     it "runs a /cut TEXT one-shot prompt as its text, not the /cut words" do
       seen = []

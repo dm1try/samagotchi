@@ -25,6 +25,7 @@ require_relative "tools/memory"
 require_relative "output_formatter"
 require_relative "turn_flow"
 require_relative "session_commands"
+require_relative "composer_route"
 require_relative "terminal_ui/attached_view"
 require_relative "terminal_ui/between_turns"
 require_relative "terminal_ui/event_renderer"
@@ -296,11 +297,11 @@ module Samagotchi
 
       if @prompt && @non_interactive
         # A /cut TEXT / /queue TEXT prompt runs its text as the turn's
-        # prompt, the same as the idle REPL does (Formatting#steer_choice);
+        # prompt, the same as the idle REPL does (ComposerRoute.steer_choice);
         # a bare /cut / /queue (no text) is refused above as a UI command,
         # so only the text here. The images are the text's, not the words'.
         one_shot_prompt =
-          if (choice = steer_choice(@prompt)) && !choice.last.empty?
+          if (choice = ComposerRoute.steer_choice(@prompt)) && !choice.last.empty?
             choice.last
           else
             @prompt
@@ -834,34 +835,35 @@ module Samagotchi
       return if input.empty?
 
       # /cut TEXT and /queue TEXT are deliveries only while a turn runs; at
-      # the prompt both run the text as a normal turn, as their usage says.
-      if (choice = steer_choice(input))
-        return @surface.commit(STEER_CHOICE_USAGE) if choice.last.empty?
+      # the prompt both run the text as a normal turn, as their usage says
+      # (the route is the text's).
+      route = ComposerRoute.call(input, running: false, registry: command_registry, queue: true)
+      return @surface.commit(STEER_CHOICE_USAGE) if route.kind == :usage
 
-        input = choice.last
-      end
+      input = route.text if route.choice
 
       # /model, /models, !rollback, !cmd, /continue (shared with workers);
       # an anytime command's cards print as it shows them (btw's
       # "thinking…" before the answer). Piped input has nobody to answer a
       # confirm (the next line is already written): a costly /thinking or
       # /reasoning-history applies at once.
-      confirm = !piped_input?
-      command = if command_registry.anytime?(input)
-                  @engine.running_anytime { @commands.run(input, confirm: confirm) }
-                else
-                  @commands.run(input, confirm: confirm)
-                end
-      if command
-        show_command_result(command)
-        persist_recent_history(input) if command.shell
-        return
-      end
-      return if show_local_command(input)
-
+      case route.kind
+      when :command
+        confirm = !piped_input?
+        command = if command_registry.anytime?(input)
+                    @engine.running_anytime { @commands.run(input, confirm: confirm) }
+                  else
+                    @commands.run(input, confirm: confirm)
+                  end
+        if command
+          show_command_result(command)
+          persist_recent_history(input) if command.shell
+          return
+        end
+      when :local then return if show_local_command(input)
       # A typo of a command (/modle) is not a prompt: say so, send nothing.
-      hint = command_registry.unknown_command_hint(input)
-      return @surface.commit(hint) if hint
+      when :typo then return @surface.commit(route.reply)
+      end
 
       @turn_flow.before_prompt_turn
       persist_recent_history(input)
@@ -1207,28 +1209,32 @@ module Samagotchi
     # to end and runs as a turn of its own.
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
-      local = local_command(line) unless line.nil?
+      route = ComposerRoute.call(line, running: true, registry: command_registry, queue: true) unless line.nil?
+      local = route&.local
       return exit_after_turn(delete: SessionCommands.delete_on_exit?(line)) if line.nil? || local == :exit
       return archive_after_turn if local == :archive
       return detach_note if local == :detach
       return false if @active_cancel_controller&.cancelled?
 
-      # Before every command check: /cut and /queue are the UIs' own words
-      # for a delivery (they are listed for Tab and /help, never run).
-      if (choice = steer_choice(line))
-        return submit_steer_choice(*choice)
+      case route.kind
+      # Before every command check (ComposerRoute): /cut and /queue are the
+      # UIs' own words for a delivery (listed for Tab and /help, never run).
+      when :usage
+        @surface.commit(STEER_CHOICE_USAGE)
+        return true
+      when :deliver then return submit_steer_choice(route.delivery, route.text)
+      when :command
+        policy = command_registry.mid_turn(line)
+        return start_anytime_command(line) if policy == :anytime
+        return command_queued(line) if policy == :queue
       end
-
-      policy = command_registry.mid_turn(line)
-      return start_anytime_command(line) if policy == :anytime
-      return command_queued(line) if policy == :queue
       # A command, never steering text.
-      return command_during_turn(line) if local || command_registry.command?(line)
-      return true if line.strip.empty?
+      return command_during_turn(line) if %i[local command].include?(route.kind)
+      return true if route.kind == :empty
 
       # A typo of a command (/modle) is not steering text: say so, take it.
-      if (hint = command_registry.unknown_command_hint(line))
-        @surface.commit(hint)
+      if route.kind == :typo
+        @surface.commit(route.reply)
         return true
       end
       # Steering merges text only: a line with images runs as the next turn.
@@ -1236,7 +1242,7 @@ module Samagotchi
       # Behind a command that waits for the turn's end, a line waits too.
       return wait_for_turn_end(line) if @command_waits
 
-      @pending_input_queue.push(line.strip)
+      @pending_input_queue.push(route.text)
       @surface.commit(NEXT_STEP_NOTE)
       true
     end
@@ -1245,19 +1251,15 @@ module Samagotchi
     # otherwise read as prompts (SessionCommands registers them for Tab and
     # help only). A cut asks the engine to cut the generation only thinking
     # too long; a queue waits for the turn's end (the REPL's own after-turn
-    # list). Empty text gets the usage line. A line with images never steers
-    # (as a plain one doesn't).
+    # list). A line with images never steers (as a plain one doesn't).
+    # @param delivery [String] Delivery::CUT or Delivery::QUEUE (ComposerRoute)
     # @return [Boolean] whether the turn took it
-    def submit_steer_choice(choice, text)
-      if text.empty?
-        @surface.commit(STEER_CHOICE_USAGE)
-        return true
-      end
+    def submit_steer_choice(delivery, text)
       return image_line_waits(text) if ImageInput.extract(text).any?
 
       # A /queue waits for the turn's end; a /cut behind a command that
       # already waits there goes after it too.
-      if choice == :queue || @command_waits
+      if Delivery.queue?(delivery) || @command_waits
         @surface.commit(COMMAND_QUEUED)
         return wait_for_turn_end(text)
       end

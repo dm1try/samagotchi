@@ -93,14 +93,6 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(run).to eq("hello")
   end
 
-  it "reads /cut and /queue as the registry's entries match them (any space after the word)" do
-    expect(agent.send(:steer_choice, "/cut\tdrop it")).to eq([:cut, "drop it"])
-    expect(agent.send(:steer_choice, "/queue\nthen this")).to eq([:queue, "then this"])
-    expect(agent.send(:steer_choice, "  /cut   ")).to eq([:cut, ""])
-    expect(agent.send(:steer_choice, "/cutter x")).to be_nil
-    expect(agent.send(:steer_choice, "/queued")).to be_nil
-  end
-
   it "says a /cut or /queue with no text is a usage error, and doesn't send it" do
     run = nil
     allow(agent).to receive(:save_session)

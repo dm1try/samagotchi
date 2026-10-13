@@ -116,7 +116,7 @@ module Samagotchi
       registry.register("/detach", "leave and keep the worker running", local: true, uis: [:attached],
                                                                         match: ->(text) { text.casecmp?("/detach") })
       # /cut TEXT and /queue TEXT while a turn runs: a delivery the UIs parse
-      # themselves (Formatting#steer_choice) before any command check; the
+      # themselves (ComposerRoute.steer_choice) before any command check; the
       # entries exist for Tab completion and /help. The web composer sends
       # /cut too. /queue is a real after-the-turn list only in the local
       # REPL (the attached TUI's worker doesn't skip queued files yet), so

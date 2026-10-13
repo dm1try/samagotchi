@@ -108,14 +108,8 @@ module Samagotchi
       CUT_NOW_NOTE = "(cut in now)"
       CUT_WAITS_NOTE = "(cuts in once the thinking passes %d s)"
       CUT_OFF_NOTE = "(cutting is off; goes in at the next step)"
+      # A bare /cut or /queue (ComposerRoute's :usage).
       STEER_CHOICE_USAGE = "(/cut and /queue need a message: /cut TEXT, /queue TEXT)"
-      # The UIs' own words for a delivery, listed for Tab and /help only
-      # (a local: entry, so no command or bundle may use the names).
-      CUT_COMMAND = "/cut"
-      QUEUE_COMMAND = "/queue"
-      # The word, then any whitespace and the text (as the registry's
-      # entries match them, so a line Tab or /help knows is never a prompt).
-      STEER_CHOICE = /\A(#{CUT_COMMAND}|#{QUEUE_COMMAND})(?:\s+(.*))?\z/m
 
       # @param outcome [Symbol] SteerCut#cut_for_steer's answer: :now, :waits or :off
       # @param after [Integer, nil] the run's cut wait (the model's own
@@ -132,17 +126,6 @@ module Samagotchi
 
       # The same words, for a UI that includes the module.
       def steer_cut_note(outcome, after = nil) = Formatting.steer_cut_note(outcome, after)
-
-      # The choice a mid-turn line carries, as [:cut, "TEXT"] or
-      # [:queue, "TEXT"]; nil for any other line. The text is "" when the
-      # line named the choice without one.
-      # @param line [String, nil]
-      # @return [Array(Symbol, String), nil]
-      def steer_choice(line)
-        match = STEER_CHOICE.match(line.to_s.strip) or return nil
-
-        [match[1] == CUT_COMMAND ? :cut : :queue, match[2].to_s.strip]
-      end
 
       # "✂ forgot 2 outputs, stubbed 1 stale read · frees ~4.1k tokens (paid
       # off)": a batch of LLM context edits went in (LLMContextNotice builds

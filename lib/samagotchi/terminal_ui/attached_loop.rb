@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../client_id"
+require_relative "../composer_route"
 require_relative "event_renderer"
 require_relative "formatting"
 require_relative "../prompt_history"
@@ -387,58 +388,60 @@ module Samagotchi
         end
 
         # /cut TEXT and /queue TEXT are this UI's own deliveries, read before
-        # every command check (SessionCommands registers them for Tab and
-        # /help only). A plain line sends no delivery: it goes in at the
-        # running turn's next step, and never cuts.
-        if (choice = steer_choice(text))
-          return submit_delivery(*choice)
-        end
+        # every command check (ComposerRoute; SessionCommands registers them
+        # for Tab and /help only). A plain line sends no delivery: it goes in
+        # at the running turn's next step, and never cuts.
+        route = ComposerRoute.call(text, running: @running, registry: command_registry)
+        return submit_delivery(route) if route.choice
 
         # The terminal's own commands (SessionCommands registers them, the
         # REPL reads the same words). Before the continue offer: the
         # leaving ones are no answer to it.
-        local = command_registry.lookup_local(text)&.id
+        local = route.local
         return submit(nil) if local == :detach
         return SessionCommands.delete_on_exit?(text) ? exit_and_delete : exit_worker if local == :exit
         return archive_after_turn if local == :archive && (@running || !@queued_ids.empty?)
         return exit_and_archive if local == :archive
 
         if @continue_offer
-          return answer_continue(text) unless local || command_registry.command?(text)
+          return answer_continue(text) unless local || route.kind == :command
 
           # Not an answer: the read left no echo, so show what ran.
           echo_answer(text)
         end
-        return if text.empty?
+        return if route.kind == :empty
 
         if local == :stats
           show_stats
         elsif local == :recap
           show_recap
-        elsif command_registry.command?(text)
+        elsif route.kind == :command
           # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
           persist_recent_history(text) if PromptHistory.shell_line?(text)
           send_command(text)
-        elsif (hint = command_registry.unknown_command_hint(text))
+        elsif route.kind == :typo
           # A typo of a command (/modle) is not a prompt: say so, send nothing.
-          @screen.commit(hint)
+          @screen.commit(route.reply)
         else
           send_prompt(text)
         end
         nil
       end
 
-      # /cut TEXT and /queue TEXT while a turn runs. Only /cut goes in P1:
-      # the worker's drain doesn't skip queued files yet, so a queued
+      # /cut TEXT and /queue TEXT (+route+ has a choice). Only /cut goes in
+      # P1: the worker's drain doesn't skip queued files yet, so a queued
       # message would steer the running turn; /queue says so and sends
-      # nothing. At the prompt both run the text as a normal turn.
+      # nothing (ComposerRoute's :unavailable). At the prompt both send the
+      # text as typed, a normal turn: no local word or typo check (the
+      # worker's Bridge runs a session command as the command).
+      # @param route [ComposerRoute::Route]
       # @return [nil]
-      def submit_delivery(choice, text)
-        return @screen.commit(STEER_CHOICE_USAGE) if text.empty?
-        return @screen.commit(QUEUE_UNAVAILABLE) if choice == :queue && @running
+      def submit_delivery(route)
+        return @screen.commit(STEER_CHOICE_USAGE) if route.kind == :usage
+        return @screen.commit(QUEUE_UNAVAILABLE) if route.kind == :unavailable
 
         # To an idle session it is an ordinary prompt: no delivery to send.
-        send_prompt(text, delivery: @running ? Delivery::CUT : nil)
+        send_prompt(route.text, delivery: route.delivery)
         nil
       end
 

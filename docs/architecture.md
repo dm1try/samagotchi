@@ -73,6 +73,12 @@ TerminalUI  ──  delegates  ──▶  Engine
   delegates all core work to an `Engine`.
 - The `on_event:` seam on `run_turn` exposes raw `KernelLoop` events plus the
   higher-level turn events, so any new UI can render without terminal coupling.
+- **`ComposerRoute`** (`lib/samagotchi/composer_route.rb`) decides where a line typed at
+  either terminal's prompt goes (the REPL's `steer_line` / `run_input_line`, the attached
+  `AttachedLoop#submit`): `/cut TEXT` / `/queue TEXT`, a terminal's own word, a session
+  command, a typo, a prompt. Each UI keeps what it does with the route. The web's
+  `composer.js#routeComposerLine` decides the same; `spec/fixtures/composer_routes.json`
+  holds the cases both answer (see [testing.md](testing.md)).
 
 ## Request / turn flow
 
