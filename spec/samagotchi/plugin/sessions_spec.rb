@@ -40,17 +40,17 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir).map { |s| s[:id] }).to eq([id])
     end
 
-    it "copies this session's own llm_context values, thinking and reasoning_history levels and appended prompt files to the child" do
+    it "copies this session's own llm_context values, thinking and reasoning_history levels, appended prompt files and toolkit to the child" do
       override = Samagotchi::LLMContextOverride.new(strategy: [:stale], apply: :turn_end)
       host.setup = lambda {
         Samagotchi::SessionSetup.new(llm_context: override, thinking: :high, reasoning_history: :all,
-                                     appended_prompt_files: ["/r/extra.md"])
+                                     appended_prompt_files: ["/r/extra.md"], toolkit: Samagotchi::Toolkit.new(name: "lean"))
       }
 
       child = Samagotchi::Session.load(sessions.fork(messages: []), state_dir: tmpdir)
 
       expect(child).to have_attributes(llm_context: override, thinking: :high, reasoning_history: :all,
-                                       appended_prompt_files: ["/r/extra.md"])
+                                       appended_prompt_files: ["/r/extra.md"], toolkit: Samagotchi::Toolkit.new(name: "lean"))
     end
 
     it "runs a prompt as the child's first turn, within session.max_children" do

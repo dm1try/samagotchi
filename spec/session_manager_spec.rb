@@ -580,6 +580,39 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).to have_received(:spawn)
     end
 
+    describe "the toolkit, stored as named when the session is created" do
+      before do
+        allow(Process).to receive(:spawn).and_return(12_345)
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+      end
+
+      def stored(session) = Samagotchi::Session.load(session.id, state_dir: tmpdir).toolkit
+
+      it "is full with nothing configured" do
+        session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir)
+        expect(stored(session)).to eq(Samagotchi::Toolkit.new(name: "full"))
+      end
+
+      it "is toolkit.default, or toolkit.child for a delegate child, whatever its setup says" do
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("lean")
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.child").and_return("my-child")
+
+        plain = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir)
+        child = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir, delegate: true,
+                                              parent_id: "parent-1234")
+        expect(stored(plain)).to eq(Samagotchi::Toolkit.new(name: "lean"))
+        expect(stored(child)).to eq(Samagotchi::Toolkit.new(name: "my-child"))
+      end
+
+      it "is the setup's own when it has one" do
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("lean")
+        toolkit = Samagotchi::Toolkit.new(name: "coordinator", add: ["web_fetch"])
+        session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir,
+                                                setup: Samagotchi::SessionSetup.new(toolkit: toolkit))
+        expect(stored(session)).to eq(toolkit)
+      end
+    end
+
     it "stores the --memory and --mute lists on the session before the worker starts" do
       allow(Process).to receive(:spawn).and_return(12_345)
 

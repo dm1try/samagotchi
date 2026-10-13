@@ -295,6 +295,24 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(path))["thinking"]).to eq("high")
     end
 
+    it "round-trips its toolkit as given, and reads none (full) from a file without the field" do
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp",
+                                            setup: Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "lean")))
+      session.toolkit = session.toolkit.adding("delegate")
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      expect(JSON.parse(File.read(path))["toolkit"]).to eq("name" => "lean", "add" => ["delegate"], "remove" => [])
+      expect(described_class.load(session.id, state_dir: tmpdir).toolkit)
+        .to eq(Samagotchi::Toolkit.new(name: "lean", add: ["delegate"]))
+
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("toolkit" => nil)))
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.toolkit).to be_nil
+      expect(Samagotchi::Toolkit.of(loaded.toolkit)).to be_full
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).except("toolkit")))
+      expect(described_class.load(session.id, state_dir: tmpdir).toolkit).to be_nil
+    end
+
     it "round-trips its appended prompt files, and reads [] from a file without the field" do
       session = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")
       expect(session.appended_prompt_files).to eq([])

@@ -194,6 +194,12 @@ module Samagotchi
       # the config surface.
       Entry.new(key: "reasoning_history",        yaml_path: %w[reasoning_history],        type: :string, default: nil,              expose: %i[env]),
 
+      # The toolkit a new session is stored on (Toolkit.configured): the tools
+      # its prompts declare. full (every built-in) when unset; child: a
+      # delegate child's. toolkit.kits (the user's own) is read by Toolkit.kits.
+      Entry.new(key: "toolkit.default",          yaml_path: %w[toolkit default],          type: :string, default: nil,              expose: %i[env config]),
+      Entry.new(key: "toolkit.child",            yaml_path: %w[toolkit child],            type: :string, default: nil,              expose: %i[env config]),
+
       Entry.new(key: "default.max_tokens",       yaml_path: %w[default max_tokens],       type: :integer, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli]),
 
@@ -287,7 +293,8 @@ module Samagotchi
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).
     HOST_MODEL_KEYS = %w[price served].freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
-    SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
+    # And toolkit's kits (Toolkit.kits).
+    SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze, "toolkit" => %w[kits].freeze }.freeze
 
     # Fast lookup maps
     BY_KEY = ENTRIES.each_with_object({}) { |e, h| h[e.key] = e }.freeze

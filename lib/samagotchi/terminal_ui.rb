@@ -97,10 +97,14 @@ module Samagotchi
     # @param appended_prompt_files [Array<String>] --append-system-prompt's
     #   files (absolute): a new session saves them; a resumed one's own come
     #   first, and the merge goes only to the Engine (as --memory's does)
+    # @param toolkit [Toolkit, nil] --toolkit/--tool/--no-tool: a new
+    #   session's toolkit (config's toolkit.default without); a resumed one
+    #   keeps its own
     def initialize(prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
                    spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false, llm_context: {}, thinking: nil,
-                   appended_prompt_files: [])
+                   appended_prompt_files: [], toolkit: nil)
       @scratch        = scratch
+      @toolkit        = toolkit
       @thinking_word  = thinking
       @prompt         = prompt
       @llm_context_words = llm_context
@@ -269,7 +273,7 @@ module Samagotchi
         preloaded_memory_names: @requested_memories,
         muted_memory_names: @muted_memory_names,
         scratch: @scratch,
-        setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files)
+        setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files, toolkit: @toolkit || Toolkit.configured)
       ))
       # --llm-context*: the session's own values, over a resumed one's.
       # Saved at once on a resumed one: leaving before a turn keeps them.

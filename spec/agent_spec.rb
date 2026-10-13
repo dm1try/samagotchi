@@ -289,6 +289,21 @@ file2.rb")
       expect(Samagotchi::Engine).to have_received(:new).with(hash_including(appended_prompt_files: ["/r/a.md"]))
     end
 
+    it "stores a new REPL session's toolkit: the flags', else config's toolkit.default" do
+      allow(client).to receive(:complete).and_return("ok")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("lean")
+      configured = described_class.new(prompt: "hi", client: client, non_interactive: true)
+      configured.run
+      expect(configured.engine.session.toolkit).to eq(Samagotchi::Toolkit.new(name: "lean"))
+
+      toolkit = Samagotchi::Toolkit.new(name: "child", add: ["delegate"])
+      flagged = described_class.new(prompt: "hi", client: client, non_interactive: true, toolkit: toolkit)
+      flagged.run
+      expect(flagged.engine.session.toolkit).to eq(toolkit)
+    end
+
     it "gives the Engine a resumed session's appended files first, then the flag's, without saving the merge" do
       stored = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd,
                                                setup: Samagotchi::SessionSetup.new(appended_prompt_files: ["/r/a.md"]))

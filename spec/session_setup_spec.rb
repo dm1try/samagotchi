@@ -11,11 +11,16 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.new(thinking: :low)).not_to be_empty
     expect(described_class.new(reasoning_history: :drop)).not_to be_empty
     expect(described_class.new(appended_prompt_files: ["/r/a.md"])).not_to be_empty
+    expect(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "lean"))).not_to be_empty
   end
 
   it "takes a session's own settings, and none from no session" do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
-    expect(described_class.of(session)).to eq(described_class.new)
+    # A session without a toolkit (from before them) is on full: its
+    # continue and fork too, never config's default.
+    expect(described_class.of(session)).to eq(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "full")))
+    session.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["web_fetch"])
+    expect(described_class.of(session).toolkit).to eq(session.toolkit)
 
     session.llm_context = Samagotchi::LLMContextOverride.new(strategy: [:stale])
     expect(described_class.of(session).llm_context).to eq(Samagotchi::LLMContextOverride.new(strategy: [:stale]))

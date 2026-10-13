@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "config"
+
 module Samagotchi
   # A session's toolkit: which of the registered tools its prompts declare
   # (docs/sessions.md, "Toolkits"). Saved in the session file as given
@@ -133,6 +135,14 @@ module Samagotchi
       when String, Symbol
         value.to_s.strip.empty? ? nil : new(name: value)
       end
+    end
+
+    # The toolkit a new session is stored on: config's toolkit.default, or
+    # toolkit.child for a delegate child; FULL when unset. As named: the
+    # worker resolves it (plugins' kits load there).
+    def self.configured(delegate: false)
+      name = Config.get(delegate ? "toolkit.child" : "toolkit.default").to_s.strip
+      new(name: name.empty? ? FULL : name)
     end
 
     # The toolkit a session is on: its own, or FULL without one.

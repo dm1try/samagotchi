@@ -184,6 +184,19 @@ module Samagotchi
     # couldn't read; nil when there is neither.
     def reasoning_history_file = @reasoning_history&.to_s || @reasoning_history_unread
 
+    # The session's toolkit (Toolkit: the tools its prompts declare), as
+    # given when it was created; nil for a session from before toolkits,
+    # which is on Toolkit::FULL (Toolkit.of). Saved and never resolved
+    # again from config, so a respawned worker declares the same tools; a
+    # continue and a fork copy it (SessionSetup.of), a delegate child gets
+    # toolkit.child (SessionManager.spawn_session).
+    attr_reader :toolkit
+
+    # @param value [Toolkit, Hash, String, nil] the session file's form too
+    def toolkit=(value)
+      @toolkit = value.is_a?(Toolkit) ? value : Toolkit.from_file(value)
+    end
+
     # The hook that stopped the last turn (stop_turn, or a cut with no retry
     # left), e.g. "loop-guard"; nil when it ended otherwise.
     def stopped_by
@@ -213,7 +226,7 @@ module Samagotchi
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
-                   interrupted_turn: nil)
+                   toolkit: nil, interrupted_turn: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -242,6 +255,7 @@ module Samagotchi
       self.thinking = thinking
       self.reasoning_history = reasoning_history
       self.appended_prompt_files = appended_prompt_files
+      self.toolkit = toolkit
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
       @archived = false
@@ -336,6 +350,7 @@ module Samagotchi
         thinking: setup.thinking,
         reasoning_history: setup.reasoning_history,
         appended_prompt_files: setup.appended_prompt_files,
+        toolkit: setup.toolkit,
         continues: continues
       )
     end
@@ -400,6 +415,7 @@ module Samagotchi
       "thinking" => nil,
       "reasoning_history" => nil,
       "appended_prompt_files" => [],
+      "toolkit" => nil,
       "interrupted_turn" => nil
     }.freeze
 
@@ -527,6 +543,7 @@ module Samagotchi
                 when "llm_context" then llm_context_file
                 when "thinking" then thinking_file
                 when "reasoning_history" then reasoning_history_file
+                when "toolkit" then @toolkit&.to_file
                 when "prompt_notes" then @prompt_notes.map(&:to_file)
                 when "last_turn" then @last_turn&.to_file
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names", "appended_prompt_files"

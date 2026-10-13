@@ -1415,7 +1415,7 @@ Every setting below takes the three forms described in
 marked config.yml only) and, where the CLI
 column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 `model_aliases:`, `hooks:`, `guardrails:` rules, `bundles:`, `memories:`,
-`append_system_prompt:`) are described in their own sections.
+`append_system_prompt:`, `toolkit.kits`) are described in their own sections.
 
 | Setting | Default | CLI | What it does |
 |---|---|---|---|
@@ -1483,6 +1483,8 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `context.status_thresholds` | `20,40,60,80` | yes | Percentages that put the estimate into a bucket; the rise into a guidance bucket (from the second up) leaves the model its own `[CONTEXT: …]` line, and the bucket decides the guidance. |
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |
 | `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, within `session.max_wakes`); so may a session's pushed source's first push. `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
+| `toolkit.default` | `full` | | The toolkit a new session is stored on: the tools its prompts declare (`full`, `lean`, `child`, one of `toolkit.kits` or a bundle's). `chi --toolkit` picks one per session. See "Toolkits". |
+| `toolkit.child` | `full` | | A delegate child's toolkit. See "Toolkits". |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
 | `reasoning_history` | `turn` | | Which of its reasoning a chat host's model gets back: `drop`, `turn`, `all`; environment only (`SAMAGOTCHI_REASONING_HISTORY`), below a session's own level (`/reasoning-history`), above the `models:`/`hosts:` entries. See "Reasoning history". |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't; a session's own level outranks them all, and `--thinking` sets it on a session run (on `chi web` it sets this). See "Thinking". |

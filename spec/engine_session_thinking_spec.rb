@@ -73,12 +73,13 @@ RSpec.describe Samagotchi::Engine, "session thinking level" do
     expect { engine.thinking_override = :low }.to raise_error(ArgumentError, "no session yet")
   end
 
-  it "hands a plugin's fork the session's own setup, thinking included" do
+  it "hands a plugin's fork the session's own setup, thinking and toolkit included" do
     override = Samagotchi::LLMContextOverride.new(strategy: [:stale])
     session.llm_context = override
     session.thinking = :off
     engine.session = session
 
-    expect(engine.send(:plugin_host).setup.call).to eq(Samagotchi::SessionSetup.new(llm_context: override, thinking: :off))
+    expect(engine.send(:plugin_host).setup.call)
+      .to eq(Samagotchi::SessionSetup.new(llm_context: override, thinking: :off, toolkit: Samagotchi::Toolkit.new(name: "full")))
   end
 end
