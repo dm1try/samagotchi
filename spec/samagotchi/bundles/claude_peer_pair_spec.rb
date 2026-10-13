@@ -42,9 +42,9 @@ RSpec.describe "The claude-peer pair script" do
     inbox = own.snapshot("claude-inbox")
     expect(inbox).to have_attributes(hint: "/tmp/claude-a.sock", summary: "Claude Code paired from #{tmpdir}")
     expect(inbox.text).to include("socket: /tmp/claude-a.sock", "claude cwd: #{tmpdir}", "claude_send")
-    # The placeholder, so Claude's first real answer wakes chi.
-    expect(own.snapshot("claude-review")).to have_attributes(text: "(no reply from Claude yet)",
-                                                             summary: "no reply from Claude yet")
+    # No placeholder: Claude's first answer (wake: true) wakes chi (chi 0.63.0).
+    expect(own.source("claude-review")).to have_attributes(hint: "latest Claude reply", cmd: nil)
+    expect(own.snapshot("claude-review").text).to be_nil
 
     own.record_text("claude-review", Samagotchi::ContextSources::Fetched.new(text: "VERDICT: OK", summary: "ok",
                                                                              wake: true, hint: nil))

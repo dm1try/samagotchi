@@ -12,8 +12,11 @@ plugin:
   file: plugin.rb
   sha256: sha256:4b172e4ec0ae83cf30b3acbef73640ddda96aecdae33a1ea3da38b530c124bb6
 scripts:
-  pair: sha256:07baf5730f45f1733ec73e99ec8a7a0fb2fff65961ebe9ae2ac86180fd45bfb0
+  pair: sha256:033f1fc6a644950b57e71865253526a0a487bb4c9fd5a61bb89d031b65f40417
   chi-peer-SKILL.md: sha256:f35f726b1a86091ff69d289e8dd58794ac6f44879a63630fcc88d69867c56e20
-# ctx.context.list's summary: (the /claude card's last answer) is chi 0.63.0;
-# without it the card leaves that line out.
+# Two things need chi 0.63.0, and the bundle works without them on 0.62:
+# ctx.context.list's summary: (the /claude card's last answer; without it
+# the card shows no summary), and a pushed source's first wake: true push
+# waking the session (on 0.62 Claude's first answer arrives as a note
+# without waking; later ones wake).
 requires_chi: ">= 0.62.0"

@@ -61,15 +61,6 @@ printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$sock")
   "$(json "Claude Code paired from $PWD")" | $chi context push claude-inbox "$id" >/dev/null
 
 attach claude-review --why "Claude's answers to what you sent it (claude-peer)" --hint "latest Claude reply"
-# A source's first text never wakes chi (it arrives as an "Attached" note),
-# so a placeholder goes first and Claude's first real answer wakes it. Only
-# when there is no text yet: a re-pair keeps Claude's last answer.
-# TODO(context-first-push-wake): remove this placeholder push once chi wakes
-# on a pushed source's first text (~/.claude/plans/context-first-push-wake.md).
-if ! $chi context show claude-review "$id" >/dev/null 2>&1; then
-  printf '%s\n' '{"text":"(no reply from Claude yet)","summary":"no reply from Claude yet"}' |
-    $chi context push claude-review "$id" >/dev/null
-fi
 
 echo "paired with chi $id (socket $sock)"
 $chi context ls "$id"

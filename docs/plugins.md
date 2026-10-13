@@ -1536,13 +1536,12 @@ Claude pairs; without one the bundle costs one tool declaration.
   2. In Claude Code you say "pair with chi <id or chi web URL>". The skill runs
      `sh <bundle>/scripts/pair <id or URL>`, which attaches `claude-inbox` (the
      socket as its hint, pushed as JSON so a re-pair after a Claude restart
-     refreshes it) and `claude-review`, and lists the session's context. Until
-     chi wakes on a pushed source's first text, `pair` pushes a placeholder to
-     `claude-review` (only when it has no text yet), so Claude's first real
-     answer wakes chi.
+     refreshes it) and `claude-review`, and lists the session's context. A
+     re-pair keeps Claude's last answer.
   3. Claude answers a validate or a question with a JSON push to
-     `claude-review` (`text`, `summary`, `wake: true`), which wakes chi; the
-     model reads it with `context_read claude-review`.
+     `claude-review` (`text`, `summary`, `wake: true`), which wakes chi, the
+     first answer too (on chi 0.62 the first one arrives as a note without
+     waking); the model reads it with `context_read claude-review`.
 - **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
   `context` or `question`, writes one JSON line to that socket. The message
   starts with a header, `chi <id> · <kind> · <title>`. A text up to 4,000
