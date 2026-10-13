@@ -248,6 +248,47 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(result).not_to include("exit:")
     end
 
+    # Tagged log lines for each command's life (turn tag): what ran how
+    # long and how it ended, never its command line or output.
+    describe "logging" do
+      def logged
+        lines = []
+        %i[debug info].each do |level|
+          allow(Samagotchi::Log).to receive(level).and_wrap_original do |original, tag, event, **fields|
+            lines << [level, tag, event, fields] if event.start_with?("execute_")
+            original.call(tag, event, **fields)
+          end
+        end
+        lines
+      end
+
+      def secret_free?(lines) = lines.none? { |line| line.inspect.include?("s3cr3t") }
+
+      it "logs a command's start and finish, with no output or command line" do
+        lines = logged
+
+        described_class.call("echo s3cr3t; exit 3")
+
+        expect(lines.map { |level, tag, event, _| [level, tag, event] })
+          .to eq([[:debug, :turn, "execute_started"], [:debug, :turn, "execute_finished"]])
+        expect(lines.last.last).to include(exit: 3, ms: a_kind_of(Integer))
+        expect(lines.first.last).to include(timeout_sec: a_kind_of(Integer), on_timeout: :task)
+        expect(lines.map { |l| l.last[:id] }.uniq.size).to eq(1)
+        expect(secret_free?(lines)).to be(true)
+      end
+
+      it "logs a command killed at the limit" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        lines = logged
+
+        described_class.call("echo s3cr3t; sleep 5", on_timeout: :kill)
+
+        expect(lines.last.first(3)).to eq([:info, :turn, "execute_timed_out"])
+        expect(lines.last.last).to include(after_sec: 1)
+        expect(secret_free?(lines)).to be(true)
+      end
+    end
+
     describe "on Stop" do
       def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -571,6 +612,19 @@ RSpec.describe Samagotchi::Tools::Execute do
 
         expect(stopped).to include("status: stopped")
         expect(running?("sleep 31.61")).to be(false)
+      end
+
+      it "logs the hand-over" do
+        ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+        lines = []
+        allow(Samagotchi::Log).to receive(:info).and_wrap_original do |original, tag, event, **fields|
+          lines << [tag, event, fields] if event.start_with?("execute_")
+          original.call(tag, event, **fields)
+        end
+
+        id = task_id(described_class.call("echo s3cr3t; sleep 3"))
+
+        expect(lines).to eq([[:turn, "execute_handed_over", { id: id, after_sec: 1 }]])
       end
 
       it "reads a command that ended between the deadline and the hand-over as finished, not timed out" do

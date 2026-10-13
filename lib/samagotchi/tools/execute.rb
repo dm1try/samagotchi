@@ -2,6 +2,7 @@
 
 require "fileutils"
 require_relative "../config"
+require_relative "../log"
 require_relative "../paths"
 require_relative "../process_group"
 require_relative "output_guardrails"
@@ -169,10 +170,14 @@ module Samagotchi
         exit_code_path = File.join(dir, TaskRuntime::EXIT_CODE_FILENAME)
         begin
           pid = spawn_logged(command, env: env, cwd: cwd, logs: logs, exit_code_path: exit_code_path)
-        rescue StandardError
+        rescue StandardError => e
+          Log.info(:turn, "execute_spawn_failed", id: id, error: e.class.name)
           FileUtils.rm_rf(dir)
           raise
         end
+        # Never the command line or its output: a command may carry a
+        # secret, and its output is the tool result's.
+        Log.debug(:turn, "execute_started", id: id, pid: pid, timeout_sec: timeout_sec, on_timeout: on_timeout)
         wait_thr = Process.detach(pid)
         # A stop is done once the shell is reaped and nothing holds the logs:
         # a child that ignores TERM keeps them, so the stop goes on to KILL.
@@ -195,6 +200,7 @@ module Samagotchi
                              timeout_sec: timeout_sec, dir: dir, logs: logs, exit_code_path: exit_code_path)
             if text
               handed_over = true
+              Log.info(:turn, "execute_handed_over", id: id, after_sec: timeout_sec)
               raise HandedOver, text
             end
             # Not adopted because it ended meanwhile: finished too.
@@ -205,10 +211,11 @@ module Samagotchi
           status = wait_thr.value
         rescue HandedOver
           raise
-        rescue Exception # rubocop:disable Lint/RescueException -- kill the child, then re-raise
+        rescue Exception => e # rubocop:disable Lint/RescueException -- kill the child, then re-raise
           # An Interrupt (or anything else) mid-wait: the child is in its own
           # process group, so it never saw the SIGINT. Kill it.
           aborted = true
+          Log.info(:turn, "execute_aborted", id: id, error: e.class.name)
           terminate_process_tree(pid, stopped: stopped) if wait_thr.alive?
           raise
         ensure
@@ -230,9 +237,18 @@ module Samagotchi
           end
         end
 
-        raise CommandTimedOut.new(stdout_text, stderr_text) if timed_out
-        raise CommandCancelled.new(stdout_text, stderr_text, monotonic_time - started) if was_cancelled
+        elapsed_ms = ((monotonic_time - started) * 1000).round
+        if timed_out
+          Log.info(:turn, "execute_timed_out", id: id, after_sec: timeout_sec)
+          raise CommandTimedOut.new(stdout_text, stderr_text)
+        end
+        if was_cancelled
+          Log.info(:turn, "execute_stopped", id: id, ms: elapsed_ms)
+          raise CommandCancelled.new(stdout_text, stderr_text, monotonic_time - started)
+        end
 
+        Log.debug(:turn, "execute_finished", id: id, exit: status&.exitstatus, ms: elapsed_ms,
+                                             background: held_open || nil)
         [stdout_text, stderr_text, status, held_open]
       end
       private_class_method :run_command
@@ -348,6 +364,8 @@ module Samagotchi
           Thread.current.report_on_exception = false
           code = waiter.value&.exitstatus
           File.write(path, code.to_s) if code && !File.exist?(path) && Dir.exist?(File.dirname(path))
+        rescue StandardError => e
+          Log.debug(:turn, "execute_exit_code_failed", error: e.class.name, msg: e.message)
         end
       end
       private_class_method :write_missing_exit_code
