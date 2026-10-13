@@ -676,3 +676,13 @@ test("steerChoiceRoute: any other line is not a delivery", () => {
     assert.equal(steerChoiceRoute(line, { running: true }), null, line);
   }
 });
+
+test("snapshotEvents passes a running call's elapsed_ms on, so a join clocks it from its start", () => {
+  const turn = { prompt: "p", parts: [
+    { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "ls", status: "running", elapsed_ms: 4200 },
+    { kind: "tool", iteration: 1, call_index: 2, tool: "read", params: "f", status: "ok", output: "x", elapsed_ms: 9 },
+  ] };
+  const starts = snapshotEvents({ current_turn: turn }).filter((e) => e.type === "tool_call_started");
+  assert.equal(starts[0].elapsed_ms, 4200);
+  assert.equal("elapsed_ms" in starts[1], false);
+});

@@ -327,3 +327,19 @@ test("blockGens: the finished turn's steps as its block holds them (a text-only 
   const plainAnswer = { gens: [g("Start."), g("Done.", { tools: 0, answer: true })] };
   assert.deepEqual(model.blockGens(plainAnswer).map((x) => x.text), ["Start."]);
 });
+
+test("generationStarted stamps the gen's startedAt with the page's clock (the delivery line's), none for a replay", () => {
+  const turn = newTurn();
+  model.turnStarted(turn);
+  // The turn's first gen is empty: generation_started takes it, and its clock.
+  model.generationStarted(turn, 1, 5000);
+  assert.equal(currentGen(turn).startedAt, 5000);
+  model.chunk(turn, { thinking: "hm", iteration: 1 });
+  model.generationStarted(turn, 2, 9000);
+  assert.equal(currentGen(turn).startedAt, 9000);
+  assert.equal(turn.gens[0].startedAt, 5000);
+  // A replayed start (no clock given): no startedAt.
+  model.chunk(turn, { thinking: "x", iteration: 2 });
+  model.generationStarted(turn, 3);
+  assert.equal(currentGen(turn).startedAt, null);
+});

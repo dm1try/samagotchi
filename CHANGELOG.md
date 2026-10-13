@@ -14,7 +14,7 @@ and commands may change between minor versions. How releases are made:
   /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".
 - A worker's snapshot (`GET /session/:id/snapshot`, `?snapshot=1`) says the running generation's phase as
   `current_turn.generation: {thinking_only, age}`, so a page joining mid-turn can clock what a message would wait
-  for. See docs/internals/engine.md, "GenerationPhase".
+  for; a joined page also clocks a running tool call from its start. See docs/internals/engine.md, "GenerationPhase".
 
 ## [0.64.0] - 2026-10-13
 

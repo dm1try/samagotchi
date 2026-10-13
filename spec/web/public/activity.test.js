@@ -244,3 +244,11 @@ test("the row field lists are copied by addStarted, addCompleted's synthesized r
   addCompleted(replayed, completed);
   assert.deepEqual(has(replayed.rows[0]), fields);
 });
+
+test("a replayed running call with the snapshot's elapsed_ms starts that long before the page's clock", () => {
+  const m = newActivity();
+  const { row } = addStarted(m, { iteration: 1, call_index: 1, tool: "execute", replayed: true, elapsed_ms: 12_000 }, 50_000);
+  assert.equal(row.startedAt, 38_000);
+  // Its live completion is timed from there.
+  assert.equal(addCompleted(m, { iteration: 1, call_index: 1 }, 51_000).duration_ms, 13_000);
+});
