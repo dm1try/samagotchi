@@ -1099,7 +1099,11 @@ RSpec.describe Samagotchi::Web::App do
         { "match" => "JIRA-1", "kind" => "issue", "target" => { "id" => "JIRA-1" },
           "actions" => [{ "id" => "open", "label" => "Open in Jira", "url" => "https://j.test/browse/JIRA-1" }] }
       end
-      let(:file) { { "match" => "a.rb:3", "kind" => "file", "target" => { "path" => "/p/a.rb", "line" => 3 }, "actions" => [] } }
+      # Under the session's folder (the stub session's is Dir.pwd): plan D7.
+      let(:file) do
+        { "match" => "a.rb:3", "kind" => "file", "target" => { "path" => File.join(File.realpath(Dir.pwd), "a.rb"), "line" => 3 },
+          "actions" => [] }
+      end
       let(:live) do
         { "snapshot" => { "messages" => [
           { "role" => "user", "content" => "q", "display_refs" => [jira] },
@@ -1152,6 +1156,14 @@ RSpec.describe Samagotchi::Web::App do
 
         live["snapshot"]["messages"].last["display_refs"] = many
         expect(live_read("?tail=1").last["display_refs"].length).to eq(200)
+      end
+
+      it "drops a stored file ref outside the session's folder from a read that knows the folder" do
+        outside = file.merge("target" => { "path" => "/elsewhere/a.rb" })
+        live["snapshot"]["messages"].last["display_refs"] = [jira, outside]
+
+        expect(live_read("").last["display_refs"]).to eq([jira])
+        expect(live_read("?parts=1").last["display_refs"]).to eq([jira])
       end
 
       it "still shows the conversation when the stored refs are junk (no refs on that message)" do

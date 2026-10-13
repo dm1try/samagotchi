@@ -655,7 +655,8 @@ RSpec.describe "The github-pr bundle" do
       end
 
       it "adds each linked ref as a file ref: the checkout's file, a PR diff or File at head/base action" do
-        repo = checkout_with("git@github.com:Acme/app.git")
+        # Kept under the session folder's real path (AnswerRef, as RowRefs).
+        repo = File.realpath(checkout_with("git@github.com:Acme/app.git"))
         text = "`lib/foo.rb:28` and lib/foo.rb:30-40, lib/old.rb:12"
 
         expect(answer(text)).to eq("[`lib/foo.rb:28`](#{anchor("lib/foo.rb", "R28")}) and " \

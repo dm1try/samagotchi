@@ -88,7 +88,7 @@ module Samagotchi
     # +cwd+ as [its spelling, its real path] (one when they are the same,
     # none without a +cwd+). absolute_path, not expand_path: a leading ~ is
     # a name, never a home. One realpath per row: the lambda's refs are
-    # checked together.
+    # checked together. The answer's refs (AnswerRef) check against it too.
     def roots(cwd)
       return [] if cwd.to_s.empty?
 
@@ -100,10 +100,10 @@ module Samagotchi
       end
       [given, real].uniq
     end
-    private_class_method :roots
 
     # +ref+ with a file's path absolute, resolved against the folder
-    # (+roots+, #roots), under its real spelling.
+    # (+roots+, #roots), under its real spelling: plan D7, for a plugin
+    # row's refs and an answer's (AnswerRef) alike.
     # @raise [ArgumentError] a relative path with no folder (or not
     #   +relative+), or a path outside the folder
     def inside(ref, roots, relative)
@@ -121,6 +121,5 @@ module Samagotchi
 
       ref.with(target: ref.target.merge(path: "#{roots.last}#{path.delete_prefix(root)}").freeze)
     end
-    private_class_method :inside
   end
 end

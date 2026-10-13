@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "tmpdir"
 require "samagotchi/answer_refs"
 
 RSpec.describe Samagotchi::AnswerRefs do
@@ -114,19 +115,53 @@ RSpec.describe Samagotchi::AnswerRefs do
     expect(refs_for.adder(event).call(**jira, match: "m" * 500)).to be(true)
   end
 
-  it "resolves a relative file path against the session folder; an absolute one stays" do
+  # Plan D7, as a plugin row's file refs (RowRefs): any file under the
+  # session's folder; a relative path is resolved against it.
+  it "resolves a relative file path against the session folder; an absolute one under it stays" do
     refs = refs_for(cwd: "/proj")
     add = refs.adder(event)
 
     expect(add.call(match: "a.rb:3", kind: "file", target: { "path" => "lib/a.rb", "line" => 3 })).to be(true)
-    expect(add.call(match: "b.rb", kind: "file", target: { path: "/elsewhere/b.rb" })).to be(true)
+    expect(add.call(match: "b.rb", kind: "file", target: { path: "/proj/b.rb" })).to be(true)
     expect(add.call(match: "~x", kind: "file", target: { path: "~nosuchuser/c.rb" })).to be(true)
-    expect(refs.to_a.map { |r| r[:target][:path] }).to eq(["/proj/lib/a.rb", "/elsewhere/b.rb", "/proj/~nosuchuser/c.rb"])
+    expect(refs.to_a.map { |r| r[:target][:path] }).to eq(["/proj/lib/a.rb", "/proj/b.rb", "/proj/~nosuchuser/c.rb"])
+  end
+
+  it "refuses a file outside the session folder, logged (an absolute path, or a relative one that climbs out)" do
+    add = refs_for(cwd: "/proj").adder(event)
+
+    expect(add.call(match: "b.rb", kind: "file", target: { path: "/elsewhere/b.rb" })).to be(false)
+    expect(add.call(match: "c.rb", kind: "file", target: { path: "../c.rb" })).to be(false)
+    expect(add.call(match: "proj2", kind: "file", target: { path: "/proj2/d.rb" })).to be(false)
+    expect(rejections.map { |f| f[:reason] }).to eq(["a file ref outside the session folder (/elsewhere/b.rb)"])
+  end
+
+  it "keeps a file under the folder's real path (macOS /tmp is /private/tmp), stored under it" do
+    Dir.mktmpdir do |dir|
+      real = File.realpath(dir)
+      link = "#{dir}-link"
+      File.symlink(real, link)
+      refs = refs_for(cwd: link)
+      add = refs.adder(event)
+
+      expect(add.call(match: "a.rb", kind: "file", target: { path: "a.rb" })).to be(true)
+      expect(add.call(match: "b.rb", kind: "file", target: { path: File.join(real, "b.rb") })).to be(true)
+      expect(refs.to_a.map { |r| r[:target][:path] }).to eq([File.join(real, "a.rb"), File.join(real, "b.rb")])
+    ensure
+      File.unlink(link) if link && File.symlink?(link)
+    end
   end
 
   it "refuses a relative file path when the session has no folder" do
     expect(refs_for(cwd: nil).adder(event).call(match: "a.rb", kind: "file", target: { path: "lib/a.rb" })).to be(false)
-    expect(rejections.map { |f| f[:reason] }).to eq(["relative path, no session folder"])
+    expect(rejections.map { |f| f[:reason] }).to eq(["a file ref's relative path needs the session folder"])
+  end
+
+  it "drops a stored file ref outside the session folder when it starts from the answer's refs" do
+    stored = { "match" => "x.rb", "kind" => "file", "target" => { "path" => "/elsewhere/x.rb" } }
+    inside = { "match" => "y.rb", "kind" => "file", "target" => { "path" => "/proj/y.rb" } }
+
+    expect(refs_for([answer.merge(display_refs: [stored, inside])], cwd: "/proj").to_a.map { |r| r[:match] }).to eq(["y.rb"])
   end
 
   it "starts from the refs the answer has (string keys, as Session.load leaves them), so none are lost" do
@@ -160,6 +195,13 @@ RSpec.describe Samagotchi::AnswerRefs do
       expect(described_class.for_display(many).length).to eq(200)
       expect(described_class.for_display("junk")).to eq([])
       expect(described_class.for_display(nil)).to eq([])
+    end
+
+    it "drops a stored file ref outside the session folder, given the folder" do
+      outside = { match: "x.rb", kind: "file", target: { path: "/elsewhere/x.rb" } }
+      inside = { match: "y.rb", kind: "file", target: { path: "/proj/y.rb" } }
+
+      expect(described_class.for_display([outside, inside], cwd: "/proj").map { |r| r[:match] }).to eq(["y.rb"])
     end
   end
 end

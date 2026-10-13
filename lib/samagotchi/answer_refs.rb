@@ -3,6 +3,7 @@
 require "json"
 require_relative "log"
 require_relative "ref"
+require_relative "row_refs"
 
 module Samagotchi
   # One ref on the answer: the text it stands for (+match+, what the page
@@ -27,30 +28,20 @@ module Samagotchi
     MAX_MATCH = 500
 
     # A hook's {match:, kind:, target:, label:, actions:}, or a stored
-    # entry (String or Symbol keys, nested ones too). A file ref's relative
-    # path is resolved against +cwd+, so the stored path is absolute; with
-    # no +cwd+ it is refused. An absolute path stays as given.
+    # entry (String or Symbol keys, nested ones too). A file ref is held to
+    # the session's folder as a plugin row's is (RowRefs.inside, plan D7):
+    # +roots+ is RowRefs.roots of it; a relative path is resolved against
+    # it (+relative+; a stored one was stored absolute, so it is dropped),
+    # a path outside it refused, and the path kept under its real
+    # spelling. With no folder (no +roots+), an absolute path stays.
     # @raise [ArgumentError] anything invalid
-    def self.from(value, cwd: nil)
+    def self.from(value, roots: [], relative: true)
       raise ArgumentError, "a ref is a Hash {match:, kind:, target:, label:, actions:}" unless value.is_a?(Hash)
 
       value = value.transform_keys(&:to_sym)
       ref = Ref.new(kind: value[:kind], target: value[:target], label: value[:label], actions: value[:actions] || [])
-      new(match: value[:match], ref: absolute(ref, cwd))
+      new(match: value[:match], ref: RowRefs.inside(ref, roots, relative))
     end
-
-    def self.absolute(ref, cwd)
-      return ref unless ref.kind == Ref::FILE
-
-      path = ref.target[:path]
-      return ref if File.absolute_path?(path)
-      raise ArgumentError, "relative path, no session folder" if cwd.to_s.empty?
-
-      # absolute_path, not expand_path: a leading ~ is a name, never a home.
-      Ref.new(kind: ref.kind, target: ref.target.merge(path: File.absolute_path(path, cwd.to_s)), label: ref.label,
-              actions: ref.actions)
-    end
-    private_class_method :absolute
   end
 
   # The refs after_turn hooks attach to a turn's answer (event[:refs]),
@@ -71,12 +62,13 @@ module Samagotchi
     # Stored refs (+raw+, as read from session.json or a snapshot), each
     # rebuilt and checked again, the caps applied; what isn't valid any
     # more is dropped. Never raises: a reload must show the conversation.
-    # A relative file path is dropped (there is no folder to resolve it).
+    # A relative file path is dropped (it was stored absolute), and with
+    # +cwd+ (the session's folder) a file outside it.
     # @return [Array<Hash>] the refs to send ({match:, kind:, target:, …})
-    def self.for_display(raw)
+    def self.for_display(raw, cwd: nil)
       return [] if raw.nil?
 
-      kept = new([{ role: "model", KEY => raw }], cwd: nil).to_a
+      kept = new([{ role: "model", KEY => raw }], cwd: cwd).to_a
       dropped = raw.is_a?(Array) ? raw.length - kept.length : 1
       Log.debug(:web, "display_refs_dropped", count: dropped) if dropped.positive?
       kept
@@ -92,7 +84,7 @@ module Samagotchi
     def initialize(messages, cwd:)
       last = Array(messages).last
       @target = last if last.is_a?(Hash) && (last[:role] || last["role"]).to_s == "model"
-      @cwd = cwd
+      @roots = RowRefs.roots(cwd)
       @refs = []
       @seen = {}
       @bytes = 2 # the list's []
@@ -149,7 +141,7 @@ module Samagotchi
       unknown = value.keys - KEYS
       return reject(hook, "has unknown keys #{unknown.map(&:to_s).inspect}") unless unknown.empty?
 
-      entry = AnswerRef.from(value, cwd: @cwd).to_h
+      entry = AnswerRef.from(value, roots: @roots).to_h
       return true if @seen.key?(entry)
       return over_cap(hook, "#{MAX_REFS} refs") if @refs.length >= MAX_REFS
 
@@ -163,11 +155,11 @@ module Samagotchi
     end
 
     # A stored entry back in the list, checked again (a relative path is
-    # dropped: it was stored absolute). Duplicates and what is over the
-    # caps go quietly.
+    # dropped: it was stored absolute; so is a file outside the folder).
+    # Duplicates and what is over the caps go quietly.
     # @return [Boolean] kept
     def keep(raw)
-      entry = AnswerRef.from(raw, cwd: nil).to_h
+      entry = AnswerRef.from(raw, roots: @roots, relative: false).to_h
       return false if @seen.key?(entry) || @refs.length >= MAX_REFS
 
       size = JSON.generate(entry).bytesize + (@refs.empty? ? 0 : 1)

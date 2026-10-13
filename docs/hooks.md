@@ -301,9 +301,12 @@ end
   keywords only (String or Symbol keys inside `target` and `actions`).
   - `match`: the text in the answer the ref stands for (at most 500 characters).
   - `kind`: a short lowercase word. `"file"` takes `target: {path:, line:, end_line:}`
-    (the lines optional); a relative path is resolved against the session's
-    folder, an absolute one is kept as given. Any other kind (`"issue"`,
-    `"commit"`, …) takes `target: {id:}`.
+    (the lines optional); the path is absolute or relative to the session's
+    folder, and must be **under** it (its own spelling or its real path:
+    `/tmp/x` or `/private/tmp/x`), as a plugin tool row's file refs
+    ([plugins.md](plugins.md)): a file elsewhere is refused. It is kept under
+    the folder's real path. Any other kind (`"issue"`, `"commit"`, …) takes
+    `target: {id:}`.
   - `label`: what a UI shows for it (optional, at most 200 characters).
   - `actions`: links a UI offers on top of the kind's own, each
     `{id:, label:, url:}`; http(s) URLs only, without userinfo (`user:pass@`),

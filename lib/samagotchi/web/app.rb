@@ -921,7 +921,7 @@ module Samagotchi
           state = nil
           session_json = { id: id, status: displayed_status(session), used_memory_names: Array(session.used_memory_names),
                            prompt_notes: session.prompt_notes.map(&:to_h) }
-          messages = last_assistant_for_display(session.messages, turn_id: turn_id)
+          messages = last_assistant_for_display(session.messages, turn_id: turn_id, cwd: session.working_directory)
         end
         live_metrics = state && state["metrics"]
         # Without recent=1: a tab opened before this release (it replaces its
@@ -1923,7 +1923,7 @@ module Samagotchi
             message[:html] = @markdown_renderer.render(rendered) if !rendered.empty? && @markdown_renderer.available?
             # The refs after_turn hooks attached (AnswerRefs), checked again:
             # a stored file is never trusted. Never raises.
-            refs = Samagotchi::AnswerRefs.for_display(m[:display_refs] || m["display_refs"])
+            refs = Samagotchi::AnswerRefs.for_display(m[:display_refs] || m["display_refs"], cwd: cwd)
             message[:display_refs] = refs unless refs.empty?
           end
           message[:parts] = did if did
@@ -1968,8 +1968,10 @@ module Samagotchi
 
       # The last message messages_for_display shows as an answer
       # (AnswerTail), as a list of at most one: only that one is rendered.
-      def last_assistant_for_display(msgs, turn_id: nil)
-        messages_for_display([AnswerTail.find(msgs, turn_id: turn_id)].compact)
+      # +cwd+: the session's folder, for its file refs (nil from a live
+      # worker's tail: its refs were held to the folder when they were added).
+      def last_assistant_for_display(msgs, turn_id: nil, cwd: nil)
+        messages_for_display([AnswerTail.find(msgs, turn_id: turn_id)].compact, cwd: cwd)
       end
 
       def parse_json(str)

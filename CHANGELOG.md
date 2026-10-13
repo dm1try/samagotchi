@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
   push asks to (`"wake": true`); before, only later pushes could.
 - Plugins: `ctx.context.list` returns `[]` for a new session whose file isn't saved yet (a plugin command before
   the first turn) instead of raising "Session not found".
+- An after_turn hook's file refs on the answer (`event[:refs]`) must be under the session's folder, as a plugin
+  tool row's are: a file elsewhere is refused (and logged), and a stored one is dropped when the answer is shown.
 - loop-guard (0.3.8): the card for a turn it stopped prints under the blocked call's row in the terminal, not
   before it.
 - Attached TUI: joining a session whose last turn was images alone (sent from the web) names each image once, not
