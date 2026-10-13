@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-10-13
+
 ### Added
 
 - Plugins: `chi.tool(…, refs: ->(args) { [...] })` gives a tool call's web row its refs (a ticket, a PR, a file
@@ -59,6 +61,9 @@ and commands may change between minor versions. How releases are made:
 - Web: hovering a ref with a ▾ at the very end of a line no longer pushes it onto the next line.
 - Web: a failed `+ URL` attach keeps the "why" you typed (it was emptied), and a context chip with the keyboard
   focus keeps it when the chips refresh.
+
+Update with `chi update`: the system bundle 0.62.0, github-pr 0.5.0, source-links 0.5.0 and slow-commands 0.2.1.
+Then restart `chi web`.
 
 ## [0.61.0] - 2026-10-12
 
@@ -2714,7 +2719,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.61.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.62.0...HEAD
+[0.62.0]: https://github.com/dm1try/samagotchi/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/dm1try/samagotchi/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/dm1try/samagotchi/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/dm1try/samagotchi/compare/v0.58.0...v0.59.0
