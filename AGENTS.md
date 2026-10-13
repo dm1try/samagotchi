@@ -54,10 +54,12 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - `--append-system-prompt FILE` (repeatable): FILE's text goes into the system prompt after the
   AGENTS.md chain (root → cwd); config.yml `append_system_prompt:` is its baseline. Saved in the
   session (kept by respawns, forks and continues); ignored with `--attach`/`--resume`, like `--memory`.
-- The loop follows the model's host: a host with `api: openai` uses the chat loop
-  (`LLM::ChatLoop` on the `LLM::OpenAIChat` adapter, `/v1/chat/completions`), every
-  other host chi's own raw-prompt loop (`KernelLoop`). `--backend` and
-  `SAMAGOTCHI_BACKEND` are gone (see docs/configuration.md).
+- The loop follows the model's host: a host whose `api:` has a chat adapter
+  (`LLM::Adapters::BY_API`) uses the chat loop, `LLM::ChatLoop`: `api: openai` on
+  `LLM::OpenAIChat` (`/v1/chat/completions`), `api: anthropic` on
+  `LLM::AnthropicMessages` (`/v1/messages`). Every other host runs chi's own
+  raw-prompt loop (`KernelLoop`). `--backend` and `SAMAGOTCHI_BACKEND` are gone
+  (see docs/configuration.md).
 
 ## Core Principles
 - **Memory-Centric**: The harness relies heavily on memory (project/system scopes) for persistent cognition; tools operate on code/memories but the core is not self-modifying.
@@ -79,12 +81,15 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 ## Where to read before changing a layer
 - Engine, turn loop, KernelLoop/ChatLoop, tool dispatch → `docs/internals/engine.md`; components, Worker, Bridge, web → `docs/architecture.md`
 - System prompt order, request layout, prompt caching → `docs/internals/prompt-caching.md`
+- Anthropic's Messages API (`api: anthropic`: wire translation, dialects, cache breakpoints, thinking replay) → `docs/internals/anthropic.md`
 - LLM context strategies (`llm_context`, the forget layer) → `docs/internals/llm-context-forget.md`
+- LLM context benchmarks (the offline replay, the live runs) → `docs/internals/llm-context-bench.md`, `docs/internals/llm-context-live.md`
 - Context-usage telemetry (`:context_status`, the CONTEXT line) → `docs/internals/context-telemetry.md`
 - Attached context (`chi context`, refreshed outside text) → `docs/context.md`
 - Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
 - read/execute limits (size, timeout, hand-over) → `docs/internals/tool-guardrails.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle) → `docs/plugins.md`
+- Toolkits (which tools a session declares, `/toolkit`, `chi.toolkit`) → `docs/configuration.md` (Toolkits); the session field → `docs/sessions.md`
 - Bundle install, upgrade and build → `docs/internals/bundles.md`
 - Session files, context notes, sending, chains, delegating → `docs/sessions.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
