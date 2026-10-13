@@ -196,6 +196,14 @@ class Plugin
     text.empty? ? nil : text
   end
 
+  # The session's attached sources; none while its file isn't saved yet
+  # (a new session before its first turn: ctx.context.list raises then).
+  def sources(ctx)
+    ctx.context.list
+  rescue ArgumentError, SystemCallError
+    []
+  end
+
   def role(message) = field(message, :role).to_s
   def kind(message) = field(message, :kind).to_s
   def field(hash, key) = hash.is_a?(Hash) ? hash[key] || hash[key.to_s] : nil
@@ -203,7 +211,7 @@ class Plugin
   # The status card; nil, so the command adds no text.
   def status(ctx)
     id = ctx.session_id
-    sources = id ? ctx.context.list : []
+    sources = id ? sources(ctx) : []
     inbox, review = [INBOX, REVIEW].map { |name| sources.find { |source| source[:name] == name } }
     socket = inbox && inbox[:hint].to_s.strip
     lines = if socket.nil? || socket.empty?
@@ -329,7 +337,7 @@ class Plugin
 
   # The paired Claude's inbox socket: the claude-inbox context's hint.
   def socket_path(ctx)
-    inbox = ctx.context.list.find { |source| source[:name] == INBOX }
+    inbox = sources(ctx).find { |source| source[:name] == INBOX }
     hint = inbox && inbox[:hint].to_s.strip
     if hint.nil? || hint.empty?
       raise SendError, "no claude-inbox: pair from Claude (install its skill with /claude install-skill, then " \

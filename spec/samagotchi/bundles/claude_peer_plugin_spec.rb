@@ -200,6 +200,17 @@ RSpec.describe "The claude-peer plugin" do
           .to eq("Error: this session has no id yet: send after its first turn")
       end
     end
+
+    context "with a session not saved yet (its first turn hasn't run)" do
+      let(:session_id) { "aaaabbbb-1111-2222-3333-444455556666" }
+
+      it "finds no Claude paired, in the tool and the card" do
+        expect(send_part(kind: "validate", title: "t", text: "x")).to start_with("Error: no claude-inbox: pair from Claude")
+
+        fake_chi.commands.fetch("/claude").last.call("", ctx)
+        expect(cards.last[:title]).to eq("claude-peer: not paired")
+      end
+    end
   end
 
   describe "/claude" do
