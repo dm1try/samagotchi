@@ -1058,10 +1058,11 @@ message (before, a failed llama.cpp `/completion` ended the turn as
 | protocol | a body the API doesn't promise | no |
 
 An error event (or an error body inside a 200) has no HTTP status of its own: its numeric `error.code` stands for
-one, else its `error.type` (Anthropic's names; some OpenAI-compatible servers, OpenAI and Ollama, use some of them:
-`invalid_request_error` 400, `authentication_error` 401, `billing_error` 402, `permission_error` 403,
-`not_found_error` 404, `request_too_large` 413, `rate_limit_error` 429, `api_error` 500, `overloaded_error` 529);
-with neither it counts as a 500.
+one, or a Google-style code name (Fireworks: `INVALID_ARGUMENT` 400, `UNAUTHENTICATED` 401, `PERMISSION_DENIED` 403,
+`NOT_FOUND` 404, `RESOURCE_EXHAUSTED` 429), else its `error.type` (Anthropic's names; some OpenAI-compatible servers,
+OpenAI and Ollama, use some of them: `invalid_request_error` 400, `authentication_error` 401, `billing_error` 402,
+`permission_error` 403, `not_found_error` 404, `request_too_large` 413, `rate_limit_error` 429, `api_error` 500,
+`timeout_error` 504, `overloaded_error` 529); with neither it counts as a 500.
 
 The turn's prompt and its completed tool calls stay in the session.
 

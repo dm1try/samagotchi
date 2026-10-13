@@ -60,8 +60,10 @@ and commands may change between minor versions. How releases are made:
 
 - A server error event or error body without a numeric code is classified by its `error.type`: an
   `invalid_request_error` (with a null or named code, as OpenAI sends) fails at once instead of being retried as a
-  server error, and a `rate_limit_error` or `overloaded_error` keeps its kind. See docs/configuration.md, "Server
-  errors".
+  server error, a `rate_limit_error` or `overloaded_error` keeps its kind, and a `timeout_error` is a 504. A
+  Google-style code (`NOT_FOUND`, `INVALID_ARGUMENT`, `UNAUTHENTICATED`, `PERMISSION_DENIED`, `RESOURCE_EXHAUSTED`,
+  as Fireworks answers an unknown model) stands for its status: an unknown model is no longer retried. See
+  docs/configuration.md, "Server errors".
 - Anthropic's context overflow 400s ("prompt is too long: N tokens > M maximum", "input length and `max_tokens`
   exceed context limit") count as a context overflow, also from a gateway that passes them through on the OpenAI
   path: the turn is rolled back and reported as too long for the context window.

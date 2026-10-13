@@ -342,7 +342,13 @@ module Samagotchi
       ERROR_TYPE_STATUS = {
         "invalid_request_error" => 400, "authentication_error" => 401, "billing_error" => 402,
         "permission_error" => 403, "not_found_error" => 404, "request_too_large" => 413,
-        "rate_limit_error" => 429, "api_error" => 500, "overloaded_error" => 529
+        "rate_limit_error" => 429, "api_error" => 500, "overloaded_error" => 529, "timeout_error" => 504
+      }.freeze
+      # The HTTP status a Google-style error.code stands for (Fireworks'
+      # errors before a request reaches a model: {"error":{"code":"NOT_FOUND"}}).
+      ERROR_CODE_STATUS = {
+        "INVALID_ARGUMENT" => 400, "UNAUTHENTICATED" => 401, "PERMISSION_DENIED" => 403, "NOT_FOUND" => 404,
+        "RESOURCE_EXHAUSTED" => 429
       }.freeze
 
       module_function
@@ -420,14 +426,15 @@ module Samagotchi
       end
 
       # The ProviderError for a JSON error object, by its error.code (an HTTP
-      # status), else by its error.type (ERROR_TYPE_STATUS); 500 when it has
-      # neither.
+      # status, or a name in ERROR_CODE_STATUS), else by its error.type
+      # (ERROR_TYPE_STATUS); 500 when it has neither.
       def from_error_json(raw, host:)
         parsed = parse_json(raw)
         error = parsed.is_a?(Hash) && parsed["error"].is_a?(Hash) ? parsed["error"] : parsed
         code = error.is_a?(Hash) ? error["code"] : nil
         code = code.to_i if code.is_a?(String) && code.match?(/\A\d{3}\z/)
         status = code if code.is_a?(Integer) && code.between?(400, 599)
+        status ||= ERROR_CODE_STATUS[code] if code.is_a?(String)
         status ||= ERROR_TYPE_STATUS[error["type"]] if error.is_a?(Hash)
         from_response(status: status || 500, body: raw, host: host)
       end

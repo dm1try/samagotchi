@@ -194,7 +194,8 @@ RSpec.describe Samagotchi::LLM::ProviderError do
         "request_too_large" => [413, Samagotchi::LLM::BadRequest],
         "rate_limit_error" => [429, Samagotchi::LLM::RateLimited],
         "api_error" => [500, Samagotchi::LLM::ServerError],
-        "overloaded_error" => [529, Samagotchi::LLM::ServerError]
+        "overloaded_error" => [529, Samagotchi::LLM::ServerError],
+        "timeout_error" => [504, Samagotchi::LLM::ServerError]
       }
 
       expected.each do |type, (status, klass)|
@@ -231,6 +232,24 @@ RSpec.describe Samagotchi::LLM::ProviderError do
         expect(error).not_to be_reasoning_refused
       end
       expect(by_status.summary).to eq("host splash rejected the request: HTTP 404: model no-such-model-p2b not found")
+    end
+
+    it "maps a Google-style string code (Fireworks' pre-routing errors) to its status, before the type" do
+      expected = { "NOT_FOUND" => 404, "INVALID_ARGUMENT" => 400, "UNAUTHENTICATED" => 401, "PERMISSION_DENIED" => 403,
+                   "RESOURCE_EXHAUSTED" => 429 }
+
+      expected.each do |code, status|
+        error = from_json(JSON.generate(error: { code: code, message: "words" }))
+        expect([code, error.status, error.retryable?]).to eq([code, status, status == 429])
+      end
+    end
+
+    it "takes Fireworks' unknown model (code NOT_FOUND) as a 404 bad request, not retried, also in a 200's body" do
+      body = anthropic("fireworks_error_404_not_found.hand-written.json")
+      error = Samagotchi::LLM::ProviderErrors.from_error_body(body, host: "fw")
+
+      expect(error).to be_a(Samagotchi::LLM::BadRequest)
+      expect([error.status, error.retryable?]).to eq([404, false])
     end
 
     it "no longer retries an OpenAI-shaped invalid request whose code is not a number" do
