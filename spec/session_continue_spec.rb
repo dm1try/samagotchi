@@ -409,14 +409,30 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       expect_nothing_started(previous)
     end
 
-    it "refuses a model whose host config.yml no longer has before the archive stops anything" do
-      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+    def hosts_env(hosts)
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate(hosts)))
+    end
+
+    it "refuses a model given for the new link whose host config.yml doesn't have, before the archive stops anything" do
+      hosts_env("main" => { "host" => "localhost", "port" => 8080 })
+      previous = make
+      allow(manager).to receive(:archive_session).and_call_original
+
+      expect { continue(previous.id, model: "gone:org/model") }
+        .to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'gone'/)
+      expect(manager).not_to have_received(:archive_session)
+      expect_nothing_started(previous)
+    end
+
+    it "refuses a fallback when no default model is configured, before the archive stops anything" do
+      hosts_env("main" => { "host" => "localhost", "port" => 8080 })
       previous = make
       previous.model_name = "gone:org/model"
       previous.save(state_dir: tmpdir)
+      allow(Samagotchi::ModelProfile).to receive(:default_model_name).and_return(nil)
       allow(manager).to receive(:archive_session).and_call_original
 
-      expect { continue(previous.id) }.to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'gone'/)
+      expect { continue(previous.id) }.to raise_error(Samagotchi::ModelProfile::MissingModel)
       expect(manager).not_to have_received(:archive_session)
       expect_nothing_started(previous)
     end
@@ -444,6 +460,67 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
 
       expect { continue(previous.id) }.to raise_error(Samagotchi::ModelProfile::MissingModel)
       expect(archived?(previous.id)).to be(false)
+    end
+  end
+
+  describe "the new link's model" do
+    def hosts_env(hosts)
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate(hosts)))
+    end
+
+    it "runs on a model given for it, with the previous link's setup and the same note" do
+      previous = make
+      previous.thinking = :low
+      previous.toolkit = Samagotchi::Toolkit.new(name: "coordinator")
+      previous.save(state_dir: tmpdir)
+
+      link = continue(previous.id, model: "main:other-model")
+
+      saved = load(link.id)
+      expect(saved).to have_attributes(continues: previous.id, model_name: "main:other-model", model_typed: nil,
+                                       thinking: :low, toolkit: Samagotchi::Toolkit.new(name: "coordinator"))
+      expect(link.model_warning).to be_nil
+      expect(note_of(link.id)[:text]).to end_with("the previous link of its chain. It left no recap.")
+      expect(archived?(previous.id)).to be(true)
+    end
+
+    it "falls back to the default model with a warning when the previous link's host is gone" do
+      hosts_env("main" => { "host" => "localhost", "port" => 8080 })
+      previous = make
+      previous.model_name = "gone:org/model"
+      previous.save(state_dir: tmpdir)
+
+      link = continue(previous.id)
+
+      expect(load(link.id).model_name).to eq(Samagotchi::ConfigFile.model_ref("spec-model").ref)
+      expect(link.model_warning).to match(%r{\Agone:org/model can't run \(unknown host 'gone' in model 'gone:org/model'.*\); started on spec-model\z})
+      expect(archived?(previous.id)).to be(true)
+    end
+
+    it "falls back for a disabled host too, and keeps spawn's own warning after its own" do
+      hosts_env("main" => { "host" => "localhost", "port" => 8080 },
+                "box" => { "host" => "box.local", "port" => 8080, "enabled" => false })
+      previous = make
+      previous.model_name = "box:gemma"
+      previous.save(state_dir: tmpdir)
+      allow(Samagotchi::ModelProfile).to receive(:model_warning).and_return("spec-model isn't in main's list")
+
+      link = continue(previous.id)
+
+      expect(link.model_warning).to eq("box:gemma can't run (host 'box' is disabled (enabled: false in config.yml)); " \
+                                       "started on spec-model; spec-model isn't in main's list")
+    end
+
+    it "picks a given model, else the inherited one, else the default with a warning (model_for)" do
+      hosts_env("main" => { "host" => "localhost", "port" => 8080 })
+      previous = make
+      expect(described_class.model_for(previous, "main:x")).to have_attributes(model: "main:x", warning: nil)
+      expect(described_class.model_for(previous, " ")).to have_attributes(model: "main:gemma-small", warning: nil)
+      previous.model_typed = "small"
+      expect(described_class.model_for(previous, nil).model).to eq("small")
+      previous.model_typed = nil
+      previous.model_name = "gone:org/m"
+      expect(described_class.model_for(previous, nil)).to have_attributes(model: "spec-model", warning: %r{\Agone:org/m can't run})
     end
   end
 

@@ -56,11 +56,21 @@ module Samagotchi
     # moved the chain's end while it waited for the lock.
     TRIES = 3
 
+    # The model a new link runs on (#model_for): the name to spawn it with,
+    # and why it isn't the previous link's (nil when it is, or was given).
+    ModelChoice = Data.define(:model, :warning)
+    # What #check! decided before anything changes: the delegates to move
+    # (ChildMove::Plan) and the new link's model (ModelChoice).
+    Checked = Data.define(:plan, :choice)
+
     # Start the next link of a chain: a new session that continues
     # +id_or_ref+ (Session#continues) in its folder, on its model (the name
     # it was typed as, so an alias holds) and with its own setup (SessionSetup),
     # starting with a context note from chi: the link and the previous
-    # link's recap (SessionChain.note_text). The previous link is archived
+    # link's recap (SessionChain.note_text). +model+, when given, is the
+    # new link's model instead; an inherited one whose host can't run it any
+    # more (gone, disabled, an alias naming another host) falls back to the
+    # default with a warning (#model_for). The previous link is archived
     # first, with its finished delegates (archive_session's rules: a turn
     # running, a prompt queued or the step-limit question refuse; an idle
     # worker is stopped), so a refusal starts nothing. Its open delegates
@@ -81,7 +91,7 @@ module Samagotchi
     # @raise [Refused] continued already, delegates open that can't
     #   move, or its folder is gone
     # @raise [ArchiveRefused, OwnedByTUI] as archive_session
-    def self.run(id_or_ref, prompt: nil, title: nil, state_dir: nil, recap_wait: RECAP_WAIT, archive_wait: 5)
+    def self.run(id_or_ref, prompt: nil, title: nil, model: nil, state_dir: nil, recap_wait: RECAP_WAIT, archive_wait: 5)
       sd = state_dir || Session.default_state_dir
       TRIES.times do |try|
         id = SessionChain.resolve(id_or_ref, state_dir: sd)
@@ -89,7 +99,7 @@ module Samagotchi
           follow = id_or_ref.to_s.strip.start_with?(SessionChain::LAST_PREFIX) && try < TRIES - 1
           next :moved if follow && SessionChain.next_of(id, state_dir: sd)
 
-          run_locked(id, prompt: prompt, title: title, state_dir: sd, recap_wait: recap_wait,
+          run_locked(id, prompt: prompt, title: title, model: model, state_dir: sd, recap_wait: recap_wait,
                          archive_wait: archive_wait)
         end
         return result unless result == :moved
@@ -105,9 +115,10 @@ module Samagotchi
       end
     end
 
-    private_class_method def self.run_locked(id, prompt:, title:, state_dir:, recap_wait:, archive_wait:)
+    private_class_method def self.run_locked(id, prompt:, title:, model:, state_dir:, recap_wait:, archive_wait:)
       previous = Session.load(id, state_dir: state_dir)
-      plan = check!(previous, state_dir)
+      checked = check!(previous, state_dir, model: model)
+      plan = checked.plan
       # archive_session's refusals that can be known now, before the wait.
       SessionManager.archivable!(id, state_dir, except: plan.move)
       recap_before_archive(id, state_dir, wait: recap_wait)
@@ -120,7 +131,8 @@ module Samagotchi
       archive = SessionManager.archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)
       archived = archive[:archived] - already
       begin
-        spawn_continuation(previous, prompt: prompt, title: title, state_dir: state_dir, move: plan.move)
+        spawn_continuation(previous, prompt: prompt, title: title, choice: checked.choice, state_dir: state_dir,
+                                     move: plan.move)
       rescue StandardError
         # Nothing started: the delegates go back, what this archived goes
         # back to the lists, and a new link saved before its worker failed
@@ -181,7 +193,7 @@ module Samagotchi
 
     # The new link, holding off any worker but its own (ChildMove.starting?)
     # while +move+ goes to it.
-    private_class_method def self.spawn_continuation(previous, prompt:, title:, state_dir:, move:)
+    private_class_method def self.spawn_continuation(previous, prompt:, title:, choice:, state_dir:, move:)
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       title = previous.first_preview if title.to_s.strip.empty? && start.nil?
@@ -191,33 +203,64 @@ module Samagotchi
       end
       link = SessionManager.spawn_session(
         prompt: start, title: title, working_directory: previous.working_directory,
-        model_name: previous.model_typed || previous.model_name, setup: SessionSetup.of(previous),
+        model_name: choice.model, setup: SessionSetup.of(previous),
         continues: previous.id, note: SessionChain.note_text(previous, recap: recap),
         note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn
       )
       link.moved_children = move
+      # The fallback's warning first: spawn_session set its own.
+      warnings = [choice.warning, link.model_warning].compact
+      link.model_warning = warnings.join("; ") unless warnings.empty?
       link
+    end
+
+    # The model a new link of +previous+'s chain runs on: +given+ when
+    # there is one (its host checked: ModelProfile::UnknownHost as for a new
+    # session), else the previous link's, as typed (so an alias holds). An
+    # inherited one whose host can't run it any more (gone from config.yml,
+    # disabled, an alias naming another host: UnknownHost) falls back to the
+    # default, with a warning naming why. `chi send --new --continues`
+    # judges images by it before #run decides the same.
+    # @param previous [Session]
+    # @param given [String, nil] blank: inherit
+    # @return [ModelChoice]
+    # @raise [ModelProfile::MissingModel] a +given+ model it can't run, or
+    #   a fallback with no default configured (or the default's host can't run it)
+    def self.model_for(previous, given)
+      unless given.to_s.strip.empty?
+        return ModelChoice.new(model: ModelProfile.check_host!(ModelProfile.required_model_name(given.strip)),
+                               warning: nil)
+      end
+
+      inherited = ModelProfile.required_model_name(previous.model_typed || previous.model_name)
+      begin
+        ModelChoice.new(model: ModelProfile.check_host!(inherited), warning: nil)
+      rescue ModelProfile::UnknownHost => e
+        default = ModelProfile.check_host!(ModelProfile.required_model_name(nil))
+        ModelChoice.new(model: default, warning: "#{inherited} can't run (#{e.message}); started on #{default}")
+      end
     end
 
     # The refusals that come before anything changes: continued already (no
     # forks in a chain), an open delegate that can't move to the new link
     # (ChildMove.plan), the folder gone (the worker would run elsewhere), a
-    # model whose host config.yml no longer has.
-    # @return [ChildMove::Plan]
+    # given model whose host config.yml doesn't have, or an inherited one
+    # that can't run with no default to fall back to (#model_for).
+    # @return [Checked]
     # @raise [Refused, ModelProfile::MissingModel]
-    private_class_method def self.check!(previous, state_dir)
+    private_class_method def self.check!(previous, state_dir, model: nil)
       if (following = SessionChain.next_of(previous.id, state_dir: state_dir))
         raise Refused.new(previous.id, :continued, ids: [following])
       end
 
       plan = move_plan!(previous.id, state_dir)
-      # Its model's host, as SessionManager.spawn_session checks it: before
-      # the archive stops the previous link's worker.
-      ModelProfile.check_host!(ModelProfile.required_model_name(previous.model_typed || previous.model_name))
+      # The new link's model, its host checked as SessionManager.spawn_session
+      # checks it: before the archive stops the previous link's worker.
+      choice = model_for(previous, model)
       dir = previous.working_directory.to_s
       raise Refused.new(previous.id, :folder_gone, detail: dir) unless File.directory?(dir)
 
-      plan
+      Checked.new(plan: plan, choice: choice)
     end
 
     # A child still open below a session (#open_children); why: running,
