@@ -54,4 +54,13 @@ RSpec.describe Samagotchi::PendingInputQueue do
     expect(drained.length).to eq(200)
     expect(drained.uniq.length).to eq(200)
   end
+
+  it "keeps each message's seq for drain_entries; drain returns the texts" do
+    queue.push("a", seq: 3)
+    queue.push("b")
+
+    expect(queue.drain_entries).to eq([[3, "a"], [nil, "b"]])
+    queue.push("c", seq: 4)
+    expect(queue.drain).to eq(["c"])
+  end
 end

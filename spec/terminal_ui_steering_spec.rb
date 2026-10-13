@@ -536,6 +536,23 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(lines).to eq(["unmerged steer", "/model big", "redo it in more detail", "look at @#{File.join(Dir.tmpdir, "x.png")}"])
   end
 
+  # One ordered leftover list: a steer the turn didn't merge, typed after
+  # a /queue, runs after the queued line, as the worker runs input files.
+  it "hands back a /queue line and unmerged steering in the order sent" do
+    allow(engine).to receive(:run_turn) do |*, **|
+      repl_input << [:line, "/queue first queued"] << [:line, "then a steer"] << [:line, "/queue second queued"]
+      result
+    end
+
+    agent.run_engine_turn(session, "go")
+
+    lines = []
+    while (item = repl_input.pop(timeout: 0))
+      lines << item.last
+    end
+    expect(lines).to eq(["first queued", "then a steer", "second queued"])
+  end
+
   it "runs a session command at a continue offer (one queued during the turn), the offer still open; /continue answers" do
     turn_flow = agent.instance_variable_get(:@turn_flow)
     allow(turn_flow).to receive(:awaiting_continue?).and_return(true)

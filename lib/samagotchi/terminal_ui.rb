@@ -1166,29 +1166,42 @@ module Samagotchi
     #
     # A command that waits for the turn's end (/model X, !cmd) and every line
     # after it wait in @after_turn, in the order typed (D1), with the image
-    # lines (which never steer): once the turn ends they come back after the
-    # steering it didn't merge (typed before them), ahead of anything sent
-    # after Ctrl-C.
+    # lines (which never steer) and /queue's: once the turn ends they come
+    # back with the steering it didn't merge, in the order sent (each line
+    # the turn takes gets the next @input_seq), ahead of anything sent after
+    # Ctrl-C.
     def with_steering(&)
       return yield unless @repl_input
 
       @after_turn = []
       @command_waits = false
-      @repl_input.during_turn(method(:steer_line), leftovers: -> { @pending_input_queue.drain + lines_after_turn }, &)
+      @input_seq = 0
+      @repl_input.during_turn(method(:steer_line), leftovers: -> { leftover_lines }, &)
     end
 
-    # The lines that waited for the turn's end, taken from @after_turn. After
-    # a canceled or failed turn (Ctrl-C raises through here; a failure too)
-    # a !cmd among them is dropped (D4): running it would close the
-    # !rollback the turn left.
+    # The turn's leftovers in send order: steering it didn't merge and the
+    # lines that waited for its end.
+    def leftover_lines
+      (@pending_input_queue.drain_entries + lines_after_turn).sort_by { |seq, _| seq || 0 }.map(&:last)
+    end
+
+    # The next line's place in send order (#leftover_lines).
+    def next_input_seq
+      @input_seq = (@input_seq || 0) + 1
+    end
+
+    # The [seq, line] entries that waited for the turn's end, taken from
+    # @after_turn. After a canceled or failed turn (Ctrl-C raises through
+    # here; a failure too) a !cmd among them is dropped (D4): running it
+    # would close the !rollback the turn left.
     def lines_after_turn
-      lines = @after_turn.slice!(0..)
+      entries = @after_turn.slice!(0..)
       ended = if @active_cancel_controller&.cancelled? || $!.is_a?(Interrupt) then "canceled"
               elsif $! then "failed"
               end
-      return lines unless ended
+      return entries unless ended
 
-      lines.reject do |line|
+      entries.reject do |_seq, line|
         next false unless command_registry.lookup(line)&.id == :shell
 
         @surface.commit("turn #{ended}: #{line.strip} not run; send it again")
@@ -1242,7 +1255,7 @@ module Samagotchi
       # Behind a command that waits for the turn's end, a line waits too.
       return wait_for_turn_end(line) if @command_waits
 
-      @pending_input_queue.push(route.text)
+      @pending_input_queue.push(route.text, seq: next_input_seq)
       @surface.commit(NEXT_STEP_NOTE)
       true
     end
@@ -1265,7 +1278,7 @@ module Samagotchi
       end
 
       epoch = @engine.input_epoch
-      @pending_input_queue.push(text)
+      @pending_input_queue.push(text, seq: next_input_seq)
       # With no session running the cut is :off; the text still waits for
       # the running turn's next step.
       @surface.commit(steer_cut_note(@engine.cut_for_steer(nil, epoch: epoch), @engine.steer_cut_after))
@@ -1280,7 +1293,7 @@ module Samagotchi
     # +line+ runs once the turn has ended, in the order typed (#with_steering).
     # @return [true] the turn took it
     def wait_for_turn_end(line)
-      @after_turn << line
+      @after_turn << [next_input_seq, line]
       true
     end
 

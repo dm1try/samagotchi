@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Plain REPL (`--no-shared`): the lines a turn left over (a steer it didn't merge, `/queue` lines, image lines, commands
+  that wait) run in the order you sent them; before, an unmerged steer ran ahead of a `/queue` line typed earlier.
 - A message with images sent during a running turn no longer holds back the text lines sent after it: they go in at
   the turn's next step as usual, and the image message still runs as a turn of its own after it.
 
