@@ -13,7 +13,8 @@ require_relative "support/fake_provider_server"
 # from a fake model server, and `chi send` posting to the Bridge. A plain
 # message goes in at the turn's next step boundary and never cuts the
 # thinking; one sent with --cut cuts it (`steer_cut`); one queued waits for
-# the turn's end and runs as its own turn. The one e2e for steer delivery;
+# the turn's end and runs as its own turn, and --queue --wait gets that
+# turn's own answer. The one e2e for steer delivery;
 # bridge_spec, worker_spec and send_command_spec cover the variants.
 RSpec.describe "steering a running turn (chi send)" do
   around do |example|
@@ -155,5 +156,23 @@ RSpec.describe "steering a running turn (chi send)" do
     first_end = events.index { |e| e[:type] == :turn_completed }
     expect(first_end).to be < events.index(started)
     expect(events.select { |e| e[:type] == :pending_input_merged }.map { |e| e[:content].to_s }.join).not_to include("later please")
+  end
+
+  # P3b: chi send --queue --wait into a running turn is not refused, and
+  # prints the queued turn's own answer, not the running turn's.
+  it "waits for the queued turn's own answer (chi send --queue --wait)" do
+    stream_thinking
+    answer = ->(text) { server.enqueue("/completion", sse: [event("<think>"), event("ok"), event("</think>"), event(text), stop]) }
+    answer.call("RUNNING ANSWER")
+    answer.call("QUEUED ANSWER")
+    run_turn("have a long think")
+    start_worker
+
+    expect(send_after_thinking("--queue", "--wait", "--timeout", "30", "-m", "later please", seconds: 0.2)).to eq(0), err.string
+    expect(out.string).to eq("QUEUED ANSWER\n")
+    expect(err.string).to eq("#{short}  sent (queued: runs after the current turn)\n")
+    replies = Dir.children(File.join(session_dir, "output")).sort
+    expect(replies.size).to eq(2)
+    expect(File.read(File.join(session_dir, "output", replies.first))).to eq("RUNNING ANSWER")
   end
 end
