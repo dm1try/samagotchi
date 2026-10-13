@@ -88,7 +88,7 @@ module Samagotchi
       # @param anytime [Boolean] mid_turn: :anytime (a bundle's command)
       # @param mid_turn [Symbol, #call, nil] see Entry; nil takes +anytime+
       # @param match [#call, nil] the default matches the name alone or the
-      #   name, a space and arguments
+      #   name, any whitespace (a newline too) and arguments
       # @return [Entry]
       def register(name, description, id: nil, anytime: false, mid_turn: nil, local: false, uis: nil, match: nil,
                    source: "core", &handler)
@@ -188,7 +188,8 @@ module Samagotchi
       end
 
       def default_match(name)
-        ->(text) { text == name || text.start_with?("#{name} ") }
+        after = /\A#{Regexp.escape(name)}\s/
+        ->(text) { text == name || after.match?(text) }
       end
     end
   end

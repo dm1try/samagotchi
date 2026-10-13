@@ -58,6 +58,9 @@
     { "text": "/modle", "running": false, "expect": { "kind": "typo", "text": "/modle" } },
     { "text": "/modle", "running": true, "expect": { "kind": "typo", "text": "/modle" } },
     { "text": "/foo bar", "running": false, "expect": { "kind": "prompt", "text": "/foo bar" } },
+    { "text": "/foo\nbar", "running": false, "commands": ["/foo"], "expect": { "kind": "command", "text": "/foo\nbar" },
+      "note": "a command line may break after the name (a plugin's annotation action: the command, then the quote)" },
+    { "text": "/model\nx", "running": false, "expect": { "kind": "command", "text": "/model\nx" } },
     { "text": "/usr/bin/env", "running": false, "expect": { "kind": "prompt", "text": "/usr/bin/env" } },
 
     { "text": "/detach", "running": false, "expect": { "kind": "local", "local": "detach" } },

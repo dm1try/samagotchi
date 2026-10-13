@@ -310,6 +310,8 @@ test("sessionCommandLine: the session's commands go to the command route, an unk
   assert.equal(sessionCommandLine("/stats", commands), true);
   assert.equal(sessionCommandLine("/usr/bin/env is missing", commands), false);
   assert.equal(sessionCommandLine("/modelx", commands), false);
+  assert.equal(sessionCommandLine("/hello\nagain", commands), true);
+  assert.equal(sessionCommandLine("/hello\tagain", commands), true);
   assert.equal(sessionCommandLine("/foo bar", commands), false);
   assert.equal(sessionCommandLine("!", commands), false);
   assert.equal(sessionCommandLine("hello /model", commands), false);

@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A command's name may be followed by any whitespace, a newline too: `/foo` on its own line with text under it
+  runs `/foo` with that text, in the terminals and the web (before, only a space did).
+
 ### Fixed
 
 - `dialect: fireworks` hosts: the web's ctx meter no longer reads 0% while an answer streams (Fireworks' first stream

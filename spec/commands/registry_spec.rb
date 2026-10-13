@@ -12,6 +12,8 @@ RSpec.describe Samagotchi::Commands::Registry do
     expect(registry.lookup("/hello")).to be(entry)
     expect(registry.lookup("  /hello world ")).to be(entry)
     expect(registry.lookup("/hellox")).to be_nil
+    expect(registry.lookup("/hello\nworld")).to be(entry)
+    expect(registry.lookup("/hello\tworld")).to be(entry)
     expect(entry.id).to eq(:hello)
     expect(entry.source).to eq("core")
   end
