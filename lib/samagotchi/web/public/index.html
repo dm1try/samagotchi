@@ -480,6 +480,15 @@ button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:non
 #annotateBar{position:fixed;z-index:20;display:flex;flex-wrap:wrap;gap:4px;max-width:calc(100vw - 16px)}
 #annotateBar[hidden]{display:none}
 #annotateBar button{font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px var(--shadow-strong)}
+/* A bundle's pills (chi.annotation) after a thin separator; beyond 3, "⋯" opens the rest in a list under it. */
+#annotateBar .annotate-actions{display:flex;flex-wrap:wrap;gap:4px;align-items:center;position:relative}
+#annotateBar .annotate-actions[hidden]{display:none}
+#annotateBar .annotate-sep{width:1px;align-self:stretch;margin:3px 2px;background:var(--border-strong)}
+#annotateBar .annotate-action,#annotateBar .annotate-more{background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border);padding:3px 10px;max-width:32ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#annotateBar .annotate-action:disabled{opacity:.5;cursor:not-allowed}
+#annotateBar .annotate-action[data-sends]::after{content:"↗";margin-left:4px;opacity:.75}
+#annotateBar .annotate-more-list{position:absolute;top:calc(100% + 4px);right:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+#annotateBar .annotate-more-list[hidden]{display:none}
 #annotateBar .annotate-preset{background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong);padding:3px 10px;max-width:32ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Copy buttons (copy.js): top-right in an answer and a code block, left of a prompt (its right edge is the page's); shown on hover or focus, always (dim) on touch. They hold no text: "copied ✓" is CSS content. */
 .bubble.output,.bubble.user{position:relative}

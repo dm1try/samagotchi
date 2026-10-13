@@ -71,6 +71,7 @@ test("actionEnabled and actionTitle: a send pill waits for the turn unless its c
   assert.equal(actionEnabled({ ...send, anytime: true }, true), true);
   assert.equal(actionTitle(validate, true), "Confirm with Claude (claude-peer)");
   assert.equal(actionTitle(send, true), "Ask (foo): /foo waits for the turn to end");
+  assert.equal(actionTitle(send, false), "Ask (foo): sends at once");
 });
 
 test("splitInline keeps 3 inline, the rest behind ⋯", () => {

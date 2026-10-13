@@ -183,6 +183,10 @@ export async function startEnv({ lan = false, installed = null } = {}) {
     // answer, for the answer refs scenario.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-answer-refs")],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
+    // A test bundle whose plugin adds an annotation action ("E2E check",
+    // /e2e-check), for the annotate scenario.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-annotation")],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     // github-pr (shipped), for the PR line links scenario: its gh is the fake.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "github-pr"],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });

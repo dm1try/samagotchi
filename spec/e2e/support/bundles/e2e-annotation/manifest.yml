@@ -1,0 +1,7 @@
+name: e2e-annotation
+version: 0.1.0
+scope: system
+description: "The e2e suite's annotation action"
+plugin:
+  file: plugin.rb
+  sha256: sha256:a284811127345943cbbded1cf05f82f2b6a5ce6d7e333a7c7ea16f92e21a651e

@@ -576,8 +576,10 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
 
 // Annotate presets: a pill quotes the selection with its text as the note
 // into the composer and sends nothing. The selection is set with a Range
-// (a mouse drag is the same selectionchange, less exact).
-test("an annotate preset fills the composer with the quote and never sends", async ({ page, script }) => {
+// (a mouse drag is the same selectionchange, less exact). A plugin's pill
+// (e2e-annotation's chi.annotation) fills its command line and the quote;
+// Send runs that command with the note.
+test("an annotate preset fills the composer with the quote and never sends; a plugin's pill prepares its command", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
   await turnEnded(page, 1);
@@ -593,7 +595,7 @@ test("an annotate preset fills the composer with the quote and never sends", asy
     sel.addRange(range);
   });
   const bar = page.locator("#annotateBar");
-  await expect(bar.locator("button")).toHaveText(["Annotate", "Agreed", "Could you please elaborate?"]);
+  await expect(bar.locator("button")).toHaveText(["Annotate", "Agreed", "Could you please elaborate?", "E2E check"]);
   await bar.getByRole("button", { name: "Agreed" }).click();
   await expect(page.locator("#prompt")).toHaveValue("> PONG from the fake model.\n\nAgreed");
   await expect(bar).toBeHidden();
@@ -618,6 +620,24 @@ test("an annotate preset fills the composer with the quote and never sends", asy
   await page.locator("#actionBtn").click();
   await expect(page.locator(`${H()} .bubble.user`).last()).toHaveAttribute("data-user-content", "> PONG from the fake model.");
   await turnEnded(page, 2);
+  await expect(page.locator("#prompt")).toHaveValue("");
+
+  // The plugin's pill: its command line on top, the quote, the caret under it.
+  await page.evaluate(() => {
+    const text = [...document.querySelectorAll("#history .bubble.output")].pop().querySelector("p").firstChild;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "PONG".length);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  await bar.getByRole("button", { name: "E2E check" }).click();
+  await expect(page.locator("#prompt")).toHaveValue("/e2e-check quote\n> PONG\n\n");
+  await expect(page.locator("#prompt")).toBeFocused();
+  await page.keyboard.type("why?");
+  await page.locator("#actionBtn").click();
+  await expect(page.locator(`${H()} .bubble.command .command-output`).last()).toHaveText("checked: quote\n> PONG\n\nwhy?");
   await expect(page.locator("#prompt")).toHaveValue("");
 });
 

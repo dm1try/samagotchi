@@ -1,16 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAnnotateBar } from "../../../lib/samagotchi/web/public/annotate_bar.js";
+import { annotationActions } from "../../../lib/samagotchi/web/public/annotate_actions.js";
 
 // Light DOM stand-ins: elements with the few members the bar touches.
 function el(tag, { classes = [] } = {}) {
   const listeners = {};
   return {
-    tag, id: "", hidden: false, type: "", className: "", textContent: "", title: "",
+    tag, id: "", hidden: false, disabled: false, type: "", className: "", textContent: "", title: "",
     dataset: {}, style: {}, attrs: {}, children: [], childNodes: [],
     offsetWidth: 120, offsetHeight: 30,
     setAttribute(k, v) { this.attrs[k] = v; },
     appendChild(c) { this.children.push(c); c.parentElement = this; },
+    replaceChildren(...cs) { this.children = []; cs.forEach((c) => this.appendChild(c)); },
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
     fire(type, e) { (listeners[type] || []).forEach((fn) => fn(e)); },
     contains(node) { for (let n = node; n; n = n.parentElement) if (n === this) return true; return false; },
@@ -24,7 +26,7 @@ function el(tag, { classes = [] } = {}) {
   };
 }
 
-function fakePage({ selectionText = "the answer", inRoot = true } = {}) {
+function fakePage({ selectionText = "the answer", inRoot = true, commands = [] } = {}) {
   const docListeners = {};
   const doc = {
     body: el("body"),
@@ -57,20 +59,24 @@ function fakePage({ selectionText = "the answer", inRoot = true } = {}) {
     addEventListener() {},
   };
   const quotes = [];
-  const state = { can: true, live: false };
+  const actions = [];
+  const state = { can: true, live: false, running: false, commands };
   const bar = createAnnotateBar({
     presets: ["Agreed", "Why?"],
     canAnnotate: () => state.can,
     roots: () => [history],
     isLive: () => state.live,
     onQuote: (text) => quotes.push(text),
+    actions: () => annotationActions(state.commands),
+    running: () => state.running,
+    onAction: (action, fields) => actions.push([action.label, fields]),
     doc, win,
   });
   const selectionChange = () => {
     docListeners.selectionchange.forEach((fn) => fn());
     frames.splice(0).forEach((fn) => fn());
   };
-  return { answer, bar, doc, quotes, state, selectionChange, win };
+  return { actions, answer, bar, doc, quotes, state, selectionChange, win };
 }
 
 const click = (bar, btn) => bar.fire("click", { target: btn });
@@ -80,8 +86,11 @@ test("the bar: Annotate then the presets, hidden, in the body", () => {
   assert.equal(doc.body.children[0], bar.el);
   assert.equal(bar.el.id, "annotateBar");
   assert.equal(bar.el.hidden, true);
-  assert.deepEqual(bar.el.children.map((b) => [b.className, b.textContent, b.dataset.index]),
+  assert.deepEqual(bar.el.children.slice(0, 3).map((b) => [b.className, b.textContent, b.dataset.index]),
     [["annotate-main", "Annotate", undefined], ["annotate-preset", "Agreed", "0"], ["annotate-preset", "Why?", "1"]]);
+  // Then the plugin pills' group, empty and hidden without any.
+  assert.equal(bar.el.children[3].className, "annotate-actions");
+  assert.equal(bar.el.children[3].hidden, true);
 });
 
 test("a selection in an answer shows the bar under it; Annotate quotes it", () => {
@@ -155,4 +164,66 @@ test("the bar moves below a copy button it would cover (this bubble's or the nex
   assert.equal(run({ own: [copyBtn(120, 150)] }), "154px"); // over this bubble's button: just below it
   assert.equal(run({ next: [copyBtn(140, 160)] }), "164px"); // the next bubble's button too
   assert.equal(run({ own: [copyBtn(140, 790)] }), "762px"); // never below the viewport (800 - 30 - 8)
+});
+
+// The plugin pills: the group after the presets (its children: a separator,
+// the inline pills, then ⋯ and its list when there are more).
+const pillGroup = (bar) => bar.el.children[3];
+const pills = (bar) => pillGroup(bar).children.filter((c) => c.className === "annotate-action");
+const command = (name, labels, extra = {}) => ({
+  name, mid_turn: "refuse", source: "peer", ...extra,
+  annotations: labels.map((label) => ({ label, line: `${name} go`, template: "{quote}", send: false })),
+});
+
+test("plugin pills follow the session's listing, re-read on each selection", () => {
+  const page = fakePage();
+  page.selectionChange();
+  assert.equal(pillGroup(page.bar).hidden, true);
+  page.state.commands = [command("/claude", ["Confirm with Claude"])];
+  page.selectionChange();
+  assert.equal(pillGroup(page.bar).hidden, false);
+  assert.deepEqual(pills(page.bar).map((p) => [p.textContent, p.title, p.disabled]),
+    [["Confirm with Claude", "Confirm with Claude (peer)", false]]);
+  page.state.commands = [];
+  page.selectionChange();
+  assert.equal(pillGroup(page.bar).hidden, true);
+});
+
+test("a pill hands its action and the selection's fields over, and the bar hides", () => {
+  const page = fakePage({ commands: [command("/claude", ["Confirm"])] });
+  page.selectionChange();
+  click(page.bar.el, pills(page.bar)[0]);
+  assert.deepEqual(page.actions, [["Confirm", { quote: "> the answer\n\n", text: "the answer", source: "answer" }]]);
+  assert.equal(page.bar.el.hidden, true);
+  assert.deepEqual(page.quotes, []);
+});
+
+test("beyond 3 pills the rest are behind ⋯, which opens their list and keeps the bar", () => {
+  const page = fakePage({ commands: [command("/a", ["A1", "A2"]), command("/b", ["B1", "B2", "B3"])] });
+  page.selectionChange();
+  assert.deepEqual(pills(page.bar).map((p) => p.textContent), ["A1", "A2", "B1"]);
+  const more = pillGroup(page.bar).children.find((c) => c.className === "annotate-more");
+  const list = pillGroup(page.bar).children.find((c) => c.className === "annotate-more-list");
+  assert.equal(list.hidden, true);
+  click(page.bar.el, more);
+  assert.equal(list.hidden, false);
+  assert.equal(page.bar.el.hidden, false);
+  assert.deepEqual(list.children.map((p) => p.textContent), ["B2", "B3"]);
+  click(page.bar.el, list.children[1]);
+  assert.deepEqual(page.actions.map(([label]) => label), ["B3"]);
+});
+
+test("a send pill is disabled while a turn runs unless its command is anytime", () => {
+  const send = (name, extra) => ({ ...command(name, ["Go"], extra), annotations: [{ label: `Go ${name}`, line: name, template: "{text}", send: true }] });
+  const page = fakePage({ commands: [send("/q"), send("/now", { mid_turn: "anytime" })] });
+  page.state.running = true;
+  page.selectionChange();
+  assert.deepEqual(pills(page.bar).map((p) => [p.textContent, p.disabled]), [["Go /q", true], ["Go /now", false]]);
+  assert.equal(pills(page.bar)[0].title, "Go /q (peer): /q waits for the turn to end");
+  assert.equal(pills(page.bar)[0].dataset.sends, "");
+  click(page.bar.el, pills(page.bar)[0]);
+  assert.deepEqual(page.actions, []);
+  page.state.running = false;
+  page.selectionChange();
+  assert.equal(pills(page.bar)[0].disabled, false);
 });
