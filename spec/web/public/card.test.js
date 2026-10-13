@@ -1,28 +1,34 @@
+import { markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, isCard, isNoticeCard, leavesBlock, noticeCardLine, noticeInnerHtml, NOTICE_CHARS, shownElsewhere, splitSnapshotCards, turnNoticePlace } from "../../../lib/samagotchi/web/public/card.js";
+import { cardBodyTemplate, cardClass, cardPlace, cardTemplate, drawCard, isCard, isNoticeCard, leavesBlock, noticeCardLine, noticeTemplate, NOTICE_CHARS, refreshCardBody, shownElsewhere, splitSnapshotCards, turnNoticePlace } from "../../../lib/samagotchi/web/public/card.js";
+
+// The templates' markup as the page gets it.
+const cardInnerHtml = (c) => markupOf(cardTemplate(c));
+const cardBodyHtml = (c) => markupOf(cardBodyTemplate(c));
+const noticeInnerHtml = (c) => markupOf(noticeTemplate(c));
 
 const card = {
   type: "card", id: "c1", source: "sample-plugin", title: "Hello <you>", body: "hi *there*", level: "info",
   actions: [{ label: "Again", command: "/hello again" }, { label: "", command: '/x "y"' }],
 };
 
-test("cardInnerHtml: the head (title, source), the body and one button per action, all escaped", () => {
+test("cardTemplate: the head (title, source), the body and one button per action, all escaped", () => {
   assert.equal(cardInnerHtml(card),
     '<div class="card-head"><span class="card-title">Hello &lt;you&gt;</span><span class="card-source">sample-plugin</span></div>' +
     '<div class="card-body"><pre>hi *there*</pre></div>' +
     '<div class="card-actions">' +
     '<button type="button" class="card-action ghost" data-command="/hello again" title="/hello again">Again</button>' +
-    '<button type="button" class="card-action ghost" data-command="/x &quot;y&quot;" title="/x &quot;y&quot;">/x &quot;y&quot;</button>' +
+    '<button type="button" class="card-action ghost" data-command="/x &quot;y&quot;" title="/x &quot;y&quot;">/x "y"</button>' +
     '</div><div class="card-error hidden"></div>');
 });
 
-test("cardInnerHtml: no body and no actions leave out their parts", () => {
+test("cardTemplate: no body and no actions leave out their parts", () => {
   assert.equal(cardInnerHtml({ title: "T", body: " ", actions: [{ label: "no command" }] }),
     '<div class="card-head"><span class="card-title">T</span></div><div class="card-error hidden"></div>');
 });
 
-test("cardBodyHtml: the server's body_html (rendered markdown), else the text escaped in a <pre>", () => {
+test("cardBodyTemplate: the server's body_html (rendered markdown), else the text escaped in a <pre>", () => {
   assert.equal(cardBodyHtml({ ...card, body_html: "<p>hi <em>there</em></p>" }), "<p>hi <em>there</em></p>");
   assert.equal(cardBodyHtml({ body: "a < b" }), "<pre>a &lt; b</pre>");
   assert.equal(cardBodyHtml({ body: "x", body_html: "" }), "");
@@ -52,7 +58,7 @@ test("cardClass: a notice is marked for its one-line row", () => {
   assert.equal(cardClass(card), "bubble plugin-card");
 });
 
-test("noticeCardLine / noticeInnerHtml: 'title: body' as the summary, the source when it differs, escaped", () => {
+test("noticeCardLine / noticeTemplate: 'title: body' as the summary, the source when it differs, escaped", () => {
   assert.equal(noticeCardLine(nudged), "check-in: Nudged the model at 105 tool calls.");
   assert.equal(noticeCardLine({ title: "T", body: " " }), "T");
   assert.equal(noticeInnerHtml(nudged), "<summary>check-in: Nudged the model at 105 tool calls.</summary>");
@@ -136,4 +142,55 @@ test("turnNoticePlace: a turn-end ✂ row names its turn's last step; a reload w
   // tools (else app.js's placeTurnNotice falls back to a bubble before the
   // answer, as promote leaves it live).
   assert.deepEqual(turnNoticePlace({ type: "llm_context_edited", in_turn: true, iteration: 3, calls: 0 }), { step: 2, rowKey: "3:1" });
+});
+
+// A card element drawn as app.js does (upsertCard): a new one, then the
+// same card's updates on it.
+const drawn = (c) => drawCard(document.createElement(isNoticeCard(c) ? "details" : "div"), c);
+
+test("drawCard: the same card again from the stream keeps its rendered body (the same nodes) and its text-only update shows it", () => {
+  const el = drawn({ ...card, body_html: "<p>hi <em>there</em></p>" });
+  const p = el.querySelector(".card-body p");
+  // The stream's update: the same body as text, no html; a new title.
+  assert.equal(drawCard(el, { ...card, title: "Hello again" }), el);
+  assert.ok(el.querySelector(".card-body p") === p);
+  assert.equal(el.querySelector(".card-title").textContent, "Hello again");
+  // Another body: drawn as text until the re-read brings its html.
+  drawCard(el, { ...card, body: "bye" });
+  assert.equal(el.querySelector(".card-body").innerHTML.replace(/<!--[^]*?-->/g, ""), "<pre>bye</pre>");
+  refreshCardBody(el, { ...card, body: "bye", body_html: "<p>bye</p>" });
+  assert.equal(markupOf(cardTemplate({ ...card, body: "bye", body_html: "<p>bye</p>" })), el.innerHTML.replace(/<!--[^]*?-->/g, ""));
+  // A re-read of a body the card no longer shows changes nothing.
+  refreshCardBody(el, { ...card, body: "old", body_html: "<p>old</p>" });
+  assert.match(el.querySelector(".card-body").innerHTML, /<p>bye<\/p>/);
+});
+
+test("drawCard: an opened notice stays open across an update; one that turns into a card is drawn on a new element in its place", () => {
+  const nudged = { id: "n1", title: "check-in", body: "Nudged the model.", source: "check-in" };
+  const holder = document.createElement("div");
+  const el = drawn(nudged);
+  holder.append(el);
+  el.open = true;
+  assert.equal(drawCard(el, { ...nudged, body: "Nudged the model twice." }), el);
+  assert.equal(el.open, true);
+  assert.equal(el.querySelector("summary").textContent, "check-in: Nudged the model twice.");
+  const asks = drawCard(el, { ...nudged, actions: [{ label: "Stop", command: "/stop" }] });
+  assert.ok(asks !== el);
+  assert.equal(asks.tagName, "DIV");
+  assert.ok(holder.firstElementChild === asks);
+  assert.equal(asks.className, "bubble plugin-card");
+  assert.equal(asks.dataset.cardId, "n1");
+});
+
+test("drawCard: a failed action's line goes when the card is drawn again; a warn card in a turn says so", () => {
+  const el = drawn({ ...card, level: "warn", in_turn: true });
+  assert.equal(el.className, "bubble plugin-card warn");
+  assert.equal(el.dataset.inTurn, "1");
+  const error = el.querySelector(".card-error");
+  error.textContent = "boom";
+  error.classList.remove("hidden");
+  drawCard(el, card);
+  assert.equal(el.querySelector(".card-error").textContent, "");
+  assert.ok(el.querySelector(".card-error").classList.contains("hidden"));
+  assert.equal(el.dataset.inTurn, undefined);
 });
