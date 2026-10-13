@@ -25,6 +25,9 @@ and commands may change between minor versions. How releases are made:
 - Web: a session opened (or switched to) shows its live worker's features at once: the queue link on the delivery
   line, the task-stop button, Alt+Enter's queue and the stale-worker badge with Restart no longer wait for the
   session's next change.
+- Web: a switch starts the open session's page state over: a "copied ✓" on the info bar no longer carries into the
+  next session, a Restart under way in one session no longer blocks Restart in another, and a worker woken after a
+  failed load streams from its start, not from the previous session's cursor.
 
 ## [0.66.0] - 2026-10-14
 

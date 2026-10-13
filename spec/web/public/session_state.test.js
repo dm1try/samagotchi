@@ -154,3 +154,21 @@ test("sessionStateFrom: no worker (or a features that is not a list) is null and
   assert.deepEqual(none.workerFeatures, []);
   assert.deepEqual(sessionStateFrom(payload({ session: { worker_features: "delivery" } })).workerFeatures, []);
 });
+
+// The stream cursor, the from-0 guess and the "copied ✓" moment belong to
+// the open session: a switch starts them over, so a woken worker's stream
+// never starts from the previous session's cursor, and the next session's
+// info bar doesn't say "copied ✓".
+test("starts the stream cursor, its guess and the attach copy over", () => {
+  const s = emptySessionState();
+  assert.equal(s.streamSeq, null);
+  assert.equal(s.streamFromGuess, false);
+  assert.equal(s.attachCopiedAt, 0);
+});
+
+test("sessionStateFrom leaves the stream cursor, its guess and the attach copy to the page", () => {
+  const st = sessionStateFrom(payload({ last_event_seq: 5 }));
+  assert.equal("streamSeq" in st, false);
+  assert.equal("streamFromGuess" in st, false);
+  assert.equal("attachCopiedAt" in st, false);
+});
