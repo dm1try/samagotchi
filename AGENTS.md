@@ -47,6 +47,10 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   The config.yml `memories:` list is the persistent baseline of preloaded memory
   entries (same name shape as `--memory`); `--memory` values are appended after
   it, deduped.
+- `--toolkit NAME`, `--tool NAME` / `--no-tool NAME` (repeatable): a new session's toolkit, the tools its prompts
+  declare (`full` by default; config `toolkit.default`, `toolkit.child`, `toolkit.kits`). Saved in the session at
+  creation, never re-resolved from config; `/toolkit` changes it from the next turn's start. Ignored with
+  `--attach`/`--resume`, like `--memory`.
 - `--append-system-prompt FILE` (repeatable): FILE's text goes into the system prompt after the
   AGENTS.md chain (root → cwd); config.yml `append_system_prompt:` is its baseline. Saved in the
   session (kept by respawns, forks and continues); ignored with `--attach`/`--resume`, like `--memory`.

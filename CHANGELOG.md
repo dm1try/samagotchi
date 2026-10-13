@@ -21,12 +21,25 @@ and commands may change between minor versions. How releases are made:
   send it a part of the work with `codex queue` (killed after 10 s, never a hang), and Codex's answer comes back as
   the `codex-review` context; **Confirm with Codex** in the web's selection bar. Codex's sandbox needs chi's
   context folder in `writable_roots` (the install card shows the line). See docs/plugins.md, "The codex-peer bundle".
+- **Toolkits**: a session's toolkit names the tools its prompts declare. chi ships `full` (every built-in, the
+  default), `lean` (the file, shell, memory, task, question, `web_fetch` and `context_read` tools: ~1.4k tokens
+  fewer) and `child` (`lean` with `send_note`, without `memory_write`); config's `toolkit.kits` and bundles
+  (`chi.toolkit`) add their own. Pick one with `toolkit.default` / `toolkit.child`, `chi --toolkit NAME` (with
+  `--tool` / `--no-tool`, also on `chi send --new`) or `/toolkit NAME | add TOOL | remove TOOL`. It is saved in the
+  session when it is created and kept by continues and forks; a change applies at the next turn's start. A left-out
+  tool is named in one prompt line, and a call to it is refused before the guardrails. The web shows a session not
+  on `full` as a `tools` chip. See docs/configuration.md, "Toolkits".
+- Plugins: `ctx.toolkit` and `ctx.use_toolkit(name)` (before the session's first reply). The coordinator bundle
+  (0.4.0) declares the `coordinator` toolkit (`lean` + `delegate`, `delegate_result`, `list_sessions`), and
+  `/coordinate` puts a fresh session on it.
 
 ### Changed
 
 - A command's name may be followed by any whitespace, a newline too: `/foo` on its own line with text under it
   runs `/foo` with that text, in the terminals and the web (before, only a space did).
 - Web: a command refused as busy mid-turn comes back into the composer (it was cleared when sent).
+- A delegate child is told to report what should change (a wrong memory or skill, instructions that led it astray)
+  in its reply instead of writing memories (`delegated.md`).
 
 ### Fixed
 

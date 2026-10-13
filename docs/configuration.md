@@ -1276,6 +1276,48 @@ work tree top when inside it, else with `~`.
   picked up by a new process or a rebuild (`/model`). `/stats` lists the files
   in the prompt on its `prompt files:` line.
 
+## Toolkits
+
+A session's **toolkit** names the tools its prompts declare. The declared tools are the front of every request (the
+`tools` field, or the native template's declarations), so a session that declares fewer sends a shorter prompt, and
+sessions on the same toolkit share that prefix in a prompt cache.
+
+```yaml
+toolkit:
+  default: lean        # the sessions you start (unset: full)
+  child: child         # delegate children (unset: full)
+  kits:                # your own, on a base
+    review: { base: lean, add: [web_fetch, delegate], remove: [memory_write] }
+```
+
+| toolkit | declares |
+|---|---|
+| `full` | every built-in; the default |
+| `lean` | `execute`, `read`, `write`, `edit`, `memory_read`, `memory_write`, `task_create`, `task_wait`, `task_get`, `task_list`, `task_stop`, `ask_user_question`, `web_fetch`, `context_read` |
+| `child` | `lean` plus `send_note`, without `memory_write` |
+| `coordinator` | `lean` plus `delegate`, `delegate_result`, `list_sessions` (declared by the coordinator bundle) |
+
+- **Plugin tools** are declared in every toolkit unless its `remove:` names them, and so is `forget_outputs` under
+  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:` and `remove:`; it can't reuse a
+  built-in's name. A bundle declares its own with `chi.toolkit` ([plugins](plugins.md#chitoolkitname-base-add--remove-)).
+- **Saved at creation, never re-resolved from config.** A session stores its toolkit as named
+  (`"toolkit": {"name": "lean", "add": [], "remove": []}`) when it is created: `toolkit.default`, `toolkit.child`
+  for a delegate child, or `chi --toolkit NAME` / `--tool` / `--no-tool` ([cli](cli.md)). Changing `toolkit.default`
+  doesn't move existing sessions, not even when their worker is woken again; a session from before toolkits is on
+  `full`. A continue and a fork keep the toolkit. `/toolkit` shows and changes it.
+- **Not loaded.** When a toolkit leaves tools out, one line after the base prompt names them (`Not loaded in this
+  session (toolkit lean): …. Only the user can load one (/toolkit add <name>).`). A call to one is refused before
+  the guardrails (no approval card): `Error: delegate isn't loaded in this session (toolkit lean) …`.
+- **Applied at a turn's start.** A change (`/toolkit`, a plugin's `ctx.use_toolkit`) is saved at once and the next
+  turn declares it; once the session has a model reply, `/toolkit` asks first ("Changes that restart the prompt
+  cache").
+- **A name that doesn't resolve** (a typo, a bundle that was uninstalled) declares every tool for that process,
+  with one `toolkit>` warning at the first turn; the saved name stays, so the bundle's return brings it back.
+- **Versions.** A toolkit's definition can change with chi or a bundle, which changes what saved sessions on it
+  declare after an upgrade: the next request reads the prompt again once, as a tool's schema change does. So can
+  an edit to `toolkit.kits`: a session's worker reads the kits once when it starts, so a running session keeps its
+  tools and the edit reaches it at its next worker start (after an idle exit, `chi sessions restart`).
+
 ## LLM context: the forget layer
 
 Experimental, off by default. With `forget` in a model's `llm_context.strategy` (next to `stale`), chi offers that

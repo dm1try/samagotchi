@@ -220,6 +220,16 @@ A session can **continue** an earlier one: "the next day of the same routine" (a
 - **CLI:** `chi send --new --continues (ID|PREFIX|last:ID) [-m TEXT]` (see *Starting a session*).
 - **Which link:** an id, a unique prefix, or `last:<id or prefix>`, the latest link of the chain that session is in. It walks the links that still exist: a deleted link in the middle (`chi sessions delete`, the retention sweep of an unarchived one) ends the walk before it, so `last:` of an earlier link then names that earlier link, and continuing it starts a second line beside the links after the gap; name a link after the gap instead. A trigger names the chain this way: `chi send` to an archived link would bring it back (a human's input), not continue the chain.
 
+## Toolkits
+
+A session file's `toolkit` (`{"name", "add", "remove"}`) is the toolkit it was created on, as named: config's
+`toolkit.default`, `toolkit.child` for a delegate child, or `chi --toolkit` / `chi send --new --toolkit` (with
+`--tool` / `--no-tool`). It is never resolved again from config: a respawned or woken worker declares the same
+tools. `null` (a session from before toolkits) is `full`. A continue (`continue →`, `chi send --new --continues`)
+and a fork (`ctx.sessions.fork`) keep it, as they keep the thinking level; a delegate child gets `toolkit.child`.
+`/toolkit` changes it, saved at once, from the next turn's start. See
+[Toolkits](configuration.md#toolkits).
+
 ## Delegating
 
 The `delegate` tool hands a task to a **child session**: an ordinary chi session in a worker of its own, started in the parent's `working_directory` with the task, verbatim, as its first user message, on the parent's model unless the call names one (`model:` takes a name or an alias, resolved as `--model` is; an unknown host comes back as the tool's `Error:` line; an id the host's saved model list doesn't have starts the child with a `Warning: host 'h' doesn't list model 'x' (did you mean: …?)` line in the result). Children run in parallel and only their **final reply** comes back to the parent: the child's newest `output/<timestamp>.txt` file, which the worker writes at the end of each turn that produced visible text, cut head-and-tail like an `execute` result. Nothing of the child's trace enters the parent's context. Nothing is hidden: a child shows in `chi sessions list` (`↳ <parent>`), the web (folded into its parent's card on the strip and in all sessions, whose `▸ N delegates` chip lists the delegates at any depth, see Web UI above; a card of its own with a `↳` chip when its parent isn't listed; `delegated by` in its info bar; the parent's info bar carries a `⑂ N` chip counting its delegates, with how many run, wait, are done, failed, stopped or idle in the tooltip and the waiting ones named in the attention colour; a click opens all sessions), the terminal's status row (a parent's `⑂ 2 running · 1 waiting`, see [Status Line](cli.md#status-line)) and the `list_sessions` tool (`child`; the parent shows as `parent` in the child's own list); the user can `chi --attach <child id>` and steer it mid-run, and `chi send` and `send_note` reach it like any session.

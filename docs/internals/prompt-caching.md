@@ -22,11 +22,13 @@ right-hand column happens.
 ```
  shared by every session ──────────────────────────────────────────────────  breaks it
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ tools        built-ins, then plugin tools sorted by (bundle, name)       │  a tool added/changed,
-│              (chat: the `tools` field; native: the model's template)     │  /model, a profile change
+│ tools        built-ins, then plugin tools sorted by (bundle, name),      │  a tool added/changed,
+│              those the session's toolkit declares (per toolkit)          │  /model, a profile change,
+│              (chat: the `tools` field; native: the model's template)     │  a toolkit change
 ├──────────────────────────────────────────────────────────────────────────┤
 │ SYSTEM, stable part                         SystemPrompt#system_prompt_with_index
 │   [native thinking token] base prompt                                    │
+│   not-loaded line (only when the toolkit leaves tools out)               │
 │   rg guidance                                                            │  /thinking level,
 │   system identity (+ model overlay)                                      │  /model, editing a
 │   model notes (model_notes_* matching the model)                         │  memory / AGENTS.md
@@ -57,6 +59,12 @@ right-hand column happens.
 - The system prompt is built **once per loop** and rebuilt only on `@prompt_builder.reset!`: a model switch
   (`Engine#switch_model!`), a plugin's `tools_changed!`, or a profile change. A per-turn rebuild would
   break everything below it.
+- The tools layer is shared **per toolkit** (configuration.md, "Toolkits"): sessions on the same toolkit share it,
+  and a chain's links keep theirs. A session's toolkit is saved when it is created and never resolved again from
+  config. A change (`/toolkit`, `ctx.use_toolkit`) is applied only at a turn's start (`Engine#apply_toolkit!`,
+  beside `apply_staged_tools!`, then `reset!`): the chat loop builds `tools:` per request, so a mid-turn change
+  would differ from the turn's prompt. Under `full` nothing is filtered and no line is added: the bytes are what
+  they were before toolkits.
 - On remote Claude, `LLM::PromptCache.mark` sends the system message as two text parts. The stable part carries
   breakpoint #1, so a **new session** reads it from the cache. The last non-system message carries breakpoint
   #2, so the **next request in the session** reads everything up to it. Mid and tail system messages never take

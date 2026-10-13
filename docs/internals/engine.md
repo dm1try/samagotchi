@@ -35,7 +35,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
   │     # refresh_profile! (may ask the server's /props once)
   │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name is set in generate)
-  │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools
+  │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools,
+  │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, a prompt rebuild when it changed)
   │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
   │     #   (a frozen copy of the history, the prompt, and resumed)
   │     # turn_messages: system head + history + due reminders (:reminder_injected) + the user message
@@ -227,6 +228,8 @@ One iteration with tool calls:
       → :tool_dispatch_started {iteration, call_count}
       → for each call: ToolRunner#run(call, iteration:, call_index:, call_count:,
                                       on_stream_event:, max_tool_output_chars:)
+          → a tool the session's toolkit leaves out (Registry#left_out) skips the gate: no hooks, no card;
+            KernelLoop#dispatch answers it with the not-loaded error
           → Guardrails::Gate#evaluate (the before_tool_call hooks, then the core checks)
           → :tool_call_started
           → an ask verdict: Gate#settle_ask (asks the user, records waited_ms)
