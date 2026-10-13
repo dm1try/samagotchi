@@ -94,7 +94,7 @@ Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and
 - Integrity: each file's sha256 is recorded at install; a hook/plugin/rule file changed afterwards is not loaded (rules: every call denied) until reinstalled. It is an integrity check, not proof of authorship.
 - Installing = trusting its Ruby code (hooks, plugin), like a gem. Install only copies; the code runs at the next session start (`Engine.new`), so a running worker needs a restart to pick it up.
 - A bundle without `*.md` (btw, mcp, loop-guard) adds no line to the prompt's memory index.
-- Profiles are shipped bundles with only `includes:` (bundle names): `core` (loop-guard, check-in, guardrails, slow-commands; `chi bootstrap` installs it) and `dev` (known-names, mcp, btw, skills, source-links, github-pr, coordinator). `chi bundle install core` installs the ones not installed and records them; a bundle the user uninstalled stays out on a later install, upgrade or `chi update`, which install only bundles new to the profile. `chi bundle uninstall core` removes its recorded bundles, then core (`docs/memory.md` "Bundle profiles").
+- Profiles are shipped bundles with only `includes:` (bundle names): `core` (loop-guard, check-in, guardrails, slow-commands; `chi bootstrap` installs it) and `dev` (known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer). `chi bundle install core` installs the ones not installed and records them; a bundle the user uninstalled stays out on a later install, upgrade or `chi update`, which install only bundles new to the profile. `chi bundle uninstall core` removes its recorded bundles, then core (`docs/memory.md` "Bundle profiles").
 
 ### CLI — `chi bundle`
 

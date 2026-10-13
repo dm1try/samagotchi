@@ -270,7 +270,7 @@ profiles, meta bundles that install a set of them:
 | profile | bundles |
 |---|---|
 | `core` | loop-guard, check-in, guardrails, slow-commands, agents-md: the recommended safety set |
-| `dev` | known-names, mcp, btw, skills, source-links, github-pr, coordinator |
+| `dev` | known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer |
 
 `chi bootstrap` installs `core` and, on a terminal, offers `dev`. An existing
 install gets neither by itself: `chi bundle install core` (or `dev`).

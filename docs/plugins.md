@@ -1506,6 +1506,60 @@ by themselves there.
         reason: merging a child's branch
   ```
 
+## The claude-peer bundle
+
+```sh
+chi bundle install claude-peer    # in the dev profile
+```
+
+A live link between a chi session and a Claude Code session you already work
+with: chi sends it a part of the work (a plan step, a diff, a finding) to
+validate or as context, and Claude's answer comes back into chi. This is
+Claude with the context it has, not a fresh review run. Nothing runs until a
+Claude pairs; without one the bundle costs one tool declaration.
+
+- **Pairing is Claude's.** chi can't see Claude's inbox, so Claude attaches
+  two pushed sources to the chi session: `claude-inbox`, whose hint is its
+  per-session inbox socket (`CLAUDE_CODE_MESSAGING_SOCKET`, Claude Code
+  2.1.224 or later), and `claude-review`, where its answers come.
+- **The tool `claude_send(kind, title, text)`**, `kind` being `validate`,
+  `context` or `question`, writes one JSON line to that socket. The message
+  starts with a header, `chi <id> · <kind> · <title>`. A text up to 4,000
+  characters follows inline; a longer one goes to a file,
+  `$XDG_STATE_HOME/samagotchi/plugins/claude-peer/sessions/<id>/<HHMMSS>-<slug>.md`
+  (removed with the session), and the message names it (`payload: <path>`).
+  The tool is declared whether or not a Claude is paired, so pairing doesn't
+  change the prompt. Its errors say what to do: no `claude-inbox` (pair from
+  Claude), the socket gone or refusing (that Claude session ended or
+  restarted: pair again), a text over 200,000 characters.
+- **The skill.** `skill_claude_peer` (system scope) tells the model to send
+  only when you ask, to pick the part rather than the session, not to wait
+  or poll, and how to read the `claude-review` answer (a validate ends with
+  `VERDICT: OK`, `CHANGES` or `UNSURE`).
+- **Asking first.** The tool has no `targets:`, so guardrails match it by name
+  only: to be asked before each send, add a rule ([Rules in
+  config.yml](guardrails.md#rules-in-configyml)):
+
+  ```yaml
+  guardrails:
+    rules:
+      - id: claude-send
+        tool: claude_send
+        verdict: ask
+        reason: sends session content to Claude Code
+  ```
+
+- **Limits.** The socket's format (`{"type":"user","message":{"role":"user","content":"…"}}`)
+  is undocumented: it was found in, and checked on, Claude Code 2.1.296. A
+  line Claude Code can't parse is dropped silently, so a Claude Code update
+  could break this without an error. No auth line is sent: it is optional on
+  macOS and Linux, and native Windows, which needs it, isn't supported.
+  Claude's `crossSessionInbound` setting decides what it does with a peer
+  message: an interactive auto-mode session delivers it; a session that
+  bypasses permissions holds it for approval (in `-p` it expires after 5
+  minutes). It is local only (a Unix socket), but it does hand session
+  content to another agent: only what the model or you picked.
+
 ## Shutdown
 
 When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a
