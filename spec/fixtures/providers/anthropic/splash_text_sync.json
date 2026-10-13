@@ -1,0 +1,1 @@
+{"id":"msg_b6a71dfdc663ea8b36e49b291b6cdabd","type":"message","role":"assistant","model":"mlx-community/Qwen3.6-35B-A3B-4bit","content":[{"type":"text","text":"PONG"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":16,"cache_read_input_tokens":0,"output_tokens":3}}

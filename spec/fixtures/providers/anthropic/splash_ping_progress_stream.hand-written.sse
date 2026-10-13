@@ -1,0 +1,30 @@
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_000000000000000000000000progress","type":"message","role":"assistant","model":"example-org/Example-35B-A3B-4bit","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":6000,"cache_read_input_tokens":0,"output_tokens":0}}}
+
+event: ping
+data: {"type":"ping","prompt_progress":{"total":6000,"cache":0,"processed":2048,"time_ms":1450}}
+
+event: ping
+data: {"type":"ping","prompt_progress":{"total":6000,"cache":0,"processed":4096,"time_ms":2890}}
+
+event: ping
+data: {"type":"ping","prompt_progress":{"total":6000,"cache":0,"processed":6000,"time_ms":4210}}
+
+event: ping
+data: {"type":"ping"}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"PONG"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

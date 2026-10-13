@@ -1,0 +1,1 @@
+{"id":"msg_01ExampleContextExceeded01","type":"message","role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"The summary of the first three chapters is"}],"stop_reason":"model_context_window_exceeded","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":999000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1000}}
