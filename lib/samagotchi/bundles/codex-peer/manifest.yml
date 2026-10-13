@@ -10,7 +10,7 @@ files:
     description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks; validate, context or question; Codex's answer comes as the codex-review context"
 plugin:
   file: plugin.rb
-  sha256: sha256:365382abe8f9f72e82eb965b762969e64c3774e3279d1e9cdc63a3f7286eb76f
+  sha256: sha256:af3baad4b445b4630112918fb86c0d268622ed5e50923a0ec354175cd68c5cb7
 scripts:
   pair: sha256:90cc286587260a4221c6ca9621cf5f34dd2ac42dc1e6393b69ba3e974806e695
   chi-peer-SKILL.md: sha256:886b6c430e9678f7f8bd991bdb374b6146ca2cbb0f42e36865ab14f5a21fa6e0

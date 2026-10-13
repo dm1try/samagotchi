@@ -1,0 +1,92 @@
+#!/bin/sh
+# pair: pair this Codex CLI session with a chi session (chi's codex-peer
+# bundle). Run from Codex, which sets CODEX_THREAD_ID:
+#
+#   sh <bundle dir>/scripts/pair <chi session id, prefix or chi web URL>
+#
+# It attaches two pushed sources to the chi session: codex-inbox, whose hint
+# is this session's thread id (chi's codex_send tool runs
+# `codex queue --thread <id>` with it), and codex-review, where Codex's
+# answers go. Again later, it only refreshes the thread id: the push carries
+# the new hint. CHI names the chi command (default: chi on the PATH).
+#
+# chi writes the session's context under its state folder, which Codex's
+# default sandbox doesn't let it write: ~/.codex/config.toml needs
+#   [sandbox_workspace_write]
+#   writable_roots = ["<state>/samagotchi/context"]
+# and a write refused says so.
+set -eu
+
+usage() {
+  echo "usage: pair <chi session id or URL (http://127.0.0.1:4567/#/s/<id>)>" >&2
+  exit 2
+}
+
+[ $# -eq 1 ] || usage
+case "$1" in
+  -h | --help) usage ;;
+  http://* | https://*)
+    id=$(printf '%s\n' "$1" | sed -n 's|.*/s/\([0-9A-Za-z-][0-9A-Za-z-]*\).*|\1|p')
+    [ -n "$id" ] || { echo "pair: no session id in $1 (a chi web URL ends in #/s/<id>)" >&2; exit 2; }
+    ;;
+  *) id=$1 ;;
+esac
+
+thread=${CODEX_THREAD_ID:-}
+if [ -z "$thread" ]; then
+  echo "pair: CODEX_THREAD_ID isn't set: run this from a Codex CLI session" >&2
+  exit 2
+fi
+chi=${CHI:-chi}
+
+# Prints chi's error, and the writable_roots line when the sandbox refused.
+fail() {
+  printf '%s\n' "$1" >&2
+  case "$1" in
+    *"Operation not permitted"* | *"Read-only file system"* | *"Permission denied"*)
+      state=${XDG_STATE_HOME:-$HOME/.local/state}
+      config='~/.codex/config.toml'
+      [ -z "${CODEX_HOME:-}" ] || config=$CODEX_HOME/config.toml
+      cat >&2 <<MSG
+pair: Codex's sandbox can't write chi's state: add to $config
+  [sandbox_workspace_write]
+  writable_roots = ["$state/samagotchi/context"]
+then restart Codex and pair again.
+MSG
+      ;;
+  esac
+  exit 1
+}
+
+# A JSON string: backslashes, quotes, tabs and newlines escaped.
+json() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' |
+    awk 'BEGIN { ORS = ""; printf "\"" } NR > 1 { print "\\n" } { print } END { printf "\"" }'
+}
+
+# Attaches a pushed source, unless the session has one of that name already.
+attach() {
+  name=$1
+  shift
+  if ! out=$($chi context add "$name" --push "$@" "$id" 2>&1); then
+    if ! $chi context show "$name" --json "$id" >/dev/null 2>&1; then
+      fail "$out"
+    fi
+  fi
+}
+
+attach codex-inbox --why "the Codex session paired with you: send it parts with codex_send" --hint "$thread"
+text="Codex peer inbox
+thread: $thread
+codex cwd: $PWD
+paired: $(date '+%Y-%m-%d %H:%M')
+Send to it with the codex_send tool (your skill_codex_peer memory); its answers come as the codex-review context."
+if ! out=$(printf '{"text":%s,"hint":%s,"summary":%s}\n' "$(json "$text")" "$(json "$thread")" \
+  "$(json "Codex paired from $PWD")" | $chi context push codex-inbox "$id" 2>&1 >/dev/null); then
+  fail "$out"
+fi
+
+attach codex-review --why "Codex's answers to what you sent it (codex-peer)" --hint "latest Codex reply"
+
+echo "paired with chi $id (thread $thread)"
+$chi context ls "$id"

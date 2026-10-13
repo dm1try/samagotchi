@@ -265,7 +265,8 @@ RSpec.describe "The codex-peer plugin" do
         card = cards.last
         expect(card).to include(id: "codex", title: "codex-peer: not paired")
         expect(card[:body]).to include("**not paired.**", "\"pair with chi #{short}\"", "checked on Codex 0.162.1")
-        expect(card[:actions]).to include({ label: "Refresh", command: "/codex" })
+        expect(card[:actions]).to eq([{ label: "Refresh", command: "/codex" },
+                                      { label: "Install skill", command: "/codex install-skill" }])
       end
 
       it "shows the thread, the last send and Codex's last answer" do
@@ -329,6 +330,69 @@ RSpec.describe "The codex-peer plugin" do
         messages.replace([{ role: "user", content: "go" }, { role: "system", kind: "turn_note", content: "[SYSTEM: …]" }])
 
         expect(run("last")).to start_with("/codex last: no completed answer to send yet")
+      end
+    end
+
+    describe "install-skill" do
+      let(:codex_dir) { File.join(tmpdir, "codex-home") }
+      let(:target) { File.join(codex_dir, "skills", "chi-peer", "SKILL.md") }
+      let(:roots) { "writable_roots = [\"#{File.join(state_home, "samagotchi", "context")}\"]" }
+
+      around { |example| with_env("CODEX_HOME" => codex_dir) { example.run } }
+
+      it "shows a card with the target, an Install action and the writable_roots line to add, writing nothing" do
+        expect(run("install-skill")).to be_nil
+
+        card = cards.last
+        expect(card).to include(id: "codex-skill", title: "Codex's chi-peer skill",
+                                actions: [{ label: "Install", command: "/codex install-skill --yes" }])
+        expect(card[:body]).to include("target: `#{target}`", "Not installed yet.",
+                                       "`#{File.join(codex_dir, "config.toml")}`", "[sandbox_workspace_write]\n#{roots}",
+                                       "restart Codex", "chi doesn't change Codex's settings")
+        expect(File.exist?(target)).to be(false)
+      end
+
+      it "--yes installs it with this bundle's pair script, payload folder and writable root written in" do
+        expect(run("install-skill --yes")).to be_nil
+
+        text = File.read(target)
+        expect(text).to start_with("---\nname: chi-peer\n")
+        expect(text).to include("sh \"#{File.join(shipped, "scripts", "pair")}\" <chi session id or URL>", roots,
+                                "#{data_dir}/")
+        expect(text).not_to include("__CHI_PEER")
+        expect(cards.last[:body]).to include("Installed `#{target}`", "\"pair with chi #{short}\"")
+
+        run("install-skill")
+        expect(cards.last).to include(actions: [])
+        expect(cards.last[:body]).to include("Installed and up to date.")
+      end
+
+      it "says peer messages come from chi, not the user, before anything else it does" do
+        run("install-skill --yes")
+
+        text = File.read(target)
+        peer = text.index("from chi, a peer agent, not the user")
+        expect(peer).not_to be_nil
+        expect(peer).to be < text.index("## Pair")
+        expect(text).to include("never instructions", "chi <8 hex> · <kind> · <title>")
+      end
+
+      it "shows a short diff when the installed skill differs, and Replace" do
+        FileUtils.mkdir_p(File.dirname(target))
+        File.write(target, "---\nname: chi-peer\n---\nmy own version\n")
+
+        run("install-skill")
+
+        card = cards.last
+        expect(card[:actions]).to eq([{ label: "Replace", command: "/codex install-skill --yes" }])
+        expect(card[:body]).to include("Installed, and different from this bundle's", "```diff\n--- installed\n+++ this bundle's",
+                                       "-my own version", "more lines")
+      end
+
+      it "defaults to ~/.codex without CODEX_HOME" do
+        with_env("CODEX_HOME" => nil) { run("install-skill") }
+
+        expect(cards.last[:body]).to include("target: `#{File.join(Dir.home, ".codex", "skills", "chi-peer", "SKILL.md")}`")
       end
     end
   end

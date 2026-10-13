@@ -3,6 +3,7 @@
 require "fileutils"
 require "json"
 require "open3"
+require "tempfile"
 require "time"
 
 # codex-peer (docs/plugins.md, The codex-peer bundle): a live link between
@@ -33,7 +34,15 @@ require "time"
 # it is, titled by its first line; `/codex last` sends the model's last
 # completed answer as context (mid-turn, a worker's ctx.messages holds the
 # running turn's partial text, so the before_turn and after_turn hooks keep
-# what was completed).
+# what was completed); `/codex install-skill` shows a card with Codex's
+# chi-peer skill's target ($CODEX_HOME, else ~/.codex) and an Install
+# action (`--yes`), the card being the user's consent: the copy happens
+# in-process, where no guardrail sees it. The skill is
+# scripts/chi-peer-SKILL.md beside this file, with the installed
+# scripts/pair path, the payload folder and chi's context folder written
+# in. The card shows the writable_roots line Codex's config.toml needs for
+# pairing and replies (its default sandbox can't write chi's state); chi
+# never edits Codex's config.
 class Plugin
   INBOX = "codex-inbox"
   REVIEW = "codex-review"
@@ -51,8 +60,18 @@ class Plugin
   THREAD_ID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
   LAST_SEND = "last-send.json"
   STATUS_CARD = "codex"
+  SKILL_CARD = "codex-skill"
   USAGE = "usage: /codex — whether a Codex session is paired; /codex validate <text> | context <text> — send the " \
-          "text to it; /codex last — send the last answer as context"
+          "text to it; /codex last — send the last answer as context; /codex install-skill — install Codex's " \
+          "chi-peer skill, which pairs"
+  # The shipped bundle keeps scripts/ beside plugin.rb; an installed one
+  # has plugin/plugin.rb and scripts/ beside plugin/.
+  SCRIPTS_DIRS = [File.join(__dir__, "scripts"), File.expand_path("../scripts", __dir__)].freeze
+  SKILL_FILE = "chi-peer-SKILL.md"
+  PAIR_PLACEHOLDER = "__CHI_PEER_PAIR__"
+  PAYLOADS_PLACEHOLDER = "__CHI_PEER_PAYLOADS__"
+  CONTEXT_PLACEHOLDER = "__CHI_PEER_CONTEXT__"
+  DIFF_LINES = 20
 
   TOOL_DESCRIPTION = "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the " \
                      "Codex CLI session paired with it (the codex-inbox context), for Codex to validate, to take " \
@@ -90,8 +109,8 @@ class Plugin
     rescue SendError => e
       "Error: #{e.message}"
     end
-    chi.command "/codex", "the paired Codex session: status; validate|context <text>, last: send to it",
-                anytime: true do |args, ctx|
+    chi.command "/codex", "the paired Codex session: status; validate|context <text>, last: send to it; " \
+                          "install-skill: install Codex's chi-peer skill", anytime: true do |args, ctx|
       codex(args.to_s.strip, ctx)
     end
     chi.on(:before_turn) do |event|
@@ -141,6 +160,7 @@ class Plugin
     when nil then status(ctx)
     when "validate", "context" then rest.strip.empty? ? USAGE : send_text(ctx, verb, rest)
     when "last" then rest.empty? ? send_last(ctx) : USAGE
+    when "install-skill" then install_skill(ctx, yes: rest == "--yes")
     else USAGE
     end
   end
@@ -200,14 +220,15 @@ class Plugin
               ["**paired** with a Codex session", "thread: `#{thread}` (a closed Codex session still takes sends: they wait " \
                                                                  "for `codex resume` there, or pair again)"]
             else
-              ["**not paired.** In Codex, install the chi-peer skill, then tell Codex \"pair with chi " \
-               "#{id.to_s[0, 8]}\"."]
+              ["**not paired.** In Codex, install the chi-peer skill (Install skill below), then tell Codex " \
+               "\"pair with chi #{id.to_s[0, 8]}\"."]
             end
     lines << "last send: #{last_send_line(ctx, id)}" if id && last_send(ctx, id)
     lines << "last answer (codex-review): #{review_line(review)}" if review
     lines << "Sent with `codex queue`: checked on #{CHECKED_ON}."
     ctx.card(id: STATUS_CARD, title: "codex-peer: #{paired ? "paired" : "not paired"}",
-             body: lines.join("\n\n"), actions: [{ label: "Refresh", command: "/codex" }])
+             body: lines.join("\n\n"), actions: [{ label: "Refresh", command: "/codex" },
+                                                 { label: "Install skill", command: "/codex install-skill" }])
     nil
   end
 
@@ -239,6 +260,81 @@ class Plugin
     end
   rescue ArgumentError
     stamp.to_s
+  end
+
+  # /codex install-skill [--yes]
+  def install_skill(ctx, yes:)
+    source = SCRIPTS_DIRS.map { |dir| File.join(dir, SKILL_FILE) }.find { |path| File.file?(path) }
+    return "/codex install-skill: this bundle has no scripts/#{SKILL_FILE}; reinstall it (chi bundle install codex-peer --force)" unless source
+
+    text = File.read(source).gsub(PAIR_PLACEHOLDER, File.join(File.dirname(source), "pair"))
+                            .gsub(PAYLOADS_PLACEHOLDER, tilde(ctx.data_dir))
+                            .gsub(CONTEXT_PLACEHOLDER, context_dir(ctx))
+    target = File.join(codex_dir, "skills", "chi-peer", "SKILL.md")
+    yes ? write_skill(ctx, target, text) : skill_card(ctx, target, text)
+  end
+
+  def skill_card(ctx, target, text)
+    current = File.file?(target) ? File.read(target) : nil
+    state = if current.nil? then "Not installed yet."
+            elsif current == text then "Installed and up to date."
+            else "Installed, and different from this bundle's (Replace overwrites it):\n\n```diff\n#{diff(target, text)}\n```"
+            end
+    body = ["Codex's side: it pairs (`pair with chi <id>`), answers validates and replies into chi.",
+            "target: `#{target}`", state,
+            "Codex's default sandbox can't write chi's state, and pairing and replies do: add to " \
+            "`#{File.join(codex_dir, "config.toml")}` (into its `[sandbox_workspace_write]` section if it has one), " \
+            "then restart Codex:\n\n```toml\n#{roots_line(ctx)}\n```\n\nchi doesn't change Codex's settings."]
+    actions = if current == text
+                []
+              else
+                [{ label: current ? "Replace" : "Install", command: "/codex install-skill --yes" }]
+              end
+    ctx.card(id: SKILL_CARD, title: "Codex's chi-peer skill", body: body.join("\n\n"), actions: actions)
+    nil
+  end
+
+  def write_skill(ctx, target, text)
+    FileUtils.mkdir_p(File.dirname(target))
+    File.write(target, text)
+    ctx.card(id: SKILL_CARD, title: "Codex's chi-peer skill",
+             body: "Installed `#{target}`. Restart Codex if it is running, then say \"pair with chi " \
+                   "#{ctx.session_id.to_s[0, 8]}\".")
+    nil
+  rescue SystemCallError => e
+    "/codex install-skill: couldn't write #{target}: #{e.message}"
+  end
+
+  # Codex's config folder: CODEX_HOME, else ~/.codex.
+  def codex_dir
+    dir = ENV.fetch("CODEX_HOME", "").strip
+    dir.empty? ? File.join(Dir.home, ".codex") : File.expand_path(dir)
+  end
+
+  # chi's context folder (<state>/samagotchi/context, where a push
+  # writes), beside the bundle's data dir (<state>/samagotchi/plugins/<name>).
+  # Absolute: config.toml doesn't expand ~.
+  def context_dir(ctx) = File.expand_path("../../context", ctx.data_dir)
+
+  def roots_line(ctx) = "[sandbox_workspace_write]\nwritable_roots = [#{JSON.generate(context_dir(ctx))}]"
+
+  # The first lines of `diff -u installed new`.
+  def diff(target, text)
+    Tempfile.create(["chi-peer", ".md"]) do |file|
+      file.write(text)
+      file.flush
+      out, = Open3.capture2("diff", "-u", "--label", "installed", "--label", "this bundle's", target, file.path)
+      lines = out.lines
+      lines = lines.first(DIFF_LINES) + ["… #{lines.size - DIFF_LINES} more lines\n"] if lines.size > DIFF_LINES
+      lines.join.chomp
+    end
+  rescue SystemCallError
+    "(diff isn't there to show how)"
+  end
+
+  def tilde(path)
+    home = Dir.home
+    path.start_with?("#{home}/") ? "~#{path.delete_prefix(home)}" : path
   end
 
   def follow_up(kind)
