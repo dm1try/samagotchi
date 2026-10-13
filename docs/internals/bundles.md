@@ -35,6 +35,8 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 | `SystemBundle`, `ShippedUpdate` | the built-in system bundle (`ensure!` at Engine start, `sync` in `chi update`) and `chi update`'s upgrade of shipped bundles; both drive the Installer with `upgrade: true` |
 | `Uninstaller`, `Trash`, `Status`, `Listing` | remove, keep removed files, `chi bundle status`, `chi bundle list` |
 | `IndexUpdater`, `IndexSync` | the managed `index.md` lines (Installer; and the write/edit tools for memories) |
+| `IndexSize` | one scope's memory index as the prompt carries it (tokens, lines, bytes): `memory.index_warn_tokens`' crossing note after a memory write, `chi self`'s summary, the prompt's figures (`SystemPrompt`) |
+| `Placeholder` | `{{placeholder}}` patterns left in an installed memory, one line per file from `Installer#detect_placeholders`; a hint, never a gate |
 
 Readers of the installed state: `Hooks::BundleLoader` (Engine), `GuardrailWiring#bundle_rules`, `Plugin::Loader`,
 `ContextProviders` (scripts), `BundleNeeds` (index markers). Each goes through `Provenance.each_installed` / `#record`
