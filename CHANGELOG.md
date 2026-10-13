@@ -17,7 +17,7 @@ and commands may change between minor versions. How releases are made:
   cache reads and writes. See docs/configuration.md, "Anthropic Messages hosts". Claude 5.x models also need the
   thinking-block binding controls, which come in the next release: until then an edited history can fail a turn there.
 - On an `api: anthropic` host a reply's content blocks are saved with it and go back verbatim (thinking blocks with
-  their signatures), also after `--resume`. `reasoning_history` defaults to `all` there, and `drop` counts as `turn`.
+  their signatures; one that came without a signature gets an empty one), also after `--resume`. `reasoning_history` defaults to `all` there, and `drop` counts as `turn`.
   See docs/configuration.md, "Reasoning history".
 - Thinking levels on `api: anthropic` hosts: `off` sends `thinking: disabled`, `low`/`medium`/`high` adaptive thinking
   shown summarized at that effort, `default` nothing. A model that refuses adaptive thinking gets the budget form

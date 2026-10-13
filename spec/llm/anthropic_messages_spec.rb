@@ -342,6 +342,15 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
       expect(tool_events.size).to eq(4)
     end
 
+    it "gives a thinking block that came without a signature an empty one (sent back, it needs the key)" do
+      response = stream("fireworks_thinking_tool_use_stream.hand-written.sse")
+
+      expect(response.provider_content.first)
+        .to eq("type" => "thinking", "thinking" => "The user wants the weather in Paris. I'll call get_weather.", "signature" => "")
+      expect(response.tool_calls.map { |call| [call.id, call.arguments] }).to eq([["functions.get_weather:0", { "city" => "Paris" }]])
+      expect(response.usage).to have_attributes(prompt_tokens: 1210, completion_tokens: 38)
+    end
+
     it "keeps interleaved blocks in their order: thinking, text, tool_use, thinking, tool_use" do
       response = stream("interleaved_stream.hand-written.sse")
 
@@ -629,6 +638,18 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
   end
 
   describe "the response (not streamed)" do
+    it "gives a thinking block without a signature an empty one, and leaves a signed one as it is" do
+      server.enqueue("/v1/messages", json: { type: "message", role: "assistant", model: "m", stop_reason: "end_turn",
+                                             content: [{ type: "thinking", thinking: "hm" },
+                                                       { type: "thinking", thinking: "ok", signature: "sig" },
+                                                       { type: "text", text: "Done." }] })
+
+      response = chat([{ role: "user", content: "hi" }])
+
+      expect(response.provider_content.first(2)).to eq([{ "type" => "thinking", "thinking" => "hm", "signature" => "" },
+                                                        { "type" => "thinking", "thinking" => "ok", "signature" => "sig" }])
+    end
+
     it "gives the text, the usage and the served model, the finish reason in the loop's words" do
       answer
 

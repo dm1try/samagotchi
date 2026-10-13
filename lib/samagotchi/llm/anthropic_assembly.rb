@@ -171,11 +171,15 @@ module Samagotchi
 
       # The blocks to keep and send back: an empty or blank text block is
       # no text (Splash opens one after a thinking cut by max_tokens, and
-      # Messages refuses one sent back), and a tool_use's input is an object.
+      # Messages refuses one sent back), a tool_use's input is an object,
+      # and a thinking block has a signature, "" when it came without one
+      # (a sent-back thinking block needs the key; Splash sends "", a
+      # provider may send none).
       def content
         @blocks.filter_map do |block|
           type = block["type"].to_s
           next if type == TEXT && block["text"].to_s.strip.empty?
+          next block.merge("signature" => "") if type == THINKING && !block.key?("signature")
           next block unless type == "tool_use"
 
           input = OpenAIChat.parse_arguments(block["input"])
