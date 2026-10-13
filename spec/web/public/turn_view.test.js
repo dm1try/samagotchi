@@ -138,7 +138,7 @@ test("turnHistoryHtml with parts: a call's images are thumbs on its reloaded row
     { role: "assistant", content: "A page." },
   ];
   const seen = [];
-  const html = turnHistoryHtml(items, normalizeTiming({}), { thumbs, rowThumbs: (images) => { if (!images?.length) return nothing; seen.push(images); return lit`<div class="thumbs">${images.map((i) => i.name).join(",")}</div>`; } });
+  const html = turnHistoryHtml(items, normalizeTiming({}), { thumbs: (images) => { if (!images?.length) return nothing; seen.push(images); return lit`<div class="thumbs">${images.map((i) => i.name).join(",")}</div>`; } });
   assert.deepEqual(seen, [[{ file: "images/aa.png", name: "s.png" }]]);
   assert.match(html, /<span class="activity-tool">mcp_chrome_screenshot<\/span>.*\/tmp\/s\.png<\/div><div class="thumbs">s\.png<\/div><\/div>/);
   assert.equal(html.match(/class="thumbs"/g).length, 1);

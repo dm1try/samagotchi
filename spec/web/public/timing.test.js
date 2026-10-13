@@ -258,22 +258,16 @@ test("turnTimingText: a canceled turn says so", () => {
   assert.equal(turnTimingText(2, 1600, { canceled: true }), "turn 2 · 1.6s · canceled");
 });
 
-import { cancelLineHtml, cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
+import { cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
 
-test("cancelLineText / cancelLineHtml: the live line and the one a re-render draws from the turn record", () => {
+// The re-rendered line (turn_html.js cancelLineTemplate) has its own spec.
+test("cancelLineText: the live line and the one a re-render draws from the turn record", () => {
   assert.equal(cancelLineText("user"), "\u25A0 canceled (stopped)");
   assert.equal(cancelLineText("ctrl_c"), "\u25A0 canceled (Ctrl-C)");
   assert.equal(cancelLineText("hook"), "\u25A0 canceled (by a hook)");
   assert.equal(cancelLineText("shutdown"), "\u25A0 canceled (shutdown)");
   assert.equal(cancelLineText(""), "\u25A0 canceled");
-  const esc = (s) => s.replace(/</g, "&lt;");
-  assert.equal(cancelLineHtml({ status: "canceled", cancellation_reason: "ctrl_c" }, esc), '<div class="bubble cancel stopped">\u25A0 canceled (Ctrl-C)</div>');
-  assert.equal(cancelLineHtml({ status: "canceled" }, esc), '<div class="bubble cancel stopped">\u25A0 canceled</div>');
-  assert.equal(cancelLineHtml({ status: "canceled", cancellation_reason: "<x>" }, esc), '<div class="bubble cancel stopped">\u25A0 canceled (&lt;x>)</div>');
-  assert.equal(cancelLineHtml({ status: "canceled", cancellation_reason: "hook", cancelled_by: "loop-guard" }, esc),
-    '<div class="bubble cancel stopped">\u25A0 stopped by loop-guard</div>');
-  assert.equal(cancelLineHtml({ status: "completed" }, esc), "");
-  assert.equal(cancelLineHtml(null, esc), "");
+  assert.equal(cancelLineText("hook", "loop-guard"), "\u25A0 stopped by loop-guard");
 });
 
 // Live, a canceled turn's partial text stays in the block unless the turn

@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bubbleCopyText, codeText, copySource, copySourceAttr, showsAnswer, visibleText } from "../../../lib/samagotchi/web/public/copy.js";
+import { bubbleCopyText, codeText, copySource, showsAnswer, visibleText } from "../../../lib/samagotchi/web/public/copy.js";
 
 // Just enough of an Element for the copy rules: children, classes, a
 // selector test by class names, attributes.
@@ -65,16 +65,9 @@ test("visibleText skips the matching subtrees", () => {
   assert.equal(visibleText(el("", ["a", el("x", ["b"]), el("y", ["c"])]), ".x"), "ac");
 });
 
-test("copySourceAttr: rendered answers and prompts keep their source, escaped; a plain answer does not", () => {
-  assert.equal(copySourceAttr({ role: "assistant", content: 'a "b" <c> & d' }, true), ' data-copy-source="a &quot;b&quot; &lt;c&gt; &amp; d"');
-  assert.equal(copySourceAttr({ role: "user", content: "> q\nnote" }, false), ' data-copy-source="&gt; q\nnote"');
-  assert.equal(copySourceAttr({ role: "assistant", content: "plain" }, false), "");
-});
-
 test("copySource: a presented answer copies its display, else its content", () => {
   assert.equal(copySource({ role: "assistant", content: "see JIRA-1", display: "see [JIRA-1](u)" }), "see [JIRA-1](u)");
   assert.equal(copySource({ role: "assistant", content: "plain" }), "plain");
-  assert.equal(copySourceAttr({ role: "assistant", content: "a", display: "[a](u)" }, true), ' data-copy-source="[a](u)"');
 });
 
 test("showsAnswer: the streamed bubble by its text, a rendered one by its kept source (content or display)", () => {

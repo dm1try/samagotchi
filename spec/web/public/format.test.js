@@ -1,55 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { leadTrimmed, previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, steerRowHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace, promptNotesChip } from "../../../lib/samagotchi/web/public/format.js";
-
-test("noteHtml: who sent the context note, then its text, both escaped", () => {
-  assert.equal(
-    noteHtml({ label: "session 3f2a1c (~/p/<x>)", content: "a <b>\nc" }),
-    '<div class="note-line">note from session 3f2a1c (~/p/&lt;x&gt;)</div><div class="note-text">a &lt;b&gt;\nc</div>',
-  );
-  assert.equal(noteHtml({ content: "x" }), '<div class="note-line">note</div><div class="note-text">x</div>');
-});
+import { leadTrimmed, previewOf, relativeTime, escapeHtml, normalize, modelLabel, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace, promptNotesChip } from "../../../lib/samagotchi/web/public/format.js";
 
 test("escapeHtml escapes HTML metacharacters", () => {
   assert.equal(escapeHtml(`<a href="x">&`), "&lt;a href=&quot;x&quot;&gt;&amp;");
-});
-
-test("messageBodyHtml only uses explicitly rendered assistant HTML", () => {
-  assert.deepEqual(
-    messageBodyHtml({ role: "assistant", content: "**safe**", html: "<strong>safe</strong>" }),
-    { body: "<strong>safe</strong>", renderedMarkdown: true },
-  );
-  assert.deepEqual(
-    messageBodyHtml({ role: "user", content: "<img>", html: "<strong>ignored</strong>" }),
-    { body: "&lt;img&gt;", renderedMarkdown: false },
-  );
-  assert.deepEqual(
-    messageBodyHtml({ role: "assistant", content: "<img>" }),
-    { body: "&lt;img&gt;", renderedMarkdown: false },
-  );
-});
-
-test("userBodyHtml leaves a message without quotes as escaped text", () => {
-  assert.equal(userBodyHtml("a <b>\n\n  c"), "a &lt;b&gt;\n\n  c");
-  assert.equal(userBodyHtml(undefined), "");
-});
-
-test("userBodyHtml turns runs of > lines into blockquotes", () => {
-  assert.equal(
-    userBodyHtml("From your thinking:\n> one <x>\n>two\n\nwhy?\n\n> three\n\nok"),
-    "From your thinking:<blockquote>one &lt;x&gt;\ntwo</blockquote>why?<blockquote>three</blockquote>ok",
-  );
-});
-
-test("userBodyHtml keeps an empty quote line and handles CRLF", () => {
-  assert.equal(userBodyHtml("> a\r\n>\r\n> b\r\n\r\nnote"), "<blockquote>a\n\nb</blockquote>note");
-});
-
-test("messageBodyHtml renders a user message's quotes", () => {
-  assert.deepEqual(
-    messageBodyHtml({ role: "user", content: "> q\n\nn" }),
-    { body: "<blockquote>q</blockquote>n", renderedMarkdown: false },
-  );
 });
 
 test("normalize collapses whitespace", () => {
@@ -249,12 +203,6 @@ test("delegatedBy names the parent by its short id, with its preview when the pa
   assert.deepEqual(delegatedBy("3f2a1c9e-0000-4000-8000-000000000000", { last_prompt: "plan the  release" }), {
     text: "\u21B3 3f2a1c9e", title: "delegated by session 3f2a1c9e: plan the release",
   });
-});
-
-test("steerRowHtml: who nudged the model, the text collapsed and escaped; a bubble on its own", () => {
-  assert.equal(steerRowHtml({ source: "check-in", text: "a <b>" }),
-    '<details class="steer-row"><summary>check-in nudged the model</summary><div class="steer-text">a &lt;b&gt;</div></details>');
-  assert.match(steerRowHtml({ text: "x" }, { bubble: true }), /^<details class="bubble steer-row"><summary>nudged the model</);
 });
 
 import { memChipText, memChipTitle } from "../../../lib/samagotchi/web/public/format.js";

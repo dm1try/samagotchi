@@ -1,29 +1,40 @@
-import { markupOf } from "./dom_shim.js";
+import { canon, markupOf } from "./dom_shim.js";
 import { html as lit } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { commandBubbleHtml, emptyAnswerHtml, shellCommandMessage, stateBadgeHtml, statusParts, toolRowTemplate, userBubbleHtml } from "../../../lib/samagotchi/web/public/turn_html.js";
+import {
+  answerBubbleTemplate, cancelLineTemplate, commandBubbleTemplate, elementOf, emptyAnswerTemplate, noteBubbleTemplate, shellCommandMessage,
+  stateBadgeTemplate, statusParts, steerRowTemplate, toolRowTemplate, userBodyTemplate, userBubbleTemplate,
+} from "../../../lib/samagotchi/web/public/turn_html.js";
 
-// A row's markup as a reload renders it.
+// The templates' markup as the page gets it.
 const toolRowHtml = (row, opts) => markupOf(toolRowTemplate(row, opts));
+const userBubbleHtml = (m, opts) => markupOf(userBubbleTemplate(m, opts));
+const commandBubbleHtml = (c) => markupOf(commandBubbleTemplate(c));
+const stateBadgeHtml = (s) => markupOf(stateBadgeTemplate(s));
+const emptyAnswerHtml = (i) => markupOf(emptyAnswerTemplate(i));
+const noteHtml = (n) => markupOf(noteBubbleTemplate(n));
+const userBodyHtml = (c) => markupOf(userBodyTemplate(c));
+const steerRowHtml = (s, o) => markupOf(steerRowTemplate(s, o));
+const answerBubbleHtml = (m, opts) => markupOf(answerBubbleTemplate(m, opts));
 
-test("userBubbleHtml: a plain prompt keeps its text as the copy source, its `>` lines as quotes", () => {
+test("userBubbleTemplate: a plain prompt keeps its text as the copy source, its `>` lines as quotes", () => {
   assert.equal(userBubbleHtml({ content: "> quoted\nask" }),
-    '<div class="bubble user" data-copy-source="&gt; quoted\nask"><div class="user-message"><blockquote>quoted</blockquote>ask</div></div>');
+    canon('<div class="bubble user" data-copy-source="&gt; quoted\nask"><div class="user-message"><blockquote>quoted</blockquote>ask</div></div>'));
 });
 
-test("userBubbleHtml: a saved message's display is its copy source", () => {
+test("userBubbleTemplate: a saved message's display is its copy source", () => {
   assert.match(userBubbleHtml({ role: "user", content: "a", display: "b" }), /data-copy-source="b"/);
 });
 
-test("userBubbleHtml: a steered line with its label, the step that read it, its thumbs and badge", () => {
-  assert.equal(userBubbleHtml({ content: "also <this>" }, { label: "delegate report", state: "steered", step: "2", thumbs: '<div class="thumbs"></div>' }),
-    '<div class="bubble user steered" data-user-state="steered" data-step="2" data-copy-source="also &lt;this&gt;">' +
+test("userBubbleTemplate: a steered line with its label, the step that read it, its thumbs and badge", () => {
+  assert.equal(userBubbleHtml({ content: "also <this>" }, { label: "delegate report", state: "steered", step: "2", thumbs: lit`<div class="thumbs"></div>` }),
+    canon('<div class="bubble user steered" data-user-state="steered" data-step="2" data-copy-source="also &lt;this&gt;">' +
     '<span class="origin-label">delegate report</span><div class="user-message">also &lt;this&gt;<div class="thumbs"></div></div>' +
-    '<span class="state-badge">steered</span></div>');
+    '<span class="state-badge">steered</span></div>'));
 });
 
-test("userBubbleHtml: the live page's own fields, and a state without a badge is a plain bubble", () => {
+test("userBubbleTemplate: the live page's own fields, and a state without a badge is a plain bubble", () => {
   assert.equal(userBubbleHtml({ content: "hi  there" }, { state: "started", own: true, enqueuedId: "e\"1", key: "hi there" }),
     '<div class="bubble user" data-copy-source="hi  there" data-user-content="hi there" data-own="1" data-enqueued-id="e&quot;1">' +
     '<div class="user-message">hi  there</div></div>');
@@ -31,7 +42,7 @@ test("userBubbleHtml: the live page's own fields, and a state without a badge is
   assert.match(userBubbleHtml({ content: "x" }, { state: "failed" }), /class="bubble user failed" data-user-state="failed"/);
 });
 
-test("userBubbleHtml: no content is an empty bubble, not 'undefined'", () => {
+test("userBubbleTemplate: no content is an empty bubble, not 'undefined'", () => {
   assert.equal(userBubbleHtml({ content: undefined }), '<div class="bubble user" data-copy-source=""><div class="user-message"></div></div>');
 });
 
@@ -54,22 +65,22 @@ test("shellCommandMessage: a `!cmd`'s saved message parses to its line and outpu
   assert.equal(shellCommandMessage(null), null);
 });
 
-test("commandBubbleHtml: the live page's command markup — the line, the output in a pre; HTML escaped", () => {
+test("commandBubbleTemplate: the live page's command markup — the line, the output in a pre; HTML escaped", () => {
   assert.equal(commandBubbleHtml({ line: "!echo <hi>", text: "<hi> & \"bye\"\n" }),
     '<div class="bubble command"><div class="command-line">!echo &lt;hi&gt;</div>' +
-    '<pre class="command-output">&lt;hi&gt; &amp; &quot;bye&quot;\n</pre></div>');
+    '<pre class="command-output">&lt;hi&gt; &amp; "bye"\n</pre></div>');
   // No output: no pre, as drawCommandBubble leaves it out.
   assert.equal(commandBubbleHtml({ line: "!true", text: "" }),
     '<div class="bubble command"><div class="command-line">!true</div></div>');
 });
 
-test("stateBadgeHtml: only the named states", () => {
+test("stateBadgeTemplate: only the named states", () => {
   assert.equal(stateBadgeHtml("queued"), '<span class="state-badge">queued</span>');
   assert.equal(stateBadgeHtml("started"), "");
   assert.equal(stateBadgeHtml(null), "");
 });
 
-test("emptyAnswerHtml: the muted notice with its retries, live (turn_summary) and reloaded alike", () => {
+test("emptyAnswerTemplate: the muted notice with its retries, live (turn_summary) and reloaded alike", () => {
   assert.equal(emptyAnswerHtml({ retries: 1 }), '<div class="bubble hook-notice empty-answer">no answer: the model returned nothing (after 1 retry)</div>');
   assert.equal(emptyAnswerHtml({ role: "empty_answer" }), '<div class="bubble hook-notice empty-answer">no answer: the model returned nothing</div>');
 });
@@ -147,4 +158,71 @@ test("statusParts / toolRowHtml: a grep's no-match is done, with a muted 'no mat
   assert.match(html, /<span class="activity-state no-match">no match<\/span>/);
   assert.match(html, /exit: 1 \(no output\)/);
   assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "ls" }), /no match/);
+});
+
+test("noteBubbleTemplate: who sent the context note, then its text, both escaped", () => {
+  assert.equal(
+    noteHtml({ label: "session 3f2a1c (~/p/<x>)", content: "a <b>\nc" }),
+    '<div class="bubble note"><div class="note-line">note from session 3f2a1c (~/p/&lt;x&gt;)</div><div class="note-text">a &lt;b&gt;\nc</div></div>',
+  );
+  assert.equal(noteHtml({ content: "x" }), '<div class="bubble note"><div class="note-line">note</div><div class="note-text">x</div></div>');
+});
+
+test("answerBubbleTemplate only uses explicitly rendered assistant HTML, set whole (no lit markers inside)", () => {
+  assert.equal(answerBubbleHtml({ role: "assistant", content: "**safe**", html: "<strong>safe</strong>" }, { at: 3 }),
+    '<div class="bubble output markdown" data-answer-at="3" data-copy-source="**safe**"><strong>safe</strong></div>');
+  assert.equal(answerBubbleHtml({ role: "assistant", content: "<img>" }), '<div class="bubble output">&lt;img&gt;</div>');
+  assert.equal(answerBubbleHtml({ role: "assistant", content: "a", display: "[a](u)", html: "<p>a</p>" }, { cls: " report-reply" }),
+    '<div class="bubble output report-reply markdown" data-copy-source="[a](u)"><p>a</p></div>');
+  // The bubble's nodes as the live turn end leaves them: no comment inside.
+  const el = elementOf(answerBubbleTemplate({ role: "assistant", content: "x", html: "<p>x</p>" }));
+  assert.equal(el.innerHTML, "<p>x</p>");
+});
+
+test("userBodyTemplate leaves a message without quotes as escaped text", () => {
+  assert.equal(userBodyHtml("a <b>\n\n  c"), "a &lt;b&gt;\n\n  c");
+  assert.equal(userBodyHtml(undefined), "");
+});
+
+test("userBodyTemplate turns runs of > lines into blockquotes", () => {
+  assert.equal(
+    userBodyHtml("From your thinking:\n> one <x>\n>two\n\nwhy?\n\n> three\n\nok"),
+    "From your thinking:<blockquote>one &lt;x&gt;\ntwo</blockquote>why?<blockquote>three</blockquote>ok",
+  );
+});
+
+test("userBodyTemplate keeps an empty quote line and handles CRLF", () => {
+  assert.equal(userBodyHtml("> a\r\n>\r\n> b\r\n\r\nnote"), "<blockquote>a\n\nb</blockquote>note");
+});
+
+test("answerBubbleTemplate: a user message's html is ignored, its quotes render", () => {
+  assert.equal(answerBubbleHtml({ role: "user", content: "<img>", html: "<strong>ignored</strong>" }),
+    '<div class="bubble output" data-copy-source="<img>">&lt;img&gt;</div>');
+  assert.equal(answerBubbleHtml({ role: "user", content: "> q\n\nn" }),
+    canon('<div class="bubble output" data-copy-source="&gt; q\n\nn"><blockquote>q</blockquote>n</div>'));
+});
+
+test("steerRowTemplate: who nudged the model, the text collapsed and escaped; a bubble on its own", () => {
+  assert.equal(steerRowHtml({ source: "check-in", text: "a <b>" }),
+    '<details class="steer-row"><summary>check-in nudged the model</summary><div class="steer-text">a &lt;b&gt;</div></details>');
+  assert.match(steerRowHtml({ text: "x" }, { bubble: true }), /^<details class="bubble steer-row"><summary>nudged the model</);
+});
+
+test("cancelLineTemplate: the line a re-render draws from a canceled turn's record, nothing for another", () => {
+  assert.equal(markupOf(cancelLineTemplate({ status: "canceled", cancellation_reason: "ctrl_c" })), '<div class="bubble cancel stopped">\u25A0 canceled (Ctrl-C)</div>');
+  assert.equal(markupOf(cancelLineTemplate({ status: "canceled" })), '<div class="bubble cancel stopped">\u25A0 canceled</div>');
+  assert.equal(markupOf(cancelLineTemplate({ status: "canceled", cancellation_reason: "<x>" })), '<div class="bubble cancel stopped">\u25A0 canceled (&lt;x&gt;)</div>');
+  assert.equal(markupOf(cancelLineTemplate({ status: "canceled", cancellation_reason: "hook", cancelled_by: "loop-guard" })),
+    '<div class="bubble cancel stopped">\u25A0 stopped by loop-guard</div>');
+  assert.equal(markupOf(cancelLineTemplate({ status: "completed" })), "");
+  assert.equal(markupOf(cancelLineTemplate(null)), "");
+});
+
+test("elementOf: a template's one element, to change by hand (the live bubble's badge)", () => {
+  const el = elementOf(userBubbleTemplate({ content: "hi" }, { state: "queued" }));
+  assert.equal(el.tagName, "DIV");
+  assert.equal(el.querySelector(".state-badge").textContent, "queued");
+  el.querySelector(".state-badge").remove();
+  el.append(elementOf(stateBadgeTemplate("steered")));
+  assert.equal(el.querySelector(".state-badge").textContent, "steered");
 });

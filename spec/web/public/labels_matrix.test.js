@@ -1,3 +1,4 @@
+import { markupOf } from "./dom_shim.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -5,7 +6,10 @@ import { fileURLToPath } from "node:url";
 
 import { cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
 import { clientLabel, emptyAnswerLine, emptyRetryLine, hookNoticeLabel, noticeLine, reminderText, retryStatusLine, steerCutLine } from "../../../lib/samagotchi/web/public/turn_events.js";
-import { promptNotesText, servedModelDiffers, steerRowHtml, steerSender } from "../../../lib/samagotchi/web/public/format.js";
+import { promptNotesText, servedModelDiffers, steerSender } from "../../../lib/samagotchi/web/public/format.js";
+import { steerRowTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
+
+const steerRowHtml = (s) => markupOf(steerRowTemplate(s));
 import { flashOf } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { costText, memoryIndexText, speedText } from "../../../lib/samagotchi/web/public/ctx.js";
 
