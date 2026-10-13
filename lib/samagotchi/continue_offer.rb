@@ -85,12 +85,17 @@ module Samagotchi
     # Called with the event log held, before the command's command_ran. A
     # Stop runs no turn: last_turn says so (not_continued), so a wait on
     # it ends (chi answer --option Stop).
+    # It carries the offer turn's enqueued_id, so a wait on that turn
+    # (ReplyWait's turn:) ends on it too.
     def announce_resolved(result, command)
       @engine.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command.client_id)
       return if result.resume
 
       session = @engine.session
-      session.last_turn = LastTurn.new(outcome: NOT_CONTINUED, ended_at: Time.now.iso8601(3)) if session
+      return unless session
+
+      session.last_turn = LastTurn.new(outcome: NOT_CONTINUED, ended_at: Time.now.iso8601(3),
+                                       enqueued_id: offer_turn_id)
     end
 
     # After a command's command_ran and save: a /continue that answered the
@@ -117,9 +122,13 @@ module Samagotchi
     # asks again, one before the turn began too (logged, no :turn_failed).
     # The answer's text is carried into the turn as it begins; a turn that
     # never began leaves it to no other.
+    # The continue turn is the offer turn's: its origin carries that turn's
+    # enqueued_id, so its last_turn, its reply file and its checkpoint mark
+    # do too, and a wait on that turn (chi answer) gets its reply.
     def run_continue_turn(command)
       offer = @turn_flow.offer
       resume_from = @turn_flow.resume_from
+      enqueued_id = offer_turn_id
       close("answered")
       steer = @continue_steer
       @continue_steer = nil
@@ -131,8 +140,8 @@ module Samagotchi
           Log.warn(:worker, "turn_not_begun", continue: true, error: e.class.name, msg: e.message)
           return announce_offer(offer)
         end
-        @run_turn.call(nil, continue: true, origin: { client_id: command.client_id }.compact, resumed: true,
-                            resume_from: resume_from,
+        origin = { client_id: command.client_id, enqueued_id: enqueued_id }.compact
+        @run_turn.call(nil, continue: true, origin: origin, resumed: true, resume_from: resume_from,
                             max_iterations: @max_iterations.call(offer[:no_interrupt])) do |result, error|
           if error
             announce_offer(offer)
@@ -155,6 +164,11 @@ module Samagotchi
     end
 
     private
+
+    # The enqueued_id of the turn the offer stands for: the exhausted
+    # turn's last_turn (a canceled continue turn's carries the same id);
+    # nil when it ran no input (a reminder turn, a delegate's first).
+    def offer_turn_id = @engine.session&.last_turn&.enqueued_id
 
     def announce_offer(offer = @turn_flow.offer)
       @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])

@@ -30,7 +30,11 @@ chi answer ID --question QID --dismiss [--timeout S] [--format json]
 ```
 
 `chi answer` waits after answering, the same way `chi send --wait` does, so the
-next question comes back as exit 3 again. `--option` is 1-based or the label,
+next question comes back as exit 3 again. What it waits for is the answered
+turn: the turn that asked (or, for the step-limit question, the turn it
+continues), so its reply comes back, not that of a turn queued behind it.
+A worker older than this (its `bridge.json` doesn't name `turn_ids`) gets
+the session's next reply instead. `--option` is 1-based or the label,
 repeated on a multi-select question. `--text` is free text (where the question
 allows it) or the reason for a Deny. `--dismiss` leaves the question
 unanswered: the model doesn't do what it asked about and finishes its reply.
@@ -146,9 +150,12 @@ answers from any local process.
   running one, and the wait is for that turn's answer alone, never the running
   turn's (`--format json` adds `"delivery": "queue"`). A question the running
   turn asks meanwhile isn't yours: the wait goes on through it (until your
-  `--timeout`); one the queued turn asks comes back as exit 3.
+  `--timeout`); one the queued turn asks comes back as exit 3. `chi answer`
+  on the running turn's question gets that turn's reply, not your queued one.
 - `chi send --wait ID` with no message waits past a question already reported
-  (the step-limit question too), until someone answers it.
+  (the step-limit question too), until someone answers it. It waits for the
+  turn running when it starts (or the one the step-limit question continues),
+  and prints that turn's reply, not a queued one's after it.
 - An answer to a question that is no longer open (you answered it in the web
   first) isn't sent; `chi answer` says so and waits for what comes next. Its
   JSON then has `"answered_here": false` (absent when the answer went in), so

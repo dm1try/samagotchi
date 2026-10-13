@@ -829,7 +829,7 @@ RSpec.describe Samagotchi::Worker do
 
       it "keeps the turn so far on disk with an interrupted_turn mark, and the real messages once it ends" do
         start_worker(poll_interval: 5)
-        post_turn("long task")
+        enqueued_id = JSON.parse(post_turn("long task").body)["enqueued_id"]
         expect(in_turn.pop(timeout: 2)).to be(true)
 
         # What a KILL now would leave: the prompt and both steps, marked.
@@ -838,7 +838,9 @@ RSpec.describe Samagotchi::Worker do
         expect(file["messages"].map { |m| m["content"] }.drop(1).grep_v(/\A\[SYSTEM: /))
           .to eq(["earlier", "ok", "long task", "", "[execute]\nstep1", "", "[execute]\nstep2"])
         expect(file["messages"][1]["display_refs"]).to eq([{ "kind" => "file" }])
-        expect(file["interrupted_turn"]).to include("iteration" => 3, "started_at" => a_kind_of(String), "at" => a_kind_of(String))
+        # It names the input the turn runs (ReplyWait.own_turn).
+        expect(file["interrupted_turn"]).to include("iteration" => 3, "started_at" => a_kind_of(String), "at" => a_kind_of(String),
+                                                    "enqueued_id" => enqueued_id)
         # The session in memory is untouched (the Bridge's snapshot shows
         # the turn in progress, not in the messages).
         expect(engine.session.messages.map { |m| m[:content] }).not_to include("long task")
@@ -1966,8 +1968,11 @@ RSpec.describe Samagotchi::Worker do
           expect(wait_until { turns.size >= 2 && events_seen.count { |e| e[:type] == :turn_completed } == 2 }).to be(true)
           resolved = seen.find { |e| e[:type] == :continue_resolved }
           expect(resolved).to include(decision: "resume", client_id: "web:2")
-          started = seen.select { |e| e[:type] == :turn_started }.last
-          expect(started).to include(continue: true, prompt: nil, origin: { client_id: "web:2" })
+          started = seen.select { |e| e[:type] == :turn_started }
+          # The offer turn's id: the continue turn is that turn's.
+          offer_id = started.first.dig(:origin, :enqueued_id)
+          expect(offer_id).to be_a(String)
+          expect(started.last).to include(continue: true, prompt: nil, origin: { client_id: "web:2", enqueued_id: offer_id })
           expect(wait_until { saved_messages == ["long task", "r1", "OK"] }).to be(true)
         end
 
@@ -2098,8 +2103,13 @@ RSpec.describe Samagotchi::Worker do
           expect(done).to include(status: "ok", client_id: "web:2", card: true)
           expect(wait_until { events_seen.count { |e| e[:type] == :turn_completed } == 2 }).to be(true)
           expect(seen.find { |e| e[:type] == :continue_resolved }).to include(decision: "resume", client_id: "web:2")
-          expect(seen.select { |e| e[:type] == :turn_started }.last).to include(continue: true, origin: { client_id: "web:2" })
+          started = seen.select { |e| e[:type] == :turn_started }
+          offer_id = started.first.dig(:origin, :enqueued_id)
+          expect(started.last).to include(continue: true, origin: { client_id: "web:2", enqueued_id: offer_id })
           expect(wait_until { saved_messages == ["long task", "r1", "OK"] && saved_session.pending_question.nil? }).to be(true)
+          # Its last_turn and reply are the offer turn's: a wait on that turn gets them.
+          expect(saved_session.last_turn.enqueued_id).to eq(offer_id)
+          expect(Samagotchi::SessionInbox.reply_for(session_dir, offer_id)).to end_with("-#{offer_id}.txt")
         end
 
         # The continued turn's first boundary, as the kernel reads it.
@@ -2144,6 +2154,20 @@ RSpec.describe Samagotchi::Worker do
           expect(Samagotchi::ParentReport.exit_status(result)).to eq(0)
           expect(turns.size).to eq(1)
           expect(saved_session.pending_question).to be_nil
+        end
+
+        it "ends a wait on the offer turn (turn:) at a Stop: its not_continued last_turn carries the turn's id" do
+          offer_id = seen.find { |e| e[:type] == :turn_started }.dig(:origin, :enqueued_id)
+          expect(Samagotchi::ReplyWait.own_turn(saved_session, session_dir: session_dir)).to eq(offer_id)
+          baseline = Samagotchi::ReplyWait.baseline_of(saved_session, question_id: question[:id])
+          waited = Thread.new do
+            Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 5, poll_interval: 0.02,
+                                                   baseline: baseline, turn: offer_id)
+          end
+          expect(post_answer(["Stop"], client_id: "cli:answer").code).to eq("200")
+
+          expect(waited.value.to_h).to include(status: :no_reply, outcome: "not_continued")
+          expect(saved_session.last_turn.enqueued_id).to eq(offer_id)
         end
 
         it "is withdrawn when a new prompt drops the offer, and the prompt runs" do

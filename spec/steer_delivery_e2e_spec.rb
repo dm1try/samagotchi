@@ -6,6 +6,7 @@ require "tmpdir"
 require "samagotchi/session_manager"
 require "samagotchi/worker"
 require "samagotchi/send_command"
+require "samagotchi/answer_command"
 require_relative "support/fake_provider_server"
 
 # What a message sent to a running turn does, end to end: a real Worker (its
@@ -14,7 +15,8 @@ require_relative "support/fake_provider_server"
 # message goes in at the turn's next step boundary and never cuts the
 # thinking; one sent with --cut cuts it (`steer_cut`); one queued waits for
 # the turn's end and runs as its own turn, and --queue --wait gets that
-# turn's own answer. The one e2e for steer delivery;
+# turn's own answer, as chi answer gets the answered turn's. The one e2e
+# for steer delivery;
 # bridge_spec, worker_spec and send_command_spec cover the variants.
 RSpec.describe "steering a running turn (chi send)" do
   around do |example|
@@ -174,5 +176,34 @@ RSpec.describe "steering a running turn (chi send)" do
     replies = Dir.children(File.join(session_dir, "output")).sort
     expect(replies.size).to eq(2)
     expect(File.read(File.join(session_dir, "output", replies.first))).to eq("RUNNING ANSWER")
+  end
+
+  # chi answer to the running turn's question, a turn queued behind it:
+  # the answered turn's own reply comes back, not the queued turn's newer
+  # one (a slow poll lets both end before the wait looks again).
+  it "prints the answered turn's own reply with a queued turn behind it (chi answer)" do
+    stub_const("Samagotchi::AnswerCommand::POLL_INTERVAL", 2)
+    ask = [event("<think>"), event("ask"), event("</think>"), event("<tool_call>\n<function=ask_user_question>\n"),
+           event("<parameter=question>\nWhich one?\n</parameter>\n<parameter=options>\n[\"A\", \"B\"]\n</parameter>\n"),
+           event("</function>\n</tool_call>"), stop]
+    server.enqueue("/completion", sse: ask)
+    server.enqueue("/completion", sse: [event("<think>"), event("ok"), event("</think>"), event("RUNNING ANSWER"), stop])
+    server.default("/completion", sse: [event("<think>"), event("ok"), event("</think>"), event("QUEUED ANSWER"), stop])
+    # As chi send or the Bridge writes it: with its enqueued_id.
+    Samagotchi::SessionManager.write_turn_input(session.id, prompt: "pick one", enqueued_id: "x1", state_dir: tmpdir)
+    start_worker
+    pending = wait_until(timeout: 15) { Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question }
+    expect(pending).to be_truthy, "events: #{types.tally}"
+
+    sent = Samagotchi::SendCommand.new(["--queue", "-m", "later please", session.id], stdin: StringIO.new(""), stdout: out,
+                                                                                    stderr: err, state_dir: tmpdir).run
+    expect(sent).to eq(0), err.string
+    answered = StringIO.new
+    status = Samagotchi::AnswerCommand.new([session.id, "--question", pending[:id], "--option", "A", "--timeout", "30"],
+                                           stdout: answered, stderr: err, state_dir: tmpdir).run
+
+    expect(status).to eq(0), err.string
+    expect(answered.string).to eq("RUNNING ANSWER\n")
+    expect(wait_until(timeout: 15) { Dir.children(File.join(session_dir, "output")).size == 2 }).to be_truthy
   end
 end

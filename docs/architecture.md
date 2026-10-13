@@ -376,8 +376,10 @@ shared with `/api/sessions` and the session view) carries `owner`, `project_root
 `bridge_up` (the sidecar is there *and* the lock is held: the page attaches its stream on it), and
 from that sidecar `worker_version` (the chi the worker runs) and `worker_features`
 (`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`,
-`delivery`, the last one a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
-the attached TUI refuse a queue to a worker without it, which would steer). A worker's Bridge snapshot
+`delivery`, a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
+the attached TUI refuse a queue to a worker without it, which would steer; `turn_ids`, a worker whose running
+turn's mark, continue turn and Stop carry the turn's `enqueued_id`, which `chi answer`, `chi send --wait` with no
+message and `delegate_result` rely on through `ReplyWait.own_turn`). A worker's Bridge snapshot
 names its `chi_version` too.
 `POST/DELETE /api/sessions` and `/stop` rescan the session before answering (`SessionHub#touch`).
 `GET /api/sessions` is the hub's projection too (its sort, paging and total). `Server` always builds

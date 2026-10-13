@@ -111,6 +111,10 @@ test("own turn_started carries its images, for an echo a resync wiped", () => {
 test("a continue turn and a prompt-less start render no bubble", () => {
   assert.deepEqual(promptOps({ type: "turn_started", prompt: "x", continue: true }, none), []);
   assert.deepEqual(promptOps({ type: "turn_started", prompt: "" }, none), []);
+  // A continue turn carries its offer turn's enqueued_id (the original
+  // prompt's bubble key): still no op, so that bubble isn't redrawn or moved.
+  const origin = { client_id: ME, enqueued_id: "e1" };
+  assert.deepEqual(promptOps({ type: "turn_started", prompt: null, continue: true, origin }, none), []);
 });
 
 test("input_merged steers every known origin; pending_input_merged adds the rest", () => {

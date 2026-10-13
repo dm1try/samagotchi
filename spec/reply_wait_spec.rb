@@ -418,6 +418,251 @@ RSpec.describe Samagotchi::ReplyWait do
       expect(result.status).to eq(:waiting_for_answer)
       expect(result.question).to include(id: "cont")
     end
+
+    # A follow-up sent as a plain message (no queue) to a session that
+    # looked idle: a turn starting at that moment may merge it as a steer,
+    # and it never runs as a turn of its own.
+    describe "an input another turn merged (a steer)" do
+      def plain_input(id) = Samagotchi::SessionInbox.write_input(dir, prompt: "also", enqueued_id: id)
+
+      def absorb(id, by:)
+        claim(id)
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "running"
+        s.interrupted_turn = { "iteration" => 1, "enqueued_id" => by }.compact
+        s.save(state_dir: tmpdir)
+      end
+
+      before { set(status: "idle") }
+
+      it "waits on the absorbing turn (another id): its question, then its reply, never a no_reply while it runs" do
+        own_by_worker
+        plain_input("y1")
+        base = baseline
+        later do
+          absorb("y1", by: "a1")
+          sleep(0.1)
+          set(pending_question: { id: "theirs", kind: "ask", question: "Which?" })
+        end
+
+        result = wait(baseline: base, turn: "y1")
+        expect(result.to_h).to include(status: :waiting_for_answer)
+        expect(result.question).to include(id: "theirs")
+
+        later do
+          set(pending_question: nil)
+          write_turn_reply("a1 answer", "a1")
+          end_turn("a1")
+        end
+        expect(wait(baseline: described_class.baseline_of(result.session, question_id: "theirs"), turn: "y1").text)
+          .to eq("a1 answer")
+      end
+
+      it "waits on an absorbing turn with no id (a wake or reminder turn) from a worker that writes ids" do
+        Samagotchi::WorkerSidecar.new(port: 1, features: %w[turn_ids]).write(dir)
+        plain_input("y1")
+        base = baseline
+        later do
+          absorb("y1", by: nil)
+          sleep(0.1)
+          write_reply("wake answer")
+          end_turn(nil)
+        end
+
+        expect(wait(baseline: base, turn: "y1").text).to eq("wake answer")
+      end
+
+      it "takes an absorbing turn that ran and ended between two looks (idle, a turn not its ended since)" do
+        plain_input("y1")
+        base = baseline
+        claim("y1")
+        write_reply("a1 answer")
+        end_turn("a1")
+
+        expect(wait(baseline: base, turn: "y1", timeout: 2).text).to eq("a1 answer")
+      end
+
+      it "never takes another turn for a queued input: taken, it waits through the idle moment before its own turn" do
+        queue_input("q1")
+        base = baseline
+        later do
+          write_turn_reply("x answer", "x0")
+          end_turn("x0")
+          claim("q1")
+          sleep(0.3) # the look between the claim and the turn's running save sees idle, last_turn x0
+          run_q1 = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          run_q1.status = "running"
+          run_q1.interrupted_turn = { "iteration" => 1, "enqueued_id" => "q1" }
+          run_q1.save(state_dir: tmpdir)
+          write_turn_reply("q1 answer", "q1")
+          end_turn("q1")
+        end
+
+        expect(wait(baseline: base, turn: "q1").text).to eq("q1 answer")
+      end
+    end
+
+    # The turn a caller that sent nothing means (chi answer, chi send
+    # --wait with no message): its input long taken.
+    describe "on a turn already running or offered (own_turn)" do
+      # The worker runs turn +id+: its checkpoint mark names it (nil: a
+      # worker from before turn_ids).
+      def run(id, pending_question: :keep)
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "running"
+        s.interrupted_turn = { "started_at" => Time.now.iso8601(3), "iteration" => 1, "enqueued_id" => id }.compact
+        s.pending_question = pending_question unless pending_question == :keep
+        s.save(state_dir: tmpdir)
+      end
+
+      def offer(id, question_id: "cont")
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "idle"
+        s.interrupted_turn = nil
+        s.pending_question = { id: question_id, kind: "continue", question: "Continue?" }
+        s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: id,
+                                               exhausted: true, limit: 30)
+        s.save(state_dir: tmpdir)
+        sleep(0.002)
+      end
+
+      def sidecar(features)
+        Samagotchi::WorkerSidecar.new(port: 1, features: features).write(dir)
+      end
+
+      def loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+
+      describe ".own_turn" do
+        it "is the running turn's, from its mark (no feature needed: only a new worker writes it)" do
+          run("x1")
+          expect(described_class.own_turn(loaded, session_dir: dir)).to eq("x1")
+        end
+
+        it "is nil for a running turn whose mark has no id (an older worker, a turn that ran no input)" do
+          run(nil)
+          expect(described_class.own_turn(loaded, session_dir: dir)).to be_nil
+        end
+
+        it "is the offer turn's while its continue offer stands, when the worker ties a continue turn to it" do
+          offer("x1")
+          sidecar(%w[delivery turn_ids])
+          expect(described_class.own_turn(loaded, session_dir: dir)).to eq("x1")
+        end
+
+        it "is nil for an offer from a worker without turn_ids (its continue turn would carry no id)" do
+          offer("x1")
+          sidecar(["delivery"])
+          expect(described_class.own_turn(loaded, session_dir: dir)).to be_nil
+          FileUtils.rm_f(Samagotchi::WorkerSidecar.path(dir))
+          expect(described_class.own_turn(loaded, session_dir: dir)).to be_nil
+        end
+
+        it "is nil for an idle session with no question, or another kind of question" do
+          end_turn("x1")
+          sidecar(["turn_ids"])
+          expect(described_class.own_turn(loaded, session_dir: dir)).to be_nil
+          set(pending_question: { id: "q", kind: "ask", question: "Which?" })
+          expect(described_class.own_turn(loaded, session_dir: dir)).to be_nil
+        end
+      end
+
+      it "returns the running turn's own reply, not a queued turn's newer one" do
+        run("x1")
+        base = baseline
+        later do
+          write_turn_reply("x1 answer", "x1")
+          end_turn("x1")
+          run("q1")
+          write_turn_reply("q1 answer", "q1")
+        end
+
+        expect(wait(baseline: base, turn: "x1").text).to eq("x1 answer")
+      end
+
+      it "does not end on the exhausted turn's last_turn when its offer is answered from idle: the continue turn's reply comes" do
+        own_by_worker
+        offer("x1")
+        base = described_class.baseline_of(loaded, question_id: "cont")
+        later do
+          run("x1", pending_question: nil)
+          sleep(0.1)
+          write_turn_reply("continued", "x1")
+          end_turn("x1")
+        end
+
+        result = wait(baseline: base, turn: "x1")
+        expect(result.to_h).to include(status: :done, text: "continued")
+      end
+
+      it "takes a question the continue turn asks (its mark has the id last_turn already has)" do
+        own_by_worker
+        offer("x1")
+        base = described_class.baseline_of(loaded, question_id: "cont")
+        later { run("x1", pending_question: { id: "mine", kind: "approval", question: "Run ls?" }) }
+
+        result = wait(baseline: base, turn: "x1")
+        expect(result.to_h).to include(status: :waiting_for_answer)
+        expect(result.question).to include(id: "mine")
+      end
+
+      it "does not take another turn's question: it waits on" do
+        own_by_worker
+        run("x1")
+        base = baseline
+        later do
+          end_turn("other")
+          run("q2", pending_question: { id: "theirs", kind: "approval", question: "Run rm?" })
+        end
+
+        # Its turn never recorded an end and another runs: lost, not that turn's question.
+        expect(wait(baseline: base, turn: "x1", timeout: 2).to_h).to include(status: :no_reply, outcome: nil)
+      end
+
+      it "gives up on a lost turn (taken, another turn runs, last_turn not it) instead of sitting through the next" do
+        run("x1")
+        base = baseline
+        # A new worker settled x1 (last_turn left alone) and runs q1.
+        later { run("q1") }
+
+        result = wait(baseline: base, turn: "x1", timeout: 2)
+        expect(result.to_h).to include(status: :no_reply, outcome: nil)
+      end
+
+      it "is not lost while the next turn runs once its own end is recorded (last_turn looked at first)" do
+        run("x1")
+        base = baseline
+        later do
+          end_turn("x1", outcome: "failed")
+          run("q1")
+        end
+
+        expect(wait(baseline: base, turn: "x1").outcome).to eq("failed")
+      end
+
+      it "ends with no reply when its turn ended without one and a next turn ran and ended between two looks" do
+        run("x1")
+        base = baseline
+        later do
+          end_turn("x1", outcome: "failed")
+          run("q1")
+          write_turn_reply("q1 answer", "q1")
+          end_turn("q1")
+        end
+
+        result = wait(baseline: base, turn: "x1", poll_interval: 0.4, timeout: 3)
+        expect(result.to_h).to include(status: :no_reply)
+        expect(result.text).to be_nil
+      end
+
+      it "keeps the claimed rule for a mark with no id (a running worker from before): its question is the turn's" do
+        own_by_worker
+        run(nil)
+        base = baseline
+        later { run(nil, pending_question: { id: "mine", kind: "approval", question: "Run ls?" }) }
+
+        expect(wait(baseline: base, turn: "x1").status).to eq(:waiting_for_answer)
+      end
+    end
   end
 
   it "reports a worker gone past the grace, not one that comes back" do

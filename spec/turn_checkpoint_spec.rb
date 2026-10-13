@@ -38,6 +38,26 @@ RSpec.describe Samagotchi::TurnCheckpoint do
     expect(on_disk["interrupted_turn"]).to include("iteration" => 0)
   end
 
+  it "puts the turn's enqueued_id on every mark: the first and each boundary's; none for a turn that ran no input" do
+    checkpoint.begin_turn(prompt: "task", enqueued_id: "q1")
+    session.save(state_dir: tmpdir)
+    expect(on_disk["interrupted_turn"]).to include("enqueued_id" => "q1", "iteration" => 0)
+
+    checkpoint.boundary(conversation, turn_id: "t1")
+    expect(on_disk["interrupted_turn"]).to include("id" => "t1", "enqueued_id" => "q1", "iteration" => 1)
+    expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).interrupted_turn.enqueued_id).to eq("q1")
+
+    checkpoint.begin_turn(prompt: "next")
+    checkpoint.boundary(conversation)
+    expect(on_disk["interrupted_turn"]).not_to have_key("enqueued_id")
+  end
+
+  it "loads a mark written without enqueued_id (an older worker's) with none" do
+    mark = Samagotchi::InterruptedTurn.from_file("id" => "t1", "iteration" => 2)
+    expect(mark).to have_attributes(id: "t1", iteration: 2, enqueued_id: nil)
+    expect(Samagotchi::InterruptedTurn.from_file(mark.with(enqueued_id: "q1").to_file).enqueued_id).to eq("q1")
+  end
+
   it "writes at the first boundary: the conversation so far and the mark, the session's messages untouched" do
     expect(checkpoint.boundary(conversation, turn_id: "t1")).to be(true)
 

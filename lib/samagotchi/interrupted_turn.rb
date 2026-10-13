@@ -9,9 +9,13 @@ module Samagotchi
   #
   # id: the turn's id (nil when unknown); started_at / at: iso8601, when the
   # turn began and when this checkpoint was taken; iteration: the loop
-  # boundaries it had passed (Integer).
-  InterruptedTurn = Data.define(:id, :started_at, :at, :iteration) do
-    def initialize(id: nil, started_at: nil, at: nil, iteration: nil) = super
+  # boundaries it had passed (Integer); enqueued_id: the input the turn
+  # runs (its ack's id, LastTurn#enqueued_id once it ends; a Continue turn
+  # carries its offer turn's), so any process that loads the session can
+  # tell which turn is running (ReplyWait.own_turn); nil when it ran none,
+  # or a worker from before it wrote one.
+  InterruptedTurn = Data.define(:id, :started_at, :at, :iteration, :enqueued_id) do
+    def initialize(id: nil, started_at: nil, at: nil, iteration: nil, enqueued_id: nil) = super
 
     # A saved record (string or symbol keys), an InterruptedTurn as it is;
     # nil for anything else.

@@ -900,7 +900,7 @@ module Samagotchi
       @reporting_turn = reports_to_parent?(turn_args[:origin])
       restores = @turn_flow.restores
       begin
-        @checkpoint.begin_turn(prompt: prompt)
+        @checkpoint.begin_turn(prompt: prompt, enqueued_id: turn_args[:origin]&.dig(:enqueued_id))
         @session.status = Session::STATUS_RUNNING
         # A continue that moved this session to the chain's new link wrote
         # the new parent beside it (Session::PARENT_FILE): this turn's

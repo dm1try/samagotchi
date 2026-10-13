@@ -57,12 +57,17 @@ module Samagotchi
       # report it. Ctrl-C leaves the turn running (130).
       # @param owner_grace [Numeric, nil] seconds with no live worker before
       #   it counts as gone; nil waits for whatever wakes one
-      # @param turn [String, nil] the enqueued_id of the queued message whose
-      #   own turn is waited for (ReplyWait's turn:)
+      # @param turn [String, nil] the enqueued_id of the turn waited for
+      #   (ReplyWait's turn:): a queued message's, or the turn an answer or
+      #   a --wait with no message is about (ReplyWait.own_turn)
+      # @param queued [Boolean] +turn+ is a queued message's (ReplyWait's
+      #   queued:)
       # @return [Integer] the exit status
-      def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: self.class::WORKER_GONE_AFTER, turn: nil)
+      def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: self.class::WORKER_GONE_AFTER, turn: nil,
+                         queued: false)
         result = ReplyWait.call(id, state_dir: @state_dir, cursor: cursor, timeout: timeout, baseline: baseline,
-                                    owner_grace: owner_grace, poll_interval: self.class::POLL_INTERVAL, turn: turn)
+                                    owner_grace: owner_grace, poll_interval: self.class::POLL_INTERVAL, turn: turn,
+                                    queued: queued)
         result.text = result.text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
         @reported = true
         ParentReport.report(result, session_id: id, stdout: @stdout, stderr: @stderr, command: command_name,

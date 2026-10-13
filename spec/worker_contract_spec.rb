@@ -57,6 +57,13 @@ RSpec.describe "Cross-version worker contract" do
     expect(Samagotchi::Bridge::FEATURES).to include("reparent", "restart", "task_stop")
   end
 
+  # chi answer, chi send --wait (no message) and delegate_result trust a
+  # turn's enqueued_id only from a worker that names "turn_ids".
+  it "names turn_ids in the sidecar's features" do
+    expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::ReplyWait::TURN_IDS_FEATURE)
+    expect(Samagotchi::ReplyWait::TURN_IDS_FEATURE).to eq("turn_ids")
+  end
+
   it "keeps the routes and client ids one session's worker uses on another's" do
     expect(Samagotchi::Bridge::ROUTES).to include(%w[POST relay/status] => :handle_relay_status)
     expect(Samagotchi::Bridge::ROUTES.keys).to include(%w[POST relay])

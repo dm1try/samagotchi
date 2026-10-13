@@ -3,6 +3,7 @@
 require_relative "session"
 require_relative "turn_note"
 require_relative "session_inbox"
+require_relative "worker_sidecar"
 
 module Samagotchi
   # Loaded on first use: session_manager requires terminal_ui, which
@@ -19,6 +20,10 @@ module Samagotchi
   # The delegate tools and `chi send --wait` wrap it in their own words.
   module ReplyWait
     POLL_INTERVAL = 0.5
+    # A worker's sidecar feature (Bridge::FEATURES): its running turn's
+    # checkpoint mark (InterruptedTurn#enqueued_id), a continue turn and a
+    # Stop's last_turn carry the turn's enqueued_id (#own_turn).
+    TURN_IDS_FEATURE = "turn_ids"
 
     # @!attribute status [Symbol] :done, :waiting_for_answer, :no_reply,
     #   :error, :stopped, :canceled, :timeout or :worker_gone
@@ -80,11 +85,20 @@ module Samagotchi
     #   (SessionInbox.reply_for), or an idle session whose last_turn has
     #   that enqueued_id (failed, canceled, empty: #no_reply). Other turns'
     #   replies and ends are not its, and a pending question counts only
-    #   when it is that turn's (#own_question?).
+    #   when it is that turn's (#own_question?). A last_turn that ended
+    #   before the baseline's (the turn whose continue offer was just
+    #   answered) is not the end. An input a running turn merged as a
+    #   steer (taken, never run as its own) is waited for as without turn:
+    #   (that turn's reply or question). A turn seen running, then past
+    #   (another turn runs or ended, last_turn not it): :no_reply, outcome
+    #   unknown.
+    # @param queued [Boolean] the turn: input was sent as a queue (or with
+    #   images), which a running turn never merges: no fallback, even when
+    #   its file was taken before the first look
     # @return [Result]
     # @raise [ArgumentError] no such session
     def call(id, state_dir:, cursor:, timeout: nil, poll_interval: POLL_INTERVAL, cancelled: -> { false },
-             baseline: nil, owner_grace: nil, interject: nil, turn: nil)
+             baseline: nil, owner_grace: nil, interject: nil, turn: nil, queued: false)
       deadline = timeout && (monotonic + timeout.to_f)
       seen_running = false
       gone_since = nil
@@ -94,10 +108,33 @@ module Samagotchi
       # before each load, so a running session seen after it is that turn
       # or a later one, never the turn that ran when the message was sent.
       claimed = false
+      # Its input runs a turn of its own (a queue, images: +queued+, or seen
+      # waiting as one): never merged into another turn.
+      own_turn_input = queued
+      # The turn was seen running (its mark's id), and last_turn's ended_at
+      # then: a later end that isn't its is a turn after it.
+      seen_own = false
+      own_base = nil
 
       loop do
-        claimed ||= !SessionInbox.input_waiting?(session_dir, turn) if turn
+        if turn && !claimed
+          waiting = SessionInbox.waiting_input(session_dir, turn)
+          own_turn_input ||= waiting == :turn_end
+          claimed = waiting.nil?
+        end
         session = Session.load(id, state_dir: state_dir)
+        if turn && !seen_own && session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == turn
+          seen_own = true
+          own_base = session.last_turn&.ended_at
+        end
+        # Taken but never run as a turn of its own: a running turn's drain
+        # merged it as a steer, so that turn's reply (or question) is its
+        # answer. Waited for as the next reply past the cursor, as without
+        # turn:, never as a turn that will not come.
+        if turn && claimed && !seen_own && !own_turn_input && merged_elsewhere?(session, turn, baseline, session_dir)
+          turn = nil
+          seen_running = session.status == Session::STATUS_RUNNING
+        end
 
         if (reply = turn ? reply_for_turn(id, state_dir: state_dir, turn: turn) : reply_past(id, state_dir: state_dir, cursor: cursor))
           reply.session = settled(session, id, state_dir: state_dir)
@@ -128,10 +165,18 @@ module Samagotchi
           # wait starts, and that one's end is not the answer. A last_turn
           # with its id is its end, even with a next queued turn running
           # by now (the look between the two missed the idle).
-          if session.last_turn&.enqueued_id == turn
+          # Only an end after the baseline: a continue offer answered from
+          # idle leaves the exhausted turn's last_turn, with the same id,
+          # until the continue turn (or a Stop) records its own.
+          if session.last_turn&.enqueued_id == turn && ended_since_baseline?(session, baseline)
             return reply_for_turn(id, state_dir: state_dir, turn: turn)&.tap { |r| r.session = session } ||
                    no_reply(session, baseline, fresh: true)
           end
+          # Seen running, and now another turn runs or a later turn ended
+          # while last_turn (looked at first) isn't its: lost (its worker
+          # died), or it ended with no reply and a next turn ran and ended
+          # between two looks. Waiting on would sit through those turns.
+          return Result.new(status: :no_reply, session: session) if seen_own && past_own?(session, turn, own_base)
         elsif session.status == Session::STATUS_RUNNING
           seen_running = true
         elsif (seen_running && !baseline&.key?(:last_turn)) || turn_ended_since?(session, baseline)
@@ -192,17 +237,85 @@ module Samagotchi
       !!(baseline[:messages] && session.messages.size > baseline[:messages])
     end
 
-    # A pending question is a turn: wait's (its enqueued_id) only when that
-    # turn asked it: its own continue offer, asked after its end (last_turn
-    # has the id), or a question while it runs (its input claimed, the
-    # session running). Any other is the turn that ran when the message was
-    # sent, whose questions are the user's: the wait goes on.
-    def own_question?(session, turn, claimed)
-      running = session.status == Session::STATUS_RUNNING
-      # Ended: only its continue offer (idle); running again is a next turn.
-      return !running if session.last_turn&.enqueued_id == turn
+    # The turn a caller that sent nothing means (chi answer, chi send --wait
+    # with no message): the one running now (its checkpoint mark's
+    # enqueued_id), or, idle, the turn whose continue offer stands (its
+    # last_turn's), when the worker's sidecar says it ties a continue turn
+    # to that id (TURN_IDS_FEATURE). nil otherwise (no id known, a worker
+    # from before): the caller waits for the next reply as before.
+    # @param session [Session] the session as loaded now
+    # @return [String, nil] an enqueued_id for call's turn:
+    def own_turn(session, session_dir:)
+      if session.status == Session::STATUS_RUNNING
+        # Only a worker that writes it has one: no feature check.
+        return session.interrupted_turn&.enqueued_id
+      end
 
-      claimed && running
+      pending = session.pending_question
+      return nil unless pending && pending[:kind].to_s == "continue"
+      return nil unless turn_ids?(session_dir)
+
+      session.last_turn&.enqueued_id
+    end
+
+    # Whether the session's worker sidecar names TURN_IDS_FEATURE.
+    def turn_ids?(session_dir)
+      WorkerSidecar.read(session_dir)&.features&.include?(TURN_IDS_FEATURE) || false
+    end
+
+    # A pending question is a turn: wait's (its enqueued_id) only when that
+    # turn asked it. While a turn runs its checkpoint mark says which turn
+    # that is (a continue turn carries its offer turn's id); a mark with no
+    # id (a worker from before) falls back to the claimed rule (its input
+    # claimed, the session running, last_turn not already it). Idle: only
+    # its own continue offer (last_turn has the id). Any other is another
+    # turn's, whose questions are the user's: the wait goes on.
+    def own_question?(session, turn, claimed)
+      ended = session.last_turn&.enqueued_id == turn
+      return ended unless session.status == Session::STATUS_RUNNING
+
+      running_id = session.interrupted_turn&.enqueued_id
+      return running_id == turn if running_id
+
+      # Ended, running again: a next turn.
+      !ended && claimed
+    end
+
+    # The turn's end, after the baseline was taken (with no baseline, or
+    # one without last_turn, any).
+    def ended_since_baseline?(session, baseline)
+      return true unless baseline&.key?(:last_turn)
+
+      session.last_turn&.ended_at != baseline[:last_turn]
+    end
+
+    # A turn: wait's taken input ran in another turn (a steer its drain
+    # merged): that turn runs (its mark has another id, or none from a
+    # worker that writes ids), or, idle, a turn not its ended since the
+    # baseline. last_turn or a reply file being its own is never that.
+    def merged_elsewhere?(session, turn, baseline, session_dir)
+      return false if session.last_turn&.enqueued_id == turn || SessionInbox.reply_for(session_dir, turn)
+
+      if session.status == Session::STATUS_RUNNING
+        running_id = session.interrupted_turn&.enqueued_id
+        return running_id != turn if running_id
+
+        return turn_ids?(session_dir)
+      end
+      baseline&.key?(:last_turn) ? turn_ended_since?(session, baseline) : false
+    end
+
+    # A turn seen running (+own_base+: last_turn's ended_at then) is past:
+    # last_turn isn't its, and another turn runs (a mark with another id)
+    # or a turn ended since.
+    def past_own?(session, turn, own_base)
+      return false if session.last_turn&.enqueued_id == turn
+
+      running_id = session.status == Session::STATUS_RUNNING ? session.interrupted_turn&.enqueued_id : nil
+      return true if running_id && running_id != turn
+
+      ended = session.last_turn&.ended_at
+      !ended.nil? && ended != own_base
     end
 
     # @return [Result, nil] :done with the reply of the turn that ran the

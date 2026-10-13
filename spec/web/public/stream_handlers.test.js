@@ -147,6 +147,15 @@ test("turn_failed keeps a rolled-back turn's line for its prompt_restored", () =
   assert.equal(liveTurn.failedText, null);
 });
 
+// A continue turn's origin carries its offer turn's enqueued_id (the
+// original prompt's bubble key). Its failure ends the turn view only: no
+// prompt_restored follows a continue turn, so no failed bubble reuses the key.
+test("turn_failed of a continue turn (origin with the offer turn's enqueued_id) draws no user bubble", () => {
+  const { page, handlers } = fakePage();
+  handlers.turn_failed({ error: "boom", continue: true, origin: { client_id: ME, enqueued_id: "e1" } });
+  assert.ok(!page.names().includes("makeUserBubble"));
+});
+
 test("prompt_restored: this tab's sent prompt refills an empty composer, then the failed bubble and line", async () => {
   const { page, deps, handlers, liveTurn } = fakePage();
   deps.sentIds.add("e1");

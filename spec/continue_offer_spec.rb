@@ -133,4 +133,41 @@ RSpec.describe Samagotchi::ContinueOffer do
 
     expect(args).to include(continue: true, resumed: true, resume_from: 7, max_iterations: 100)
   end
+
+  describe "the offer turn's enqueued_id" do
+    let(:args) { {} }
+    let(:recording) do
+      described_class.new(engine: engine, turn_flow: turn_flow, run_turn: ->(_prompt, **a) { args.merge!(a) },
+                          max_iterations: ->(_) { 100 })
+    end
+
+    before { engine.session = session }
+
+    it "goes on the continue turn's origin, so its last_turn and reply are that turn's" do
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 100, enqueued_id: "q1",
+                                                   ended_at: "2026-10-13T10:00:00.000Z")
+
+      recording.run_continue_turn(command_from("cli:answer"))
+
+      expect(args[:origin]).to eq(client_id: "cli:answer", enqueued_id: "q1")
+    end
+
+    it "leaves the origin as the client's alone when the offer turn ran no input (or an older last_turn)" do
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 100)
+
+      recording.run_continue_turn(command_from("web:2"))
+
+      expect(args[:origin]).to eq(client_id: "web:2")
+    end
+
+    it "goes on a Stop's not_continued last_turn, so a wait on that turn ends" do
+      session.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, enqueued_id: "q1",
+                                                   ended_at: "2026-10-13T10:00:00.000Z")
+
+      recording.announce_resolved(resolved(resume: false, decision: :stop), command_from("cli:answer"))
+
+      expect(session.last_turn).to have_attributes(outcome: "not_continued", enqueued_id: "q1")
+      expect(session.last_turn.ended_at).not_to eq("2026-10-13T10:00:00.000Z")
+    end
+  end
 end

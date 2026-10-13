@@ -643,6 +643,26 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
       expect(err.string).to be_empty
     end
 
+    it "waits on the running turn (its mark's id): its own reply, not a newer one of a turn queued behind it" do
+      busy = make(status: "running")
+      dir = Samagotchi::Session.session_dir(busy.id, state_dir: tmpdir)
+      t = Samagotchi::Session.load(busy.id, state_dir: tmpdir)
+      t.interrupted_turn = { "iteration" => 1, "enqueued_id" => "x1" }
+      t.save(state_dir: tmpdir)
+      # A queued turn's reply sorting after the running turn's (newest
+      # already, so a wait for the next reply past it would never end).
+      FileUtils.mkdir_p(File.join(dir, Samagotchi::SessionInbox::OUTPUT_DIR))
+      File.write(File.join(dir, Samagotchi::SessionInbox::OUTPUT_DIR, "29991231000000000000000-q1.txt"), "queued answer")
+      later do
+        Samagotchi::SessionInbox.write_output(dir, "x1 answer", enqueued_id: "x1")
+        update(busy, status: "idle", last_turn: Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3),
+                                                                         enqueued_id: "x1"))
+      end
+
+      expect(run("--wait", "--timeout", "3", busy.id)).to eq(0), err.string
+      expect(out.string).to eq("x1 answer\n")
+    end
+
     it "waits on an idle session with no worker until one replies" do
       stub_const("Samagotchi::SendCommand::WORKER_GONE_AFTER", 0.05)
       owner[0] = nil

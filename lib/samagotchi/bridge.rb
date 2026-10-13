@@ -29,6 +29,7 @@ require_relative "version"
 require_relative "worker_sidecar"
 require_relative "relay_verifier"
 require_relative "relay_watcher"
+require_relative "reply_wait"
 require_relative "tools/task_runtime"
 
 module Samagotchi
@@ -498,7 +499,9 @@ module Samagotchi
     # start), so a continue may move it to the chain's new link (ChildMove).
     # delivery: POST /turn runs every Delivery value; a queue waits for the
     # turn's end (Delivery::QUEUE_FEATURE). A worker without it would steer.
-    FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE].freeze
+    # turn_ids: the running turn's checkpoint mark, a continue turn and a
+    # Stop's last_turn carry the turn's enqueued_id (ReplyWait.own_turn).
+    FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].

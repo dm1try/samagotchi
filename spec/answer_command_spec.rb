@@ -369,6 +369,81 @@ RSpec.describe Samagotchi::AnswerCommand do
     end
   end
 
+  # The answered turn's own reply, not a newer one of a turn queued behind
+  # it (the reply files carry their turn's enqueued_id).
+  describe "the turn it answers (turn ids)" do
+    def session_dir(session) = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+
+    def turn_reply(session, text, id)
+      Samagotchi::SessionInbox.write_output(session_dir(session), text, enqueued_id: id)
+      sleep(0.002)
+    end
+
+    def end_turn(session, id, outcome: "completed")
+      t = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      t.status = "idle"
+      t.pending_question = nil
+      t.interrupted_turn = nil
+      t.last_turn = Samagotchi::LastTurn.new(outcome: outcome, ended_at: Time.now.iso8601(3), enqueued_id: id)
+      t.save(state_dir: tmpdir)
+    end
+
+    def running(session, id)
+      t = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      t.status = "running"
+      t.interrupted_turn = { "iteration" => 1, "enqueued_id" => id }
+      t.save(state_dir: tmpdir)
+    end
+
+    it "prints the answered turn's reply when a queued turn behind it answers later (newer file)" do
+      s = asking(question)
+      running(s, "x1")
+      threads << Thread.new do
+        sleep(0.02) until posted.any?
+        sleep(0.05)
+        turn_reply(s, "x1 answer", "x1")
+        end_turn(s, "x1")
+        running(s, "q1")
+        turn_reply(s, "queued answer", "q1")
+        end_turn(s, "q1")
+      end
+      # The queued turn's reply is there before the wait's first look.
+      sleep(0.01)
+
+      expect(run(s.id, "--question", "q1", "--option", "1")).to eq(0), err.string
+      expect(out.string).to eq("x1 answer\n")
+    end
+
+    it "ends a Stop of a continue offer on that turn's not_continued, the queued turn's reply aside" do
+      s = asking({ id: "c1", kind: "continue", question: "Continue it?", options: %w[Continue Stop] }, status: "idle")
+      t = Samagotchi::Session.load(s.id, state_dir: tmpdir)
+      t.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 30, enqueued_id: "x1",
+                                             ended_at: "2026-10-13T10:00:00.000Z")
+      t.save(state_dir: tmpdir)
+      Samagotchi::WorkerSidecar.new(port: 1, features: %w[delivery turn_ids]).write(session_dir(s))
+      threads << Thread.new do
+        sleep(0.02) until posted.any?
+        turn_reply(s, "queued answer", "q1")
+        t = Samagotchi::Session.load(s.id, state_dir: tmpdir)
+        t.pending_question = nil
+        t.last_turn = Samagotchi::LastTurn.new(outcome: "not_continued", ended_at: Time.now.iso8601(3), enqueued_id: "x1")
+        t.save(state_dir: tmpdir)
+      end
+
+      expect(run(s.id, "--question", "c1", "--option", "Stop", "--format", "json")).to eq(0), err.string
+      expect(json_out).to include("status" => "not_continued")
+    end
+
+    it "waits for the next reply as before when the worker names no turn (no id on its mark)" do
+      s = asking(question)
+      running(s, nil)
+      replies_after_answer(s, "next reply")
+
+      expect(run(s.id, "--question", "q1", "--option", "1")).to eq(0), err.string
+      expect(out.string).to eq("next reply\n")
+    end
+  end
+
   describe "a step-limit question (kind continue)" do
     let(:limit_question) do
       { id: "c1", kind: "continue", header: "Step limit", question: "The turn ran out of iterations (100 steps) before it answered. Continue it?",

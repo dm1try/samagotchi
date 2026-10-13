@@ -260,16 +260,26 @@ module Samagotchi
 
     # Whether an input file carrying +enqueued_id+ still waits unclaimed in
     # input/ (no worker has taken it for a turn or a step yet).
-    def self.input_waiting?(session_dir, enqueued_id)
-      id = enqueued_id.to_s
-      return false if id.empty?
+    def self.input_waiting?(session_dir, enqueued_id) = !waiting_input(session_dir, enqueued_id).nil?
 
-      find_new_input_files(session_dir).any? do |file|
+    # How the unclaimed input file carrying +enqueued_id+ waits: :turn_end
+    # (a queue or an image message: it runs as a turn of its own, never
+    # merged, #waits_for_turn_end?), :merges (a running turn's drain may
+    # take it as a steer), or nil when none waits.
+    # @return [Symbol, nil]
+    def self.waiting_input(session_dir, enqueued_id)
+      id = enqueued_id.to_s
+      return nil if id.empty?
+
+      find_new_input_files(session_dir).each do |file|
         data = JSON.parse(File.read(file))
-        data.is_a?(Hash) && data["enqueued_id"] == id
+        next unless data.is_a?(Hash) && data["enqueued_id"] == id
+
+        return Array(data["images"]).any? || Delivery.queue?(data["delivery"]) ? :turn_end : :merges
       rescue JSON::ParserError, SystemCallError
-        false
+        next
       end
+      nil
     end
 
     def self.claim_input_file(input_file)

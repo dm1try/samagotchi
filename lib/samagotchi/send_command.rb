@@ -431,7 +431,7 @@ module Samagotchi
       # running at the check ended before it went in (an idle worker's ack
       # says next_step, and the file still runs as that turn).
       turn = @queue ? @sent_enqueued_id : nil
-      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn)
+      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn, queued: !turn.nil?)
     end
 
     # --wait with no message: the session's next reply, sending nothing,
@@ -440,15 +440,18 @@ module Samagotchi
     # was already reported. No message count: a note landing between turns
     # grows the messages without a turn. An idle session with no worker
     # waits for whatever wakes one (the web, chi send) rather than calling
-    # it gone.
+    # it gone. The turn running now, or the one whose continue offer
+    # stands, is the one waited for (ReplyWait.own_turn): its reply, not a
+    # turn's queued behind it; with none known, the next reply.
     # @return [Integer] the exit status
     def run_wait_only(options)
       id = resolve(options[:ids].first) or return 1
       session = Session.load(id, state_dir: @state_dir)
       live = session.status == Session::STATUS_RUNNING || SessionManager.session_owner(id, state_dir: @state_dir)
+      turn = ReplyWait.own_turn(session, session_dir: Session.session_dir(id, state_dir: @state_dir))
       wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
                          baseline: baseline_of(session).merge(messages: nil),
-                         timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil)
+                         timeout: options[:timeout], owner_grace: live ? self.class::WORKER_GONE_AFTER : nil, turn: turn)
     end
 
     # The session as it was before the message went in (ReplyWait's

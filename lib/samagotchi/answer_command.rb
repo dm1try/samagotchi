@@ -112,6 +112,10 @@ module Samagotchi
       # wakes, and it must not come back as exit 3.
       cursor = ReplyWait.newest_reply(id, state_dir: @state_dir)
       baseline = ReplyWait.baseline_of(session, question_id: qid)
+      # The turn the answer is about: the one asking (running), or the one
+      # whose continue offer stands. Its own reply is the answer's, not a
+      # turn queued behind it; nil (an older worker): the next reply.
+      turn = ReplyWait.own_turn(session, session_dir: Session.session_dir(id, state_dir: @state_dir))
 
       if pending && pending[:id].to_s == qid
         return failure(not_dismissable(pending)) if options[:dismiss] && ParentReport.continue?(pending)
@@ -129,7 +133,7 @@ module Samagotchi
       end
       # Answered here, or no longer open (answered elsewhere, or a newer
       # question): what comes next either way.
-      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout])
+      wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout], turn: turn)
     end
 
     # The labels to send. A number is an option's place (1-based); an

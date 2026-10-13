@@ -67,6 +67,7 @@ module Samagotchi
       @boundaries = 0
       @written_at = nil
       @started_at = nil
+      @enqueued_id = nil
     end
 
     # A turn begins (before Engine#run_turn and the worker's running save):
@@ -74,14 +75,18 @@ module Samagotchi
     # images, no turn id), marked at iteration 0, so a worker killed before
     # the loop's first boundary leaves the prompt and a mark the next one
     # settles. A continue turn (no prompt) is the history, marked.
+    # Every mark of the turn carries +enqueued_id+ (InterruptedTurn's).
     # @param prompt [String, nil]
-    def begin_turn(prompt: nil)
+    # @param enqueued_id [String, nil] the input the turn runs
+    def begin_turn(prompt: nil, enqueued_id: nil)
       @boundaries = 0
+      @enqueued_id = enqueued_id.to_s.empty? ? nil : enqueued_id.to_s
       @written_at = nil
       @started_at = Time.now.iso8601(3)
       messages = Array(@session.messages).dup
       messages << { role: "user", content: prompt } unless prompt.to_s.empty?
-      @session.turn_checkpoint = { messages: messages, marker: InterruptedTurn.new(started_at: @started_at, at: @started_at, iteration: 0) }
+      @session.turn_checkpoint = { messages: messages, marker: InterruptedTurn.new(started_at: @started_at, at: @started_at, iteration: 0,
+                                                                                   enqueued_id: @enqueued_id) }
     end
 
     # The turn ended (or never began): the session saves its own messages.
@@ -104,7 +109,8 @@ module Samagotchi
       # One level deep: the loop may edit an entry in place later (a
       # forget stub) while a save on another thread serializes this one.
       messages = conversation.map { |message| message.is_a?(Hash) ? message.dup : message } + merged
-      marker = InterruptedTurn.new(id: turn_id, started_at: @started_at, at: Time.now.iso8601(3), iteration: @boundaries)
+      marker = InterruptedTurn.new(id: turn_id, started_at: @started_at, at: Time.now.iso8601(3), iteration: @boundaries,
+                                   enqueued_id: @enqueued_id)
       @session.turn_checkpoint = { messages: messages, marker: marker }
       return false unless due? || !merged.empty?
 
