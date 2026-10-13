@@ -20,6 +20,12 @@ and commands may change between minor versions. How releases are made:
   link on the default model with a warning (`chi send: warning: …`, the API's `model_warning`) instead of being
   refused.
 
+### Fixed
+
+- Web: a session opened (or switched to) shows its live worker's features at once: the queue link on the delivery
+  line, the task-stop button, Alt+Enter's queue and the stale-worker badge with Restart no longer wait for the
+  session's next change.
+
 ## [0.66.0] - 2026-10-14
 
 ### Added
