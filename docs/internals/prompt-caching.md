@@ -3,8 +3,9 @@
 A model server reuses work only for the **exact token prefix** it has already seen. Change one token and
 everything after it is computed again (prefill). The local models we run (hybrid Qwen 3.6 / Ornith on llama.cpp
 and Splash) can only resume from a **restore point near the end** of an earlier prompt, not from any shared
-prefix. Anthropic (Claude via OpenRouter) caches only up to an explicit `cache_control` breakpoint. So the order
-of what chi sends decides what a new turn, or a new session, has to pay for.
+prefix. Anthropic (Claude via OpenRouter, or over the Messages API, `api: anthropic`) caches only up to an explicit
+`cache_control` breakpoint. So the order of what chi sends decides what a new turn, or a new session, has to pay
+for.
 
 Measured with prompt-cache slice 1 (2026-10-04, fresh sessions, ~7.7k-token prompt):
 
@@ -36,7 +37,7 @@ right-hand column happens.
 │   AGENTS.md (root → cwd)                                                 │  (picked up by a new
 │   appended files (append_system_prompt:, --append-system-prompt)         │  process or a rebuild)
 │   project + system memory indexes                                        │
-│                         ◄── remote Claude: cache_control breakpoint #1   │
+│                ◄── remote Claude / Messages: cache_control breakpoint #1 │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ SYSTEM, volatile tail (per session, least → most changing)               │
 │   Model: this session runs on …                                          │  another session
@@ -48,17 +49,19 @@ right-hand column happens.
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ history      user / assistant / tool messages, APPEND-ONLY               │  !rollback, a failed or
 │              (images: up to the newest N, cut in batches; ImagePlan)     │  cancelled turn's tail,
-│                         ◄── remote Claude: breakpoint #2 on the last     │  the image cut moving
-│                             non-system message                           │  a batch, history
+│                ◄── remote Claude / Messages: breakpoint #2 on the last   │  the image cut moving
+│                    non-system message (Messages: its last user block)    │  a batch, history
 ├──────────────────────────────────────────────────────────────────────────┤  sanitizing (thinking
 │ tail notes   reminders, turn notes, steers (system/user messages)        │  stripped per spec)
 │ new prompt   this turn's user message                                    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- The system prompt is built **once per loop** and rebuilt only on `@prompt_builder.reset!`: a model switch
-  (`Engine#switch_model!`), a plugin's `tools_changed!`, or a profile change. A per-turn rebuild would
-  break everything below it.
+- The system prompt is built **once per key** and kept (`SystemPrompt#build`, keyed by `[chat, thinking, layers]`:
+  the loop, the thinking level, the turn's LLM context layers; a `/thinking` change builds under another key). All
+  of them are dropped only on `@prompt_builder.reset!`: a model switch (`Engine#switch_model!`), a plugin's
+  `tools_changed!`, a profile change, or a toolkit change (`Engine#apply_toolkit!`). A per-turn rebuild would break
+  everything below it.
 - The tools layer is shared **per toolkit** (configuration.md, "Toolkits"): sessions on the same toolkit share it,
   and a chain's links keep theirs. A session's toolkit is saved when it is created and never resolved again from
   config. A change (`/toolkit`, `ctx.use_toolkit`) is applied only at a turn's start (`Engine#apply_toolkit!`,
@@ -69,7 +72,14 @@ right-hand column happens.
   breakpoint #1, so a **new session** reads it from the cache. The last non-system message carries breakpoint
   #2, so the **next request in the session** reads everything up to it. Mid and tail system messages never take
   a breakpoint. The split point comes from `SystemPrompt#stable_length` via the message's `cache_split:`, which
-  never goes on the wire.
+  never goes on the wire. `PromptCache.mark` keys on the model id (`claude`) and runs only for a remote host's chat
+  requests (`OpenAIChat#cache_breakpoints`).
+- On a Messages host (`api: anthropic`), `AnthropicWire.translate` sets the same two breakpoints on the translated
+  request: the first `system` block (the stable part, when `cache_split:` splits it) and the last user block that
+  can carry one (never a thinking block, never one from a mid or tail system message). It doesn't look at the model
+  id: every chat request carries them, unless the host's dialect has none (`Dialect#cache_breakpoints`: `fireworks`,
+  an automatic prefix cache) or the host refused `cache_control` with a 400 (no breakpoints for that worker's life).
+  [anthropic.md](anthropic.md) has the details.
 - Side requests (idle recap, `/btw`) go through `IdleClient` with their own short system prompt. On a current
   llama.cpp they don't evict the session (see the server settings below); chi never pins them to a slot.
 
@@ -115,14 +125,17 @@ is prefilled once. The native and the chat loop use the same plan.
   one provider. `cache.key: session` also sends the session id as `prompt_cache_key` in the body, the field
   OpenAI's API routes and caches by (OpenRouter honours it too); the log line shows `cache_by=session`. Only
   `api.openai.com` and OpenRouter get it, and only the session's own chat requests (not recap or `/btw`): a local
-  llama.cpp, Splash or another gateway may reject an unknown field. Off by default.
+  llama.cpp, Splash or another gateway may reject an unknown field. Off by default. A Messages host never gets
+  `prompt_cache_key` (`AnthropicMessages::DROPPED_OPTIONS`); its dialect may add a header of its own beside
+  `Session-Id` (`Dialect#session_header`: `x-session-affinity` under `dialect: fireworks`, which keeps a session on
+  the replica that has its cache).
 
 ## Reading the numbers
 
 - The debug log's `generation_completed` line: `prompt=` (the request's prompt tokens), `cached=` (read from the
   server's cache), `cache_write=` (written to it, where the provider reports writes) and `reprefill=` (of the last
   request's prompt on the same model, what was prefilled again). The `http` line of a
-  remote Claude request shows `cache=on` (or `cache=1h`) when it carried breakpoints.
+  remote Claude or Messages request shows `cache=on` (or `cache=1h`) when it carried breakpoints.
 - The warm-up logs `model warmup` with `cached=`, `prefilled=` and `prefill_ms=`.
 - `/stats`: "cached N (P%)", "cache writes" and "re-prefilled" for the session.
 - A healthy session: from the second request on `cached=` is close to `prompt=`; a second fresh session in the
