@@ -196,8 +196,8 @@ class Plugin
     text.empty? ? nil : text
   end
 
-  # The session's attached sources; none while its file isn't saved yet
-  # (a new session before its first turn: ctx.context.list raises then).
+  # The session's attached sources; none when they can't be read (chi 0.62
+  # raises for a new session not saved yet; a corrupt session file).
   def sources(ctx)
     ctx.context.list
   rescue ArgumentError, SystemCallError

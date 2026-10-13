@@ -756,7 +756,8 @@ gets a note when its text changes.
 - The source is the session's (not the project's), marked
   `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
   the agent's `chi context add --cmd` is.
-- `list` gives the session's sources, its own then its project's. `hint` is the
+- `list` gives the session's sources, its own then its project's (`[]` before
+  the session has an id or its file is saved: a command before the first turn). `hint` is the
   one the last text gave (else the source's), `summary` that text's summary
   (nil before any text; chi 0.63.0).
 - Two attaches of one source at once (a double click) both return its

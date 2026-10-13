@@ -94,12 +94,14 @@ module Samagotchi
         nil
       end
 
-      # This session's sources (its own, then its project's).
+      # This session's sources (its own, then its project's); none before
+      # the session has an id or a saved file.
       # +summary+ is the last text's summary (nil before any text).
       # @return [Array<Hash>] {name:, scope:, why:, hint:, fetched_at:, error:, provider:, summary:}
       def list
         id = @host.session_id.call
-        return [] unless id
+        # No id, or no saved file yet (a command before the first turn).
+        return [] unless id && Session.exist?(id, state_dir: state_dir)
 
         session = Session.load(id, state_dir: state_dir)
         ContextSources.attached(id, project_root: session.project_root, state_dir: state_dir).map do |attached|

@@ -165,6 +165,14 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     expect { ctx.context.attach(name: "x", cmd: "date", every_seconds: 5) }.to raise_error(described_class::Error, /least is 30/)
   end
 
+  context "with a session id whose file isn't saved yet (a plugin command before the first turn)" do
+    let(:session_id) { "aaaabbbb-1111-2222-3333-444455556666" }
+
+    it "lists nothing" do
+      expect(ctx.context.list).to eq([])
+    end
+  end
+
   context "with no session yet" do
     let(:session_id) { nil }
 

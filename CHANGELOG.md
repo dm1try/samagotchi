@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 
 - Attached context: a source added with `chi context add NAME --push` now wakes an idle session when its first
   push asks to (`"wake": true`); before, only later pushes could.
+- Plugins: `ctx.context.list` returns `[]` for a new session whose file isn't saved yet (a plugin command before
+  the first turn) instead of raising "Session not found".
 
 ## [0.62.0] - 2026-10-13
 
