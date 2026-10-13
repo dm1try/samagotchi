@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
-require "net/http"
-require "uri"
 require_relative "version"
 require_relative "config"
 require_relative "context_window"
@@ -16,8 +13,7 @@ require_relative "thinking"
 require_relative "reasoning_history"
 require_relative "served_model"
 require_relative "host_registry"
-require_relative "llm/http"
-require_relative "llm/api_key"
+require_relative "llm/adapters"
 require_relative "tools/memory"
 require_relative "hooks/loader"
 require_relative "memory_bundle/provenance"
@@ -306,34 +302,26 @@ module Samagotchi
       "unknown (#{e.class})"
     end
 
-    # A local chat host's reachability: one GET <base>/models with the
-    # native probe's short timeouts (Client's /props probe), no retry. Up
-    # with the ids it serves, down when it doesn't answer.
+    # A local chat host's reachability: its model list through its own
+    # adapter (LLM::Adapters, not the registry's cached one) with the native
+    # probe's short timeouts (Client's /props probe), no retry. Up with the
+    # ids it serves, down when it doesn't answer.
     def chat_served_model_for(entry, bare, env)
-      uri = URI("#{entry.openai_base_url}/models")
-      request = Net::HTTP::Get.new(uri)
-      http = LLM::HTTP.new(label: entry.name, open_timeout: Client::CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
-                           read_timeout: Client::CONTEXT_WINDOW_PROBE_READ_TIMEOUT,
-                           retry_policy: LLM::HTTP::RetryPolicy.none,
-                           api_key: LLM::ApiKey.for(entry.api_key_env, host: entry.host, env: env))
-      response = http.fetch(uri, request, retries: false, check_status: false, log_fields: { purpose: "models" })
-      return "down (HTTP #{response.code})" unless response.code.to_s == "200"
-
-      ids = chat_model_ids(response.body)
+      adapter = LLM::Adapters.for(entry, open_timeout: Client::CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
+                                         timeout: Client::CONTEXT_WINDOW_PROBE_READ_TIMEOUT, retries: false, env: env)
+      ids = adapter.list_models.map(&:id).reject(&:empty?)
       return "up (no models listed)" if ids.empty?
 
       note = ids.any? { |id| id.casecmp?(bare.to_s) } ? "" : " (not #{bare})"
       "up: #{ids.join(", ")}#{note}"
+    rescue LLM::ProviderError => e
+      # A status (an error, or a 3xx such as a proxy's login page) is down;
+      # a 200 whose body isn't a model list (ProtocolError) is up.
+      return "down (HTTP #{e.status})" if e.status
+
+      e.is_a?(LLM::ProtocolError) ? "up (no models listed)" : "down (the server didn't answer; is it running?)"
     rescue StandardError
       "down (the server didn't answer; is it running?)"
-    end
-
-    def chat_model_ids(body)
-      parsed = JSON.parse(body.to_s)
-      data = parsed.is_a?(Hash) ? parsed["data"] : parsed
-      Array(data).filter_map { |raw| raw.is_a?(Hash) ? (raw["id"] || raw[:id]).to_s : raw.to_s }.reject(&:empty?)
-    rescue JSON::ParserError
-      []
     end
 
     # Offline, so no /props probe: where nothing is configured, a native

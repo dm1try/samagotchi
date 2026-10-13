@@ -136,6 +136,8 @@ module Samagotchi
       # @param retries [Boolean] false: one attempt
       # @param timeout [Numeric, nil] read timeout in seconds (default
       #   server.read_timeout); the connect timeout is capped by it
+      # @param open_timeout [Numeric, nil] connect timeout in seconds, when
+      #   shorter than that (a reachability probe's)
       # @param models_ttl [Numeric] how long #context_window reuses the list
       # @param remote [Boolean] a provider on the network, not a local server
       # @param first_token_timeout [Numeric, nil] seconds a streamed answer
@@ -144,7 +146,7 @@ module Samagotchi
       #   whose options name none (OPENROUTER_MAX_TOKENS); nil sends none
       def initialize(base_url:, host_name:, api_key_env: nil, stream: true, retries: true, timeout: nil,
                      env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
-                     first_token_timeout: nil, purpose: "chat", default_max_tokens: nil)
+                     first_token_timeout: nil, purpose: "chat", default_max_tokens: nil, open_timeout: nil)
         @remote = remote
         @default_max_tokens = default_max_tokens
         # What its requests are for, in the log (LLM::HTTP::LOGGED_PURPOSES).
@@ -156,7 +158,7 @@ module Samagotchi
         @stream = stream
         @models_ttl = models_ttl
         @models_mutex = Mutex.new
-        open_timeout, read_timeout = timeouts(timeout)
+        open_timeout, read_timeout = timeouts(timeout, open_timeout)
         policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
         @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
                          retry_policy: policy, sleeper: sleeper, first_token_timeout: first_token_timeout,
@@ -272,9 +274,10 @@ module Samagotchi
 
       private
 
-      def timeouts(timeout)
+      def timeouts(timeout, open_limit = nil)
         open_timeout = Samagotchi::Config.positive_seconds("server.open_timeout")
         read_timeout = Samagotchi::Config.positive_seconds("server.read_timeout")
+        open_timeout = [open_timeout, open_limit].min if open_limit
         return [open_timeout, read_timeout] unless timeout
 
         [[open_timeout, timeout].min, timeout]

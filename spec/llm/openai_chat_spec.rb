@@ -29,6 +29,17 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
     server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture(fixture))
   end
 
+  describe "timeouts" do
+    it "caps the connect timeout by open_timeout: when given (a reachability probe's)" do
+      probe = described_class.new(base_url: server.base_url, host_name: "box", open_timeout: 1, timeout: 2)
+      plain = described_class.new(base_url: server.base_url, host_name: "box", timeout: 2)
+
+      expect(probe.send(:timeouts, 2, 1)).to eq([1, 2])
+      expect(plain.send(:timeouts, 2)).to eq([2, 2])
+      expect(probe.instance_variable_get(:@http).instance_variable_get(:@open_timeout)).to eq(1)
+    end
+  end
+
   describe "#thinking_fields" do
     it "gives a thinking level's request fields, Thinking.chat_fields's" do
       %i[off low medium high default].each do |level|

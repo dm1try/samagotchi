@@ -3,6 +3,7 @@
 require "spec_helper"
 require "samagotchi/self_report"
 require "samagotchi/engine"
+require_relative "support/fake_provider_server"
 
 RSpec.describe Samagotchi::SelfReport do
   let(:tmp) { Dir.mktmpdir("self-report") }
@@ -385,52 +386,73 @@ RSpec.describe Samagotchi::SelfReport do
   end
 
   describe "the served model row for a local chat host (api: openai)" do
-    before { allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model") }
+    around { |example| FakeProviderServer.without_webmock { example.run } }
 
-    # A local chat host has no /props: chi self GETs <base>/models with the
-    # native probe's short timeouts.
-    def stub_models(status: 200, body: nil, raise_error: nil)
-      response = Net::HTTPResponse::CODE_TO_OBJ[status.to_s].new("1.1", status.to_s, "")
-      allow_any_instance_of(Samagotchi::LLM::HTTP).to receive(:fetch) do |_http, _uri, _req, **_opts|
-        raise raise_error if raise_error
+    let(:server) { FakeProviderServer.start }
 
-        allow(response).to receive(:body).and_return(body.to_s)
-        response
-      end
+    before do
+      allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model")
+      allow_any_instance_of(Samagotchi::LLM::HTTP).to receive(:fetch).and_call_original
+      write_config("hosts:\n  main:\n    host: 127.0.0.1\n    port: #{server.port}\n    api: openai\n")
+    end
+
+    after { server.stop }
+
+    # A local chat host has no /props: chi self lists its models through
+    # its own adapter (LLM::Adapters), with the native probe's short
+    # timeouts and one attempt.
+    def serve_models(status: 200, json: nil, body: nil)
+      server.enqueue("/v1/models", status: status, json: json, body: body)
     end
 
     it "reports up with the ids it serves" do
-      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
-      stub_models(body: JSON.generate(data: [{ id: "spec-model" }, { id: "other" }]))
+      serve_models(json: { data: [{ id: "spec-model" }, { id: "other" }] })
 
       expect(field("served model")).to eq("up: spec-model, other")
     end
 
+    it "lists through its own adapter for the host, with the probe's timeouts and no retry" do
+      allow(Samagotchi::LLM::Adapters).to receive(:for).and_call_original
+      serve_models(json: { data: [{ id: "spec-model" }] })
+
+      field("served model")
+
+      expect(Samagotchi::LLM::Adapters).to have_received(:for)
+        .with(having_attributes(name: "main"), open_timeout: Samagotchi::Client::CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
+                                               timeout: Samagotchi::Client::CONTEXT_WINDOW_PROBE_READ_TIMEOUT,
+                                               retries: false, env: env)
+      expect(server.requests.map(&:path)).to eq(["/v1/models"])
+    end
+
     it "marks the configured model when the list doesn't have it" do
-      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
-      stub_models(body: JSON.generate(data: [{ id: "other" }]))
+      serve_models(json: { data: [{ id: "other" }] })
 
       expect(field("served model")).to eq("up: other (not spec-model)")
     end
 
     it "reports down when the server doesn't answer" do
-      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
-      stub_models(raise_error: Errno::ECONNREFUSED)
-
+      server.stop
       expect(field("served model")).to eq("down (the server didn't answer; is it running?)")
     end
 
-    it "reports down with the status on an error response" do
-      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
-      stub_models(status: 500, body: "boom")
+    it "reports down with the status on an error response, asked once" do
+      serve_models(status: 500, body: "boom")
 
       expect(field("served model")).to eq("down (HTTP 500)")
+      expect(server.requests.size).to eq(1)
     end
 
-    it "says up with no models when the list is empty" do
-      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8082\n    api: openai\n")
-      stub_models(body: JSON.generate(data: []))
+    it "reports down with the status when a 3xx answers (a proxy's login page), not up" do
+      serve_models(status: 302, body: "<html>login</html>")
 
+      expect(field("served model")).to eq("down (HTTP 302)")
+    end
+
+    it "says up with no models when the list is empty or unreadable" do
+      serve_models(json: { data: [] })
+      expect(field("served model")).to eq("up (no models listed)")
+
+      serve_models(body: "not json")
       expect(field("served model")).to eq("up (no models listed)")
     end
   end
