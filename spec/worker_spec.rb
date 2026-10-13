@@ -301,6 +301,18 @@ RSpec.describe Samagotchi::Worker do
       end
     end
 
+    it "names a turn's reply after its input's enqueued_id, so a wait for that turn finds it" do
+      answered = instance_double(Samagotchi::LLM::ModelResult, output: "the answer", canceled?: false, resumable?: false)
+      allow(engine).to receive(:run_turn).and_return(answered)
+      start_worker
+
+      ack = JSON.parse(post_turn("hi").body)
+      result = Samagotchi::ReplyWait.call(session.id, state_dir: tmpdir, cursor: nil, timeout: 2, poll_interval: 0.02,
+                                                      turn: ack["enqueued_id"])
+      expect(result.to_h).to include(status: :done, text: "the answer")
+      expect(result.file).to end_with("-#{ack["enqueued_id"]}.txt")
+    end
+
     it "records a turn that failed before the Engine began it as last_turn, so a wait ends with no_reply" do
       allow(engine).to receive(:run_turn).and_raise(RuntimeError, "boom before the turn")
       start_worker
@@ -685,9 +697,9 @@ RSpec.describe Samagotchi::Worker do
         end
         # The worker's own end of the turn, past the hooks, outlasts a
         # SIGNAL_RETRY: the turn no longer runs, the loop hasn't left yet.
-        allow(Samagotchi::SessionInbox).to receive(:write_output).and_wrap_original do |original, *args|
+        allow(Samagotchi::SessionInbox).to receive(:write_output).and_wrap_original do |original, *args, **options|
           sleep 0.3
-          original.call(*args)
+          original.call(*args, **options)
         end
         start_worker(poll_interval: 5, signals: signals, signal_grace: [0.1, 0.1, 5])
         post_turn("answered")

@@ -25,6 +25,13 @@ RSpec.describe Samagotchi::LastTurn do
     expect(described_class.from_file("completed")).to be_nil
   end
 
+  it "round-trips a turn's enqueued_id, and a newer file's unknown key is dropped" do
+    turn = described_class.from_file({ "outcome" => "completed", "enqueued_id" => "q1", "from_the_future" => 1 })
+    expect(turn.enqueued_id).to eq("q1")
+    expect(turn.to_file).to eq("outcome" => "completed", "enqueued_id" => "q1")
+    expect(turn.stop_facts).to eq({})
+  end
+
   it "gives the stop facts it has, by Result's names (false kept)" do
     expect(described_class.from_file(failed).stop_facts).to eq(error_kind: "credits", retryable: false, kept_steps: 2)
     expect(described_class.new(outcome: "completed").stop_facts).to eq({})

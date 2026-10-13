@@ -14,6 +14,8 @@ module Samagotchi
   # output/<timestamp>.txt file (one per turn that ended with visible text,
   # written just before its idle save), so "next" means a filename past the
   # cursor the caller holds: the newest one it already has, or nil for any.
+  # A wait for one input's turn (turn:, a queued message) looks for that
+  # turn's own file instead (output/<timestamp>-<enqueued_id>.txt).
   # The delegate tools and `chi send --wait` wrap it in their own words.
   module ReplyWait
     POLL_INTERVAL = 0.5
@@ -38,7 +40,9 @@ module Samagotchi
     # @!attribute retryable [Boolean, nil] whether that error may pass on a
     #   retry
     # @!attribute cancel_reason [String, nil] a "canceled" turn's reason
-    #   (user, hook, ctrl_c, manual)
+    #   (user, hook, ctrl_c, manual, session_stopped: the session was
+    #   stopped mid-turn), passed through as the worker saved it; any
+    #   reason is a "canceled" outcome
     # @!attribute stopped_by [String, nil] the hook that canceled it
     #   (loop-guard)
     # @!attribute session [Session, nil] the session as the look that
@@ -70,18 +74,32 @@ module Samagotchi
     # @param interject [#call, nil] called once a poll, before the sleep
     #   (the delegate wait relays other children's approvals there); the
     #   time it takes doesn't count against +timeout+
+    # @param turn [String, nil] the enqueued_id of the input whose turn is
+    #   waited for (a queued message, which runs after the turn running
+    #   now). With it only that turn ends the wait: its reply file
+    #   (SessionInbox.reply_for), or an idle session whose last_turn has
+    #   that enqueued_id (failed, canceled, empty: #no_reply). Other turns'
+    #   replies and ends are not its, and a pending question counts only
+    #   when it is that turn's (#own_question?).
     # @return [Result]
     # @raise [ArgumentError] no such session
     def call(id, state_dir:, cursor:, timeout: nil, poll_interval: POLL_INTERVAL, cancelled: -> { false },
-             baseline: nil, owner_grace: nil, interject: nil)
+             baseline: nil, owner_grace: nil, interject: nil, turn: nil)
       deadline = timeout && (monotonic + timeout.to_f)
       seen_running = false
       gone_since = nil
+      turn = turn.to_s.empty? ? nil : turn.to_s
+      session_dir = Session.session_dir(id, state_dir: state_dir) if turn
+      # Whether the turn's input file has been taken (latched): looked at
+      # before each load, so a running session seen after it is that turn
+      # or a later one, never the turn that ran when the message was sent.
+      claimed = false
 
       loop do
+        claimed ||= !SessionInbox.input_waiting?(session_dir, turn) if turn
         session = Session.load(id, state_dir: state_dir)
 
-        if (reply = reply_past(id, state_dir: state_dir, cursor: cursor))
+        if (reply = turn ? reply_for_turn(id, state_dir: state_dir, turn: turn) : reply_past(id, state_dir: state_dir, cursor: cursor))
           reply.session = settled(session, id, state_dir: state_dir)
           return reply
         end
@@ -98,13 +116,23 @@ module Samagotchi
         # REPL's is answered there.
         pending = session.pending_question
         if pending && !(baseline && pending[:id] == baseline[:question_id]) &&
+           (turn.nil? || own_question?(session, turn, claimed)) &&
            session.waiting_question(live: SessionManager.worker_live?(id, state_dir: state_dir))
           return Result.new(status: :waiting_for_answer, question: pending, session: session)
         end
 
         return Result.new(status: :canceled) if cancelled.call
 
-        if session.status == Session::STATUS_RUNNING
+        if turn
+          # Only the turn's own end: the session runs another turn when the
+          # wait starts, and that one's end is not the answer. A last_turn
+          # with its id is its end, even with a next queued turn running
+          # by now (the look between the two missed the idle).
+          if session.last_turn&.enqueued_id == turn
+            return reply_for_turn(id, state_dir: state_dir, turn: turn)&.tap { |r| r.session = session } ||
+                   no_reply(session, baseline, fresh: true)
+          end
+        elsif session.status == Session::STATUS_RUNNING
           seen_running = true
         elsif (seen_running && !baseline&.key?(:last_turn)) || turn_ended_since?(session, baseline)
           # It ran and is idle again with no new reply: canceled, failed or
@@ -164,11 +192,35 @@ module Samagotchi
       !!(baseline[:messages] && session.messages.size > baseline[:messages])
     end
 
+    # A pending question is a turn: wait's (its enqueued_id) only when that
+    # turn asked it: its own continue offer, asked after its end (last_turn
+    # has the id), or a question while it runs (its input claimed, the
+    # session running). Any other is the turn that ran when the message was
+    # sent, whose questions are the user's: the wait goes on.
+    def own_question?(session, turn, claimed)
+      running = session.status == Session::STATUS_RUNNING
+      # Ended: only its continue offer (idle); running again is a next turn.
+      return !running if session.last_turn&.enqueued_id == turn
+
+      claimed && running
+    end
+
+    # @return [Result, nil] :done with the reply of the turn that ran the
+    #   input +turn+ (its enqueued_id)
+    def reply_for_turn(id, state_dir:, turn:)
+      file = SessionInbox.reply_for(Session.session_dir(id, state_dir: state_dir), turn)
+      return nil unless file
+
+      Result.new(status: :done, text: File.read(File.join(reply_dir(id, state_dir: state_dir), file)), file: file)
+    end
+
+    # @param fresh [Boolean, nil] the last_turn is known to be the turn
+    #   waited for (a turn: wait); nil decides it from the baseline
     # @return [Result] :no_reply with the outcome the session's last_turn
     #   records, when it is the turn waited for
-    def no_reply(session, baseline)
+    def no_reply(session, baseline, fresh: nil)
       last = session.last_turn || LastTurn.new
-      fresh = baseline.nil? || !baseline.key?(:last_turn) || (last.ended_at && last.ended_at != baseline[:last_turn])
+      fresh = baseline.nil? || !baseline.key?(:last_turn) || (last.ended_at && last.ended_at != baseline[:last_turn]) if fresh.nil?
       outcome = fresh ? last.outcome : nil
       return Result.new(status: :no_reply, outcome: "exhausted", limit: last.limit, session: session) if fresh && last.exhausted
 

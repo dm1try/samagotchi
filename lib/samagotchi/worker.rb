@@ -929,7 +929,7 @@ module Samagotchi
       # no reply: its text is what came before its last tool calls, and a
       # wait (chi send --wait) gets the question instead.
       unless response.nil? || response.strip.empty? || @continue_offer.awaiting?
-        SessionInbox.write_output(@session_dir, response)
+        SessionInbox.write_output(@session_dir, response, enqueued_id: turn_args[:origin]&.dig(:enqueued_id))
       end
       save_or_log(:turn) { save_session }
       # The reports the turn merged were read unless its end took the turn

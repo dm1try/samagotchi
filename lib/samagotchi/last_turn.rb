@@ -12,9 +12,12 @@ module Samagotchi
   # children's reports) or "context" (one an attached context source's
   # change started); exhausted/limit: the turn ran out of iterations at
   # limit. The rest are its stop facts (LastTurn::STOP_FACTS), only what is
-  # known. A field may be nil (unset; left out of the file).
+  # known. enqueued_id: the input's id when the turn ran one (a POST /turn
+  # ack's, an input file's), so a wait for a queued message (`chi send
+  # --queue --wait`, ReplyWait's turn:) tells its own turn's end from
+  # another's. A field may be nil (unset; left out of the file).
   LastTurn = Data.define(:outcome, :ended_at, :seconds, :origin, :exhausted, :limit,
-                         :error_kind, :retryable, :kept_steps, :cancel_reason, :stopped_by) do
+                         :error_kind, :retryable, :kept_steps, :cancel_reason, :stopped_by, :enqueued_id) do
     def initialize(**fields)
       super(**members.to_h { |m| [m, nil] }, **fields)
     end

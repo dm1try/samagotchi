@@ -267,6 +267,159 @@ RSpec.describe Samagotchi::ReplyWait do
     end
   end
 
+  describe "with turn: (a queued message's own turn)" do
+    let(:dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+
+    def write_turn_reply(text, id)
+      Samagotchi::SessionInbox.write_output(dir, text, enqueued_id: id)
+      sleep(0.002)
+    end
+
+    def queue_input(id)
+      Samagotchi::SessionInbox.write_input(dir, prompt: "later", enqueued_id: id, delivery: "queue")
+    end
+
+    # The worker takes the queued file for its turn.
+    def claim(id)
+      file = Samagotchi::SessionInbox.find_new_input_files(dir).find { |f| File.read(f).include?(id) }
+      Samagotchi::SessionInbox.claim_input_file(file)
+    end
+
+    def end_turn(id, outcome: "completed", **facts)
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.status = "idle"
+      s.last_turn = Samagotchi::LastTurn.new(outcome: outcome, ended_at: Time.now.iso8601(3), enqueued_id: id, **facts)
+      s.save(state_dir: tmpdir)
+    end
+
+    def baseline = described_class.baseline_of(Samagotchi::Session.load(session.id, state_dir: tmpdir))
+
+    it "skips the running turn's reply and end, and returns its own reply" do
+      queue_input("q1")
+      base = baseline
+      later do
+        write_turn_reply("running answer", "r0")
+        end_turn("r0")
+        claim("q1")
+        set(status: "running")
+        sleep(0.1)
+        write_turn_reply("answer to q1", "q1")
+        end_turn("q1")
+      end
+
+      result = wait(baseline: base, turn: "q1")
+      expect(result.status).to eq(:done)
+      expect(result.text).to eq("answer to q1")
+      expect(result.file).to end_with("-q1.txt")
+    end
+
+    it "gives two queued turns each their own reply" do
+      queue_input("q1")
+      queue_input("q2")
+      base = baseline
+      later do
+        claim("q1")
+        write_turn_reply("one", "q1")
+        end_turn("q1")
+        claim("q2")
+        set(status: "running")
+        write_turn_reply("two", "q2")
+        end_turn("q2")
+      end
+
+      first = Thread.new { wait(baseline: base, turn: "q1") }
+      expect(wait(baseline: base, turn: "q2").text).to eq("two")
+      expect(first.value.text).to eq("one")
+    end
+
+    it "ends on its own turn that left no reply (failed, canceled, empty) with that turn's outcome" do
+      queue_input("q1")
+      base = baseline
+      later do
+        end_turn("r0") # the running turn ends: not this wait's
+        sleep(0.1)
+        claim("q1")
+        end_turn("q1", outcome: "canceled", cancel_reason: "user")
+      end
+
+      result = wait(baseline: base, turn: "q1")
+      expect(result.status).to eq(:no_reply)
+      expect(result.outcome).to eq("canceled")
+      expect(result.cancel_reason).to eq("user")
+    end
+
+    it "reports a turn canceled by a session stop (session_stopped) as canceled, like manual" do
+      queue_input("q1")
+      later do
+        claim("q1")
+        end_turn("q1", outcome: "canceled", cancel_reason: "session_stopped")
+      end
+
+      result = wait(baseline: baseline, turn: "q1")
+      expect(result.to_h).to include(status: :no_reply, outcome: "canceled", cancel_reason: "session_stopped")
+      expect(Samagotchi::ParentReport.json_line(result, session_id: session.id))
+        .to include('"status":"canceled"', '"cancel_reason":"session_stopped"')
+    end
+
+    it "ends on its own end seen while a next queued turn already runs" do
+      queue_input("q1")
+      queue_input("q2")
+      later do
+        claim("q1")
+        end_turn("q1", outcome: "failed")
+        claim("q2")
+        set(status: "running")
+      end
+
+      expect(wait(baseline: baseline, turn: "q1").outcome).to eq("failed")
+    end
+
+    it "does not take the running turn's question asked after the send: it waits on (here to its timeout)" do
+      own_by_worker
+      queue_input("q1")
+      base = baseline
+      later { set(pending_question: { id: "approve", kind: "approval", question: "Run rm?" }) }
+
+      expect(wait(baseline: base, turn: "q1", timeout: 0.4).status).to eq(:timeout)
+    end
+
+    it "takes a question its own turn asks once its input is claimed" do
+      own_by_worker
+      queue_input("q1")
+      base = baseline
+      later do
+        end_turn("r0")
+        claim("q1")
+        set(status: "running")
+        sleep(0.05)
+        set(pending_question: { id: "mine", kind: "approval", question: "Run ls?" })
+      end
+
+      result = wait(baseline: base, turn: "q1")
+      expect(result.status).to eq(:waiting_for_answer)
+      expect(result.question).to include(id: "mine")
+    end
+
+    it "takes its own continue offer (no reply, asked after its end)" do
+      own_by_worker
+      queue_input("q1")
+      base = baseline
+      later do
+        claim("q1")
+        s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+        s.status = "idle"
+        s.pending_question = { id: "cont", kind: "continue", question: "Continue?" }
+        s.last_turn = Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3), enqueued_id: "q1",
+                                               exhausted: true, limit: 30)
+        s.save(state_dir: tmpdir)
+      end
+
+      result = wait(baseline: base, turn: "q1")
+      expect(result.status).to eq(:waiting_for_answer)
+      expect(result.question).to include(id: "cont")
+    end
+  end
+
   it "reports a worker gone past the grace, not one that comes back" do
     owner = [nil]
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }

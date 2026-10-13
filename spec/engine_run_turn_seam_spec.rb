@@ -244,6 +244,15 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect(session.last_turn.to_file).to include("outcome" => "canceled", "cancel_reason" => "ctrl_c")
     end
 
+    it "keeps the input's enqueued_id (a queued message's wait tells its turn by it); none without one" do
+      allow(kernel).to receive(:run).and_return(kernel_result)
+      engine.run_turn(session, "hi", origin: { client_id: "cli:send", enqueued_id: "abc-123" })
+      expect(session.last_turn.enqueued_id).to eq("abc-123")
+
+      engine.run_turn(session, "hi", origin: { client_id: "web:tab-1" })
+      expect(session.last_turn.to_file).not_to have_key("enqueued_id")
+    end
+
     it "maps the origin: a delegate, a delegate report, a reminder, an attached context change, a client, none" do
       allow(kernel).to receive(:run).and_return(kernel_result)
       {

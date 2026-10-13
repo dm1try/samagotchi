@@ -91,6 +91,49 @@ RSpec.describe Samagotchi::SessionInbox do
     end
   end
 
+  describe "reply files" do
+    let(:session_dir) { File.join(tmpdir, "s") }
+    let(:output_dir) { File.join(session_dir, described_class::OUTPUT_DIR) }
+
+    it "names a turn's reply by time, with its input's enqueued_id when it has one; the names still sort by time" do
+      described_class.write_output(session_dir, "bare")
+      sleep(0.002)
+      described_class.write_output(session_dir, "mine", enqueued_id: "1b2c-3d")
+      sleep(0.002)
+      described_class.write_output(session_dir, "odd id", enqueued_id: "../x")
+
+      names = Dir.children(output_dir).sort
+      expect(names.map { |n| File.read(File.join(output_dir, n)) }).to eq(["bare", "mine", "odd id"])
+      expect(names[0]).to match(/\A\d{23}\.txt\z/)
+      expect(names[1]).to match(/\A\d{23}-1b2c-3d\.txt\z/)
+      expect(names[2]).to match(/\A\d{23}\.txt\z/)
+      # Same timestamp: "-" sorts before ".", the id'd name first.
+      expect(["20261013000000000000001.txt", "20261013000000000000001-a.txt"].max).to eq("20261013000000000000001.txt")
+      expect(described_class.read_outputs(session_dir)).to eq(["bare", "mine", "odd id"])
+    end
+
+    it "finds the reply of one input's turn" do
+      expect(described_class.reply_for(session_dir, "q1")).to be_nil
+      described_class.write_output(session_dir, "other", enqueued_id: "q2")
+      expect(described_class.reply_for(session_dir, "q1")).to be_nil
+      described_class.write_output(session_dir, "mine", enqueued_id: "q1")
+      expect(File.read(File.join(output_dir, described_class.reply_for(session_dir, "q1")))).to eq("mine")
+      expect(described_class.reply_for(session_dir, nil)).to be_nil
+    end
+
+    it "says whether an input with an enqueued_id still waits unclaimed" do
+      expect(described_class.input_waiting?(session_dir, "q1")).to be(false)
+      path = described_class.write_input(session_dir, prompt: "later", enqueued_id: "q1", delivery: "queue")
+      described_class.write_input(session_dir, prompt: "other", enqueued_id: "q2")
+      expect(described_class.input_waiting?(session_dir, "q1")).to be(true)
+      expect(described_class.input_waiting?(session_dir, nil)).to be(false)
+
+      described_class.claim_input_file(path)
+      expect(described_class.input_waiting?(session_dir, "q1")).to be(false)
+      expect(described_class.input_waiting?(session_dir, "q2")).to be(true)
+    end
+  end
+
   describe "context notes" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|

@@ -158,11 +158,39 @@ module Samagotchi
       nil
     end
 
-    def self.write_output(session_dir, response)
+    # A turn's reply: output/<timestamp>.txt, or
+    # output/<timestamp>-<enqueued_id>.txt for a turn that ran an input
+    # with an id, so a wait for that input's turn (ReplyWait's turn:) finds
+    # its own reply. The names still sort by time ("-" sorts before ".",
+    # so an id'd name and a bare one of the same timestamp keep order);
+    # every reader globs *.txt.
+    # @param enqueued_id [String, nil] the turn's input id (LastTurn#enqueued_id)
+    def self.write_output(session_dir, response, enqueued_id: nil)
       output_dir = File.join(session_dir, OUTPUT_DIR)
       FileUtils.mkdir_p(output_dir)
       timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
-      AtomicFile.write(File.join(output_dir, "#{timestamp}.txt"), response.to_s)
+      AtomicFile.write(File.join(output_dir, "#{output_name(timestamp, enqueued_id)}.txt"), response.to_s)
+    end
+
+    # An id that is safe in a file name (a Bridge's or deliver_turn's
+    # uuid); anything else leaves the name bare.
+    ENQUEUED_ID_NAME = /\A[A-Za-z0-9_-]{1,64}\z/
+
+    def self.output_name(timestamp, enqueued_id)
+      id = enqueued_id.to_s
+      ENQUEUED_ID_NAME.match?(id) ? "#{timestamp}-#{id}" : timestamp
+    end
+    private_class_method :output_name
+
+    # @return [String, nil] the reply filename of the turn that ran the
+    #   input +enqueued_id+, or nil while it has none
+    def self.reply_for(session_dir, enqueued_id)
+      dir = File.join(session_dir, OUTPUT_DIR)
+      id = enqueued_id.to_s
+      return nil if id.empty? || !Dir.exist?(dir)
+
+      suffix = "-#{id}.txt"
+      Dir.children(dir).select { |f| f.end_with?(suffix) }.max
     end
 
     # The output files' text, oldest first; with +since_time+ only files
@@ -228,6 +256,20 @@ module Samagotchi
       data.is_a?(Hash) && (Array(data["images"]).any? || Delivery.queue?(data["delivery"]))
     rescue JSON::ParserError, SystemCallError
       false
+    end
+
+    # Whether an input file carrying +enqueued_id+ still waits unclaimed in
+    # input/ (no worker has taken it for a turn or a step yet).
+    def self.input_waiting?(session_dir, enqueued_id)
+      id = enqueued_id.to_s
+      return false if id.empty?
+
+      find_new_input_files(session_dir).any? do |file|
+        data = JSON.parse(File.read(file))
+        data.is_a?(Hash) && data["enqueued_id"] == id
+      rescue JSON::ParserError, SystemCallError
+        false
+      end
     end
 
     def self.claim_input_file(input_file)

@@ -54,8 +54,9 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │
   ├── complete_turn(turn, result)
   │     # end_turn(turn, "completed" | "canceled"): under the event lock the session gets the kept
-  │     #   messages, goes IDLE, records last_turn, and :turn_completed {result, turn_summary,
-  │     #   display_pending} or :turn_canceled {cancellation_reason, cancelled_by, duration_ms} is emitted
+  │     #   messages, goes IDLE, records last_turn (enqueued_id: the turn's input, from its origin),
+  │     #   and :turn_completed {result, turn_summary, display_pending} or :turn_canceled
+  │     #   {cancellation_reason, cancelled_by, duration_ms} is emitted
   │     # then the :after_turn hook (status, messages, present: the AnswerDisplay presenter,
   │     #   refs: the AnswerRefs adder)
   │     # store_answer_display (one replace of the answer: `display` and/or `display_refs`;

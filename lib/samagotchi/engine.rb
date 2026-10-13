@@ -1433,8 +1433,10 @@ module Samagotchi
                elsif client_id == ClientId::REMINDER then "reminder"
                else "client"
                end
+      enqueued_id = origin.is_a?(Hash) ? origin[:enqueued_id] : nil
       session.last_turn = LastTurn.new(outcome: outcome, ended_at: Time.now.iso8601(3), seconds: seconds.round(1),
                                        origin: source, exhausted: limit ? true : nil, limit: limit,
+                                       enqueued_id: enqueued_id.to_s.empty? ? nil : enqueued_id.to_s,
                                        **stop_facts(event))
     end
 
