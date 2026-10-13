@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "samagotchi/terminal_ui"
+# Engine#initialize loads SystemBundle lazily; the @ path completion group
+# stubs it before any Engine exists.
+require "samagotchi/memory_bundle/system_bundle"
 require "fileutils"
 require "json"
 require "stringio"
