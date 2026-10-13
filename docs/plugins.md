@@ -675,6 +675,7 @@ llama.cpp serves on a native host too.
 id = ctx.sessions.fork(messages: ctx.messages + [{ role: "user", content: q }, { role: "model", content: a }],
                        title: "btw: #{q}")
 ctx.sessions.send(id, "go on from here")
+ctx.sessions.send(id, "then the docs", delivery: :queue)  # after its running turn
 ctx.sessions.read(id)      # => {id:, title:, status:, parent_id:, running:, messages:}
 ctx.sessions.children      # => [{id:, short_id:, state:, branch:, last_reply:, reported:, ...}]
 ctx.sessions.stop(id)      # one of this session's own children
@@ -695,6 +696,12 @@ ctx.sessions.stop(id)      # one of this session's own children
   5 s for the session's worker, so call it from an anytime command or a
   thread of your own, never from a tool or hook of a running turn. A
   session open in a chi REPL can't take it.
+  - A running turn takes it at its next step. `delivery: :queue` runs it as
+    a turn of its own after that turn instead (as `/queue TEXT` does; to an
+    idle session it simply runs). A plugin never cuts the running turn's
+    thinking: `delivery: :cut` raises `Samagotchi::Plugin::Sessions::Error`,
+    as does an unknown value. A worker older than queueing refuses a queue
+    (it would steer): `Error` with its reason; nothing is sent.
 - `read(id)` gives a session now: from its worker when one runs (with a
   running turn so far, `running: true`), else as saved. `messages` has no
   system prompt.

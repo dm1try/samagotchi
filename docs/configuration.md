@@ -910,7 +910,8 @@ that model's cut wait (`steer.cut_after` seconds, default `20`, `0` = never; cou
 so the wait for a busy server doesn't count) and still does, and the model starts the step again with the message
 (`↪ cut in for your message`). One that comes earlier cuts once the thinking passes it, unless the step ends first
 and the message goes in there. A plain message (from the web composer, `chi send` without `--cut`, a parent agent)
-never asks for a cut. Such a cut spends no `retry.empty_answer` attempt and sends no hidden note; only the cut
+never asks for a cut, nor does a queued one (`/queue TEXT`, `chi send --queue`, `ctx.sessions.send(…, delivery:
+:queue)`), which runs as a turn of its own after the running one. Such a cut spends no `retry.empty_answer` attempt and sends no hidden note; only the cut
 thinking is lost. A generation that has streamed visible text or a tool call is never cut, and a plugin's steer
 (`ctx.steer`, `ctx.sessions.send`) never cuts.
 

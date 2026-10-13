@@ -18,6 +18,8 @@ and commands may change between minor versions. How releases are made:
   `chi send --queue --wait` waits for that turn's own answer (a running turn no longer refuses it; the running turn's
   reply, end and questions are not the answer). Each turn's reply file now carries its message's id. See
   docs/sessions.md, "Sending a message", and docs/sub-agent.md.
+- Plugins: `ctx.sessions.send(id, text, delivery: :queue)` runs the message as a turn of its own after the session's
+  running turn; `delivery: :cut` raises (plugins never cut). See docs/plugins.md.
 
 ### Changed
 

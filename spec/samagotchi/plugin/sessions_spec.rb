@@ -108,7 +108,34 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
       expect(sessions.send(parent.id[0, 8], "do this")).to eq(parent.id)
       expect(Samagotchi::SessionManager).to have_received(:deliver_turn)
-        .with(parent.id, prompt: "do this", client_id: "plugin", state_dir: tmpdir)
+        .with(parent.id, prompt: "do this", client_id: "plugin", state_dir: tmpdir, delivery: nil)
+    end
+
+    it "queues it for after the running turn with delivery: :queue; :next_step is the default" do
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return({ status: :accepted, ack: {} })
+
+      sessions.send(parent.id, "later", delivery: :queue)
+      expect(Samagotchi::SessionManager).to have_received(:deliver_turn)
+        .with(parent.id, prompt: "later", client_id: "plugin", state_dir: tmpdir, delivery: "queue")
+      sessions.send(parent.id, "now", delivery: "next_step")
+      expect(Samagotchi::SessionManager).to have_received(:deliver_turn)
+        .with(parent.id, prompt: "now", client_id: "plugin", state_dir: tmpdir, delivery: nil)
+    end
+
+    it "raises for :cut (plugins never cut) and an unknown delivery, before anything is sent" do
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+
+      expect { sessions.send(parent.id, "x", delivery: :cut) }.to raise_error(described_class::Error, /plugins never cut/)
+      expect { sessions.send(parent.id, "x", delivery: :soon) }.to raise_error(described_class::Error, /:next_step or :queue/)
+      expect(Samagotchi::SessionManager).not_to have_received(:deliver_turn)
+    end
+
+    it "raises with the worker's reason when it refuses a queue (older than queueing)" do
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+        .and_return({ status: :refused, code: 409, ack: Samagotchi::Delivery::QUEUE_UNAVAILABLE })
+
+      expect { sessions.send(parent.id, "x", delivery: :queue) }
+        .to raise_error(described_class::Error, /refused the message \(delivery_unavailable: this session's worker predates/)
     end
 
     it "raises when the session didn't take it, or there is none" do

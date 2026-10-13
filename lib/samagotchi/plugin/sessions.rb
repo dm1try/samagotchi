@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../client_id"
+require_relative "../delivery"
 require_relative "../session"
 require_relative "../bridge_client"
 require_relative "../bridge/turn_accumulator"
@@ -62,24 +63,45 @@ module Samagotchi
       # Send +text+ to session +id+ as a user message (it runs as a turn;
       # a stopped session is woken). Waits up to 5 s for its worker, so call
       # it from an anytime command or your own thread, never a tool or hook
-      # of a running turn.
+      # of a running turn. A running turn takes it at its next step; with
+      # +delivery: :queue+ it runs as a turn of its own after that one
+      # instead. A plugin never cuts the running turn's thinking.
+      # @param delivery [Symbol, String, nil] nil or :next_step (default),
+      #   :queue
       # @return [String] the id of the session it went to
-      # @raise [Error] no such session, a REPL owns it, or it wasn't taken
-      def send(id, text)
+      # @raise [Error] no such session, a REPL owns it, it wasn't taken
+      #   (a worker older than queueing refuses a queue), or delivery is
+      #   :cut or unknown
+      def send(id, text, delivery: nil)
         raise Error, "nothing to send" if text.to_s.strip.empty?
 
+        wire = plugin_delivery(delivery)
         state_dir = self.state_dir
         sid = resolve(id, state_dir)
-        delivered = SessionManager.deliver_turn(sid, prompt: text.to_s, client_id: ClientId::PLUGIN, state_dir: state_dir)
+        delivered = SessionManager.deliver_turn(sid, prompt: text.to_s, client_id: ClientId::PLUGIN, state_dir: state_dir,
+                                                     delivery: wire)
         case delivered[:status]
         when :accepted then sid
-        when :refused then raise Error, "session #{sid[0, 8]} refused the message (#{delivered.dig(:ack, "error")})"
+        when :refused
+          ack = delivered[:ack] || {}
+          raise Error, "session #{sid[0, 8]} refused the message (#{ack["error"]}#{": #{ack["detail"]}" if ack["detail"]})"
         when :timeout then raise Error, "session #{sid[0, 8]}'s worker did not answer in time; the message was not sent"
         else raise Error, "the message to session #{sid[0, 8]} could not be written"
         end
       rescue SessionManager::OwnedByTUI
         raise Error, "session #{sid[0, 8]} is open in a chi REPL, which takes no messages from others"
       end
+
+      # The wire value for send's delivery: (nil for the default).
+      def plugin_delivery(delivery)
+        case delivery&.to_s
+        when nil, "", Delivery::NEXT_STEP then nil
+        when Delivery::QUEUE then Delivery::QUEUE
+        when Delivery::CUT then raise Error, "plugins never cut: send it plain (the next step) or delivery: :queue"
+        else raise Error, "delivery takes :next_step or :queue, not #{delivery.inspect}"
+        end
+      end
+      private :plugin_delivery
 
       # Session +id+ now: from its worker when one runs (with a running turn
       # so far), else as saved.
