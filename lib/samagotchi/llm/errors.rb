@@ -278,7 +278,14 @@ module Samagotchi
     # Builds the ProviderError for an HTTP error response or a server's error
     # event.
     module ProviderErrors
-      CONTEXT_OVERFLOW_RE = /exceeds? (the )?(available )?context (size|length|window)|context[_ ]length[_ ]exceeded|exceed_context_size|maximum context length/i
+      # A prompt larger than the model's window; Anthropic: "prompt is too
+      # long: 208310 tokens > 200000 maximum", or "input length and
+      # `max_tokens` exceed context limit: 188240 + 21333 > 200000".
+      CONTEXT_OVERFLOW_RE = Regexp.union(
+        /exceeds? (the )?(available )?context (size|length|window)|context[_ ]length[_ ]exceeded|exceed_context_size/i,
+        /maximum context length|prompt is too long: \d+ tokens/i,
+        /input length and `?max_tokens`? exceed context limit: \d+ \+ \d+ > \d+/i
+      )
       # A model that takes no tools: OpenRouter when no endpoint of the model
       # does ("No endpoints found that support tool use", 404), Ollama ("…
       # does not support tools"), vLLM started without a tool parser.

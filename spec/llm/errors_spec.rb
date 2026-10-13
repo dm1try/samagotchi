@@ -245,6 +245,27 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       end
     end
 
+    it "reads Anthropic's \"prompt is too long\" as a context overflow" do
+      body = anthropic("error_400_prompt_too_long.hand-written.json")
+      error = Samagotchi::LLM::ProviderErrors.from_response(status: 400, body: body, host: "msg")
+
+      expect(error).to be_a(Samagotchi::LLM::BadRequest)
+      expect(error).to be_context_overflow
+      expect(error.summary).to eq("the conversation is too long for host msg's context window: " \
+                                  "HTTP 400: prompt is too long: 208310 tokens > 200000 maximum")
+      expect(from_json(body)).to be_context_overflow
+      expect(from(400, "the prompt is too long for a haiku")).not_to be_context_overflow
+    end
+
+    it "reads Anthropic's \"input length and max_tokens exceed context limit\" as a context overflow" do
+      message = "input length and `max_tokens` exceed context limit: 188240 + 21333 > 200000, " \
+                "decrease input length or `max_tokens` and try again"
+
+      expect(from(400, message)).to be_context_overflow
+      expect(from(400, "input length and max_tokens exceed context limit: 10 + 5 > 12")).to be_context_overflow
+      expect(from(400, "max_tokens exceed context limit for this plan")).not_to be_context_overflow
+    end
+
     it "keeps a numeric code first, and an unknown or missing type a retryable 500" do
       expect(from_json(JSON.generate(error: { code: 503, type: "invalid_request_error", message: "x" })).status).to eq(503)
       expect(from_json(JSON.generate(error: { code: "429", type: "api_error", message: "x" })).status).to eq(429)

@@ -34,6 +34,9 @@ and commands may change between minor versions. How releases are made:
   `invalid_request_error` (with a null or named code, as OpenAI sends) fails at once instead of being retried as a
   server error, and a `rate_limit_error` or `overloaded_error` keeps its kind. See docs/configuration.md, "Server
   errors".
+- Anthropic's context overflow 400s ("prompt is too long: N tokens > M maximum", "input length and `max_tokens`
+  exceed context limit") count as a context overflow, also from a gateway that passes them through on the OpenAI
+  path: the turn is rolled back and reported as too long for the context window.
 
 ## [0.64.0] - 2026-10-13
 
