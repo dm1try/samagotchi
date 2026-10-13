@@ -8,6 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- **Continue on another model**: `chi send --new --continues ID --model NAME` and the web API's `POST /api/sessions`
+  with `continues` and `model` start the next link of a chain on that model (its host checked first, nothing
+  archived on a refusal). See docs/sessions.md, "Session chains".
+
+### Changed
+
+- A continue whose previous link's model names a host config.yml no longer has (or a disabled one) starts the new
+  link on the default model with a warning (`chi send: warning: …`, the API's `model_warning`) instead of being
+  refused.
+
 ## [0.66.0] - 2026-10-14
 
 ### Added
