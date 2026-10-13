@@ -82,3 +82,49 @@ test("a ref's show-in-turn on a row of a turn sliding away finishes the slide; t
   assert.ok(!view.root.classList.contains("cloud-open"));
   assert.ok(historyEl.querySelector(".bubble.user"));
 });
+
+// Two lines queued for after a turn (delivery queue): the first one's
+// turn_started hands the ended turn off (both queued lines go into the
+// history with it), then the stage takes the first as its prompt. The
+// second still waits behind that turn: back below the new turn's card, as
+// a reload's snapshot places it.
+function queuedBubble(text) {
+  const el = document.createElement("div");
+  el.className = "bubble user queued";
+  el.dataset.delivery = "queue";
+  el.textContent = text;
+  return el;
+}
+
+test("two queued lines: the next turn takes the first as its prompt, the second waits below that turn, not above it", () => {
+  const { historyEl, view, append } = page();
+  try {
+    twoQueued(historyEl, view, append);
+  } finally {
+    view.reset();
+  }
+});
+
+function twoQueued(historyEl, view, append) {
+  const prompt = document.createElement("div");
+  prompt.className = "bubble user";
+  view.turnStarted({ promptBubble: prompt });
+  const [a, b] = [queuedBubble("A"), queuedBubble("B")];
+  append(a);
+  append(b);
+  const queued = view.root.querySelector(".ts-queued");
+  const texts = (el) => [...el.children].map((c) => c.textContent);
+  assert.deepEqual(texts(queued), ["A", "B"]);
+  view.turnEnded({ kind: "completed" });
+  view.answerReady();
+  // A's turn_started (stream_handlers.js): the hand-off first, then the start.
+  view.handOff({ immediate: true });
+  assert.equal(historyEl.contains(a) && historyEl.contains(b), true);
+  a.classList.remove("queued");
+  view.turnStarted({ promptBubble: a });
+  assert.equal(view.root.querySelector(".ts-prompt").contains(a), true);
+  assert.deepEqual(texts(queued), ["B"]);
+  assert.equal(historyEl.contains(b), false);
+  // The ended turn's own rows stay in the history.
+  assert.equal(historyEl.contains(prompt), true);
+}

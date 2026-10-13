@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  flashOf, frameTarget, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
+  flashOf, frameTarget, handOffDue, handOffOrder, placeKind, QUEUED_CHILDREN, QUEUED_ROWS, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind, trailFlashText, trailItemText, trailMark, trailTone,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { applyEvent } from "./turn_feed.js";
@@ -184,6 +184,27 @@ test("placeFor: the stage's extras while a turn is live, else the history; the r
   assert.equal(placeFor({ live: true, handingOff: false, kind: "recap" }), "history");
 });
 
+test("placeFor: a line queued for after the turn goes after the running turn (the stage's queued slot), not into it", () => {
+  assert.equal(placeFor({ live: true, handingOff: false, kind: "queued" }), "queued");
+  // No turn in the stage (the turn view, or between turns): the history's end, after the turn.
+  assert.equal(placeFor({ live: false, handingOff: false, kind: "queued" }), "history");
+  assert.equal(placeFor({ live: true, handingOff: true, kind: "queued" }), "history");
+});
+
+test("placeKind: a queued prompt (delivery queue) and a queued command are queued; a recap a recap; the rest rows", () => {
+  const el = (selectors) => ({ matches: (sel) => selectors.some((s) => sel.split(", ").includes(s)) });
+  assert.equal(placeKind(el(['.bubble.user.queued[data-delivery="queue"]'])), "queued");
+  assert.equal(placeKind(el([".bubble.command.queued"])), "queued");
+  assert.equal(placeKind(el([".bubble.recap"])), "recap");
+  assert.equal(placeKind(el([])), "row");
+  assert.equal(placeKind({}), "row");
+});
+
+test("handOffOrder: the lines queued for after the turn come last, after its end", () => {
+  const order = handOffOrder({ prompt: "P", block: "B", extras: ["x"], answer: ["A"], timing: "T", end: "E", kept: ["k"], queued: ["q1", "q2"] });
+  assert.deepEqual(order, ["P", "B", "x", "A", "T", "E", "k", "q1", "q2"]);
+});
+
 test("plainHeadline: markdown syntax out of a headline, the words kept", () => {
   assert.equal(plainHeadline("## Plan"), "Plan");
   assert.equal(plainHeadline("###### Deep"), "Deep");
@@ -363,4 +384,9 @@ test("frameTarget: the cap clamps, and a cap that rises again doesn't bring the 
 test("frameTarget: collapsed or not holding a turn: the content's own height (null)", () => {
   assert.equal(frameTarget({ natural: 200, held: 300, cap: 400, holding: true, collapsed: true }), null);
   assert.equal(frameTarget({ natural: 200, held: 300, cap: 400, holding: false, collapsed: false }), null);
+});
+
+test("QUEUED_CHILDREN: each queued row selector, among a parent's own children", () => {
+  assert.equal(QUEUED_ROWS.split(", ").length, 2);
+  assert.equal(QUEUED_CHILDREN, ':scope > .bubble.user.queued[data-delivery="queue"], :scope > .bubble.command.queued');
 });

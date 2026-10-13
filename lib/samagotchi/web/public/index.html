@@ -742,6 +742,9 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 /* The cloud: one chip (steps, calls, a tick per call), the turn view's block behind it. */
 /* The footer: the chip at the stage's bottom edge (the cloud's steps open above it, the scroller's last slot). */
 .ts-foot{flex:none;padding:0 14px 10px}
+/* Below the turn's card: the lines queued for after it (each a turn of its own), apart from the turn by a dashed rule. */
+.ts-queued{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 14px 10px;border-top:1px dashed var(--border-strong);max-height:calc(var(--stage-max,60vh) * .3);overflow:auto;scrollbar-width:thin}
+.ts-queued:empty{display:none}
 .ts-foot[hidden],.turn-stage.collapsed .ts-foot{display:none}
 .ts-chip{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text-muted);text-align:left}
 .ts-chip:hover:not(:disabled){filter:none;background:var(--bg-hover)}
@@ -774,6 +777,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
   .ts-status{padding-left:10px}
   .ts-scroll{padding:8px 10px 10px}
   .ts-foot{padding:0 10px 10px}
+  .ts-queued{padding:8px 10px 10px}
   .ts-defer{display:none}
   .ts-trail-item{max-width:24ch}
 }

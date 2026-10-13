@@ -23,6 +23,11 @@ and commands may change between minor versions. How releases are made:
   `current_turn.generation: {thinking_only, age}`, so a page joining mid-turn can clock what a message would wait
   for; a joined page also clocks a running tool call from its start. See docs/internals/engine.md, "GenerationPhase".
 
+### Changed
+
+- Web: a message queued for after the running turn (and a command queued for its end) sits below the running turn's
+  card instead of among its rows, and moves into the history after the turn's answer, also after a reload.
+
 ## [0.64.0] - 2026-10-13
 
 ### Added

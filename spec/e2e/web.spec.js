@@ -13,7 +13,7 @@ const H = () => (stage() ? ":is(#history, #turnStage)" : "#history");
 // The live timing line: "turn N running · …" in the history, "turn N · …" in
 // the stage's status row (which already says the turn runs).
 const LIVE_LINE = (n) => new RegExp(`^turn ${n}${stage() ? "" : " running"} · `);
-const HC = () => (stage() ? ":is(#history, #turnStage .ts-extras, #turnStage .ts-tail)" : "#history");
+const HC = () => (stage() ? ":is(#history, #turnStage .ts-extras, #turnStage .ts-tail, #turnStage .ts-queued)" : "#history");
 
 // Types into the composer and sends (Start on the start page, Send in a session).
 async function send(page, prompt) {
@@ -1400,6 +1400,9 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   await expect(bubble).toHaveCount(1);
   await expect(bubble).toHaveClass(/queued/);
   await expect(bubble.locator(".command-output")).toHaveText("queued: runs after this turn");
+  // Below the running turn's card, not among its rows (the stage's queued slot).
+  const queuedSlot = page.locator("#turnStage .ts-queued .bubble.command");
+  if (stage()) await expect(queuedSlot).toHaveCount(1);
   // The session's model in the info bar (not the new chat's picker).
   const model = page.locator("#infoText .meta .status + .model");
   await expect(model).toHaveText(/^fake-script/);
@@ -1408,6 +1411,7 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await expect(bubble).toHaveCount(1);
   await expect(bubble).toHaveClass(/queued/);
+  if (stage()) await expect(queuedSlot).toHaveCount(1);
 
   await expect(answer(page)).toHaveText("Done after a while.", { timeout: 15_000 });
   await turnEnded(page, 1);

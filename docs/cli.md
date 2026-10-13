@@ -562,7 +562,8 @@ REPL alike:
   `… after this answer; the turn may go on`, `… once the card above is
   answered`), then two links. **Enter** (or Send) is the next step;
   **Alt+Enter** (Option+Enter) or `queue for after the turn` queues it, like
-  `/queue TEXT`, and the bubble is dashed (`after this turn`) until its turn
+  `/queue TEXT`, and the bubble is dashed (`after this turn`), below the
+  running turn's card with the commands queued for its end, until its turn
   starts; `cut in now` cuts, like `/cut TEXT` (by click only: it throws the
   thinking away). Cut is enabled only while the step has streamed nothing but
   thinking and cutting is on for the model (the line says `cuts at about 0:25
@@ -727,7 +728,9 @@ approval, a hook's question and the step limit don't): two muted lines
 under its `question → answer` line, the whole text when you open the card,
 in both views and after a reload. The chip at the stage's bottom edge, `N steps · M tool
 calls` with one tick per call, opens the turn view's block right above it (newest step first
-while it runs; a tick opens its step). `▾` folds the stage to its status
+while it runs; a tick opens its step). Below the chip, past a dashed rule, wait the
+messages queued for after the turn and the commands queued for its end; they go into
+the history after the turn's answer. `▾` folds the stage to its status
 row, remembered in this browser. The stage keeps its height while a turn
 runs: it grows, with a short ease, when a card or the answer needs room and gives the room back
 only when the turn moves into the history. When the turn ends the answer shows in
