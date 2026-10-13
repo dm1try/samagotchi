@@ -158,6 +158,13 @@ module Samagotchi
         end
       end
 
+      # The thinking fields for a short side answer (a recap, ctx.ask_model,
+      # a triage) from a model that refused thinking off: an always-thinking
+      # model can't skip it, so it thinks at low effort (IdleClient leaves
+      # room for the answer).
+      # @return [Hash] frozen
+      def thinking_off_refused_fields = thinking_fields(:low)
+
       # The host's models, every page: GET {base}/v1/models with
       # limit=1000 and after_id paging (has_more/last_id). Anthropic's shape
       # (max_input_tokens, max_tokens, capabilities) and the OpenAI shape a

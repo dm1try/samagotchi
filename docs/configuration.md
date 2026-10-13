@@ -590,7 +590,13 @@ models:
 - `/model` shows the level and where it came from (`thinking: off (models: qwen3.6-35b-a3b)`, `thinking: low
   (session)`), `/stats` on its `thinking:` line, `chi self` too (a session's own level first when run from its
   commands).
-- The idle recap and plugins' side questions always ask with thinking off, whatever the level.
+- The idle recap, plugins' side questions and a broadcast's triage always ask with thinking off, whatever the
+  level. A model that refuses that gets no thinking fields on an `api: openai` host (its default); on an
+  `api: anthropic` host, where such a model always thinks, it gets adaptive thinking at `low` effort and a limit of
+  at least 4096 tokens, so the thinking leaves room for the answer; a model that refuses that too (one that takes no
+  thinking fields at all) gets none, at the normal limit. What a host refused is kept for the next recap, the next
+  `ctx.ask_model` on the same model, and the rest of a broadcast. A recap and `ctx.ask_model` send the session's id
+  as the turns do (`Session-Id`, and `x-session-affinity` under `dialect: fireworks`); a triage sends none.
 
 What each backend gets:
 

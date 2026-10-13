@@ -38,6 +38,11 @@ module Samagotchi
     DEFAULT_TIMEOUT_SECONDS = 30.0
     # Up to 10 sentences (recap.sentences) need ~350 tokens with thinking off.
     MAX_TOKENS = 512
+    # The least max_tokens a side request gets when its model refused
+    # thinking off and the adapter asks for a little thinking instead (an
+    # always-thinking model on a Messages host): the thinking counts in the
+    # limit, so 512 could all go to it and leave no answer.
+    THINKING_MAX_TOKENS = 4096
 
     # @param base_url [String] the OpenAI API base, e.g. http://host:8081/v1
     # @param api_key_env [String, nil] the variable holding the host's key
@@ -93,11 +98,13 @@ module Samagotchi
     # when there is nothing to summarize. Any failure raises SummarizeError
     # (the caller isolates it).
     # @return [Summary, nil]
-    def summarize(prompt)
+    # +session_id+: the session it is about, sent as the turns send it
+    # (Session-Id, a dialect's affinity header), nil for none.
+    def summarize(prompt, session_id: nil)
       messages = prompt.is_a?(Array) ? prompt : [{ role: "user", content: prompt.to_s.strip }]
       return nil if messages.all? { |m| m[:content].to_s.strip.empty? }
 
-      response = generate(messages)
+      response = generate(messages, session_id: session_id)
       cleaned = response.text.to_s.strip
       cleaned.empty? ? nil : Summary.new(text: cleaned, model: response.model)
     rescue SummarizeError
@@ -113,14 +120,15 @@ module Samagotchi
     # @param kind [String] what it is for, in the usage log line
     # @param options [Hash] more request body fields (logprobs: true,
     #   top_logprobs: 5)
+    # @param session_id [String, nil] the session it is about (#summarize)
     # @return [Summary] the answer ("" when the model said nothing)
     # @raise [SummarizeError] any failure but a cancel; its #cause is an
     #   LLM::BadRequest when the host refused the request (+options+ it
     #   doesn't take, say)
     # @raise [LLM::RequestCancelled] +cancel_controller+ was cancelled
-    def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, kind: "ask", options: {})
+    def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, kind: "ask", options: {}, session_id: nil)
       response = generate(messages, max_tokens: max_tokens, cancel_controller: cancel_controller, whole_sentences: false,
-                                    kind: kind, options: options)
+                                    kind: kind, options: options, session_id: session_id)
       Summary.new(text: response.text.to_s.strip, model: response.model, top_logprobs: response.top_logprobs)
     rescue SummarizeError, LLM::RequestCancelled
       raise
@@ -137,17 +145,15 @@ module Samagotchi
     # the reply has neither content nor reasoning_content. Cut off by
     # +max_tokens+, the text keeps its finished sentences (+whole_sentences+)
     # or all of it, with "…".
-    def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true, kind: "recap", options: {})
+    def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true, kind: "recap", options: {},
+                 session_id: nil)
       response = begin
-        request(messages, max_tokens, cancel_controller, options)
+        request(messages, max_tokens, cancel_controller, options, session_id)
       rescue LLM::BadRequest => e
-        raise unless e.reasoning_refused? && !@thinking_refused
+        raise unless e.reasoning_refused? && next_thinking_step
 
-        # The host won't turn thinking off (gpt-oss): ask again without the
-        # fields, and leave them out from now on.
-        @thinking_refused = true
-        Log.info(:recap, "thinking_refused", model: @model, detail: e.detail)
-        request(messages, max_tokens, cancel_controller, options)
+        Log.info(:recap, "thinking_refused", model: @model, step: @thinking_step, detail: e.detail)
+        retry
       end
       log_usage(response, kind)
       content = response.text
@@ -180,16 +186,40 @@ module Samagotchi
                                         cached: fields[:cached_tokens], cache_write: fields[:cache_write_tokens])
     end
 
-    def request(messages, max_tokens, cancel_controller, options = {})
+    # After a host refused this step's thinking fields: the next step, kept
+    # from now on (true), or false when none is left.
+    # 1. The host won't turn thinking off (gpt-oss, an always-thinking
+    #    model): the adapter's fields for that (none on the OpenAI API, low
+    #    effort on Messages).
+    # 2. Those refused too (a Messages model that takes no thinking fields
+    #    at all): none.
+    def next_thinking_step
+      step = @thinking_step.to_i
+      return false if step >= 2 || (step == 1 && @chat.thinking_off_refused_fields.empty?)
+
+      @thinking_step = step + 1
+      true
+    end
+
+    def request(messages, max_tokens, cancel_controller, options, session_id)
+      fields = thinking_fields
+      max_tokens = [max_tokens, THINKING_MAX_TOKENS].max if @thinking_step == 1 && !fields.empty?
       @chat.chat(messages: messages, model: @model, tools: [], cancel_controller: cancel_controller,
-                 options: { max_tokens: max_tokens, **thinking_fields, **options })
+                 options: { max_tokens: max_tokens, **fields, **options }, session_id: session_id)
     end
 
     # A recap or side answer is short and tool-less: thinking off, whatever
     # the model's level (a reasoning model otherwise spends the budget
-    # thinking and the recap stops mid-sentence). None once the host refused them.
+    # thinking and the recap stops mid-sentence). Once the host refused
+    # that, the adapter's fields for a model that always thinks (with a
+    # limit of at least THINKING_MAX_TOKENS when there are any), then none
+    # (#next_thinking_step).
     def thinking_fields
-      @thinking_refused ? {} : @chat.thinking_fields(:off)
+      case @thinking_step.to_i
+      when 0 then @chat.thinking_fields(:off)
+      when 1 then @chat.thinking_off_refused_fields
+      else {}
+      end
     end
   end
 end

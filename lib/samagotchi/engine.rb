@@ -224,6 +224,7 @@ module Samagotchi
       # and after a reminder turn), so the idle layer's clock is identical
       # across UIs.
       @turn_state.restart_clock!
+      @side_client_mutex = Mutex.new
       @recap = RecapSetup.build(recap, engine: self, host_registry: @host_registry,
                                 session_target: -> { session_model_recap_target },
                                 session_id: -> { @session&.id }, state_dir: -> { session_state_dir })
@@ -2747,18 +2748,35 @@ module Samagotchi
 
     # ctx.ask_model's request: the session's current model on its host, as
     # a turn resolves them (a /model switch counts), through its own
-    # IdleClient, so it shares nothing with the turn's backend.
+    # IdleClient, so it shares nothing with the turn's backend. The client
+    # is kept while the target and timeout stay (what it learned, e.g. a
+    # refused thinking-off, holds for the next request); the session's id
+    # goes with the request.
     # @return [String] the answer
     def ask_side_model(request, timeout:, max_tokens:, cancel_controller:)
       target = session_model_recap_target
-      client = IdleClient.for(target, timeout: timeout)
+      client = side_model_client(target, timeout)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      answer = client.ask(request, max_tokens: max_tokens, cancel_controller: cancel_controller)
+      answer = client.ask(request, max_tokens: max_tokens, cancel_controller: cancel_controller, session_id: @session&.id)
       Log.info(:plugins, "ask_model", model: target.label, answer_model: answer.model, chars: answer.text.length,
                                       ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
       answer.text
     end
     private :ask_side_model
+
+    # The IdleClient for +target+ at +timeout+: the last one when both are
+    # the same, else a new one.
+    def side_model_client(target, timeout)
+      @side_client_mutex.synchronize do
+        key = [target, timeout]
+        unless @side_client && @side_client_key == key
+          @side_client = IdleClient.for(target, timeout: timeout)
+          @side_client_key = key
+        end
+        @side_client
+      end
+    end
+    private :side_model_client
 
     # The session's current model as a recap target: its host's OpenAI API
     # (native llama.cpp hosts serve /v1/chat/completions too), key variable

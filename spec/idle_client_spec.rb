@@ -264,6 +264,120 @@ RSpec.describe Samagotchi::IdleClient do
     end
   end
 
+  # P4: recap, ctx.ask_model and broadcast triage on an api: anthropic host.
+  describe "on a Messages host" do
+    let(:messages_client) do
+      described_class.new(model: "claude-x", base_url: server.root_url, api: :anthropic, purpose: "recap")
+    end
+    let(:bodies) { server.requests.select { |r| r.path == "/v1/messages" }.map(&:json) }
+
+    def message(text, thinking: nil, stop_reason: "end_turn")
+      content = [({ type: "thinking", thinking: thinking, signature: "sig" } if thinking), { type: "text", text: text }].compact
+      { type: "message", role: "assistant", model: "claude-x", content: content, stop_reason: stop_reason,
+        usage: { input_tokens: 10, output_tokens: 5 } }
+    end
+
+    def refuse_off
+      server.enqueue("/v1/messages", status: 400, json: FakeProviderServer.fixture("error_400_disabled_refused.hand-written.json",
+                                                                                   api: "anthropic"))
+    end
+
+    it "asks with thinking disabled and the recap's limit, no tools, no breakpoints" do
+      server.enqueue("/v1/messages", json: message("The recap."))
+
+      expect(messages_client.summarize("summarize this").text).to eq("The recap.")
+      expect(bodies.first).to include("model" => "claude-x", "max_tokens" => described_class::MAX_TOKENS,
+                                      "thinking" => { "type" => "disabled" }, "stream" => false)
+      expect(bodies.first.keys).not_to include("tools", "output_config")
+      expect(bodies.first.to_s).not_to include("cache_control")
+    end
+
+    # An always-thinking model (Opus 5.5, a thinking-only open model)
+    # refuses disabled: thinking off can't be had, so a short side answer
+    # thinks at low effort with room left for the answer.
+    it "asks a model that refuses thinking off at low effort with a larger limit, and keeps that for later requests" do
+      refuse_off
+      server.enqueue("/v1/messages", json: message("The recap.", thinking: "brief"))
+      server.enqueue("/v1/messages", json: message("Again."))
+
+      expect(messages_client.summarize("summarize this").text).to eq("The recap.")
+      expect(messages_client.summarize("summarize that").text).to eq("Again.")
+
+      expect(bodies.map { |b| [b["max_tokens"], b["thinking"], b["output_config"]] }).to eq([
+        [described_class::MAX_TOKENS, { "type" => "disabled" }, nil],
+        [described_class::THINKING_MAX_TOKENS, { "type" => "adaptive", "display" => "summarized" }, { "effort" => "low" }],
+        [described_class::THINKING_MAX_TOKENS, { "type" => "adaptive", "display" => "summarized" }, { "effort" => "low" }]
+      ])
+    end
+
+    # A Messages model that takes no thinking fields at all refuses both.
+    it "asks with no thinking fields at the normal limit after the low-effort retry is refused too, and keeps that" do
+      refuse_off
+      server.enqueue("/v1/messages", status: 400, json: { type: "error", error: { type: "invalid_request_error",
+                                                                                  message: "thinking is not supported by this model" } })
+      server.enqueue("/v1/messages", json: message("The recap."))
+      server.enqueue("/v1/messages", json: message("Again."))
+
+      expect(messages_client.summarize("summarize this").text).to eq("The recap.")
+      expect(messages_client.summarize("summarize that").text).to eq("Again.")
+
+      expect(bodies.map { |b| [b["max_tokens"], b["thinking"]&.fetch("type"), b.key?("output_config")] }).to eq([
+        [described_class::MAX_TOKENS, "disabled", false],
+        [described_class::THINKING_MAX_TOKENS, "adaptive", true],
+        [described_class::MAX_TOKENS, nil, false],
+        [described_class::MAX_TOKENS, nil, false]
+      ])
+    end
+
+    it "sends the session id it is given as Session-Id, and as x-session-affinity on a fireworks host" do
+      fireworks = described_class.new(model: "fw-model", base_url: server.root_url, api: :anthropic, dialect: "fireworks")
+      2.times { server.enqueue("/v1/messages", json: message("The recap.")) }
+
+      fireworks.summarize("summarize this", session_id: "sess-7")
+      fireworks.ask([{ role: "user", content: "q?" }])
+
+      first, second = server.requests.select { |r| r.path == "/v1/messages" }
+      expect([first.header("session-id"), first.header("x-session-affinity")]).to eq(%w[sess-7 sess-7])
+      expect([second.header("session-id"), second.header("x-session-affinity")]).to eq([nil, nil])
+    end
+
+    it "sends the low-effort retry without display on a fireworks host" do
+      fireworks = described_class.new(model: "fw-model", base_url: server.root_url, api: :anthropic, dialect: "fireworks")
+      refuse_off
+      server.enqueue("/v1/messages", json: message("The recap.", thinking: "brief"))
+
+      expect(fireworks.summarize("summarize this").text).to eq("The recap.")
+      expect(bodies.last.slice("thinking", "output_config"))
+        .to eq("thinking" => { "type" => "adaptive" }, "output_config" => { "effort" => "low" })
+    end
+
+    it "keeps a plugin's larger limit, and the whole sentences of an answer cut off after thinking" do
+      refuse_off
+      server.enqueue("/v1/messages", json: message("First sentence. Second half", thinking: "t", stop_reason: "max_tokens"))
+
+      answer = messages_client.ask([{ role: "user", content: "q?" }], max_tokens: 8000)
+
+      expect(answer.text).to eq("First sentence. Second half…")
+      expect(bodies.last["max_tokens"]).to eq(8000)
+    end
+
+    it "gives an empty recap, not the thinking, when the answer never came (thinking cut off by the limit)" do
+      server.enqueue("/v1/messages", json: { type: "message", role: "assistant", model: "claude-x", stop_reason: "max_tokens",
+                                             content: [{ type: "thinking", thinking: "still thinking", signature: "" }] })
+
+      expect(messages_client.summarize("summarize this")).to be_nil
+    end
+
+    it "drops ctx.ask_model's logprobs options there: the plugin gets no alternatives" do
+      server.enqueue("/v1/messages", json: message("Yes."))
+
+      answer = messages_client.ask([{ role: "user", content: "q?" }], options: { logprobs: true, top_logprobs: 5 })
+
+      expect(answer).to have_attributes(text: "Yes.", top_logprobs: [])
+      expect(bodies.last.keys).not_to include("logprobs", "top_logprobs")
+    end
+  end
+
   describe "request budget" do
     it "uses its own timeout, one attempt, no stream" do
       expect(Samagotchi::LLM::OpenAIChat).to receive(:new)

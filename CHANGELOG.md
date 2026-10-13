@@ -25,6 +25,12 @@ and commands may change between minor versions. How releases are made:
   (2048/8192/24576 tokens, `max_tokens` kept above it); a host that refuses the thinking `display` field loses only
   that field; a host that refuses `cache_control` loses the breakpoints; an over-cap `max_tokens` is retried at the
   limit the host names. See docs/configuration.md, "Thinking".
+- Recaps, plugins' `ctx.ask_model` and broadcast triage work on `api: anthropic` hosts (`recap.host_ref`,
+  `broadcast.triage_*` may name one). They ask with thinking disabled; a model that refuses that (always-thinking
+  models) is asked with adaptive thinking at low effort and at least 4096 tokens, so a recap doesn't come back empty,
+  and one that refuses that too gets no thinking fields. A recap and `ctx.ask_model` send the session id as turns do.
+  `ctx.ask_model`'s logprobs options aren't sent there (no alternatives come back). See docs/configuration.md,
+  "Thinking".
 - `dialect: fireworks` on an `api: anthropic` host, for Fireworks' Messages API directly or behind a gateway: the key
   goes as Bearer (unless `auth:` says otherwise), thinking levels send no `display` field, chat requests carry no
   `cache_control`, and the session id also goes as `x-session-affinity`. Recaps, `ctx.ask_model` and broadcast triage

@@ -221,6 +221,12 @@ module Samagotchi
       # @return [Hash] frozen
       def thinking_fields(level) = Thinking.chat_fields(level)
 
+      # The thinking fields for a short side answer from a model that
+      # refused thinking off (gpt-oss: "Reasoning is mandatory"): none, the
+      # model's own default.
+      # @return [Hash] frozen
+      def thinking_off_refused_fields = {}.freeze
+
       # @return [Array<ModelInfo>] the host's models (every page)
       def list_models
         models = []

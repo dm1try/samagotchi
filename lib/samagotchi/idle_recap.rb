@@ -287,10 +287,13 @@ module Samagotchi
                    sentences: RecapPrompt::DEFAULT_SENTENCES,
                    client: nil,
                    store: nil,
+                   session_id: -> {},
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       raise ArgumentError, "IdleRecap requires an engine" unless engine
 
       @engine = engine
+      # The recapped session's id, sent with the request (IdleClient#summarize).
+      @session_id = session_id
       @target = target || lambda {
         IdleTarget.new(base_url: base_url, api_key_env: api_key_env, model: model, label: model)
       }
@@ -534,7 +537,7 @@ module Samagotchi
     def client_for(asked)
       return @client_override if @client_override
 
-      key = [asked.base_url, asked.api_key_env, asked.model]
+      key = asked
       unless @client && @client_key == key
         @client = IdleClient.for(asked, timeout: @timeout)
         @client_key = key
@@ -544,7 +547,7 @@ module Samagotchi
 
     def spawn_summarize(client, prompt)
       Thread.new do
-        client.summarize(prompt)
+        client.summarize(prompt, session_id: @session_id.call)
       rescue StandardError => e
         # No recap this time (the next idle window tries again); say why.
         Log.exception(:recap, "summarize_failed", e)
