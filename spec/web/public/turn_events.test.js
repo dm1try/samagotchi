@@ -643,7 +643,7 @@ test("snapshotEvents passes the name the model called a tool by on, so a reload 
   assert.equal(events.find((e) => e.type === "tool_call_completed").activity.called_as, "bash");
 });
 
-import { steerChoiceRoute, STEER_CHOICE_USAGE, QUEUE_UNAVAILABLE_WEB } from "../../../lib/samagotchi/web/public/commands.js";
+import { steerChoiceRoute, STEER_CHOICE_USAGE } from "../../../lib/samagotchi/web/public/commands.js";
 
 test("steerChoiceRoute: /cut TEXT during a turn is a message sent as a cut", () => {
   assert.deepEqual(steerChoiceRoute("/cut stop and use rg", { running: true }), { send: "stop and use rg", delivery: "cut" });
@@ -655,9 +655,8 @@ test("steerChoiceRoute: /cut TEXT with no running turn is the text as a normal t
   assert.deepEqual(steerChoiceRoute("/cut hello", { running: false }), { send: "hello" });
 });
 
-test("steerChoiceRoute: /queue TEXT during a turn is answered on the page; idle it is a normal turn", () => {
-  assert.deepEqual(steerChoiceRoute("/queue later please", { running: true }), { reply: QUEUE_UNAVAILABLE_WEB });
-  assert.match(QUEUE_UNAVAILABLE_WEB, /\/queue isn't available in the web yet/);
+test("steerChoiceRoute: /queue TEXT during a turn is sent queued; idle it is a normal turn", () => {
+  assert.deepEqual(steerChoiceRoute("/queue later please", { running: true }), { send: "later please", delivery: "queue" });
   assert.deepEqual(steerChoiceRoute("/queue later please", { running: false }), { send: "later please" });
 });
 

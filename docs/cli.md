@@ -298,8 +298,8 @@ and cuts nothing. `/cut TEXT` in a terminal or the web composer (or `chi send --
 once the model has streamed only thinking for `steer.cut_after` seconds (per host/model: `steer_cut_after`; default
 20), now or while your message waits, that generation is cut and the step starts again with your message, marked
 `↪ cut in for your message` (see
-[configuration.md](configuration.md#messages-during-a-running-turn-steer-and-cut)). The web
-composer has no `/queue` yet (it says so and sends nothing). The
+[configuration.md](configuration.md#messages-during-a-running-turn-steer-and-cut)). `/queue TEXT`
+(terminal or web composer) keeps TEXT for after the turn: it runs as a turn of its own once the running one ends. The
 first answer to an `ask_user_question` wins; the other UIs close their widget.
 An empty answer dismisses the question in every UI. The model is then told
 not to go ahead with what it asked about, or change anything else, and to wait.
@@ -541,10 +541,18 @@ REPL alike:
   20 s)` (it waits for the thinking; the step may end first) or `(cutting is
   off; goes in at the next step)` (`steer.cut_after` is 0, per host/model:
   `steer_cut_after`, or no generation to cut).
-- `/queue TEXT` (plain REPL only) runs TEXT as a turn of its own after this
-  one: `(queued: runs after this turn)`. An attached terminal says
-  `(/queue isn't available in an attached session yet)` and sends nothing (the web
-  composer: `(/queue isn't available in the web yet; …)`).
+- `/queue TEXT` runs TEXT as a turn of its own after this one, in an attached
+  terminal, the plain REPL and the web composer alike: `(queued: runs after this
+  turn)` (the web draws it as a queued bubble until its turn starts). It never
+  merges into the running turn, and a plain line sent after it still does.
+  Several queued lines run one turn each, in the order sent; they still run
+  after a Ctrl-C or a failed turn, and a queued line drops a continue offer as
+  any prompt does. Other terminals show someone else's queued line with the same
+  note. A session whose worker is older than queueing would steer it instead, so
+  it is not sent: `(/queue needs a newer worker: restart it with chi sessions
+  restart, then send again)` (the web shows the refusal under the line). A line
+  with images works the same way: it waits for the turn's end, and the lines
+  sent after it still go in at the next step.
   At the open prompt (no turn running) `/cut TEXT` and `/queue TEXT` run TEXT
   as a normal prompt.
 - Commands answer, wait or are refused, by what they do:

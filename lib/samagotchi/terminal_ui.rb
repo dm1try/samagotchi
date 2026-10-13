@@ -837,7 +837,7 @@ module Samagotchi
       # /cut TEXT and /queue TEXT are deliveries only while a turn runs; at
       # the prompt both run the text as a normal turn, as their usage says
       # (the route is the text's).
-      route = ComposerRoute.call(input, running: false, registry: command_registry, queue: true)
+      route = ComposerRoute.call(input, running: false, registry: command_registry)
       return @surface.commit(STEER_CHOICE_USAGE) if route.kind == :usage
 
       input = route.text if route.choice
@@ -1209,7 +1209,7 @@ module Samagotchi
     # to end and runs as a turn of its own.
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
-      route = ComposerRoute.call(line, running: true, registry: command_registry, queue: true) unless line.nil?
+      route = ComposerRoute.call(line, running: true, registry: command_registry) unless line.nil?
       local = route&.local
       return exit_after_turn(delete: SessionCommands.delete_on_exit?(line)) if line.nil? || local == :exit
       return archive_after_turn if local == :archive

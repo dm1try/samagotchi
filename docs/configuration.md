@@ -931,9 +931,12 @@ models:
 
 `/model` shows the resolved wait (`; steer cut: after 60 s (models: qwen)`, `; steer cut: never (hosts.splash)`).
 
-`/queue TEXT` in the plain REPL runs TEXT as a turn of its own after the running one; the attached terminal and the web
-don't queue yet, and a request that asks the Bridge or the web for `delivery: "queue"` is refused (400
-`delivery_unavailable`).
+`/queue TEXT` (in a terminal or the web composer) runs TEXT as a turn of its own after the running one: the request
+carries `delivery: "queue"`, the input file keeps it, and the worker's drain leaves the file for after the turn. The
+Bridge acks `delivery: "queue"` while a turn runs (to an idle session the message is simply the next turn:
+`next_step`). A worker whose sidecar doesn't name the `delivery` feature (older than queueing) would steer it, so the
+sender refuses it (`409 delivery_unavailable`, "restart it"), and so does a worker that answers the request with a
+400 `delivery_unavailable`.
 
 ## Server errors
 

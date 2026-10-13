@@ -14,8 +14,8 @@ module Samagotchi
   # In order:
   #   1. /cut TEXT, /queue TEXT (.steer_choice), before every command check:
   #      the bare word is :usage. While a turn runs TEXT is a :deliver with
-  #      its delivery (Delivery::CUT, Delivery::QUEUE), or :unavailable for
-  #      a /queue the UI can't queue yet. With none running TEXT is routed
+  #      its delivery (Delivery::CUT, Delivery::QUEUE); whether the worker
+  #      can queue is the UI's to check. With none running TEXT is routed
   #      on as a line (step 2), its own /cut not read again.
   #   2. A line: :empty; a terminal's own word (:local, the registry's
   #      lookup_local id: :exit, :archive, :detach, :stats, :recap…); a
@@ -29,7 +29,7 @@ module Samagotchi
     # entries match them, so a line Tab or /help knows is never a prompt).
     STEER_CHOICE = /\A(#{CUT_COMMAND}|#{QUEUE_COMMAND})(?:\s+(.*))?\z/m
 
-    KINDS = %i[empty usage unavailable deliver local command typo prompt].freeze
+    KINDS = %i[empty usage deliver local command typo prompt].freeze
 
     # @!attribute kind [Symbol] one of KINDS
     # @!attribute text [String, nil] the line stripped: a /cut's or
@@ -50,16 +50,13 @@ module Samagotchi
     # @param registry [Commands::Registry] the session's commands
     # @param images [Integer] the attachments not in the text (the web's
     #   chips); a terminal's @path images are its own to handle (0)
-    # @param queue [Boolean] the UI takes /queue TEXT while a turn runs (the
-    #   REPL's after-turn list); else it is :unavailable
     # @return [Route]
-    def self.call(line, running:, registry:, images: 0, queue: false)
+    def self.call(line, running:, registry:, images: 0)
       text = line.to_s.strip
       choice, message = steer_choice(text)
       return line_route(text, registry: registry, images: images) unless choice
       return Route.new(kind: :usage, choice: choice) if message.empty?
       return line_route(message, registry: registry, images: images).with(choice: choice) unless running
-      return Route.new(kind: :unavailable, text: message, choice: choice) if choice == :queue && !queue
 
       Route.new(kind: :deliver, text: message, delivery: choice == :cut ? Delivery::CUT : Delivery::QUEUE, choice: choice)
     end

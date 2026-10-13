@@ -428,21 +428,30 @@ module Samagotchi
         nil
       end
 
-      # /cut TEXT and /queue TEXT (+route+ has a choice). Only /cut goes in
-      # P1: the worker's drain doesn't skip queued files yet, so a queued
-      # message would steer the running turn; /queue says so and sends
-      # nothing (ComposerRoute's :unavailable). At the prompt both send the
-      # text as typed, a normal turn: no local word or typo check (the
-      # worker's Bridge runs a session command as the command).
+      # /cut TEXT and /queue TEXT (+route+ has a choice). During a turn the
+      # text goes with its delivery: a cut, or queued to run as a turn of
+      # its own after this one. A worker that doesn't queue (its sidecar
+      # names no "delivery" feature) would steer a queue, so it is not sent.
+      # At the prompt both send the text as typed, a normal turn: no local
+      # word or typo check (the worker's Bridge runs a session command as
+      # the command).
       # @param route [ComposerRoute::Route]
       # @return [nil]
       def submit_delivery(route)
         return @screen.commit(STEER_CHOICE_USAGE) if route.kind == :usage
-        return @screen.commit(QUEUE_UNAVAILABLE) if route.kind == :unavailable
+        return @screen.commit(QUEUE_NEEDS_NEWER_WORKER) if Delivery.queue?(route.delivery) && !worker_queues?
 
         # To an idle session it is an ordinary prompt: no delivery to send.
         send_prompt(route.text, delivery: route.delivery)
         nil
+      end
+
+      # Whether the attached worker runs delivery: queue (its sidecar names
+      # Delivery::QUEUE_FEATURE). No sidecar to read: true, its Bridge
+      # answers (a P0-P2 worker refuses a queue: #send_prompt).
+      def worker_queues?
+        sidecar = WorkerSidecar.read(Session.session_dir(@client.session_id, state_dir: @state_dir))
+        sidecar.nil? || sidecar.features.include?(Delivery::QUEUE_FEATURE)
       end
 
       # @return [Symbol] :detach
@@ -604,9 +613,9 @@ module Samagotchi
       end
 
       QUEUED_NOTE = "(queued: runs after this turn)"
-      # /queue needs a worker whose drain skips queued input files (P3):
-      # until then a queued message would steer the running turn.
-      QUEUE_UNAVAILABLE = "(/queue isn't available in an attached session yet)"
+      QUEUE_RUNS_NOW = "(the turn had ended: runs as the next turn)"
+      # /queue to a worker from before queueing, which would steer it.
+      QUEUE_NEEDS_NEWER_WORKER = "(/queue needs a newer worker: restart it with chi sessions restart, then send again)"
 
       # A command queued for after the running turn (command_queued with
       # waits): its line now (another client's) and a note; its command_ran
@@ -712,14 +721,20 @@ module Samagotchi
       # What a prompt's 202 says became of it, or nil when there is nothing
       # to say: the dim line both TUIs print for a delivery. A plain line
       # for a running turn goes in at its next step; a cut's outcome comes
-      # from the ack (the worker knows whether cutting is on for its model).
+      # from the ack (the worker knows whether cutting is on for its model);
+      # a queued one waits for the turn's end (the ack says queue).
       # An idle session's prompt simply runs, and a prompt with images runs
       # as its own next turn (never merging mid-turn), so nothing is said.
       # @param ack [Hash, nil] the Bridge's 202 body
       # @param delivery [String, nil] what was asked for
       # @return [String, nil]
       def sent_note(ack, delivery: nil, images: [], running: false)
-        return nil unless running && images.empty? && ack.is_a?(Hash)
+        return nil unless running && ack.is_a?(Hash)
+        # The Bridge acks queue only while a turn ran at enqueue; a /queue
+        # it acks next_step found the turn over: it is the next turn.
+        return QUEUED_NOTE if ack["delivery"] == Delivery::QUEUE
+        return QUEUE_RUNS_NOW if Delivery.queue?(delivery)
+        return nil unless images.empty?
 
         return NEXT_STEP_NOTE unless delivery == Delivery::CUT
 
@@ -751,6 +766,8 @@ module Samagotchi
         detail = reply.json&.fetch("error", nil)
         # Read after its deadline and dropped (BridgeClient::DEADLINE_SHARE).
         return @screen.commit("could not send the prompt (#{LATE})") if detail == "deadline_passed"
+        # A worker from 0.51 to 0.63 refuses a queue (nothing was sent).
+        return @screen.commit(QUEUE_NEEDS_NEWER_WORKER) if detail == "delivery_unavailable"
 
         @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})")
       rescue SystemCallError, IOError => e
@@ -1414,7 +1431,8 @@ module Samagotchi
         return if own?(event[:client_id])
 
         @shown_enqueued << event[:enqueued_id]
-        @screen.commit(prompt_line(event[:client_id], event[:prompt]))
+        line = prompt_line(event[:client_id], event[:prompt])
+        @screen.commit(event[:delivery] == Delivery::QUEUE ? "#{line} #{QUEUED_NOTE}" : line)
       end
 
       def start_turn(event)

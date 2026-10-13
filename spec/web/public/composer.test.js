@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createComposerCommands, routeComposerLine, routeSessionLine } from "../../../lib/samagotchi/web/public/composer.js";
-import { QUEUE_UNAVAILABLE_WEB, STEER_CHOICE_USAGE, webLocalReply } from "../../../lib/samagotchi/web/public/commands.js";
+import { STEER_CHOICE_USAGE, webLocalReply } from "../../../lib/samagotchi/web/public/commands.js";
 
 const COMMANDS = [{ name: "/model" }, { name: "/continue" }, { name: "/help" }];
 const inSession = (extra = {}) => ({ session: true, running: false, commands: COMMANDS, ...extra });
@@ -29,9 +29,8 @@ test("/cut and /queue TEXT with no turn running are TEXT as a normal turn", () =
   assert.deepEqual(routeComposerLine("/queue later", inSession()), { send: "later", delivery: null });
 });
 
-test("/queue TEXT during a turn is the page's answer, nothing sent", () => {
-  assert.deepEqual(routeComposerLine("/queue later", inSession({ running: true })),
-    { reply: QUEUE_UNAVAILABLE_WEB, line: "/queue later" });
+test("/queue TEXT during a turn is TEXT queued for after the turn", () => {
+  assert.deepEqual(routeComposerLine("/queue later", inSession({ running: true })), { send: "later", delivery: "queue" });
 });
 
 test("a bare /cut or /queue is the usage line", () => {
@@ -82,7 +81,6 @@ const GOLDEN = JSON.parse(readFileSync(new URL("../../fixtures/composer_routes.j
 function routeKind(route) {
   if (route.reply !== undefined) {
     if (route.reply === STEER_CHOICE_USAGE) return { kind: "usage", delivery: null };
-    if (route.reply === QUEUE_UNAVAILABLE_WEB) return { kind: "unavailable", delivery: null };
     const kind = webLocalReply(route.line) ? "local" : "typo";
     return { kind, text: route.line.trim(), delivery: null };
   }

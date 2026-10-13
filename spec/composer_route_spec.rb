@@ -30,10 +30,9 @@ RSpec.describe Samagotchi::ComposerRoute do
   golden["rows"].each do |row|
     it "routes #{row["text"].inspect}#{" (running)" if row["running"]}#{" with #{row["images"]} images" if row["images"]}" do
       registry = registry_for(row["commands"] || golden["commands"])
-      route = ->(queue) { described_class.call(row["text"], running: row["running"], registry: registry, images: row["images"] || 0, queue: queue) }
+      route = described_class.call(row["text"], running: row["running"], registry: registry, images: row["images"] || 0)
 
-      expect_route(route.call(false), row["expect"], row)
-      expect_route(route.call(true), row["repl"] || row["expect"], row)
+      expect_route(route, row["expect"], row)
     end
   end
 

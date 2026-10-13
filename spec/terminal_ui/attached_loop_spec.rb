@@ -1620,11 +1620,56 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
     expect(screen.lines).to include("(cuts in once the thinking passes 60 s)")
   end
 
-  it "refuses /queue with a line while a turn runs, and sends nothing" do
-    run_inputs("/queue later please")
+  it "posts /queue TEXT as delivery queue while a turn runs, and says it runs after this turn" do
+    run_inputs("/queue later please", ack: { "enqueued_id" => "e1", "delivery" => "queue" })
 
-    expect(client).not_to have_received(:post_turn)
-    expect(screen.lines).to include("(/queue isn't available in an attached session yet)")
+    expect(client).to have_received(:post_turn).once.with(prompt: "later please", client_id: "tui:1", delivery: "queue")
+    expect(screen.lines).to include("(queued: runs after this turn)")
+    expect(screen.lines).not_to include("(goes in at the next step)")
+  end
+
+  it "says a /queue runs as the next turn when the ack says the turn had ended (next_step)" do
+    run_inputs("/queue later please", ack: { "enqueued_id" => "e1", "delivery" => "next_step" })
+
+    expect(screen.lines).to include("(the turn had ended: runs as the next turn)")
+    expect(screen.lines).not_to include("(goes in at the next step)", "(queued: runs after this turn)")
+  end
+
+  describe "to a worker that can't queue" do
+    let(:state_dir) { Dir.mktmpdir }
+    let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", state_dir: state_dir) }
+
+    after { FileUtils.rm_rf(state_dir) }
+
+    it "sends nothing when its sidecar names no delivery feature (it would steer), and says to restart it" do
+      Samagotchi::WorkerSidecar.new(port: 1, session_id: "s-1234", features: %w[restart task_stop reparent])
+                               .write(Samagotchi::Session.session_dir("s-1234", state_dir: state_dir))
+      run_inputs("/queue later please", "/cut now please", ack: { "enqueued_id" => "e1", "delivery" => "cut", "cut" => "now" })
+
+      expect(client).to have_received(:post_turn).once.with(prompt: "now please", client_id: "tui:1", delivery: "cut")
+      expect(screen.lines).to include(a_string_including("/queue needs a newer worker"))
+    end
+
+    it "says the same when the worker refuses the queue (a P0-P2 worker's 400 delivery_unavailable)" do
+      allow(client).to receive(:post_turn).and_return(reply({ "error" => "delivery_unavailable", "detail" => "x" }, status: 400))
+      lines = ["/queue later please"]
+      attached.run(input: ->(_prompt, _prefill) { lines.shift })
+
+      expect(screen.lines).to include(a_string_including("/queue needs a newer worker"))
+      expect(screen.lines.grep(/could not send/)).to be_empty
+    end
+  end
+
+  it "notes another client's queued prompt as queued at its turn_enqueued" do
+    allow(client).to receive(:follow) do |&block|
+      block.call(snapshot)
+      block.call("type" => "turn_enqueued", "enqueued_id" => "e9", "client_id" => "web:2", "prompt" => "after this",
+                 "delivery" => "queue")
+      double("stream", close: nil)
+    end
+    run_inputs
+
+    expect(screen.lines.grep(/after this/)).to contain_exactly(a_string_ending_with("after this (queued: runs after this turn)"))
   end
 
   it "runs /queue TEXT and /cut TEXT at an idle prompt as plain turns (no delivery)" do
@@ -1634,7 +1679,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
 
     expect(client).to have_received(:post_turn).with(prompt: "later please", client_id: "tui:1").ordered
     expect(client).to have_received(:post_turn).with(prompt: "now please", client_id: "tui:1").ordered
-    expect(screen.lines).not_to include("(/queue isn't available in an attached session yet)")
+    expect(screen.lines).not_to include("(queued: runs after this turn)")
   end
 
   it "says a /cut with no text is a usage error, and sends nothing" do

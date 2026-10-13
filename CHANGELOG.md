@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `/queue TEXT` during a running turn now works in an attached terminal and the web composer too, as it did in the
+  plain REPL: TEXT runs as a turn of its own after the running one, instead of merging into it (`(queued: runs after
+  this turn)`). A session whose worker is older than this says to restart it rather than steering the turn. See
+  docs/cli.md, "Typing during a turn".
+
 ### Changed
 
 - A message with images sent during a running turn no longer holds back the text lines sent after it: they go in at

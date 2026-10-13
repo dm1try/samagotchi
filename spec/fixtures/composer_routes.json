@@ -5,9 +5,8 @@
     "A row: text, running, images (default 0: the web's image chips), commands (the session's command names;",
     "default: commands below), expect {kind, text?, delivery?, local?}. kind is one of ComposerRoute::KINDS;",
     "text is compared only when given, trimmed; delivery is null unless given; local (the registry id) is",
-    "Ruby's only (the web's own replies have none). web / repl replace expect for that UI where it differs:",
-    "repl is ComposerRoute with queue: true (the REPL takes /queue TEXT during a turn), Ruby without it is",
-    "the attached TUI's. note says why a row differs, or what a UI does past the route."
+    "Ruby's only (the web's own replies have none). web replaces expect for the page where it differs.",
+    "note says why a row differs, or what a UI does past the route."
   ],
   "commands": ["/model", "/continue", "/help"],
   "rows": [
@@ -23,10 +22,12 @@
     { "text": "/cut first\nsecond", "running": true, "expect": { "kind": "deliver", "text": "first\nsecond", "delivery": "cut" } },
     { "text": "/cut now this", "running": false, "expect": { "kind": "prompt", "text": "now this" } },
     { "text": "/queue later", "running": false, "expect": { "kind": "prompt", "text": "later" } },
-    { "text": "/queue later", "running": true, "expect": { "kind": "unavailable" },
-      "repl": { "kind": "deliver", "text": "later", "delivery": "queue" } },
-    { "text": "/queue\nthen this", "running": true, "expect": { "kind": "unavailable" },
-      "repl": { "kind": "deliver", "text": "then this", "delivery": "queue" } },
+    { "text": "/queue later", "running": true, "expect": { "kind": "deliver", "text": "later", "delivery": "queue" },
+      "note": "the attached TUI refuses it for a worker without the delivery feature (it would steer); the web's chi web refuses it the same way (SessionManager.deliver_turn)" },
+    { "text": "/queue\nthen this", "running": true, "expect": { "kind": "deliver", "text": "then this", "delivery": "queue" } },
+    { "text": "/queue /model y", "running": true, "expect": { "kind": "deliver", "text": "/model y", "delivery": "queue" },
+      "web": { "kind": "command", "text": "/model y" },
+      "note": "as /cut /model y: the web routes a running /queue's text on (the command waits for the turn's end on its own); the terminals send it queued and the worker's Bridge runs it as the command" },
     { "text": "/cut", "running": true, "expect": { "kind": "usage" } },
     { "text": "/cut   ", "running": true, "expect": { "kind": "usage" } },
     { "text": "/queue  ", "running": false, "expect": { "kind": "usage" } },
