@@ -608,6 +608,56 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
         .to eq([[30_000, 24_576], [10_000, 8976], [2048, 1024]])
     end
 
+    it "drops only thinking.display for the host once it refuses it, before the adaptive check (adaptive kept)" do
+      refuse("thinking.adaptive.display: Extra inputs are not permitted")
+      2.times { answer }
+
+      ask(:medium)
+      ask(:high, model: "other")
+
+      expect(thinking_sent).to eq([
+        [64_000, { "type" => "adaptive", "display" => "summarized" }, { "effort" => "medium" }],
+        [64_000, { "type" => "adaptive" }, { "effort" => "medium" }],
+        [64_000, { "type" => "adaptive" }, { "effort" => "high" }]
+      ])
+      expect(adapter.budget_form?("old")).to be(false)
+    end
+
+    it "takes the field named in other phrasings as a display refusal" do
+      refuse("Unknown field: display")
+      answer
+      refuse("unexpected parameter 'display' in thinking")
+      answer
+
+      ask(:low)
+      described_class.new(base_url: server.root_url, host_name: "msg2", env: env, stream: false, retries: false)
+                     .chat(messages: [{ role: "user", content: "hi" }], model: "m",
+                           options: { max_tokens: 9, **adapter.thinking_fields(:low) })
+
+      expect(bodies.map { |body| body.dig("thinking", "display") }).to eq(["summarized", nil, "summarized", nil])
+    end
+
+    it "doesn't take an error that only echoes the input's display as a display refusal" do
+      refuse("thinking.adaptive.budget_tokens: Field required [type=missing, input_value={'type': 'adaptive', " \
+             "'display': 'summarized'}, input_type=dict]")
+      answer
+
+      ask(:medium)
+
+      expect(thinking_sent.last).to eq([64_000, { "type" => "enabled", "budget_tokens" => 8192, "display" => "summarized" }, nil])
+      expect(adapter.budget_form?("old")).to be(true)
+    end
+
+    it "sends the budget form without display after both refusals" do
+      refuse("thinking.adaptive.display: Extra inputs are not permitted")
+      refuse("adaptive thinking is not supported on this model")
+      answer
+
+      ask(:low)
+
+      expect(thinking_sent.last).to eq([64_000, { "type" => "enabled", "budget_tokens" => 2048 }, nil])
+    end
+
     it "drops the cache breakpoints for the host once it refuses cache_control" do
       refuse("cache_control: Extra inputs are not permitted")
       2.times { answer }

@@ -22,8 +22,9 @@ and commands may change between minor versions. How releases are made:
   See docs/configuration.md, "Reasoning history".
 - Thinking levels on `api: anthropic` hosts: `off` sends `thinking: disabled`, `low`/`medium`/`high` adaptive thinking
   shown summarized at that effort, `default` nothing. A model that refuses adaptive thinking gets the budget form
-  (2048/8192/24576 tokens, `max_tokens` kept above it); a host that refuses `cache_control` loses the breakpoints; an
-  over-cap `max_tokens` is retried at the limit the host names. See docs/configuration.md, "Thinking".
+  (2048/8192/24576 tokens, `max_tokens` kept above it); a host that refuses the thinking `display` field loses only
+  that field; a host that refuses `cache_control` loses the breakpoints; an over-cap `max_tokens` is retried at the
+  limit the host names. See docs/configuration.md, "Thinking".
 - `dialect: fireworks` on an `api: anthropic` host, for Fireworks' Messages API directly or behind a gateway: the key
   goes as Bearer (unless `auth:` says otherwise), thinking levels send no `display` field, chat requests carry no
   `cache_control`, and the session id also goes as `x-session-affinity`. Recaps, `ctx.ask_model` and broadcast triage

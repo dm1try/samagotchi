@@ -34,6 +34,9 @@ module Samagotchi
     # broader refusal paths never see them:
     # - adaptive thinking (or output_config.effort) refused: the model gets
     #   the budget form instead (#budget_form), per model;
+    # - thinking.display refused (a provider whose thinking schema has no
+    #   such field, e.g. Fireworks without its dialect): no display for the
+    #   host, the thinking itself kept;
     # - cache_control refused (Fireworks lists it unsupported): no
     #   breakpoints for the host;
     # - max_tokens over the model's output limit: the limit the message
@@ -51,6 +54,13 @@ module Samagotchi
       # A 400 refusing adaptive thinking or its effort.
       ADAPTIVE_REFUSED_RE = /adaptive|output_config|effort/i
       CACHE_CONTROL_RE = /cache_control/i
+      # A 400 refusing the thinking display field: its path (pydantic:
+      # "thinking.adaptive.display"), or the field named as unknown or not
+      # permitted. Not an error that only echoes the input
+      # (input_value={'type': 'adaptive', 'display': ...}).
+      DISPLAY_RE = /thinking\.[\w.]*\bdisplay\b|
+                    (?:unknown|unexpected|unrecognized|extra|invalid)\s+(?:field|parameter|key|input)s?\W{0,4}display\b|
+                    \bdisplay\W{0,4}(?:extra\s+inputs\s+are\s+not\s+permitted|is\s+not\s+(?:permitted|allowed|supported))/xi
       # "max_tokens: 200000 > 128000, which is the maximum allowed number of output tokens for …"
       OUTPUT_CAP_RE = /max_tokens`?:?\s*\d+\s*>\s*(\d+)/i
       # How much of a 200's non-stream body is read as a possible JSON error.
@@ -91,6 +101,7 @@ module Samagotchi
         @thinking_form_refused = Set.new
         @output_caps = {}
         @cache_control_refused = false
+        @thinking_display_refused = false
         open_timeout, read_timeout = timeouts(timeout, open_timeout)
         policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
         @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
@@ -195,6 +206,7 @@ module Samagotchi
       def request_body(messages, tools, model, options)
         options = (options || {}).to_h.transform_keys(&:to_sym).except(*DROPPED_OPTIONS)
         options = budget_form(options) if budget_form?(model)
+        options = without_display(options) if @thinking_display_refused
         cache = PromptCache.control if @purpose == "chat" && @dialect.cache_breakpoints && !@cache_control_refused
         translated = AnthropicWire.translate(messages, cache: cache)
         max_tokens = options.delete(:max_tokens) || default_max_tokens(model)
@@ -223,6 +235,14 @@ module Samagotchi
         config = config.except(:effort)
         options.merge(thinking: { type: "enabled", budget_tokens: budget, display: thinking[:display] }.compact,
                       output_config: config.empty? ? nil : config)
+      end
+
+      # +options+ with no thinking.display (the host refused the field).
+      def without_display(options)
+        thinking = options[:thinking]
+        return options unless thinking.is_a?(Hash)
+
+        options.merge(thinking: thinking.transform_keys(&:to_sym).except(:display))
       end
 
       # Messages wants max_tokens > budget_tokens (and a budget of at least
@@ -254,7 +274,14 @@ module Samagotchi
         return nil if error.sampling_refused? || error.thinking_signature? || error.thinking_binding_unsupported?
 
         detail = error.detail.to_s
-        if body.dig(:thinking, :type) == "adaptive" && ADAPTIVE_REFUSED_RE.match?(detail)
+        # Before the adaptive check: the refused field's path
+        # ("thinking.adaptive.display") names adaptive too.
+        if !@thinking_display_refused && body[:thinking].is_a?(Hash) && body[:thinking].key?(:display) &&
+           DISPLAY_RE.match?(detail)
+          @thinking_display_refused = true
+          Log.info(:http, "thinking_display_refused", host: @host_name, detail: detail[0, 200])
+          :thinking_display
+        elsif body.dig(:thinking, :type) == "adaptive" && ADAPTIVE_REFUSED_RE.match?(detail)
           @thinking_form_refused << model.to_s
           Log.info(:http, "thinking_form_switched", host: @host_name, model: model.to_s, to: "budget", detail: detail[0, 200])
           :thinking_form

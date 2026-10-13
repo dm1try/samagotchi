@@ -607,7 +607,8 @@ Claude models) gets the request again without it, as on any chat host. A model t
 (older Claude: Haiku 4.5) is switched, once and for the worker's life, to the budget form: `thinking: {type:
 "enabled", budget_tokens: B}` with B 2048 / 8192 / 24576 for low / medium / high and no effort; `max_tokens` always
 stays above the budget (the budget is lowered to leave 1024 for the answer, or `max_tokens` raised to 2048). A
-host that refuses `cache_control` gets no cache breakpoints from then on, and a `max_tokens` over the model's output
+host that refuses the thinking `display` field gets thinking without it from then on (the level still applies); one
+that refuses `cache_control` gets no cache breakpoints from then on, and a `max_tokens` over the model's output
 limit is sent again with the limit the host names. On any chat host, a model that refuses a sampling field
 (`temperature`, `top_p`, `top_k`; Claude refuses the empty-answer retry's temperature while thinking) gets the
 request again without them, and none of them after.
