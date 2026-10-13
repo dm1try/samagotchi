@@ -1,0 +1,21 @@
+{
+  "delay": 0.06,
+  "branches": [
+    {
+      "when_last": "QUEUED-LATER",
+      "iterations": [
+        {
+          "thinking": "Short one.",
+          "text": "Answer to the queued message.",
+          "hold": 3
+        }
+      ]
+    }
+  ],
+  "iterations": [
+    {
+      "thinking": "Let me think about how to answer this carefully. The question asks for a plan, so I should weigh the options one by one. First the simple path, then the edge cases, then what could go wrong along the way. Let me think about how to answer this carefully. The question asks for a plan, so I should weigh the options one by one. First the simple path, then the edge cases, then what could go wrong along the way. Let me think about how to answer this carefully. The question asks for a plan, so I should weigh the options one by one. First the simple path, then the edge cases, then what could go wrong along the way. Let me think about how to answer this carefully. The question asks for a plan, so I should weigh the options one by one. First the simple path, then the edge cases, then what could go wrong along the way. Let me think about how to answer this carefully. The question asks for a plan, so I should weigh the options one by one. First the simple path, then the edge cases, then what could go wrong along the way. Let me think about how to answer this carefully. The question asks for a plan, so I should weigh the options one by one. First the simple path, then the edge cases, then what could go wrong along the way.",
+      "text": "First answer, after the long thinking."
+    }
+  ]
+}
