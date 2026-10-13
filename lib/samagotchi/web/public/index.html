@@ -511,6 +511,30 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #composer{display:flex;flex-direction:column;gap:8px;padding:14px 14px 10px}
 #composer .compose-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
 #composer.dropping{outline:2px dashed var(--accent);outline-offset:-4px}
+/* The delivery line (delivery_line.js): a session's row above the text field, always there so the composer never changes height: the key hint while idle; while a turn runs, where a message typed now goes in, then the cut and queue links. One quiet row, ellipsised; a phone gets the short text and chips. */
+#deliveryLine{display:flex;align-items:center;gap:10px;min-width:0;flex:1 0 100%;height:20px;padding:0 2px;overflow:hidden;font-size:12px;line-height:18px;color:var(--text-muted);user-select:none}
+#deliveryLine[hidden]{display:none}
+#deliveryLine .delivery-where{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#deliveryLine .delivery-where.idle{color:var(--text-faint)}
+#deliveryLine .short{display:none}
+#deliveryLine .delivery-links{flex:none;display:flex;align-items:center;gap:6px;white-space:nowrap}
+#deliveryLine .delivery-sep{color:var(--text-faint)}
+#deliveryLine .delivery-link{background:transparent;border:0;padding:0 2px;min-height:0;height:18px;font:inherit;line-height:18px;color:var(--accent);cursor:pointer;border-radius:4px}
+#deliveryLine .delivery-link:hover:not(:disabled):not(.armed){text-decoration:underline;filter:none}
+#deliveryLine .delivery-link:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
+#deliveryLine .delivery-link:disabled{color:var(--text-faint);opacity:1;cursor:default}
+#deliveryLine .delivery-link.armed{color:var(--on-solid);background:var(--accent-strong);padding:0 6px}
+/* In a session the composer is a row: the line's row wraps above the text field and the buttons. */
+body.has-session #composer{flex-wrap:wrap;row-gap:6px}
+@media(max-width:600px){
+  #deliveryLine .long,#deliveryLine .delivery-sep{display:none}
+  #deliveryLine .short{display:inline}
+  #deliveryLine .delivery-link{padding:0 8px;border:1px solid var(--accent-border);border-radius:999px;background:var(--accent-bg);line-height:16px}
+  #deliveryLine .delivery-link:disabled{border-color:var(--border);background:transparent}
+  #deliveryLine .delivery-link.armed{border-color:var(--accent-strong);background:var(--accent-strong)}
+}
+/* A line queued for after the running turn: a dashed bubble, a turn of its own to come. */
+.bubble.user.queued[data-delivery="queue"]{border:1px dashed var(--accent-border);border-left:3px dashed var(--accent);background:transparent}
 #chips{display:flex;flex-wrap:wrap;gap:6px}
 #chips[hidden]{display:none}
 .chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-bg);border:1px solid var(--border-strong);border-radius:8px;padding:3px 4px 3px 3px;font-size:12px;max-width:220px}
@@ -1132,6 +1156,7 @@ a{color:var(--accent)}
           <div id="modelList" role="listbox" aria-label="Models"></div>
         </div>
         <div id="composeGrip" title="Drag to make the message box taller (double-click resets)"></div>
+        <div id="deliveryLine" aria-live="off" hidden></div>
         <div class="compose-col">
           <div id="chips" hidden></div>
           <textarea id="prompt" placeholder="Ask chi anything…" aria-controls="commandList" aria-autocomplete="list" aria-expanded="false"></textarea>

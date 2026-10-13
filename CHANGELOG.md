@@ -12,6 +12,13 @@ and commands may change between minor versions. How releases are made:
 
 - While a turn runs, the terminal's status row (REPL and attached) ends in `· typing goes in at the next step (/cut,
   /queue)`, gone when the turn ends. See docs/cli.md, "Status Line".
+- The web composer has a row above the text field in a session: the keys while idle, and while a turn runs a
+  delivery line: where a message sent now goes in (after this thinking
+  step, with its clock and size; after this tool call; after this answer), with `cut in now` (enabled while the step
+  has only been thinking and cutting is on for the model) and `queue for after the turn` links. Alt+Enter
+  (Option+Enter) queues; a link clicked with an empty composer arms that choice for the next Enter (Esc lets go). The
+  sent bubble says what it waits for (`waits for the next step`, `cutting in…`, a dashed `after this turn`). See
+  docs/cli.md, "Typing during a turn".
 - A worker's snapshot (`GET /session/:id/snapshot`, `?snapshot=1`) says the running generation's phase as
   `current_turn.generation: {thinking_only, age}`, so a page joining mid-turn can clock what a message would wait
   for; a joined page also clocks a running tool call from its start. See docs/internals/engine.md, "GenerationPhase".

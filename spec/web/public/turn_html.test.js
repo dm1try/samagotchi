@@ -3,7 +3,7 @@ import { html as lit } from "../../../lib/samagotchi/web/public/vendor/lit-html.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  answerBubbleTemplate, cancelLineTemplate, commandBubbleTemplate, elementOf, emptyAnswerTemplate, noteBubbleTemplate, shellCommandMessage,
+  answerBubbleTemplate, badgeText, cancelLineTemplate, commandBubbleTemplate, elementOf, emptyAnswerTemplate, noteBubbleTemplate, shellCommandMessage,
   stateBadgeTemplate, statusParts, steerRowTemplate, toolRowTemplate, userBodyTemplate, userBubbleTemplate,
 } from "../../../lib/samagotchi/web/public/turn_html.js";
 
@@ -11,7 +11,7 @@ import {
 const toolRowHtml = (row, opts) => markupOf(toolRowTemplate(row, opts));
 const userBubbleHtml = (m, opts) => markupOf(userBubbleTemplate(m, opts));
 const commandBubbleHtml = (c) => markupOf(commandBubbleTemplate(c));
-const stateBadgeHtml = (s) => markupOf(stateBadgeTemplate(s));
+const stateBadgeHtml = (s, d) => markupOf(stateBadgeTemplate(s, d));
 const emptyAnswerHtml = (i) => markupOf(emptyAnswerTemplate(i));
 const noteHtml = (n) => markupOf(noteBubbleTemplate(n));
 const userBodyHtml = (c) => markupOf(userBodyTemplate(c));
@@ -225,4 +225,21 @@ test("elementOf: a template's one element, to change by hand (the live bubble's 
   el.querySelector(".state-badge").remove();
   el.append(elementOf(stateBadgeTemplate("steered")));
   assert.equal(el.querySelector(".state-badge").textContent, "steered");
+});
+
+test("badgeText: a queued line says what it waits for by its delivery; the other states as named", () => {
+  assert.equal(badgeText("queued", "next_step"), "waits for the next step");
+  assert.equal(badgeText("queued", "cut"), "cutting in\u2026");
+  assert.equal(badgeText("queued", "queue"), "after this turn");
+  assert.equal(badgeText("queued", null), "queued");
+  assert.equal(badgeText("steered", "cut"), "steered");
+  assert.equal(badgeText("started", "queue"), null);
+  assert.equal(stateBadgeHtml("queued", "queue"), '<span class="state-badge">after this turn</span>');
+});
+
+test("userBubbleTemplate: a line's delivery is its data-delivery, and its badge's words", () => {
+  const out = userBubbleHtml({ content: "later" }, { state: "queued", delivery: "queue", own: true });
+  assert.match(out, /data-delivery="queue"/);
+  assert.match(out, /<span class="state-badge">after this turn<\/span>/);
+  assert.doesNotMatch(userBubbleHtml({ content: "x" }, { state: "queued" }), /data-delivery/);
 });

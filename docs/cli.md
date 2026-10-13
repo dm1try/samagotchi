@@ -555,6 +555,25 @@ REPL alike:
   sent after it still go in at the next step.
   At the open prompt (no turn running) `/cut TEXT` and `/queue TEXT` run TEXT
   as a normal prompt.
+- **The web composer** has a row above the text field in a session (always
+  there, so the composer never changes height): the keys while idle, and while
+  the turn runs the delivery line, where a message sent now goes in (`↳ goes in after this
+  thinking step · 0:42 · 3k chars`, `… after this tool call (execute · 0:12)`,
+  `… after this answer; the turn may go on`, `… once the card above is
+  answered`), then two links. **Enter** (or Send) is the next step;
+  **Alt+Enter** (Option+Enter) or `queue for after the turn` queues it, like
+  `/queue TEXT`, and the bubble is dashed (`after this turn`) until its turn
+  starts; `cut in now` cuts, like `/cut TEXT` (by click only: it throws the
+  thinking away). Cut is enabled only while the step has streamed nothing but
+  thinking and cutting is on for the model (the line says `cuts at about 0:25
+  if you choose cut in now` until the thinking passes `steer_cut_after`, and
+  `cutting is off for <model>` with no cut link when it is 0); the queue link
+  is gone for a worker too old to queue (Alt+Enter then sends nothing, keeps the
+  text and says to restart the worker). A link clicked with an empty composer
+  arms that choice (`cut in now ✓ · Enter sends`); a second click or Esc lets
+  go of it. The echo says what it waits for: `waits for the next step` or
+  `cutting in…`, then `steered`. A phone shows the short form (`↳ after this
+  thinking · 0:42`) with `cut in` and `queue` chips.
 - Commands answer, wait or are refused, by what they do:
   - At once, beside the turn: `/stats`, `/recap`, `/help`, `/context`, a
     plugin's anytime command (`/btw`), and the commands that only show

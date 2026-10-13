@@ -343,3 +343,19 @@ test("generationStarted stamps the gen's startedAt with the page's clock (the de
   model.generationStarted(turn, 3);
   assert.equal(currentGen(turn).startedAt, null);
 });
+
+test("chunk stamps the gen's thinkingAt at its first thinking delta (the worker's thinking clock), not at a replay's", () => {
+  const turn = newTurn();
+  model.turnStarted(turn);
+  model.generationStarted(turn, 1, 1000);
+  model.chunk(turn, { text: "", thinking: "", iteration: 1, now: 2000 });
+  assert.equal(currentGen(turn).thinkingAt, null);
+  model.chunk(turn, { thinking: "hm", iteration: 1, now: 3500 });
+  model.chunk(turn, { thinking: " more", iteration: 1, now: 4000 });
+  assert.equal(currentGen(turn).thinkingAt, 3500);
+  // A replayed gen's thinking (no clock), then live chunks: still no clock of its own.
+  model.generationStarted(turn, 2);
+  model.chunk(turn, { thinking: "replayed", iteration: 2 });
+  model.chunk(turn, { thinking: " live", iteration: 2, now: 9000 });
+  assert.equal(currentGen(turn).thinkingAt, null);
+});

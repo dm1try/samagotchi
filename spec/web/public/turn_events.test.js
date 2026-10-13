@@ -686,3 +686,23 @@ test("snapshotEvents passes a running call's elapsed_ms on, so a join clocks it 
   assert.equal(starts[0].elapsed_ms, 4200);
   assert.equal("elapsed_ms" in starts[1], false);
 });
+
+test("a turn_enqueued queued for after the running turn (delivery queue) carries it to its add and tag ops", () => {
+  const theirs = { type: "turn_enqueued", enqueued_id: "q1", client_id: "tui:9", prompt: "later", delivery: "queue" };
+  assert.deepEqual(promptOps(theirs, none), [
+    { op: "add", enqueuedId: "q1", prompt: "later", state: "queued", label: "tui", delivery: "queue" },
+  ]);
+  const mine = { ...theirs, client_id: ME };
+  assert.deepEqual(promptOps(mine, none), [{ op: "tag", enqueuedId: "q1", prompt: "later", delivery: "queue" }]);
+});
+
+test("snapshotEvents: a queued entry's delivery and the turn's cut_after replay as the live events carry them", () => {
+  const events = snapshotEvents({
+    current_turn: { prompt: "p", parts: [], cut_after: 25 },
+    queued: [{ enqueued_id: "q1", client_id: "web:x", prompt: "later", delivery: "queue" }, { enqueued_id: "q2", client_id: "web:x", prompt: "now" }],
+  });
+  assert.equal(events[0].cut_after, 25);
+  assert.equal(events[1].delivery, "queue");
+  assert.equal("delivery" in events[2], false);
+  assert.equal("cut_after" in snapshotEvents({ current_turn: { prompt: "p", parts: [] } })[0], false);
+});
