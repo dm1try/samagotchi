@@ -1836,6 +1836,16 @@ RSpec.describe Samagotchi::Bridge do
                  source: "sample-plugin")
       end
 
+      it "carries a plugin command's annotation actions in its snapshot" do
+        start_bridge
+        annotation = Samagotchi::Commands::Registry::Annotation.new(label: "Ask", line: "/hello there", template: "{quote}",
+                                                                    sends: false)
+        @engine.command_registry.register("/hello", "greet", source: "sample-plugin", annotations: [annotation]) { |_args| "hi" }
+
+        listed = @bridge.snapshot[:commands].find { |c| c[:name] == "/hello" }
+        expect(listed[:annotations]).to eq([{ label: "Ask", line: "/hello there", template: "{quote}", send: false }])
+      end
+
       it "answers 501 when nothing runs commands (a Bridge without a worker loop)" do
         start_bridge
 

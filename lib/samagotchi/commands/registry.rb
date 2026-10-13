@@ -15,6 +15,15 @@ module Samagotchi
       # (:refuse, "busy").
       MID_TURN = %i[anytime queue refuse].freeze
 
+      # A plugin's pill in the web's selection bar (chi.annotation,
+      # docs/plugins.md): it prepares +line+ (a command line of its entry)
+      # and +template+ filled from the selection, and fills the composer
+      # with it, or sends it at once (+sends+).
+      Annotation = Data.define(:label, :line, :template, :sends) do
+        # As a listing names it ({label:, line:, template:, send:}).
+        def to_h = { label: label, line: line, template: template, send: sends }
+      end
+
       # @!attribute id [Symbol] the entry's key (:model, :rollback, …)
       # @!attribute name [String] "/model", "!rollback", …
       # @!attribute mid_turn [Symbol, #call] what a line of it does while a
@@ -28,7 +37,9 @@ module Samagotchi
       #   a built-in's with the line, and calls a bundle's with the text
       #   after the name
       # @!attribute source [String] "core", or the bundle that added it
-      Entry = Struct.new(:id, :name, :description, :mid_turn, :local, :uis, :match, :handler, :source,
+      # @!attribute annotations [Array<Annotation>] its selection-bar pills
+      #   (a bundle's command; empty for the rest)
+      Entry = Struct.new(:id, :name, :description, :mid_turn, :local, :uis, :match, :handler, :source, :annotations,
                          keyword_init: true) do
         def match?(text) = match.call(text)
 
@@ -89,14 +100,15 @@ module Samagotchi
       # @param mid_turn [Symbol, #call, nil] see Entry; nil takes +anytime+
       # @param match [#call, nil] the default matches the name alone or the
       #   name, any whitespace (a newline too) and arguments
+      # @param annotations [Array<Annotation>] see Entry
       # @return [Entry]
       def register(name, description, id: nil, anytime: false, mid_turn: nil, local: false, uis: nil, match: nil,
-                   source: "core", &handler)
+                   source: "core", annotations: [], &handler)
         raise ArgumentError, "command #{name} is already registered" if @entries.any? { |entry| entry.name == name }
 
         entry = Entry.new(id: id || name.delete_prefix("/").to_sym, name: name, description: description,
                           mid_turn: mid_turn || (anytime ? :anytime : :refuse), local: local, uis: uis, match: match || default_match(name),
-                          handler: handler, source: source)
+                          handler: handler, source: source, annotations: annotations.dup.freeze)
         @entries << entry
         entry
       end
@@ -162,11 +174,15 @@ module Samagotchi
       # What a snapshot tells a UI without an Engine (see .from_listing).
       # @return [Array<Hash>] {name:, description:, anytime:, mid_turn:,
       #   local:, uis:, source:} per entry, in registration order; anytime
-      #   is true only when every line is (mid_turn "anytime")
+      #   is true only when every line is (mid_turn "anytime"). An entry
+      #   with annotations adds annotations: [Annotation#to_h] (the web's
+      #   selection bar; other UIs ignore the key).
       def listing
         @entries.map do |entry|
-          { name: entry.name, description: entry.description, anytime: entry.anytime,
-            mid_turn: entry.mid_turn_label, local: entry.local ? true : false, uis: entry.uis&.map(&:to_s), source: entry.source }
+          item = { name: entry.name, description: entry.description, anytime: entry.anytime,
+                   mid_turn: entry.mid_turn_label, local: entry.local ? true : false, uis: entry.uis&.map(&:to_s), source: entry.source }
+          item[:annotations] = entry.annotations.map(&:to_h) if entry.annotations&.any?
+          item
         end
       end
 

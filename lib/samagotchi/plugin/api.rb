@@ -4,6 +4,7 @@ require "json"
 require_relative "../log"
 require_relative "../hooks/registry"
 require_relative "../tools/args"
+require_relative "../commands/registry"
 require_relative "service"
 require_relative "tool_result"
 
@@ -16,6 +17,8 @@ module Samagotchi
       COMMAND_NAME = %r{\A/[a-z][a-z0-9_-]{0,31}\z}
       TOOL_NAME = /\A[a-z][a-z0-9_]{0,47}\z/
       PARAM_NAME = /\A[a-z_][a-z0-9_]*\z/i
+      ANNOTATION_LABEL_MAX = 40
+      ANNOTATIONS_MAX = 5
 
       # @param bundle [String]
       # @param label [String] "<file> (bundle <name>)": what hooks and
@@ -29,6 +32,7 @@ module Samagotchi
         @context = context
         @hooks = []
         @commands = []
+        @annotations = []
         @tools = []
         @services = []
         @inits = []
@@ -60,6 +64,35 @@ module Samagotchi
         raise ArgumentError, "command #{name} is registered twice" if @commands.any? { |cmd| cmd[:name] == name }
 
         @commands << { name: name, description: description.to_s, anytime: anytime ? true : false, block: block }
+        nil
+      end
+
+      # A pill in the web's selection bar: it prepares +command+ (a command
+      # line) with +template+ filled from the selected text on the lines
+      # under it ({quote}: the labelled quote block Annotate makes, {text}:
+      # the selection alone, {source}: answer, thinking, step, tool or
+      # user), and fills the composer with it, or sends it at once with
+      # +send+ (docs/plugins.md). Web only.
+      # @param label [String] the pill's text, 1–40 characters
+      # @param command [String] "/name" or "/name words": a command this
+      #   plugin registers (checked once #register returns, so the order
+      #   doesn't matter; another's is a load error)
+      # @param template [String] what goes under the command line
+      # @param send [Boolean] send at once instead of filling the composer
+      def annotation(label, command:, template: "{quote}", send: false)
+        label = label.to_s.strip
+        unless label.length.between?(1, ANNOTATION_LABEL_MAX)
+          raise ArgumentError, "annotation label #{label.inspect} must be 1 to #{ANNOTATION_LABEL_MAX} characters"
+        end
+
+        line = command.to_s.strip
+        name = line.split(/\s/, 2).first.to_s
+        raise ArgumentError, "annotation #{label}: command #{line.inspect} must start with a /name" unless name.match?(COMMAND_NAME)
+        raise ArgumentError, "annotation #{label}: template must be a non-blank String" unless template.is_a?(String) && !template.strip.empty?
+        raise ArgumentError, "at most #{ANNOTATIONS_MAX} annotations per plugin" if @annotations.size >= ANNOTATIONS_MAX
+
+        @annotations << { name: name, annotation: Commands::Registry::Annotation.new(label: label, line: line, template: template,
+                                                                                     sends: send ? true : false) }
         nil
       end
 
@@ -215,12 +248,17 @@ module Samagotchi
         nil
       end
 
-      # Register what was staged. Called by Loader after #register.
+      # Register what was staged. Called by Loader after #register. What
+      # can only be checked now (an annotation's command) is checked before
+      # anything is registered: a raise here leaves the registries as they were.
       def commit!
+        check_annotations!
         context = @context
         @commands.each do |cmd|
           block = cmd[:block]
-          @registries.commands.register(cmd[:name], cmd[:description], anytime: cmd[:anytime], source: @bundle) do |args|
+          annotations = @annotations.select { |item| item[:name] == cmd[:name] }.map { |item| item[:annotation] }
+          @registries.commands.register(cmd[:name], cmd[:description], anytime: cmd[:anytime], source: @bundle,
+                                                                       annotations: annotations) do |args|
             block.call(args, context)
           end
         end
@@ -247,8 +285,19 @@ module Samagotchi
       end
 
       # @return [Hash] how many of each it registered (for the log)
-      def counts = { commands: @commands.size, tools: @tools.size, hooks: @hooks.size, services: @services.size,
-                     inits: @inits.size }
+      def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,
+                     services: @services.size, inits: @inits.size }
+
+      # Each annotation's command is one #command staged.
+      def check_annotations!
+        names = @commands.map { |cmd| cmd[:name] }
+        @annotations.each do |item|
+          next if names.include?(item[:name])
+
+          raise ArgumentError, "annotation #{item[:annotation].label}: #{item[:name]} is not a command this plugin registers"
+        end
+      end
+      private :check_annotations!
 
       # A checked tool declaration (#tool's arguments: Api#tool and
       # ToolSet#tool pass theirs on, so a new keyword is added here).
