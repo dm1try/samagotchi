@@ -17,7 +17,9 @@ The other direction, chi sending a part of its work to a Claude Code session
 you already work with (to validate, as context, or with a question), is the
 [claude-peer bundle](plugins.md#the-claude-peer-bundle): Claude pairs with the
 chi session, chi's `claude_send` tool or `/claude` writes to Claude's inbox,
-and Claude's answer comes back as attached context.
+and Claude's answer comes back as attached context. The
+[codex-peer bundle](plugins.md#the-codex-peer-bundle) does the same with a
+Codex CLI session (`codex_send`, `/codex`, through `codex queue`).
 
 ## The commands
 

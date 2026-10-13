@@ -126,7 +126,10 @@ pbpaste | chi context push clip --project
 A Claude Code session can be a pushed source too: the
 [claude-peer bundle](plugins.md#the-claude-peer-bundle)'s `pair` script attaches
 `claude-inbox` (Claude's inbox socket as the hint) and `claude-review`, where
-Claude pushes its answers as JSON with `wake: true`.
+Claude pushes its answers as JSON with `wake: true`. The
+[codex-peer bundle](plugins.md#the-codex-peer-bundle)'s does the same for a
+Codex session: `codex-inbox` (Codex's thread id as the hint) and
+`codex-review`.
 
 ### A stream: chat, a log, a feed
 

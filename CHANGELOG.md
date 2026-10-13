@@ -16,6 +16,11 @@ and commands may change between minor versions. How releases are made:
   the rest behind `⋯`. See docs/plugins.md, `chi.annotation`.
 - claude-peer 0.2.0: **Confirm with Claude** in the web's selection bar fills `/claude validate` with the quote;
   `/claude validate|context` titles a quote by its first quoted line, not its `From …:` label.
+- The codex-peer bundle (in the dev profile): claude-peer for an OpenAI Codex CLI session. Codex pairs (its
+  `chi-peer` skill, installed by `/codex install-skill`), the `codex_send` tool and `/codex validate|context|last`
+  send it a part of the work with `codex queue` (killed after 10 s, never a hang), and Codex's answer comes back as
+  the `codex-review` context; **Confirm with Codex** in the web's selection bar. Codex's sandbox needs chi's
+  context folder in `writable_roots` (the install card shows the line). See docs/plugins.md, "The codex-peer bundle".
 
 ### Changed
 

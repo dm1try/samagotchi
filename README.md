@@ -153,7 +153,8 @@ in a child session in its own git worktree, check each report and ask you
 before each merge; `/children` shows the children and their state. With the
 `claude-peer` bundle (in `dev`), chi sends a part of its work to a Claude Code
 session you pair it with, to validate or as context, and Claude answers back
-into chi (`/claude`).
+into chi (`/claude`); the `codex-peer` bundle (in `dev`) does the same with an
+OpenAI Codex CLI session (`/codex`).
 
 `chi send` is the other half: the text goes in as your message, the same as
 typing it in the attached terminal or the web composer, and a turn runs. Piped
