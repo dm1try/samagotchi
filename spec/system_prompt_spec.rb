@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "samagotchi/system_prompt"
+require "samagotchi/tools/registry"
 
 RSpec.describe Samagotchi::SystemPrompt do
   subject(:prompt) do
