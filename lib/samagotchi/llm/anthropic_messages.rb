@@ -30,6 +30,8 @@ module Samagotchi
 
       API_VERSION = "2023-06-01"
       DEFAULT_MODELS_TTL = 60
+      # How much of a 200's non-stream body is read as a possible JSON error.
+      PLAIN_ERROR_LIMIT = 64 * 1024
       # max_tokens when default.max_tokens is unset and the model list names
       # none (a listed one is capped by it too).
       DEFAULT_MAX_TOKENS = 64_000
@@ -76,7 +78,9 @@ module Samagotchi
         body = request_body(messages, tools, model, options)
         request = post_request("#{@base_url}/v1/messages", body, session_id: session_id)
         log_fields = { model: model, purpose: @purpose, sampling: sampling_summary(body), cache: cache_summary(body) }
-        chat_once(request, cancel_controller, log_fields)
+        return chat_once(request, cancel_controller, log_fields) unless @stream
+
+        chat_streamed(request, cancel_controller, on_delta, on_retry, log_fields)
       end
 
       # A provider on the network: no llama.cpp /props to ask for the window.
@@ -88,7 +92,7 @@ module Samagotchi
 
       # true when a streamed event (as #chat's on_delta gets it) carries
       # part of a tool call.
-      def tool_call_delta?(_payload) = false
+      def tool_call_delta?(payload) = AnthropicAssembly.tool_call_delta?(payload)
 
       # The request fields a thinking +level+ (Thinking::LEVELS) adds on this
       # wire: default nothing (the provider's own default), off
@@ -173,6 +177,63 @@ module Samagotchi
       end
 
       def message?(body) = body.is_a?(Hash) && body["content"].is_a?(Array)
+
+      # The SSE stream: each `data:` event goes through the assembly (the
+      # `event:` lines are not needed, so a gateway that drops them works);
+      # on_delta gets every event but pings, with its text and reasoning.
+      def chat_streamed(request, cancel_controller, on_delta, on_retry, log_fields)
+        assembly = AnthropicAssembly.new
+        events = 0
+        other = +""
+        plain = +""
+        # A retry streams the answer from the start again.
+        restart = lambda do |**event|
+          assembly = AnthropicAssembly.new
+          plain = +""
+          on_retry&.call(**event)
+        end
+        @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: restart,
+                                                           log_fields: log_fields) do |line, shown|
+          events += 1 if line.start_with?("data:")
+          other << line[0, 200] if !line.start_with?("data:") && other.length < 200
+          raise_plain_error(plain, line) if events.zero?
+          event = parse_line(line)
+          next unless event
+
+          content, reasoning = assembly.add(event)
+          shown.call if AnthropicAssembly.shows?(event)
+          on_delta&.call(content: content, reasoning: reasoning, payload: assembly.with_usage(event)) unless event["type"] == "ping"
+        end
+        raise ProtocolError.new("#{@host_name}: the response had no stream events: #{other}", host: @host_name) if events.zero?
+
+        assembly.response
+      end
+
+      # A 200 whose body is a plain JSON error instead of a stream: raised
+      # from inside the stream (so it is retried by its kind) once the lines
+      # so far parse as an error object (OpenAIChat's rule).
+      def raise_plain_error(plain, line)
+        return if line.empty? || line.start_with?(":") || (plain.empty? && !line.start_with?("{"))
+        return if plain.bytesize > PLAIN_ERROR_LIMIT
+
+        plain << line << "\n"
+        error = ProviderErrors.from_error_body(plain, host: @host_name)
+        raise error if error
+      end
+
+      # The parsed event of a `data:` line; nil for `event:` lines, blank
+      # lines and comments. An error event raises its ProviderError.
+      def parse_line(line)
+        error = HTTP.sse_error(line, host: @host_name)
+        raise error if error
+        return nil unless line.start_with?("data:")
+
+        data = line.delete_prefix("data:").strip
+        return nil if data.empty? || data == "[DONE]"
+
+        event = parse_json(data, "stream event")
+        event.is_a?(Hash) ? event : nil
+      end
 
       def parse_json(text, what)
         JSON.parse(text.to_s)

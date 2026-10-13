@@ -273,6 +273,159 @@ RSpec.describe Samagotchi::LLM::AnthropicMessages do
     end
   end
 
+  describe "#chat, streamed" do
+    let(:streamed) do
+      described_class.new(base_url: server.root_url, host_name: "msg", env: env, sleeper: ->(_seconds) {},
+                          retry_policy: Samagotchi::LLM::HTTP::RetryPolicy.new(max: 1, base_delay: 0.1, max_delay: 1.0))
+    end
+    let(:deltas) { [] }
+
+    def stream(name, **)
+      server.enqueue("/v1/messages", sse: fixture(name))
+      streamed.chat(messages: [{ role: "user", content: "hi" }], model: "m", options: { max_tokens: 100 },
+                    on_delta: ->(content:, reasoning:, payload:) { deltas << [content, reasoning, payload] }, **)
+    end
+
+    it "streams the text, asks for a stream, and passes every event but pings to on_delta" do
+      response = stream("text_stream.hand-written.sse")
+
+      expect(sent["stream"]).to be(true)
+      expect(response).to have_attributes(text: "Hello! How can I help you today?", reasoning: "", finish_reason: "stop",
+                                          model: "claude-opus-5-5")
+      expect(deltas.map(&:first).join).to eq(response.text)
+      expect(deltas.map { |d| d[2]["type"] }).not_to include("ping")
+      expect(response.provider_content).to eq([{ "type" => "text", "text" => "Hello! How can I help you today?" }])
+    end
+
+    it "gives the usage from message_start and message_delta, and hands it to on_delta in the OpenAI shape" do
+      response = stream("text_stream.hand-written.sse")
+
+      start = JSON.parse(fixture("text_stream.hand-written.sse")[/data: (\{"type":"message_start".*)$/, 1])
+      counts = start.dig("message", "usage")
+      prompt = counts["input_tokens"] + counts["cache_read_input_tokens"] + counts["cache_creation_input_tokens"]
+      expect(response.usage).to eq(Samagotchi::LLM::Usage.new(
+        prompt_tokens: prompt, completion_tokens: 12, source: :server,
+        cached_tokens: counts["cache_read_input_tokens"],
+        cache_write_tokens: counts["cache_creation_input_tokens"]
+      ))
+      last = deltas.map(&:last).reverse.find { |payload| payload["type"] == "message_delta" }
+      expect(last["usage"]).to eq("prompt_tokens" => prompt, "completion_tokens" => 12,
+                                  "prompt_tokens_details" => { "cached_tokens" => counts["cache_read_input_tokens"],
+                                                               "cache_write_tokens" => counts["cache_creation_input_tokens"] })
+      expect(Samagotchi::TokenUsage.from_payload(last)).to have_attributes(prompt_tokens: prompt, completion_tokens: 12)
+    end
+
+    it "assembles thinking with its signature and a tool call from input_json_delta, and marks tool-call events" do
+      response = stream("thinking_tool_use_stream.hand-written.sse")
+
+      expect(response.reasoning).to eq("The user wants the weather in Paris. I'll call get_weather.")
+      expect(deltas.map { |d| d[1] }.join).to eq(response.reasoning)
+      expect(response.tool_calls.map(&:to_h))
+        .to eq([{ id: "toolu_01ExampleWeatherParis01", name: "get_weather", arguments: { "city" => "Paris" } }])
+      expect(response.finish_reason).to eq("tool_calls")
+      thinking, call = response.provider_content
+      expect(thinking).to include("type" => "thinking", "thinking" => response.reasoning)
+      expect(thinking["signature"]).to start_with("EqQBCkYIBxgCKkBexample")
+      expect(call).to eq("type" => "tool_use", "id" => "toolu_01ExampleWeatherParis01", "name" => "get_weather",
+                         "input" => { "city" => "Paris" })
+      tool_events = deltas.map(&:last).select { |payload| streamed.tool_call_delta?(payload) }
+      expect(tool_events.map { |payload| payload["type"] }.uniq).to eq(%w[content_block_start content_block_delta])
+      expect(tool_events.size).to eq(4)
+    end
+
+    it "keeps interleaved blocks in their order: thinking, text, tool_use, thinking, tool_use" do
+      response = stream("interleaved_stream.hand-written.sse")
+
+      expect(response.provider_content.map { |block| block["type"] }).to eq(%w[thinking text tool_use thinking tool_use])
+      expect(response.text).to eq("Let me look at the files first.")
+      expect(response.reasoning).to eq("First I should check the file list.And the README too.")
+      expect(response.tool_calls.map(&:name)).to eq(%w[execute read])
+      expect(response.tool_calls.map(&:arguments)).to eq([{ "command" => "ls" }, { "path" => "README.md" }])
+    end
+
+    it "reads Splash's streams: thinking with the empty signature its start carries, then text or two calls" do
+      thinking = stream("splash_thinking_stream.sse")
+      calls = stream("splash_tool_stream.sse")
+
+      expect(thinking.provider_content.first).to include("type" => "thinking", "signature" => "")
+      expect(thinking.text).not_to be_empty
+      expect(thinking.finish_reason).to eq("stop")
+      expect(calls.tool_calls.map { |call| [call.name, call.arguments] })
+        .to eq([["get_weather", { "city" => "Paris" }], ["get_weather", { "city" => "Oslo" }]])
+    end
+
+    it "passes a malformed streamed tool name on as it came (the loop's unknown-tool path answers it)" do
+      response = stream("splash_tool_stream_bad_name.sse")
+
+      expect(response.tool_calls.map(&:name)).to eq(["get_weather\n</parameter"] * 2)
+      expect(response.tool_calls.map(&:arguments)).to eq([{ "city" => "Paris" }, { "city" => "Oslo" }])
+    end
+
+    it "takes the empty text block after a thinking cut by max_tokens as no text (finish length)" do
+      response = stream("splash_thinking_max_tokens_stream.sse")
+
+      expect(response).to have_attributes(text: "", finish_reason: "length")
+      expect(response.reasoning).not_to be_empty
+      expect(response.provider_content.map { |block| block["type"] }).to eq(%w[thinking])
+    end
+
+    it "takes a budget-capped thinking as a normal turn (finish stop, the answer after it)" do
+      response = stream("thinking_budget_capped_stream.hand-written.sse")
+
+      expect(response.finish_reason).to eq("stop")
+      expect(response.text).not_to be_empty
+      expect(response.reasoning).not_to be_empty
+    end
+
+    it "keeps Splash's omitted thinking: no text, the reasoning in the signature" do
+      response = stream("splash_omitted_thinking_stream.hand-written.sse")
+
+      thinking = response.provider_content.find { |block| block["type"] == "thinking" }
+      expect(thinking["thinking"]).to eq("")
+      expect(thinking["signature"]).not_to be_empty
+      expect(response.reasoning).to eq("")
+    end
+
+    it "ignores pings with prompt progress (not passed on, nothing shown)" do
+      response = stream("splash_ping_progress_stream.hand-written.sse")
+
+      expect(deltas.map { |d| d[2]["type"] }).not_to include("ping")
+      expect(response.text).not_to be_empty
+    end
+
+    it "raises a mid-stream error event by its type" do
+      server.default("/v1/messages", sse: fixture("stream_error.hand-written.sse"))
+
+      expect { streamed.chat(messages: [{ role: "user", content: "hi" }], model: "m", options: { max_tokens: 9 }) }
+        .to raise_error(Samagotchi::LLM::ProviderError, /overloaded/i)
+    end
+
+    it "raises a plain JSON error a 200 carries instead of a stream, and a body with no events" do
+      server.enqueue("/v1/messages", body: JSON.generate(type: "error", error: { type: "invalid_request_error",
+                                                                                 message: "bad field" }))
+      server.enqueue("/v1/messages", body: "nothing here")
+
+      expect { streamed.chat(messages: [{ role: "user", content: "hi" }], model: "m", options: { max_tokens: 9 }) }
+        .to raise_error(Samagotchi::LLM::BadRequest, /bad field/)
+      expect { streamed.chat(messages: [{ role: "user", content: "hi" }], model: "m", options: { max_tokens: 9 }) }
+        .to raise_error(Samagotchi::LLM::ProtocolError, /no stream events/)
+    end
+
+    it "retries a 429 after its retry-after header, then streams the answer" do
+      waits = []
+      adapter = described_class.new(base_url: server.root_url, host_name: "msg", env: env, sleeper: ->(s) { waits << s },
+                                    retry_policy: Samagotchi::LLM::HTTP::RetryPolicy.new(max: 1, base_delay: 0.1,
+                                                                                         max_delay: 1.0))
+      server.enqueue("/v1/messages", status: 429, json: fixture("error_429.hand-written.json"), headers: { "Retry-After" => "3" })
+      server.enqueue("/v1/messages", sse: fixture("text_stream.hand-written.sse"))
+
+      response = adapter.chat(messages: [{ role: "user", content: "hi" }], model: "m", options: { max_tokens: 9 })
+
+      expect(response.text).to eq("Hello! How can I help you today?")
+      expect(waits.sum).to eq(3.0)
+    end
+  end
+
   describe "#thinking_fields" do
     it "maps chi's levels: default nothing, off disabled, an effort adaptive + summarized at that effort" do
       expect(adapter.thinking_fields(:default)).to eq({})

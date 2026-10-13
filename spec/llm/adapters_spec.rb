@@ -14,8 +14,9 @@ RSpec.describe Samagotchi::LLM::Adapters do
   end
 
   it "maps each chat-loop api to its adapter class" do
-    expect(described_class::BY_API).to eq(openai: Samagotchi::LLM::OpenAIChat)
+    expect(described_class::BY_API).to eq(openai: Samagotchi::LLM::OpenAIChat, anthropic: Samagotchi::LLM::AnthropicMessages)
     expect(described_class.chat_api?(:openai)).to be(true)
+    expect(described_class.chat_api?("anthropic")).to be(true)
     expect(described_class.chat_api?("openai")).to be(true)
     expect(described_class.chat_api?(nil)).to be(false)
     expect(described_class.chat_api?(:raw)).to be(false)
@@ -29,6 +30,17 @@ RSpec.describe Samagotchi::LLM::Adapters do
     expect(adapter.host_name).to eq("oai")
     expect(adapter.models_ttl).to eq(5)
     expect(adapter.first_token_timeout).to eq(7)
+  end
+
+  it "builds a Messages host's adapter from its API root, key and auth" do
+    registry.entries["msg2"].api_key_env = "GW_KEY"
+    registry.entries["msg2"].auth = :bearer
+    adapter = described_class.for(registry.entries["msg2"], models_ttl: 5)
+
+    expect(adapter).to be_a(Samagotchi::LLM::AnthropicMessages)
+    expect([adapter.base_url, adapter.host_name, adapter.api_key_env]).to eq(["https://gw.example.test/llm", "msg2", "GW_KEY"])
+    expect(adapter.remote?).to be(true)
+    expect(adapter.instance_variable_get(:@http).instance_variable_get(:@api_key).scheme).to eq(:bearer)
   end
 
   it "refuses an entry whose api has no chat adapter" do
@@ -47,6 +59,7 @@ RSpec.describe Samagotchi::LLM::Adapters do
   describe "the host entry" do
     it "is a chat host when its api is one of the adapters'" do
       expect(registry.entries["oai"].chat?).to be(true)
+      expect(registry.entries["msg"].chat?).to be(true)
       expect(registry.entries["raw"].chat?).to be(false)
     end
 

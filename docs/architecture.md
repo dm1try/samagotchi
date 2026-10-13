@@ -100,7 +100,7 @@ terminal renders the events it gets over the Bridge.
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, model↔tool loop (`run_turn`). No terminal coupling. |
 | UI | `Samagotchi::TerminalUI` | REPL (Reline), rendering, REPL commands. Delegates all core work to an `Engine`. |
 | Model loops | `KernelLoop` (via `LLM::NativeBackend`), `LLM::ChatLoop` | The model↔tool loop: raw prompt or OpenAI chat API, chosen per host (see below). |
-| Adapters | `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::HTTP` | Raw-prompt servers, the OpenAI chat API, and the HTTP both share. |
+| Adapters | `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::AnthropicMessages`, `LLM::HTTP` | Raw-prompt servers, the OpenAI chat API, Anthropic's Messages API, and the HTTP they share. |
 | Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, delegate/delegate_result, ask_user_question, reminders, send_note, list_sessions, context_read, forget_outputs, plus runtime/output-guardrails. |
 | Bundles | `lib/samagotchi/memory_bundle/*`, `BundleCommand` | `chi bundle`: install/upgrade (3-way merge), build, uninstall; the install record under `.bundles/<name>/` that the hook, guardrail and plugin loaders read ([internals/bundles.md](internals/bundles.md)). |
 | Background | `Samagotchi::Worker`, `Samagotchi::SessionManager` | `SessionManager` forks/spawns one worker process per session; its `Worker` builds the `Engine` and `Bridge` (no terminal rendering) and runs queued turns. The spawned process (own process group) forks the worker, which `setsid`s and is reparented to init once its starter exits (it waits until the worker holds `owner.lock`, so the spawner's `Process.detach` waiter tells a starting worker): nothing that walks the spawner's process tree reaches it (`SAMAGOTCHI_WORKER_DETACH=1`, `detach_from_spawner`). The lock's pid is the worker's; `spawn`'s `child_pid` is its starter's. |
@@ -398,6 +398,7 @@ Engine picks the loop from the effective model's host (`HostRegistry#resolve`):
 |---|---|---|---|
 | Raw prompt | `KernelLoop`, wrapped by `LLM::NativeBackend` | no `api:`, or `llama_cpp`/`mlx`/`omlx` | `Client` (`/completion` or `/v1/completions`), chi's own Gemma/Qwen prompt and tool-call parsing |
 | Chat | `LLM::ChatLoop` | `api: openai` | `LLM::OpenAIChat` (`/v1/chat/completions`, streamed, native tool calls) |
+| Chat | `LLM::ChatLoop` | `api: anthropic` | `LLM::AnthropicMessages` (`/v1/messages`, streamed SSE, native `tool_use`) |
 
 Both return an `LLM::ModelResult` and emit the same stream events; tool calls in
 both go through `ToolRunner` (events, hooks, veto, output cap) and
@@ -452,8 +453,10 @@ text; empty text blocks are never sent). Its answer (`LLM::AnthropicAssembly`) i
 `provider_content` holds the content blocks as received, which ChatLoop can send back verbatim (thinking blocks
 need their signature and their order among text and `tool_use`). Usage is normalized to the OpenAI shape the rest
 of chi reads (the prompt is input + cache reads + cache writes), stop reasons to the loop's finish reasons
-(`max_tokens` → `length`, `tool_use` → `tool_calls`, `end_turn` → `stop`). Both adapters share their model-list
-cache (`LLM::ModelListing`).
+(`max_tokens` → `length`, `tool_use` → `tool_calls`, `end_turn` → `stop`). A stream is read by content-block index
+from the `data:` lines alone (`event:` lines are not needed); `message_start` / `message_delta` events reach
+`on_delta` with that normalized `usage`, pings not at all, and a block's start or delta counts as shown for the
+first-token limit. Both adapters share their model-list cache (`LLM::ModelListing`).
 
 **Errors.** A failed request raises an `LLM::ProviderError` of one kind:
 `ConnectionError` (`RetryExhausted`), `RateLimited` (`CreditsHeld`: a 402 about

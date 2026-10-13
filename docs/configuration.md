@@ -319,6 +319,13 @@ hosts:
 
 `auth:` works on any host (`bearer` is the default everywhere but `api: anthropic`).
 
+The loop, tools, events, hooks and UIs are the chat loop's, as for `api: openai`; only the wire differs: the
+system prompt goes as the request's `system` (later system notes as user text), tool calls as `tool_use` blocks,
+results as `tool_result` blocks, images as `image` blocks; thinking streams into the thinking lane; usage counts
+cache reads and writes into the prompt (so `/stats` shows them). Without `default.max_tokens`, `max_tokens` is the
+model list's `max_tokens` capped at 64000, else 64000 (Messages requires one). chi's OpenAI-only request fields are
+never sent there; `sampling:` passes as written.
+
 To manually verify a live chat-loop tool round trip, run the gated integration
 spec. It requires the model to call `execute` and return the current UTC date:
 

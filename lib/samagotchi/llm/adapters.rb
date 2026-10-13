@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "openai_chat"
+require_relative "anthropic_messages"
 
 module Samagotchi
   module LLM
@@ -9,7 +10,7 @@ module Samagotchi
     # (HostRegistry::HostEntry#chat?); any other api (nil, raw) the
     # raw-prompt loop.
     module Adapters
-      BY_API = { openai: OpenAIChat }.freeze
+      BY_API = { openai: OpenAIChat, anthropic: AnthropicMessages }.freeze
 
       # true when +api+ (a Symbol or String) has a chat adapter.
       def self.chat_api?(api) = !api.nil? && BY_API.key?(api.to_sym)
