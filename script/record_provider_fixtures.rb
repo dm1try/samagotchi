@@ -1,11 +1,14 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Records the OpenAI-compatible fixtures the provider specs replay
-# (spec/fixtures/providers/openai/). Run it against a live /v1, e.g. the
-# local llama.cpp:
+# Records the provider fixtures the provider specs replay
+# (spec/fixtures/providers/<api>/). Run it against a live server, e.g. the
+# local llama.cpp's OpenAI API:
 #
-#   ruby script/record_provider_fixtures.rb http://localhost:8080/v1 [model]
+#   ruby script/record_provider_fixtures.rb --api openai --url http://localhost:8080/v1 --model local-model
+#
+# --api picks the recorder and the default output dir (only openai so far);
+# --url is the API base; --model the model sent; --out another output dir.
 #
 # Streams are saved byte for byte (*.sse), plain responses as *.json with a
 # sibling *.status holding the HTTP status. Error fixtures that a local server
@@ -14,12 +17,32 @@
 
 require "json"
 require "net/http"
+require "optparse"
 require "uri"
 require "fileutils"
 
-base = (ARGV[0] || "http://localhost:8080/v1").chomp("/")
-model = ARGV[1] || "local-model"
-out_dir = File.expand_path("../spec/fixtures/providers/openai", __dir__)
+RECORDERS = %w[openai].freeze
+
+options = { api: "openai", url: nil, model: "local-model", out: nil }
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: #{File.basename(__FILE__)} --api API --url URL [--model MODEL] [--out DIR]"
+  opts.on("--api API", "the wire to record (#{RECORDERS.join(", ")}); default openai") { |value| options[:api] = value }
+  opts.on("--url URL", "the API base, e.g. http://localhost:8080/v1 (required)") { |value| options[:url] = value }
+  opts.on("--model MODEL", "the model to ask; default local-model") { |value| options[:model] = value }
+  opts.on("--out DIR", "where to write; default spec/fixtures/providers/<api>") { |value| options[:out] = value }
+end
+begin
+  rest = parser.parse(ARGV)
+rescue OptionParser::ParseError => e
+  abort("#{e.message}\n#{parser.banner}")
+end
+abort("unexpected arguments: #{rest.join(" ")} (pass the API base as --url)\n#{parser.banner}") unless rest.empty?
+abort("--url is required\n#{parser.banner}") if options[:url].to_s.empty?
+abort("no recorder for api #{options[:api]} (#{RECORDERS.join(", ")})") unless RECORDERS.include?(options[:api])
+
+base = options[:url].chomp("/")
+model = options[:model]
+out_dir = options[:out] || File.expand_path("../spec/fixtures/providers/#{options[:api]}", __dir__)
 FileUtils.mkdir_p(out_dir)
 
 EXECUTE_TOOL = {

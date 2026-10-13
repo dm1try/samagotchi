@@ -3,10 +3,10 @@
 require "json"
 require "webrick"
 
-# An in-process OpenAI-compatible server for provider specs. It replays the
-# recorded fixtures in spec/fixtures/providers/openai (or any body a spec
-# gives it) over real HTTP and records every request, so specs exercise the
-# real Net::HTTP, SSE, retry and cancel code.
+# An in-process provider server for provider specs. It replays the recorded
+# fixtures in spec/fixtures/providers/<api> (openai by default; or any body a
+# spec gives it) over real HTTP and records every request, so specs exercise
+# the real Net::HTTP, SSE, retry and cancel code.
 #
 #   server = FakeProviderServer.start
 #   server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
@@ -19,7 +19,8 @@ require "webrick"
 # response body before read_body yields, so wrap examples that use this
 # server in `FakeProviderServer.without_webmock`.
 class FakeProviderServer
-  FIXTURE_DIR = File.expand_path("../fixtures/providers/openai", __dir__)
+  # One directory per api (openai, llamacpp, ...).
+  FIXTURES_ROOT = File.expand_path("../fixtures/providers", __dir__)
 
   Request = Struct.new(:method, :path, :headers, :body, keyword_init: true) do
     def json
@@ -37,13 +38,15 @@ class FakeProviderServer
   # specs); `drop:` closes the socket mid-stream without finishing it.
   Response = Struct.new(:status, :headers, :body, :chunks, :delay, :hold, :drop, keyword_init: true)
 
-  def self.fixture(name)
-    File.binread(File.join(FIXTURE_DIR, name))
+  def self.fixture_dir(api = "openai") = File.join(FIXTURES_ROOT, api.to_s)
+
+  def self.fixture(name, api: "openai")
+    File.binread(File.join(fixture_dir(api), name))
   end
 
   # The status recorded next to a JSON fixture (e.g. error_400.status).
-  def self.fixture_status(name)
-    File.read(File.join(FIXTURE_DIR, "#{File.basename(name, ".*")}.status")).to_i
+  def self.fixture_status(name, api: "openai")
+    File.read(File.join(fixture_dir(api), "#{File.basename(name, ".*")}.status")).to_i
   end
 
   # Split an SSE body into its events ("data: …\n\n"), the unit a server

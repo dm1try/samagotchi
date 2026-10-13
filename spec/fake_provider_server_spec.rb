@@ -22,6 +22,16 @@ RSpec.describe FakeProviderServer do
     end
   end
 
+  it "reads an api's fixtures from spec/fixtures/providers/<api>, openai by default" do
+    providers = File.expand_path("fixtures/providers", __dir__)
+
+    expect(described_class.fixture("text_stream.sse")).to eq(File.binread(File.join(providers, "openai", "text_stream.sse")))
+    expect(described_class.fixture("completion_cached_stream.sse", api: "llamacpp"))
+      .to eq(File.binread(File.join(providers, "llamacpp", "completion_cached_stream.sse")))
+    expect(described_class.fixture_status("error_400.json")).to eq(400)
+    expect(described_class.fixture_dir("anthropic")).to eq(File.join(providers, "anthropic"))
+  end
+
   it "replays a recorded stream byte for byte" do
     fixture = described_class.fixture("text_stream.sse")
     server.enqueue("/v1/chat/completions", sse: fixture)
