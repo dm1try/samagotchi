@@ -250,7 +250,8 @@ module Samagotchi
     # post-turn conversation.
     # @return [Symbol, nil] :turn_failed when lines came from a pipe and a
     #   turn failed, :empty_answer when a -p --non-interactive turn ended
-    #   with no answer (bin/chi exits 1 on both), :interrupted when Ctrl-C
+    #   with no answer, :iteration_limit when the iteration limit cut that
+    #   turn short (bin/chi exits 1 on all three), :interrupted when Ctrl-C
     #   cancelled that turn (bin/chi exits 130)
     def run
       # --non-interactive with no --prompt is a harmless no-op exit: build
@@ -310,12 +311,13 @@ module Samagotchi
         # Retry lines and hook notices on stderr; stdout gets the answer below.
         sink = OneShotSink.new
         save_before_first_turn(session)
+        max_iterations = IterationLimit.for(no_interrupt: true)
         begin
           result = @engine.run_turn(
             session,
             one_shot_prompt,
             on_event: sink,
-            max_iterations: IterationLimit.for(no_interrupt: true),
+            max_iterations: max_iterations,
             cancel_controller: nil,
             images: ImageInput.extract(one_shot_prompt)
           )
@@ -338,6 +340,11 @@ module Samagotchi
         session.save
         # The after_turn hooks' notices, after the answer as the REPL shows them.
         sink.flush
+        # The limit cut the turn short: what came so far is no answer, so say
+        # so and fail (bin/chi exits 1), as the REPL's "iteration limit
+        # reached" line does there.
+        return one_shot_exhausted(session, max_iterations) if result.resumable?
+
         return
       end
 
@@ -389,6 +396,16 @@ module Samagotchi
         warn "chi: the session is kept with your prompt; continue it with: chi --resume #{session.id}"
       end
       :turn_failed
+    end
+
+    # A -p --non-interactive turn the iteration limit cut short: a line on
+    # stderr, with how to go on unless the session goes with this run.
+    # @return [Symbol] :iteration_limit
+    def one_shot_exhausted(session, max_iterations)
+      line = "chi: the iteration limit (#{max_iterations}) was reached before the turn finished"
+      line += "; continue it with: chi --resume #{session.id}" unless @scratch
+      warn line
+      :iteration_limit
     end
 
     # `chi -p "/models" --non-interactive`: the command's output; a refused

@@ -250,7 +250,10 @@ Notes:
   retry lines and hooks' notices as they come, the after_turn hooks' ones
   (source-links' `sources:`) after the answer; and the error of a failed turn,
   then `chi: the session is kept with your prompt; continue it with: chi
-  --resume ID` (exit 1). Ctrl-C saves the session with the prompt and a
+  --resume ID` (exit 1). A turn the iteration limit (`turn.max_iterations`)
+  cut short prints what the model wrote so far, then `chi: the iteration limit
+  (N) was reached before the turn finished; continue it with: chi --resume ID`
+  on stderr (exit 1). Ctrl-C saves the session with the prompt and a
   cancel note and exits 130.
   Nobody can answer there: an approval is denied, and a question the model
   asks (`ask_user_question`) is dismissed at once (one line on stderr), never

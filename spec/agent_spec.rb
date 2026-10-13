@@ -603,6 +603,24 @@ file2.rb")
       expect(ended).to eq(:empty_answer)
     end
 
+    # The iteration limit hit (the turn is resumable, not finished): what the
+    # model wrote so far on stdout, then a line on stderr naming the limit
+    # and how to go on, and :iteration_limit for bin/chi to exit 1 on, so a
+    # script doesn't take the partial text for the answer.
+    it "says so on stderr and returns :iteration_limit when the -p --non-interactive turn hits the iteration limit" do
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
+      exhausted = Samagotchi::LLM::ModelResult.new(text: "so far", conversation: [], exhausted: true, pending_tool_calls: true,
+                                                   tool_activity: [], canceled: false)
+      allow(agent.engine).to receive(:run_turn).and_return(exhausted)
+      allow(Samagotchi::IterationLimit).to receive(:for).and_return(500)
+
+      ended = nil
+      expect do
+        expect { ended = agent.run }.to output("so far\n").to_stdout
+      end.to output(/chi: the iteration limit \(500\) was reached before the turn finished; continue it with: chi --resume \S+\n\z/).to_stderr
+      expect(ended).to eq(:iteration_limit)
+    end
+
     # As typed at the prompt: a session command runs as the command.
     it "runs a -p session command as the command with --non-interactive: its output, no turn" do
       expect(client).not_to receive(:complete)
