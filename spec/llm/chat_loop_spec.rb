@@ -85,6 +85,15 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
   end
 
   describe "thinking level" do
+    it "takes the level's fields from the adapter (its wire's shape)" do
+      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: :high)
+      allow(adapter).to receive(:thinking_fields).with(:high).and_return({ wire_thinking: "deep" })
+
+      run
+
+      expect(adapter.requests.last[:options]).to eq(wire_thinking: "deep")
+    end
+
     def options_for(thinking, sampling = {})
       fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: thinking, sampling: sampling)
       run

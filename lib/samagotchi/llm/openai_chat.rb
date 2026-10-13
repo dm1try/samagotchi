@@ -4,6 +4,7 @@ require "json"
 require "uri"
 require_relative "../config"
 require_relative "../sampling_settings"
+require_relative "../thinking"
 require_relative "errors"
 require_relative "http"
 require_relative "prompt_cache"
@@ -216,6 +217,11 @@ module Samagotchi
       # true when a streamed chunk's +payload+ (as #chat's on_delta gets it)
       # carries part of a tool call (ChatLoop marks the chunk's event).
       def tool_call_delta?(payload) = Assembly.tool_call_delta?(payload)
+
+      # The request fields a thinking +level+ (Thinking::LEVELS) adds on
+      # this wire: Thinking.chat_fields's OpenAI-style switches.
+      # @return [Hash] frozen
+      def thinking_fields(level) = Thinking.chat_fields(level)
 
       # @return [Array<ModelInfo>] the host's models (every page)
       def list_models

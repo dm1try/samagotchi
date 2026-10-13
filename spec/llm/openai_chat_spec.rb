@@ -29,6 +29,15 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
     server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture(fixture))
   end
 
+  describe "#thinking_fields" do
+    it "gives a thinking level's request fields, Thinking.chat_fields's" do
+      %i[off low medium high default].each do |level|
+        expect(adapter.thinking_fields(level)).to eq(Samagotchi::Thinking.chat_fields(level))
+      end
+      expect(adapter.thinking_fields(:off)).to eq(chat_template_kwargs: { enable_thinking: false }, reasoning_effort: "none")
+    end
+  end
+
   describe "#image_input" do
     it "reads OpenRouter's input_modalities and llama.cpp's multimodal capability" do
       server.default("/v1/models", json: { data: [

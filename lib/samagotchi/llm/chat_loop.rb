@@ -252,12 +252,13 @@ module Samagotchi
       # The turn's thinking level (the kernel's turn_settings).
       def thinking = @kernel.turn_settings.thinking || Thinking::DEFAULT
 
-      # The request fields the thinking level adds (Thinking.chat_fields);
-      # none for a model whose host refused them (#thinking_refused!).
+      # The request fields the thinking level adds, as the adapter's wire
+      # takes them (OpenAIChat#thinking_fields: Thinking.chat_fields); none
+      # for a model whose host refused them (#thinking_refused!).
       def thinking_fields(model = nil)
         return {} if model && (@thinking_refused ||= Set.new).include?(model)
 
-        Thinking.chat_fields(thinking)
+        adapter.thinking_fields(thinking)
       end
 
       # The host refused +model+'s thinking fields: leave them out from now on.

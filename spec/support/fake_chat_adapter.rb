@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/llm/openai_chat"
+require "samagotchi/thinking"
 
 # Stands in for LLM::OpenAIChat in chat-loop specs: answers #chat with queued
 # steps (a ChatResponse, an exception to raise, or a proc called with
@@ -34,6 +35,9 @@ class FakeChatAdapter
 
   # Its one delta per step carries no tool call (OpenAIChat#tool_call_delta?).
   def tool_call_delta?(_payload) = false
+
+  # The OpenAI wire's thinking fields, as OpenAIChat#thinking_fields.
+  def thinking_fields(level) = Samagotchi::Thinking.chat_fields(level)
 
   def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {},
            session_id: nil)

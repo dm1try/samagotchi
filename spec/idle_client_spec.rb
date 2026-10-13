@@ -246,6 +246,16 @@ RSpec.describe Samagotchi::IdleClient do
   end
 
   describe "#ask" do
+    it "asks its adapter for the thinking-off fields" do
+      allow_any_instance_of(Samagotchi::LLM::OpenAIChat).to receive(:thinking_fields).with(:off)
+                                                                                     .and_return({ wire_off: true })
+      reply(content: "ok")
+      client.ask([{ role: "user", content: "q?" }])
+
+      expect(request_body).to include("wire_off" => true)
+      expect(request_body).not_to have_key("reasoning_effort")
+    end
+
     it "sends the messages as given with the limit, no tools and thinking off" do
       reply(content: " The answer. ")
       answer = client.ask([{ role: "system", content: "brief" }, { role: "user", content: "q?" }], max_tokens: 300)

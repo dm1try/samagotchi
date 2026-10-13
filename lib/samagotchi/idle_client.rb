@@ -2,7 +2,6 @@
 
 require "json"
 require_relative "llm/openai_chat"
-require_relative "thinking"
 require_relative "log"
 
 module Samagotchi
@@ -182,7 +181,7 @@ module Samagotchi
     # the model's level (a reasoning model otherwise spends the budget
     # thinking and the recap stops mid-sentence). None once the host refused them.
     def thinking_fields
-      @thinking_refused ? {} : Thinking.chat_fields(:off)
+      @thinking_refused ? {} : @chat.thinking_fields(:off)
     end
   end
 end
