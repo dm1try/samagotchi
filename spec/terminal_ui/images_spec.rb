@@ -185,6 +185,23 @@ RSpec.describe "TerminalUI images" do
       end
     end
 
+    # The worker reads the refs under its own state dir: the one this TUI
+    # found it in, not the default one.
+    it "stores @path images under the worker's state dir" do
+      allow(client).to receive(:post_turn).and_return(ack)
+      Dir.mktmpdir("attach-state") do |state_dir|
+        first = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "what is @#{png}",
+                                    state_dir: state_dir)
+
+        run_with([], loop: first)
+
+        expect(client).to have_received(:post_turn) do |images:, **|
+          dir = Samagotchi::Session.session_dir("s-images", state_dir: state_dir)
+          expect(File.binread(File.join(dir, images.first[:file]))).to eq(File.binread(png))
+        end
+      end
+    end
+
     it "says why when an image can't be attached, and sends nothing" do
       allow(client).to receive(:post_turn)
       allow(Samagotchi::ImageStore).to receive(:ingest).and_raise(Samagotchi::ImageStore::Error, "tiny.png is too large")

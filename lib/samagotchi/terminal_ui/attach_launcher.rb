@@ -46,12 +46,15 @@ module Samagotchi
       # @param thinking [String, nil] --thinking as typed: a new session
       #   starts with it as its own level; a resumed or attached one's
       #   worker gets a /thinking, after those
+      # @param state_dir [String, nil] where the sessions are (the default
+      #   state dir by default): the worker's, for the attached loop too
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
-              memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [])
-        client = connect(attach: attach, shared: shared, resume: resume, model: model,
+              memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], state_dir: nil)
+        state_dir ||= Session.default_state_dir
+        client = connect(attach: attach, shared: shared, resume: resume, model: model, state_dir: state_dir,
                          memories: memories, muted_memories: muted_memories, llm_context: llm_context, thinking: thinking,
                          appended_prompt_files: appended_prompt_files)
         commands = []
@@ -65,7 +68,7 @@ module Samagotchi
                                     first_command: first_command, no_interrupt: no_interrupt,
                                     default_input: default_input && !prompt && !attach && !resume,
                                     wait_at_eof: !$stdin.tty?,
-                                    parent_answers: Guardrails::ParentApprovals.parent_process?)
+                                    parent_answers: Guardrails::ParentApprovals.parent_process?, state_dir: state_dir)
         ended = begin
           attached.run
         ensure

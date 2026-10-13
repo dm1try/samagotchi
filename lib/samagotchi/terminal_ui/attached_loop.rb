@@ -100,14 +100,18 @@ module Samagotchi
       #   (the -p one too) have had their turns; if one failed, #run says so
       # @param children_counts [#call] session id -> its delegates'
       #   ChildrenStatus::Counts, the status row's children segment
+      # @param state_dir [String] the state dir the worker was found in: its
+      #   session folder (@path images, saved records) is under it
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, wait_at_eof: false, parent_answers: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) },
                      installed_version: -> { InstalledVersions.new.newest },
-                     children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: Session.default_state_dir) })
+                     state_dir: Session.default_state_dir,
+                     children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: state_dir) })
         @client = client
+        @state_dir = state_dir
         @installed_version = installed_version
         @delete_session = delete_session
         @archive_session = archive_session
@@ -342,7 +346,7 @@ module Samagotchi
         id = @client.session_id
         return :gone if Session.stopped_marker?(id)
 
-        BridgeClient.discover(id, session_dir: Session.session_dir(id), host: @client.host)
+        BridgeClient.discover(id, session_dir: Session.session_dir(id, state_dir: @state_dir), host: @client.host)
       end
 
       # The stream moved to a new worker (a restart): requests go there too.
@@ -806,7 +810,7 @@ module Samagotchi
         paths = ImageInput.extract(text)
         return [] if paths.empty?
 
-        session_dir = Session.session_dir(@client.session_id)
+        session_dir = Session.session_dir(@client.session_id, state_dir: @state_dir)
         paths.map do |image|
           ref = ImageStore.ingest(session_dir, path: image[:path])
           { file: ref[:file], name: ref[:name] }
@@ -1257,7 +1261,7 @@ module Samagotchi
       # machine's state dir, as #attach_images): none for a prompt with no
       # turn id (an older session) or a session with no analytics.
       def join_tool_records(prompt)
-        SessionMetrics.saved_tool_records(Session.session_dir(@client.session_id), prompt[:turn_id] || prompt["turn_id"])
+        SessionMetrics.saved_tool_records(Session.session_dir(@client.session_id, state_dir: @state_dir), prompt[:turn_id] || prompt["turn_id"])
       rescue Session::InvalidId
         []
       end
@@ -1267,7 +1271,7 @@ module Samagotchi
       # canceled or older turn — or one saved before the failure field —
       # draws its answer as before.
       def join_failed_record(prompt)
-        record = SessionMetrics.saved_turn_record(Session.session_dir(@client.session_id),
+        record = SessionMetrics.saved_turn_record(Session.session_dir(@client.session_id, state_dir: @state_dir),
                                                   prompt[:turn_id] || prompt["turn_id"])
         return nil unless record && record["status"] == "failed" && record["failure"].is_a?(Hash)
 
