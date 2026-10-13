@@ -456,7 +456,7 @@ stream events (server counts, else a chars/4 estimate). Model lists are `LLM::Mo
 server (`/props`), then the host's model list, then config.
 
 **Keys.** A host's API key comes only from the environment variable its
-`api_key_env:` names; it never reaches config.yml, `HOSTS_JSON`, `chi self`,
+`api_key_env:` names; it never reaches config.yml, `SAMAGOTCHI_HOSTS_JSON`, `chi self`,
 logs or events.
 
 ## Other components

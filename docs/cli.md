@@ -844,7 +844,7 @@ Notes:
 - Without `--default` the command is session-scoped and does not rewrite config files.
 - With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately. Bare aliases and `host:model` are both valid.
 - `--default` and `--alias` change only their one key's line in `config.yml` (`default.model`, or the alias under `model_aliases:`): comments and the rest of the file stay as written, a symlinked file is written through and keeps its mode. When the edited text wouldn't read back as the expected settings (a flow-style section, anchors), chi writes the whole file out from the parsed data instead, which drops its comments.
-- Worker sessions inherit `hosts:` via `SAMAGOTCHI_HOSTS_JSON`.
+- A worker reads `hosts:` from config.yml when it starts (not from the chi that started it).
 - The idle recap uses the session's current model (a switch counts from the next recap), unless `recap: {host_ref, model}` pins one.
 
 ## Session recap

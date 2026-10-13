@@ -106,7 +106,10 @@ Behavior:
   at its start until it is stopped; the web's model picker lists a `hosts:`
   edit at once). A worker gets the CLI flags of the chi that started it
   through its environment.
-- Workers inherit hosts via `SAMAGOTCHI_HOSTS_JSON` propagated through `SessionManager.spawn_options`.
+- A worker reads `hosts:` from the file as it starts, as every other setting, so a delegate (or any session
+  started later) sees a host added after its parent started. `SAMAGOTCHI_HOSTS_JSON` (a JSON object in the shape
+  of `hosts:`) replaces the file's `hosts:` for the process it is set on, the way specs use it; no worker inherits
+  it (`SessionManager.spawn_options` unsets it).
 
 This lets you run `chi` without repeating common defaults such as model
 and llama host/port on every invocation.
@@ -372,7 +375,7 @@ system prompt stays the same; a server that swaps models between turns goes unno
 `server (chat_template)`, `name`, `default`); `chi self` shows what config says without asking the server. A chat
 host (`api: openai`) formats nothing itself: its profile comes from the name and only strips thought tags.
 
-Workers get `hosts:` (with `profile:`) through `SAMAGOTCHI_HOSTS_JSON` and read `models:` from the same config file.
+Workers read `hosts:` (with `profile:`) and `models:` from the config file.
 `--profile` reaches the worker a chi starts, but a worker that another process wakes later (`chi web`, `--attach`
 after an idle exit) gets that process's environment, so put a lasting choice in config.
 
@@ -416,8 +419,8 @@ models:
 
 `/model` shows what applies (`sampling: temperature=0.6 presence_penalty=1.5 (hosts.work)`), and each request's
 `stream` line in the debug log carries a `sampling=` field with what was sent. The fields are read every turn, so a
-`/model` switch takes the new model's. A worker gets `hosts:` (with `sampling:`) when it starts, through
-`SAMAGOTCHI_HOSTS_JSON`, and reads `models:` from the config file each turn: after changing a host's `sampling:`,
+`/model` switch takes the new model's. A worker reads `hosts:` (with `sampling:`) from the config file when it
+starts, and `models:` each turn: after changing a host's `sampling:`,
 stop the session's worker (`chi sessions stop`) for it to take effect.
 
 ## Prices

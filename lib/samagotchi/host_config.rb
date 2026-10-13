@@ -9,9 +9,9 @@ require_relative "reasoning_history"
 module Samagotchi
   # One config.yml hosts: entry, parsed and checked (ConfigFile.hosts_config
   # holds them by lowercased name; HostRegistry builds its HostEntry from
-  # one). A worker gets its parent's hosts back through
-  # SAMAGOTCHI_HOSTS_JSON: #to_env_h writes every field, and .parse reads
-  # it back to an equal HostConfig.
+  # one). #to_env_h writes every field in the shape of the
+  # SAMAGOTCHI_HOSTS_JSON override (ConfigFile.hosts_json_for_env), and
+  # .parse reads it back to an equal HostConfig.
   #
   # name: the lowercased entry name; host, port, scheme: where it is (from
   # url: when given); url: the configured url, nil when host/port; transport,
@@ -26,7 +26,7 @@ module Samagotchi
       super(**members.to_h { |m| [m, nil] }, models: {}, **fields)
     end
 
-    # A hosts: entry as written (YAML, or a worker's SAMAGOTCHI_HOSTS_JSON),
+    # A hosts: entry as written (YAML, or a SAMAGOTCHI_HOSTS_JSON override),
     # or nil when it is disabled (enabled: false) or invalid. An invalid
     # one warns once, naming the entry, the way each reader of a setting
     # does for a bad value (that value is then unset).
@@ -160,10 +160,10 @@ module Samagotchi
     end
     private_class_method :invalid
 
-    # The entry as a worker's SAMAGOTCHI_HOSTS_JSON carries it (string keys,
+    # The entry as a SAMAGOTCHI_HOSTS_JSON override carries it (string keys,
     # unset fields left out); .parse(name, to_env_h) gives it back. A url
     # entry travels as its url (host/port come from it); the API key stays
-    # in the environment, which workers inherit.
+    # in the environment.
     # @return [Hash{String => Object}]
     def to_env_h
       location = url ? { "url" => url } : { "host" => host, "port" => port }

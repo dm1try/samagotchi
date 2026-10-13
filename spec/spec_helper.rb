@@ -28,8 +28,7 @@ require_relative "support/integration_server"
 
 # Start from none of the developer's SAMAGOTCHI_* settings: a shell may point
 # the debug log somewhere, and a suite run by chi's own execute tool inherits
-# the worker's environment (SAMAGOTCHI_HOSTS_JSON with the real hosts, the
-# spawner's CLI flags such as SAMAGOTCHI_GUARDRAILS_ENABLED=false). Specs set
+# the worker's environment (the spawner's CLI flags such as SAMAGOTCHI_GUARDRAILS_ENABLED=false). Specs set
 # what they need, :integration examples included. The suite's own switches stay.
 # That includes a worker's SAMAGOTCHI_WORKER_PROCESS / SAMAGOTCHI_WORKER_DETACH
 # (run_session_loop deletes them as it reads them; this is the second guard):

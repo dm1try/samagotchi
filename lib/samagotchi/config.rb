@@ -857,7 +857,7 @@ module Samagotchi
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
     ENV_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
-    # config.yml's hosts: (or a worker's SAMAGOTCHI_HOSTS_JSON) by lowercased
+    # config.yml's hosts: (or a SAMAGOTCHI_HOSTS_JSON override) by lowercased
     # name; an entry that is disabled or invalid (warned) is left out. No
     # entry left: "default", from server.host/port/transport.
     # @return [Hash{String => HostConfig}]
@@ -914,7 +914,7 @@ module Samagotchi
 
     # The names (lowercased) of the hosts entries with enabled: false, which
     # hosts_config leaves out. Read from the same source: config.yml's
-    # hosts:, or SAMAGOTCHI_HOSTS_JSON in a worker.
+    # hosts:, or a SAMAGOTCHI_HOSTS_JSON override.
     # @return [Array<String>]
     def disabled_host_names(env: ENV, path: global_path(env: env))
       raw = hosts_source(read_yaml(env: env, path: path), env)
@@ -926,7 +926,8 @@ module Samagotchi
     end
 
     # config.yml's hosts: as written, or the SAMAGOTCHI_HOSTS_JSON override
-    # a worker inherits from its parent.
+    # set on this process (specs; SessionManager.spawn_options unsets it for
+    # a worker, which reads the file).
     def hosts_source(data, env)
       raw = data[HOSTS_KEY] if data.is_a?(Hash)
       env_json = env["SAMAGOTCHI_HOSTS_JSON"].to_s.strip
@@ -1041,6 +1042,8 @@ module Samagotchi
       hosts.keys.map { |k| k.to_s.downcase }.include?(prefix) ? nil : prefix
     end
 
+    # hosts_config as a SAMAGOTCHI_HOSTS_JSON override (workers no longer
+    # get one: they read config.yml).
     def hosts_json_for_env(env: ENV, path: global_path(env: env))
       hosts = hosts_config(env: env, path: path)
       # Only serialize if non-default or explicitly configured hosts:

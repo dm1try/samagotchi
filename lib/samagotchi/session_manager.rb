@@ -205,8 +205,9 @@ module Samagotchi
     # child inherits this process's ENV and reads config.yml itself (as it
     # is when the worker starts); opts[:env] adds to it (merged, not
     # replaced) what it can't read there: this `chi`'s CLI settings
-    # (Config.cli_env), the hosts and the absolute log file. It unsets
-    # SAMAGOTCHI_GUARDRAILS_* and the session markers (SESSION_MARKER_ENV).
+    # (Config.cli_env) and the absolute log file. It unsets
+    # SAMAGOTCHI_GUARDRAILS_*, the session markers (SESSION_MARKER_ENV) and
+    # SAMAGOTCHI_HOSTS_JSON (HOSTS_JSON_ENV).
     # XDG_CONFIG_HOME passes: whoever starts or
     # wakes the worker picks which config.yml it reads (docs/guardrails.md).
     private_class_method def self.spawn_options(session)
@@ -223,14 +224,12 @@ module Samagotchi
         Log.warn(:worker, "cwd_gone", sid: session.id, dir: dir, cwd: Dir.pwd)
       end
       child_env = {}
-      # Propagate hosts config for multi-host routing
-      begin
-        require_relative "config"
-        hosts_json = ConfigFile.hosts_json_for_env
-        child_env["SAMAGOTCHI_HOSTS_JSON"] = hosts_json if hosts_json && !hosts_json.strip.empty?
-      rescue StandardError
-        nil
-      end
+      # The worker reads config.yml's hosts: as it starts, like every other
+      # setting: a host added or changed after this process (a parent
+      # worker, `chi web`) started reaches it. Unset, not just left out: a
+      # worker an older chi started still has one, and its delegates would
+      # inherit its start-time hosts.
+      child_env[HOSTS_JSON_ENV] = nil
       # A worker gets no CLI args: --model, --thinking, --log-level and the
       # other flags this chi was started with.
       child_env.merge!(Config.cli_env)
@@ -713,6 +712,10 @@ module Samagotchi
       end
       wait_for_owner_release(session_id, timeout: wait, state_dir: sd) if wait
     end
+
+    # ConfigFile.hosts_config's override of config.yml's hosts:, which no
+    # spawned worker inherits (spawn_options).
+    HOSTS_JSON_ENV = "SAMAGOTCHI_HOSTS_JSON"
 
     STOP_CANCEL_WAIT = 3.0
     # The cancel reason of a turn a session stop cancels (Bridge::CANCEL_REASONS):

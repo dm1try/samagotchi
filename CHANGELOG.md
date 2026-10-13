@@ -28,6 +28,9 @@ and commands may change between minor versions. How releases are made:
   with its own reason, `session_stopped`, instead of the user's Stop: the turn's line reads "canceled (session
   stopped)", a command it was running "stopped as the session was stopped", and `chi send --wait --format json`
   reports `cancel_reason: session_stopped`.
+- A delegate (and any worker a session's own commands start, such as `chi send --new`) reads `hosts:` from config.yml
+  as it starts, so it sees a host added or changed after its parent's worker started; before, it got the parent's
+  start-time hosts through `SAMAGOTCHI_HOSTS_JSON`, which workers no longer inherit.
 - Web: a step that only called plugin tools with a verb label is titled by the label ("echoing"), not "working
   with echoing"; among other tools such a call is named by its tool ("working with read, echo").
 - Web: a send from a stale tab into a session deleted meanwhile goes back to the start page with a "was not

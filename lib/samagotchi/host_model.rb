@@ -104,8 +104,8 @@ module Samagotchi
       end
     end
 
-    # The entry as written back to config (SAMAGOTCHI_HOSTS_JSON for
-    # workers): nil for a bare id.
+    # The entry as written back to config (HostConfig#to_env_h): nil for a
+    # bare id.
     def to_config
       config = { "price" => price&.to_config, "served" => served }.compact
       config unless config.empty?
