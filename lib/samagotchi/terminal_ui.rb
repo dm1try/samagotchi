@@ -187,7 +187,6 @@ module Samagotchi
         memories: @requested_memories,
         muted_memories: @muted_memory_names,
         appended_prompt_files: @appended_prompt_files,
-        recap: scratch ? nil : recap_config,
         scratch: scratch,
         reminders: {
           callback: lambda { |due_names|
@@ -1386,14 +1385,6 @@ module Samagotchi
       @status_row.update(children: ChildrenStatus.counts(id, state_dir: @engine.peer_state_dir || Session.default_state_dir))
     rescue StandardError => e
       Log.debug(:repl, "children_counts_failed", error: e.class.name)
-    end
-
-    # Resolve the recap config (on by default). Returns false when explicitly
-    # disabled, nil when nothing is configured, or a Hash when enabled so the
-    # Engine can build the detector. Single precedence path via the Config
-    # registry: CLI > ENV (SAMAGOTCHI_RECAP_*) > file (recap:) > default.
-    def recap_config
-      ConfigFile.recap_config
     end
 
     # Reset the Engine's shared inactivity clock when a prompt opens (a

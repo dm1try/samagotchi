@@ -31,12 +31,12 @@ module Samagotchi
     # @return [IdleRecap, nil]
     def self.build(recap, engine:, host_registry:, session_target:, session_id:, state_dir:)
       return nil if recap == false
-      # The TUI passes the config file's section; a worker passes nothing, so
-      # read it here too (a scalar `recap: false` is only seen this way).
+      # The REPL and a worker pass nothing: the config is read here alone
+      # (a scalar `recap: false` is only seen this way).
       return nil if recap.nil? && ConfigFile.recap_config == false
       return nil if Samagotchi::Config.get("recap.enabled") == false
 
-      # Normalize kwarg (TerminalUI passes recap: recap_config hash or nil)
+      # An explicit kwarg (a spec, an embedder) over the registry.
       kwarg_config = recap.is_a?(Hash) ? recap : {}
 
       base_url = string_config(kwarg_config, :base_url) || registry_string("recap.base_url")

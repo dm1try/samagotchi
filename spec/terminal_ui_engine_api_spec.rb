@@ -32,6 +32,20 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
     end
   end
 
+  # One reader for the recap settings, as for a worker's Engine: the TUI
+  # passes no recap: of its own, RecapSetup resolves the config.
+  describe "recap settings", :recap do
+    it "are read by RecapSetup alone, from a configured recap: section too" do
+      with_env("SAMAGOTCHI_RECAP_MODEL" => "alpha:small") do
+        expect(Samagotchi::RecapSetup).to receive(:build).with(nil, any_args).and_call_original
+
+        ui = Samagotchi::TerminalUI.new(host_registry: registry)
+
+        expect(ui.engine.recap.target).to have_attributes(model: "small")
+      end
+    end
+  end
+
   describe "a default.model whose host isn't configured" do
     before { ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "nosuch:org/model" }
 
