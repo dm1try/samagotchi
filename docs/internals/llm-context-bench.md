@@ -75,9 +75,9 @@ The proxies are the context-edit spike's (lexical and lenient: a basename mentio
   stale's stubs, every output led by its `[#tN]` id (`LLMContextView`), the `[CONTEXT: …]` line chi's `ContextStatus`
   adds at a turn's start under `--budget N` (default 64000; no line below its guided buckets, so a small case may get
   none), and the chat messages and tools of chi's `ChatLoop`, `forget_outputs` with its real description. The model
-  (`--forget-model MODEL`, a chi model ref on an `api: openai` host) answers once; a `forget_outputs` call among its
-  calls runs through chi's `LLMContextForget` (refusals, `protect_steps`, `keep`), and the row scores stale's stubs
-  plus the forgets. Each answer is saved in `--out DIR` (`<case>.forget_offer.json`) and read back, so a rerun asks
+  (`--forget-model MODEL`, a chi model ref on a chat host: `api: openai` or `api: anthropic`) answers once; a
+  `forget_outputs` call among its calls runs through chi's `LLMContextForget` (refusals, `protect_steps`, `keep`),
+  and the row scores stale's stubs plus the forgets. Each answer is saved in `--out DIR` (`<case>.forget_offer.json`) and read back, so a rerun asks
   only for the rest (an error isn't saved); `--out` alone scores saved answers; `--max-cost USD` stops the asking
   once the costs the server reports reach it (exit 1, the answers so far kept). The row's notes give the call rate
   (`called`, `no_call`, `error`, `unasked`), the ids chi refused and the notes' mean length. Ids in this row cost
@@ -96,7 +96,8 @@ ruby script/llm_context_bench.rb "$SESSIONS" --picks deepseek=picks/deepseek --p
 ## Live picks (the D7 tool-name A/B)
 
 The one part that calls a model, and only with `--live MODEL`: at each case it asks the model which of its tool
-outputs to forget, through chi's own chat client (the model must be on an `api: openai` host), and saves each
+outputs to forget, through chi's own chat client (the model must be on a chat host, `api: openai` or `api: anthropic`:
+`LivePick.chat_adapter` takes any `HostEntry#chat?` host), and saves each
 answer under `--out DIR` for `--picks` to score. A saved pick is never asked for again. The request is the
 session's conversation up to the turn's end (thinking dropped, every tool result led by its id `[#tN]`), chi's
 built-in chat tools plus the forget tool, and the policy's tail line; a model that doesn't call the tool is asked
