@@ -1103,20 +1103,34 @@ module Samagotchi
     end
 
     # Check again with the event log held, which the Bridge holds while it
-    # queues a POST /turn, then close the Bridge so no client can queue one
-    # after the check, and stop the idle jobs (reminder callback, recap).
+    # queues a POST /turn, then close the Bridge's intake so no client can
+    # queue one after the check, and stop the idle jobs (reminder callback,
+    # recap). The Bridge stops after the log is let go (#stop_bridge_after).
     # A client connecting from here on finds no worker: `chi --attach` fails
     # and the web stream answers 503 (a small window, left as is).
     # @return [Boolean] false when something came in since #due?
     def leave_idle
-      @engine.synchronize_events do
-        next false unless @idle_exit.due?
+      stop_bridge_after do
+        @engine.synchronize_events do
+          next false unless @idle_exit.due?
 
-        @bridge&.stop
-        @engine.stop_idle
-        log_idle_exit
-        true
+          @bridge&.close_intake
+          @engine.stop_idle
+          log_idle_exit
+          true
+        end
       end
+    end
+
+    # The Bridge stops once the block (which closed its intake with the
+    # event log held) answers true, outside the log: Bridge#stop waits for
+    # the requests it is answering, and one waiting on the log would hold
+    # it for the whole grace before being killed.
+    # @return [Boolean] what the block answered
+    def stop_bridge_after
+      leaving = yield
+      @bridge&.stop if leaving
+      leaving
     end
 
     # Bridge POST /exit, on a Bridge thread with the event log held.
@@ -1140,29 +1154,31 @@ module Samagotchi
     end
 
     # #leave_idle for an exit a client asked for: check again with the event
-    # log held (a prompt may have come in since), then close the Bridge and
-    # stop the idle jobs. Other clients' streams no longer hold: the asker's
+    # log held (a prompt may have come in since), then close the Bridge's
+    # intake and stop the idle jobs (the Bridge stops after the log). Other clients' streams no longer hold: the asker's
     # may not have closed yet, and a UI joining now finds the worker gone
     # (:stream_closed), the window #leave_idle has too.
     # @return [Boolean] false when something came in since the request
     def leave_on_request
-      @engine.synchronize_events do
-        hold = if @exit_restart
-                 @idle_exit.hold_for_restart
-               else
-                 @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
-               end
-        if hold
-          @exit_requested = nil
-          @exit_restart = false
-          Log.info(:worker, "exit_held", reason: hold)
-          next false
-        end
+      stop_bridge_after do
+        @engine.synchronize_events do
+          hold = if @exit_restart
+                   @idle_exit.hold_for_restart
+                 else
+                   @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
+                 end
+          if hold
+            @exit_requested = nil
+            @exit_restart = false
+            Log.info(:worker, "exit_held", reason: hold)
+            next false
+          end
 
-        @bridge&.stop
-        @engine.stop_idle
-        Log.info(:worker, @exit_restart ? "restart_requested" : "exit_requested", by: @exit_requested_by || "a client")
-        true
+          @bridge&.close_intake
+          @engine.stop_idle
+          Log.info(:worker, @exit_restart ? "restart_requested" : "exit_requested", by: @exit_requested_by || "a client")
+          true
+        end
       end
     end
 

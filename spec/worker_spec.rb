@@ -459,6 +459,22 @@ RSpec.describe Samagotchi::Worker do
       expect(File.exist?(sidecar)).to be(false)
     end
 
+    # The check and the closed intake are one step of the event log; the
+    # Bridge's stop (it waits up to a second for requests it is answering)
+    # comes after the log is let go, so a request waiting on it isn't held.
+    it "stops its Bridge outside the event log as it idle-exits" do
+      held = []
+      allow_any_instance_of(Samagotchi::Bridge).to receive(:stop).and_wrap_original do |original, *args|
+        held << engine.instance_variable_get(:@session_observer).instance_variable_get(:@mutex).mon_owned?
+        original.call(*args)
+      end
+      start_worker(poll_interval: 0.05, idle_exit_minutes: 0.002)
+
+      expect(@thread.join(2)&.value).to eq(:idle_exit)
+      expect(held).not_to be_empty
+      expect(held).to all(be(false))
+    end
+
     it "shuts its Engine down as it idle-exits: the plugins' services stop" do
       stopped = []
       services = engine.instance_variable_get(:@services)

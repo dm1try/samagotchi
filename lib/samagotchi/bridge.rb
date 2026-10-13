@@ -180,6 +180,25 @@ module Samagotchi
       raise e
     end
 
+    # Raised on a connection thread whose request would queue something
+    # (a turn, a command, an exit) after #close_intake: the connection
+    # closes unanswered, as #stop's kill of a request still waiting did.
+    class IntakeClosed < StandardError; end
+
+    # With the event log held (the worker leaving: Worker#leave_idle,
+    # #leave_on_request): no connection is accepted and no request queues
+    # a turn, a command or an exit from here on. #stop, called once the log
+    # is let go, does the rest: a request that waited on the log then ends
+    # at once instead of holding #stop for its REQUEST_GRACE_SECONDS.
+    def close_intake
+      @mutex.synchronize { @stopped = true }
+      begin
+        @server&.close
+      rescue StandardError
+        nil
+      end
+    end
+
     # Stop the acceptor, release the socket and remove the sidecar, so clients
     # don't have to find it stale. Does not stop the owning turn. Joins the
     # acceptor thread so the process can exit cleanly (Ruby waits for a thread
@@ -394,7 +413,7 @@ module Samagotchi
         log_request(method, request[:path], started)
         break if close_after_request?(headers)
       end
-    rescue Errno::EPIPE, Errno::ECONNRESET, IOError
+    rescue Errno::EPIPE, Errno::ECONNRESET, IOError, IntakeClosed
       nil
     rescue StandardError => e
       # The thread doesn't report (report_on_exception = false): log it.
@@ -728,6 +747,7 @@ module Samagotchi
       # A card's action: the UIs leave its line out (the card is the echo).
       command = QueuedCommand.mint(line, client_id: client_id, card: card)
       queued = @engine.synchronize_events do
+        raise IntakeClosed if stopped?
         next false if expired?("command_expired", deadline, sid: session_id, client_id: command.client_id)
 
         queue_command_locked(command)
@@ -777,6 +797,7 @@ module Samagotchi
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
       reason = @engine.synchronize_events do
+        raise IntakeClosed if stopped?
         next :expired if expired?("exit_expired", deadline, sid: session_id, client_id: client_id)
 
         @on_exit_request.call(client_id, **options)
@@ -851,6 +872,7 @@ module Samagotchi
       # this turn's :turn_started (or merge it mid-turn) before
       # :turn_enqueued, and a failed write announces nothing.
       enqueued = @engine.synchronize_events do
+        raise IntakeClosed if stopped?
         next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
 
         enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,

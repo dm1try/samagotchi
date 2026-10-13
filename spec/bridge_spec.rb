@@ -707,6 +707,38 @@ RSpec.describe Samagotchi::Bridge do
         expect(post.value.status).to eq(202)
       end
 
+      # The worker leaving closes the intake with the event log held, then
+      # stops once it let go (Worker#leave_idle): a turn post that waited
+      # on the log is dropped unanswered, as #stop's kill did, and #stop
+      # doesn't spin out the request grace on it.
+      it "drops a turn post that waited on the event log while the intake closed, without the grace" do
+        stub_const("Samagotchi::Bridge::REQUEST_GRACE_SECONDS", 30)
+        start_bridge(input_format: 2)
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+        post = nil
+        @engine.synchronize_events do
+          post = Thread.new { client.post_turn(prompt: "hi") }
+          post.report_on_exception = false
+          # The post's connection thread now waits on the event log.
+          sleep(0.3)
+          @bridge.close_intake
+        end
+
+        started = mono
+        @bridge.stop
+
+        expect(mono - started).to be < 5
+        # No reply: the client reads an empty answer or a reset, never a 202.
+        reply = begin
+          post.value
+        rescue StandardError => e
+          e
+        end
+        expect(reply).not_to have_attributes(status: 202)
+        inbox = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), Samagotchi::SessionInbox::INPUT_DIR)
+        expect(Dir.glob(File.join(inbox, "*"))).to be_empty
+      end
+
       it "doesn't wait on an open stream" do
         # A long request grace: waiting on the stream would take all of it.
         stub_const("Samagotchi::Bridge::REQUEST_GRACE_SECONDS", 30)
