@@ -24,6 +24,10 @@ RSpec.describe Samagotchi::Tools::Execute do
     original_env.each { |key, value| ENV[key] = value }
   end
 
+  # A finer wait slice: the limit and a Stop are seen sooner (it is only
+  # how often the wait looks, never what it decides).
+  before { stub_const("#{described_class}::WAIT_SLICE_SEC", 0.05) }
+
   describe ".name" do
     it "is 'execute'" do
       expect(described_class.name).to eq("execute")
@@ -401,6 +405,14 @@ RSpec.describe Samagotchi::Tools::Execute do
     # the shell exits, the readers wait a short grace, then the command's
     # process group is stopped and the output so far returned.
     describe "with a background process holding the output open" do
+      # Short graces: these examples test what happens once a grace is over,
+      # not how long it is (an example that needs a long one stubs its own).
+      before do
+        stub_const("#{described_class}::BACKGROUND_GRACE_SEC", 0.5)
+        stub_const("#{described_class}::STOP_GRACE_SEC", 0.2)
+        stub_const("Samagotchi::ProcessGroup::KILL_WAIT_SEC", 0.2)
+      end
+
       def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       def pid_from(result)
@@ -507,7 +519,9 @@ RSpec.describe Samagotchi::Tools::Execute do
       end
 
       it "says a holder that left the process group (setsid) was left running" do
-        result = described_class.call('ruby -e "Process.setsid; sleep 30.85" & echo pid=$!; echo hi')
+        # perl, not ruby: it has left the group within milliseconds, well
+        # before the (short) grace is over.
+        result = described_class.call("perl -MPOSIX -e 'POSIX::setsid(); sleep 30.85' & echo pid=$!; echo hi")
         pid = pid_from(result)
         begin
           expect(result).to include("hi")
