@@ -6,6 +6,7 @@ require "samagotchi/kernel_loop"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/tools/builtins"
 require "samagotchi/plugin/api"
+require "samagotchi/toolkit"
 
 RSpec.describe Samagotchi::Tools::Registry do
   let(:schema) { { name: "echo", description: "echo it", parameters: { type: "object", properties: {}, required: [] } } }
@@ -180,5 +181,48 @@ RSpec.describe Samagotchi::Tools::Registry do
     expect(kernel.tools).not_to be(Samagotchi::Tools::Builtins.default)
     expect(kernel.tools.schemas).to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS)
     expect(engine.assist_system_prompt).to include("declaration:execute{")
+  end
+
+  describe "the session's toolkit" do
+    let(:lean) { Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits) }
+
+    it "filters the declared tools by the toolkit and the turn's layers" do
+      registry = extended_registry
+      registry.toolkit = lean
+      expect(registry.names).not_to include("delegate", "forget_outputs")
+      expect(registry.names).to include("execute", "echo")
+      expect(registry.names(layers: [:forget])).to include("forget_outputs")
+      expect(registry.schemas.map { |schema| schema[:name] }).to eq(registry.names)
+      expect(Samagotchi::ToolDeclarations.native_schemas(registry).map { |schema| schema[:name] }).to eq(registry.names)
+    end
+
+    it "doesn't offer a left-out tool, and says it is one" do
+      registry = extended_registry
+      registry.toolkit = lean
+      expect(registry.offered("delegate")).to be_nil
+      expect(registry.left_out("delegate")&.name).to eq("delegate")
+      expect(registry.left_out("execute")).to be_nil
+      expect(registry.left_out("nope")).to be_nil
+      expect(registry.left_out_names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
+                                               delegate delegate_result])
+      expect(registry["delegate"]).not_to be_nil
+    end
+
+    it "declares everything with none (full), as before" do
+      registry = extended_registry
+      expect(registry.schemas).to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS + [schema])
+      expect(registry.left_out_names).to eq([])
+    end
+
+    it "lets a plugin change a tool the toolkit leaves out" do
+      registry = Samagotchi::Tools::Builtins.registry
+      spec = ->(description) { Samagotchi::Plugin::Api.tool_spec("mcp_alpha", description) { "ok" } }
+      Samagotchi::Plugin::Api.apply_tools(registry, "mcp", [spec.call("one")], nil)
+      registry.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["mcp_alpha"]).resolve(Samagotchi::Toolkit.kits)
+      expect(Samagotchi::Plugin::Api.apply_tools(registry, "mcp", [spec.call("two")], nil)[:changed]).to be(true)
+      expect(registry["mcp_alpha"].schema[:description]).to eq("two")
+      expect(Samagotchi::Plugin::Api.apply_tools(registry, "mcp", [], nil)[:changed]).to be(true)
+      expect(registry["mcp_alpha"]).to be_nil
+    end
   end
 end

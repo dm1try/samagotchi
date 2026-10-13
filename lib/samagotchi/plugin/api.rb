@@ -330,9 +330,7 @@ module Samagotchi
       def self.apply_tools(registry, bundle, specs, context)
         wanted = specs.to_h { |spec| [spec[:name], spec] }
         changed = false
-        registry.entries.each do |entry|
-          next unless entry.source == bundle
-
+        registry.by_source(bundle).each do |entry|
           if (spec = wanted[entry.name]) && spec[:schema] == entry.schema && spec[:label] == entry.label
             entry_fields(spec, context).slice(:handler, :preview, :targets, :refs).each { |key, value| entry[key] = value }
             next

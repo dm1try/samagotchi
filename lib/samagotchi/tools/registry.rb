@@ -35,7 +35,14 @@ module Samagotchi
 
       def initialize
         @entries = {}
+        @toolkit = nil
       end
+
+      # The session's resolved toolkit (Toolkit::Resolved), which the lists
+      # below and #offered filter by; nil declares every tool (full). The
+      # Engine sets it at a turn's start, before the prompt is built, and
+      # only there: a request's declared tools never change mid-turn.
+      attr_accessor :toolkit
 
       # @return [Entry]
       def register(name, schema:, handler:, label: nil, preview: nil, targets: nil, refs: nil, source: "core", layer: nil)
@@ -59,8 +66,25 @@ module Samagotchi
       # @return [Entry, nil]
       def offered(name, layers: [])
         entry = self[name]
-        entry if entry&.offered?(layers)
+        entry if entry&.offered?(layers) && declared?(entry)
       end
+
+      # The entry +name+ names when the session's toolkit leaves it out (a
+      # real tool the model can't call here), nil otherwise.
+      # @return [Entry, nil]
+      def left_out(name, layers: [])
+        entry = self[name]
+        entry if entry&.offered?(layers) && !declared?(entry)
+      end
+
+      # The tools the toolkit leaves out of a turn under +layers+.
+      # @return [Array<String>] in declaration order
+      def left_out_names(layers: []) = ordered(@entries.values.select { |entry| entry.offered?(layers) && !declared?(entry) }).map(&:name)
+
+      # Every tool +source+ registered, declared or not (a plugin's tool set
+      # changing: Plugin::Api.apply_tools).
+      # @return [Array<Entry>]
+      def by_source(source) = @entries.values.select { |entry| entry.source == source }
 
       # The tools a turn offers is per turn: +layers+, the turn's LLM
       # context layers (LLMContextStrategy), adds the tools gated by them.
@@ -68,10 +92,10 @@ module Samagotchi
       # @return [Array<String>] in declaration order
       def names(layers: []) = entries(layers: layers).map(&:name)
 
-      # @return [Array<Entry>] in declaration order
+      # @return [Array<Entry>] in declaration order: the ones the turn's
+      #   layers offer and the session's toolkit declares
       def entries(layers: [])
-        core, added = @entries.values.select { |entry| entry.offered?(layers) }.partition(&:core?)
-        core + added.sort_by { |entry| [entry.source.to_s, entry.name] }
+        ordered(@entries.values.select { |entry| entry.offered?(layers) && declared?(entry) })
       end
 
       # @return [Array<Hash>] the schemas, in declaration order
@@ -80,6 +104,15 @@ module Samagotchi
       def freeze
         @entries.freeze
         super
+      end
+
+      private
+
+      def declared?(entry) = @toolkit.nil? || @toolkit.declares?(entry)
+
+      def ordered(entries)
+        core, added = entries.partition(&:core?)
+        core + added.sort_by { |entry| [entry.source.to_s, entry.name] }
       end
     end
   end
