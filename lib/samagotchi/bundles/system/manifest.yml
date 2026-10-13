@@ -8,4 +8,4 @@ files:
   self_map.md: sha256:dfc19266259a9af1e0d769b7e0f67996b740b0c9921fdf3dadad973f6e5c144a
   config_modification_protocol.md: sha256:301895777916dd998d8946aaa2e8f3a6e7f2b18eaf9362eef11471ae602d54ab
   memory_guide.md: sha256:c48eea744db69e4f3e9bb415e9a03a8c78bbcaa1205ad3b1fb157a079f92d22e
-  delegated.md: sha256:aedaa1e756a244904c5560fff0424e06fb468bbdcb0358bccefe321d67cd2614
+  delegated.md: sha256:a0d6ddcd4a8be06526d964898611775fd251cfd9d145a9d16afaccaa503597bd
