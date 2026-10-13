@@ -226,6 +226,7 @@ module Samagotchi
         when :turn_enqueued
           queued = { enqueued_id: event[:enqueued_id], client_id: event[:client_id], prompt: event[:prompt] }
           queued[:images] = event[:images] if event[:images]
+          queued[:delivery] = event[:delivery] if event[:delivery]
           @queued << queued
         when :recap_ready
           # One collected just as a turn started describes the chat before it.

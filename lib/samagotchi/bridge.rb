@@ -495,7 +495,9 @@ module Samagotchi
     # task_stop: POST tasks/stop (#handle_task_stop), the web's stop-task button.
     # reparent: the worker reads Session::PARENT_FILE (its rings, each turn's
     # start), so a continue may move it to the chain's new link (ChildMove).
-    FEATURES = %w[restart task_stop reparent].freeze
+    # delivery: POST /turn runs every Delivery value; a queue waits for the
+    # turn's end (Delivery::QUEUE_FEATURE). A worker without it would steer.
+    FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -868,6 +870,10 @@ module Samagotchi
       enqueued_id = SecureRandom.uuid
       # Before it is queued: a drain after this may have taken it (#cut_for_steer).
       epoch = @engine.input_epoch
+      # Whether a queue waits for a running turn: read with the write under
+      # the event log, so no :turn_started or :turn_completed falls between.
+      # To an idle worker the queued file simply runs as the next turn.
+      queued_behind_turn = false
       # Write and announce with the event log held: the worker can't emit
       # this turn's :turn_started (or merge it mid-turn) before
       # :turn_enqueued, and a failed write announces nothing.
@@ -875,12 +881,14 @@ module Samagotchi
         raise IntakeClosed if stopped?
         next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
 
+        queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
         enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                      no_interrupt: no_interrupt, images: images, delivery: delivery).tap do |ok|
           next unless ok
 
           enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
           enqueued_event[:images] = images unless images.empty?
+          enqueued_event[:delivery] = Delivery::QUEUE if queued_behind_turn
           @engine.announce(enqueued_event)
           @on_input&.call
         end
@@ -896,7 +904,9 @@ module Samagotchi
       # the running turn's next step.
       cut = nil
       cut = @engine.cut_for_steer(Steer.source_for_client(client_id), epoch: epoch) if images.empty? && Delivery.cut?(delivery)
-      ack = { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id, delivery: delivery }
+      # A queue to an idle worker is a turn now: the ack says next_step.
+      ack_delivery = Delivery.queue?(delivery) && !queued_behind_turn ? Delivery::NEXT_STEP : delivery
+      ack = { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id, delivery: ack_delivery }
       ack[:cut] = cut.to_s if cut
       ack[:cut_after] = @engine.steer_cut_after if cut == :waits
       [{}, 202, ack]

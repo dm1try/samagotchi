@@ -1168,7 +1168,8 @@ module Samagotchi
     # @return [Hash] {status: :accepted, ack: Hash} (the Bridge's reply, or
     #   {status:, enqueued_id:, session_id:} for a file), {status: :refused,
     #   code:, ack:} when the Bridge refused the request (any 4xx with an
-    #   error: bad images, a delivery it doesn't run; no file then),
+    #   error: bad images, a delivery it doesn't run) or a queue would reach
+    #   a worker that doesn't queue (no file then: it would steer),
     #   {status: :timeout, ack:} when it took the request but never answered
     #   (no file then), or {status: :failed} when the input file couldn't be
     #   written
@@ -1180,6 +1181,10 @@ module Samagotchi
       bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
       manager.resume_session(session_id, state_dir: state_dir)
       if (client = bridge.call)
+        # A worker from before queueing (no "delivery" feature) ignores the
+        # field or refuses it; either way a file would steer the running turn.
+        return queue_unavailable if Delivery.queue?(delivery) && !worker_queues?(session_dir)
+
         begin
           options = { prompt: prompt, client_id: client_id }
           options[:images] = images unless images.empty?
@@ -1226,6 +1231,18 @@ module Samagotchi
       # one the first resume spawned that is still starting is left be.)
       manager.resume_session(session_id, state_dir: state_dir) if owner.nil?
       { status: :accepted, ack: { status: "accepted", enqueued_id: enqueued_id, session_id: session_id } }
+    end
+
+    # Whether the session's live worker runs delivery: queue (its sidecar
+    # names the feature). No sidecar to read (the client came from a stand-in,
+    # or it went between the wait and here): true, the post finds out.
+    private_class_method def self.worker_queues?(session_dir)
+      sidecar = WorkerSidecar.read(session_dir)
+      sidecar.nil? || sidecar.features.include?(Delivery::QUEUE_FEATURE)
+    end
+
+    private_class_method def self.queue_unavailable
+      { status: :refused, code: 409, ack: Delivery::QUEUE_UNAVAILABLE }
     end
 
     private_class_method def self.turn_timeout

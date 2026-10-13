@@ -1836,6 +1836,42 @@ RSpec.describe Samagotchi::SessionManager do
         .to eq([["big", nil], ["big later", "queue"]])
     end
 
+    describe "a queue to a live worker, by its sidecar's features" do
+      def write_sidecar(features)
+        Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: features).write(session_dir)
+      end
+
+      it "refuses it without posting when the worker doesn't name the delivery feature (it would steer)" do
+        own("worker")
+        write_sidecar(%w[restart task_stop reparent])
+        bridge = instance_double(Samagotchi::BridgeClient)
+        expect(bridge).not_to receive(:post_turn)
+
+        result = described_class.deliver_turn(session.id, prompt: "later", delivery: "queue", state_dir: tmpdir,
+                                                          bridge: -> { bridge })
+
+        expect(result).to match(status: :refused, code: 409,
+                                ack: { "error" => "delivery_unavailable", "detail" => a_string_including("restart it") })
+        expect(input_files).to be_empty
+      end
+
+      it "posts it when the worker names the feature; a next_step or cut posts either way" do
+        own("worker")
+        write_sidecar(%w[restart])
+        bridge = instance_double(Samagotchi::BridgeClient)
+        allow(bridge).to receive(:post_turn).and_return(
+          Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+        )
+        expect(described_class.deliver_turn(session.id, prompt: "now", delivery: "cut", state_dir: tmpdir,
+                                                        bridge: -> { bridge })[:status]).to eq(:accepted)
+
+        write_sidecar(%w[restart delivery])
+        expect(described_class.deliver_turn(session.id, prompt: "later", delivery: "queue", state_dir: tmpdir,
+                                                        bridge: -> { bridge })[:status]).to eq(:accepted)
+        expect(bridge).to have_received(:post_turn).twice
+      end
+    end
+
     it "reports a timeout and queues nothing when the Bridge takes the request but never answers" do
       own("worker")
       server = TCPServer.new("127.0.0.1", 0)

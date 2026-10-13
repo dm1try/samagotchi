@@ -2510,18 +2510,39 @@ RSpec.describe Samagotchi::Web::App do
       expect(queued).to match(["s1", hash_including(prompt: "now", delivery: "cut")])
     end
 
-    it "refuses a queue delivery (not built yet) with a 400 that says so" do
+    it "forwards a queue delivery to the bridge" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      expect(app).not_to receive(:live_bridge_client)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+      allow(bridge).to receive(:post_turn)
+        .with(prompt: "later", client_id: "web:tab-1", delivery: "queue")
+        .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","delivery":"queue"}'))
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                                body: '{"prompt":"later","client_id":"web:tab-1","delivery":"queue"}'))
+
+      expect(status).to eq(202)
+      expect(JSON.parse(body.first)).to include("delivery" => "queue")
+    end
+
+    # A worker from before P3 answers a queue with 400 delivery_unavailable:
+    # the refusal reaches the page, and no input file would steer.
+    it "answers an old worker's refusal of a queue with its code and detail, writing no file" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+      allow(bridge).to receive(:post_turn).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 400, body: '{"error":"delivery_unavailable","detail":"not yet"}')
+      )
       expect(manager).not_to receive(:write_turn_input)
 
       status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST",
                                                 body: '{"prompt":"later","delivery":"queue"}'))
 
       expect(status).to eq(400)
-      expect(JSON.parse(body.first)).to include("error" => "delivery_unavailable",
-                                                "detail" => a_string_including("queue isn't available yet"))
+      expect(JSON.parse(body.first)).to eq("error" => "delivery_unavailable", "detail" => "not yet")
     end
 
     it "refuses a delivery that is not a string" do

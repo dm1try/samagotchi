@@ -1293,13 +1293,45 @@ RSpec.describe Samagotchi::Bridge do
         expect(queued_inputs).to be_empty
       end
 
-      it "refuses a queue delivery (not built yet) with a 400 that says so, before anything is queued" do
-        start_bridge
-        status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "later", delivery: "queue"))
+      describe "queue" do
+        def running_turn!
+          @bridge.instance_variable_get(:@accumulator).call(type: :turn_started, prompt: "long one")
+        end
 
-        expect(status).to eq(400)
-        expect(resp).to include("error" => "delivery_unavailable", "detail" => a_string_including("queue isn't available yet"))
-        expect(queued_inputs).to be_empty
+        def snapshot
+          Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).get_json("snapshot")["snapshot"]
+        end
+
+        it "writes it into the file and acks queue while a turn runs; turn_enqueued and the snapshot's queued say so" do
+          start_bridge
+          running_turn!
+          announced = []
+          @engine.subscribe(observer: ->(event) { announced << event if event[:type] == :turn_enqueued })
+          allow(@engine).to receive(:cut_for_steer)
+
+          status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "later", delivery: "queue"))
+
+          expect(status).to eq(202)
+          expect(resp).to include("delivery" => "queue")
+          expect(resp).not_to have_key("cut")
+          expect(@engine).not_to have_received(:cut_for_steer)
+          expect(queued_inputs.map { |q| q["delivery"] }).to eq(["queue"])
+          expect(announced.last).to include(delivery: "queue", prompt: "later")
+          expect(snapshot["queued"]).to contain_exactly(include("prompt" => "later", "delivery" => "queue"))
+        end
+
+        it "acks next_step to an idle worker (the file runs as the next turn), with no delivery on turn_enqueued" do
+          start_bridge
+          announced = []
+          @engine.subscribe(observer: ->(event) { announced << event if event[:type] == :turn_enqueued })
+
+          status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "now then", delivery: "queue"))
+
+          expect(status).to eq(202)
+          expect(resp).to include("delivery" => "next_step")
+          expect(queued_inputs.map { |q| q["delivery"] }).to eq(["queue"])
+          expect(announced.last).not_to have_key(:delivery)
+        end
       end
 
       it "takes a missing or unknown delivery as the default, without writing the key" do

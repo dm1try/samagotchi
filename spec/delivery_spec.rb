@@ -46,8 +46,8 @@ RSpec.describe Samagotchi::Delivery do
       expect(described_class.refusal(5)).to eq(error: "bad_delivery", detail: "delivery must be a string")
     end
 
-    it "refuses queue, which no worker runs yet" do
-      expect(described_class.refusal("queue")).to include(error: "delivery_unavailable")
+    it "takes queue (a worker without the feature is refused by its sender: SessionManager.deliver_turn)" do
+      expect(described_class.refusal("queue")).to be_nil
     end
   end
 end

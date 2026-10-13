@@ -300,6 +300,14 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.queued).to eq([{ enqueued_id: "e3", client_id: "tui:1", prompt: "three" }])
   end
 
+  it "keeps a queued turn's delivery (a reload draws it as queued for after the turn)" do
+    feed({ type: :turn_started, prompt: "long" },
+         { type: :turn_enqueued, enqueued_id: "e1", client_id: "web:1", prompt: "later", delivery: "queue" },
+         { type: :turn_enqueued, enqueued_id: "e2", client_id: "web:1", prompt: "now" })
+    expect(acc.queued).to eq([{ enqueued_id: "e1", client_id: "web:1", prompt: "later", delivery: "queue" },
+                              { enqueued_id: "e2", client_id: "web:1", prompt: "now" }])
+  end
+
   it "keeps commands queued for after the turn until they run or are dropped, not a plain or anytime one" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :command_queued, command_id: "c1", client_id: "web:1", line: "/model x", waits: "turn_end" },

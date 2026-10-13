@@ -23,25 +23,30 @@ module Samagotchi
     # Why a request body's delivery field can't be taken, as {error:,
     # detail:} for a 400, or nil when it can. The Bridge and the web's
     # POST /turn both ask this, so they refuse the same values. A missing
-    # or unknown string is not refused: it is the default (#parse). QUEUE
-    # is refused until a worker runs it (no worker reads it yet, so it
-    # would merge at the next step while the ack said queue).
+    # or unknown string is not refused: it is the default (#parse).
     # @param raw [Object] the wire value
     # @return [Hash, nil]
     def self.refusal(raw)
       return nil if raw.nil?
       return { error: "bad_delivery", detail: "delivery must be a string" } unless raw.is_a?(String)
-      return QUEUE_UNAVAILABLE if raw == QUEUE
 
       nil
     end
 
+    # The worker sidecar feature (Bridge::FEATURES) of a worker that runs
+    # all three values. One without it (before 0.64) ignores QUEUE, or
+    # refuses it with a 400 delivery_unavailable, so a sender checks it
+    # before sending a queue (SessionManager.deliver_turn, the attached TUI).
+    QUEUE_FEATURE = "delivery"
+
+    # The refusal for a queue a worker without QUEUE_FEATURE would steer
+    # (SessionManager.deliver_turn answers it as a 409). P0-P2 workers
+    # answer the same error code for a queue, with their own detail.
     QUEUE_UNAVAILABLE = {
-      error: "delivery_unavailable",
-      detail: "delivery queue isn't available yet; without it the message goes in at the running turn's next step " \
-              "(or runs as a turn when none runs)"
+      "error" => "delivery_unavailable",
+      "detail" => "this session's worker predates queueing, so the message would steer the running turn; " \
+                  "restart it (chi sessions restart ID, or the web's update badge) and send again"
     }.freeze
-    private_constant :QUEUE_UNAVAILABLE
 
     # Whether it is the one every sender defaulting to a step boundary uses.
     def self.next_step?(value) = parse(value) == NEXT_STEP

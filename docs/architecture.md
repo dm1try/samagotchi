@@ -375,7 +375,9 @@ session every 10 s, so a `kill -9` shows within a second. The summary (`Web::Ses
 shared with `/api/sessions` and the session view) carries `owner`, `project_root` and
 `bridge_up` (the sidecar is there *and* the lock is held: the page attaches its stream on it), and
 from that sidecar `worker_version` (the chi the worker runs) and `worker_features`
-(`Bridge::FEATURES`, what a client may ask of it beyond the routes). A worker's Bridge snapshot
+(`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`,
+`delivery`, the last one a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
+the attached TUI refuse a queue to a worker without it, which would steer). A worker's Bridge snapshot
 names its `chi_version` too.
 `POST/DELETE /api/sessions` and `/stop` rescan the session before answering (`SessionHub#touch`).
 `GET /api/sessions` is the hub's projection too (its sort, paging and total). `Server` always builds
