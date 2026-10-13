@@ -233,6 +233,10 @@ you're away from the terminal. All of these must hold:
 - the source asked (`"wake": true`; a plain-text source never does), in
   any change since the session last heard of it: a later change that doesn't
   ask doesn't take the wake back;
+- it's a change, not the source's first text, except for a session's pushed
+  source (`chi context add NAME --push`, attached empty): its first push can
+  wake too. A command or URL source's first fetch runs as you attach it, and a
+  project source's first text may predate the session, so neither wakes;
 - `context.wake` is on (default `true`);
 - the session's worker is up and idle: no turn running, nothing queued, no
   question or continue offer waiting, not just started;
@@ -242,15 +246,16 @@ you're away from the terminal. All of these must hold:
 - the source hasn't woken the session in the last 10 minutes.
 
 Otherwise the change arrives as a note, as above. The turn starts with the
-update note, whose last line becomes:
+update note, or, for a session's pushed source, its attached note, whose last
+line becomes:
 
 > chi started this turn because the source changed; your user didn't write anything. Tell your user in a sentence or two what changed and what it may mean for their work. Don't run commands, change files or reply on the source for it: wait for your user to ask.
 
 Every UI labels the turn `context <name> changed`, and the web's
 notifications count it as a finished turn however short.
 
-A wake turn that fails goes back to before it and keeps the update as a
-plain note; the model reads `[SYSTEM: the previous turn failed before any
+A wake turn that fails goes back to before it and keeps its note as a
+plain one; the model reads `[SYSTEM: the previous turn failed before any
 answer: … The wake turn for the change in attached context <name> was not
 answered; chi starts no other wake turn until the user writes.]`.
 

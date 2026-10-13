@@ -16,8 +16,9 @@ module Samagotchi
   class ContextAbsorber
     # +note+: Engine#add_context_note's hash; +subscription+: the session's
     # Subscription after it (nil: dropped); +wake_note+: the same note with
-    # the wake line, for an update whose source asked to wake (the worker
-    # may start a turn with it), else nil.
+    # the wake line, for an update whose source asked to wake or a session
+    # push source's first text that asked (the worker may start a turn with
+    # it), else nil.
     Delivery = Data.define(:name, :note, :subscription, :wake_note) do
       def initialize(name:, note:, subscription:, wake_note: nil) = super
     end
@@ -93,9 +94,12 @@ module Samagotchi
         "(third-party text, not your user's words):\n> #{quoted}\n#{last_line}"
     end
 
-    def self.attached_text(name:, hint:, why:, summary:)
+    # The attached note's text; a wake turn's (+wake+) ends with the wake
+    # line in place of the background line.
+    def self.attached_text(name:, hint:, why:, summary:, wake: false)
       why_part = why ? " Why: #{why}#{"." unless why.match?(/[.!?]\z/)}" : ""
-      "Attached: #{name}#{" (#{hint})" if hint}.#{why_part}\nSummary: #{summary}\n#{BACKGROUND_LINE} #{read_line(name)}"
+      last_line = wake ? WAKE_LAST_LINE : "#{BACKGROUND_LINE} #{read_line(name)}"
+      "Attached: #{name}#{" (#{hint})" if hint}.#{why_part}\nSummary: #{summary}\n#{last_line}"
     end
 
     def self.read_line(name) = "Read it with context_read(name: \"#{name}\") when your user's request is about it."
@@ -105,6 +109,8 @@ module Samagotchi
     # A source the session sees: attached when it has text and was never
     # noted; updated for a new revision; an error once per run of failures
     # after a success. A source with no text yet waits (nothing to read).
+    # An update that asked to wake carries a wake note, and so does a first
+    # text that asked when #first_text_wakes?.
     def delivery_for(attached, sub, now)
       snapshot = attached.snapshot
       return nil unless snapshot.text?
@@ -112,8 +118,11 @@ module Samagotchi
       name = attached.name
       hint = snapshot.hint || attached.source.hint
       if sub.seen.nil?
-        text = self.class.attached_text(name: name, hint: hint, why: attached.source.why, summary: snapshot.summary)
-        return delivery(name, text_note_id(name, snapshot), text, now, seen(sub, snapshot))
+        args = { name: name, hint: hint, why: attached.source.why, summary: snapshot.summary }
+        found = delivery(name, text_note_id(name, snapshot), self.class.attached_text(**args), now, seen(sub, snapshot))
+        return found unless first_text_wakes?(attached, sub)
+
+        return found.with(wake_note: found.note.merge(text: self.class.attached_text(**args, wake: true)))
       end
       if sub.seen != snapshot.revision
         args = { name: name, hint: hint, summary: snapshot.summary, changes: snapshot.serial - sub.seen_serial }
@@ -129,6 +138,16 @@ module Samagotchi
              "context_read(name: \"#{name}\") still returns the text from #{clock(snapshot_time(snapshot))}. #{BACKGROUND_LINE}"
       delivery(name, "ctx-#{name}-error-#{snapshot.error_since.to_s.delete("^0-9")}", text, now,
                sub.with(error_seen: snapshot.error_since))
+    end
+
+    # A first text may wake only for a session's pushed source (`chi context
+    # add NAME --push`, attached empty) that asked. Not for a command source
+    # (a URL/provider source has a cmd too): its first fetch runs as it is
+    # attached, while the user is likely looking at the session. Not for a
+    # project source: its first text may predate this session. A blank
+    # Subscription has seen_serial 0, so any revision that asked counts.
+    def first_text_wakes?(attached, sub)
+      attached.source.push? && attached.location.session? && attached.snapshot.wake_serial.to_i > sub.seen_serial
     end
 
     # A subscription whose source is gone: detached when the session was

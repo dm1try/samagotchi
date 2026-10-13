@@ -113,13 +113,46 @@ RSpec.describe Samagotchi::ContextAbsorber do
       expect(absorber.pending(now: now).deliveries.first.wake_note).to be_nil
     end
 
-    it "has none for a change that doesn't ask, for a first text (attached) and for a failure" do
+    it "carries one for a session push source's first text that asks: the attached note with the wake line last" do
+      add(own, "claude-review", why: "Claude's review answers")
+      push(own, "claude-review", "looks good", summary: "1 line of text", wake: true)
+
+      delivery = absorber.pending(now: now).deliveries.first
+
+      expect(delivery.note[:text]).to end_with("This is background, not a task. " \
+                                               "Read it with context_read(name: \"claude-review\") when your user's request is about it.")
+      expect(delivery.wake_note.except(:text)).to eq(delivery.note.except(:text))
+      expect(delivery.wake_note[:text]).to eq(<<~TEXT.chomp)
+        Attached: claude-review. Why: Claude's review answers.
+        Summary: 1 line of text
+        chi started this turn because the source changed; your user didn't write anything. Tell your user in a sentence or two what changed and what it may mean for their work. Don't run commands, change files or reply on the source for it: wait for your user to ask.
+      TEXT
+    end
+
+    it "has none for a command source's first text, even when it asks" do
+      own.add(Samagotchi::ContextSources::Source.new(name: "ci", cmd: "gh pr checks", every_seconds: 60, why: nil, hint: nil,
+                                                     scope: "session", added_by: "cli", created_at: nil))
+      push(own, "ci", "v1", wake: true)
+      expect(absorber.pending(now: now).deliveries.first.wake_note).to be_nil
+    end
+
+    it "has none for a project push source's first text, even when it asks" do
+      add(project, "notes")
+      push(project, "notes", "v1", wake: true)
+      expect(absorber.pending(now: now).deliveries.first.wake_note).to be_nil
+    end
+
+    it "has none for a first text or a change that doesn't ask, nor for a failure" do
       add(own, "notes")
-      push(own, "notes", "v1", wake: true)
+      push(own, "notes", "v1")
       expect(absorber.pending(now: now).deliveries.first.wake_note).to be_nil
       absorb
       push(own, "notes", "v2")
       expect(absorber.pending(now: now).deliveries.first.wake_note).to be_nil
+      absorb
+      own.record_error("notes", "exit 1: no auth")
+      expect(absorber.pending(now: now).deliveries.first).to have_attributes(wake_note: nil)
+      expect(absorber.pending(now: now).deliveries.first.note[:text]).to start_with("Couldn't refresh: notes")
     end
   end
 

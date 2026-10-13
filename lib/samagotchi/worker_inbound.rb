@@ -106,9 +106,10 @@ module Samagotchi
     # run): auto-attached context alone doesn't make a session worth
     # keeping. Saved, then the subscriptions written (a crash between the
     # two re-delivers; the note ids dedupe).
-    # +wake+: the session is idle with nothing queued, so an update whose
-    # source asked to wake may start a turn (#context_wake_for): its note
-    # goes in as the turn's first message.
+    # +wake+: the session is idle with nothing queued, so a delivery with a
+    # wake note (an update whose source asked to wake, or a session push
+    # source's first text that asked) may start a turn (#context_wake_for):
+    # its wake note goes in as the turn's first message.
     # @return [ContextWake, nil] the wake turn to run now
     # @raise [SystemCallError, IOError] the caller logs it (context_failed)
     def absorb_context(before_turn: false, wake: false)
@@ -134,7 +135,7 @@ module Samagotchi
       waking && ContextWake.new(delivery: waking, turn_id: turn_id)
     end
 
-    # A failed wake turn kept nothing but its note: the update goes back to
+    # A failed wake turn kept nothing but its note: the note goes back to
     # a plain note (no turn start, the background wording), so a reload
     # draws no empty turn for it.
     def unmark_wake(context_wake)
@@ -224,13 +225,13 @@ module Samagotchi
       true
     end
 
-    # The update in +batch+ that may start a wake turn now: its source
-    # asked (wake: true), context.wake is on, the wake budget is open
-    # (WorkerWakes#context_open?: no continue offer, not paused, under
-    # session.max_wakes, past the start grace) and the source hasn't woken
-    # the session in the last CONTEXT_WAKE_WINDOW. The others stay plain
-    # notes. Within the start grace a change is a note: it came while the
-    # session was away.
+    # The delivery in +batch+ that may start a wake turn now: it has a wake
+    # note (ContextAbsorber decides: its source asked, wake: true),
+    # context.wake is on, the wake budget is open (WorkerWakes#context_open?:
+    # no continue offer, not paused, under session.max_wakes, past the start
+    # grace) and the source hasn't woken the session in the last
+    # CONTEXT_WAKE_WINDOW. The others stay plain notes. Within the start
+    # grace a change is a note: it came while the session was away.
     def context_wake_for(batch, now: Time.now)
       candidates = batch.deliveries.select(&:wake_note)
       return nil if candidates.empty? || !context_wakes_on?

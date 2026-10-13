@@ -185,6 +185,22 @@ RSpec.describe Samagotchi::Worker, "attached context" do
       expect(saved_context_notes.last).to include(turn_start: true, turn_id: kwargs[:id])
     end
 
+    it "wakes for a session push source added empty whose first push asks: the turn opens with the attached note" do
+      own.add(Samagotchi::ContextSources::Source.new(name: "claude-review", cmd: nil, every_seconds: nil, why: nil,
+                                                     hint: nil, scope: "session", added_by: "cli", created_at: nil))
+      start_worker
+
+      push("claude-review", "looks good", wake: true)
+
+      prompt, kwargs, last = wake_turns.pop(timeout: 3)
+      expect(prompt).to be_nil
+      expect(kwargs).to include(continue: true, origin: { client_id: "context:claude-review" })
+      expect(last).to include(role: "system", kind: "note", context_source: "claude-review", turn_start: true)
+      expect(last[:content]).to include("\nAttached: claude-review.\n")
+        .and end_with("\n#{Samagotchi::ContextAbsorber::WAKE_LAST_LINE}\n[END NOTE]")
+      expect(own.subscription("claude-review").wakes_at).to be_truthy
+    end
+
     it "wakes once per source in 10 minutes: a second change arrives as a plain note" do
       start_worker
       attach_seen("pr-7")

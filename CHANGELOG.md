@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Attached context: a source added with `chi context add NAME --push` now wakes an idle session when its first
+  push asks to (`"wake": true`); before, only later pushes could.
+
 ## [0.62.0] - 2026-10-13
 
 ### Added
