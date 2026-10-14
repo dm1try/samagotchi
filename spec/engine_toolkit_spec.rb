@@ -4,6 +4,7 @@ require "samagotchi/engine"
 require "samagotchi/session"
 require "support/thinking_off"
 require "support/test_kernel"
+require "samagotchi/llm/chat_loop"
 
 # A session's toolkit reaches the Registry at a turn's start only, beside
 # the plugins' staged tool sets: a change made while a turn runs (or
@@ -90,5 +91,19 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     kits = { "mine" => { "base" => "full" } }
     turn(sess)
     expect(kernel.tools.names).not_to include("delegate")
+  end
+
+  # B3: the request bytes of a full session with its plugins loaded (no MCP
+  # server) are the chat_tools.json snapshot's, with no not-loaded line and
+  # no chip: the tool index declares nothing there.
+  it "sends full's tools unchanged with the plugins loaded and no MCP" do
+    expect_any_instance_of(Samagotchi::Tools::ToolIndex).to receive(:declare).and_call_original
+    allow(kernel).to receive(:run).and_return(result)
+    turn(session)
+    chat_tools = JSON.pretty_generate(Samagotchi::LLM::ChatLoop.new(kernel: kernel).tool_definitions) + "\n"
+
+    expect(chat_tools).to eq(File.read(File.expand_path("fixtures/prompt_snapshots/chat_tools.json", __dir__)))
+    expect(engine.system_prompt).not_to include("Not loaded", "Not declared", "find_tools")
+    expect(engine.toolkit_summary).to be_nil
   end
 end
