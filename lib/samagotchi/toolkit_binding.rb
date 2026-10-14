@@ -17,14 +17,17 @@ module Samagotchi
     # @param can_stage    [#call] → whether a plugin may change the toolkit now
     #   (no turn runs, no model reply yet)
     # @param reset_prompt [#call] → build the system prompts again
+    # @param refresh_index [#call] → the tool index's search tool described
+    #   for the Registry's toolkit (Tools::ToolIndex#refresh!)
     # @param emit         [#call] (sink, event) → emits to a turn's sink + observers
     # @param notify       [#call] (text, level, source, extra:) → a notice
-    def initialize(tools:, session:, state_dir:, can_stage:, reset_prompt:, emit:, notify:)
+    def initialize(tools:, session:, state_dir:, can_stage:, reset_prompt:, emit:, notify:, refresh_index: -> {})
       @tools = tools
       @session = session
       @state_dir = state_dir
       @can_stage = can_stage
       @reset_prompt = reset_prompt
+      @refresh_index = refresh_index
       @emit = emit
       @notify = notify
       # The toolkits plugins declare (chi.toolkit), beside the built-in and
@@ -114,6 +117,7 @@ module Samagotchi
       return false if resolved == tools.toolkit
 
       tools.toolkit = resolved
+      @refresh_index.call
       @reset_prompt.call
       true
     end

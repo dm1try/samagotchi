@@ -1,7 +1,7 @@
 [
   {
     "name": "find_tools",
-    "description": "Search the tools of the MCP servers below by keywords. It answers up to 5 tools, each with its name (<server>/<tool>) and inputSchema; call one with call_tool. An empty query lists every tool's name.\nServers:\n- fake: A fake server for chi's specs. (3 tools)\n- slow",
+    "description": "Search tools this session doesn't declare, by keywords. It answers up to 5 tools, each with its name (<group>/<tool>) and inputSchema; call one with call_tool. An empty query lists every tool's name.\nGroups:\n- fake: A fake server for chi's specs. (3 tools)\n- slow",
     "parameters": {
       "type": "object",
       "properties": {
@@ -9,9 +9,9 @@
           "type": "string",
           "description": "keywords for what the tool does (\"screenshot page\"); empty lists every tool's name"
         },
-        "server": {
+        "group": {
           "type": "string",
-          "description": "search only this server"
+          "description": "search only this group"
         }
       },
       "required": [
@@ -21,13 +21,13 @@
   },
   {
     "name": "call_tool",
-    "description": "Call an MCP server's tool that find_tools found.",
+    "description": "Call a tool find_tools found.",
     "parameters": {
       "type": "object",
       "properties": {
         "tool": {
           "type": "string",
-          "description": "the tool as <server>/<tool>"
+          "description": "the tool as <group>/<tool>"
         },
         "args": {
           "type": "object",

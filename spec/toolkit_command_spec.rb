@@ -28,7 +28,7 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect([changed, ask]).to eq([false, nil])
     lines = output.lines.map(&:chomp)
     expect(lines[0]).to eq("toolkit: lean (applies at the next turn's start)")
-    expect(lines[1]).to match(/\A  declared \(14, ~\d\.\dk tokens\): execute ~\d+, read ~\d+/)
+    expect(lines[1]).to match(/\A  declared \(16, ~\d\.\dk tokens\): execute ~\d+, read ~\d+/)
     expect(lines[2]).to eq("  not loaded: register_reminder, cancel_reminder, list_reminders, list_sessions, send_note, " \
                            "delegate, delegate_result")
     expect(lines[3]).to eq("  toolkits: full, lean, child; /toolkit [NAME | add TOOL | remove TOOL] changes it")
@@ -84,7 +84,7 @@ RSpec.describe Samagotchi::ToolkitCommand do
 
     expect(changed).to be(false)
     expect(session.toolkit).to be_nil
-    expect(output).to start_with("Switching to lean leaves out register_reminder, cancel_reminder")
+    expect(output).to start_with("Switching to lean declares call_tool, find_tools; leaves out register_reminder, cancel_reminder")
     expect(ask).to eq(Samagotchi::CacheConfirm::Confirm.new(line: "/toolkit lean --yes",
                                                             text: "Nothing changed yet: send `/toolkit lean --yes` to apply."))
     expect(command.run("lean --yes")[1]).to be(true)

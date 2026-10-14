@@ -83,6 +83,7 @@ RSpec.describe "Engine guardrail wiring" do
     it "asks about a call that acts as another tool by that tool's label" do
       engine.interface = :worker
       tools = engine.instance_variable_get(:@tools)
+      tools.unregister("call_tool") # the tool index's, here a plugin's
       tools.register("call_tool", schema: { name: "call_tool" }, handler: ->(*) { "" }, label: "mcp: call", source: "mcp",
                                  targets: ->(call) { { acts_as: call[:args]["tool"], args: call[:args]["args"] } })
       tools.register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" }, label: "x: echo", source: "mcp")
@@ -102,6 +103,7 @@ RSpec.describe "Engine guardrail wiring" do
     it "asks by the label: a plugin tool's targets: gives, over the registered one; one that isn't a short line is ignored" do
       engine.interface = :worker
       tools = engine.instance_variable_get(:@tools)
+      tools.unregister("call_tool") # the tool index's, here a plugin's
       tools.register("call_tool", schema: { name: "call_tool" }, handler: ->(*) { "" }, label: "mcp: call", source: "mcp",
                                  targets: ->(call) { { acts_as: "mcp_x_echo", args: {}, label: call[:args]["label"] } })
       tools.register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" }, label: "x: echo", source: "mcp")

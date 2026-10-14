@@ -111,8 +111,9 @@ module Samagotchi
       Kit.new(name: FULL, tools: :all),
       Kit.new(name: LEAN, tools: LEAN_TOOLS),
       # A delegate child: it reports to its parent (send_note; the
-      # delegated-by line names it) and leaves memory writes to it.
-      Kit.new(name: CHILD, base: LEAN, add: %w[send_note], remove: %w[memory_write])
+      # delegated-by line names it) and leaves memory writes to it, and
+      # starts no children of its own (removed: not even through call_tool).
+      Kit.new(name: CHILD, base: LEAN, add: %w[send_note], remove: %w[memory_write delegate delegate_result])
     ].to_h { |kit| [kit.name, kit] }.freeze
 
     # What a toolkit declares, the Registry's filter: every built-in

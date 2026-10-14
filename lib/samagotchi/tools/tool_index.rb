@@ -11,20 +11,26 @@ require_relative "../plugin/tool_spec"
 module Samagotchi
   module Tools
     # The tools a session knows but doesn't declare one by one, and the two
-    # declared tools that reach them (docs/plugins.md, "Publishing tools to
-    # the index"): find_tools, a keyword search that answers each
-    # match's inputSchema, and call_tool, which calls one as <group>/<tool>.
+    # tools that reach them (docs/plugins.md, "Publishing tools to the
+    # index"): find_tools, a keyword search that answers each match's
+    # inputSchema, and call_tool, which calls one as <group>/<tool>.
     # A source (the mcp bundle, chi.tool_source) publishes its groups (an
-    # MCP server each) and runs the calls; the index searches them, looks a
-    # call's tool up and checks it. The two tools are declared once, after
-    # the plugins load, and only when a source registered: nothing a source
-    # publishes later changes the request's tools, so the prompt cache keeps.
+    # MCP server each) and runs the calls; the index's own group, chi, is
+    # the built-ins the session's toolkit leaves out but doesn't remove
+    # (Registry#reachable_names), and a call_tool of one runs as that
+    # built-in (#unwrap, before the guardrail gate). The index searches the
+    # groups, looks a call's tool up and checks it.
+    #
+    # The two tools are registered once, after the plugins load, and
+    # declared per toolkit (Registry#declared?): when a source registered
+    # then, or the toolkit leaves a built-in reachable. The search tool's
+    # description has the source groups' lines as they were at load and a
+    # chi line per toolkit (#refresh!): nothing a source publishes later
+    # changes the request's tools, so the prompt cache keeps.
     #
     # They are registry entries of source SOURCE, not "core": a plugin
     # tool's paths (guardrail targets, the row's label and preview, native
-    # flat schemas, every toolkit declaring them) are the ones call_tool has
-    # always had. MCP is the only source so far, so the texts speak of MCP
-    # servers.
+    # flat schemas) are the ones call_tool has always had.
     class ToolIndex
       SOURCE = "index"
       FIND_NAME = "find_tools"
@@ -36,18 +42,20 @@ module Samagotchi
       # times one in its description.
       NAME_WEIGHT = 3
       PREVIEW_CHARS = 60
-      # Group names a source can't publish: the index's own groups' (chi's
-      # built-ins a toolkit leaves out).
-      RESERVED_GROUPS = %w[chi].freeze
+      # The index's own group: chi's built-ins a toolkit leaves out.
+      CHI_GROUP = "chi"
+      CHI_SUMMARY = "chi's own tools not declared in this session"
+      # Group names a source can't publish: the index's own groups'.
+      RESERVED_GROUPS = [CHI_GROUP].freeze
 
       FIND_PARAMS = {
         query: { type: "string", required: true,
                  description: "keywords for what the tool does (\"screenshot page\"); empty lists every tool's name" },
-        server: { type: "string", description: "search only this server" }
+        group: { type: "string", description: "search only this group" }
       }.freeze
-      CALL_DESCRIPTION = "Call an MCP server's tool that #{FIND_NAME} found.".freeze
+      CALL_DESCRIPTION = "Call a tool #{FIND_NAME} found.".freeze
       CALL_PARAMS = {
-        tool: { type: "string", required: true, description: "the tool as <server>/<tool>" },
+        tool: { type: "string", required: true, description: "the tool as <group>/<tool>" },
         args: { type: "object", description: "the arguments, per the inputSchema #{FIND_NAME} gave" }
       }.freeze
 
@@ -167,6 +175,8 @@ module Samagotchi
 
       def initialize
         @sources = []
+        # The Registry #declare registered in: the chi group reads it.
+        @registry = nil
         # The source groups' lines in the search tool's description, as
         # #declare found them (#find_description).
         @described = [].freeze
@@ -203,13 +213,14 @@ module Samagotchi
       end
 
       # Register the search and call tools in +registry+, once, after the
-      # plugins load: nothing without a source. A name another tool has is
-      # left out (a line in +failures+).
+      # plugins load (or without them: the built-ins a toolkit leaves out
+      # are reachable either way); +registry+ declares them per toolkit
+      # (Registry::Index). A name another tool has is left out (a line in
+      # +failures+).
       # @return [Array<String>] the names registered
       def declare(registry, failures: nil)
-        return [] if @sources.empty?
-
-        @described = description_lines(groups).freeze
+        @registry = registry
+        @described = description_lines(groups.reject { |group| own?(group) }).freeze
         specs = [find_spec, call_spec]
         declared = specs.filter_map do |spec|
           if (taken = registry[spec.name])
@@ -221,11 +232,20 @@ module Samagotchi
           registry.register(spec.name, source: SOURCE, **spec.entry_fields(nil))
           spec
         end
-        names = declared.map(&:name)
-        tokens = declared.sum { |spec| ToolIndex.spec_tokens(spec) }
-        @sources.each { |source| source.declared!(names, tokens) }
         registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, sourced: !@sources.empty?)
-        names
+        declared!(declared)
+        declared.map(&:name)
+      end
+
+      # The search tool's description again for the Registry's toolkit now
+      # (ToolkitBinding#apply!, at a turn's start): its chi line follows the
+      # toolkit, the source groups' are the ones #declare found.
+      def refresh!
+        entry = @registry && @registry[FIND_NAME]
+        return unless entry&.source == SOURCE
+
+        entry.schema = entry.schema.merge(description: find_description)
+        declared!([find_spec, call_spec].select { |spec| @registry[spec.name]&.source == SOURCE })
       end
 
       # A checked tool declaration's (Plugin::ToolSpec) definition as
@@ -251,38 +271,30 @@ module Samagotchi
       # tool: knowing the names, a model searches less and guesses
       # arguments.
       def find_description
-        "Search the tools of the MCP servers below by keywords. It answers up to #{FIND_RESULTS} tools, each with " \
-          "its name (<server>/<tool>) and inputSchema; call one with #{CALL_NAME}. An empty query lists every tool's " \
-          "name.\nServers:\n#{@described.join("\n")}"
+        "Search tools this session doesn't declare, by keywords. It answers up to #{FIND_RESULTS} tools, each with " \
+          "its name (<group>/<tool>) and inputSchema; call one with #{CALL_NAME}. An empty query lists every tool's " \
+          "name.\nGroups:\n#{(description_lines(registry_groups) + @described).join("\n")}"
       end
 
       # ── Search ──────────────────────────────────────────────────────────
 
       # The search tool: the best matches with their schemas, or with an
-      # empty query every group's tool names.
-      def find(query, only = nil)
-        all = groups
-        searched = all
-        if only && !only.strip.empty?
-          searched = all.select { |group| group.name == only.strip }
-          return "Error: no MCP server #{only.strip}. Servers: #{all.map(&:name).join(", ")}" if searched.empty?
-        end
-        return names_text(searched) if words(query).empty?
+      # empty query every group's tool names. +server+ is the parameter's
+      # name before it was +group+: a model that still gives it is told
+      # every group was searched.
+      def find(query, only = nil, server: nil)
+        answer = find_in(query, only)
+        return answer unless (only.nil? || only.strip.empty?) && !server.to_s.strip.empty?
 
-        matches = ranked(query, searched.flat_map(&:tools)).take(FIND_RESULTS)
-        return "No MCP tool matches \"#{query.strip}\".\n\n#{names_text(searched)}" if matches.empty?
-
-        blocks = matches.map { |tool| match_text(tool, all) }
-        unsearched = searched.filter_map { |group| "#{group.name} #{group.note}" if group.tools.empty? && group.note }
-        blocks << "Not searched: #{unsearched.join("; ")}." unless unsearched.empty?
-        "Call one with #{CALL_NAME}(tool: \"<server>/<tool>\", args: {…}).\n\n#{blocks.join("\n\n")}"
+        "(searched every group)\n#{answer}"
       end
 
       # ── The call ────────────────────────────────────────────────────────
 
       # A call of the tool +name+ names, with +args+ typed by its schema,
       # run by its source. It fails closed: a tool that isn't the one
-      # guardrails were given (#claimed) is refused.
+      # guardrails were given (#claimed) is refused, and so is one of the
+      # index's own (a built-in runs as itself, #unwrap, or not at all).
       def call(name, args)
         tool = lookup(name)
         return tool if tool.is_a?(String)
@@ -293,6 +305,7 @@ module Samagotchi
 
         inner = inner_args(args, tool)
         return "Error: args must be an object.#{ToolIndex.schema_note(tool)}" unless inner
+        return "Error: #{tool.full_name} can't be called through #{CALL_NAME} here" if tool.entry
 
         source_of(tool.group).run(tool, inner)
       end
@@ -325,9 +338,9 @@ module Samagotchi
       def find_spec
         Plugin::ToolSpec.build(FIND_NAME, find_description, params: FIND_PARAMS,
                                                            preview: lambda { |args|
-                                                             [args["query"].to_s.strip, args["server"] && "in #{args["server"]}"].compact.join(" ")
+                                                             [args["query"].to_s.strip, args["group"] && "in #{args["group"]}"].compact.join(" ")
                                                            }) do |args, _ctx|
-          find(args["query"].to_s, args["server"])
+          find(args["query"].to_s, args["group"], server: args["server"])
         end
       end
 
@@ -347,9 +360,50 @@ module Samagotchi
         @sources.find { |source| source.groups.any? { |g| g.name == group } }
       end
 
-      # The index's own groups (none yet).
+      def find_in(query, only)
+        all = groups
+        searched = all
+        if only && !only.strip.empty?
+          searched = all.select { |group| group.name == only.strip }
+          return "Error: no group #{only.strip}. Groups: #{all.map(&:name).join(", ")}" if searched.empty?
+        end
+        return names_text(searched) if words(query).empty?
+
+        matches = ranked(query, searched.flat_map(&:tools)).take(FIND_RESULTS)
+        return "No tool matches \"#{query.strip}\".\n\n#{names_text(searched)}" if matches.empty?
+
+        blocks = matches.map { |tool| match_text(tool, all) }
+        unsearched = searched.filter_map { |group| "#{group.name} #{group.note}" if group.tools.empty? && group.note }
+        blocks << "Not searched: #{unsearched.join("; ")}." unless unsearched.empty?
+        "Call one with #{CALL_NAME}(tool: \"<group>/<tool>\", args: {…}).\n\n#{blocks.join("\n\n")}"
+      end
+
+      # What the sources hear of the declared tools (/mcp's last line).
+      def declared!(specs)
+        names = specs.map(&:name)
+        tokens = specs.sum { |spec| ToolIndex.spec_tokens(spec) }
+        @sources.each { |source| source.declared!(names, tokens) }
+      end
+
+      def own?(group) = RESERVED_GROUPS.include?(group.name)
+
+      # The index's own groups: chi, the built-ins the Registry's toolkit
+      # leaves out but reaches (none: no group). Each tool's schema is its
+      # registered entry's (a config's execute description included), and
+      # it acts as itself.
       # @return [Array<Group>]
-      def registry_groups = []
+      def registry_groups
+        names = @registry ? @registry.reachable_names : []
+        return [] if names.empty?
+
+        tools = names.map do |name|
+          entry = @registry[name]
+          schema = ToolDeclarations.chat_schemas([entry.schema]).first
+          Tool.new(group: CHI_GROUP, name: name, acts_as: name, description: schema[:description].to_s,
+                   schema: JSON.parse(JSON.generate(schema[:parameters])), entry: entry)
+        end
+        [Group.new(name: CHI_GROUP, summary: CHI_SUMMARY, tools: tools)]
+      end
 
       # One line per group in the search tool's description: its name, its
       # summary and how many tools it can call.
@@ -389,7 +443,7 @@ module Samagotchi
           head = [group.name, group.note].compact.join(" ")
           names.empty? ? head : "#{head}: #{names.join(", ")}"
         end
-        "MCP tools by server (call one as <server>/<tool>; search for its inputSchema):\n#{lines.join("\n")}"
+        "Tools by group (call one as <group>/<tool>; search for its inputSchema):\n#{lines.join("\n")}"
       end
 
       # +tools+ that share a word with +query+, best first: a word scores
@@ -443,7 +497,7 @@ module Samagotchi
 
         same = all.flat_map(&:tools).select { |t| t.acts_as == name }
         return same.first if same.size == 1
-        return "Error: #{name} names #{same.map(&:full_name).join(" and ")}; call one as <server>/<tool>" if same.size > 1
+        return "Error: #{name} names #{same.map(&:full_name).join(" and ")}; call one as <group>/<tool>" if same.size > 1
 
         # A name with a group's <group>/ waits for that group only; any
         # other name (an acts_as) for every one starting.
@@ -458,9 +512,9 @@ module Samagotchi
         return "Error: MCP server #{failed.name} didn't start: #{failed.error}" if failed
 
         closest = ranked(name, all.flat_map(&:tools)).take(CLOSEST)
-        return "Error: no MCP tool #{name}. Search with #{FIND_NAME}." if closest.empty?
+        return "Error: no tool #{name}. Search with #{FIND_NAME}." if closest.empty?
 
-        "Error: no MCP tool #{name}. Closest: #{closest.map(&:full_name).join(", ")}"
+        "Error: no tool #{name}. Closest: #{closest.map(&:full_name).join(", ")}"
       end
 
       # #lookup's tool, without waiting for a start: nil on a miss.
@@ -471,12 +525,17 @@ module Samagotchi
 
       # The acts_as and label +name+ stands for, from the name alone:
       # <group>/<tool> of a known group (the one that has the tool, else the
-      # first whose name it starts with), its source naming the acts_as; or
-      # a bare name with a source's prefix as it is (no label). Nil for
+      # first whose name it starts with), its source naming the acts_as; a
+      # bare name of one of the index's own tools (it acts as itself); or a
+      # bare name with a source's prefix as it is (no label). Nil for
       # anything else.
       # @return [Array(String, String), Array(String, nil), nil]
       def claimed(name)
         all = groups
+        if (own = all.select { |g| own?(g) }.find { |g| g.tools.any? { |t| t.acts_as == name } })
+          return [name, "#{own.name}: #{name}"]
+        end
+
         named = all.select { |group| name.start_with?("#{group.name}/") }
         group = named.find { |g| g.tools.any? { |t| t.name == name.delete_prefix("#{g.name}/") } } || named.first
         if group

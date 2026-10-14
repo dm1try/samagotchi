@@ -212,6 +212,10 @@ module Samagotchi
       @lifecycle_mutex = Mutex.new
       @shut_down = false
       load_plugins if plugins
+      # Registered from what the sources published while they loaded, and
+      # with no plugins too: a toolkit's left-out built-ins are reachable
+      # either way (declared per toolkit, Tools::Registry).
+      @tool_index.declare(@tools, failures: @plugin_failures)
       guardrail_rules
       # The Engine owns the reminder store; its kernel (built here, or a
       # spec's) gets it, so tool calls via KernelLoop and reminder injection
@@ -2497,8 +2501,6 @@ module Samagotchi
       # start) waits for the first turn, beside the load warnings: no UI
       # is there yet, and the Engine isn't built.
       @extension_load.load_plugins(registries, failures: @plugin_failures)
-      # Declared once, from what the sources published while they loaded.
-      @tool_index.declare(@tools, failures: @plugin_failures)
     end
 
     # Keep a plugin's new tool set (chi.replace_tools, from any thread)
@@ -2547,6 +2549,7 @@ module Samagotchi
         state_dir: -> { session_state_dir },
         can_stage: -> { !turn_running? && !history? },
         reset_prompt: -> { @prompt_builder&.reset! },
+        refresh_index: -> { @tool_index.refresh! },
         emit: ->(sink, event) { emit_event(sink, event) },
         notify: ->(text, level, source, extra:) { hook_notify(text, level, source, extra: extra) }
       )

@@ -93,17 +93,17 @@ RSpec.describe "The mcp bundle" do
       it "names the server by it in find_tools' description, with its tool count" do
         servers["fake"] = fake.merge("description" => "echoes and adds")
         next_engine
-        expect(find_description).to end_with("\nServers:\n- fake: echoes and adds (3 tools)")
+        expect(find_description).to end_with("\nGroups:\n- fake: echoes and adds (3 tools)")
       end
     end
 
     # Never its tool names: a model that knows them calls them blind, unsearched.
     it "names a cached server by its instructions' first sentence, else only by its tool count" do
       next_engine
-      expect(find_description).to end_with("\nServers:\n- fake: A fake server for chi's specs. (3 tools)")
+      expect(find_description).to end_with("\nGroups:\n- fake: A fake server for chi's specs. (3 tools)")
       File.write(cache_file, JSON.generate(cache.except("info")))
       next_engine
-      expect(find_description).to end_with("\nServers:\n- fake (3 tools)")
+      expect(find_description).to end_with("\nGroups:\n- fake (3 tools)")
     end
 
     it "saves the cache when only the instructions changed" do

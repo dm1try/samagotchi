@@ -232,6 +232,27 @@ RSpec.describe Samagotchi::Tools::Registry do
         expect(registry.indexed("forget_outputs", layers: [:forget])).to be_nil
       end
 
+      it "declares the index's tools when they reach something, on full (nil) and a resolved toolkit alike" do
+        registry.register("find_tools", schema: schema.merge(name: "find_tools"), handler: ->(*) { "" }, source: "index")
+        registry.index = described_class::Index.new(source: "index", call_name: "call_tool", sourced: false)
+        expect(registry.names).not_to include("find_tools", "call_tool")
+        expect(registry.names(toolkit: kit("full"))).not_to include("find_tools", "call_tool")
+        expect(registry.left_out_names).to eq([])
+        expect(registry.names(toolkit: kit)).to include("find_tools", "call_tool")
+        expect(registry.left_out_names(toolkit: kit)).not_to include("find_tools", "call_tool")
+        expect(registry.left_out_names(toolkit: kit(remove: %w[call_tool]))).to include("call_tool")
+
+        # call_tool removed: nothing is reachable, so no find_tools either.
+        expect(registry.names(toolkit: kit(remove: %w[call_tool]))).not_to include("find_tools", "call_tool")
+        expect(registry.left_out_names(toolkit: kit(remove: %w[call_tool]))).to include("call_tool")
+        expect(registry.left_out_names(toolkit: kit(remove: %w[call_tool]))).not_to include("find_tools")
+
+        registry.index = registry.index.with(sourced: true) # an MCP server at load: every toolkit
+        expect(registry.names).to include("find_tools", "call_tool")
+        expect(registry.names(toolkit: kit(remove: %w[find_tools]))).to eq(registry.names(toolkit: kit) - ["find_tools"])
+        expect(registry.names(toolkit: kit(remove: %w[call_tool]))).to include("find_tools") # MCP's, as on main
+      end
+
       it "is nothing when the toolkit removes call_tool, or on full" do
         registry.toolkit = kit(remove: %w[call_tool])
         expect(registry.reachable_names).to eq([])

@@ -85,8 +85,8 @@ RSpec.shared_context "the mcp bundle in an Engine" do
     handle("call_tool", { "tool" => "#{server}/#{tool}", "args" => args })
   end
 
-  def find(query, server = nil)
-    handle("find_tools", { "query" => query, "server" => server }.compact)
+  def find(query, group = nil)
+    handle("find_tools", { "query" => query, "group" => group }.compact)
   end
 
   # The tool index's tools in the registry (the mcp bundle publishes into

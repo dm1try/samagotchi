@@ -1,1 +1,1 @@
-Error: no MCP server nope. Servers: fake, slow
+Error: no group nope. Groups: fake, slow

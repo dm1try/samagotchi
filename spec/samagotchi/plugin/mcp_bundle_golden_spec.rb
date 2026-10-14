@@ -38,7 +38,7 @@ RSpec.describe "The mcp bundle's texts" do
     cards.last[:body]
   end
 
-  def find_tool = tools.entries.find { |entry| entry.schema[:description].to_s.start_with?("Search the tools") }
+  def find_tool = tools["find_tools"]
   def call_entry = tools.entries.find { |entry| entry.label == "mcp" }
 
   before do
@@ -84,7 +84,7 @@ RSpec.describe "The mcp bundle's texts" do
       call = { name: call_entry.name, args: args }
       "#{JSON.generate(args)} → #{JSON.generate(targets.call(call))} | #{call_entry.preview.call(call)}"
     end
-    find_call = { name: find_tool.name, args: { "query" => "echo", "server" => "fake" } }
+    find_call = { name: find_tool.name, args: { "query" => "echo", "group" => "fake" } }
     lines << "find → #{find_tool.preview.call(find_call)}"
     expect_golden("call_targets", lines.join("\n"))
   end

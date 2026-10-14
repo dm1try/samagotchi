@@ -86,18 +86,19 @@ module Samagotchi
       end
 
       # The entry +name+ names when the session's toolkit leaves it out (a
-      # real tool the model can't call here), nil otherwise.
+      # real tool the model can't call here, by its name), nil otherwise.
       # @return [Entry, nil]
       def left_out(name, layers: [])
         entry = self[name]
-        entry if entry&.offered?(layers) && !declared?(entry)
+        entry if entry && left_out?(entry, layers, @toolkit)
       end
 
       # The tools +toolkit+ (the session's by default) leaves out of a turn
-      # under +layers+.
+      # under +layers+. The tool index's own aren't, unless it removes them:
+      # they are declared when there is something to reach.
       # @return [Array<String>] in declaration order
       def left_out_names(layers: [], toolkit: @toolkit)
-        ordered(@entries.values.select { |entry| entry.offered?(layers) && !declared?(entry, toolkit) }).map(&:name)
+        ordered(@entries.values.select { |entry| left_out?(entry, layers, toolkit) }).map(&:name)
       end
 
       # The built-in +name+ names when the session's toolkit leaves it out
@@ -157,7 +158,35 @@ module Samagotchi
 
       private
 
-      def declared?(entry, toolkit = @toolkit) = toolkit.nil? || toolkit.declares?(entry)
+      # Declared by +toolkit+ (nil: every tool, full). The tool index's
+      # tools are declared when they reach something, whatever the toolkit:
+      # a source registered at load, or a built-in it leaves out but
+      # doesn't remove (#index_needed?); unless it removes them.
+      def declared?(entry, toolkit = @toolkit)
+        if index_entry?(entry)
+          !toolkit&.removed&.include?(entry.name) && index_needed?(toolkit)
+        else
+          toolkit.nil? || toolkit.declares?(entry)
+        end
+      end
+
+      def index_entry?(entry) = !@index.nil? && entry.source == @index.source
+
+      # From what the plugins registered at load and the toolkit alone, so
+      # the declared tools stay the same for a session's life. A built-in
+      # left out counts only while call_tool can reach it (not removed).
+      def index_needed?(toolkit)
+        return true if @index.sourced
+        return false if toolkit&.removed&.include?(@index.call_name)
+
+        @entries.each_value.any? { |entry| soft?(entry, [], toolkit) }
+      end
+
+      def left_out?(entry, layers, toolkit)
+        return false unless entry.offered?(layers) && !declared?(entry, toolkit)
+
+        !index_entry?(entry) || toolkit&.removed&.include?(entry.name) == true
+      end
 
       # A built-in +toolkit+ leaves out of a turn under +layers+ without
       # removing it.

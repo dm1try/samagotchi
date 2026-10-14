@@ -25,11 +25,13 @@ RSpec.describe Samagotchi::Toolkit do
       expect(resolved.fallback).to be_nil
     end
 
-    it "child is lean with send_note and without memory_write" do
+    it "child is lean with send_note, and removes memory_write and the delegate tools (unreachable)" do
       lean = declared(described_class.new(name: "lean").resolve(kits))
-      child = declared(described_class.new(name: "child").resolve(kits))
+      resolved = described_class.new(name: "child").resolve(kits)
+      child = declared(resolved)
       expect(child - lean).to eq(%w[send_note])
       expect(lean - child).to eq(%w[memory_write])
+      expect(resolved.removed).to eq(%w[memory_write delegate delegate_result])
     end
   end
 

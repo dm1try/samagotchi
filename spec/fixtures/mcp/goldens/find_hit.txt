@@ -1,4 +1,4 @@
-Call one with call_tool(tool: "<server>/<tool>", args: {…}).
+Call one with call_tool(tool: "<group>/<tool>", args: {…}).
 
 fake/take_screenshot: Take a screenshot of the page or of an element on the page.
 inputSchema: {"type":"object","properties":{"fullPage":{"type":"boolean"}}}

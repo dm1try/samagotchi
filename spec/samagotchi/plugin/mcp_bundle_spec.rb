@@ -25,7 +25,7 @@ RSpec.describe "The mcp bundle" do
     expect(mcp_tools).to eq(%w[call_tool find_tools]) # the registry orders them by name
     find_tool = tools["find_tools"]
     expect(find_tool.schema[:parameters]).to include(required: ["query"])
-    expect(find_tool.schema[:parameters][:properties].keys).to eq(%i[query server])
+    expect(find_tool.schema[:parameters][:properties].keys).to eq(%i[query group])
     call = tools["call_tool"]
     expect(call.schema[:parameters]).to include(required: ["tool"])
     expect(call.schema[:parameters][:properties][:args]).to include(type: "object")
@@ -49,7 +49,7 @@ RSpec.describe "The mcp bundle" do
     expect(preview.call({ name: "call_tool", args: { "tool" => "mcp_fake_echo", "args" => '{"text": "json"}' } }))
       .to eq("fake/echo text=json")
     expect(preview.call({ name: "call_tool", args: { "tool" => "fake/nope" } })).to eq("fake/nope")
-    expect(tools["find_tools"].preview.call({ name: "find_tools", args: { "query" => "add", "server" => "fake" } }))
+    expect(tools["find_tools"].preview.call({ name: "find_tools", args: { "query" => "add", "group" => "fake" } }))
       .to eq("add in fake")
   end
 
@@ -65,7 +65,7 @@ RSpec.describe "The mcp bundle" do
 
     it "answers the best matches, each with its name, description and inputSchema" do
       text = find("screenshot")
-      expect(text).to start_with("Call one with call_tool(tool: \"<server>/<tool>\", args: {…}).\n\n" \
+      expect(text).to start_with("Call one with call_tool(tool: \"<group>/<tool>\", args: {…}).\n\n" \
                                  "fake/take_screenshot: Take a screenshot of the page or of an element on the page.\n" \
                                  "inputSchema: {\"type\":\"object\",\"properties\":{\"fullPage\":{\"type\":\"boolean\"}}}")
     end
@@ -80,19 +80,19 @@ RSpec.describe "The mcp bundle" do
 
     it "answers at most 5, and a search with no match lists the tool names" do
       expect(names(find("the a")).size).to eq(5)
-      expect(find("zebra")).to eq("No MCP tool matches \"zebra\".\n\nMCP tools by server (call one as <server>/<tool>; " \
+      expect(find("zebra")).to eq("No tool matches \"zebra\".\n\nTools by group (call one as <group>/<tool>; " \
                                   "search for its inputSchema):\nfake: echo, navigate_page, new_page, list_pages, " \
                                   "handle_dialog, take_screenshot, bad (bad schema)")
     end
 
     it "lists every server's tool names, without schemas, for an empty query" do
-      expect(find("  ")).to start_with("MCP tools by server").and(end_with("\nfake: echo, navigate_page, new_page, list_pages, " \
+      expect(find("  ")).to start_with("Tools by group").and(end_with("\nfake: echo, navigate_page, new_page, list_pages, " \
                                                                           "handle_dialog, take_screenshot, bad (bad schema)"))
     end
 
     it "searches one server when asked, and names the servers for an unknown one" do
       expect(names(find("echo", "fake"))).to eq(%w[fake/echo])
-      expect(find("echo", "nope")).to eq("Error: no MCP server nope. Servers: fake")
+      expect(find("echo", "nope")).to eq("Error: no group nope. Groups: fake")
     end
 
     it "shows a tool with a bad inputSchema as such (one notice), and call_tool refuses it" do
@@ -115,7 +115,7 @@ RSpec.describe "The mcp bundle" do
 
     it "describes the servers, never their tools" do
       description = tools["find_tools"].schema[:description]
-      expect(description).to end_with("\nServers:\n- fake") # a first run: known by name only
+      expect(description).to end_with("\nGroups:\n- fake") # a first run: known by name only
       expect(description).not_to include("navigate_page")
     end
   end
@@ -129,8 +129,8 @@ RSpec.describe "The mcp bundle" do
     end
 
     it "answers a tool it doesn't know with the closest ones" do
-      expect(mcp("echo_text")).to start_with("Error: no MCP tool fake/echo_text. Closest: fake/echo, ")
-      expect(handle("call_tool", { "tool" => "zebra" })).to eq("Error: no MCP tool zebra. Search with find_tools.")
+      expect(mcp("echo_text")).to start_with("Error: no tool fake/echo_text. Closest: fake/echo, ")
+      expect(handle("call_tool", { "tool" => "zebra" })).to eq("Error: no tool zebra. Search with find_tools.")
     end
 
     it "types the arguments by the tool's inputSchema, and takes them as JSON text" do
@@ -186,7 +186,7 @@ RSpec.describe "The mcp bundle" do
         settings["startup_timeout"] = 10
         @engine = Samagotchi::Engine.new(client: client)
         @engine.start_init_tasks!
-        expect(find("echo")).to eq("No MCP tool matches \"echo\".\n\nMCP tools by server (call one as <server>/<tool>; " \
+        expect(find("echo")).to eq("No tool matches \"echo\".\n\nTools by group (call one as <group>/<tool>; " \
                                    "search for its inputSchema):\nfake (starting, try again)")
         expect(mcp("echo", { "text" => "waited" })).to eq("echo: waited")
         expect(names = find("echo")).to include("fake/echo: Echo the text back.")
@@ -204,7 +204,7 @@ RSpec.describe "The mcp bundle" do
           expect(wait_until(timeout: 5) { find("", "quick").include?("quick: echo") }).to be(true)
 
           started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          expect(mcp("nope", server: "quick")).to start_with("Error: no MCP tool quick/nope.")
+          expect(mcp("nope", server: "quick")).to start_with("Error: no tool quick/nope.")
           expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
           expect(find("", "fake")).to include("fake (starting, try again)")
           expect(mcp("echo", { "text" => "waited" })).to eq("echo: waited")
@@ -237,7 +237,7 @@ RSpec.describe "The mcp bundle" do
 
     it "refuses a tool whose name isn't the one guardrails were given (a bare tool name)" do
       expect(tools["call_tool"].targets.call({ name: "call_tool", args: { "tool" => "echo" } })).to eq({})
-      expect(handle("call_tool", { "tool" => "echo", "args" => { "text" => "x" } })).to start_with("Error: no MCP tool echo.")
+      expect(handle("call_tool", { "tool" => "echo", "args" => { "text" => "x" } })).to start_with("Error: no tool echo.")
     end
   end
 
@@ -436,7 +436,7 @@ RSpec.describe "The mcp bundle" do
 
     it "indexes only those" do
       expect(find("")).to end_with("\nfake: echo, add")
-      expect(mcp("fail")).to start_with("Error: no MCP tool fake/fail.")
+      expect(mcp("fail")).to start_with("Error: no tool fake/fail.")
     end
   end
 
@@ -450,7 +450,7 @@ RSpec.describe "The mcp bundle" do
       expect(mcp("echo", { "text" => "two" }, server: "fake-"))
         .to eq("Error: fake-/echo can't be called: name clash with fake/echo (mcp_fake_echo)")
       expect(handle("call_tool", { "tool" => "mcp_fake_echo", "args" => { "text" => "x" } }))
-        .to eq("Error: mcp_fake_echo names fake/echo and fake-/echo; call one as <server>/<tool>")
+        .to eq("Error: mcp_fake_echo names fake/echo and fake-/echo; call one as <group>/<tool>")
       expect(find("echo")).to include("fake/echo (name clash with fake-/echo): ", "fake-/echo (name clash with fake/echo): ")
       expect(mcp("add", { "a" => 1, "b" => 2 })).to eq("3")
     end

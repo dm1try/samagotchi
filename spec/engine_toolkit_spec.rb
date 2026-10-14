@@ -106,4 +106,11 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     expect(engine.system_prompt).not_to include("Not loaded", "Not declared", "find_tools")
     expect(engine.toolkit_summary).to be_nil
   end
+
+  it "declares find_tools and call_tool on lean, with the plugins loaded and no MCP" do
+    allow(kernel).to receive(:run).and_return(result)
+    turn(session(Samagotchi::Toolkit.new(name: "lean")))
+    expect(kernel.tools.names).to include("find_tools", "call_tool")
+    expect(kernel.tools["find_tools"].schema[:description]).to include("- chi: chi's own tools not declared")
+  end
 end

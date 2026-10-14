@@ -37,10 +37,16 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
   def added(**) = source(**).tap { |s| index.add(s) }
 
   context "without a source" do
-    it "declares nothing: the session's tools are the ones it had" do
+    it "registers both, declared only when the toolkit leaves a built-in reachable: full's tools are the ones it had" do
       before = registry.names
-      expect(index.declare(registry)).to eq([])
+      expect(index.declare(registry)).to eq([find_name, call_name])
       expect(registry.names).to eq(before)
+      expect(registry.left_out_names).to eq([])
+
+      registry.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
+      expect(registry.names).to include(find_name, call_name)
+      expect(registry.left_out_names).not_to include(find_name, call_name)
+      expect(registry[call_name].label).to be_nil
     end
   end
 
@@ -65,7 +71,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     end
 
     it "describes a starting group by its name only, never with a tool list frozen empty, and keeps the description" do
-      expect(find_entry.schema[:description]).to end_with("\nServers:\n- fs: files (1 tool)\n- slow")
+      expect(find_entry.schema[:description]).to end_with("\nGroups:\n- fs: files (1 tool)\n- slow")
       fs.publish([described_class::Group.new(name: "fs", summary: "files", tools: [echo]),
                   described_class::Group.new(name: "slow", tools: [tool("slow", "wait")])])
       expect(registry[find_name].schema[:description]).to end_with("\n- slow") # declared once
@@ -134,6 +140,88 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     end
   end
 
+  describe "the chi group: built-ins the toolkit leaves out" do
+    def kit(name = "lean", kits: Samagotchi::Toolkit.kits, **) = Samagotchi::Toolkit.new(name: name, **).resolve(kits)
+
+    def lean! = (registry.toolkit = kit).tap { index.refresh! }
+
+    let(:find_entry) { registry[find_name] }
+
+    before { index.declare(registry) }
+
+    it "lists them per toolkit, never a removed or layer-gated one, first in the description" do
+      lean!
+      chi = index.groups.first
+      expect(chi.name).to eq("chi")
+      expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
+                                             delegate delegate_result])
+      expect(find_entry.schema[:description]).to end_with(
+        "\nGroups:\n- chi: chi's own tools not declared in this session (7 tools)"
+      )
+
+      registry.toolkit = kit("child")
+      expect(index.groups.first.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders
+                                                            list_sessions])
+      registry.toolkit = kit(remove: %w[delegate])
+      expect(index.groups.first.tools.map(&:name)).not_to include("delegate", "forget_outputs")
+      registry.toolkit = nil
+      expect(index.groups).to eq([])
+    end
+
+    it "answers a search with the tool's name, its registered schema, and how to call it" do
+      registry = Samagotchi::Tools::Builtins.registry(command_description: false)
+      index = described_class.new
+      index.declare(registry)
+      registry.toolkit = kit("tiny", kits: Samagotchi::Toolkit.kits(config: { "tiny" => { "base" => "lean",
+                                                                                          "remove" => [] } })
+                                                .merge("tiny" => Samagotchi::Toolkit::Kit.new(name: "tiny",
+                                                                                              tools: %w[read])))
+      answer = index.find("run shell command")
+      expect(answer).to start_with("Call one with call_tool(tool: \"<group>/<tool>\", args: {…}).\n\nchi/execute: ")
+      schema = Samagotchi::ToolDeclarations.chat_schemas([registry["execute"].schema]).first[:parameters]
+      expect(answer).to include("inputSchema: #{JSON.generate(schema)}")
+      expect(schema[:properties]).to have_key(:command)
+      expect(schema[:properties]).not_to have_key(:description) # execute.description: false
+    end
+
+    it "notes that a search given the old server: parameter searched every group" do
+      lean!
+      expect(find_entry.handler.call({ name: find_name, args: { "query" => "delegate", "server" => "x" } }, nil))
+        .to start_with("(searched every group)\nCall one with call_tool")
+      expect(index.find("delegate", "chi")).to include("chi/delegate: ")
+    end
+
+    it "never runs a chi tool as a source call (fail closed: only the unwrap runs it)" do
+      lean!
+      expect(index.call("chi/delegate", { "task" => "x" })).to eq("Error: chi/delegate can't be called through call_tool here")
+      expect(index.call("delegate", "nope")).to start_with("Error: args must be an object.")
+      expect(index.call_targets({ "tool" => "chi/delegate", "args" => { "task" => "x" } }))
+        .to eq(acts_as: "delegate", args: { "task" => "x" }, label: "chi: delegate")
+    end
+
+    it "describes the source groups as they were at load: a publish before the first apply changes no bytes (B4)" do
+      fs = added
+      fs.publish([described_class::Group.new(name: "fs", tools: [echo])])
+      index = described_class.new
+      index.add(fs)
+      registry = Samagotchi::Tools::Builtins.registry
+      index.declare(registry)
+      fs.publish([described_class::Group.new(name: "fs", summary: "now", tools: [echo, tool("fs", "more")])])
+      registry.toolkit = kit
+      index.refresh!
+      first = registry[find_name].schema[:description]
+      expect(first).to end_with("\n- chi: chi's own tools not declared in this session (7 tools)\n- fs (1 tool)")
+
+      again = described_class.new.tap { |i| i.add(fs) }
+      other = Samagotchi::Tools::Builtins.registry
+      fs.publish([described_class::Group.new(name: "fs", tools: [echo])])
+      again.declare(other)
+      other.toolkit = kit
+      again.refresh!
+      expect(other[find_name].schema).to eq(registry[find_name].schema)
+    end
+  end
+
   it "leaves out a name another tool has, with a load failure, and declares the other" do
     added
     registry.register(find_name, schema: { name: find_name }, handler: ->(*) { "" }, source: "other")
@@ -153,10 +241,10 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     index.declare(registry)
 
     expect(index.groups.map(&:name)).to eq(["fs"])
-    expect(registry[find_name].schema[:description]).to end_with("\nServers:\n- fs (1 tool)")
+    expect(registry[find_name].schema[:description]).to end_with("\nGroups:\n- fs (1 tool)")
     expect(index.find("echo")).to include("fs/echo")
     expect(index.find("echo")).not_to include("chi/echo")
-    expect(index.find("other")).to start_with("No MCP tool matches")
+    expect(index.find("other")).to start_with("No tool matches")
     index.groups
     expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "chi")).once
     expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "fs")).once
@@ -197,16 +285,15 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(chi.counts[:tool_sources]).to eq(1)
     end
 
-    it "keeps an older mcp bundle's own tools: it publishes nothing, so the index declares none" do
+    it "keeps an older mcp bundle's own tools: it publishes nothing, so full declares none of the index's" do
       chi = api # mcp 0.6.x: its own tools, by their old names, and no chi.tool_source
       chi.tool("find_mcp_tools", "its own search", params: { query: { type: "string" } }) { "found" }
       chi.tool("mcp_call", "its own call", params: { tool: { type: "string" } }) { "called" }
       chi.commit!
-      expect(index.declare(registry)).to eq([])
+      index.declare(registry)
       expect([registry["find_mcp_tools"].source, registry["mcp_call"].source]).to eq(%w[mcp mcp])
-      expect(registry.key?(find_name)).to be(false)
-      expect(registry.key?(call_name)).to be(false)
-      expect(registry.by_source("index")).to be_empty
+      expect(registry.names).to include("find_mcp_tools", "mcp_call")
+      expect(registry.names).not_to include(find_name, call_name)
     end
   end
 end

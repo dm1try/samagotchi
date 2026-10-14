@@ -4,6 +4,8 @@ require "json"
 require "samagotchi/engine"
 require "samagotchi/llm/chat_loop"
 require "support/test_kernel"
+require "samagotchi/toolkit"
+require "samagotchi/tools/tool_index"
 
 # Byte-for-byte snapshots of what each model is told about its tools: the
 # native base system prompt per profile (tool declarations + call hint + the
@@ -39,5 +41,17 @@ RSpec.describe "Prompt snapshots" do
   it "keeps the chat path's tool definitions" do
     backend = Samagotchi::LLM::ChatLoop.new(kernel: test_kernel)
     expect_snapshot("chat_tools.json", JSON.pretty_generate(backend.tool_definitions) + "\n")
+  end
+
+  # Lean declares the tool index's two tools, its find_tools description
+  # naming the chi group (lean tools P2b).
+  it "keeps the chat path's tool definitions on the lean toolkit" do
+    kernel = test_kernel(tools: Samagotchi::Tools::Builtins.registry)
+    index = Samagotchi::Tools::ToolIndex.new
+    index.declare(kernel.tools)
+    kernel.tools.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
+    index.refresh!
+    backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel)
+    expect_snapshot("chat_tools_lean.json", JSON.pretty_generate(backend.tool_definitions) + "\n")
   end
 end

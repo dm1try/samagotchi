@@ -322,6 +322,46 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
         "options"
       ]
     }
+  },
+  {
+    "name": "call_tool",
+    "description": "Call a tool find_tools found.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "the tool as <group>/<tool>"
+        },
+        "args": {
+          "type": "object",
+          "description": "the arguments, per the inputSchema find_tools gave"
+        }
+      },
+      "required": [
+        "tool"
+      ]
+    }
+  },
+  {
+    "name": "find_tools",
+    "description": "Search tools this session doesn't declare, by keywords. It answers up to 5 tools, each with its name (<group>/<tool>) and inputSchema; call one with call_tool. An empty query lists every tool's name.\nGroups:\n- chi: chi's own tools not declared in this session (7 tools)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "keywords for what the tool does (\"screenshot page\"); empty lists every tool's name"
+        },
+        "group": {
+          "type": "string",
+          "description": "search only this group"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
   }
 ]
 </tools>
