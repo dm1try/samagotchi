@@ -154,9 +154,6 @@ module Samagotchi
       # The running turn has ended (its end event) and its after_turn hooks
       # run: a signal's grace waits for them (#signalled).
       @turn_ending = false
-      # The worker's own saves and a signal's (#signal_grace_expired), one
-      # at a time.
-      @save_mutex = Mutex.new
     end
 
     # Whether the session was empty as the worker left it, so the caller
@@ -461,7 +458,7 @@ module Samagotchi
       return unless mark
 
       Log.info(:worker, "interrupted_turn_settled", turn_id: mark.id, iteration: mark.iteration, at: mark.at)
-      save_or_log(:interrupted_turn) { @session.save(state_dir: @state_dir) }
+      save_or_log(:interrupted_turn) { save_session }
     end
 
     # A question saved by a worker that died while it waited (an
@@ -474,7 +471,7 @@ module Samagotchi
       return unless id
 
       Log.info(:worker, "dead_question_dropped", id: id)
-      save_or_log(:dead_question) { @session.save(state_dir: @state_dir) }
+      save_or_log(:dead_question) { save_session }
     end
 
     # The attached context's notes (WorkerInbound#absorb_context), and the
@@ -906,7 +903,7 @@ module Samagotchi
         # the new parent beside it (Session::PARENT_FILE): this turn's
         # status, its rings and every save from here on say so.
         @session.parent_id = Session.parent_override(@session_id, state_dir: @state_dir) || @session.parent_id
-        @session.save(state_dir: @state_dir)
+        save_session
         result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, **turn_args)
       rescue StandardError => e
         error = e
@@ -1234,8 +1231,10 @@ module Samagotchi
     # Save the session, a stopped one too: a stop is the marker file
     # (Session.mark_stopped), which every load reads over the saved status,
     # so this save can't hide it, and the turn the stop canceled is kept.
+    # Session#save serializes it with every other save of @session (Bridge
+    # threads, the turn's checkpoints, a signal's thread).
     def save_session
-      @save_mutex.synchronize { @session.save(state_dir: @state_dir) }
+      @session.save(state_dir: @state_dir)
     end
 
     def signalled? = !@signals.signal.nil?

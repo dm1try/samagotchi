@@ -776,10 +776,15 @@ RSpec.describe Samagotchi::Worker do
         inside = 0
         most = 0
         lock = Mutex.new
-        allow(engine.session).to receive(:save).and_wrap_original do |original, **kwargs|
+        # Inside Session#save's lock: the session file's writes overlap
+        # only if two saves run at once.
+        session_file = "#{engine.session.id}.json"
+        allow(Samagotchi::AtomicFile).to receive(:write).and_wrap_original do |original, path, *args, **kwargs|
+          next original.call(path, *args, **kwargs) unless File.basename(path) == session_file
+
           lock.synchronize { most = [most, inside += 1].max }
           sleep 0.2
-          original.call(**kwargs).tap { lock.synchronize { inside -= 1 } }
+          original.call(path, *args, **kwargs).tap { lock.synchronize { inside -= 1 } }
         end
         worker_save = Thread.new { @worker.send(:save_session) }
 

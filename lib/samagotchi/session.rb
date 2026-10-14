@@ -259,6 +259,8 @@ module Samagotchi
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
       @archived = false
+      # #save's lock: one snapshot-and-write at a time (see #save).
+      @save_lock = Mutex.new
     end
 
     # A `delegate` child: its turns report to its parent (ChildReports). A
@@ -513,18 +515,30 @@ module Samagotchi
     end
 
     # Persist the session atomically. Updates +updated_at+ in place.
+    #
+    # One save at a time per Session: a worker saves its session from the
+    # loop/turn thread (TurnCheckpoint, Engine's turn end, WorkerInbound),
+    # from Bridge threads (QuestionDesk, commands run mid-turn) and from a
+    # signal's thread. AtomicFile keeps each write whole, but two
+    # unserialized saves could rename an older snapshot over a newer one (a
+    # lost update); under the lock the last rename is the latest snapshot.
+    # Never call it from a trap handler (Mutex#lock raises ThreadError
+    # there; WorkerSignals saves on a thread of its own) or from inside a
+    # save (the lock isn't re-entrant).
     def save(state_dir: self.class.default_state_dir)
-      @updated_at = Time.now.iso8601(3)
-      # Persist with current metadata version so new flag is written
-      @metadata_version = METADATA_VERSION
-      FileUtils.mkdir_p(state_dir)
+      @save_lock.synchronize do
+        @updated_at = Time.now.iso8601(3)
+        # Persist with current metadata version so new flag is written
+        @metadata_version = METADATA_VERSION
+        FileUtils.mkdir_p(state_dir)
 
-      path = self.class.session_file(@id, state_dir: state_dir)
+        path = self.class.session_file(@id, state_dir: state_dir)
 
-      # Auto-compute first_preview if not yet cached and messages contain a user entry.
-      compute_first_preview!
+        # Auto-compute first_preview if not yet cached and messages contain a user entry.
+        compute_first_preview!
 
-      AtomicFile.write(path, JSON.pretty_generate(to_h) + "\n")
+        AtomicFile.write(path, JSON.pretty_generate(to_h) + "\n")
+      end
       self
     end
 

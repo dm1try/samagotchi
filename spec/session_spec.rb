@@ -515,6 +515,39 @@ RSpec.describe Samagotchi::Session do
       path = File.join(tmpdir, "#{session.id}.json")
       expect { JSON.parse(File.read(path)) }.not_to raise_error
     end
+
+    # A worker saves from several threads (the turn's, Bridge threads, a
+    # signal's): a save that snapshotted first must not rename its older
+    # content over a later save's.
+    it "runs one save at a time, so an older snapshot never lands over a newer one" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      path = File.join(tmpdir, "#{session.id}.json")
+      session.messages = [{ role: "user", content: "older" }]
+      snapshotted = Queue.new
+      release = Queue.new
+      writes = []
+      allow(Samagotchi::AtomicFile).to receive(:write).and_wrap_original do |original, file, content|
+        writes << JSON.parse(content)["messages"].last["content"]
+        if writes.size == 1
+          snapshotted << true
+          release.pop
+        end
+        original.call(file, content)
+      end
+
+      first = Thread.new { session.save(state_dir: tmpdir) }
+      snapshotted.pop
+      session.messages = [{ role: "user", content: "newer" }]
+      second = Thread.new { session.save(state_dir: tmpdir) }
+      # The second save waits for the first (it would otherwise write now).
+      expect(second.join(0.2)).to be_nil
+      expect(writes).to eq(["older"])
+
+      release << true
+      [first, second].each { |thread| expect(thread.join(5)).to be_truthy }
+      expect(writes).to eq(%w[older newer])
+      expect(JSON.parse(File.read(path))["messages"].last["content"]).to eq("newer")
+    end
   end
 
   describe ".load" do
