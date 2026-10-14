@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-10-14
+
 ### Changed
 
 - Web: the settings popovers' selects (thinking level, LLM context strategy and apply) look the same in Safari, Chrome
@@ -20,7 +22,10 @@ and commands may change between minor versions. How releases are made:
 - `/model` while the web or another terminal read `/stats` no longer leaves the new model on the old model's prompt
   profile (its turns formatted for the wrong family until the next `/model`).
 - Web: the sessions strip no longer blinks when a session updates: a card fades in only when it is new to the list,
-  and a running or waiting card's dot keeps its pulse through the redraw.
+  and a running or waiting card's dot keeps its pulse through the redraw. All sessions no longer re-fades on every
+  update or search keystroke either.
+
+Update with `chi update` (the system bundle 0.68.0), then restart `chi web`.
 
 ## [0.67.0] - 2026-10-14
 
@@ -2951,7 +2956,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.67.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.68.0...HEAD
+[0.68.0]: https://github.com/dm1try/samagotchi/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/dm1try/samagotchi/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/dm1try/samagotchi/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/dm1try/samagotchi/compare/v0.64.0...v0.65.0
