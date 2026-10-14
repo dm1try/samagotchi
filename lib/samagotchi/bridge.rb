@@ -374,7 +374,10 @@ module Samagotchi
 
         Thread.new { handle_connection(client) }.tap do |t|
           t.report_on_exception = false
-          @connection_threads << t
+          # The ended connections' threads go as a new one comes, so a
+          # long-lived worker's list holds its open connections only. A new
+          # Array: #await_answers and #stop may be walking the old one.
+          @connection_threads = @connection_threads.select(&:alive?) << t
         end
       end
     rescue StandardError => e

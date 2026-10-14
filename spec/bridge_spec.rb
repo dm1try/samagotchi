@@ -1544,6 +1544,19 @@ RSpec.describe Samagotchi::Bridge do
       expect([res.code, JSON.parse(res.body)["metrics"]]).to eq(["200", { "turns" => 0, "context_window_tokens" => 4096 }])
     end
 
+    it "keeps only the live connections' threads: an ended one's goes when the next connection comes" do
+      start_bridge
+      allow(@engine).to receive(:stats_snapshot).and_return({ turns: 0 })
+      uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats")
+      threads = -> { @bridge.instance_variable_get(:@connection_threads) }
+
+      5.times { Net::HTTP.get_response(uri) }
+      wait_until(timeout: 2) { threads.call.none?(&:alive?) }
+      Net::HTTP.get_response(uri)
+
+      expect(threads.call.size).to eq(1)
+    end
+
     it "logs each answered request at debug level (method, path, status, time), never its body" do
       log = File.join(Dir.mktmpdir, "chi.log")
       Samagotchi::Log.configure(path: log, level: :debug)
