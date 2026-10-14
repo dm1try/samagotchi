@@ -1625,6 +1625,8 @@ RSpec.describe Samagotchi::Worker do
         expect(ran(rollback)).to include(status: "busy", output: "busy: Ctrl-C the turn first, then !rollback")
         expect(ran(continue)).to include(status: "busy", output: "busy: wait for the turn to end")
         expect(ran(continue)).not_to have_key(:queued)
+        # The released turn's end may still be on its way (a slow runner).
+        expect(wait_until { events_seen.any? { |e| e[:type] == :turn_completed } }).to be(true)
         types = seen.map { |e| e[:type] }
         expect(types.index(:command_ran)).to be < types.index(:turn_completed)
         expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "!rollback" }).not_to have_key(:waits)
