@@ -44,7 +44,7 @@ module AffectedSpecs
 
   # Maps changed paths to the spec files a builder should run, in rank
   # order: (1) changed specs, (2) specs named after a changed file,
-  # (3) RULES, (4) weaker name matches (a spec matching more of the changed
+  # (3) RULES and the goldens of a changed file's layer, (4) weaker name matches (a spec matching more of the changed
   # files first, then one beside the file, see #place), (5) specs naming the
   # changed file's main constant. +tree+ answers spec_files, node_tests,
   # read(path) and mentions(word, paths, word:) (spec path => count).
@@ -65,8 +65,10 @@ module AffectedSpecs
       @changed.each { |path| add_changed(path) }
       code_files.each { |path| add_strong(path) }
       @changed.each { |path| add_rules(path) }
-      # One tier after the other: every weak name match before any grep hit.
-      code_files.each { |path| add_weak(path) }
+      code_files.each { |path| add_golden(path) }
+      # One tier after the other: every golden before any weak name match,
+      # every weak name match before any grep hit.
+      code_files.each { |path| add_weak(path) } # rubocop:disable Style/CombinableLoops
       add_name_matches
       code_files.each { |path| add_mentions(path) }
       @unmatched = code_files.reject { |path| matched?(path) }
@@ -141,6 +143,20 @@ module AffectedSpecs
         next unless rule[:match].any? { |glob| File.fnmatch?(glob, path, File::FNM_PATHNAME) }
 
         rule[:specs].each { |spec| add(spec, "rule: #{rule[:why]} (#{path})", path) if spec_set.key?(spec) }
+      end
+    end
+
+    # 3, after the rules: a golden spec renders a whole layer, so any file
+    # in its folder picks it (terminal_ui.rb, terminal_ui/status_row.rb ->
+    # spec/terminal_ui_golden_spec.rb); no name points at it otherwise.
+    def add_golden(path)
+      return if bundle?(path) || !ruby_code?(path) || path.start_with?("script/")
+
+      parts = name_parts(path)
+      parts.each_index do |i|
+        layer = parts[0..i].join("_")
+        spec = "spec/#{layer}_golden_spec.rb"
+        add(spec, "golden of #{layer} (#{path})", path) if spec_set.key?(spec)
       end
     end
 

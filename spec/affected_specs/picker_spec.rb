@@ -79,6 +79,18 @@ RSpec.describe AffectedSpecs::Picker do
     expect(result.unmatched).to eq([])
   end
 
+  it "picks the golden of a changed file's layer after the rules" do
+    files.merge!("lib/samagotchi/terminal_ui/status_row.rb" => "", "lib/samagotchi/terminal_ui.rb" => "",
+                 "spec/terminal_ui_golden_spec.rb" => "")
+
+    expect(paths(pick("lib/samagotchi/terminal_ui/status_row.rb").ruby)).to eq(%w[spec/terminal_ui_golden_spec.rb])
+    result = pick("lib/samagotchi/terminal_ui/attached_loop.rb")
+    expect(paths(result.ruby).first(3)).to eq(%w[spec/terminal_ui/attached_loop_spec.rb spec/events_drift_spec.rb
+                                                 spec/terminal_ui_golden_spec.rb])
+    expect(result.ruby[2].reason).to eq("golden of terminal_ui (lib/samagotchi/terminal_ui/attached_loop.rb)")
+    expect(paths(pick("lib/samagotchi/terminal_ui.rb").ruby)).to include("spec/terminal_ui_golden_spec.rb")
+  end
+
   it "picks a docs-reading spec for its doc, and nothing else for a doc" do
     expect(paths(pick("docs/configuration.md").ruby)).to eq(%w[spec/docs_configuration_spec.rb])
   end
