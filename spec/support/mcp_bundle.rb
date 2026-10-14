@@ -89,8 +89,9 @@ RSpec.shared_context "the mcp bundle in an Engine" do
     call_tool("find_mcp_tools", { "query" => query, "server" => server }.compact)
   end
 
-  # The mcp bundle's tools in the registry.
-  def mcp_tools = tools.entries.select { |entry| entry.source == "mcp" }.map(&:name)
+  # The tool index's tools in the registry (the mcp bundle publishes into
+  # it), and the bundle's own (none).
+  def mcp_tools = tools.entries.select { |entry| %w[index mcp].include?(entry.source) }.map(&:name)
 
   # mcp_call through ToolRunner, with the session's images in +session_dir+.
   def run_mcp(tool, args = {}, vision: nil)

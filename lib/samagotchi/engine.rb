@@ -19,6 +19,7 @@ require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "tools/builtins"
 require_relative "tools/task_runtime"
+require_relative "tools/tool_index"
 require_relative "session_commands"
 require_relative "plugin/loader"
 require_relative "extension_load"
@@ -188,6 +189,9 @@ module Samagotchi
       # The toolkits plugins declare (chi.toolkit), beside the built-in and
       # config ones (#toolkit_kits).
       @plugin_kits = []
+      # The tools plugins publish without declaring (chi.tool_source), and
+      # the search and call tools that reach them (Tools::ToolIndex).
+      @tool_index = Tools::ToolIndex.new
       @lifecycle_mutex = Mutex.new
       @shut_down = false
       load_plugins if plugins
@@ -2676,12 +2680,15 @@ module Samagotchi
           add_init_task(bundle: bundle, label: label, plugin_label: plugin_label, provides_tools: provides_tools,
                         quiet: quiet, timeout: timeout, failed: failed, &block)
         },
-        toolkits: @plugin_kits
+        toolkits: @plugin_kits,
+        tool_index: @tool_index
       )
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
       # is there yet, and the Engine isn't built.
       @extension_load.load_plugins(registries, failures: @plugin_failures)
+      # Declared once, from what the sources published while they loaded.
+      @tool_index.declare(@tools, failures: @plugin_failures)
     end
 
     # Keep a plugin's new tool set (chi.replace_tools, from any thread)

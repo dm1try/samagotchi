@@ -2,11 +2,12 @@
 
 # The mcp bundle (docs/plugins.md, The mcp bundle): tools from MCP servers.
 # Each server in config.yml runs as a child process (stdio only in v1) for
-# the session's life. Its tools aren't declared one by one: they are kept in
-# an index, and the model has two fixed tools, find_mcp_tools (a keyword
-# search that answers each match's inputSchema) and mcp_call (calls one as
-# <server>/<tool>). The request's tools never change with the servers', so
-# the prompt cache keeps.
+# the session's life. Its tools aren't declared one by one: the bundle
+# publishes them into chi's tool index (chi.tool_source, a group per
+# server), and the model has the index's two fixed tools, find_mcp_tools (a
+# keyword search that answers each match's inputSchema) and mcp_call (calls
+# one as <server>/<tool>, which the index hands back to #call here). The
+# request's tools never change with the servers', so the prompt cache keeps.
 #
 #   bundles:
 #     mcp:
@@ -40,7 +41,7 @@ require "json"
 require "open3"
 require "samagotchi/process_group"
 require "samagotchi/token_usage"
-require "samagotchi/tools/args"
+require "samagotchi/tools/tool_index"
 require "samagotchi/tool_declarations"
 require "time"
 require "shellwords"
@@ -51,14 +52,7 @@ class Plugin
   CALL_TIMEOUT = 60
   STARTUP_TIMEOUT = 10
   DESCRIPTION_CHARS = 1024
-  PREVIEW_CHARS = 60
   NAME_CHARS = 48
-  # Matches a search answers, and names a miss suggests.
-  FIND_RESULTS = 5
-  CLOSEST = 3
-  # A query word in a tool's name (or its server's) counts this many times
-  # one in its description.
-  NAME_WEIGHT = 3
   # A cached tool list older than this is refreshed in the background.
   CACHE_TTL = 24 * 60 * 60
   # Restarts of a server that exited, per session.
@@ -297,6 +291,7 @@ class Plugin
     # index.
     @left_out = []
     @left_out_lock = Mutex.new
+    @publish = Mutex.new
   end
 
   # The servers' names, never @settings (the raw servers config, env values
@@ -312,13 +307,20 @@ class Plugin
   # in the background. Without a cache (the first run, a changed config)
   # the server starts in an init task (chi.init) that every UI shows; a
   # turn sent meanwhile waits for its tools. start: eager starts it with
-  # every session. find_mcp_tools and mcp_call are declared once, when a
-  # server is configured; nothing the servers do later changes them.
+  # every session. With a server configured the bundle is a tool source:
+  # chi declares find_mcp_tools and mcp_call once, after the plugins load,
+  # from what #publish gave by then; nothing the servers do later changes
+  # them, only what a search answers.
   def register(chi)
     @chi = chi
     ctx = chi.ctx
     configs = @settings["servers"]
     configs = {} unless configs.is_a?(Hash)
+    unless configs.empty?
+      @source = chi.tool_source(label: "mcp", prefix: "mcp_", call: ->(tool, args, call_ctx) { run(tool, args, call_ctx) },
+                                acts_as: ->(server, tool) { tool_name(server, tool) },
+                                wait: ->(server) { wait_started(@servers.find { |s| s.name == server }) })
+    end
     @servers = configs.map do |name, config|
       server = Server.new(name: name.to_s, config: config.is_a?(Hash) ? config : {}, state: :starting, tools: [],
                           restarts: 0, tokens: 0)
@@ -351,7 +353,7 @@ class Plugin
         end
       end
     end
-    declare_tools(chi) unless @servers.empty?
+    publish
     chi.command "/mcp", "list the MCP servers, their state and their tools", anytime: true do |_args, command_ctx|
       command_ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
       nil
@@ -429,12 +431,14 @@ class Plugin
   def boot(server, ctx)
     client = server.service.value
     server.state = :running
+    publish
     ctx.log.info("mcp_server_started", server: server.name, pid: client.pid, tools: server.listed.size)
     count = server.listed.size
     "#{server.name} ready, #{count} tool#{"s" unless count == 1}"
   rescue StandardError => e
     server.state = :failed
     server.error = e.message
+    publish
     ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message)
     raise Client::Error, "MCP server #{server.name} didn't start: #{e.message}; its calls fail until chi restarts"
   end
@@ -586,6 +590,7 @@ class Plugin
     end
     server.tools = tools.freeze
     say_clashes(ctx)
+    publish
     return if tokens == server.tokens
 
     server.tokens = tokens
@@ -645,62 +650,33 @@ class Plugin
   # flatter schema, so it is an upper bound there.
   # @raise [ArgumentError] a bad schema
   def definition_tokens(name, description, schema)
-    spec_tokens(Samagotchi::Plugin::Api.tool_spec(name, description, schema: schema) { nil })
+    Samagotchi::Tools::ToolIndex.spec_tokens(Samagotchi::Plugin::Api.tool_spec(name, description, schema: schema) { nil })
   end
 
-  # A checked tool declaration's (Api.tool_spec) definition, in estimated
-  # tokens.
-  def spec_tokens(spec)
-    function = Samagotchi::ToolDeclarations.chat_schemas([spec[:schema]]).first.slice(:name, :description, :parameters)
-    Samagotchi::TokenUsage.estimate(JSON.generate({ type: "function", function: function }))
-  end
+  # Every server's tools into chi's index, a group each: its state (what a
+  # search's notes say), its summary line, and its tools with the marks
+  # and refusals of now (a clash with another server's tool too, so all of
+  # them each time). After each index and each state change a note reads;
+  # one at a time, so the last one published is the newest.
+  def publish
+    return unless @source
 
-  FIND_PARAMS = {
-    query: { type: "string", required: true,
-             description: "keywords for what the tool does (\"screenshot page\"); empty lists every tool's name" },
-    server: { type: "string", description: "search only this server" }
-  }.freeze
-  CALL_DESCRIPTION = "Call an MCP server's tool that find_mcp_tools found."
-  CALL_PARAMS = {
-    tool: { type: "string", required: true, description: "the tool as <server>/<tool>" },
-    args: { type: "object", description: "the arguments, per the inputSchema find_mcp_tools gave" }
-  }.freeze
-
-  # find_mcp_tools and mcp_call, the model's only MCP tools; their
-  # definitions' estimated tokens are /mcp's.
-  def declare_tools(chi)
-    description = find_description
-    chi.tool("find_mcp_tools", description, params: FIND_PARAMS,
-                                            preview: ->(args) { [args["query"].to_s.strip, args["server"] && "in #{args["server"]}"].compact.join(" ") }) do |args, _ctx|
-      find(args["query"].to_s, args["server"])
+    @publish.synchronize do
+      groups = @servers.map do |server|
+        state = { starting: :starting, failed: :failed }.fetch(server.state, :ready)
+        tools = Array(server.tools).map do |tool|
+          Samagotchi::Tools::ToolIndex::Tool.new(group: tool.server, name: tool.name, description: tool.description,
+                                                 schema: tool.schema, acts_as: tool.chi_name, refusal: refusal(tool),
+                                                 mark: mark(tool))
+        end
+        Samagotchi::Tools::ToolIndex::Group.new(name: server.name, summary: server_summary(server), state: state,
+                                                error: state == :failed ? server.error : nil, tools: tools)
+      end
+      @source.publish(groups)
     end
-    chi.tool("mcp_call", CALL_DESCRIPTION, params: CALL_PARAMS, label: "mcp", preview: ->(args) { call_preview(args) },
-                                           targets: ->(args) { call_targets(args) }) do |args, ctx|
-      mcp_call(args["tool"].to_s, args["args"], ctx)
-    end
-    @fixed_tokens = spec_tokens(Samagotchi::Plugin::Api.tool_spec("find_mcp_tools", description, params: FIND_PARAMS) { nil }) +
-                    spec_tokens(Samagotchi::Plugin::Api.tool_spec("mcp_call", CALL_DESCRIPTION, params: CALL_PARAMS) { nil })
   end
 
-  # find_mcp_tools' description: how to use it, and one line per server
-  # from what is known at load (a first run's server: its name, and its
-  # description: if set). Never every tool: knowing the names, a model
-  # searches less and guesses arguments.
-  def find_description
-    lines = @servers.map do |server|
-      count = offered(server).size
-      summary = server_summary(server)
-      line = "- #{server.name}"
-      line += ": #{summary}" if summary
-      line += " (#{count} tool#{"s" unless count == 1})" unless server.tools.empty?
-      line
-    end
-    "Search the tools of the MCP servers below by keywords. It answers up to #{FIND_RESULTS} tools, each with " \
-      "its name (<server>/<tool>) and inputSchema; call one with mcp_call. An empty query lists every tool's " \
-      "name.\nServers:\n#{lines.join("\n")}"
-  end
-
-  # The server's line: its description: from config, else the first
+  # The server's line in find_mcp_tools: its description: from config, else the first
   # sentence of its instructions, else nothing (its line has the tool
   # count). Never its tool names: a model that knows them calls them
   # blind, without a search (a smoke run's Splash did).
@@ -711,220 +687,23 @@ class Plugin
     server.info
   end
 
-  # ── Search ────────────────────────────────────────────────────────────
+  # ── Calls ─────────────────────────────────────────────────────────────
 
-  # find_mcp_tools: the best matches with their schemas, or with an empty
-  # query every server's tool names.
-  def find(query, only)
-    servers = @servers
-    if only && !only.strip.empty?
-      servers = @servers.select { |server| server.name == only.strip }
-      return "Error: no MCP server #{only.strip}. Servers: #{@servers.map(&:name).join(", ")}" if servers.empty?
-    end
-    return names_text(servers) if words(query).empty?
+  # A call the index looked up and checked (mcp_call): +tool+ a
+  # ToolIndex::Tool, +args+ typed by its schema.
+  def run(tool, args, ctx)
+    server = @servers.find { |s| s.name == tool.group }
+    return "Error: no MCP server #{tool.group}" unless server
 
-    matches = ranked(query, servers.flat_map(&:tools)).take(FIND_RESULTS)
-    return "No MCP tool matches \"#{query.strip}\".\n\n#{names_text(servers)}" if matches.empty?
-
-    blocks = matches.map { |tool| match_text(tool) }
-    unsearched = servers.filter_map { |server| "#{server.name} #{note(server)}" if server.tools.empty? && note(server) }
-    blocks << "Not searched: #{unsearched.join("; ")}." unless unsearched.empty?
-    "Call one with mcp_call(tool: \"<server>/<tool>\", args: {…}).\n\n#{blocks.join("\n\n")}"
-  end
-
-  # One match: its name, why it can't be called (if so), its description
-  # and schema.
-  def match_text(tool)
-    server = @servers.find { |s| s.name == tool.server }
-    head = ["#{tool.server}/#{tool.name}", mark(tool), note(server)].compact.join(" ")
-    refused = refusal(tool)
-    return "#{head}: #{tool.description}\nIt can't be called: #{refused}" if refused
-
-    "#{head}: #{tool.description}\ninputSchema: #{JSON.generate(tool.schema)}"
-  end
-
-  # What a search says about a server whose tools can't be called now.
-  def note(server)
-    case server.state
-    when :failed then "(failed: #{server.error})"
-    when :starting then "(starting, try again)"
-    end
-  end
-
-  # Each server's tool names, one line each.
-  def names_text(servers)
-    lines = servers.map do |server|
-      names = server.tools.map { |tool| [tool.name, mark(tool)].compact.join(" ") }
-      head = [server.name, note(server)].compact.join(" ")
-      names.empty? ? head : "#{head}: #{names.join(", ")}"
-    end
-    "MCP tools by server (call one as <server>/<tool>; search for its inputSchema):\n#{lines.join("\n")}"
-  end
-
-  # +tools+ that share a word with +query+, best first: a word scores its
-  # IDF over +tools+ (a word most of them have counts little), times
-  # NAME_WEIGHT in the tool's or its server's name. Ties keep the index's
-  # order.
-  def ranked(query, tools)
-    wanted = words(query).uniq
-    docs = tools.map { |tool| [words("#{tool.server} #{tool.name}"), words(tool.description)] }
-    df = Hash.new(0)
-    docs.each { |name, text| (name | text).each { |word| df[word] += 1 } }
-    count = tools.size.to_f
-    scored = tools.each_with_index.filter_map do |tool, i|
-      name, text = docs[i]
-      score = wanted.sum do |word|
-        idf = Math.log(((count - df[word] + 0.5) / (df[word] + 0.5)) + 1)
-        if name.include?(word) then NAME_WEIGHT * idf
-        elsif text.include?(word) then idf
-        else 0
-        end
-      end
-      [tool, score, i] if score.positive?
-    end
-    scored.sort_by { |_, score, i| [-score, i] }.map(&:first)
-  end
-
-  # Lower-case words, split at camelCase too, a plural's s dropped.
-  def words(text)
-    text.to_s.gsub(/([a-z0-9])([A-Z])/, '\1 \2').downcase.scan(/[a-z0-9]+/).map do |word|
-      word.length > 3 && word.end_with?("s") && !word.end_with?("ss") ? word.chomp("s") : word
-    end
-  end
-
-  # ── mcp_call ──────────────────────────────────────────────────────────
-
-  # A call of the tool +name+ names, with +args+ typed by its schema. A
-  # failure the arguments may cause answers its inputSchema too. It fails
-  # closed: a tool that isn't the one guardrails were given (#claimed) is
-  # refused.
-  def mcp_call(name, args, ctx)
-    tool = lookup(name)
-    return tool if tool.is_a?(String)
-    unless claimed(name.strip)&.first == tool.chi_name
-      return "Error: the MCP tools changed while the call waited for its server; call #{tool.server}/#{tool.name} again"
-    end
-
-    server = @servers.find { |s| s.name == tool.server }
-    refused = refusal(tool)
-    return "Error: #{tool.server}/#{tool.name} can't be called: #{refused}" if refused
-
-    inner = inner_args(args, tool)
-    return "Error: args must be an object.#{schema_note(tool)}" unless inner
-
-    call(server, tool, inner, ctx)
-  end
-
-  # The McpTool +name+ names: <server>/<tool>, or mcp_<server>_<tool>
-  # looked up by chi_name (never parsed: server names may hold _, and long
-  # names are cut). A miss while a server is starting waits for it (its
-  # tools may be the one; for a <server>/ name, that server's start only);
-  # then a miss is the error text: a failed
-  # server's error, else the closest tools.
-  # @return [McpTool, String]
-  def lookup(name, waited: false)
-    name = name.strip
-    tool = @servers.lazy.filter_map do |server|
-      next unless name.start_with?("#{server.name}/")
-
-      rest = name.delete_prefix("#{server.name}/")
-      server.tools.find { |t| t.name == rest }
-    end.first
-    return tool if tool
-
-    same = @servers.flat_map(&:tools).select { |t| t.chi_name == name }
-    return same.first if same.size == 1
-    if same.size > 1
-      return "Error: #{name} names #{same.map { |t| "#{t.server}/#{t.name}" }.join(" and ")}; " \
-             "call one as <server>/<tool>"
-    end
-
-    # A name with a configured server's <server>/ waits for that server
-    # only; any other name (mcp_<server>_<tool>) for every one starting.
-    named = @servers.select { |server| name.start_with?("#{server.name}/") }
-    starting = (named.empty? ? @servers : named).select { |server| server.state == :starting }
-    unless waited || starting.empty?
-      starting.each { |server| wait_started(server) }
-      return lookup(name, waited: true)
-    end
-
-    failed = @servers.find { |server| server.state == :failed && name.start_with?("#{server.name}/") }
-    return "Error: MCP server #{failed.name} didn't start: #{failed.error}" if failed
-
-    closest = ranked(name, @servers.flat_map(&:tools)).take(CLOSEST)
-    return "Error: no MCP tool #{name}. Search with find_mcp_tools." if closest.empty?
-
-    "Error: no MCP tool #{name}. Closest: #{closest.map { |t| "#{t.server}/#{t.name}" }.join(", ")}"
+    call(server, tool, args, ctx)
   end
 
   # Wait for a first-run server's start (its init task's); a failure is
   # its init card's.
   def wait_started(server)
-    server.service.value
+    server&.service&.value
   rescue StandardError
     nil
-  end
-
-  # The inner arguments as a Hash typed by +tool+'s schema (a JSON text
-  # parsed; untyped without a tool), nil when they aren't an object; none
-  # is {}.
-  def inner_args(args, tool)
-    args = {} if args.nil? || (args.is_a?(String) && args.strip.empty?)
-    args = Samagotchi::Tools::Args.coerce({ "args" => args }, { "properties" => { "args" => { "type" => "object" } } })["args"]
-    return nil unless args.is_a?(Hash)
-
-    Samagotchi::Tools::Args.coerce(args, tool&.schema)
-  end
-
-  # Appended to a failure the arguments may cause: the tool's inputSchema,
-  # so the next call can fix them (a call guessed without a search).
-  def schema_note(tool)
-    "\n\n#{tool.server}/#{tool.name}'s inputSchema: #{JSON.generate(tool.schema)}"
-  end
-
-  # The activity row: <server>/<tool> and its arguments.
-  def call_preview(args)
-    tool = lookup_quietly(args["tool"].to_s)
-    name = tool ? "#{tool.server}/#{tool.name}" : args["tool"].to_s.strip
-    inner = tool && inner_args(args["args"], tool)
-    inner ? [name, preview(inner)].reject(&:empty?).join(" ") : name
-  end
-
-  # What guardrail rules match an mcp_call: the tool it calls, by today's
-  # mcp_<server>_<tool> (rules written for it still fire), its arguments,
-  # and the question's label. A tool not indexed yet (its server still
-  # starting) is named from what the model gave (#claimed), so a rule on
-  # it fires before the call waits for the server. Nothing for a name
-  # that can't be a tool (mcp_call refuses it).
-  def call_targets(args)
-    name = args["tool"].to_s.strip
-    tool = lookup_quietly(name)
-    acts_as, label = tool ? [tool.chi_name, "#{tool.server}: #{tool.name}"] : claimed(name)
-    return {} unless acts_as
-
-    { acts_as: acts_as, args: inner_args(args["args"], tool) || {}, label: label }.compact
-  end
-
-  # The mcp_<server>_<tool> and label +name+ stands for, from the name
-  # alone: <server>/<tool> of a configured server (the one whose index has
-  # the tool, else the first whose name it starts with), or an
-  # mcp_<server>_<tool> as it is (no label). Nil for anything else.
-  # @return [Array(String, String), Array(String, nil), nil]
-  def claimed(name)
-    servers = @servers.select { |server| name.start_with?("#{server.name}/") }
-    server = servers.find { |s| s.tools.any? { |t| t.name == name.delete_prefix("#{s.name}/") } } || servers.first
-    if server
-      rest = name.delete_prefix("#{server.name}/")
-      [tool_name(server.name, rest), "#{server.name}: #{rest}"]
-    elsif name.start_with?("mcp_")
-      [name, nil]
-    end
-  end
-
-  # #lookup's tool, without waiting for a start: nil on a miss.
-  def lookup_quietly(name)
-    tool = lookup(name, waited: true)
-    tool.is_a?(McpTool) ? tool : nil
   end
 
   # mcp_<server>_<tool> in the tool name rule: a-z, 0-9 and _, at most 48.
@@ -938,15 +717,9 @@ class Plugin
     text.length > DESCRIPTION_CHARS ? "#{text[0, DESCRIPTION_CHARS - 1]}…" : text
   end
 
-  def preview(args)
-    line = args.map { |key, value| "#{key}=#{value.is_a?(String) ? value : JSON.generate(value)}" }.join(" ")
-    line = line.gsub(/\s+/, " ")
-    line.length > PREVIEW_CHARS ? "#{line[0, PREVIEW_CHARS - 1]}…" : line
-  end
-
-  # A tools/call of +tool+ (McpTool), as the model's tool result. A cached
+  # A tools/call of +tool+ (ToolIndex::Tool), as the model's tool result. A cached
   # server starts here, on its first call. The server's isError and a
-  # JSON-RPC error answer the tool's inputSchema too (#schema_note).
+  # JSON-RPC error answer the tool's inputSchema too (ToolIndex.schema_note).
   def call(server, tool, args, ctx)
     return "Error: MCP server #{server.name} didn't start: #{server.error}" if server.state == :failed
 
@@ -962,7 +735,7 @@ class Plugin
     result = client.request("tools/call", { name: tool.name, arguments: args }, timeout: server.timeout,
                                                                                 cancelled: -> { ctx.cancelled? })
     text, images = content(result, server, tool.name)
-    return "Error: #{text.empty? ? "the tool failed" : text}#{schema_note(tool)}" if result["isError"]
+    return "Error: #{text.empty? ? "the tool failed" : text}#{Samagotchi::Tools::ToolIndex.schema_note(tool)}" if result["isError"]
 
     images.empty? ? text : Samagotchi::Plugin::ToolResult.new(text, images: images)
   rescue Client::Dead => e
@@ -970,7 +743,7 @@ class Plugin
   rescue Client::Timeout, Client::Cancelled, Samagotchi::Plugin::Service::Stopped => e
     "Error: #{e.message}"
   rescue Client::Error => e
-    "Error: #{e.message}#{schema_note(tool)}"
+    "Error: #{e.message}#{Samagotchi::Tools::ToolIndex.schema_note(tool)}"
   end
 
   # Start a cached server for a call (#spawn indexes the live list). A
@@ -981,6 +754,7 @@ class Plugin
     client = server.service.value
     started = server.state == :cached
     server.state = :running
+    publish
     ctx.log.info("mcp_server_started", server: server.name, pid: client.pid, tools: server.listed.size, lazy: true) if started
     client
   rescue Client::Cancelled => e
@@ -992,6 +766,7 @@ class Plugin
 
     server.state = :failed
     server.error = e.message
+    publish
     ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message, lazy: true)
     ctx.notify("MCP server #{server.name} didn't start: #{e.message}; its calls fail until chi restarts", level: :warn)
     "Error: MCP server #{server.name} didn't start: #{e.message}"
@@ -1020,6 +795,7 @@ class Plugin
         return "Error: MCP server #{server.name} didn't restart: #{e.message}"
       end
       server.state = :running
+      publish
       ctx.log.info("mcp_server_restarted", server: server.name, pid: client.pid, restarts: server.restarts)
       client
     end
@@ -1122,6 +898,7 @@ class Plugin
 
     server.state = :exited
     server.error = reason
+    publish
     ctx.log.warn("mcp_server_exited", server: server.name, msg: reason, restarts: server.restarts)
     after = if server.restarts < MAX_RESTARTS
               "it restarts on its next call"
@@ -1141,7 +918,7 @@ class Plugin
       tools.empty? ? head : "#{head}\n#{tools.join("\n")}"
     end
     total = @servers.sum { |server| OFFERED.include?(server.state) ? server.tokens : 0 }
-    [*servers, "Every request carries find_mcp_tools and mcp_call: ~#{thousands(@fixed_tokens.to_i)} tokens. " \
+    [*servers, "Every request carries #{@source.declared_names.join(" and ")}: ~#{thousands(@source.declared_tokens)} tokens. " \
                "The tools above, ~#{thousands(total)} tokens, reach the model only in a search's answer " \
                "(estimated: their JSON as the chat API gets it, ÷ #{format("%g", Samagotchi::TokenUsage::CHARS_PER_TOKEN)})."]
       .join("\n\n")

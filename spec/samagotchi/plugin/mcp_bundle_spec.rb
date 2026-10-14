@@ -30,7 +30,7 @@ RSpec.describe "The mcp bundle" do
     expect(call.schema[:parameters]).to include(required: ["tool"])
     expect(call.schema[:parameters][:properties][:args]).to include(type: "object")
     expect(call.label).to eq("mcp")
-    expect(call.source).to eq("mcp")
+    expect(call.source).to eq("index") # chi's tool index declares them, not the bundle
     expect(engine.apply_staged_tools!).to be(false)
   end
 

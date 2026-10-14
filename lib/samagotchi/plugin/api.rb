@@ -38,6 +38,7 @@ module Samagotchi
         @services = []
         @inits = []
         @toolkits = []
+        @tool_source = nil
         @committed = false
       end
 
@@ -250,6 +251,32 @@ module Samagotchi
         nil
       end
 
+      # Publish tools into the session's tool index instead of declaring
+      # them one by one (docs/plugins.md, "Publishing tools to the index"):
+      # the model searches them with find_mcp_tools and calls one with
+      # mcp_call (<group>/<tool>), which chi declares once, after the
+      # plugins load, when a source registered. Returns the source: its
+      # #publish(groups) (ToolIndex::Group values, each with its
+      # ToolIndex::Tool values) swaps in the plugin's whole list, from any
+      # thread, at any time, and changes only what searches answer.
+      # @param label [String] the call tool's row label (default: the bundle)
+      # @param call [#call] (tool, args, ctx) → the call's result, as a
+      #   tool's block returns it; +tool+ a ToolIndex::Tool the index looked
+      #   up and checked, +args+ typed by its schema
+      # @param acts_as [#call] (group, tool) → the name guardrail rules
+      #   match for a tool from its names alone (one not published yet)
+      # @param wait [#call, nil] (group) waits for a :starting group's start
+      # @param prefix [String, nil] a bare name with it is taken as an
+      #   acts_as as given
+      # @return [Tools::ToolIndex::Source]
+      def tool_source(call:, acts_as:, label: @bundle, wait: nil, prefix: nil)
+        raise ArgumentError, "this chi has no tool index (plugins: false)" unless @registries.tool_index
+        raise ArgumentError, "tool_source is declared twice" if @tool_source
+
+        @tool_source = @registries.tool_index.source(label: label, call: call, acts_as: acts_as, wait: wait,
+                                                     prefix: prefix, context: @context)
+      end
+
       TOOLKIT_NAME = /\A[a-z][a-z0-9_-]{0,31}\z/
 
       # A named toolkit sessions can be put on (/toolkit NAME, chi --toolkit,
@@ -307,12 +334,14 @@ module Samagotchi
           end
         end
         @registries.toolkits&.concat(@toolkits)
+        @registries.tool_index.add(@tool_source) if @tool_source
         @committed = true
       end
 
       # @return [Hash] how many of each it registered (for the log)
       def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,
-                     services: @services.size, inits: @inits.size, toolkits: @toolkits.size }
+                     services: @services.size, inits: @inits.size, toolkits: @toolkits.size,
+                     tool_sources: @tool_source ? 1 : 0 }
 
       # Each annotation's command is one #command staged.
       def check_annotations!

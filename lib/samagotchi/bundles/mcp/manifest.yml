@@ -7,6 +7,6 @@ trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:8b2c0cf8a48d99b32e320506676d93d8069f9fda4a2ee101112073780a5c4f8a
+  sha256: sha256:a94bad1b33887b17d9981e211092a004e0f68f73c7533ec165a00ec717b1c8a9
 # 0.37.0 (published 2026-10-07) is the release whose targets: take acts_as:, args: and label:.
 requires_chi: ">= 0.37.0"
