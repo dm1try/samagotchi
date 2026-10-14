@@ -1,3 +1,4 @@
+import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCommandList } from "../../../lib/samagotchi/web/public/command_list.js";
@@ -22,7 +23,8 @@ const COMMANDS = [
 ];
 
 function setup({ commands = COMMANDS } = {}) {
-  const list = stub({ hidden: true, innerHTML: "", querySelector: () => null });
+  const list = document.createElement("div");
+  list.hidden = true;
   const prompt = stub({
     value: "",
     focused: false,
@@ -37,46 +39,48 @@ function setup({ commands = COMMANDS } = {}) {
     const e = { key: k, prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...extra };
     return { took: cl.handleKey(e), e };
   };
-  return { cl, list, prompt, type, key, picks: () => picks };
+  // The list's markup, lit's marker comments dropped.
+  const markup = () => list.innerHTML.replace(/<!--[^]*?-->/g, "");
+  return { cl, list, prompt, type, key, markup, picks: () => picks };
 }
 
 const names = (html) => [...html.matchAll(/class="command-name">([^<]*)</g)].map((m) => m[1]);
 const active = (html) => html.match(/command-option active"[^>]*data-index="(\d+)"/)?.[1];
 
 test("typing /he lists the matching session commands, by name, the first active", () => {
-  const { list, prompt, type } = setup();
+  const { list, markup, prompt, type } = setup();
   type("/he");
   assert.equal(list.hidden, false);
-  assert.deepEqual(names(list.innerHTML), ["/hello", "/help"]);
-  assert.equal(active(list.innerHTML), "0");
-  assert.match(list.innerHTML, /<span class="command-note">greet · mid-turn too<\/span>/);
+  assert.deepEqual(names(markup()), ["/hello", "/help"]);
+  assert.equal(active(markup()), "0");
+  assert.match(markup(), /<span class="command-note">greet · mid-turn too<\/span>/);
   assert.equal(prompt.attrs["aria-expanded"], "true");
   assert.equal(prompt.attrs["aria-activedescendant"], "command-option-0");
 });
 
 test("no match (or a space typed) closes it; the local terminal commands never show", () => {
-  const { list, prompt, type } = setup();
+  const { list, markup, prompt, type } = setup();
   type("/st");
   assert.equal(list.hidden, true);
   type("/he");
   type("/help me");
   assert.equal(list.hidden, true);
-  assert.equal(list.innerHTML, "");
+  assert.equal(markup(), "");
   assert.equal(prompt.attrs["aria-expanded"], "false");
   assert.equal("aria-activedescendant" in prompt.attrs, false);
 });
 
 test("arrows move and wrap; the active row is kept while typing narrows the list", () => {
-  const { list, type, key } = setup();
+  const { list, markup, type, key } = setup();
   type("/");
-  assert.deepEqual(names(list.innerHTML), ["/hello", "/help"]);
+  assert.deepEqual(names(markup()), ["/hello", "/help"]);
   assert.equal(key("ArrowUp").took, true);
-  assert.equal(active(list.innerHTML), "1");
+  assert.equal(active(markup()), "1");
   key("ArrowDown");
-  assert.equal(active(list.innerHTML), "0");
+  assert.equal(active(markup()), "0");
   key("ArrowDown");
   type("/hel");
-  assert.equal(active(list.innerHTML), "1", "still /help");
+  assert.equal(active(markup()), "1", "still /help");
 });
 
 test("Tab completes the name with a space for its arguments", () => {
@@ -116,7 +120,7 @@ test("Escape closes without a change; a closed list takes no keys", () => {
 test("a tap on a row picks it; a blur closes", () => {
   const { list, prompt, type } = setup();
   type("/he");
-  list.fire("click", { target: { closest: () => ({ dataset: { index: "1" } }) } });
+  list.querySelector('[data-index="1"] .command-desc').click();
   assert.equal(prompt.value, "/help ");
   type("/he");
   prompt.fire("blur");
