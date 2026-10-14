@@ -1,7 +1,7 @@
 [
   {
-    "name": "find_mcp_tools",
-    "description": "Search the tools of the MCP servers below by keywords. It answers up to 5 tools, each with its name (<server>/<tool>) and inputSchema; call one with mcp_call. An empty query lists every tool's name.\nServers:\n- fake: A fake server for chi's specs. (3 tools)\n- slow",
+    "name": "find_tools",
+    "description": "Search the tools of the MCP servers below by keywords. It answers up to 5 tools, each with its name (<server>/<tool>) and inputSchema; call one with call_tool. An empty query lists every tool's name.\nServers:\n- fake: A fake server for chi's specs. (3 tools)\n- slow",
     "parameters": {
       "type": "object",
       "properties": {
@@ -20,8 +20,8 @@
     }
   },
   {
-    "name": "mcp_call",
-    "description": "Call an MCP server's tool that find_mcp_tools found.",
+    "name": "call_tool",
+    "description": "Call an MCP server's tool that find_tools found.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -31,7 +31,7 @@
         },
         "args": {
           "type": "object",
-          "description": "the arguments, per the inputSchema find_mcp_tools gave"
+          "description": "the arguments, per the inputSchema find_tools gave"
         }
       },
       "required": [

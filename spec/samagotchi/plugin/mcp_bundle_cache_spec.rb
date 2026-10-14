@@ -18,10 +18,10 @@ RSpec.describe "The mcp bundle" do
     end
 
     def spawned = File.exist?(pids_file) ? File.readlines(pids_file).size : 0
-    # The fake server's tools in the index, as find_mcp_tools lists them.
+    # The fake server's tools in the index, as find_tools lists them.
     def indexed = find("")[/^fake(?: \(.*?\))?: (.*)$/, 1].to_s.split(", ")
     def cache_file = File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "tools-fake.json")
-    def find_description = tools["find_mcp_tools"].schema[:description]
+    def find_description = tools["find_tools"].schema[:description]
     def cache = JSON.parse(File.read(File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "tools-fake.json")))
 
     # The next session: a new Engine on the same data dir.
@@ -90,7 +90,7 @@ RSpec.describe "The mcp bundle" do
     end
 
     context "with the server's description" do
-      it "names the server by it in find_mcp_tools' description, with its tool count" do
+      it "names the server by it in find_tools' description, with its tool count" do
         servers["fake"] = fake.merge("description" => "echoes and adds")
         next_engine
         expect(find_description).to end_with("\nServers:\n- fake: echoes and adds (3 tools)")

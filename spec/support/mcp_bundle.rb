@@ -76,26 +76,26 @@ RSpec.shared_context "the mcp bundle in an Engine" do
 
   def tools = engine.instance_variable_get(:@tools)
 
-  def call_tool(name, args = {})
+  def handle(name, args = {})
     tools[name].handler.call({ name: name, args: args }, nil)
   end
 
-  # An MCP tool through mcp_call (<server>/<tool>).
+  # An MCP tool through call_tool (<server>/<tool>).
   def mcp(tool, args = {}, server: "fake")
-    call_tool("mcp_call", { "tool" => "#{server}/#{tool}", "args" => args })
+    handle("call_tool", { "tool" => "#{server}/#{tool}", "args" => args })
   end
 
   def find(query, server = nil)
-    call_tool("find_mcp_tools", { "query" => query, "server" => server }.compact)
+    handle("find_tools", { "query" => query, "server" => server }.compact)
   end
 
   # The tool index's tools in the registry (the mcp bundle publishes into
   # it), and the bundle's own (none).
   def mcp_tools = tools.entries.select { |entry| %w[index mcp].include?(entry.source) }.map(&:name)
 
-  # mcp_call through ToolRunner, with the session's images in +session_dir+.
+  # call_tool through ToolRunner, with the session's images in +session_dir+.
   def run_mcp(tool, args = {}, vision: nil)
-    run_tool("mcp_call", { "tool" => "fake/#{tool}", "args" => args }, vision: vision)
+    run_tool("call_tool", { "tool" => "fake/#{tool}", "args" => args }, vision: vision)
   end
 
   # Through ToolRunner, with the session's images in +session_dir+.
@@ -127,9 +127,9 @@ RSpec.shared_context "the mcp bundle in an Engine" do
     definition_tokens(schemas)
   end
 
-  # What find_mcp_tools and mcp_call take in every request, estimated as
+  # What find_tools and call_tool take in every request, estimated as
   # #chat_tokens.
-  def fixed_tokens = definition_tokens(%w[find_mcp_tools mcp_call].map { |name| tools[name].schema })
+  def fixed_tokens = definition_tokens(%w[find_tools call_tool].map { |name| tools[name].schema })
 
   def definition_tokens(schemas)
     tools = Samagotchi::Tools::Registry.new
@@ -140,7 +140,7 @@ RSpec.shared_context "the mcp bundle in an Engine" do
 
   # /mcp's last line.
   def mcp_total(tokens)
-    "Every request carries find_mcp_tools and mcp_call: ~#{fixed_tokens} tokens. The tools above, ~#{tokens} tokens, " \
+    "Every request carries find_tools and call_tool: ~#{fixed_tokens} tokens. The tools above, ~#{tokens} tokens, " \
       "reach the model only in a search's answer (estimated: their JSON as the chat API gets it, ÷ 4)."
   end
 

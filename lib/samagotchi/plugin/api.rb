@@ -253,8 +253,8 @@ module Samagotchi
 
       # Publish tools into the session's tool index instead of declaring
       # them one by one (docs/plugins.md, "Publishing tools to the index"):
-      # the model searches them with find_mcp_tools and calls one with
-      # mcp_call (<group>/<tool>), which chi declares once, after the
+      # the model searches them with find_tools and calls one with
+      # call_tool (<group>/<tool>), which chi declares once, after the
       # plugins load, when a source registered. Returns the source: its
       # #publish(groups) (ToolIndex::Group values, each with its
       # ToolIndex::Tool values) swaps in the plugin's whole list, from any

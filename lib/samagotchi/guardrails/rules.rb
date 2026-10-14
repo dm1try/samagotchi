@@ -12,7 +12,7 @@ module Samagotchi
     #   tool:    a tool name, a list, or "shell" (execute + task_create);
     #            a name may be a glob ("mcp_*", "mcp_{git,gh}_*"); it
     #            matches the call's name or the tool a plugin tool's call
-    #            acts as (Targets#acts_as: an MCP tool behind mcp_call)
+    #            acts as (Targets#acts_as: an MCP tool behind call_tool)
     #   command: a Ruby regex on a shell tool's command
     #   path:    "outside_repo", or a glob on the resolved paths (absolute
     #            or "**/…" globs match the absolute path; others the path

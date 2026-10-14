@@ -45,7 +45,7 @@ test("a plugin tool's approval names it by its label, as its row does", () => {
 test("a call that acts as another tool is named by its label, else by that tool", () => {
   const pq = (extra) => ({
     kind: "approval", header: "",
-    approval: { tool: "mcp_call", acts_as: "mcp_github_x", args: "owner=me", cwd: "/r", reason: "mcp", ...extra },
+    approval: { tool: "call_tool", acts_as: "mcp_github_x", args: "owner=me", cwd: "/r", reason: "mcp", ...extra },
   });
   assert.equal(approvalView(pq({ label: "github: x" })).tool, "github: x");
   assert.equal(approvalView(pq({})).tool, "mcp_github_x");

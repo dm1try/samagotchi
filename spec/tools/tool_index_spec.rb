@@ -90,7 +90,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(calls).to be_empty
     end
 
-    describe "a plugin tool's paths, as mcp_call always had them" do
+    describe "a plugin tool's paths, as call_tool always had them" do
       let(:call) { { name: call_name, args: { "tool" => "fs/echo", "args" => { "n" => 3 } } } }
 
       it "gives guardrails the tool it acts as, its arguments and the question's label" do
@@ -107,7 +107,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
       it "declares flat schemas to the native prompts" do
         schemas = Samagotchi::ToolDeclarations.native_schemas(registry).select { |s| [find_name, call_name].include?(s[:name]) }
-        expect(schemas).to eq([find_entry, call_entry].map { |e| Samagotchi::ToolDeclarations.flat_schema(e.schema) })
+        expect(schemas).to eq([call_entry, find_entry].map { |e| Samagotchi::ToolDeclarations.flat_schema(e.schema) })
       end
     end
 
@@ -179,12 +179,14 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     end
 
     it "keeps an older mcp bundle's own tools: it publishes nothing, so the index declares none" do
-      chi = api
-      chi.tool(find_name, "its own search", params: { query: { type: "string" } }) { "found" }
-      chi.tool(call_name, "its own call", params: { tool: { type: "string" } }) { "called" }
+      chi = api # mcp 0.6.x: its own tools, by their old names, and no chi.tool_source
+      chi.tool("find_mcp_tools", "its own search", params: { query: { type: "string" } }) { "found" }
+      chi.tool("mcp_call", "its own call", params: { tool: { type: "string" } }) { "called" }
       chi.commit!
       expect(index.declare(registry)).to eq([])
-      expect([registry[find_name].source, registry[call_name].source]).to eq(%w[mcp mcp])
+      expect([registry["find_mcp_tools"].source, registry["mcp_call"].source]).to eq(%w[mcp mcp])
+      expect(registry.key?(find_name)).to be(false)
+      expect(registry.key?(call_name)).to be(false)
       expect(registry.by_source("index")).to be_empty
     end
   end

@@ -111,7 +111,7 @@ module Samagotchi
       # tool + the normalized command, or the sorted paths; for a plugin
       # tool with neither (an MCP tool), its arguments, so "this call" is
       # this call. A call that acts as another tool keys as
-      # `mcp_call>mcp_github_x`: the real name stays in, so it never reuses
+      # `call_tool>mcp_github_x`: the real name stays in, so it never reuses
       # that tool's own approvals (nor they its).
       def self.key_for(verdict)
         t = verdict.targets

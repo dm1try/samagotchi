@@ -4,8 +4,8 @@
 # Each server in config.yml runs as a child process (stdio only in v1) for
 # the session's life. Its tools aren't declared one by one: the bundle
 # publishes them into chi's tool index (chi.tool_source, a group per
-# server), and the model has the index's two fixed tools, find_mcp_tools (a
-# keyword search that answers each match's inputSchema) and mcp_call (calls
+# server), and the model has the index's two fixed tools, find_tools (a
+# keyword search that answers each match's inputSchema) and call_tool (calls
 # one as <server>/<tool>, which the index hands back to #call here). The
 # request's tools never change with the servers', so the prompt cache keeps.
 #
@@ -19,7 +19,7 @@
 #           env: {DEBUG: "0"}   # added to chi's environment
 #           cwd: ~/scratch      # default: where chi runs
 #           tools: [echo, add]  # optional: only these (globs work)
-#           description: adds and echoes  # optional: its line in find_mcp_tools
+#           description: adds and echoes  # optional: its line in find_tools
 #           timeout: 120        # optional: this server's per-call timeout
 #           attach_image_paths: true  # default: an image path in the text, in the
 #                                     # temp dir or cwd, attaches it
@@ -57,7 +57,7 @@ class Plugin
   CACHE_TTL = 24 * 60 * 60
   # Restarts of a server that exited, per session.
   MAX_RESTARTS = 3
-  # The states whose server's tools mcp_call can reach (a cached or exited
+  # The states whose server's tools call_tool can reach (a cached or exited
   # server starts on the call).
   OFFERED = %i[running cached exited].freeze
   IMAGE_EXT = { "image/png" => "png", "image/jpeg" => "jpg", "image/gif" => "gif", "image/webp" => "webp" }.freeze
@@ -257,7 +257,7 @@ class Plugin
 
   # One tool of a server in the index (the tools: filter applied): +name+
   # is the server's, +chi_name+ mcp_<server>_<tool> (what guardrail rules
-  # match, and a name mcp_call takes too), +schema+ its inputSchema (an
+  # match, and a name call_tool takes too), +schema+ its inputSchema (an
   # empty object when it has none). +error+ is why it can't be called (a
   # bad schema), nil when it can.
   McpTool = Data.define(:server, :name, :chi_name, :description, :schema, :error)
@@ -308,7 +308,7 @@ class Plugin
   # the server starts in an init task (chi.init) that every UI shows; a
   # turn sent meanwhile waits for its tools. start: eager starts it with
   # every session. With a server configured the bundle is a tool source:
-  # chi declares find_mcp_tools and mcp_call once, after the plugins load,
+  # chi declares find_tools and call_tool once, after the plugins load,
   # from what #publish gave by then; nothing the servers do later changes
   # them, only what a search answers.
   def register(chi)
@@ -625,7 +625,7 @@ class Plugin
     @servers.flat_map(&:tools).select { |t| t.chi_name == tool.chi_name && [t.server, t.name] != [tool.server, tool.name] }
   end
 
-  # Why mcp_call refuses +tool+, nil when it can call it.
+  # Why call_tool refuses +tool+, nil when it can call it.
   def refusal(tool)
     return tool.error if tool.error
 
@@ -633,10 +633,10 @@ class Plugin
     "name clash with #{others.map { |t| "#{t.server}/#{t.name}" }.join(", ")} (#{tool.chi_name})" unless others.empty?
   end
 
-  # The server's tools mcp_call can call (no bad schema, no name clash).
+  # The server's tools call_tool can call (no bad schema, no name clash).
   def offered(server) = server.tools.reject { |tool| refusal(tool) }
 
-  # The marks a search and /mcp give a tool mcp_call refuses.
+  # The marks a search and /mcp give a tool call_tool refuses.
   def mark(tool)
     return "(bad schema)" if tool.error
 
@@ -676,7 +676,7 @@ class Plugin
     end
   end
 
-  # The server's line in find_mcp_tools: its description: from config, else the first
+  # The server's line in find_tools: its description: from config, else the first
   # sentence of its instructions, else nothing (its line has the tool
   # count). Never its tool names: a model that knows them calls them
   # blind, without a search (a smoke run's Splash did).
@@ -689,7 +689,7 @@ class Plugin
 
   # ── Calls ─────────────────────────────────────────────────────────────
 
-  # A call the index looked up and checked (mcp_call): +tool+ a
+  # A call the index looked up and checked (call_tool): +tool+ a
   # ToolIndex::Tool, +args+ typed by its schema.
   def run(tool, args, ctx)
     server = @servers.find { |s| s.name == tool.group }

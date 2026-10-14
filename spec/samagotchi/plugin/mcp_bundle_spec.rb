@@ -21,12 +21,12 @@ RSpec.describe "The mcp bundle" do
     expect(engine.plugin_failures.any?).to be(false)
   end
 
-  it "registers find_mcp_tools and mcp_call, never a tool per server tool" do
-    expect(mcp_tools).to eq(%w[find_mcp_tools mcp_call])
-    find_tool = tools["find_mcp_tools"]
+  it "registers find_tools and call_tool, never a tool per server tool" do
+    expect(mcp_tools).to eq(%w[call_tool find_tools]) # the registry orders them by name
+    find_tool = tools["find_tools"]
     expect(find_tool.schema[:parameters]).to include(required: ["query"])
     expect(find_tool.schema[:parameters][:properties].keys).to eq(%i[query server])
-    call = tools["mcp_call"]
+    call = tools["call_tool"]
     expect(call.schema[:parameters]).to include(required: ["tool"])
     expect(call.schema[:parameters][:properties][:args]).to include(type: "object")
     expect(call.label).to eq("mcp")
@@ -42,18 +42,18 @@ RSpec.describe "The mcp bundle" do
     end
   end
 
-  it "previews mcp_call as <server>/<tool> and its arguments, find_mcp_tools as its query" do
-    preview = tools["mcp_call"].preview
-    expect(preview.call({ name: "mcp_call", args: { "tool" => "fake/echo", "args" => { "text" => "hi there" } } }))
+  it "previews call_tool as <server>/<tool> and its arguments, find_tools as its query" do
+    preview = tools["call_tool"].preview
+    expect(preview.call({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "hi there" } } }))
       .to eq("fake/echo text=hi there")
-    expect(preview.call({ name: "mcp_call", args: { "tool" => "mcp_fake_echo", "args" => '{"text": "json"}' } }))
+    expect(preview.call({ name: "call_tool", args: { "tool" => "mcp_fake_echo", "args" => '{"text": "json"}' } }))
       .to eq("fake/echo text=json")
-    expect(preview.call({ name: "mcp_call", args: { "tool" => "fake/nope" } })).to eq("fake/nope")
-    expect(tools["find_mcp_tools"].preview.call({ name: "find_mcp_tools", args: { "query" => "add", "server" => "fake" } }))
+    expect(preview.call({ name: "call_tool", args: { "tool" => "fake/nope" } })).to eq("fake/nope")
+    expect(tools["find_tools"].preview.call({ name: "find_tools", args: { "query" => "add", "server" => "fake" } }))
       .to eq("add in fake")
   end
 
-  describe "find_mcp_tools" do
+  describe "find_tools" do
     let(:tools_file) { File.join(tmpdir, "tools") }
     let(:fake) { { "command" => MCP_FAKE_COMMAND, "env" => { "FAKE_MCP_TOOLS" => tools_file } } }
 
@@ -65,7 +65,7 @@ RSpec.describe "The mcp bundle" do
 
     it "answers the best matches, each with its name, description and inputSchema" do
       text = find("screenshot")
-      expect(text).to start_with("Call one with mcp_call(tool: \"<server>/<tool>\", args: {…}).\n\n" \
+      expect(text).to start_with("Call one with call_tool(tool: \"<server>/<tool>\", args: {…}).\n\n" \
                                  "fake/take_screenshot: Take a screenshot of the page or of an element on the page.\n" \
                                  "inputSchema: {\"type\":\"object\",\"properties\":{\"fullPage\":{\"type\":\"boolean\"}}}")
     end
@@ -95,7 +95,7 @@ RSpec.describe "The mcp bundle" do
       expect(find("echo", "nope")).to eq("Error: no MCP server nope. Servers: fake")
     end
 
-    it "shows a tool with a bad inputSchema as such (one notice), and mcp_call refuses it" do
+    it "shows a tool with a bad inputSchema as such (one notice), and call_tool refuses it" do
       expect(load_events.select { |e| e[:type] == :hook_notice }.map { |e| e[:text] })
         .to eq(["MCP tool fake/bad can't be called: schema must be {type: \"object\", properties: {…}}"])
       expect(find("inputschema object")).to include("fake/bad (bad schema): Its inputSchema is not an object.\n" \
@@ -103,7 +103,7 @@ RSpec.describe "The mcp bundle" do
       expect(mcp("bad")).to eq("Error: fake/bad can't be called: schema must be {type: \"object\", properties: {…}}")
     end
 
-    it "/mcp lists them all, the bad schema marked, and counts the ones mcp_call can call" do
+    it "/mcp lists them all, the bad schema marked, and counts the ones call_tool can call" do
       commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
                                                  default_model: "Gemma-4B-it", registry: engine.command_registry)
       cards = []
@@ -114,45 +114,45 @@ RSpec.describe "The mcp bundle" do
     end
 
     it "describes the servers, never their tools" do
-      description = tools["find_mcp_tools"].schema[:description]
+      description = tools["find_tools"].schema[:description]
       expect(description).to end_with("\nServers:\n- fake") # a first run: known by name only
       expect(description).not_to include("navigate_page")
     end
   end
 
-  describe "mcp_call" do
+  describe "call_tool" do
     it "takes mcp_<server>_<tool>, looked up by its sanitized name" do
-      expect(call_tool("mcp_call", { "tool" => "mcp_fake_echo", "args" => { "text" => "by name" } })).to eq("echo: by name")
+      expect(handle("call_tool", { "tool" => "mcp_fake_echo", "args" => { "text" => "by name" } })).to eq("echo: by name")
       # The server doesn't know it (it answers -32602): a JSON-RPC error, with the schema.
-      expect(call_tool("mcp_call", { "tool" => "mcp_fake_weird_name_v2" }))
+      expect(handle("call_tool", { "tool" => "mcp_fake_weird_name_v2" }))
         .to eq("Error: unknown tool (-32602)\n\nfake/Weird-Name.v2's inputSchema: {\"type\":\"object\",\"properties\":{}}")
     end
 
     it "answers a tool it doesn't know with the closest ones" do
       expect(mcp("echo_text")).to start_with("Error: no MCP tool fake/echo_text. Closest: fake/echo, ")
-      expect(call_tool("mcp_call", { "tool" => "zebra" })).to eq("Error: no MCP tool zebra. Search with find_mcp_tools.")
+      expect(handle("call_tool", { "tool" => "zebra" })).to eq("Error: no MCP tool zebra. Search with find_tools.")
     end
 
     it "types the arguments by the tool's inputSchema, and takes them as JSON text" do
       expect(mcp("add", { "a" => "2", "b" => "3.5" })).to eq("5.5")
-      expect(call_tool("mcp_call", { "tool" => "fake/add", "args" => '{"a": 1, "b": "2"}' })).to eq("3")
+      expect(handle("call_tool", { "tool" => "fake/add", "args" => '{"a": 1, "b": "2"}' })).to eq("3")
       expect(mcp("mixed", nil)).to start_with("first\n")
     end
 
     it "answers arguments that aren't an object with the tool's inputSchema" do
-      expect(call_tool("mcp_call", { "tool" => "fake/echo", "args" => "hello" }))
+      expect(handle("call_tool", { "tool" => "fake/echo", "args" => "hello" }))
         .to eq("Error: args must be an object.\n\nfake/echo's inputSchema: {\"type\":\"object\",\"properties\":" \
                "{\"text\":{\"type\":\"string\",\"description\":\"what to echo\"}},\"required\":[\"text\"]}")
     end
 
     it "gives guardrails the tool it acts as (today's name), its arguments and the question's label" do
-      targets = tools["mcp_call"].targets
-      expect(targets.call({ name: "mcp_call", args: { "tool" => "fake/add", "args" => { "a" => "1", "b" => 2 } } }))
+      targets = tools["call_tool"].targets
+      expect(targets.call({ name: "call_tool", args: { "tool" => "fake/add", "args" => { "a" => "1", "b" => 2 } } }))
         .to eq(acts_as: "mcp_fake_add", args: { "a" => 1, "b" => 2 }, label: "fake: add")
       # Not indexed: named from what the model gave, so a rule on mcp_fake_* still sees it.
-      expect(targets.call({ name: "mcp_call", args: { "tool" => "fake/nope" } }))
+      expect(targets.call({ name: "call_tool", args: { "tool" => "fake/nope" } }))
         .to eq(acts_as: "mcp_fake_nope", args: {}, label: "fake: nope")
-      expect(targets.call({ name: "mcp_call", args: { "tool" => "nope" } })).to eq({})
+      expect(targets.call({ name: "call_tool", args: { "tool" => "nope" } })).to eq({})
     end
 
     context "with a rule on one server's tools" do
@@ -161,18 +161,18 @@ RSpec.describe "The mcp bundle" do
         File.write(Samagotchi::ConfigFile.global_path, YAML.dump("guardrails" => { "rules" => [rule] }))
       end
 
-      it "asks for an mcp_call to that server, by <server>: <tool>, and not for a search" do
+      it "asks for a call_tool to that server, by <server>: <tool>, and not for a search" do
         gate = engine.instance_variable_get(:@kernel).guardrail_gate
-        call = { name: "mcp_call", args: { "tool" => "fake/echo", "args" => { "text" => "hi" } } }
+        call = { name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "hi" } } }
         verdict = gate.evaluate(call, iteration: 1, params: "")
         expect(verdict).to be_ask
         expect(verdict.rule).to eq("fake-ask")
-        expect(gate.evaluate({ name: "find_mcp_tools", args: { "query" => "echo" } }, iteration: 1, params: "")).not_to be_ask
+        expect(gate.evaluate({ name: "find_tools", args: { "query" => "echo" } }, iteration: 1, params: "")).not_to be_ask
         engine.interface = :worker
         thread = Thread.new { engine.request_approval(verdict) }
         Timeout.timeout(2) { sleep(0.005) until engine.pending_question }
         pending = engine.pending_question
-        expect(pending[:approval]).to include(tool: "mcp_call", acts_as: "mcp_fake_echo", label: "fake: echo")
+        expect(pending[:approval]).to include(tool: "call_tool", acts_as: "mcp_fake_echo", label: "fake: echo")
         expect(pending[:question].lines.first).to eq("fake: echo: text=hi\n")
         engine.cancel_question("dismissed", id: pending[:id])
         thread.join(2)
@@ -222,12 +222,12 @@ RSpec.describe "The mcp bundle" do
           @engine = Samagotchi::Engine.new(client: client)
           @engine.start_init_tasks!
           expect(find("echo")).to include("fake (starting, try again)")
-          targets = tools["mcp_call"].targets
-          expect(targets.call({ name: "mcp_call", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } }))
+          targets = tools["call_tool"].targets
+          expect(targets.call({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } }))
             .to eq(acts_as: "mcp_fake_echo", args: { "text" => "x" }, label: "fake: echo")
-          expect(targets.call({ name: "mcp_call", args: { "tool" => "mcp_fake_echo" } })).to eq(acts_as: "mcp_fake_echo", args: {})
+          expect(targets.call({ name: "call_tool", args: { "tool" => "mcp_fake_echo" } })).to eq(acts_as: "mcp_fake_echo", args: {})
           gate = @engine.instance_variable_get(:@kernel).guardrail_gate
-          verdict = gate.evaluate({ name: "mcp_call", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } },
+          verdict = gate.evaluate({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } },
                                   iteration: 1, params: "")
           expect(verdict).to be_deny
           expect(verdict.rule).to eq("fake-deny")
@@ -236,8 +236,8 @@ RSpec.describe "The mcp bundle" do
     end
 
     it "refuses a tool whose name isn't the one guardrails were given (a bare tool name)" do
-      expect(tools["mcp_call"].targets.call({ name: "mcp_call", args: { "tool" => "echo" } })).to eq({})
-      expect(call_tool("mcp_call", { "tool" => "echo", "args" => { "text" => "x" } })).to start_with("Error: no MCP tool echo.")
+      expect(tools["call_tool"].targets.call({ name: "call_tool", args: { "tool" => "echo" } })).to eq({})
+      expect(handle("call_tool", { "tool" => "echo", "args" => { "text" => "x" } })).to start_with("Error: no MCP tool echo.")
     end
   end
 
@@ -252,7 +252,7 @@ RSpec.describe "The mcp bundle" do
   describe "images" do
     it "attaches an image block's picture (decoded), the text saying where it was" do
       result = run_mcp("mixed")
-      expect(result[:output]).to eq("[mcp_call]\nfirst\n[image 1: image/png]\ninline\n[resource link: file:///y.txt]\nlast")
+      expect(result[:output]).to eq("[call_tool]\nfirst\n[image 1: image/png]\ninline\n[resource link: file:///y.txt]\nlast")
       expect(result[:images].map { |ref| ref.slice(:name, :width, :height, :source) })
         .to eq([{ name: "mixed-1.png", width: 3, height: 2, source: "tool" }])
       expect(File.binread(File.join(session_dir, result[:images].first[:file]))).to eq(File.binread(tiny_png))
@@ -274,7 +274,7 @@ RSpec.describe "The mcp bundle" do
 
     it "attaches a resource block carrying an image blob" do
       result = run_mcp("blob")
-      expect(result[:output]).to eq("[mcp_call]\nhere\n[image 1: image/png]")
+      expect(result[:output]).to eq("[call_tool]\nhere\n[image 1: image/png]")
       expect(result[:images].map { |ref| ref.slice(:name, :width, :height, :source) })
         .to eq([{ name: "blob-1.png", width: 3, height: 2, source: "tool" }])
       expect(File.binread(File.join(session_dir, result[:images].first[:file]))).to eq(File.binread(tiny_png))
@@ -284,7 +284,7 @@ RSpec.describe "The mcp bundle" do
       shot = File.join(tmpdir, "screenshot.png")
       FileUtils.cp(tiny_png, shot)
       result = run_mcp("path", { "path" => shot })
-      expect(result[:output]).to eq("[mcp_call]\n#{shot}\n[image 1: screenshot.png]")
+      expect(result[:output]).to eq("[call_tool]\n#{shot}\n[image 1: screenshot.png]")
       expect(result[:images].map { |ref| ref[:name] }).to eq(["screenshot.png"])
     end
 
@@ -296,7 +296,7 @@ RSpec.describe "The mcp bundle" do
         File.write(notes, "not really a png")
         [tiny_png, notes, "screenshot.png"].each do |path|
           result = run_mcp("path", { "path" => path })
-          expect(result[:output]).to eq("[mcp_call]\n#{path}")
+          expect(result[:output]).to eq("[call_tool]\n#{path}")
           expect(result).not_to have_key(:images)
         end
       end
@@ -306,7 +306,7 @@ RSpec.describe "The mcp bundle" do
         File.write(notes, "not really a png")
         text = "Saved to #{notes} and #{tiny_png}; see /nowhere/x.gif"
         result = run_mcp("path", { "path" => text })
-        expect(result[:output]).to eq("[mcp_call]\n#{text}")
+        expect(result[:output]).to eq("[call_tool]\n#{text}")
         expect(result).not_to have_key(:images)
       end
     end
@@ -319,7 +319,7 @@ RSpec.describe "The mcp bundle" do
       text = "Saved screenshot to #{shot}. Also (#{shot}), \"#{second}\" and #{spaced}."
       result = run_mcp("path", { "path" => text })
       expect(result[:output])
-        .to eq("[mcp_call]\n#{text}\n[image 1: screenshot.png]\n[image 2: b.JPEG]")
+        .to eq("[call_tool]\n#{text}\n[image 1: screenshot.png]\n[image 2: b.JPEG]")
       expect(result[:images].map { |ref| ref[:name] }).to eq(%w[screenshot.png b.JPEG])
     end
 
@@ -449,7 +449,7 @@ RSpec.describe "The mcp bundle" do
       expect(mcp("echo", { "text" => "one" })).to eq("Error: fake/echo can't be called: name clash with fake-/echo (mcp_fake_echo)")
       expect(mcp("echo", { "text" => "two" }, server: "fake-"))
         .to eq("Error: fake-/echo can't be called: name clash with fake/echo (mcp_fake_echo)")
-      expect(call_tool("mcp_call", { "tool" => "mcp_fake_echo", "args" => { "text" => "x" } }))
+      expect(handle("call_tool", { "tool" => "mcp_fake_echo", "args" => { "text" => "x" } }))
         .to eq("Error: mcp_fake_echo names fake/echo and fake-/echo; call one as <server>/<tool>")
       expect(find("echo")).to include("fake/echo (name clash with fake-/echo): ", "fake-/echo (name clash with fake/echo): ")
       expect(mcp("add", { "a" => 1, "b" => 2 })).to eq("3")
@@ -483,7 +483,7 @@ RSpec.describe "The mcp bundle" do
     listed = cards.last[:body].scan(%r{^- `(fake/\S+)`$}).flatten
     expect(listed.size).to eq(10)
     expect(listed).to eq(listed.sort) # not the server's tools/list order (echo first)
-    expect(listed).to include("fake/Weird-Name.v2") # the name mcp_call takes
+    expect(listed).to include("fake/Weird-Name.v2") # the name call_tool takes
     expect(fixed_tokens).to be_between(50, 1000)
     expect(cards.last[:body]).to end_with("\n\n#{mcp_total(tokens)}")
   end
@@ -491,7 +491,7 @@ RSpec.describe "The mcp bundle" do
   context "with two servers, one that doesn't start" do
     let(:servers) { { "fake" => fake.merge("tools" => %w[echo add]), "gone" => { "command" => ["/nonexistent/mcp-server"] } } }
 
-    it "/mcp totals only the tools mcp_call reaches, and the load log records each server's estimate" do
+    it "/mcp totals only the tools call_tool reaches, and the load log records each server's estimate" do
       log = []
       allow(Samagotchi::Log).to receive(:info).and_call_original
       allow(Samagotchi::Log).to receive(:info).with(:plugins, "mcp_tools_estimated", any_args) { |*, **fields| log << fields }

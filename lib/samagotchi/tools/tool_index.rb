@@ -9,8 +9,8 @@ module Samagotchi
   module Tools
     # The tools a session knows but doesn't declare one by one, and the two
     # declared tools that reach them (docs/plugins.md, "Publishing tools to
-    # the index"): find_mcp_tools, a keyword search that answers each
-    # match's inputSchema, and mcp_call, which calls one as <group>/<tool>.
+    # the index"): find_tools, a keyword search that answers each
+    # match's inputSchema, and call_tool, which calls one as <group>/<tool>.
     # A source (the mcp bundle, chi.tool_source) publishes its groups (an
     # MCP server each) and runs the calls; the index searches them, looks a
     # call's tool up and checks it. The two tools are declared once, after
@@ -19,13 +19,13 @@ module Samagotchi
     #
     # They are registry entries of source SOURCE, not "core": a plugin
     # tool's paths (guardrail targets, the row's label and preview, native
-    # flat schemas, every toolkit declaring them) are the ones mcp_call has
+    # flat schemas, every toolkit declaring them) are the ones call_tool has
     # always had. MCP is the only source so far, so the texts speak of MCP
     # servers.
     class ToolIndex
       SOURCE = "index"
-      FIND_NAME = "find_mcp_tools"
-      CALL_NAME = "mcp_call"
+      FIND_NAME = "find_tools"
+      CALL_NAME = "call_tool"
       # Matches a search answers, and names a miss suggests.
       FIND_RESULTS = 5
       CLOSEST = 3

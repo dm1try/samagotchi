@@ -10,10 +10,10 @@ import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 
 const turnHistoryHtml = (...args) => htmlOf(turnHistoryNodes(...args));
 
-// A plugin tool's label ("mcp") stands for its raw name (mcp_call) wherever
+// A plugin tool's label ("mcp") stands for its raw name (call_tool) wherever
 // a row, a step title or the tally names it; the MCP tool it calls is in its
 // params, from its preview.
-const MCP = { tool: "mcp_call", label: "mcp" };
+const MCP = { tool: "call_tool", label: "mcp" };
 
 test("toolName: the label, else the tool, else 'tool'", () => {
   assert.equal(toolName(MCP), "mcp");
@@ -26,7 +26,7 @@ test("a live row keeps the label from tool_call_started", () => {
   const { row } = addStarted(model, { iteration: 1, call_index: 1, ...MCP, params: "chrome/take_screenshot" });
   addCompleted(model, { iteration: 1, call_index: 1, tool: MCP.tool, output: "ok", activity: { status: "ok" } });
   assert.equal(row.label, "mcp");
-  assert.equal(row.tool, "mcp_call");
+  assert.equal(row.tool, "call_tool");
   assert.equal(row.params, "chrome/take_screenshot");
 });
 
@@ -58,7 +58,7 @@ test("a reloaded row and its step title show the label saved with the result", (
   assert.match(html, /<summary>working with mcp · 1 tool call<\/summary>/);
   assert.match(html, /<span class="activity-tool">mcp<\/span>/);
   assert.match(html, /chrome\/take_screenshot/);
-  assert.doesNotMatch(html, /mcp_call/);
+  assert.doesNotMatch(html, /call_tool/);
 });
 
 // Tool titles (the server's `title`: a project-relative path, a command

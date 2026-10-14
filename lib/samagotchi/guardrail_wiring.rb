@@ -228,7 +228,7 @@ module Samagotchi
 
       # A plugin tool is asked about by its targets:' label:, else its
       # label, as its row shows it; a call that acts as another tool (an MCP
-      # tool behind mcp_call) by that tool's label, else (none registered)
+      # tool behind call_tool) by that tool's label, else (none registered)
       # by its name (Approval.payload).
       acts_as = verdict.targets&.acts_as
       label = verdict.targets&.label ||

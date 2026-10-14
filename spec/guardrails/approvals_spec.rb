@@ -133,7 +133,7 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
 
   it "keys a call that acts as another tool by its real name, the alias and the inner args, and stores acts_as" do
     registry = Samagotchi::Tools::Registry.new
-    registry.register("mcp_call", schema: { name: "mcp_call" }, handler: ->(*) { "" }, source: "mcp",
+    registry.register("call_tool", schema: { name: "call_tool" }, handler: ->(*) { "" }, source: "mcp",
                                   targets: lambda { |call|
                                     { acts_as: call[:args]["tool"], args: call[:args]["args"], label: call[:args]["label"] }
                                   })
@@ -145,15 +145,15 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
       v.targets = Samagotchi::Guardrails::Targets.for(call, ctx, registry: registry)
       v
     end
-    via = ->(args) { verdict.call({ name: "mcp_call", args: { "tool" => "mcp_github_x", "args" => args } }) }
+    via = ->(args) { verdict.call({ name: "call_tool", args: { "tool" => "mcp_github_x", "args" => args } }) }
     entry = store.add(via.call({ "b" => 2, "a" => 1 }), "session")
-    expect(entry).to include("tool" => "mcp_call", "acts_as" => "mcp_github_x", "key" => "mcp_call>mcp_github_x:a=1 b=2")
+    expect(entry).to include("tool" => "call_tool", "acts_as" => "mcp_github_x", "key" => "call_tool>mcp_github_x:a=1 b=2")
     expect(store.match(via.call({ "a" => 1, "b" => 2 }))).not_to be_nil
     expect(store.match(via.call({ "a" => 9 }))).to be_nil
     # label: is display only: it doesn't change the key.
-    labelled = verdict.call({ name: "mcp_call", args: { "tool" => "mcp_github_x", "args" => { "a" => 1, "b" => 2 },
-                                                        "label" => "github: x" } })
-    expect(described_class.key_for(labelled)).to eq("mcp_call>mcp_github_x:a=1 b=2")
+    labelled = verdict.call({ name: "call_tool", args: { "tool" => "mcp_github_x", "args" => { "a" => 1, "b" => 2 },
+                                                         "label" => "github: x" } })
+    expect(described_class.key_for(labelled)).to eq("call_tool>mcp_github_x:a=1 b=2")
     # The tool's own approval and the alias's don't stand in for each other.
     expect(store.match(verdict.call({ name: "mcp_github_x", args: { "a" => 1, "b" => 2 } }))).to be_nil
     store.add(verdict.call({ name: "mcp_github_x", args: { "a" => 5 } }), "session")

@@ -71,8 +71,8 @@ RSpec.describe "The mcp bundle's texts" do
 
   it "answers a call's errors" do
     expect_golden("call_errors", [
-      mcp("echo_text"), call_tool(call_entry.name, { "tool" => "zebra" }), mcp("bad"),
-      call_tool(call_entry.name, { "tool" => "fake/echo", "args" => "hello" })
+      mcp("echo_text"), handle(call_entry.name, { "tool" => "zebra" }), mcp("bad"),
+      handle(call_entry.name, { "tool" => "fake/echo", "args" => "hello" })
     ].join("\n---\n"))
   end
 

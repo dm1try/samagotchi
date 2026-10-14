@@ -1,4 +1,4 @@
-Call one with mcp_call(tool: "<server>/<tool>", args: {…}).
+Call one with call_tool(tool: "<server>/<tool>", args: {…}).
 
 fake/navigate_page: Go to a URL in the selected page.
 inputSchema: {"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}

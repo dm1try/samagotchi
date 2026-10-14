@@ -57,18 +57,18 @@ RSpec.describe Samagotchi::Guardrails::Rules do
     end
 
     describe "a plugin call that acts as another tool (targets: acts_as:)" do
-      # mcp_call acts as whatever its tool argument names; a foreign
+      # call_tool acts as whatever its tool argument names; a foreign
       # bundle's save_note and a core tool are what it may not pass for.
       let(:registry) do
         Samagotchi::Tools::Builtins.registry.tap do |r|
-          r.register("mcp_call", schema: {}, handler: ->(*) { "" }, source: "mcp",
+          r.register("call_tool", schema: {}, handler: ->(*) { "" }, source: "mcp",
                                  targets: ->(call) { { acts_as: call[:args]["tool"], args: call[:args]["args"] } })
           r.register("save_note", schema: {}, handler: ->(*) { "" }, source: "notes")
         end
       end
 
       def verdict_via(tool, set, args: { "owner" => "me" })
-        call = { name: "mcp_call", args: { "tool" => tool, "args" => args } }
+        call = { name: "call_tool", args: { "tool" => tool, "args" => args } }
         v = Samagotchi::Guardrails::Verdict.new(call: call)
         v.context = context
         v.targets = Samagotchi::Guardrails::Targets.for(call, context, registry: registry)
@@ -85,7 +85,7 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       end
 
       it "matches a rule on the call's own name, whatever it acts as" do
-        set = rules({ id: "calls", tool: "mcp_call", verdict: "ask" })
+        set = rules({ id: "calls", tool: "call_tool", verdict: "ask" })
         expect(verdict_via("mcp_github_list_issues", set)).to be_ask
         expect(verdict_via("", set)).to be_ask
         expect(verdict_via("mcp_x", rules({ id: "all", tool: "mcp_*", verdict: "ask" }))).to be_ask
@@ -98,8 +98,8 @@ RSpec.describe Samagotchi::Guardrails::Rules do
           expect(verdict_via(name, set)).to be_allow
         end
         expect(Samagotchi::Log).to have_received(:warn)
-          .with(:plugins, "plugin_acts_as_dropped", hash_including(tool: "mcp_call", acts_as: "execute",
-                                                                   msg: "mcp_call targets: acts_as execute dropped: it is a core tool"))
+          .with(:plugins, "plugin_acts_as_dropped", hash_including(tool: "call_tool", acts_as: "execute",
+                                                                   msg: "call_tool targets: acts_as execute dropped: it is a core tool"))
         expect(Samagotchi::Log).to have_received(:warn)
           .with(:plugins, "plugin_acts_as_dropped", hash_including(acts_as: "save_note", msg: /bundle notes's tool/))
         # Logged once per tool and session (its registry), not at each call.
@@ -108,7 +108,7 @@ RSpec.describe Samagotchi::Guardrails::Rules do
                                                              hash_including(acts_as: "execute")).once
         # A core tool this session doesn't have (a child's delegate) is still a core tool.
         registry.unregister("delegate")
-        expect(Samagotchi::Guardrails::Targets.for({ name: "mcp_call", args: { "tool" => "delegate" } }, context,
+        expect(Samagotchi::Guardrails::Targets.for({ name: "call_tool", args: { "tool" => "delegate" } }, context,
                                                    registry: registry).acts_as).to be_nil
       end
     end

@@ -1,4 +1,4 @@
-Call one with mcp_call(tool: "<server>/<tool>", args: {…}).
+Call one with call_tool(tool: "<server>/<tool>", args: {…}).
 
 fake/bad (bad schema): Its inputSchema is not an object.
 It can't be called: schema must be {type: "object", properties: {…}}

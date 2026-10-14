@@ -291,7 +291,7 @@ is what `targets:` says:
 - `command:`: a shell command the call runs; `command:` rules match it.
 - `cwd:`: where it runs, for the repo root and relative paths.
 - `acts_as:`: the tool a call stands for, when the tool runs other tools
-  (the mcp bundle's `mcp_call`). Rules keyed by that tool's name match the
+  (the mcp bundle's `call_tool`). Rules keyed by that tool's name match the
   call too, as well as rules on the tool's own name. It can't be one of
   chi's own tools or another bundle's tool: that is dropped (and logged).
 - `args:`: the arguments it acts with (a Hash), when they aren't the call's
@@ -308,7 +308,7 @@ targets: ->(args) { { acts_as: "mcp_#{args["server"]}_#{args["tool"]}", args: ar
 ```
 
 An approval of an `acts_as:` call keys on the tool's own name as well
-(`mcp_call>mcp_github_x:…`), so it never stands in for an approval of the
+(`call_tool>mcp_github_x:…`), so it never stands in for an approval of the
 tool it acts as, nor that one for it. Hooks see the call's own name, and so
 does loop-guard's `ignore_tools`.
 
@@ -548,7 +548,7 @@ end
 - **`provides_tools: true`**: the task provides what the plugin's tools
   need: tools of its own (with `chi.replace_tools`), or what fixed tools
   read (the mcp bundle's index of a first-run server's tools, which
-  `find_mcp_tools` searches). A turn sent while it runs starts at once (the user's
+  `find_tools` searches). A turn sent while it runs starts at once (the user's
   message shows), then waits for it **before its first model request**, so
   the model sees the tools; the UIs keep showing the task meanwhile. The
   wait lasts at most `timeout` seconds from the task's start (default 60).
@@ -907,7 +907,7 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
 only against this API (`lib/samagotchi/bundles/mcp/plugin.rb`), and gives
 the model the tools of [MCP](https://modelcontextprotocol.io) servers. It
 has no memory file, and the servers' tools aren't declared to the model one
-by one: it has two tools, `find_mcp_tools` and `mcp_call` (~250 tokens in
+by one: it has two tools, `find_tools` and `call_tool` (~250 tokens in
 every request plus a line per server, whatever the servers have; `/mcp`
 says how many). Stdio servers only, for now.
 
@@ -925,7 +925,7 @@ bundles:
         env: {NODE_OPTIONS: "--no-warnings"}   # added to chi's environment
         cwd: ~/scratch                         # default: where chi runs
         tools: [read_*, list_directory]        # optional: only these (globs)
-        description: files in ~/scratch        # optional: its line in find_mcp_tools
+        description: files in ~/scratch        # optional: its line in find_tools
         timeout: 120                           # optional: this server's per-call timeout
       chrome:
         command: [npx, -y, "chrome-devtools-mcp@latest", --slim, --headless]
@@ -944,7 +944,7 @@ bundles:
   one is replaced, and so is what a search finds. The model's tools never
   change, so the prompt cache keeps. The saved file also keeps the first
   sentence of the server's `instructions` (from `initialize`), for its line
-  in `find_mcp_tools`.
+  in `find_tools`.
 - **The first run** (no saved list, or the config changed) starts the
   server in an [init task](#chiinitlabel-provides_tools-false-quiet-false-timeout-nil--ctx--):
   every UI shows `Starting MCP server x (first run, saving its tools)`, and
@@ -979,7 +979,7 @@ bundles:
 
 - **Tools: search, then call.** The servers' tools are kept in an index;
   the model has two fixed tools:
-  - `find_mcp_tools(query, server?)` searches it by keywords over the
+  - `find_tools(query, server?)` searches it by keywords over the
     server's name, the tool's name and its description, and answers up to 5
     tools, each with its name `<server>/<tool>`, its description and its
     whole `inputSchema`. A word counts more the fewer tools have it (a word
@@ -995,7 +995,7 @@ bundles:
     `instructions`, and how many tools it has (`- chrome (26 tools)` with
     neither: tool names there get called blind, without a search; a first
     run's server is just its name until the next session).
-  - `mcp_call(tool, args)` calls one: `tool` is `<server>/<tool>`, and
+  - `call_tool(tool, args)` calls one: `tool` is `<server>/<tool>`, and
     `mcp_<server>_<tool>` works too (looked up, not parsed). Two tools whose
     `mcp_<server>_<tool>` comes out the same (servers `git-hub` and
     `git_hub`, names alike up to the 48-character cut) are both refused,
@@ -1039,18 +1039,18 @@ bundles:
   closed, then TERM and KILL go to the server's process group.
 - **`/mcp`** (anytime) shows a card with the servers, their state (cached
   (not started), running with its pid, failed with its count, stopped) and
-  their tools as `<server>/<tool>`, the name `mcp_call` takes.
+  their tools as `<server>/<tool>`, the name `call_tool` takes.
   A cached or running server's line says roughly how many tokens its tool
   definitions take (`~4,232 tokens`), which only a search's answer carries
-  now; the last line says what every request carries (`find_mcp_tools` and
-  `mcp_call`) and totals the servers'. It is an estimate:
+  now; the last line says what every request carries (`find_tools` and
+  `call_tool`) and totals the servers'. It is an estimate:
   the definitions' JSON as the chat API gets it (`api: openai`), divided by
   4. The native prompts (Gemma, Qwen) render a flatter schema, so there they
   take less. The log records each server's estimate when it changes
   (`mcp_tools_estimated`).
 - The server's stderr goes to the debug log (`plugins` records, bundle=mcp).
 - **Guardrails.** A rule's `tool:` can be a glob, so one rule covers every
-  MCP tool (a search is `find_mcp_tools`, outside `mcp_*`, so it isn't
+  MCP tool (a search is `find_tools`, outside `mcp_*`, so it isn't
   asked about):
 
   ```yaml
@@ -1062,10 +1062,10 @@ bundles:
         reason: an MCP server's tool
   ```
 
-  `mcp_call`'s `targets:` act as the tool it calls, by its
+  `call_tool`'s `targets:` act as the tool it calls, by its
   `mcp_<server>_<tool>` name ([acts_as:](#guardrails)), so `tool:
   "mcp_github_*"` or `tool: mcp_github_merge_pull_request` match an
-  `mcp_call` to it, as they matched the tool when it was declared by that
+  `call_tool` to it, as they matched the tool when it was declared by that
   name. A call made before the server's tools are known (a first run
   still starting) is matched by the name the model gave, so the rule fires
   before the call waits; if the tool it then finds isn't that one, the
@@ -1073,9 +1073,9 @@ bundles:
   (`everything: get_sum: a=20 b=22`), and "Allow this call for the
   session" (or in this repo) allows that tool with those arguments only.
   (Approvals stored before 0.6.0, under the old name, don't carry over.)
-  Two things see `mcp_call`, not the tool: hooks (a `before_tool_call`
-  event's `tool:` is `"mcp_call"`, the tool in its args), and loop-guard's
-  `ignore_tools` (`mcp_call` ignores every MCP call; calls to different
+  Two things see `call_tool`, not the tool: hooks (a `before_tool_call`
+  event's `tool:` is `"call_tool"`, the tool in its args), and loop-guard's
+  `ignore_tools` (`call_tool` ignores every MCP call; calls to different
   tools, or with different args, stay distinct, since the tool is in the
   args).
 

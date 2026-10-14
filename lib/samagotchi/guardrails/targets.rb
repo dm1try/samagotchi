@@ -50,7 +50,7 @@ module Samagotchi
       attr_reader :args
 
       # @return [String, nil] the tool a plugin tool's call acts as (its
-      #   targets:' acts_as:, an MCP tool behind mcp_call): a rule's tool:
+      #   targets:' acts_as:, an MCP tool behind call_tool): a rule's tool:
       #   matches it as well as the call's name. Never a core tool's or
       #   another bundle's (.plugin_targets drops those). #tool stays the
       #   call's name.

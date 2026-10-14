@@ -1,4 +1,4 @@
-Search the tools of the MCP servers below by keywords. It answers up to 5 tools, each with its name (<server>/<tool>) and inputSchema; call one with mcp_call. An empty query lists every tool's name.
+Search the tools of the MCP servers below by keywords. It answers up to 5 tools, each with its name (<server>/<tool>) and inputSchema; call one with call_tool. An empty query lists every tool's name.
 Servers:
 - fake: A fake server for chi's specs. (3 tools)
 - slow

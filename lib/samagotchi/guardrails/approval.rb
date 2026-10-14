@@ -38,7 +38,7 @@ module Samagotchi
           kind: KIND,
           approval: {
             tool: targets&.tool || verdict.call[:name].to_s,
-            # The tool the call acts as (an MCP tool behind mcp_call).
+            # The tool the call acts as (an MCP tool behind call_tool).
             acts_as: targets&.acts_as,
             label: label,
             command: targets&.command,
