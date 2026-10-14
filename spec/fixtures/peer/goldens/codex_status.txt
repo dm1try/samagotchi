@@ -1,0 +1,100 @@
+=== /codex (no session yet)
+nil
+=== card
+{
+  "source": "codex-peer",
+  "title": "codex-peer: not paired",
+  "body": "**not paired.** In Codex, install the chi-peer skill (Install skill below), then tell Codex \"pair with chi \".\n\nSent with `codex queue`: checked on Codex 0.162.1.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/codex"
+    },
+    {
+      "label": "Install skill",
+      "command": "/codex install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "codex"
+}
+=== /codex (not paired)
+nil
+=== card
+{
+  "source": "codex-peer",
+  "title": "codex-peer: not paired",
+  "body": "**not paired.** In Codex, install the chi-peer skill (Install skill below), then tell Codex \"pair with chi <SHORT>\".\n\nSent with `codex queue`: checked on Codex 0.162.1.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/codex"
+    },
+    {
+      "label": "Install skill",
+      "command": "/codex install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "codex"
+}
+=== /codex (paired, no answer yet)
+nil
+=== card
+{
+  "source": "codex-peer",
+  "title": "codex-peer: paired",
+  "body": "**paired** with a Codex session\n\nthread: `019a1b2c-3d4e-7f80-9abc-def012345678` (a closed Codex session still takes sends: they wait for `codex resume` there, or pair again)\n\nlast answer (codex-review): none yet\n\nSent with `codex queue`: checked on Codex 0.162.1.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/codex"
+    },
+    {
+      "label": "Install skill",
+      "command": "/codex install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "codex"
+}
+=== /codex (paired, a payload send, an answer)
+nil
+=== card
+{
+  "source": "codex-peer",
+  "title": "codex-peer: paired",
+  "body": "**paired** with a Codex session\n\nthread: `019a1b2c-3d4e-7f80-9abc-def012345678` (a closed Codex session still takes sends: they wait for `codex resume` there, or pair again)\n\nlast send: just now · context · the plan (5103 chars, in `<TMP>/home/state/samagotchi/plugins/codex-peer/sessions/<ID>/HHMMSS-the-plan.md`)\n\nlast answer (codex-review): validate step 2: VERDICT OK · just now\n\nSent with `codex queue`: checked on Codex 0.162.1.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/codex"
+    },
+    {
+      "label": "Install skill",
+      "command": "/codex install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "codex"
+}
+=== /codex (paired, an inline send)
+nil
+=== card
+{
+  "source": "codex-peer",
+  "title": "codex-peer: paired",
+  "body": "**paired** with a Codex session\n\nthread: `019a1b2c-3d4e-7f80-9abc-def012345678` (a closed Codex session still takes sends: they wait for `codex resume` there, or pair again)\n\nlast send: just now · validate · step 2 (5 chars, inline)\n\nlast answer (codex-review): validate step 2: VERDICT OK · just now\n\nSent with `codex queue`: checked on Codex 0.162.1.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/codex"
+    },
+    {
+      "label": "Install skill",
+      "command": "/codex install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "codex"
+}

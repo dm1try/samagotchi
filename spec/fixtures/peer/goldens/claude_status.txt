@@ -1,0 +1,120 @@
+=== /claude (no session yet)
+nil
+=== card
+{
+  "source": "claude-peer",
+  "title": "claude-peer: not paired",
+  "body": "**not paired.** In Claude Code, install the chi-peer skill (Install skill below), then tell Claude \"pair with chi \".\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/claude"
+    },
+    {
+      "label": "Install skill",
+      "command": "/claude install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "claude"
+}
+=== /claude (not paired)
+nil
+=== card
+{
+  "source": "claude-peer",
+  "title": "claude-peer: not paired",
+  "body": "**not paired.** In Claude Code, install the chi-peer skill (Install skill below), then tell Claude \"pair with chi <SHORT>\".\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/claude"
+    },
+    {
+      "label": "Install skill",
+      "command": "/claude install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "claude"
+}
+=== /claude (paired, no answer yet)
+nil
+=== card
+{
+  "source": "claude-peer",
+  "title": "claude-peer: paired",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (**missing**: that Claude session ended or restarted, pair again)\n\nlast answer (claude-review): none yet\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/claude"
+    },
+    {
+      "label": "Install skill",
+      "command": "/claude install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "claude"
+}
+=== /claude (paired, socket missing)
+nil
+=== card
+{
+  "source": "claude-peer",
+  "title": "claude-peer: paired",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (**missing**: that Claude session ended or restarted, pair again)\n\nlast answer (claude-review): none yet\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/claude"
+    },
+    {
+      "label": "Install skill",
+      "command": "/claude install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "claude"
+}
+=== /claude (paired, a payload send, an answer)
+nil
+=== card
+{
+  "source": "claude-peer",
+  "title": "claude-peer: paired",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (there)\n\nlast send: just now · context · the plan (5103 chars, in `<TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-plan.md`)\n\nlast answer (claude-review): validate step 2: VERDICT OK · just now\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/claude"
+    },
+    {
+      "label": "Install skill",
+      "command": "/claude install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "claude"
+}
+=== /claude (paired, an inline send)
+nil
+=== card
+{
+  "source": "claude-peer",
+  "title": "claude-peer: paired",
+  "body": "**paired** with a Claude Code session\n\nsocket: `<TMP>/inbox.sock` (there)\n\nlast send: just now · validate · step 2 (5 chars, inline)\n\nlast answer (claude-review): validate step 2: VERDICT OK · just now\n\nThe inbox's format is undocumented: checked on Claude Code 2.1.296. A Claude that bypasses permissions holds peer messages for approval.",
+  "actions": [
+    {
+      "label": "Refresh",
+      "command": "/claude"
+    },
+    {
+      "label": "Install skill",
+      "command": "/claude install-skill"
+    }
+  ],
+  "level": "info",
+  "id": "claude"
+}

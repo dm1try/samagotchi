@@ -1,0 +1,47 @@
+=== unknown kind
+Error: kind must be one of validate, context, question
+=== empty text
+Error: nothing to send: the text is empty
+=== over the cap
+Error: the text is 200001 chars, over 200000: send a part, not a session
+=== not paired
+Error: no claude-inbox: pair from Claude (install its skill with /claude install-skill, then tell Claude "pair with chi <SHORT>")
+=== no session id
+Error: this session has no id yet: send after its first turn
+=== not a socket path
+Error: claude-inbox's hint isn't a socket path (relative/socket): pair again from Claude
+=== gone
+Error: that Claude session is gone (no inbox at <TMP>/inbox.sock): pair again from Claude
+=== validate
+sent to Claude: validate · Step 2: the cache key. Claude's answer comes as an update of the claude-review context; don't wait or poll.
+=== posted
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · Step 2: the cache key\nIs the key stable?\nsee lib/a.rb"}}
+
+=== context
+sent to Claude: context · background. Claude takes it in; it answers only if something in it is wrong.
+=== posted
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · context · background\nsome background"}}
+
+=== question
+sent to Claude: question · why this name?. Claude's answer comes as an update of the claude-review context; don't wait or poll.
+=== posted
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · question · why this name?\nwhy?"}}
+
+=== no title
+sent to Claude: validate · check this. Claude's answer comes as an update of the claude-review context; don't wait or poll.
+=== posted
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · validate · check this\ncheck this\nand that"}}
+
+=== payload
+sent to Claude: context · The whole plan, r3! (the text in <TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md). Claude takes it in; it answers only if something in it is wrong.
+=== posted
+{"type":"user","message":{"role":"user","content":"chi <SHORT> · context · The whole plan, r3!\npayload: <TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md (301 lines, 5103 chars)"}}
+
+=== last send
+{
+  "at": "<AT>",
+  "kind": "context",
+  "title": "The whole plan, r3!",
+  "chars": 5103,
+  "payload": "<TMP>/home/state/samagotchi/plugins/claude-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md"
+}

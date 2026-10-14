@@ -1,0 +1,52 @@
+=== tool
+{
+  "tool": "codex_send",
+  "description": "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the Codex CLI session paired with it (the codex-inbox context), for Codex to validate, to take as context, or to answer a question about. Only when the user asks for it. Needs a paired Codex session: without one it fails, and the user pairs from Codex. Codex's answer comes back later as the codex-review context (a validate's wakes you): don't wait or poll. Never send secrets or the whole conversation.",
+  "params": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "validate",
+        "context",
+        "question"
+      ],
+      "required": true,
+      "description": "validate: check this part and answer with a verdict; context: for Codex to know, no answer expected; question: answer the question in text"
+    },
+    "title": {
+      "type": "string",
+      "required": true,
+      "description": "A short one-line title for the part; Codex's answer names it"
+    },
+    "text": {
+      "type": "string",
+      "required": true,
+      "description": "The part itself and what to check or ask, as Codex should read it; name the files, functions or diff range to look at. A long text goes to a file Codex reads"
+    }
+  },
+  "label": "sent to Codex",
+  "preview": "validate: cache step 2"
+}
+=== command
+{
+  "command": "/codex",
+  "description": "the paired Codex session: status; validate|context <text>, last: send to it; install-skill: install Codex's chi-peer skill",
+  "anytime": true
+}
+=== annotation
+{
+  "annotation": "Confirm with Codex",
+  "command": "/codex validate"
+}
+=== hook
+{
+  "hook": "before_turn",
+  "priority": 100
+}
+=== hook
+{
+  "hook": "after_turn",
+  "priority": 100
+}
+=== USAGE
+usage: /codex — whether a Codex session is paired; /codex validate <text> | context <text> — send the text to it; /codex last — send the last answer as context; /codex install-skill — install Codex's chi-peer skill, which pairs

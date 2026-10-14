@@ -1,0 +1,52 @@
+=== tool
+{
+  "tool": "claude_send",
+  "description": "Send a part of this session's work (a plan step, a diff, a finding, your last answer) to the Claude Code session paired with it (the claude-inbox context), for Claude to validate, to take as context, or to answer a question about. Only when the user asks for it. Needs a paired Claude Code session: without one it fails, and the user pairs from Claude. Claude's answer comes back later as the claude-review context (a validate's wakes you): don't wait or poll. Never send secrets or the whole conversation.",
+  "params": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "validate",
+        "context",
+        "question"
+      ],
+      "required": true,
+      "description": "validate: check this part and answer with a verdict; context: for Claude to know, no answer expected; question: answer the question in text"
+    },
+    "title": {
+      "type": "string",
+      "required": true,
+      "description": "A short one-line title for the part; Claude's answer names it"
+    },
+    "text": {
+      "type": "string",
+      "required": true,
+      "description": "The part itself and what to check or ask, as Claude should read it; name the files, functions or diff range to look at. A long text goes to a file Claude reads"
+    }
+  },
+  "label": "sent to Claude",
+  "preview": "validate: cache step 2"
+}
+=== command
+{
+  "command": "/claude",
+  "description": "the paired Claude Code session: status; validate|context <text>, last: send to it; install-skill: install Claude's chi-peer skill",
+  "anytime": true
+}
+=== annotation
+{
+  "annotation": "Confirm with Claude",
+  "command": "/claude validate"
+}
+=== hook
+{
+  "hook": "before_turn",
+  "priority": 100
+}
+=== hook
+{
+  "hook": "after_turn",
+  "priority": 100
+}
+=== USAGE
+usage: /claude — whether a Claude Code session is paired; /claude validate <text> | context <text> — send the text to it; /claude last — send the last answer as context; /claude install-skill — install Claude's chi-peer skill, which pairs

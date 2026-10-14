@@ -1,0 +1,54 @@
+=== unknown kind
+Error: kind must be one of validate, context, question
+=== empty text
+Error: nothing to send: the text is empty
+=== over the cap
+Error: the text is 200001 chars, over 200000: send a part, not a session
+=== not paired
+Error: no codex-inbox: pair from Codex (install its skill with /codex install-skill, then tell Codex "pair with chi <SHORT>")
+=== no session id
+Error: this session has no id yet: send after its first turn
+=== not a thread id
+Error: codex-inbox's hint isn't a Codex thread id (not-a-thread): pair again from Codex
+=== ephemeral
+Error: that Codex session is ephemeral and can't take queued messages: pair from an interactive Codex session
+=== gone
+Error: that Codex session is gone (codex queue: Error: no rollout found for thread id x (code -32603)): pair again from Codex
+=== failed
+Error: codex queue failed (exit 3): boom: the daemon is down
+=== failed, no text
+Error: codex queue failed (exit 4): no error text
+=== no CLI there
+Error: no Codex CLI at <TMP>/no-codex: install Codex CLI, or set CODEX= to its path where chi runs (a worker started by chi web or launchd may have another PATH)
+=== no codex on the PATH
+Error: no codex on the PATH: install Codex CLI, or set CODEX= to its path where chi runs (a worker started by chi web or launchd may have another PATH)
+=== hangs
+Error: Codex didn't take the message in 0.3 s (codex queue was stopped): try again, or pair again from Codex
+=== validate
+sent to Codex: validate · Step 2: the cache key. Codex's answer comes as an update of the codex-review context; don't wait or poll.
+=== queued
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · Step 2: the cache key\nIs the key stable?\nsee lib/a.rb"]
+=== context
+sent to Codex: context · background. Codex takes it in; it answers only if something in it is wrong.
+=== queued
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · background\nsome background"]
+=== question
+sent to Codex: question · why this name?. Codex's answer comes as an update of the codex-review context; don't wait or poll.
+=== queued
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · question · why this name?\nwhy?"]
+=== no title
+sent to Codex: validate · check this. Codex's answer comes as an update of the codex-review context; don't wait or poll.
+=== queued
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · check this\ncheck this\nand that"]
+=== payload
+sent to Codex: context · The whole plan, r3! (the text in <TMP>/home/state/samagotchi/plugins/codex-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md). Codex takes it in; it answers only if something in it is wrong.
+=== queued
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · The whole plan, r3!\npayload: <TMP>/home/state/samagotchi/plugins/codex-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md (301 lines, 5103 chars)"]
+=== last send
+{
+  "at": "<AT>",
+  "kind": "context",
+  "title": "The whole plan, r3!",
+  "chars": 5103,
+  "payload": "<TMP>/home/state/samagotchi/plugins/codex-peer/sessions/<ID>/HHMMSS-the-whole-plan-r3.md"
+}

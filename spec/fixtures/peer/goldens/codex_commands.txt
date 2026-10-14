@@ -1,0 +1,36 @@
+=== /codex bogus (unknown verb)
+"usage: /codex — whether a Codex session is paired; /codex validate <text> | context <text> — send the text to it; /codex last — send the last answer as context; /codex install-skill — install Codex's chi-peer skill, which pairs"
+=== /codex validate (no text)
+"usage: /codex — whether a Codex session is paired; /codex validate <text> | context <text> — send the text to it; /codex last — send the last answer as context; /codex install-skill — install Codex's chi-peer skill, which pairs"
+=== /codex last now (last with text)
+"usage: /codex — whether a Codex session is paired; /codex validate <text> | context <text> — send the text to it; /codex last — send the last answer as context; /codex install-skill — install Codex's chi-peer skill, which pairs"
+=== /codex validate check this (not paired)
+"/codex: no codex-inbox: pair from Codex (install its skill with /codex install-skill, then tell Codex \"pair with chi <SHORT>\")"
+=== /codex last (no answer yet)
+"/codex last: no completed answer to send yet (the last turn has none); /codex context <text> sends a text"
+=== /codex validate From your thinking:
+> the cache key is stable
+confirm (a quote)
+"sent to Codex: validate · the cache key is stable; Codex's answer comes as the codex-review context"
+=== last send
+{
+  "at": "<AT>",
+  "kind": "validate",
+  "title": "the cache key is stable",
+  "chars": 53,
+  "payload": null
+}
+=== /codex context  some background (context)
+"sent to Codex: context · some background; Codex's answer comes as the codex-review context"
+=== /codex last (the last answer)
+"sent to Codex: context · chi's last answer: The fix is in lib/a.rb."
+=== last send
+{
+  "at": "<AT>",
+  "kind": "context",
+  "title": "chi's last answer: The fix is in lib/a.rb.",
+  "chars": 41,
+  "payload": null
+}
+=== queued
+["queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · validate · the cache key is stable\nFrom your thinking:\n> the cache key is stable\nconfirm", "queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · some background\nsome background", "queue", "--thread", "019a1b2c-3d4e-7f80-9abc-def012345678", "--message", "chi <SHORT> · context · chi's last answer: The fix is in lib/a.rb.\nThe fix is in lib/a.rb.\nIt keeps the key."]
