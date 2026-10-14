@@ -34,7 +34,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #                      resumed: true (only on a step-limit Continue: resumed: given),
   │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
   │     # refresh_profile! (may ask the server's /props once)
-  │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name is set in generate)
+  │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name is set in generate),
+  │     #   from one EffectiveModel; ThinkingNotices#turn_started keeps the level and says one the host can't do
   │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools,
   │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, a prompt rebuild when it changed)
   │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
@@ -43,11 +44,12 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     # Returns false when a Stop came during the probes or the init wait, else true
   │
   ├── generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
-  │     # sync_kernel_client!, then @kernel.turn_settings = turn.settings with model_name, window_setting,
-  │     #   llm_context (turn_llm_context: the session's, the model's/host's, else llm_context.strategy)
-  │     #   and price (turn_price: hosts.<name>.models.<id>.price), all read per turn
+  │     # one EffectiveModel (after the hooks, which may switch the model): sync_kernel_client!, then
+  │     #   @kernel.turn_settings = turn.settings with model_name, window_setting, llm_context (the
+  │     #   session's, the model's/host's, else llm_context.strategy) and price
+  │     #   (hosts.<name>.models.<id>.price), all read per turn
   │     # turn.limit = max_iterations or IterationLimit.for
-  │     # backend.complete(messages: turn.messages, ..., pending_input: turn_drain(pending_input))
+  │     # backend(model).complete(messages: turn.messages, ..., pending_input: turn_drain(pending_input))
   │     # Returns LLM::ModelResult (text, conversation, canceled?, exhausted?, tool_activity,
   │     #                          context_status, empty_steps, empty_retries)
   │
@@ -118,6 +120,16 @@ A worker's TERM, HUP or INT (WorkerSignals, trapped by a spawned worker only):
      loop left brings only that hard exit, and run_session_loop restores the default handlers
   → run_session_loop: exit 0, no discard; input queued behind the stopped turn wakes a new worker
 
+The effective model doesn't resolve (a broken host config, HostRegistry#resolve raising):
+  → the rescued readers give their fallback (Engine#model_setting) and log effective_model_unresolved;
+     a setting that fails on a resolved model gives its fallback and logs <setting>_unresolved
+     (sampling, thinking, reasoning_history, steer_cut_after, llm_context, window, price, served,
+     vision_adapter); served_probe_failed when asking the server for its served model fails;
+     alias_note_failed, thinking_notice_failed likewise
+  → WARN once per process for an (event, model, error class), DEBUG after (EffectiveModel::Unresolved)
+  → session_state_snapshot never raises (its model fields are nil); a turn, stats_snapshot,
+     chat_model? and system_prompt raise, as before
+
 Stopped before the model was asked (prepare_turn returned false):
   → stopped_before_model(turn) → end_turn(turn, "canceled")
   → nothing kept, :turn_canceled {cancellation_reason, cancelled_by, duration_ms}
@@ -129,7 +141,7 @@ Stopped before the model was asked (prepare_turn returned false):
 The Engine does not talk to models directly. `Engine#backend` picks the loop the effective model's host speaks:
 
 ```
-Engine#backend → backend_for(@host_registry.resolve(@effective_model_name))
+Engine#backend → backend_for(effective_model)    # EffectiveModel.of(@host_registry, @model_choice)
   → host entry chat? (an api in LLM::Adapters::BY_API: openai, anthropic): LLM::ChatLoop (one per Engine, built on first use)
   → else:                                                     LLM::NativeBackend wrapping the Engine's KernelLoop
 ```
@@ -326,6 +338,38 @@ TurnState
 
 The lock is a leaf: nothing is called out while it is held.
 
+### EffectiveModel (a snapshot per read)
+
+`EffectiveModel.of(registry, choice)` resolves the model once (`HostRegistry#resolve`: host, client, the id
+sent) with its lookup names, and reads each setting from them (sampling, thinking, reasoning history, steer cut,
+LLM context, window, price, served model, vision, profile). It is built per read and never kept: config.yml is
+read live, a model listing can move a bare id to another host, and another process's saved model lists change
+what a resolve gives, all without a `/model`. Frozen, so any thread may hold one.
+
+- The Engine's readers take one (`Engine#effective_model`); those whose fallback always covered the resolve go
+  through `#model_setting`. A turn takes one in `turn_settings` (before the hooks) and one in `generate` (after
+  them); `system_prompt`, `steer_cut_after` (at `:turn_started`) and the turn-end warm-up take their own;
+  `stats_snapshot` and `session_state_snapshot` take one each (the latter nil-tolerant).
+- Never resolved (they hold on a broken resolve): `effective_model_ref`, `bare_model_name`,
+  `guardrail_model_name`, `sync_model_key!`, `served_model(probe: false)` (`HostRegistry#model_ref`/`#bare_name`).
+- Readers on other threads: the Bridge (`/state`, `/stats`, the SSE reset, a steer's cut wait), the worker's
+  command thread, the recap thread and plugin threads (`session_model_recap_target`), the REPL.
+- `ModelChoice` (`@model_choice`) holds the name and the typed name as one value, so a reader on another thread
+  never pairs one model's name with another's typed name.
+- `EffectiveModel.of_session` builds a saved session's (no worker): `Web::App`, `LLMContextStrategy.for_session`.
+
+`SessionSetting` names the four per-session settings (llm_context, thinking, reasoning_history, toolkit): the
+session's own value, the commands that move each chip, its chip from an EffectiveModel or from the Engine's
+readers, a saved session's chip, and how the web takes a worker snapshot's. The session state, `/stats` (no
+toolkit), a `:command_ran` and the web's session JSON list them from it.
+
+### ThinkingNotices
+
+What a turn's thinking level leads to, said once per session and host (`thinking_notices.rb`): an effort the
+host can't do, off the model didn't honour, a host refusing the thinking fields or the reasoning sent back. It
+keeps the turn's `[level, ModelTarget]` and whether the generation thought; `turn_settings` and the stream handler
+call it. Turn thread only.
+
 ### Turn (Engine::Turn)
 
 The turn as the Engine sees it (the KernelLoop has its own `Turn` struct):
@@ -435,7 +479,7 @@ hook registry (`@hooks.fire`), not on the sink or the observers. The other hook 
 ```
 Engine initialization (in this order, among other things):
   @turn_state, @steer_cut (SteerCut: its GenerationPhase and WaitingSteer)
-  @host_registry, @effective_model_name; @client = @host_registry.resolve(...).client
+  @host_registry, @model_choice (ModelChoice: the name and the name as typed); @client = effective_model.client
   @given_profile = profile or nil (resolved on first need, so building an Engine makes no network call)
   @hook_routes (HookRoutes: notices, hook questions, stop_turn/stop_generation, steer attribution)
   @guardrail_wiring, @question_desk
@@ -453,8 +497,9 @@ Engine initialization (in this order, among other things):
   @session_observer with the metrics, the log subscriber and the thinking tails subscribed (subscribe_session_observers)
 
 Model switching, Engine#switch_model!(model_name, persist_default:, typed:):
-  → checks the host (ModelProfile.check_host!), sets @effective_model_name
-  → drops the given profile and the profile resolution (resolved again on first need)
+  → checks the host (ModelProfile.check_host!), sets @model_choice (name and typed name in one assignment)
+  → drops the given profile and the profile resolution (resolved again on first need; one that another
+    thread finishes for the old model is neither kept nor applied: #store_profile)
   → sync_model_key!, @prompt_builder.reset! (the system prompt is built again)
   → sync_kernel_client! (the kernel talks to the new host), the context window cache dropped
   → the kernel is never rebuilt; the next turn's backend follows the new host's api
@@ -608,6 +653,10 @@ Paths are under `lib/samagotchi/`.
 | `turn_state.rb` | Cross-thread turn state (running, controller, sink, steers, activity clock) |
 | `steer_cut.rb` | `SteerCut`: the Engine's seam for a message cutting the generation |
 | `generation_phase.rb`, `waiting_steer.rb` | Whether a steer may cut the running generation, and the steer that waits to |
+| `effective_model.rb` | `EffectiveModel` (the effective model's settings, a snapshot per read; `.of_session`), `ModelChoice`, the fallbacks' log lines (`Unresolved`) |
+| `session_setting.rb` | `SessionSetting`: the per-session settings' descriptors (own value, chips, the web's fallback) |
+| `level_setting_command.rb`, `thinking_command.rb`, `reasoning_history_command.rb` | `/thinking` and `/reasoning-history` (`LevelSettingCommand` and its two Specs) |
+| `thinking_notices.rb` | `ThinkingNotices`: the notices a turn's thinking level leads to |
 | `steer_cut_after.rb`, `cut_policy.rb` | The model's cut wait (`SteerCutAfter.resolve`); the loops' cut path (`CutPolicy`) |
 | `steer.rb` | Queued input and steers at iteration boundaries |
 | `kernel_loop.rb` | Native loop: `#run` (format, generate, parse, dispatch, iterate) |
