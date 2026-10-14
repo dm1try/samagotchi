@@ -312,7 +312,7 @@ test("batchToastText: the end toast's words", () => {
 
 // ── Families folded into their parent's card ──────────────────────────────
 
-import { familyChipText, familyOpen, familySummary, filterFamilies } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { familyOpen, familySummary, filterFamilies } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 const del = (id, parent, extra = {}) => ({ id, parent_id: parent, delegate: true, status: "idle", ...extra });
 
@@ -323,13 +323,6 @@ test("familySummary counts a family's members at any depth (the shared delegates
   assert.equal(sum.live, 1);
   assert.equal(sum.counts.waiting, 1);
   assert.equal(familySummary({ head: { id: "x" }, members: [] }), null);
-});
-
-test("familyChipText: singular / plural, then live and waiting when there are some", () => {
-  assert.equal(familyChipText({ total: 1, live: 0, counts: { waiting: 0 } }), "▸ 1 delegate");
-  assert.equal(familyChipText({ total: 3, live: 1, counts: { waiting: 1 } }), "▸ 3 delegates · 1 live · 1 waiting");
-  assert.equal(familyChipText({ total: 2, live: 0, counts: { waiting: 2 } }), "▸ 2 delegates · 2 waiting");
-  assert.equal(familyChipText(null), "");
 });
 
 test("familyOpen: open when a member waits on the user, at any depth; a toggle wins both ways", () => {
