@@ -108,6 +108,12 @@ test("toolRowTemplate: a call the model made under an alias's name says so, dim,
   assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "execute", status: "ok", title: "List" }), /called as/);
 });
 
+test("toolRowTemplate: a built-in reached through call_tool says so, dim, after its title", () => {
+  const html = toolRowHtml({ key: "1:1", tool: "delegate", status: "ok", params: 'task="look"', via: "call_tool" });
+  assert.match(html, /<span class="activity-tool">delegate<\/span><span class="activity-params"[^>]*>task="look"<\/span><span class="activity-alias">\(via call_tool\)<\/span>/);
+  assert.doesNotMatch(toolRowHtml({ key: "1:1", tool: "delegate", status: "ok" }), /via call_tool/);
+});
+
 test("toolRowTemplate: a read row with a ref adds its numbered lines under the preview, closed", () => {
   const html = toolRowHtml({ key: "2:2", tool: "read", status: "ok", title: "a.rb", ref: { kind: "file", path: "/p/a.rb" }, output: "[read]\n  x\n" });
   assert.match(html, /<div class="activity-output" title="x\n">x\n<\/div><details class="activity-read"><summary>line 1<\/summary>/);

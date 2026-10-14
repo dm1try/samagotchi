@@ -331,7 +331,9 @@ module Samagotchi
     # The tools the session's toolkit leaves out, named once right after the
     # base prompt: sessions on another toolkit already differ at the tools,
     # and nothing later (a memory write) moves it. nil when none are (full):
-    # the prompt is what it was before toolkits.
+    # the prompt is what it was before toolkits. The ones call_tool reaches
+    # and the ones the toolkit removes (only the user brings those back)
+    # get a sentence each; with call_tool not declared, one list.
     def not_loaded_line(layers)
       registry = @tools_lookup.call
       return nil unless registry.respond_to?(:left_out_names)
@@ -339,8 +341,22 @@ module Samagotchi
       names = registry.left_out_names(layers: layers)
       return nil if names.empty?
 
-      "Not loaded in this session (toolkit #{registry.toolkit&.name}): #{names.join(", ")}. " \
-        "Only the user can load one (/toolkit add <name>)."
+      toolkit = "(toolkit #{registry.toolkit&.name})"
+      reachable = registry.reachable_names(layers: layers)
+      if reachable.empty?
+        return "Not loaded in this session #{toolkit}: #{names.join(", ")}. Only the user can load one (/toolkit add <name>)."
+      end
+
+      removed = names - reachable
+      # find_tools removed (call_tool still works): the route without it.
+      how = if removed.include?("find_tools") then "Call one with call_tool(tool: \"chi/<name>\", args: {…})."
+            else "Search them with find_tools; call one with call_tool."
+            end
+      line = "Not declared in this session #{toolkit}: #{reachable.join(", ")}. #{how}"
+      return line if removed.empty?
+
+      "#{line} Removed #{toolkit}: #{removed.join(", ")}. Only the user can load #{removed.size == 1 ? "it" : "one"} " \
+        "(/toolkit add <name>)."
     end
 
     def with_tail_declarations(prompt, chat:, layers:)

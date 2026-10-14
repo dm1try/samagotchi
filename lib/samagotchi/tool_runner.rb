@@ -47,6 +47,10 @@ module Samagotchi
     #   file (EditPreview.change; also on tool_call_completed, never in the
     #   model's output)
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
+      # A call_tool of one of chi's own tools runs as that tool, from here
+      # on (the gate, the row, the result): rules, approvals and hooks see
+      # the real call, with via: (Tools::ToolIndex#unwrap).
+      call = unwrapped(call)
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       # The gate runs first, so tool_call_started shows the call that runs.
       # A tool the session's toolkit leaves out skips it: no before_tool_call
@@ -60,7 +64,7 @@ module Samagotchi
       started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
                   tool: call[:name], call: call.dup, params: params }
       started[:label] = label if label
-      # Its row fields (ToolRowFields: title, called_as, view, ref, and a
+      # Its row fields (ToolRowFields: title, called_as, via, view, ref, and a
       # plugin tool's refs); the worker runs in its session's working
       # directory.
       fields = ToolRowFields.for(call[:name], call, cwd: Dir.pwd)
@@ -268,12 +272,29 @@ module Samagotchi
     # The kernel's tools, for the activity line of a tool that isn't built in.
     def tools = @kernel.tools
 
-    # A real tool the session's toolkit leaves out of this turn.
+    def layers = @kernel.respond_to?(:llm_context_layers) ? @kernel.llm_context_layers : []
+
+    # The call its tool's entry unwraps it to (call_tool on a built-in),
+    # else the call as it is. One that fails runs as it is: call_tool then
+    # refuses a built-in (fail closed).
+    def unwrapped(call)
+      registry = tools
+      return call unless registry.respond_to?(:offered) && !call[:name].nil?
+
+      registry.offered(call[:name], layers: layers)&.unwrap&.call(call, layers) || call
+    rescue StandardError => e
+      Log.warn(:turn, "tool_unwrap_failed", tool: call[:name].to_s, error: "#{e.class}: #{e.message}")
+      call
+    end
+
+    # A call that can't run in this turn as it is, by its name: a real tool
+    # the session's toolkit leaves out, or one reached through call_tool
+    # (via:) that the toolkit doesn't reach that way (a hook's rewrite).
     def left_out?(call)
       registry = tools
       return false unless registry.respond_to?(:left_out) && !call[:name].nil?
+      return registry.indexed(call[:name], layers: layers).nil? if call[:via]
 
-      layers = @kernel.respond_to?(:llm_context_layers) ? @kernel.llm_context_layers : []
       !registry.left_out(call[:name], layers: layers).nil?
     end
 

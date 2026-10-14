@@ -96,10 +96,16 @@ RSpec.describe Samagotchi::Toolkit do
     expect(described_class.of(nil)).to be_full
   end
 
-  it "adds and removes a tool; undoing a change goes back to the kit's" do
+  it "adds and removes a tool, always recorded: a remove after an add is hard, an add after a remove declares (D12)" do
     toolkit = described_class.new(name: "lean").adding("delegate").removing("web_fetch")
     expect(toolkit.label).to eq("lean +delegate -web_fetch")
-    expect(toolkit.removing("delegate").adding("web_fetch")).to eq(described_class.new(name: "lean"))
+    expect(toolkit.removing("delegate").adding("web_fetch")).to eq(described_class.new(name: "lean", add: ["web_fetch"],
+                                                                                       remove: ["delegate"]))
+    resolved = described_class.new(name: "lean").adding("delegate").removing("delegate").resolve(kits)
+    expect(resolved.removed).to eq(["delegate"])
+    resolved = described_class.new(name: "lean").removing("delegate").adding("delegate").resolve(kits)
+    expect(resolved.added).to eq(["delegate"])
+    expect(resolved.removed).to eq([])
   end
 
   it "costs a full prompt re-read when the declared names change" do

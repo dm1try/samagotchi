@@ -517,6 +517,7 @@ RSpec.describe Samagotchi::TerminalUI do
 
       expect(line.call(called_as: "bash")).to include("(execute: List the specs<90> (called as bash)): ")
       expect(line.call({})).not_to include("called as")
+      expect(line.call(via: "call_tool")).to include("(execute: List the specs<90> (via call_tool)): ")
     end
 
     it "shows a wait the user's Stop ended as stopped, in yellow" do

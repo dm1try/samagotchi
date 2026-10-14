@@ -112,6 +112,36 @@ RSpec.describe Samagotchi::Web::MessageParts do
       )
     end
 
+    it "reloads a built-in run through call_tool as that built-in's row with via, a refused call_tool as call_tool" do
+      message = { role: "model", content: "",
+                  tool_calls: [{ id: "c1", name: "call_tool",
+                                 arguments: { "tool" => "chi/delegate", "args" => { "task" => "look" } } },
+                               { id: "c2", name: "call_tool", arguments: { "tool" => "read", "args" => { "path" => "x" } } }] }
+      responses = [{ role: "tool_response", content: "[delegate]\nstarted", tool_call_id: "c1" },
+                   { role: "tool_response", content: "[call_tool]\nError: no tool read. Search with find_tools.",
+                     tool_call_id: "c2" }]
+
+      tools = described_class.for_message(message, responses)[:tools]
+      expect(tools[0]).to include(tool: "delegate", via: "call_tool", params: 'task="look"', output: "[delegate]\nstarted")
+      expect(tools[1]).to include(tool: "call_tool")
+      expect(tools[1]).not_to have_key(:via)
+    end
+
+    it "reloads a built-in call_tool refused by its name before the gate as that built-in's row, as live" do
+      message = { role: "model", content: "",
+                  tool_calls: [{ id: "c1", name: "call_tool",
+                                 arguments: { "tool" => "chi/memory_write", "args" => { "name" => "x", "scope" => "project" } } },
+                               { id: "c2", name: "call_tool", arguments: { "tool" => "chi/delegate", "args" => {} } }] }
+      responses = [{ role: "tool_response", content: "Error: memory_write isn't loaded in this session (toolkit child)",
+                     tool_call_id: "c1" },
+                   { role: "tool_response", content: "Error: call_tool isn't loaded in this session (toolkit lean)",
+                     tool_call_id: "c2" }]
+
+      tools = described_class.for_message(message, responses)[:tools]
+      expect(tools[0]).to include(tool: "memory_write", via: "call_tool")
+      expect(tools[1]).to include(tool: "call_tool")
+    end
+
     it "reads a Bridge snapshot's string keys" do
       message = { "role" => "model", "content" => "",
                   "tool_calls" => [{ "id" => "c1", "name" => "execute", "arguments" => { "command" => "echo hi" } }] }

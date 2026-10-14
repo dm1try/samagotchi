@@ -234,12 +234,15 @@ module Samagotchi
       # +tool_id+: its output's ToolIds id, with its ✂ mark in +marks+.
       def tool_part(call, output, registry, shown = nil, images = nil, label: nil, diff: nil, refs: nil, cwd: nil,
                     tool_id: nil, marks: {})
+        # A built-in reached through call_tool reloads as that built-in's
+        # row, with via (its saved params and label are the built-in's).
+        call = Tools::BuiltinCalls.unwrap_saved(call, output)
         name = call[:name].to_s
         params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
         part = { tool: name, params: params.to_s }
-        # Its row fields (ToolRowFields: title, called_as, view, ref), built from the saved
+        # Its row fields (ToolRowFields: title, called_as, via, view, ref), built from the saved
         # call (never saved themselves), so older sessions get them too. The
-        # saved call is rebuilt by BuiltinCalls, which sets called_as again.
+        # saved call is rebuilt by BuiltinCalls, which sets called_as and via again.
         part.merge!(ToolRowFields.for(name, call, cwd: cwd))
         part[:label] = label if label.is_a?(String) && !label.empty?
         unless output.nil?

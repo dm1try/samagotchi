@@ -68,6 +68,32 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect(output).to start_with("Switching to mykit declares the same tools under its own name.")
   end
 
+  # D12: what the prompt carries includes the reachable and the removed
+  # tools, so a remove of a tool lean leaves out (reachable) is a change.
+  it "saves a remove of a tool the toolkit leaves out (it becomes unreachable), and an add after it declares it" do
+    session.toolkit = Samagotchi::Toolkit.new(name: "lean")
+    _, changed, = command.run("remove delegate")
+    expect(changed).to be(true)
+    expect(session.toolkit).to eq(Samagotchi::Toolkit.new(name: "lean", remove: ["delegate"]))
+    expect(engine.toolkit_explained.removed).to eq(["delegate"])
+    expect(engine.toolkit_explained.reachable).not_to include("delegate")
+
+    command.run("add delegate")
+    expect(session.toolkit).to eq(Samagotchi::Toolkit.new(name: "lean", add: ["delegate"]))
+    expect(engine.toolkit_explained.declared.map(&:name)).to include("delegate")
+    command.run("remove delegate")
+    expect(session.toolkit).to eq(Samagotchi::Toolkit.new(name: "lean", remove: ["delegate"]))
+    expect(saved.size).to eq(3)
+  end
+
+  it "asks first for that remove once the session has a model reply" do
+    session.toolkit = Samagotchi::Toolkit.new(name: "lean")
+    allow(engine).to receive(:history?).and_return(true)
+    _, changed, ask = command.run("remove delegate")
+    expect(changed).to be(false)
+    expect(ask&.line).to eq("/toolkit remove delegate --yes")
+  end
+
   it "refuses an unknown toolkit or tool, keeping a tool's case" do
     expect { command.run("nope") }.to raise_error(ArgumentError, "no toolkit named nope (toolkits: full, lean, child)")
     expect { command.run("add Delegate") }.to raise_error(ArgumentError, "no tool named Delegate in this session")

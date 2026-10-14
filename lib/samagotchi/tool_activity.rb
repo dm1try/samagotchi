@@ -56,6 +56,9 @@ module Samagotchi
       # The name the model used when an alias ran a built-in (called_as: "bash"
       # for an execute), for a UI that shows it.
       event[:called_as] = call[:called_as] if call.is_a?(Hash) && call[:called_as]
+      # The tool it was reached through (via: "call_tool", a built-in the
+      # toolkit doesn't declare): not an alias, the model named it.
+      event[:via] = call[:via] if call.is_a?(Hash) && call[:via]
       # The model's own words for a command, which the TUI's tool line
       # shows in place of the cut params.
       description = command_description(tool_name, call)

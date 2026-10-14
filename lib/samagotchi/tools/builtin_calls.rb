@@ -63,6 +63,14 @@ module Samagotchi
       # called_as: with the model's own spelling.
       ALIASES = { "bash" => "execute" }.freeze
 
+      # The tool index's call tool, whose call of a built-in runs as that
+      # built-in (ToolIndex#unwrap; ToolIndex::CALL_NAME is this), and the
+      # group it names them by. The one place the name is spelled.
+      VIA = "call_tool"
+      VIA_GROUP = "chi/"
+      # A saved run's "[name]" lead (ToolResponse::LEAD).
+      SAVED_LEAD = /\A\[([^\]\s]+)\]/
+
       # One built-in's mapping, resolved from its schema and OVERRIDES.
       Row = Data.define(:name, :content_keys, :path_key, :fields, :aliases, :verbatim, :fallback, :fallback_key,
                         :options) do
@@ -97,7 +105,11 @@ module Samagotchi
         unknown = ([path_key].compact + Array(o[:verbatim]) + Array(o[:also]) + o.fetch(:aliases, {}).keys) - properties
         unknown << content_keys.join("/") unless content_keys.empty? || content_keys.intersect?(properties)
         raise ArgumentError, "#{name}: overrides name no schema property: #{unknown.join(", ")}" unless unknown.empty?
-        raise ArgumentError, "#{name}: a property would replace the call's name" if fields.include?("name")
+        # A property can't set the call's name, nor the fields only chi sets
+        # (an alias's called_as, an unwrapped call's via).
+        if (reserved = fields & %w[name called_as via]).any?
+          raise ArgumentError, "#{name}: a property would replace the call's #{reserved.first}"
+        end
 
         Row.new(name: name, content_keys: content_keys, path_key: path_key, fields: fields,
                 aliases: o.fetch(:aliases, {}), verbatim: Array(o[:verbatim]), fallback: o[:fallback],
@@ -133,6 +145,38 @@ module Samagotchi
         row.fields.each { |key| call[key.to_sym] = value(row, args, key) }
         call[:options] = options(call[:options]) if row.options
         call
+      end
+
+      # A saved call as it ran (a reload, the stale-read pairing): a call_tool
+      # of a built-in ("chi/delegate", or a bare "delegate") is that
+      # built-in's call with via: "call_tool" when +output+ (its saved
+      # result) shows it ran as that built-in: its "[name]" lead, or, with
+      # no lead, an error that names it (refused by its name before the
+      # gate); any other call as it is (a call_tool that ran, refused or
+      # not, leads with "[call_tool]").
+      # @param call [Hash] as #build gives it
+      # @param output [String, nil]
+      # @return [Hash]
+      def unwrap_saved(call, output)
+        return call unless call[:name] == VIA && call[:args].is_a?(Hash)
+
+        name = call[:args]["tool"].to_s.strip.delete_prefix(VIA_GROUP)
+        return call unless row(name) && ran_as?(output.to_s, name)
+
+        build(name, saved_args(call[:args]["args"])).merge(via: VIA)
+      end
+
+      def ran_as?(output, name)
+        lead = output[SAVED_LEAD, 1]
+        lead ? lead == name : output.start_with?("Error: #{name} ")
+      end
+
+      # call_tool's inner args as saved: an object, or its JSON text.
+      def saved_args(args)
+        args = JSON.parse(args) if args.is_a?(String) && !args.strip.empty?
+        args.is_a?(Hash) ? args : {}
+      rescue JSON::ParserError
+        {}
       end
 
       # An execute-shaped call the model spelled +name+: built as its +target+,

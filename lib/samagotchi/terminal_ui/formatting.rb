@@ -34,7 +34,8 @@ module Samagotchi
       # What a tool line says the call did: the model's description of a
       # command (": List the specs") in place of its cut params, else the
       # params, dim; then, dim, the name the model called it by when that was
-      # an alias's (" (called as bash)").
+      # an alias's (" (called as bash)"), or the tool it was reached through
+      # (" (via call_tool)").
       def tool_params_suffix(activity)
         description = activity[:description].to_s.strip
         params = activity[:params].to_s.strip
@@ -43,7 +44,9 @@ module Samagotchi
                  else ""
                  end
         called_as = activity[:called_as].to_s
-        called_as.empty? ? suffix : "#{suffix}#{paint(" (called as #{called_as})", 90)}"
+        suffix = "#{suffix}#{paint(" (called as #{called_as})", 90)}" unless called_as.empty?
+        via = activity[:via].to_s
+        via.empty? ? suffix : "#{suffix}#{paint(" (via #{via})", 90)}"
       end
 
       # Green ok, yellow stopped (a wait the user's Stop ended), red the rest.

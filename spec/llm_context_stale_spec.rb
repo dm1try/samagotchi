@@ -52,6 +52,25 @@ RSpec.describe Samagotchi::LLMContextStale do
       expect(found(conversation).first).not_to be_change
     end
 
+    it "stubs a read run through call_tool (chi/read on a toolkit without read) like a direct one" do
+      conversation = [head, { role: "user", content: "go" },
+                      chat_model(chat_call("c1", "call_tool", { "tool" => "chi/read", "args" => { "path" => "lib/cart.rb" } })),
+                      chat_result("c1", "read", body, "t1"),
+                      chat_model(chat_call("c2", "read", { "path" => "lib/cart.rb" })),
+                      chat_result("c2", "read", body, "t2")]
+
+      expect(stubbed(conversation)).to eq("t1" => [3, "lib/cart.rb: superseded by a later read"])
+    end
+
+    it "pairs a joined native batch with a call_tool of a built-in in it" do
+      model = { role: "model",
+                content: [qwen_call("call_tool", tool: "chi/read", args: '{"path": "lib/cart.rb"}'),
+                          qwen_call("read", path: "lib/cart.rb")].join("\n") }
+      conversation = [head, { role: "user", content: "go" }, model, joined(["read", body], ["read", body], ids: %w[t1 t2])]
+
+      expect(stubbed(conversation)).to eq("t1" => [3, "lib/cart.rb: superseded by a later read"])
+    end
+
     it "keeps a read a later edit or write of the file changed (later read only, user 2026-10-07; edits are P3's)" do
       conversation = [head,
                       chat_model(chat_call("c1", "read", { "path" => "lib/cart.rb", "start_line" => 5, "end_line" => "30" }),

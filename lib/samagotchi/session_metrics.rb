@@ -852,6 +852,9 @@ module Samagotchi
 
         called_as = event.dig(:activity, :called_as)
         active[:called_as] = called_as.to_s if called_as
+        # Reached through call_tool: the reloaded row says so (not an alias).
+        via = event.dig(:activity, :via)
+        active[:via] = via.to_s if via
         # A grep that found nothing (ok): the reloaded web row says "no match".
         active[:no_match] = true if event.dig(:activity, :no_match)
         finish_tool_record(active, status.empty? ? "ok" : status, waited_ms: event[:waited_ms].to_i)
@@ -861,7 +864,7 @@ module Samagotchi
     # Caller holds the mutex.
     def finish_tool_record(active, status, waited_ms: 0)
       record = active.slice(
-        :id, :turn_id, :iteration, :call_index, :tool, :called_as, :no_match, :started_at
+        :id, :turn_id, :iteration, :call_index, :tool, :called_as, :via, :no_match, :started_at
       ).merge(
         status: status,
         completed_at: now.iso8601(3),

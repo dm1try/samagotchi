@@ -21,6 +21,7 @@ require_relative "steer"
 require_relative "reasoning_history"
 require_relative "thought_stream_splitter"
 require_relative "tools/builtins"
+require_relative "tools/builtin_calls"
 require_relative "muted_memories"
 require_relative "tool_activity"
 require_relative "tool_runner"
@@ -1070,12 +1071,22 @@ module Samagotchi
     #
     # A tool the session's toolkit leaves out is a real one, so its error
     # does name it (deliberately, against the rule above): the model learns
-    # it exists and that only the user can load it.
-    def unknown_tool_error(name, layers)
+    # it exists, and how to reach it (call_tool, when the toolkit reaches
+    # it that way) or that only the user can load it. A call reached
+    # through call_tool (+via+) of a tool the toolkit declares is told to
+    # call it directly: the model's call_tool(tool: "chi/read") with read
+    # declared, or a hook's rewrite (a direct call can't carry via:).
+    def unknown_tool_error(name, layers, via: nil)
       names = @tools.names(layers: layers)
-      if @tools.respond_to?(:left_out) && @tools.left_out(name, layers: layers)
-        toolkit = @tools.toolkit&.name
-        "Error: #{name} isn't loaded in this session#{" (toolkit #{toolkit})" if toolkit} and can't be loaded from " \
+      toolkit = @tools.toolkit&.name
+      in_toolkit = " in this session#{" (toolkit #{toolkit})" if toolkit}"
+      if via && @tools.offered(name, layers: layers)
+        "Error: #{name} is declared#{in_toolkit}; call it directly. Available: #{names.join(", ")}"
+      elsif !via && @tools.respond_to?(:indexed) && @tools.indexed(name, layers: layers)
+        "Error: #{name} isn't declared#{in_toolkit}; call it with #{Tools::BuiltinCalls::VIA}(tool: \"chi/#{name}\", args: {…}) " \
+          "(find_tools gives its inputSchema). Available: #{names.join(", ")}"
+      elsif @tools.respond_to?(:left_out) && @tools.left_out(name, layers: layers)
+        "Error: #{name} isn't loaded#{in_toolkit} and can't be loaded from " \
           "here; only the user can (/toolkit add #{name}). Available: #{names.join(", ")}"
       elsif SHELL_LIKE_TOOL_NAMES.include?(name.to_s.downcase) && names.include?("execute")
         "Error: no such tool. Shell commands run with `execute` (same arguments)."
@@ -1085,9 +1096,15 @@ module Samagotchi
     end
 
     def dispatch(call)
-      entry = @tools.offered(call[:name], layers: llm_context_layers)
+      # A built-in reached through call_tool runs only while the toolkit
+      # reaches it that way (Registry#indexed); any other call by its name.
+      entry = if call[:via]
+                @tools.respond_to?(:indexed) ? @tools.indexed(call[:name], layers: llm_context_layers) : nil
+              else
+                @tools.offered(call[:name], layers: llm_context_layers)
+              end
       unless entry
-        result = unknown_tool_error(call[:name], llm_context_layers)
+        result = unknown_tool_error(call[:name], llm_context_layers, via: call[:via])
         return {
           output: result,
           activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)

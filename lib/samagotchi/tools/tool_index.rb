@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "args"
+require_relative "builtin_calls"
 require_relative "registry"
 require_relative "../log"
 require_relative "../token_usage"
@@ -34,7 +35,8 @@ module Samagotchi
     class ToolIndex
       SOURCE = "index"
       FIND_NAME = "find_tools"
-      CALL_NAME = "call_tool"
+      # What an unwrapped call carries as via: too.
+      CALL_NAME = BuiltinCalls::VIA
       # Matches a search answers, and names a miss suggests.
       FIND_RESULTS = 5
       CLOSEST = 3
@@ -229,7 +231,8 @@ module Samagotchi
             next
           end
 
-          registry.register(spec.name, source: SOURCE, **spec.entry_fields(nil))
+          unwrap = (->(call, layers) { unwrap(call, layers) } if spec.name == CALL_NAME)
+          registry.register(spec.name, source: SOURCE, unwrap: unwrap, **spec.entry_fields(nil))
           spec
         end
         registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, sourced: !@sources.empty?)
@@ -310,6 +313,30 @@ module Samagotchi
         source_of(tool.group).run(tool, inner)
       end
 
+      # The built-in a call_tool +call+ names, as the call that runs in its
+      # place (ToolRunner#run's first step, before the guardrail gate):
+      # built from its arguments as a direct call would be
+      # (BuiltinCalls.build), with via: "call_tool". The name is a chi tool
+      # (a bare one only while the toolkit reaches it), or chi/<built-in>
+      # for any registered built-in: one the toolkit removes or declares
+      # is then refused by its name before the gate (ToolRunner#left_out?),
+      # with no hook or card. Nil, so the call runs as call_tool, when the
+      # turn under +layers+ doesn't offer call_tool, for an MCP tool, a miss
+      # or arguments that aren't an object.
+      # @return [Hash, nil]
+      def unwrap(call, layers = [])
+        return nil unless @registry&.offered(CALL_NAME, layers: layers)
+
+        args = call[:args].is_a?(Hash) ? call[:args] : {}
+        name = args["tool"].to_s.strip
+        tool = lookup_quietly(name)
+        entry = tool&.entry || builtin_named(name)
+        return nil unless entry
+
+        inner = inner_args(args["args"], tool)
+        inner && BuiltinCalls.build(entry.name, inner).merge(via: CALL_NAME)
+      end
+
       # The call tool's activity row: <group>/<tool> and its arguments.
       def call_preview(args)
         tool = lookup_quietly(args["tool"].to_s)
@@ -386,6 +413,14 @@ module Samagotchi
       end
 
       def own?(group) = RESERVED_GROUPS.include?(group.name)
+
+      # The registered built-in chi/<name> names, reachable or not.
+      def builtin_named(name)
+        return nil unless name.start_with?("#{CHI_GROUP}/")
+
+        entry = @registry[name.delete_prefix("#{CHI_GROUP}/")]
+        entry if entry&.core?
+      end
 
       # The index's own groups: chi, the built-ins the Registry's toolkit
       # leaves out but reaches (none: no group). Each tool's schema is its

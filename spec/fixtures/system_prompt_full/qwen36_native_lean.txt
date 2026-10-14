@@ -441,7 +441,7 @@ Feedback:
   Offer to save it as one small memory (system scope for a way of working, project scope for a repo convention) with the why, and write it once the user agrees.
   Plain thanks or a remark about the code is not feedback to save.
 
-Not loaded in this session (toolkit lean): register_reminder, cancel_reminder, list_reminders, list_sessions, send_note, delegate, delegate_result. Only the user can load one (/toolkit add <name>).
+Not declared in this session (toolkit lean): register_reminder, cancel_reminder, list_reminders, list_sessions, send_note, delegate, delegate_result. Search them with find_tools; call one with call_tool.
 For fast repository/text search, prefer `rg` (ripgrep) over `grep` when exploring files or text.
 System identity (auto-loaded, scope=system):
 I am chi's identity.

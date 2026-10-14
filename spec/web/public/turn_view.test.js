@@ -402,6 +402,15 @@ test("turnHistoryHtml without parts: a call's row keeps its called_as from the t
   assert.match(html, /<span class="activity-tool">execute<\/span><span class="activity-alias">\(called as bash\)<\/span>/);
 });
 
+test("turnHistoryHtml without parts: a call's row keeps its via from the tool record", () => {
+  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "done" }];
+  const timing = normalizeTiming({
+    turn_records: [{ id: "T1", status: "completed", duration_ms: 500 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "delegate", via: "call_tool", status: "ok", duration_ms: 7 }],
+  });
+  assert.match(turnHistoryHtml(items, timing, { thumbs }), /<span class="activity-tool">delegate<\/span><span class="activity-alias">\(via call_tool\)<\/span>/);
+});
+
 test("turnHistoryHtml with parts: a record no saved message took keeps its called_as too", () => {
   const items = [{ role: "user", content: "p" }, { role: "assistant", content: "done", parts: {} }];
   const aliased = normalizeTiming({

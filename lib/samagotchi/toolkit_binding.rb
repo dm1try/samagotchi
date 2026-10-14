@@ -66,7 +66,9 @@ module Samagotchi
       filter = resolved.everything? ? nil : resolved
       tools = @tools.call
       Toolkit::Explained.new(toolkit: toolkit, resolved: resolved, declared: tools.entries(toolkit: filter),
-                             left_out: tools.left_out_names(toolkit: filter), pending: filter != tools.toolkit)
+                             left_out: tools.left_out_names(toolkit: filter),
+                             reachable: tools.reachable_names(toolkit: filter),
+                             removed: tools.removed_names(toolkit: filter), pending: filter != tools.toolkit)
     end
 
     # The session's toolkit for the UIs (the snapshot, command_ran): nil on

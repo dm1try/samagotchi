@@ -25,17 +25,19 @@ module Samagotchi
     # The plain form the snapshot and the web carry.
     def to_h = { name: name, add: add, remove: remove }
 
-    # This toolkit with +tool+ declared (/toolkit add): a tool it removed
-    # comes out of +remove+ (back to its kit's), any other goes into +add+.
+    # This toolkit with +tool+ declared (/toolkit add): out of +remove+
+    # and into +add+, whatever its kit says (an add after a remove
+    # declares it).
     def adding(tool)
       tool = tool.to_s
-      remove.include?(tool) ? with(remove: remove - [tool]) : with(add: (add + [tool]).uniq)
+      with(remove: remove - [tool], add: (add + [tool]).uniq)
     end
 
-    # This toolkit with +tool+ left out (/toolkit remove), the other way.
+    # This toolkit with +tool+ removed (/toolkit remove), the other way: a
+    # remove is hard (call_tool can't reach it either), also after an add.
     def removing(tool)
       tool = tool.to_s
-      add.include?(tool) ? with(add: add - [tool]) : with(remove: (remove + [tool]).uniq)
+      with(add: add - [tool], remove: (remove + [tool]).uniq)
     end
 
     # How the UIs name it: "lean", "lean +web_fetch -memory_write".
@@ -66,14 +68,22 @@ module Samagotchi
 
     # A toolkit as a session's next turn would declare it (Engine
     # #toolkit_explained): +toolkit+ as saved, +resolved+, the Registry
-    # +declared+ entries and the names it leaves out (+left_out+), and
-    # whether that isn't what the Registry declares now (+pending+: it
+    # +declared+ entries and the names it leaves out (+left_out+): the ones
+    # call_tool reaches (+reachable+) and the ones it removes (+removed+);
+    # and whether that isn't what the Registry declares now (+pending+: it
     # applies at the next turn's start).
-    Explained = Data.define(:toolkit, :resolved, :declared, :left_out, :pending) do
-      # What the prompt carries of it: the declared names and, when it
-      # leaves tools out, the kit name the not-loaded line gives. Two equal
+    Explained = Data.define(:toolkit, :resolved, :declared, :left_out, :reachable, :removed, :pending) do
+      def initialize(toolkit:, resolved:, declared:, left_out:, pending:, reachable: [], removed: [])
+        super
+      end
+
+      # What the prompt carries of it: the declared names, the reachable
+      # and removed ones (the not-loaded line, find_tools' chi line) and,
+      # when either list has any, the kit name the line gives. Two equal
       # keys build the same prompt (/toolkit's "no change", its cost).
-      def prompt_key = [declared.map(&:name), left_out.empty? ? nil : resolved.name]
+      def prompt_key
+        [declared.map(&:name), reachable, removed, reachable.empty? && removed.empty? ? nil : resolved.name]
+      end
 
       # What the UIs show (the snapshot, command_ran): nil when it declares
       # every tool on full (full, full +delegate), which has no chip.

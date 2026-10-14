@@ -93,4 +93,11 @@ RSpec.describe Samagotchi::Tools::BuiltinCalls do
       expect(described_class.build("bash", { "command" => 5 })[:name]).to eq("bash")
     end
   end
+
+  it "refuses a schema property that would set a field only chi sets (name, called_as, via)" do
+    schema = ->(prop) { { name: "x", parameters: { type: "object", properties: { prop => { type: "string" } } } } }
+    %i[name called_as via].each do |prop|
+      expect { described_class.row_for(schema.call(prop)) }.to raise_error(ArgumentError, /replace the call's #{prop}/)
+    end
+  end
 end

@@ -23,7 +23,7 @@ module Samagotchi
   # params and label stay where they are: their sources differ per path
   # (the registry's preview, a plugin's label, the saved shown params).
   module ToolRowFields
-    ACTIVITY_KEYS = %i[title called_as].freeze
+    ACTIVITY_KEYS = %i[title called_as via].freeze
     EVENT_KEYS = %i[view ref refs].freeze
     KEYS = (ACTIVITY_KEYS + EVENT_KEYS).freeze
 
@@ -33,13 +33,15 @@ module Samagotchi
     #   relative to it when inside it)
     # @return [Hash] title (a few words: a project-relative path, a command
     #   without its "cd … &&"), called_as (the name the model called it by
-    #   when that was an alias's: bash), view (ToolView: the full command)
+    #   when that was an alias's: bash), via (the tool it was reached
+    #   through: call_tool), view (ToolView: the full command)
     #   and ref (FileRef: the file a file tool touched), each only when
     #   there is one
     def for(tool_name, call, cwd:)
       {
         title: ToolActivity.tool_title(tool_name, call, cwd: cwd),
         called_as: call[:called_as],
+        via: call[:via],
         view: ToolView.for(tool_name, call)&.to_h,
         ref: FileRef.for(tool_name, call, cwd: cwd)&.to_h
       }.compact

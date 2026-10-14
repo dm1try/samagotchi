@@ -138,6 +138,19 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:tool_records].map { |record| record[:no_match] }).to eq([true, nil])
   end
 
+  it "keeps a built-in run through call_tool on its record, never counted as an alias" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+      { type: :tool_call_started, iteration: 1, call_index: 1, tool: "delegate" },
+      { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "delegate", status: "ok",
+        activity: { tool: "delegate", status: "ok", via: "call_tool" } },
+      { type: :turn_completed, result: double(respond_to?: false) }
+    ])
+    snap = metrics.snapshot
+    expect(snap[:tool_records].map { |record| record[:via] }).to eq(["call_tool"])
+    expect(snap).not_to have_key(:tool_calls_aliased)
+  end
+
   it "counts the calls a model made under an alias's name, by its spelling, only when there are any" do
     feed([
       { type: :turn_started, session_id: "sess-1", prompt: "hi" },

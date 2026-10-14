@@ -204,7 +204,7 @@ test("the row field lists are copied by addStarted, addCompleted's synthesized r
   const { ACTIVITY_FIELDS, EVENT_FIELDS } = await import("../../../lib/samagotchi/web/public/activity.js");
   const { snapshotEvents } = await import("../../../lib/samagotchi/web/public/turn_events.js");
   // The server's ToolRowFields::ACTIVITY_KEYS and EVENT_KEYS.
-  assert.deepEqual([ACTIVITY_FIELDS, EVENT_FIELDS], [["title", "called_as"], ["view", "ref", "refs"]]);
+  assert.deepEqual([ACTIVITY_FIELDS, EVENT_FIELDS], [["title", "called_as", "via"], ["view", "ref", "refs"]]);
   const fields = Object.fromEntries([...ACTIVITY_FIELDS, ...EVENT_FIELDS].map((f) => [f, { value: f }]));
   const activityFields = Object.fromEntries(ACTIVITY_FIELDS.map((f) => [f, fields[f]]));
   const eventFields = Object.fromEntries(EVENT_FIELDS.map((f) => [f, fields[f]]));

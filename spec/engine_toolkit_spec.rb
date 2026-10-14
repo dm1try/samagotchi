@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     expect(seen[0]).not_to include("delegate")
     expect(seen[1]).to eq(seen[0])
     expect(seen[2] - seen[0]).to eq(["delegate"])
-    expect(engine.system_prompt).to include("Not loaded in this session (toolkit lean)")
+    expect(engine.system_prompt).to include("Not declared in this session (toolkit lean)")
   end
 
   it "declares every tool for a session without one (full), and the prompt has no not-loaded line" do
@@ -105,6 +105,13 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     expect(chat_tools).to eq(File.read(File.expand_path("fixtures/prompt_snapshots/chat_tools.json", __dir__)))
     expect(engine.system_prompt).not_to include("Not loaded", "Not declared", "find_tools")
     expect(engine.toolkit_summary).to be_nil
+  end
+
+  it "names the call_tool route alone when the toolkit removes find_tools" do
+    allow(kernel).to receive(:run).and_return(result)
+    turn(session(Samagotchi::Toolkit.new(name: "lean", remove: ["find_tools"])))
+    expect(engine.system_prompt).to include("delegate_result. Call one with call_tool(tool: \"chi/<name>\", args: {…}). " \
+                                            "Removed (toolkit lean): find_tools. Only the user can load it")
   end
 
   it "declares find_tools and call_tool on lean, with the plugins loaded and no MCP" do

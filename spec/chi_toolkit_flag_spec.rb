@@ -44,8 +44,10 @@ RSpec.describe "chi --toolkit" do
     expect(saved["toolkit"]).to eq("name" => "lean", "add" => ["delegate"], "remove" => ["web_fetch"])
     expect(prompt).to include('"name": "delegate"')
     expect(prompt).not_to include('"name": "list_sessions"', '"name": "web_fetch"')
-    expect(prompt).to include("Not loaded in this session (toolkit lean): web_fetch, register_reminder, cancel_reminder, " \
-                              "list_reminders, list_sessions, send_note, delegate_result.")
+    expect(prompt).to include("Not declared in this session (toolkit lean): register_reminder, cancel_reminder, " \
+                              "list_reminders, list_sessions, send_note, delegate_result. Search them with find_tools; " \
+                              "call one with call_tool. Removed (toolkit lean): web_fetch. Only the user can load it " \
+                              "(/toolkit add <name>).")
   end
 
   it "saves full without the flag, and the prompt has no not-loaded line" do
