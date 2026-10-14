@@ -239,9 +239,7 @@ module Samagotchi
                  .fetch(uri, request, retries: false, check_status: false, log_fields: { purpose: "probe" })
       end
 
-      def network_errors
-        [*LLM::HTTP::NETWORK_ERRORS, OpenSSL::SSL::SSLError, Errno::EADDRNOTAVAIL, Errno::ENETDOWN, Errno::EPIPE]
-      end
+      def network_errors = LLM::HTTP::NETWORK_ERRORS
 
       def reason(error)
         case error

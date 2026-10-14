@@ -20,7 +20,8 @@ module Samagotchi
     # asking again could help.
     #
     #   ConnectionError  no answer (refused, reset, timeout); RetryExhausted,
-    #                    ConnectionRefused
+    #                    ConnectionRefused, TLSError (a handshake that can't
+    #                    work: certificate, host name, http vs https)
     #   RateLimited      429, with retry_after when the server says
     #   CreditsHeld      402 "… in-flight requests": credit reserved by other
     #                    requests; a RateLimited, retried after 20 s
@@ -269,6 +270,51 @@ module Samagotchi
       end
 
       def summary = "can't reach host #{host}#{" at #{address}" if address} (connection refused) — is the server running?"
+    end
+
+    # A TLS handshake that can't work however often it is tried: a
+    # certificate chi doesn't trust, a certificate for another name, or a
+    # server that doesn't speak TLS there (an https:// base_url on a plain
+    # HTTP port). Not retried. Any other OpenSSL::SSL::SSLError (an
+    # unexpected eof or a reset mid-handshake) is a network blip, retried.
+    class TLSError < ConnectionError
+      # problem => [pattern of the OpenSSL message, what to check]. The
+      # first match wins, so the host name comes before the general
+      # certificate check ("certificate verify failed (hostname mismatch)").
+      PROBLEMS = {
+        hostname: [/hostname mismatch|does not match the server certificate/i,
+                   "the certificate is for another name: check the host's base_url"],
+        certificate: [/certificate verify failed/i,
+                      "is its CA trusted? set SSL_CERT_FILE to a CA bundle that has it"],
+        scheme: [/wrong version number|packet length too long/i,
+                 "the server doesn't answer TLS there: should the host's base_url start with http://?"]
+      }.freeze
+
+      attr_reader :address, :problem, :reason
+
+      # The permanent problem an OpenSSL::SSL::SSLError's +message+ names
+      # (:hostname, :certificate, :scheme), or nil for a transient one.
+      def self.problem_for(message)
+        PROBLEMS.find { |_problem, (pattern, _hint)| pattern.match?(message.to_s) }&.first
+      end
+
+      # The OpenSSL reason without Ruby's "SSL_connect returned=1 errno=0
+      # peeraddr=… state=…: " prefix.
+      def self.reason_for(message)
+        message.to_s[/\bstate=[^:]*:\s*(.+)\z/m, 1] || message.to_s
+      end
+
+      def initialize(host:, problem:, reason:, address: nil, attempts: 1)
+        @address = address
+        @problem = problem
+        @reason = reason
+        super("#{host}: TLS failed#{" at #{address}" if address}: #{reason}", host: host, retryable: false,
+                                                                            attempts: attempts)
+      end
+
+      def summary
+        "can't reach host #{host}#{" at #{address}" if address} over TLS (#{reason}) — #{PROBLEMS.fetch(problem).last}"
+      end
     end
 
     # A stream that showed nothing (no text, reasoning or tool call) within

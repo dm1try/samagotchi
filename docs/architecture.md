@@ -452,7 +452,7 @@ message (docs/internals/context-telemetry.md).
 `HostRegistry#adapter_for`, built by `LLM::Adapters` from the host's api) share
 `LLM::HTTP`: timeouts, TLS for https, a line reader for streamed bodies, the retry loop (`retry.*`; network errors, 429 and
 500/502/503/504/529, honouring `Retry-After`; never after a stream has produced
-output) and cancel. Cancel closes the in-flight socket from the
+output; a refused connection and a TLS handshake that can't work, `LLM::TLSError`, fail at once) and cancel. Cancel closes the in-flight socket from the
 `CancellationController` listener, so it works on any thread.
 
 `LLM::AnthropicMessages` talks Anthropic's Messages API (`POST {root}/v1/messages`) for the same chat loop:

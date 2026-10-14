@@ -37,6 +37,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A TLS handshake blip on a gateway (`SSL_connect … unexpected eof`, a reset mid-handshake) is retried like other
+  network errors instead of failing the turn at once; a certificate chi doesn't trust, a certificate for another
+  name, or an `https://` base_url on a plain HTTP port fails at once, saying what to check (`SSL_CERT_FILE`, the
+  host's base_url).
 - A bundle tool named like an MCP tool (`mcp_fs_read`) no longer takes `call_tool` calls of that MCP tool out of
   `mcp_*` rules.
 - Web: on a phone the start page's model, thinking and LLM context chips wrap instead of being cut short; a toast no

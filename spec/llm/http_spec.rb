@@ -640,6 +640,99 @@ RSpec.describe Samagotchi::LLM::HTTP do
     expect(http.fetch(secure, Net::HTTP::Get.new(secure))).to eq(:response)
   end
 
+  describe "TLS errors" do
+    # Real OpenSSL messages (Ruby 3.4, OpenSSL 3), as Net::HTTP raises them.
+    def ssl_error(detail, state: "error")
+      OpenSSL::SSL::SSLError.new("SSL_connect returned=1 errno=0 peeraddr=10.0.0.7:443 state=#{state}: #{detail}")
+    end
+
+    # Net::HTTP.start fails its first +failures+ calls with +error+, then
+    # connects for real.
+    def failing_connect(error, failures: 1)
+      calls = 0
+      allow(Net::HTTP).to receive(:start).and_wrap_original do |original, *args, **options, &block|
+        calls += 1
+        raise error if calls <= failures
+
+        original.call(*args, **options, &block)
+      end
+    end
+
+    it "retries a handshake blip (unexpected eof) like other network errors, then succeeds" do
+      server.enqueue("/v1/chat/completions", sse: "data: 1\n\n")
+      failing_connect(ssl_error("unexpected eof while reading"))
+      retries = []
+      errors = []
+      lines = []
+
+      http.stream_lines(uri, post_request, on_retry: ->(**event) { retries << event },
+                                           on_network_error: ->(error) { errors << error }) { |line| lines << line }
+
+      expect(lines).to eq(["data: 1", ""])
+      expect(retries.map { |event| event.slice(:attempt, :next_delay, :error_class) })
+        .to eq([{ attempt: 1, next_delay: 0.5, error_class: "OpenSSL::SSL::SSLError" }])
+      expect(errors.map(&:class)).to eq([OpenSSL::SSL::SSLError])
+      expect(sleeps).to eq([0.5])
+    end
+
+    it "retries a fetch whose handshake hit EPIPE" do
+      server.enqueue("/v1/models", json: { data: [] })
+      models = URI("#{server.base_url}/models")
+      failing_connect(Errno::EPIPE.new)
+
+      expect(http.fetch(models, Net::HTTP::Get.new(models)).code).to eq("200")
+      expect(sleeps).to eq([0.5])
+    end
+
+    it "raises RetryExhausted with the TLS error once the retries run out" do
+      failing_connect(ssl_error("unexpected eof while reading"), failures: 3)
+
+      expect { http.stream_lines(uri, post_request) { nil } }
+        .to raise_error(Samagotchi::LLM::RetryExhausted) { |error|
+          expect(error.attempts).to eq(3)
+          expect(error.last_error).to be_a(OpenSSL::SSL::SSLError)
+        }
+    end
+
+    it "does not retry a TLS error after the stream showed something" do
+      server.enqueue("/v1/chat/completions", sse: "data: 1\n\n")
+
+      expect do
+        http.stream_lines(uri, post_request) do |_line, shown|
+          shown.call
+          raise OpenSSL::SSL::SSLError, "SSL_read: unexpected eof while reading"
+        end
+      end.to raise_error(Samagotchi::LLM::RetryExhausted) { |error| expect(error.attempts).to eq(1) }
+      expect(server.requests.size).to eq(1)
+      expect(sleeps).to be_empty
+    end
+
+    {
+      "certificate verify failed (self-signed certificate)" => [:certificate, "SSL_CERT_FILE"],
+      "certificate verify failed (unable to get local issuer certificate)" => [:certificate, "SSL_CERT_FILE"],
+      "certificate verify failed (certificate has expired)" => [:certificate, "SSL_CERT_FILE"],
+      "certificate verify failed (hostname mismatch)" => [:hostname, "base_url"],
+      "wrong version number" => [:scheme, "http://"]
+    }.each do |detail, (problem, hint)|
+      it "fails at once on #{detail}, saying what to check" do
+        failing_connect(ssl_error(detail, state: problem == :scheme ? "SSLv3/TLS write client hello" : "error"))
+        errors = []
+
+        expect { http.stream_lines(uri, post_request, on_network_error: ->(error) { errors << error }) { nil } }
+          .to raise_error(Samagotchi::LLM::TLSError) { |error|
+            expect(error.problem).to eq(problem)
+            expect(error.attempts).to eq(1)
+            expect(error).not_to be_retryable
+            expect(error.kind).to eq(:connection)
+            expect(error.summary).to start_with("can't reach host fake at #{uri.host}:#{uri.port} over TLS (#{detail})")
+            expect(error.summary).to include(hint)
+          }
+        expect(sleeps).to be_empty
+        expect(errors.size).to eq(1)
+      end
+    end
+  end
+
   describe "Net::HTTP's own retries" do
     # Net::HTTP retries an idempotent request once by itself when the
     # connection drops before an answer (max_retries: 1). chi's RetryPolicy

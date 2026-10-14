@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "net/http"
+require "openssl"
 require "uri"
 require_relative "../config"
 require_relative "../version"
@@ -31,9 +32,13 @@ module Samagotchi
       # the user, who can try again later.
       MAX_RETRY_AFTER = 60.0
 
+      # Errors that mean the request didn't get through (the probe treats
+      # them as "unreachable"). #retrying retries them, except a refused
+      # connection and a TLS error that can't work (.tls_problem).
       NETWORK_ERRORS = [
-        Timeout::Error, EOFError, SocketError, IO::TimeoutError,
-        Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ETIMEDOUT
+        Timeout::Error, EOFError, SocketError, IO::TimeoutError, OpenSSL::SSL::SSLError,
+        Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ENETDOWN,
+        Errno::ETIMEDOUT, Errno::EPIPE, Errno::EADDRNOTAVAIL
       ].freeze
 
       # Requests of these purposes are the ones a turn waits on (or, for the
@@ -75,6 +80,13 @@ module Samagotchi
 
       def self.network_error?(error)
         NETWORK_ERRORS.any? { |klass| error.is_a?(klass) }
+      end
+
+      # The permanent TLS problem +error+ is (TLSError::PROBLEMS: :certificate,
+      # :hostname, :scheme), or nil: not a TLS error, or a transient one
+      # (an unexpected eof or a reset mid-handshake) worth retrying.
+      def self.tls_problem(error)
+        error.is_a?(OpenSSL::SSL::SSLError) ? TLSError.problem_for(error.message) : nil
       end
 
       # The ProviderError an SSE line carries (llama.cpp's `error:` event, a
@@ -277,6 +289,12 @@ module Samagotchi
             # at once and says what to check.
             if e.is_a?(Errno::ECONNREFUSED)
               raise ConnectionRefused.new(host: @label, address: current[:address], attempts: attempts)
+            end
+            # Nor is a handshake that can't work (an untrusted certificate,
+            # another name's, a plain HTTP server): it fails the same way.
+            if (problem = self.class.tls_problem(e))
+              raise TLSError.new(host: @label, address: current[:address], problem: problem,
+                                 reason: TLSError.reason_for(e.message), attempts: attempts)
             end
 
             delay = current[:streamed] ? nil : @retry_policy.delay_for(attempts)

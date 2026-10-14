@@ -988,8 +988,8 @@ Transient network failures are retried automatically with exponential backoff.
 
 - Default retries: `5` (up to `6` total attempts including the first call).
 - Default backoff: `0.5s`, `1s`, `2s`, `4s`, `8s`.
-- Retry scope: transient network errors (timeouts, reset connections, EOF/socket reachability failures),
-  HTTP 429 and HTTP 500/502/503/504/529. A `Retry-After` header replaces the backoff delay; one longer than
+- Retry scope: transient network errors (timeouts, reset connections, broken pipes, EOF/socket reachability
+  failures, a TLS handshake that drops: `SSL_connect … unexpected eof while reading`), HTTP 429 and HTTP 500/502/503/504/529. A `Retry-After` header replaces the backoff delay; one longer than
   60s is not waited out and the error is reported instead.
 - An HTTP 402 about credit held by in-flight requests (OpenRouter reserves credit for each running request, so
   one session's long request can make another's fail) is retried like a 429, 20s apart unless `Retry-After`
@@ -998,6 +998,11 @@ Transient network failures are retried automatically with exponential backoff.
   budget, so it fails at once (lower `default.max_tokens` or raise the key's limit).
 - A refused connection (nothing listening) is not retried: the turn fails at once with `can't reach host <name> at
   <address> (connection refused) — is the server running?`.
+- Nor is a TLS handshake that can't work, which fails at once saying what to check: a certificate chi doesn't
+  trust (`certificate verify failed (self-signed certificate)`, `unable to get local issuer certificate`, an expired
+  one: set `SSL_CERT_FILE` to a CA bundle that has the gateway's CA), a certificate for another name (`hostname
+  mismatch`: check the host's `base_url`), or a server that doesn't speak TLS there (`wrong version number`: an
+  `https://` base_url on a plain HTTP port; should it be `http://`?).
 - A stream that has already produced output is never retried at the transport (the retry would repeat it). The
   chat loop (an OpenAI-compatible host) drops the partial reply and asks again for the whole step, from the same
   conversation, at most twice (at most `retry.max` times when that is smaller: `retry.max: 0` turns it off), after

@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/llm/errors"
+require "samagotchi/llm/http"
 
 RSpec.describe Samagotchi::LLM::ProviderError do
   def from(status, message, **options)
@@ -366,6 +367,60 @@ RSpec.describe Samagotchi::LLM::ProviderError do
 
       expect(error).to be_a(Samagotchi::LLM::BadRequest)
       expect(error).to have_attributes(reasoning_refused?: false, sampling_refused?: false)
+    end
+  end
+
+  describe Samagotchi::LLM::TLSError do
+    # Messages as Ruby's OpenSSL (3.x) and Net::HTTP raise them.
+    {
+      "SSL_connect returned=1 errno=0 peeraddr=10.0.0.7:443 state=error: unexpected eof while reading" => nil,
+      "SSL_connect SYSCALL returned=5 errno=0 peeraddr=10.0.0.7:443 state=SSLv3/TLS write client hello" => nil,
+      "SSL_connect returned=1 errno=0 peeraddr=10.0.0.7:443 state=error: connection reset by peer" => nil,
+      "SSL_read: unexpected eof while reading" => nil,
+      "SSL_connect returned=1 errno=0 peeraddr=10.0.0.7:443 state=error: " \
+      "certificate verify failed (self-signed certificate)" => :certificate,
+      "SSL_connect returned=1 errno=0 peeraddr=10.0.0.7:443 state=error: " \
+      "certificate verify failed (unable to get local issuer certificate)" => :certificate,
+      "SSL_connect returned=1 errno=0 peeraddr=10.0.0.7:443 state=error: " \
+      "certificate verify failed (certificate has expired)" => :certificate,
+      "SSL_connect returned=1 errno=0 peeraddr=10.0.0.7:443 state=error: " \
+      "certificate verify failed (hostname mismatch)" => :hostname,
+      'hostname "gw.example" does not match the server certificate' => :hostname,
+      "SSL_connect returned=1 errno=0 peeraddr=(null) state=SSLv3/TLS write client hello: " \
+      "wrong version number" => :scheme,
+      "SSL_connect returned=1 errno=0 peeraddr=10.0.0.7:443 state=error: packet length too long" => :scheme
+    }.each do |message, problem|
+      it "classifies #{message.inspect} as #{problem || "transient"}" do
+        error = OpenSSL::SSL::SSLError.new(message)
+
+        expect(Samagotchi::LLM::HTTP.tls_problem(error)).to eq(problem)
+        expect(Samagotchi::LLM::HTTP.network_error?(error)).to be(true)
+      end
+    end
+
+    it "leaves errors that aren't TLS errors to the network-error rules" do
+      expect(Samagotchi::LLM::HTTP.tls_problem(EOFError.new("wrong version number"))).to be_nil
+    end
+
+    it "keeps the OpenSSL reason, not Ruby's SSL_connect prefix" do
+      expect(described_class.reason_for("SSL_connect returned=1 errno=0 peeraddr=(null) " \
+                                        "state=SSLv3/TLS write client hello: wrong version number"))
+        .to eq("wrong version number")
+      expect(described_class.reason_for('hostname "gw" does not match the server certificate'))
+        .to eq('hostname "gw" does not match the server certificate')
+    end
+
+    it "names the host, its address and what to check" do
+      error = described_class.new(host: "gw", address: "gw.example:443", problem: :certificate,
+                                  reason: "certificate verify failed (unable to get local issuer certificate)")
+
+      expect(error).to be_a(Samagotchi::LLM::ConnectionError)
+      expect(error).not_to be_retryable
+      expect(error.message).to eq("gw: TLS failed at gw.example:443: certificate verify failed " \
+                                  "(unable to get local issuer certificate)")
+      expect(error.summary).to eq("can't reach host gw at gw.example:443 over TLS (certificate verify failed " \
+                                  "(unable to get local issuer certificate)) — is its CA trusted? set SSL_CERT_FILE " \
+                                  "to a CA bundle that has it")
     end
   end
 end
